@@ -18,5 +18,4 @@
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.lib.io.tf_record import *
-
 # pylint: enable=wildcard-import

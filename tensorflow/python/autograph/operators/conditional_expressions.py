@@ -21,32 +21,32 @@ from tensorflow.python.ops import control_flow_ops
 
 
 def if_exp(cond, if_true, if_false, expr_repr):
-    if tensors.is_dense_tensor(cond):
-        return _tf_if_exp(cond, if_true, if_false, expr_repr)
-    else:
-        return _py_if_exp(cond, if_true, if_false)
+  if tensors.is_dense_tensor(cond):
+    return _tf_if_exp(cond, if_true, if_false, expr_repr)
+  else:
+    return _py_if_exp(cond, if_true, if_false)
 
 
 def _tf_if_exp(cond, if_true, if_false, expr_repr):
-    """Overload of if_exp that stages a TF cond."""
-    # TODO(mdan): Use nonlocal once we no longer need to support py2.
-    true_val = []
-    false_val = []
+  """Overload of if_exp that stages a TF cond."""
+  # TODO(mdan): Use nonlocal once we no longer need to support py2.
+  true_val = []
+  false_val = []
 
-    def true_fn():
-        true_val.append(if_true())
-        if true_val and false_val:
-            control_flow.verify_single_cond_var(expr_repr, true_val[0], false_val[0])
-        return true_val[0]
+  def true_fn():
+    true_val.append(if_true())
+    if true_val and false_val:
+      control_flow.verify_single_cond_var(expr_repr, true_val[0], false_val[0])
+    return true_val[0]
 
-    def false_fn():
-        false_val.append(if_false())
-        if true_val and false_val:
-            control_flow.verify_single_cond_var(expr_repr, true_val[0], false_val[0])
-        return false_val[0]
+  def false_fn():
+    false_val.append(if_false())
+    if true_val and false_val:
+      control_flow.verify_single_cond_var(expr_repr, true_val[0], false_val[0])
+    return false_val[0]
 
-    return control_flow_ops.cond(cond, true_fn, false_fn)
+  return control_flow_ops.cond(cond, true_fn, false_fn)
 
 
 def _py_if_exp(cond, if_true, if_false):
-    return if_true() if cond else if_false()
+  return if_true() if cond else if_false()

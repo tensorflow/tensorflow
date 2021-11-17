@@ -34,287 +34,264 @@ from tensorflow.python.training.tracking import base as trackable
 
 
 def _on_device_update(update_fn, var, value, **kwargs):
-    with ops.device(var.device):
-        return update_fn(var, value, **kwargs)
+  with ops.device(var.device):
+    return update_fn(var, value, **kwargs)
 
 
 class TPUReplicatedVariable(variables_lib.Variable):
-    """Container for replicated `Variables` that are treated as a single variable.
+  """Container for replicated `Variables` that are treated as a single variable.
 
-    This class maintains a list of replicated variables that are stored on
-    separate logic TPU devices. TF2XLA bridge accesses these variables as
-    if they were a single variable.
+  This class maintains a list of replicated variables that are stored on
+  separate logic TPU devices. TF2XLA bridge accesses these variables as
+  if they were a single variable.
+  """
+
+  def __init__(self, variables, name='TPUReplicatedVariable'):
+    """Treats `variables` as a replicated list of `tf.Variable`s.
+
+    Example:
+
+    ```
+    variables = [
+      tf.Variable(..., shape=(10, 100), dtype=tf.float32),
+      tf.Variable(..., shape=(10, 100), dtype=tf.float32),
+      tf.Variable(..., shape=(10, 100), dtype=tf.float32),
+      tf.Variable(..., shape=(10, 100), dtype=tf.float32),
+    ]
+    replicated_variable = TPUReplicatedVariable(variables)
+    assert replicated_variable.shape.as_list() == [10, 100]
+    ```
+
+    Args:
+      variables: A list of `ResourceVariable`s that comprise this replicated
+        variable. Variables should not be shared between different
+        `TPUReplicatedVariable` objects.
+      name: String. Name of this container. Defaults to "TPUReplicatedVariable".
     """
+    if not isinstance(variables, abc.Sequence) or not variables or any(
+        not isinstance(v, variables_lib.Variable) for v in variables):
+      raise TypeError('Argument `variables` should be a non-empty list of '
+                      f'`variables.Variable`s. Received {variables}')
 
-    def __init__(self, variables, name="TPUReplicatedVariable"):
-        """Treats `variables` as a replicated list of `tf.Variable`s.
+    if any(v.dtype != variables[0].dtype for v in variables):
+      raise ValueError(
+          'All elements in argument `variables` must have the same dtype. '
+          f'Received dtypes: {[v.dtype for v in variables]}')
 
-        Example:
+    if any(v.shape != variables[0].shape for v in variables):
+      raise ValueError(
+          'All elements in argument `variables` must have the same shape. '
+          f'Received shapes: {[v.shape for v in variables]}')
 
-        ```
-        variables = [
-          tf.Variable(..., shape=(10, 100), dtype=tf.float32),
-          tf.Variable(..., shape=(10, 100), dtype=tf.float32),
-          tf.Variable(..., shape=(10, 100), dtype=tf.float32),
-          tf.Variable(..., shape=(10, 100), dtype=tf.float32),
-        ]
-        replicated_variable = TPUReplicatedVariable(variables)
-        assert replicated_variable.shape.as_list() == [10, 100]
-        ```
+    self._vars = variables
+    self._name = name
+    self._common_name = self._name.split(':')[0]
+    self._cached_value = None
 
-        Args:
-          variables: A list of `ResourceVariable`s that comprise this replicated
-            variable. Variables should not be shared between different
-            `TPUReplicatedVariable` objects.
-          name: String. Name of this container. Defaults to "TPUReplicatedVariable".
-        """
-        if (
-            not isinstance(variables, abc.Sequence)
-            or not variables
-            or any(not isinstance(v, variables_lib.Variable) for v in variables)
-        ):
-            raise TypeError(
-                "Argument `variables` should be a non-empty list of "
-                f"`variables.Variable`s. Received {variables}"
-            )
+  def __iter__(self):
+    """Return an iterable for accessing the underlying sharded variables."""
+    return iter(self._vars)
 
-        if any(v.dtype != variables[0].dtype for v in variables):
-            raise ValueError(
-                "All elements in argument `variables` must have the same dtype. "
-                f"Received dtypes: {[v.dtype for v in variables]}"
-            )
+  @property
+  def name(self):
+    """The name of this object. Used for checkpointing."""
+    return self._name
 
-        if any(v.shape != variables[0].shape for v in variables):
-            raise ValueError(
-                "All elements in argument `variables` must have the same shape. "
-                f"Received shapes: {[v.shape for v in variables]}"
-            )
+  @property
+  def dtype(self):
+    """The dtype of all `Variable`s in this object."""
+    return self._vars[0].dtype
 
-        self._vars = variables
-        self._name = name
-        self._common_name = self._name.split(":")[0]
-        self._cached_value = None
+  @property
+  def is_initialized(self):
+    return self._vars[0].is_initialized
 
-    def __iter__(self):
-        """Return an iterable for accessing the underlying sharded variables."""
-        return iter(self._vars)
+  @property
+  def trainable(self):
+    return self._vars[0].trainable
 
-    @property
-    def name(self):
-        """The name of this object. Used for checkpointing."""
-        return self._name
+  @property
+  def device(self):
+    """The device this variable is on."""
+    return self._vars[0].device
 
-    @property
-    def dtype(self):
-        """The dtype of all `Variable`s in this object."""
-        return self._vars[0].dtype
+  @contextlib.contextmanager
+  def _handle_graph(self):
+    with self.handle.graph.as_default():
+      yield
 
-    @property
-    def is_initialized(self):
-        return self._vars[0].is_initialized
+  @contextlib.contextmanager
+  def _assign_dependencies(self):
+    if self._cached_value is not None:
+      with ops.control_dependencies([self._cached_value]):
+        yield
+    else:
+      yield
 
-    @property
-    def trainable(self):
-        return self._vars[0].trainable
+  @property
+  def constraint(self):
+    return self._vars[0].constraint
 
-    @property
-    def device(self):
-        """The device this variable is on."""
-        return self._vars[0].device
+  @property
+  def _in_graph_mode(self):
+    return self._vars[0]._in_graph_mode  # pylint: disable=protected-access
 
-    @contextlib.contextmanager
-    def _handle_graph(self):
-        with self.handle.graph.as_default():
-            yield
+  @property
+  def _unique_id(self):
+    return self._vars[0]._unique_id  # pylint: disable=protected-access
 
-    @contextlib.contextmanager
-    def _assign_dependencies(self):
-        if self._cached_value is not None:
-            with ops.control_dependencies([self._cached_value]):
-                yield
-        else:
-            yield
+  @property
+  def graph(self):
+    return self._vars[0].graph
 
-    @property
-    def constraint(self):
-        return self._vars[0].constraint
+  @property
+  def _shared_name(self):
+    return self._common_name
 
-    @property
-    def _in_graph_mode(self):
-        return self._vars[0]._in_graph_mode  # pylint: disable=protected-access
+  @property
+  def synchronization(self):
+    return variable_scope.VariableSynchronization.NONE
 
-    @property
-    def _unique_id(self):
-        return self._vars[0]._unique_id  # pylint: disable=protected-access
+  @property
+  def aggregation(self):
+    return variable_scope.VariableAggregation.NONE
 
-    @property
-    def graph(self):
-        return self._vars[0].graph
+  @property
+  def variables(self):
+    """The list of `Variables`."""
+    if save_context.in_save_context():
+      return [self._vars[0]]
+    return self._vars
 
-    @property
-    def _shared_name(self):
-        return self._common_name
+  def _map_resources(self, save_options):
+    """For implementing `Trackable`."""
+    first_var = self._vars[0]
+    obj_map, resource_map = first_var._map_resources(save_options)  # pylint:disable=protected-access
+    for v in self._vars[1:]:
+      obj_map[v] = obj_map[first_var]
+      resource_map[v.handle] = resource_map[first_var.handle]
+    obj_map[self] = obj_map[first_var]
+    resource_map[self] = resource_map[first_var.handle]
+    return obj_map, resource_map
 
-    @property
-    def synchronization(self):
-        return variable_scope.VariableSynchronization.NONE
+  def _gather_saveables_for_saved_model(self):
+    return {trackable.VARIABLE_VALUE_KEY: self._vars[0]}
 
-    @property
-    def aggregation(self):
-        return variable_scope.VariableAggregation.NONE
+  @property
+  def shape(self):
+    return self._vars[0].shape
 
-    @property
-    def variables(self):
-        """The list of `Variables`."""
-        if save_context.in_save_context():
-            return [self._vars[0]]
-        return self._vars
+  @property
+  def handle(self):
+    if save_context.in_save_context():
+      return self._vars[0].handle
 
-    def _map_resources(self, save_options):
-        """For implementing `Trackable`."""
-        first_var = self._vars[0]
-        obj_map, resource_map = first_var._map_resources(
-            save_options
-        )  # pylint:disable=protected-access
-        for v in self._vars[1:]:
-            obj_map[v] = obj_map[first_var]
-            resource_map[v.handle] = resource_map[first_var.handle]
-        obj_map[self] = obj_map[first_var]
-        resource_map[self] = resource_map[first_var.handle]
-        return obj_map, resource_map
+    if tpu_util.enclosing_tpu_context() is None:
+      raise NotImplementedError('TPUReplicatedVariable.handle is not available '
+                                'outside tpu context or save context')
+    else:
+      with tpu_util.outside_or_skip_tpu_context():
+        return xla_sharding.replicate(
+            tpu_partition_ops.tpu_partitioned_input(
+                [v.handle for v in self._vars], partition_dim=-1))
 
-    def _gather_saveables_for_saved_model(self):
-        return {trackable.VARIABLE_VALUE_KEY: self._vars[0]}
+  def _read_variable_op(self):
+    return gen_resource_variable_ops.read_variable_op(self.handle, self.dtype)
 
-    @property
-    def shape(self):
-        return self._vars[0].shape
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    """Converts a variable to a tensor."""
+    # pylint: disable=protected-access
+    if tpu_util.enclosing_tpu_context() is None:
+      return self.read_value()
+    else:
+      return self._read_variable_op()
 
-    @property
-    def handle(self):
-        if save_context.in_save_context():
-            return self._vars[0].handle
+  def read_value(self):
+    return self._vars[0].read_value()
 
-        if tpu_util.enclosing_tpu_context() is None:
-            raise NotImplementedError(
-                "TPUReplicatedVariable.handle is not available "
-                "outside tpu context or save context"
-            )
-        else:
-            with tpu_util.outside_or_skip_tpu_context():
-                return xla_sharding.replicate(
-                    tpu_partition_ops.tpu_partitioned_input(
-                        [v.handle for v in self._vars], partition_dim=-1
-                    )
-                )
+  def _update(self, update_fn, value, **kwargs):
+    """Converts the value to tensor and updates the variable list."""
+    input_tensor = ops.convert_to_tensor(
+        value, name='value_in_tensor', dtype=self.dtype)
 
-    def _read_variable_op(self):
-        return gen_resource_variable_ops.read_variable_op(self.handle, self.dtype)
+    return control_flow_ops.group(
+        *tuple(
+            _on_device_update(update_fn, v, input_tensor, **kwargs)
+            for v in self.variables))
 
-    def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
-        """Converts a variable to a tensor."""
-        # pylint: disable=protected-access
-        if tpu_util.enclosing_tpu_context() is None:
-            return self.read_value()
-        else:
-            return self._read_variable_op()
+  def assign(self, value, use_locking=False, name=None, read_value=True):
+    if tpu_util.enclosing_tpu_context() is None or context.executing_eagerly():
+      assign_fn = lambda var, *a, **ka: var.assign(*a, **ka)
+      return self._update(
+          assign_fn,
+          value=value,
+          use_locking=use_locking,
+          name=name,
+          read_value=read_value)
+    else:
+      return tpu_util.make_raw_assign_fn(
+          gen_resource_variable_ops.assign_variable_op)(
+              self,
+              value=value,
+              use_locking=use_locking,
+              name=name,
+              read_value=read_value)
 
-    def read_value(self):
-        return self._vars[0].read_value()
+  def assign_sub(self, value, use_locking=False, name=None, read_value=True):
+    if tpu_util.enclosing_tpu_context() is None or context.executing_eagerly():
+      assign_sub_fn = lambda var, *a, **ka: var.assign_sub(*a, **ka)
+      return self._update(
+          assign_sub_fn,
+          value=value,
+          use_locking=use_locking,
+          name=name,
+          read_value=read_value)
+    else:
+      return tpu_util.make_raw_assign_fn(
+          gen_resource_variable_ops.assign_sub_variable_op)(
+              self,
+              value=value,
+              use_locking=use_locking,
+              name=name,
+              read_value=read_value)
 
-    def _update(self, update_fn, value, **kwargs):
-        """Converts the value to tensor and updates the variable list."""
-        input_tensor = ops.convert_to_tensor(
-            value, name="value_in_tensor", dtype=self.dtype
-        )
+  def assign_add(self, value, use_locking=False, name=None, read_value=True):
+    if tpu_util.enclosing_tpu_context() is None or context.executing_eagerly():
+      assign_add_fn = lambda var, *a, **ka: var.assign_add(*a, **ka)
+      return self._update(
+          assign_add_fn,
+          value=value,
+          use_locking=use_locking,
+          name=name,
+          read_value=read_value)
+    else:
+      return tpu_util.make_raw_assign_fn(
+          gen_resource_variable_ops.assign_add_variable_op)(
+              self,
+              value=value,
+              use_locking=use_locking,
+              name=name,
+              read_value=read_value)
 
-        return control_flow_ops.group(
-            *tuple(
-                _on_device_update(update_fn, v, input_tensor, **kwargs)
-                for v in self.variables
-            )
-        )
+  def __str__(self):
+    debug_str = ',\n'.join(
+        '  %d: %s' % (i, v) for i, v in enumerate(self._vars))
+    return '%s:{\n%s\n}' % (self.__class__.__name__, debug_str)
 
-    def assign(self, value, use_locking=False, name=None, read_value=True):
-        if tpu_util.enclosing_tpu_context() is None or context.executing_eagerly():
-            assign_fn = lambda var, *a, **ka: var.assign(*a, **ka)
-            return self._update(
-                assign_fn,
-                value=value,
-                use_locking=use_locking,
-                name=name,
-                read_value=read_value,
-            )
-        else:
-            return tpu_util.make_raw_assign_fn(
-                gen_resource_variable_ops.assign_variable_op
-            )(
-                self,
-                value=value,
-                use_locking=use_locking,
-                name=name,
-                read_value=read_value,
-            )
-
-    def assign_sub(self, value, use_locking=False, name=None, read_value=True):
-        if tpu_util.enclosing_tpu_context() is None or context.executing_eagerly():
-            assign_sub_fn = lambda var, *a, **ka: var.assign_sub(*a, **ka)
-            return self._update(
-                assign_sub_fn,
-                value=value,
-                use_locking=use_locking,
-                name=name,
-                read_value=read_value,
-            )
-        else:
-            return tpu_util.make_raw_assign_fn(
-                gen_resource_variable_ops.assign_sub_variable_op
-            )(
-                self,
-                value=value,
-                use_locking=use_locking,
-                name=name,
-                read_value=read_value,
-            )
-
-    def assign_add(self, value, use_locking=False, name=None, read_value=True):
-        if tpu_util.enclosing_tpu_context() is None or context.executing_eagerly():
-            assign_add_fn = lambda var, *a, **ka: var.assign_add(*a, **ka)
-            return self._update(
-                assign_add_fn,
-                value=value,
-                use_locking=use_locking,
-                name=name,
-                read_value=read_value,
-            )
-        else:
-            return tpu_util.make_raw_assign_fn(
-                gen_resource_variable_ops.assign_add_variable_op
-            )(
-                self,
-                value=value,
-                use_locking=use_locking,
-                name=name,
-                read_value=read_value,
-            )
-
-    def __str__(self):
-        debug_str = ",\n".join("  %d: %s" % (i, v) for i, v in enumerate(self._vars))
-        return "%s:{\n%s\n}" % (self.__class__.__name__, debug_str)
-
-    def __repr__(self):
-        debug_repr = ",\n".join("  %d: %r" % (i, v) for i, v in enumerate(self._vars))
-        return "%s:{\n%s\n}" % (self.__class__.__name__, debug_repr)
+  def __repr__(self):
+    debug_repr = ',\n'.join(
+        '  %d: %r' % (i, v) for i, v in enumerate(self._vars))
+    return '%s:{\n%s\n}' % (self.__class__.__name__, debug_repr)
 
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
-def _tensor_conversion_tpu_replicated_var(var, dtype=None, name=None, as_ref=False):
-    return var._dense_var_to_tensor(
-        dtype=dtype, name=name, as_ref=as_ref
-    )  # pylint: disable=protected-access
+def _tensor_conversion_tpu_replicated_var(var,
+                                          dtype=None,
+                                          name=None,
+                                          as_ref=False):
+  return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(
-    TPUReplicatedVariable, _tensor_conversion_tpu_replicated_var
-)
+ops.register_tensor_conversion_function(TPUReplicatedVariable,
+                                        _tensor_conversion_tpu_replicated_var)

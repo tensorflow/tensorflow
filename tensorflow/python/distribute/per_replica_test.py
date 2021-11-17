@@ -32,124 +32,116 @@ from tensorflow.python.util import nest
 
 
 class PerReplicaTest(test.TestCase, parameterized.TestCase):
-    @combinations.generate(combinations.combine(mode=["eager"]))
-    def testTypeSpec(self):
-        vals = (constant_op.constant(1.0),)
-        per_replica = values_lib.PerReplica(vals)
 
-        spec = per_replica._type_spec
-        self.assertEqual(
-            spec._value_specs, (tensor_spec.TensorSpec([], dtypes.float32),)
-        )
+  @combinations.generate(combinations.combine(mode=["eager"]))
+  def testTypeSpec(self):
+    vals = (constant_op.constant(1.),)
+    per_replica = values_lib.PerReplica(vals)
 
-    @combinations.generate(combinations.combine(mode=["eager"]))
-    def testTypeSpecRoundTrip(self):
-        vals = (constant_op.constant(1.0),)
-        per_replica = values_lib.PerReplica(vals)
+    spec = per_replica._type_spec
+    self.assertEqual(spec._value_specs,
+                     (tensor_spec.TensorSpec([], dtypes.float32),))
 
-        spec = per_replica._type_spec
-        tensor_list = spec._to_components(per_replica)
-        reconstructed = spec._from_components(tensor_list)
+  @combinations.generate(combinations.combine(mode=["eager"]))
+  def testTypeSpecRoundTrip(self):
+    vals = (constant_op.constant(1.),)
+    per_replica = values_lib.PerReplica(vals)
 
-        self.assertAllEqual(per_replica.values, reconstructed.values)
+    spec = per_replica._type_spec
+    tensor_list = spec._to_components(per_replica)
+    reconstructed = spec._from_components(tensor_list)
 
-    @combinations.generate(combinations.combine(mode=["eager"]))
-    def testTypeSpecNest(self):
-        vals = (
-            constant_op.constant(1.0),
-            constant_op.constant([5.0, 6.0]),
-        )
-        per_replica = values_lib.PerReplica(vals)
+    self.assertAllEqual(per_replica.values, reconstructed.values)
 
-        # Note: nest.map_structure exercises nest.flatten and
-        # nest.pack_sequence_as.
-        result = nest.map_structure(
-            lambda t: t + 10, per_replica, expand_composites=True
-        )
+  @combinations.generate(combinations.combine(mode=["eager"]))
+  def testTypeSpecNest(self):
+    vals = (constant_op.constant(1.), constant_op.constant([5., 6.0]),)
+    per_replica = values_lib.PerReplica(vals)
 
-        self.assertLen(result.values, 2)
-        self.assertAllEqual(result.values[0], 11.0)
-        self.assertAllEqual(result.values[1], [15.0, 16.0])
+    # Note: nest.map_structure exercises nest.flatten and
+    # nest.pack_sequence_as.
+    result = nest.map_structure(
+        lambda t: t + 10, per_replica, expand_composites=True)
 
-    @test_util.run_in_graph_and_eager_modes
-    def testIsGraphTensor(self):
-        per_replica = values_lib.PerReplica((constant_op.constant(1.0),))
-        for t in nest.flatten(per_replica, expand_composites=True):
-            self.assertEqual(hasattr(t, "graph"), not context.executing_eagerly())
+    self.assertLen(result.values, 2)
+    self.assertAllEqual(result.values[0], 11.)
+    self.assertAllEqual(result.values[1], [15., 16.0])
 
-    @combinations.generate(combinations.combine(mode=["eager"]))
-    def testDoesNotTriggerFunctionTracing(self):
-        traces = []
+  @test_util.run_in_graph_and_eager_modes
+  def testIsGraphTensor(self):
+    per_replica = values_lib.PerReplica((constant_op.constant(1.),))
+    for t in nest.flatten(per_replica, expand_composites=True):
+      self.assertEqual(hasattr(t, "graph"), not context.executing_eagerly())
 
-        @def_function.function
-        def f(x):
-            traces.append(None)  # Only happens on trace.
-            return x
+  @combinations.generate(combinations.combine(mode=["eager"]))
+  def testDoesNotTriggerFunctionTracing(self):
+    traces = []
 
-        per_replica = values_lib.PerReplica((constant_op.constant(1.0),))
+    @def_function.function
+    def f(x):
+      traces.append(None)  # Only happens on trace.
+      return x
 
-        # Trace once.
-        f(per_replica)
-        self.assertNotEmpty(traces)
-        del traces[:]
+    per_replica = values_lib.PerReplica((constant_op.constant(1.),))
 
-        per_replica_spec = per_replica._type_spec
-        for _ in range(5):
-            vals = per_replica_spec._to_components(per_replica)
-            vals = [v * 2 for v in vals]
-            per_replica = per_replica_spec._from_components(vals)
+    # Trace once.
+    f(per_replica)
+    self.assertNotEmpty(traces)
+    del traces[:]
 
-            output = f(per_replica)
-            self.assertIsInstance(output, values_lib.PerReplica)
-            self.assertAllEqual(output._values, per_replica._values)
-            self.assertEmpty(traces)  # Make sure we're not re-tracing `f`.
+    per_replica_spec = per_replica._type_spec
+    for _ in range(5):
+      vals = per_replica_spec._to_components(per_replica)
+      vals = [v * 2 for v in vals]
+      per_replica = per_replica_spec._from_components(vals)
 
-    @combinations.generate(combinations.combine(mode=["eager"]))
-    def testFunctionCanReturnPerReplica(self):
-        f = def_function.function(lambda x: x)
-        x = values_lib.PerReplica((constant_op.constant(1.0),))
-        y = f(x)
-        self.assertIsNot(x, y)
-        nest.map_structure(self.assertAllEqual, x, y, expand_composites=True)
-        self.assertEqual(x._type_spec, y._type_spec)
+      output = f(per_replica)
+      self.assertIsInstance(output, values_lib.PerReplica)
+      self.assertAllEqual(output._values, per_replica._values)
+      self.assertEmpty(traces)  # Make sure we're not re-tracing `f`.
 
-    @test_util.run_in_graph_and_eager_modes
-    def testCondWithTensorValues(self):
-        per_replica_1 = values_lib.PerReplica((constant_op.constant("a"),))
-        per_replica_2 = values_lib.PerReplica((constant_op.constant(["b", "c"]),))
-        condition = array_ops.placeholder_with_default(True, [])
+  @combinations.generate(combinations.combine(mode=["eager"]))
+  def testFunctionCanReturnPerReplica(self):
+    f = def_function.function(lambda x: x)
+    x = values_lib.PerReplica((constant_op.constant(1.),))
+    y = f(x)
+    self.assertIsNot(x, y)
+    nest.map_structure(self.assertAllEqual, x, y, expand_composites=True)
+    self.assertEqual(x._type_spec, y._type_spec)
 
-        result = control_flow_ops.cond(
-            condition, lambda: per_replica_1, lambda: per_replica_2
-        )
+  @test_util.run_in_graph_and_eager_modes
+  def testCondWithTensorValues(self):
+    per_replica_1 = values_lib.PerReplica((constant_op.constant("a"),))
+    per_replica_2 = values_lib.PerReplica((constant_op.constant(["b", "c"]),))
+    condition = array_ops.placeholder_with_default(True, [])
 
-        self.assertLen(result.values, 1)
-        self.assertAllEqual(result.values[0], "a")
+    result = control_flow_ops.cond(
+        condition, lambda: per_replica_1, lambda: per_replica_2)
 
-    @test_util.run_in_graph_and_eager_modes
-    def testCondWithValuesConvertibleToTensor(self):
-        per_replica_1 = values_lib.PerReplica(("a",))
-        per_replica_2 = values_lib.PerReplica(("b",))
-        condition = array_ops.placeholder_with_default(True, [])
+    self.assertLen(result.values, 1)
+    self.assertAllEqual(result.values[0], "a")
 
-        result = control_flow_ops.cond(
-            condition, lambda: per_replica_1, lambda: per_replica_2
-        )
+  @test_util.run_in_graph_and_eager_modes
+  def testCondWithValuesConvertibleToTensor(self):
+    per_replica_1 = values_lib.PerReplica(("a",))
+    per_replica_2 = values_lib.PerReplica(("b",))
+    condition = array_ops.placeholder_with_default(True, [])
 
-        self.assertLen(result.values, 1)
-        self.assertAllEqual(result.values[0], "a")
+    result = control_flow_ops.cond(
+        condition, lambda: per_replica_1, lambda: per_replica_2)
 
-    @test_util.build_as_function_and_v1_graph
-    def testCondWithValuesNotConvertibleToTensor(self):
-        per_replica_1 = values_lib.PerReplica(({"a"},))
-        per_replica_2 = values_lib.PerReplica(({"b", "c"},))
-        condition = array_ops.placeholder(dtypes.bool, [])
+    self.assertLen(result.values, 1)
+    self.assertAllEqual(result.values[0], "a")
 
-        with self.assertRaisesRegex(TypeError, "Could not build a TypeSpec for"):
-            control_flow_ops.cond(
-                condition, lambda: per_replica_1, lambda: per_replica_2
-            )
+  @test_util.build_as_function_and_v1_graph
+  def testCondWithValuesNotConvertibleToTensor(self):
+    per_replica_1 = values_lib.PerReplica(({"a"},))
+    per_replica_2 = values_lib.PerReplica(({"b", "c"},))
+    condition = array_ops.placeholder(dtypes.bool, [])
 
+    with self.assertRaisesRegex(TypeError, "Could not build a TypeSpec for"):
+      control_flow_ops.cond(
+          condition, lambda: per_replica_1, lambda: per_replica_2)
 
 if __name__ == "__main__":
-    ds_test_util.main()
+  ds_test_util.main()

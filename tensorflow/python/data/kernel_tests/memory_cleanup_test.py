@@ -32,171 +32,174 @@ from tensorflow.python.types import internal
 
 # memory_profiler might not be available in the OSS version of TensorFlow.
 try:
-    import memory_profiler  # pylint:disable=g-import-not-at-top
+  import memory_profiler  # pylint:disable=g-import-not-at-top
 except ImportError:
-    memory_profiler = None
+  memory_profiler = None
 
 
 class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
-    def setUp(self):
-        super(MemoryCleanupTest, self).setUp()
-        self._devices = self.configureDevicesForMultiDeviceTest(3)
 
-    def assertMemoryNotIncreasing(self, f, num_iters, max_increase_mb):
-        """Assert memory usage doesn't increase beyond given threshold for f."""
+  def setUp(self):
+    super(MemoryCleanupTest, self).setUp()
+    self._devices = self.configureDevicesForMultiDeviceTest(3)
 
-        # Warm up.
-        f()
-        # Wait for background threads to start up and allocate memory.
-        time.sleep(4)
-        initial = memory_profiler.memory_usage(-1)[0]
-        for _ in six.moves.range(num_iters):
-            f()
-        increase = memory_profiler.memory_usage(-1)[0] - initial
-        logging.info("Memory increase observed: %f MB" % increase)
-        assert increase < max_increase_mb, (
-            "Increase is too high. Initial memory usage: %f MB. Increase: %f MB. "
-            "Maximum allowed increase: %f"
-        ) % (initial, increase, max_increase_mb)
+  def assertMemoryNotIncreasing(self, f, num_iters, max_increase_mb):
+    """Assert memory usage doesn't increase beyond given threshold for f."""
 
-    def assertNoMemoryLeak(self, dataset_fn):
-        """Assert consuming elements from the dataset does not leak memory."""
+    # Warm up.
+    f()
+    # Wait for background threads to start up and allocate memory.
+    time.sleep(4)
+    initial = memory_profiler.memory_usage(-1)[0]
+    for _ in six.moves.range(num_iters):
+      f()
+    increase = memory_profiler.memory_usage(-1)[0] - initial
+    logging.info("Memory increase observed: %f MB" % increase)
+    assert increase < max_increase_mb, (
+        "Increase is too high. Initial memory usage: %f MB. Increase: %f MB. "
+        "Maximum allowed increase: %f") % (initial, increase, max_increase_mb)
 
-        def run():
-            get_next = self.getNext(dataset_fn())
-            for _ in range(100):
-                self.evaluate(get_next())
+  def assertNoMemoryLeak(self, dataset_fn):
+    """Assert consuming elements from the dataset does not leak memory."""
 
-        for _ in range(10):
-            run()
+    def run():
+      get_next = self.getNext(dataset_fn())
+      for _ in range(100):
+        self.evaluate(get_next())
 
-        gc.collect()
-        tensors = [o for o in gc.get_objects() if isinstance(o, internal.NativeObject)]
-        self.assertEmpty(tensors, "%d Tensors are still alive." % len(tensors))
+    for _ in range(10):
+      run()
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testEagerMemoryUsageWithReset(self):
-        if memory_profiler is None:
-            self.skipTest("memory_profiler required to run this test")
+    gc.collect()
+    tensors = [
+        o for o in gc.get_objects() if isinstance(o, internal.NativeObject)
+    ]
+    self.assertEmpty(tensors, "%d Tensors are still alive." % len(tensors))
 
-        dataset = dataset_ops.Dataset.range(10)
-        multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-            dataset, [self._devices[1], self._devices[2]]
-        )
+  @combinations.generate(test_base.eager_only_combinations())
+  def testEagerMemoryUsageWithReset(self):
+    if memory_profiler is None:
+      self.skipTest("memory_profiler required to run this test")
 
-        def f():
-            self.evaluate(multi_device_iterator.get_next())
-            multi_device_iterator._eager_reset()
+    dataset = dataset_ops.Dataset.range(10)
+    multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+        dataset, [self._devices[1], self._devices[2]])
 
-        self.assertMemoryNotIncreasing(f, num_iters=50, max_increase_mb=250)
+    def f():
+      self.evaluate(multi_device_iterator.get_next())
+      multi_device_iterator._eager_reset()
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testEagerMemoryUsageWithRecreation(self):
-        if memory_profiler is None:
-            self.skipTest("memory_profiler required to run this test")
+    self.assertMemoryNotIncreasing(f, num_iters=50, max_increase_mb=250)
 
-        dataset = dataset_ops.Dataset.range(10)
+  @combinations.generate(test_base.eager_only_combinations())
+  def testEagerMemoryUsageWithRecreation(self):
+    if memory_profiler is None:
+      self.skipTest("memory_profiler required to run this test")
 
-        def f():
-            multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-                dataset, [self._devices[1], self._devices[2]]
-            )
-            self.evaluate(multi_device_iterator.get_next())
-            del multi_device_iterator
+    dataset = dataset_ops.Dataset.range(10)
 
-        # TODO(b/123316347): Reduce threshold once bug is fixed.
-        self.assertMemoryNotIncreasing(f, num_iters=50, max_increase_mb=250)
+    def f():
+      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+          dataset, [self._devices[1], self._devices[2]])
+      self.evaluate(multi_device_iterator.get_next())
+      del multi_device_iterator
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testFilter(self):
-        def get_dataset():
-            def fn(_):
-                return True
+    # TODO(b/123316347): Reduce threshold once bug is fixed.
+    self.assertMemoryNotIncreasing(f, num_iters=50, max_increase_mb=250)
 
-            return dataset_ops.Dataset.range(0, 100).filter(fn)
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFilter(self):
 
-        self.assertNoMemoryLeak(get_dataset)
+    def get_dataset():
 
-    @combinations.generate(combinations.combine(tf_api_version=1, mode="eager"))
-    def testFilterLegacy(self):
-        def get_dataset():
-            def fn(_):
-                return True
+      def fn(_):
+        return True
 
-            return dataset_ops.Dataset.range(0, 100).filter_with_legacy_function(fn)
+      return dataset_ops.Dataset.range(0, 100).filter(fn)
 
-        self.assertNoMemoryLeak(get_dataset)
+    self.assertNoMemoryLeak(get_dataset)
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testFlatMap(self):
-        def get_dataset():
-            def fn(x):
-                return dataset_ops.Dataset.from_tensors(x * x)
+  @combinations.generate(combinations.combine(tf_api_version=1, mode="eager"))
+  def testFilterLegacy(self):
 
-            return dataset_ops.Dataset.range(0, 100).flat_map(fn)
+    def get_dataset():
 
-        self.assertNoMemoryLeak(get_dataset)
+      def fn(_):
+        return True
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testFromGenerator(self):
-        def get_dataset():
-            def fn():
-                return six.moves.range(100)
+      return dataset_ops.Dataset.range(0, 100).filter_with_legacy_function(fn)
 
-            return dataset_ops.Dataset.from_generator(fn, output_types=dtypes.float32)
+    self.assertNoMemoryLeak(get_dataset)
 
-        self.assertNoMemoryLeak(get_dataset)
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFlatMap(self):
 
-    @combinations.generate(
-        combinations.times(
-            test_base.eager_only_combinations(),
-            combinations.combine(num_parallel_calls=[None, 10]),
-        )
-    )
-    def testMap(self, num_parallel_calls):
-        def get_dataset():
-            def fn(x):
-                return x * x
+    def get_dataset():
 
-            return dataset_ops.Dataset.range(0, 100).map(
-                fn, num_parallel_calls=num_parallel_calls
-            )
+      def fn(x):
+        return dataset_ops.Dataset.from_tensors(x * x)
 
-        self.assertNoMemoryLeak(get_dataset)
+      return dataset_ops.Dataset.range(0, 100).flat_map(fn)
 
-    @combinations.generate(
-        combinations.combine(
-            tf_api_version=1, mode="eager", num_parallel_calls=[None, 10]
-        )
-    )
-    def testMapLegacy(self, num_parallel_calls):
-        def get_dataset():
-            def fn(x):
-                return x * x
+    self.assertNoMemoryLeak(get_dataset)
 
-            return dataset_ops.Dataset.range(0, 100).map_with_legacy_function(
-                fn, num_parallel_calls=num_parallel_calls
-            )
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromGenerator(self):
 
-        self.assertNoMemoryLeak(get_dataset)
+    def get_dataset():
 
-    @combinations.generate(
-        combinations.times(
-            test_base.eager_only_combinations(),
-            combinations.combine(num_parallel_calls=[None, 10]),
-        )
-    )
-    def testInterleave(self, num_parallel_calls):
-        def get_dataset():
-            def fn(x):
-                return dataset_ops.Dataset.from_tensors(x * x)
+      def fn():
+        return six.moves.range(100)
 
-            return dataset_ops.Dataset.range(0, 100).interleave(
-                fn, num_parallel_calls=num_parallel_calls, cycle_length=10
-            )
+      return dataset_ops.Dataset.from_generator(fn, output_types=dtypes.float32)
 
-        self.assertNoMemoryLeak(get_dataset)
+    self.assertNoMemoryLeak(get_dataset)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 10])))
+  def testMap(self, num_parallel_calls):
+
+    def get_dataset():
+
+      def fn(x):
+        return x * x
+
+      return dataset_ops.Dataset.range(0, 100).map(
+          fn, num_parallel_calls=num_parallel_calls)
+
+    self.assertNoMemoryLeak(get_dataset)
+
+  @combinations.generate(
+      combinations.combine(
+          tf_api_version=1, mode="eager", num_parallel_calls=[None, 10]))
+  def testMapLegacy(self, num_parallel_calls):
+
+    def get_dataset():
+
+      def fn(x):
+        return x * x
+
+      return dataset_ops.Dataset.range(0, 100).map_with_legacy_function(
+          fn, num_parallel_calls=num_parallel_calls)
+
+    self.assertNoMemoryLeak(get_dataset)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 10])))
+  def testInterleave(self, num_parallel_calls):
+
+    def get_dataset():
+
+      def fn(x):
+        return dataset_ops.Dataset.from_tensors(x * x)
+
+      return dataset_ops.Dataset.range(0, 100).interleave(
+          fn, num_parallel_calls=num_parallel_calls, cycle_length=10)
+
+    self.assertNoMemoryLeak(get_dataset)
 
 
 if __name__ == "__main__":
-    test.main()
+  test.main()

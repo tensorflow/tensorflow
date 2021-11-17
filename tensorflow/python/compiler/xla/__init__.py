@@ -17,5 +17,4 @@
 # pylint: disable=unused-import
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
-
 # pylint: enable=unused-import

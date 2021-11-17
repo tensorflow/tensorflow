@@ -27,74 +27,81 @@ from tensorflow.python.platform import test
 
 
 class ListTest(converter_testing.TestCase):
-    def test_empty_list(self):
-        def f():
-            return []
 
-        tr = self.transform(f, lists)
+  def test_empty_list(self):
 
-        tl = tr()
-        # Empty tensor lists cannot be evaluated or stacked.
-        self.assertIsInstance(tl, ops.Tensor)
-        self.assertEqual(tl.dtype, dtypes.variant)
+    def f():
+      return []
 
-    def test_initialized_list(self):
-        def f():
-            return [1, 2, 3]
+    tr = self.transform(f, lists)
 
-        tr = self.transform(f, lists)
+    tl = tr()
+    # Empty tensor lists cannot be evaluated or stacked.
+    self.assertIsInstance(tl, ops.Tensor)
+    self.assertEqual(tl.dtype, dtypes.variant)
 
-        self.assertAllEqual(tr(), [1, 2, 3])
+  def test_initialized_list(self):
 
-    def test_list_append(self):
-        def f():
-            l = special_functions.tensor_list([1])
-            l.append(2)
-            l.append(3)
-            return l
+    def f():
+      return [1, 2, 3]
 
-        tr = self.transform(f, lists)
+    tr = self.transform(f, lists)
 
-        tl = tr()
-        r = list_ops.tensor_list_stack(tl, dtypes.int32)
-        self.assertAllEqual(self.evaluate(r), [1, 2, 3])
+    self.assertAllEqual(tr(), [1, 2, 3])
 
-    def test_list_pop(self):
-        def f():
-            l = special_functions.tensor_list([1, 2, 3])
-            directives.set_element_type(l, dtype=dtypes.int32, shape=())
-            s = l.pop()
-            return s, l
+  def test_list_append(self):
 
-        tr = self.transform(f, (directives_converter, lists))
+    def f():
+      l = special_functions.tensor_list([1])
+      l.append(2)
+      l.append(3)
+      return l
 
-        ts, tl = tr()
-        r = list_ops.tensor_list_stack(tl, dtypes.int32)
-        self.assertAllEqual(self.evaluate(r), [1, 2])
-        self.assertAllEqual(self.evaluate(ts), 3)
+    tr = self.transform(f, lists)
 
-    def test_double_list_pop(self):
-        def f(l):
-            s = l.pop().pop()
-            return s
+    tl = tr()
+    r = list_ops.tensor_list_stack(tl, dtypes.int32)
+    self.assertAllEqual(self.evaluate(r), [1, 2, 3])
 
-        tr = self.transform(f, lists)
+  def test_list_pop(self):
 
-        test_input = [1, 2, [1, 2, 3]]
-        # TODO(mdan): Pass a list of lists of tensor when we fully support that.
-        # For now, we just pass a regular Python list of lists just to verify that
-        # the two pop calls are sequenced properly.
-        self.assertAllEqual(tr(test_input), 3)
+    def f():
+      l = special_functions.tensor_list([1, 2, 3])
+      directives.set_element_type(l, dtype=dtypes.int32, shape=())
+      s = l.pop()
+      return s, l
 
-    def test_list_stack(self):
-        def f():
-            l = [1, 2, 3]
-            return array_ops.stack(l)
+    tr = self.transform(f, (directives_converter, lists))
 
-        tr = self.transform(f, lists)
+    ts, tl = tr()
+    r = list_ops.tensor_list_stack(tl, dtypes.int32)
+    self.assertAllEqual(self.evaluate(r), [1, 2])
+    self.assertAllEqual(self.evaluate(ts), 3)
 
-        self.assertAllEqual(self.evaluate(tr()), [1, 2, 3])
+  def test_double_list_pop(self):
+
+    def f(l):
+      s = l.pop().pop()
+      return s
+
+    tr = self.transform(f, lists)
+
+    test_input = [1, 2, [1, 2, 3]]
+    # TODO(mdan): Pass a list of lists of tensor when we fully support that.
+    # For now, we just pass a regular Python list of lists just to verify that
+    # the two pop calls are sequenced properly.
+    self.assertAllEqual(tr(test_input), 3)
+
+  def test_list_stack(self):
+
+    def f():
+      l = [1, 2, 3]
+      return array_ops.stack(l)
+
+    tr = self.transform(f, lists)
+
+    self.assertAllEqual(self.evaluate(tr()), [1, 2, 3])
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()

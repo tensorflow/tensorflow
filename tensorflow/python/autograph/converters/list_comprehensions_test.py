@@ -20,36 +20,38 @@ from tensorflow.python.platform import test
 
 
 class ListCompTest(converter_testing.TestCase):
-    def assertTransformedEquivalent(self, f, *inputs):
-        tr = self.transform(f, list_comprehensions)
-        self.assertEqual(f(*inputs), tr(*inputs))
 
-    def test_basic(self):
-        def f(l):
-            s = [e * e for e in l]
-            return s
+  def assertTransformedEquivalent(self, f, *inputs):
+    tr = self.transform(f, list_comprehensions)
+    self.assertEqual(f(*inputs), tr(*inputs))
 
-        self.assertTransformedEquivalent(f, [])
-        self.assertTransformedEquivalent(f, [1, 2, 3])
+  def test_basic(self):
 
-    def test_multiple_generators(self):
-        def f(l):
-            s = [
-                e * e for sublist in l for e in sublist
-            ]  # pylint:disable=g-complex-comprehension
-            return s
+    def f(l):
+      s = [e * e for e in l]
+      return s
 
-        self.assertTransformedEquivalent(f, [])
-        self.assertTransformedEquivalent(f, [[1], [2], [3]])
+    self.assertTransformedEquivalent(f, [])
+    self.assertTransformedEquivalent(f, [1, 2, 3])
 
-    def test_cond(self):
-        def f(l):
-            s = [e * e for e in l if e > 1]
-            return s
+  def test_multiple_generators(self):
 
-        self.assertTransformedEquivalent(f, [])
-        self.assertTransformedEquivalent(f, [1, 2, 3])
+    def f(l):
+      s = [e * e for sublist in l for e in sublist]  # pylint:disable=g-complex-comprehension
+      return s
+
+    self.assertTransformedEquivalent(f, [])
+    self.assertTransformedEquivalent(f, [[1], [2], [3]])
+
+  def test_cond(self):
+
+    def f(l):
+      s = [e * e for e in l if e > 1]
+      return s
+
+    self.assertTransformedEquivalent(f, [])
+    self.assertTransformedEquivalent(f, [1, 2, 3])
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()

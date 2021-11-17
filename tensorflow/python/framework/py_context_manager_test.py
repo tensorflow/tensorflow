@@ -20,22 +20,23 @@ from tensorflow.python.platform import googletest
 
 
 class TestContextManager(object):
-    def __init__(self, behavior="basic"):
-        self.log = []
-        self.behavior = behavior
 
-    def __enter__(self):
-        self.log.append("__enter__()")
-        if self.behavior == "raise_from_enter":
-            raise ValueError("exception in __enter__")
-        return "var"
+  def __init__(self, behavior="basic"):
+    self.log = []
+    self.behavior = behavior
 
-    def __exit__(self, ex_type, ex_value, ex_tb):
-        self.log.append("__exit__(%s, %s, %s)" % (ex_type, ex_value, ex_tb))
-        if self.behavior == "raise_from_exit":
-            raise ValueError("exception in __exit__")
-        if self.behavior == "suppress_exception":
-            return True
+  def __enter__(self):
+    self.log.append("__enter__()")
+    if self.behavior == "raise_from_enter":
+      raise ValueError("exception in __enter__")
+    return "var"
+
+  def __exit__(self, ex_type, ex_value, ex_tb):
+    self.log.append("__exit__(%s, %s, %s)" % (ex_type, ex_value, ex_tb))
+    if self.behavior == "raise_from_exit":
+      raise ValueError("exception in __exit__")
+    if self.behavior == "suppress_exception":
+      return True
 
 
 # Expected log when the body doesn't raise an exception.
@@ -52,63 +53,62 @@ __exit__\\(<class 'ValueError'>, Foo, <traceback object.*>\\)"""
 
 
 class OpDefUtilTest(test_util.TensorFlowTestCase):
-    def testBasic(self):
-        cm = TestContextManager()
 
-        def body(var):
-            cm.log.append("body(%r)" % var)
+  def testBasic(self):
+    cm = TestContextManager()
 
-        _py_context_manager.test_py_context_manager(cm, body)
-        self.assertEqual("\n".join(cm.log), NO_EXCEPTION_LOG)
+    def body(var):
+      cm.log.append("body(%r)" % var)
 
-    def testBodyRaisesException(self):
-        cm = TestContextManager()
+    _py_context_manager.test_py_context_manager(cm, body)
+    self.assertEqual("\n".join(cm.log), NO_EXCEPTION_LOG)
 
-        def body(var):
-            cm.log.append("body(%r)" % var)
-            raise ValueError("Foo")
+  def testBodyRaisesException(self):
+    cm = TestContextManager()
 
-        with self.assertRaisesRegexp(ValueError, "Foo"):
-            _py_context_manager.test_py_context_manager(cm, body)
-        self.assertRegex("\n".join(cm.log), EXCEPTION_LOG)
+    def body(var):
+      cm.log.append("body(%r)" % var)
+      raise ValueError("Foo")
 
-    def testEnterRaisesException(self):
-        cm = TestContextManager("raise_from_enter")
+    with self.assertRaisesRegexp(ValueError, "Foo"):
+      _py_context_manager.test_py_context_manager(cm, body)
+    self.assertRegex("\n".join(cm.log), EXCEPTION_LOG)
 
-        def body(var):
-            cm.log.append("body(%r)" % var)
+  def testEnterRaisesException(self):
+    cm = TestContextManager("raise_from_enter")
 
-        with self.assertRaisesRegexp(ValueError, "exception in __enter__"):
-            _py_context_manager.test_py_context_manager(cm, body)
-        self.assertEqual("\n".join(cm.log), "__enter__()")
+    def body(var):
+      cm.log.append("body(%r)" % var)
 
-    # Test behavior in unsupported case where __exit__ raises an exception.
-    def testExitRaisesException(self):
-        cm = TestContextManager("raise_from_exit")
+    with self.assertRaisesRegexp(ValueError, "exception in __enter__"):
+      _py_context_manager.test_py_context_manager(cm, body)
+    self.assertEqual("\n".join(cm.log), "__enter__()")
 
-        def body(var):
-            cm.log.append("body(%r)" % var)
+  # Test behavior in unsupported case where __exit__ raises an exception.
+  def testExitRaisesException(self):
+    cm = TestContextManager("raise_from_exit")
 
-        # Note: this does *not* raise an exception (but does log a warning):
-        _py_context_manager.test_py_context_manager(cm, body)
-        self.assertEqual("\n".join(cm.log), NO_EXCEPTION_LOG)
+    def body(var):
+      cm.log.append("body(%r)" % var)
 
-    # Test behavior in unsupported case where __exit__ suppresses exception.
-    def testExitSuppressesException(self):
-        cm = TestContextManager("suppress_exception")
+    # Note: this does *not* raise an exception (but does log a warning):
+    _py_context_manager.test_py_context_manager(cm, body)
+    self.assertEqual("\n".join(cm.log), NO_EXCEPTION_LOG)
 
-        def body(var):
-            cm.log.append("body(%r)" % var)
-            raise ValueError("Foo")
+  # Test behavior in unsupported case where __exit__ suppresses exception.
+  def testExitSuppressesException(self):
+    cm = TestContextManager("suppress_exception")
 
-        with self.assertRaisesRegexp(
-            ValueError,
-            "tensorflow::PyContextManager::Enter does not support "
-            "context managers that suppress exception",
-        ):
-            _py_context_manager.test_py_context_manager(cm, body)
-        self.assertRegex("\n".join(cm.log), EXCEPTION_LOG)
+    def body(var):
+      cm.log.append("body(%r)" % var)
+      raise ValueError("Foo")
+
+    with self.assertRaisesRegexp(
+        ValueError, "tensorflow::PyContextManager::Enter does not support "
+        "context managers that suppress exception"):
+      _py_context_manager.test_py_context_manager(cm, body)
+    self.assertRegex("\n".join(cm.log), EXCEPTION_LOG)
 
 
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

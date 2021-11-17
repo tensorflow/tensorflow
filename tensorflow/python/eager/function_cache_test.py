@@ -23,296 +23,274 @@ from tensorflow.python.platform import test
 
 
 class MockSubtypeOf2(function_trace_type.GenericType):
-    def is_subtype_of(self, other):
-        return other._object == 2
+
+  def is_subtype_of(self, other):
+    return other._object == 2
 
 
 class MockSupertypes2With3(function_trace_type.GenericType):
-    def most_specific_common_supertype(self, others):
-        if self._object == 2 and isinstance(others[0]._object, int):
-            return MockSupertypes2With3(3)
-        else:
-            return None
+
+  def most_specific_common_supertype(self, others):
+    if self._object == 2 and isinstance(others[0]._object, int):
+      return MockSupertypes2With3(3)
+    else:
+      return None
 
 
 class FunctionCacheTest(test.TestCase):
-    def testConcreteFunctionDictRetainsInsertedKeys(self):
-        cache = function_cache.FunctionCache()
 
-        key_1 = function_cache.make_cache_key(1)
-        self.assertIsNone(cache.lookup(key_1, False))
+  def testConcreteFunctionDictRetainsInsertedKeys(self):
+    cache = function_cache.FunctionCache()
 
-        key_2 = function_cache.make_cache_key(2)
-        key_3 = function_cache.make_cache_key(3)
+    key_1 = function_cache.make_cache_key(1)
+    self.assertIsNone(cache.lookup(key_1, False))
 
-        cache.add(key_1, "test_1")
-        cache.add(key_2, "test_2")
+    key_2 = function_cache.make_cache_key(2)
+    key_3 = function_cache.make_cache_key(3)
 
-        self.assertEqual(cache.lookup(key_1, False), "test_1")
-        self.assertEqual(cache.lookup(key_2, False), "test_2")
-        self.assertIsNone(cache.lookup(key_3, False))
+    cache.add(key_1, "test_1")
+    cache.add(key_2, "test_2")
 
-    def testClearRemovesAllConcreteFunctions(self):
-        cache = function_cache.FunctionCache()
+    self.assertEqual(cache.lookup(key_1, False), "test_1")
+    self.assertEqual(cache.lookup(key_2, False), "test_2")
+    self.assertIsNone(cache.lookup(key_3, False))
 
-        key_1 = function_cache.make_cache_key(1)
-        key_2 = function_cache.make_cache_key(2)
-        key_3 = function_cache.make_cache_key(3)
+  def testClearRemovesAllConcreteFunctions(self):
+    cache = function_cache.FunctionCache()
 
-        cache.add(key_1, "test_1")
-        cache.add(key_2, "test_2")
+    key_1 = function_cache.make_cache_key(1)
+    key_2 = function_cache.make_cache_key(2)
+    key_3 = function_cache.make_cache_key(3)
 
-        self.assertEqual(cache.lookup(key_1, False), "test_1")
-        self.assertEqual(cache.lookup(key_2, False), "test_2")
-        self.assertIsNone(cache.lookup(key_3, False))
+    cache.add(key_1, "test_1")
+    cache.add(key_2, "test_2")
 
-        cache.clear()
+    self.assertEqual(cache.lookup(key_1, False), "test_1")
+    self.assertEqual(cache.lookup(key_2, False), "test_2")
+    self.assertIsNone(cache.lookup(key_3, False))
 
-        self.assertIsNone(cache.lookup(key_1, False))
-        self.assertIsNone(cache.lookup(key_2, False))
-        self.assertIsNone(cache.lookup(key_3, False))
+    cache.clear()
 
-    def testDeleteRemovesConcreteFunctions(self):
-        cache = function_cache.FunctionCache()
-        key_1 = function_cache.make_cache_key(1)
-        cache.add(key_1, "test_1")
-        self.assertEqual(cache.lookup(key_1, False), "test_1")
-        cache.delete(key_1)
-        self.assertIsNone(cache.lookup(key_1, False))
+    self.assertIsNone(cache.lookup(key_1, False))
+    self.assertIsNone(cache.lookup(key_2, False))
+    self.assertIsNone(cache.lookup(key_3, False))
 
-        key_2 = MockSubtypeOf2(3)
-        cache.add(key_2, "test_2")
-        self.assertEqual(cache.lookup(key_2, False), "test_2")
+  def testDeleteRemovesConcreteFunctions(self):
+    cache = function_cache.FunctionCache()
+    key_1 = function_cache.make_cache_key(1)
+    cache.add(key_1, "test_1")
+    self.assertEqual(cache.lookup(key_1, False), "test_1")
+    cache.delete(key_1)
+    self.assertIsNone(cache.lookup(key_1, False))
 
-        key_3 = MockSubtypeOf2(2)
-        self.assertEqual(cache.lookup(key_3, True), "test_2")
+    key_2 = MockSubtypeOf2(3)
+    cache.add(key_2, "test_2")
+    self.assertEqual(cache.lookup(key_2, False), "test_2")
 
-        cache.delete(key_2)
-        self.assertIsNone(cache.lookup(key_2, False))
-        self.assertIsNone(cache.lookup(key_3, True))
+    key_3 = MockSubtypeOf2(2)
+    self.assertEqual(cache.lookup(key_3, True), "test_2")
 
-    def testExecutionContextSetRetainsInsertedElements(self):
-        cache = function_cache.FunctionCache()
+    cache.delete(key_2)
+    self.assertIsNone(cache.lookup(key_2, False))
+    self.assertIsNone(cache.lookup(key_3, True))
 
-        ctx_1 = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
-        self.assertFalse(cache.has_call_context(ctx_1))
-        cache.add_call_context(ctx_1)
-        self.assertTrue(cache.has_call_context(ctx_1))
+  def testExecutionContextSetRetainsInsertedElements(self):
+    cache = function_cache.FunctionCache()
 
-        ctx_2 = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
-        self.assertTrue(cache.has_call_context(ctx_2))
+    ctx_1 = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    self.assertFalse(cache.has_call_context(ctx_1))
+    cache.add_call_context(ctx_1)
+    self.assertTrue(cache.has_call_context(ctx_1))
 
-        ctx_3 = function_cache.ExecutionContext(1, 1, 1, 1, 1, None)
-        self.assertFalse(cache.has_call_context(ctx_3))
-        cache.add_call_context(ctx_3)
-        self.assertTrue(cache.has_call_context(ctx_3))
+    ctx_2 = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    self.assertTrue(cache.has_call_context(ctx_2))
 
-    def testFunctionCacheKeyRespectsEquality(self):
-        ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
-        generic = function_trace_type.GenericType
-        key_a = function_cache.FunctionCacheKey(generic(1), ctx)
-        key_b = function_cache.FunctionCacheKey(generic(2), ctx)
-        key_c = function_cache.FunctionCacheKey(generic(1), ctx)
+    ctx_3 = function_cache.ExecutionContext(1, 1, 1, 1, 1, None)
+    self.assertFalse(cache.has_call_context(ctx_3))
+    cache.add_call_context(ctx_3)
+    self.assertTrue(cache.has_call_context(ctx_3))
 
-        self.assertNotEqual(key_a, key_b)
-        self.assertEqual(key_a, key_c)
-        self.assertEqual(hash(key_a), hash(key_c))
+  def testFunctionCacheKeyRespectsEquality(self):
+    ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    generic = function_trace_type.GenericType
+    key_a = function_cache.FunctionCacheKey(generic(1), ctx)
+    key_b = function_cache.FunctionCacheKey(generic(2), ctx)
+    key_c = function_cache.FunctionCacheKey(generic(1), ctx)
 
-    def testFunctionCacheKeyRespectsSubtype(self):
-        ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
-        key_a = function_cache.FunctionCacheKey(MockSubtypeOf2(1), ctx)
-        key_b = function_cache.FunctionCacheKey(MockSubtypeOf2(2), ctx)
-        key_c = function_cache.FunctionCacheKey(MockSubtypeOf2(1), ctx)
+    self.assertNotEqual(key_a, key_b)
+    self.assertEqual(key_a, key_c)
+    self.assertEqual(hash(key_a), hash(key_c))
 
-        self.assertTrue(key_b.is_subtype_of(key_a))
-        self.assertFalse(key_a.is_subtype_of(key_b))
-        self.assertFalse(key_c.is_subtype_of(key_a))
+  def testFunctionCacheKeyRespectsSubtype(self):
+    ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    key_a = function_cache.FunctionCacheKey(MockSubtypeOf2(1), ctx)
+    key_b = function_cache.FunctionCacheKey(MockSubtypeOf2(2), ctx)
+    key_c = function_cache.FunctionCacheKey(MockSubtypeOf2(1), ctx)
 
-    def testFunctionCacheKeyRespectsSupertype(self):
-        ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
-        key_a = function_cache.FunctionCacheKey(MockSupertypes2With3(1), ctx)
-        key_b = function_cache.FunctionCacheKey(MockSupertypes2With3(2), ctx)
+    self.assertTrue(key_b.is_subtype_of(key_a))
+    self.assertFalse(key_a.is_subtype_of(key_b))
+    self.assertFalse(key_c.is_subtype_of(key_a))
 
-        self.assertEqual(
-            key_b.most_specific_common_subtype([key_a]),
-            function_cache.FunctionCacheKey(MockSupertypes2With3(3), ctx),
-        )
-        self.assertIsNone(key_a.most_specific_common_subtype([key_b]))
+  def testFunctionCacheKeyRespectsSupertype(self):
+    ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    key_a = function_cache.FunctionCacheKey(MockSupertypes2With3(1), ctx)
+    key_b = function_cache.FunctionCacheKey(MockSupertypes2With3(2), ctx)
+
+    self.assertEqual(
+        key_b.most_specific_common_subtype([key_a]),
+        function_cache.FunctionCacheKey(MockSupertypes2With3(3), ctx))
+    self.assertIsNone(key_a.most_specific_common_subtype([key_b]))
 
 
 class FunctionCacheBenchmark(test.Benchmark):
-    def benchmarkCacheHit50thKeyMiss(self):
-        # If there are 50 keys and we get a new key that the cache has no concrete
-        # functions for.
 
-        cache = function_cache.FunctionCache()
-        args_per_call = 5
-        num_total_checks = 50
+  def benchmarkCacheHit50thKeyMiss(self):
+    # If there are 50 keys and we get a new key that the cache has no concrete
+    # functions for.
 
-        keys = []
-        for i in range(num_total_checks):
-            args = []
-            for j in range(args_per_call):
-                args.append(array_ops.zeros([i, j]))
-            keys.append(function_cache.make_cache_key(args))
+    cache = function_cache.FunctionCache()
+    args_per_call = 5
+    num_total_checks = 50
 
-        for key in keys[:-1]:
-            cache.add(key, "testing")
+    keys = []
+    for i in range(num_total_checks):
+      args = []
+      for j in range(args_per_call):
+        args.append(array_ops.zeros([i, j]))
+      keys.append(function_cache.make_cache_key(args))
 
-        iterations = 10000
-        subtyping_time = timeit.timeit(
-            lambda: cache.lookup(keys[-1], True), number=iterations
-        )
-        equality_time = timeit.timeit(
-            lambda: cache.lookup(keys[-1], False), number=iterations
-        )
+    for key in keys[:-1]:
+      cache.add(key, "testing")
 
-        self.report_benchmark(
-            name="cache_hit_50th_key_miss",
-            iters=iterations,
-            wall_time=subtyping_time + equality_time,
-            metrics=[
-                {
-                    "name": "cache_hit_50th_key_miss_subtype_avg_ms",
-                    "value": subtyping_time / iterations * 1000,
-                },
-                {
-                    "name": "cache_hit_50th_key_miss_equality_avg_ms",
-                    "value": equality_time / iterations * 1000,
-                },
-                {
-                    "name": "cache_hit_50th_key_miss_subtype_over_equality_ratio",
-                    "value": subtyping_time / equality_time,
-                },
-            ],
-        )
+    iterations = 10000
+    subtyping_time = timeit.timeit(
+        lambda: cache.lookup(keys[-1], True), number=iterations)
+    equality_time = timeit.timeit(
+        lambda: cache.lookup(keys[-1], False), number=iterations)
 
-    def benchmarkCacheHit50thKeyEqual(self):
-        # If there are 50 keys and we get a new key that is equal to a key that is
-        # in the cache.
+    self.report_benchmark(
+        name="cache_hit_50th_key_miss",
+        iters=iterations,
+        wall_time=subtyping_time + equality_time,
+        metrics=[{
+            "name": "cache_hit_50th_key_miss_subtype_avg_ms",
+            "value": subtyping_time / iterations * 1000
+        }, {
+            "name": "cache_hit_50th_key_miss_equality_avg_ms",
+            "value": equality_time / iterations * 1000
+        }, {
+            "name": "cache_hit_50th_key_miss_subtype_over_equality_ratio",
+            "value": subtyping_time / equality_time
+        }])
 
-        cache = function_cache.FunctionCache()
-        args_per_call = 5
-        num_total_checks = 50
+  def benchmarkCacheHit50thKeyEqual(self):
+    # If there are 50 keys and we get a new key that is equal to a key that is
+    # in the cache.
 
-        keys = []
-        for i in range(num_total_checks):
-            args = []
-            for j in range(args_per_call):
-                args.append(array_ops.zeros([i, j]))
-            keys.append(function_cache.make_cache_key(args))
+    cache = function_cache.FunctionCache()
+    args_per_call = 5
+    num_total_checks = 50
 
-        for key in keys:
-            cache.add(key, "testing")
+    keys = []
+    for i in range(num_total_checks):
+      args = []
+      for j in range(args_per_call):
+        args.append(array_ops.zeros([i, j]))
+      keys.append(function_cache.make_cache_key(args))
 
-        iterations = 10000
-        subtyping_time = timeit.timeit(
-            lambda: cache.lookup(keys[-1], True), number=iterations
-        )
-        equality_time = timeit.timeit(
-            lambda: cache.lookup(keys[-1], False), number=iterations
-        )
+    for key in keys:
+      cache.add(key, "testing")
 
-        self.report_benchmark(
-            name="cache_hit_50th_key_equal",
-            iters=iterations,
-            wall_time=subtyping_time + equality_time,
-            metrics=[
-                {
-                    "name": "cache_hit_50th_key_equal_subtype_avg_ms",
-                    "value": subtyping_time / iterations * 1000,
-                },
-                {
-                    "name": "cache_hit_50th_key_equal_equality_avg_ms",
-                    "value": equality_time / iterations * 1000,
-                },
-                {
-                    "name": "cache_hit_50th_key_subtype_over_equality_ratio",
-                    "value": subtyping_time / equality_time,
-                },
-            ],
-        )
+    iterations = 10000
+    subtyping_time = timeit.timeit(
+        lambda: cache.lookup(keys[-1], True), number=iterations)
+    equality_time = timeit.timeit(
+        lambda: cache.lookup(keys[-1], False), number=iterations)
 
-    def benchmarkCacheHit50thKeyKnownSubtype(self):
-        # If there are 50 keys and we get a key that has a subtype in cache and
-        # the cache has observed the key before (to memorize the subtype).
+    self.report_benchmark(
+        name="cache_hit_50th_key_equal",
+        iters=iterations,
+        wall_time=subtyping_time + equality_time,
+        metrics=[{
+            "name": "cache_hit_50th_key_equal_subtype_avg_ms",
+            "value": subtyping_time / iterations * 1000
+        }, {
+            "name": "cache_hit_50th_key_equal_equality_avg_ms",
+            "value": equality_time / iterations * 1000
+        }, {
+            "name": "cache_hit_50th_key_subtype_over_equality_ratio",
+            "value": subtyping_time / equality_time
+        }])
 
-        cache = function_cache.FunctionCache()
-        args_per_call = 5
-        num_total_checks = 50
+  def benchmarkCacheHit50thKeyKnownSubtype(self):
+    # If there are 50 keys and we get a key that has a subtype in cache and
+    # the cache has observed the key before (to memorize the subtype).
 
-        keys = []
-        for i in range(num_total_checks - 1):
-            args = []
-            for j in range(args_per_call):
-                args.append(array_ops.zeros([i, j]))
-            keys.append(function_cache.make_cache_key(args))
+    cache = function_cache.FunctionCache()
+    args_per_call = 5
+    num_total_checks = 50
 
-        for key in keys:
-            cache.add(key, "testing")
-        cache.add(MockSubtypeOf2(3), "testing")
-        cache.lookup(MockSubtypeOf2(2), True)
+    keys = []
+    for i in range(num_total_checks-1):
+      args = []
+      for j in range(args_per_call):
+        args.append(array_ops.zeros([i, j]))
+      keys.append(function_cache.make_cache_key(args))
 
-        iterations = 10000
-        subtyping_time = timeit.timeit(
-            lambda: cache.lookup(MockSubtypeOf2(2), True), number=iterations
-        )
+    for key in keys:
+      cache.add(key, "testing")
+    cache.add(MockSubtypeOf2(3), "testing")
+    cache.lookup(MockSubtypeOf2(2), True)
 
-        self.report_benchmark(
-            name="cache_hit_50th_key_known_subtype",
-            iters=iterations,
-            wall_time=subtyping_time,
-            metrics=[
-                {
-                    "name": "cache_hit_50th_key_known_subtype_avg_ms",
-                    "value": subtyping_time / iterations * 1000,
-                }
-            ],
-        )
+    iterations = 10000
+    subtyping_time = timeit.timeit(
+        lambda: cache.lookup(MockSubtypeOf2(2), True), number=iterations)
 
-    def benchmarkCacheHit50thKeyUnknownSubtype(self):
-        # If there are 50 keys and we get a key that has a subtype in cache but
-        # the cache has never observed the key before (no memory for the subtype).
+    self.report_benchmark(
+        name="cache_hit_50th_key_known_subtype",
+        iters=iterations,
+        wall_time=subtyping_time,
+        metrics=[{
+            "name": "cache_hit_50th_key_known_subtype_avg_ms",
+            "value": subtyping_time / iterations * 1000
+        }])
 
-        cache = function_cache.FunctionCache()
-        args_per_call = 5
-        num_total_checks = 50
+  def benchmarkCacheHit50thKeyUnknownSubtype(self):
+    # If there are 50 keys and we get a key that has a subtype in cache but
+    # the cache has never observed the key before (no memory for the subtype).
 
-        keys = []
-        for i in range(num_total_checks - 1):
-            args = []
-            for j in range(args_per_call):
-                args.append(array_ops.zeros([i, j]))
-            keys.append(function_cache.make_cache_key(args))
+    cache = function_cache.FunctionCache()
+    args_per_call = 5
+    num_total_checks = 50
 
-        def setup():
-            cache.clear()
-            for key in keys:
-                cache.add(key, "testing")
-            cache.add(MockSubtypeOf2(3), "testing")
+    keys = []
+    for i in range(num_total_checks-1):
+      args = []
+      for j in range(args_per_call):
+        args.append(array_ops.zeros([i, j]))
+      keys.append(function_cache.make_cache_key(args))
 
-        iterations = 10000
-        subtyping_time = sum(
-            timeit.repeat(
-                stmt=lambda: cache.lookup(MockSubtypeOf2(2), True),
-                setup=setup,
-                repeat=iterations,
-                number=1,
-            )
-        )
+    def setup():
+      cache.clear()
+      for key in keys:
+        cache.add(key, "testing")
+      cache.add(MockSubtypeOf2(3), "testing")
 
-        self.report_benchmark(
-            name="cache_hit_50th_key_unknown_subtype",
-            iters=iterations,
-            wall_time=subtyping_time,
-            metrics=[
-                {
-                    "name": "cache_hit_50th_key_unknown_subtype_avg_ms",
-                    "value": subtyping_time / iterations * 1000,
-                }
-            ],
-        )
+    iterations = 10000
+    subtyping_time = sum(timeit.repeat(
+        stmt=lambda: cache.lookup(MockSubtypeOf2(2), True),
+        setup=setup,
+        repeat=iterations,
+        number=1))
 
+    self.report_benchmark(
+        name="cache_hit_50th_key_unknown_subtype",
+        iters=iterations,
+        wall_time=subtyping_time,
+        metrics=[{
+            "name": "cache_hit_50th_key_unknown_subtype_avg_ms",
+            "value": subtyping_time / iterations * 1000
+        }])
 
 if __name__ == "__main__":
-    test.main()
+  test.main()

@@ -22,5 +22,5 @@ Tensorflow eager execution to run with TFRT.
 
 
 def is_tfrt_enabled():
-    """Returns true to state TFRT should be enabled for Tensorflow tests."""
-    return True
+  """Returns true to state TFRT should be enabled for Tensorflow tests."""
+  return True

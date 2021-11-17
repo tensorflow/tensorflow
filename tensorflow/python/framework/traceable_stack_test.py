@@ -24,109 +24,112 @@ _THIS_FILENAME = inspect.getsourcefile(_LOCAL_OBJECT)
 
 
 class TraceableObjectTest(test_util.TensorFlowTestCase):
-    def testSetFilenameAndLineFromCallerUsesCallersStack(self):
-        t_obj = traceable_stack.TraceableObject(17)
 
-        # Do not separate placeholder from the set_filename_and_line_from_caller()
-        # call one line below it as it is used to calculate the latter's line
-        # number.
-        placeholder = lambda x: x
-        result = t_obj.set_filename_and_line_from_caller()
+  def testSetFilenameAndLineFromCallerUsesCallersStack(self):
+    t_obj = traceable_stack.TraceableObject(17)
 
-        expected_lineno = inspect.getsourcelines(placeholder)[1] + 1
-        self.assertEqual(expected_lineno, t_obj.lineno)
-        self.assertEqual(_THIS_FILENAME, t_obj.filename)
-        self.assertEqual(t_obj.SUCCESS, result)
+    # Do not separate placeholder from the set_filename_and_line_from_caller()
+    # call one line below it as it is used to calculate the latter's line
+    # number.
+    placeholder = lambda x: x
+    result = t_obj.set_filename_and_line_from_caller()
 
-    def testSetFilenameAndLineFromCallerRespectsOffset(self):
-        def call_set_filename_and_line_from_caller(t_obj):
-            # We expect to retrieve the line number from _our_ caller.
-            return t_obj.set_filename_and_line_from_caller(offset=1)
+    expected_lineno = inspect.getsourcelines(placeholder)[1] + 1
+    self.assertEqual(expected_lineno, t_obj.lineno)
+    self.assertEqual(_THIS_FILENAME, t_obj.filename)
+    self.assertEqual(t_obj.SUCCESS, result)
 
-        t_obj = traceable_stack.TraceableObject(None)
-        # Do not separate placeholder from the
-        # call_set_filename_and_line_from_caller() call one line below it as it is
-        # used to calculate the latter's line number.
-        placeholder = lambda x: x
-        result = call_set_filename_and_line_from_caller(t_obj)
+  def testSetFilenameAndLineFromCallerRespectsOffset(self):
 
-        expected_lineno = inspect.getsourcelines(placeholder)[1] + 1
-        self.assertEqual(expected_lineno, t_obj.lineno)
-        self.assertEqual(t_obj.SUCCESS, result)
+    def call_set_filename_and_line_from_caller(t_obj):
+      # We expect to retrieve the line number from _our_ caller.
+      return t_obj.set_filename_and_line_from_caller(offset=1)
 
-    def testSetFilenameAndLineFromCallerHandlesRidiculousOffset(self):
-        t_obj = traceable_stack.TraceableObject("The quick brown fox.")
-        # This line shouldn't die.
-        result = t_obj.set_filename_and_line_from_caller(offset=300)
+    t_obj = traceable_stack.TraceableObject(None)
+    # Do not separate placeholder from the
+    # call_set_filename_and_line_from_caller() call one line below it as it is
+    # used to calculate the latter's line number.
+    placeholder = lambda x: x
+    result = call_set_filename_and_line_from_caller(t_obj)
 
-        # We expect a heuristic to be used because we are not currently 300 frames
-        # down on the stack.  The filename and lineno of the outermost frame are not
-        # predictable -- in some environments the filename is this test file, but in
-        # other environments it is not (e.g. due to a test runner calling this
-        # file).  Therefore we only test that the called function knows it applied a
-        # heuristic for the ridiculous stack offset.
-        self.assertEqual(t_obj.HEURISTIC_USED, result)
+    expected_lineno = inspect.getsourcelines(placeholder)[1] + 1
+    self.assertEqual(expected_lineno, t_obj.lineno)
+    self.assertEqual(t_obj.SUCCESS, result)
+
+  def testSetFilenameAndLineFromCallerHandlesRidiculousOffset(self):
+    t_obj = traceable_stack.TraceableObject('The quick brown fox.')
+    # This line shouldn't die.
+    result = t_obj.set_filename_and_line_from_caller(offset=300)
+
+    # We expect a heuristic to be used because we are not currently 300 frames
+    # down on the stack.  The filename and lineno of the outermost frame are not
+    # predictable -- in some environments the filename is this test file, but in
+    # other environments it is not (e.g. due to a test runner calling this
+    # file).  Therefore we only test that the called function knows it applied a
+    # heuristic for the ridiculous stack offset.
+    self.assertEqual(t_obj.HEURISTIC_USED, result)
 
 
 class TraceableStackTest(test_util.TensorFlowTestCase):
-    def testPushPeekPopObj(self):
-        t_stack = traceable_stack.TraceableStack()
-        t_stack.push_obj(42.0)
-        t_stack.push_obj("hope")
 
-        expected_lifo_peek = ["hope", 42.0]
-        self.assertEqual(expected_lifo_peek, list(t_stack.peek_objs()))
+  def testPushPeekPopObj(self):
+    t_stack = traceable_stack.TraceableStack()
+    t_stack.push_obj(42.0)
+    t_stack.push_obj('hope')
 
-        self.assertEqual("hope", t_stack.pop_obj())
-        self.assertEqual(42.0, t_stack.pop_obj())
+    expected_lifo_peek = ['hope', 42.0]
+    self.assertEqual(expected_lifo_peek, list(t_stack.peek_objs()))
 
-    def testPushPeekTopObj(self):
-        t_stack = traceable_stack.TraceableStack()
-        t_stack.push_obj(42.0)
-        t_stack.push_obj("hope")
-        self.assertEqual("hope", t_stack.peek_top_obj())
+    self.assertEqual('hope', t_stack.pop_obj())
+    self.assertEqual(42.0, t_stack.pop_obj())
 
-    def testPushPopPreserveLifoOrdering(self):
-        t_stack = traceable_stack.TraceableStack()
-        t_stack.push_obj(0)
-        t_stack.push_obj(1)
-        t_stack.push_obj(2)
-        t_stack.push_obj(3)
+  def testPushPeekTopObj(self):
+    t_stack = traceable_stack.TraceableStack()
+    t_stack.push_obj(42.0)
+    t_stack.push_obj('hope')
+    self.assertEqual('hope', t_stack.peek_top_obj())
 
-        obj_3 = t_stack.pop_obj()
-        obj_2 = t_stack.pop_obj()
-        obj_1 = t_stack.pop_obj()
-        obj_0 = t_stack.pop_obj()
+  def testPushPopPreserveLifoOrdering(self):
+    t_stack = traceable_stack.TraceableStack()
+    t_stack.push_obj(0)
+    t_stack.push_obj(1)
+    t_stack.push_obj(2)
+    t_stack.push_obj(3)
 
-        self.assertEqual(3, obj_3)
-        self.assertEqual(2, obj_2)
-        self.assertEqual(1, obj_1)
-        self.assertEqual(0, obj_0)
+    obj_3 = t_stack.pop_obj()
+    obj_2 = t_stack.pop_obj()
+    obj_1 = t_stack.pop_obj()
+    obj_0 = t_stack.pop_obj()
 
-    def testPushObjSetsFilenameAndLineInfoForCaller(self):
-        t_stack = traceable_stack.TraceableStack()
+    self.assertEqual(3, obj_3)
+    self.assertEqual(2, obj_2)
+    self.assertEqual(1, obj_1)
+    self.assertEqual(0, obj_0)
 
-        # We expect that the line number recorded for the 1-object will come from
-        # the call to t_stack.push_obj(1).  Do not separate the next two lines!
-        placeholder_1 = lambda x: x
-        t_stack.push_obj(1)
+  def testPushObjSetsFilenameAndLineInfoForCaller(self):
+    t_stack = traceable_stack.TraceableStack()
 
-        # We expect that the line number recorded for the 2-object will come from
-        # the call to call_push_obj() and _not_ the call to t_stack.push_obj().
-        def call_push_obj(obj):
-            t_stack.push_obj(obj, offset=1)
+    # We expect that the line number recorded for the 1-object will come from
+    # the call to t_stack.push_obj(1).  Do not separate the next two lines!
+    placeholder_1 = lambda x: x
+    t_stack.push_obj(1)
 
-        # Do not separate the next two lines!
-        placeholder_2 = lambda x: x
-        call_push_obj(2)
+    # We expect that the line number recorded for the 2-object will come from
+    # the call to call_push_obj() and _not_ the call to t_stack.push_obj().
+    def call_push_obj(obj):
+      t_stack.push_obj(obj, offset=1)
 
-        expected_lineno_1 = inspect.getsourcelines(placeholder_1)[1] + 1
-        expected_lineno_2 = inspect.getsourcelines(placeholder_2)[1] + 1
+    # Do not separate the next two lines!
+    placeholder_2 = lambda x: x
+    call_push_obj(2)
 
-        t_obj_2, t_obj_1 = t_stack.peek_traceable_objs()
-        self.assertEqual(expected_lineno_2, t_obj_2.lineno)
-        self.assertEqual(expected_lineno_1, t_obj_1.lineno)
+    expected_lineno_1 = inspect.getsourcelines(placeholder_1)[1] + 1
+    expected_lineno_2 = inspect.getsourcelines(placeholder_2)[1] + 1
+
+    t_obj_2, t_obj_1 = t_stack.peek_traceable_objs()
+    self.assertEqual(expected_lineno_2, t_obj_2.lineno)
+    self.assertEqual(expected_lineno_1, t_obj_1.lineno)
 
 
-if __name__ == "__main__":
-    googletest.main()
+if __name__ == '__main__':
+  googletest.main()

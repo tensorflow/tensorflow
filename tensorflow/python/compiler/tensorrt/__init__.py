@@ -16,5 +16,4 @@
 
 # pylint: disable=unused-import,line-too-long
 from tensorflow.python.compiler.tensorrt import trt_convert as trt
-
 # pylint: enable=unused-import,line-too-long

@@ -25,118 +25,109 @@ from tensorflow.python.platform import googletest
 
 
 class CLIConfigTest(test_util.TensorFlowTestCase):
-    def setUp(self):
-        self._tmp_dir = tempfile.mkdtemp()
-        self._tmp_config_path = os.path.join(self._tmp_dir, ".tfdbg_config")
-        self.assertFalse(gfile.Exists(self._tmp_config_path))
-        super(CLIConfigTest, self).setUp()
 
-    def tearDown(self):
-        file_io.delete_recursively(self._tmp_dir)
-        super(CLIConfigTest, self).tearDown()
+  def setUp(self):
+    self._tmp_dir = tempfile.mkdtemp()
+    self._tmp_config_path = os.path.join(self._tmp_dir, ".tfdbg_config")
+    self.assertFalse(gfile.Exists(self._tmp_config_path))
+    super(CLIConfigTest, self).setUp()
 
-    def testConstructCLIConfigWithoutFile(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        self.assertEqual(20, config.get("graph_recursion_depth"))
-        self.assertEqual(True, config.get("mouse_mode"))
-        with self.assertRaises(KeyError):
-            config.get("property_that_should_not_exist")
-        self.assertTrue(gfile.Exists(self._tmp_config_path))
+  def tearDown(self):
+    file_io.delete_recursively(self._tmp_dir)
+    super(CLIConfigTest, self).tearDown()
 
-    def testCLIConfigForwardCompatibilityTest(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        with open(self._tmp_config_path, "rt") as f:
-            config_json = json.load(f)
-        # Remove a field to simulate forward compatibility test.
-        del config_json["graph_recursion_depth"]
-        with open(self._tmp_config_path, "wt") as f:
-            json.dump(config_json, f)
+  def testConstructCLIConfigWithoutFile(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    self.assertEqual(20, config.get("graph_recursion_depth"))
+    self.assertEqual(True, config.get("mouse_mode"))
+    with self.assertRaises(KeyError):
+      config.get("property_that_should_not_exist")
+    self.assertTrue(gfile.Exists(self._tmp_config_path))
 
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        self.assertEqual(20, config.get("graph_recursion_depth"))
+  def testCLIConfigForwardCompatibilityTest(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    with open(self._tmp_config_path, "rt") as f:
+      config_json = json.load(f)
+    # Remove a field to simulate forward compatibility test.
+    del config_json["graph_recursion_depth"]
+    with open(self._tmp_config_path, "wt") as f:
+      json.dump(config_json, f)
 
-    def testModifyConfigValue(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        config.set("graph_recursion_depth", 9)
-        config.set("mouse_mode", False)
-        self.assertEqual(9, config.get("graph_recursion_depth"))
-        self.assertEqual(False, config.get("mouse_mode"))
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    self.assertEqual(20, config.get("graph_recursion_depth"))
 
-    def testModifyConfigValueWithTypeCasting(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        config.set("graph_recursion_depth", "18")
-        config.set("mouse_mode", "false")
-        self.assertEqual(18, config.get("graph_recursion_depth"))
-        self.assertEqual(False, config.get("mouse_mode"))
+  def testModifyConfigValue(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    config.set("graph_recursion_depth", 9)
+    config.set("mouse_mode", False)
+    self.assertEqual(9, config.get("graph_recursion_depth"))
+    self.assertEqual(False, config.get("mouse_mode"))
 
-    def testModifyConfigValueWithTypeCastingFailure(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        with self.assertRaises(ValueError):
-            config.set("mouse_mode", "maybe")
+  def testModifyConfigValueWithTypeCasting(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    config.set("graph_recursion_depth", "18")
+    config.set("mouse_mode", "false")
+    self.assertEqual(18, config.get("graph_recursion_depth"))
+    self.assertEqual(False, config.get("mouse_mode"))
 
-    def testLoadFromModifiedConfigFile(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        config.set("graph_recursion_depth", 9)
-        config.set("mouse_mode", False)
-        config2 = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        self.assertEqual(9, config2.get("graph_recursion_depth"))
-        self.assertEqual(False, config2.get("mouse_mode"))
+  def testModifyConfigValueWithTypeCastingFailure(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    with self.assertRaises(ValueError):
+      config.set("mouse_mode", "maybe")
 
-    def testSummarizeFromConfig(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        output = config.summarize()
-        self.assertEqual(
-            [
-                "Command-line configuration:",
-                "",
-                "  graph_recursion_depth: %d" % config.get("graph_recursion_depth"),
-                "  mouse_mode: %s" % config.get("mouse_mode"),
-            ],
-            output.lines,
-        )
+  def testLoadFromModifiedConfigFile(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    config.set("graph_recursion_depth", 9)
+    config.set("mouse_mode", False)
+    config2 = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    self.assertEqual(9, config2.get("graph_recursion_depth"))
+    self.assertEqual(False, config2.get("mouse_mode"))
 
-    def testSummarizeFromConfigWithHighlight(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-        output = config.summarize(highlight="mouse_mode")
-        self.assertEqual(
-            [
-                "Command-line configuration:",
-                "",
-                "  graph_recursion_depth: %d" % config.get("graph_recursion_depth"),
-                "  mouse_mode: %s" % config.get("mouse_mode"),
-            ],
-            output.lines,
-        )
-        self.assertEqual((2, 12, ["underline", "bold"]), output.font_attr_segs[3][0])
-        self.assertEqual((14, 18, "bold"), output.font_attr_segs[3][1])
+  def testSummarizeFromConfig(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    output = config.summarize()
+    self.assertEqual(
+        ["Command-line configuration:",
+         "",
+         "  graph_recursion_depth: %d" % config.get("graph_recursion_depth"),
+         "  mouse_mode: %s" % config.get("mouse_mode")], output.lines)
 
-    def testSetCallback(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+  def testSummarizeFromConfigWithHighlight(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    output = config.summarize(highlight="mouse_mode")
+    self.assertEqual(
+        ["Command-line configuration:",
+         "",
+         "  graph_recursion_depth: %d" % config.get("graph_recursion_depth"),
+         "  mouse_mode: %s" % config.get("mouse_mode")], output.lines)
+    self.assertEqual((2, 12, ["underline", "bold"]),
+                     output.font_attr_segs[3][0])
+    self.assertEqual((14, 18, "bold"), output.font_attr_segs[3][1])
 
-        test_value = {"graph_recursion_depth": -1}
+  def testSetCallback(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
 
-        def callback(config):
-            test_value["graph_recursion_depth"] = config.get("graph_recursion_depth")
+    test_value = {"graph_recursion_depth": -1}
+    def callback(config):
+      test_value["graph_recursion_depth"] = config.get("graph_recursion_depth")
+    config.set_callback("graph_recursion_depth", callback)
 
-        config.set_callback("graph_recursion_depth", callback)
+    config.set("graph_recursion_depth", config.get("graph_recursion_depth") - 1)
+    self.assertEqual(test_value["graph_recursion_depth"],
+                     config.get("graph_recursion_depth"))
 
-        config.set("graph_recursion_depth", config.get("graph_recursion_depth") - 1)
-        self.assertEqual(
-            test_value["graph_recursion_depth"], config.get("graph_recursion_depth")
-        )
+  def testSetCallbackInvalidPropertyName(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
 
-    def testSetCallbackInvalidPropertyName(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
+    with self.assertRaises(KeyError):
+      config.set_callback("nonexistent_property_name", print)
 
-        with self.assertRaises(KeyError):
-            config.set_callback("nonexistent_property_name", print)
+  def testSetCallbackNotCallable(self):
+    config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
 
-    def testSetCallbackNotCallable(self):
-        config = cli_config.CLIConfig(config_file_path=self._tmp_config_path)
-
-        with self.assertRaises(TypeError):
-            config.set_callback("graph_recursion_depth", 1)
+    with self.assertRaises(TypeError):
+      config.set_callback("graph_recursion_depth", 1)
 
 
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

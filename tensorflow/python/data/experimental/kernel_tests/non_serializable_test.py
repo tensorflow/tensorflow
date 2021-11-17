@@ -24,32 +24,33 @@ from tensorflow.python.platform import test
 
 
 class NonSerializableTest(test_base.DatasetTestBase, parameterized.TestCase):
-    @combinations.generate(test_base.default_test_combinations())
-    def testNonSerializable(self):
-        dataset = dataset_ops.Dataset.from_tensors(0)
-        dataset = dataset.apply(testing.assert_next(["FiniteSkip"]))
-        dataset = dataset.skip(0)  # Should not be removed by noop elimination
-        dataset = dataset.apply(testing.non_serializable())
-        dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
-        dataset = dataset.skip(0)  # Should be removed by noop elimination
-        dataset = dataset.cache()
-        options = options_lib.Options()
-        options.experimental_optimization.apply_default_optimizations = False
-        options.experimental_optimization.noop_elimination = True
-        dataset = dataset.with_options(options)
-        self.assertDatasetProduces(dataset, expected_output=[0])
 
-    @combinations.generate(test_base.default_test_combinations())
-    def testNonSerializableAsDirectInput(self):
-        """Tests that non-serializable dataset can be OptimizeDataset's input."""
-        dataset = dataset_ops.Dataset.from_tensors(0)
-        dataset = dataset.apply(testing.non_serializable())
-        options = options_lib.Options()
-        options.experimental_optimization.apply_default_optimizations = False
-        options.experimental_optimization.noop_elimination = True
-        dataset = dataset.with_options(options)
-        self.assertDatasetProduces(dataset, expected_output=[0])
+  @combinations.generate(test_base.default_test_combinations())
+  def testNonSerializable(self):
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset.apply(testing.assert_next(["FiniteSkip"]))
+    dataset = dataset.skip(0)  # Should not be removed by noop elimination
+    dataset = dataset.apply(testing.non_serializable())
+    dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
+    dataset = dataset.skip(0)  # Should be removed by noop elimination
+    dataset = dataset.cache()
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.noop_elimination = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, expected_output=[0])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNonSerializableAsDirectInput(self):
+    """Tests that non-serializable dataset can be OptimizeDataset's input."""
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset.apply(testing.non_serializable())
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.noop_elimination = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, expected_output=[0])
 
 
 if __name__ == "__main__":
-    test.main()
+  test.main()

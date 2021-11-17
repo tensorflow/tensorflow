@@ -15,17 +15,11 @@
 """Tests for registration mechanisms."""
 
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops.linalg import (
-    cholesky_registrations,
-)  # pylint: disable=unused-import
+from tensorflow.python.ops.linalg import cholesky_registrations  # pylint: disable=unused-import
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_algebra
-from tensorflow.python.ops.linalg import (
-    matmul_registrations,
-)  # pylint: disable=unused-import
-from tensorflow.python.ops.linalg import (
-    solve_registrations,
-)  # pylint: disable=unused-import
+from tensorflow.python.ops.linalg import matmul_registrations  # pylint: disable=unused-import
+from tensorflow.python.ops.linalg import solve_registrations  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 # pylint: disable=protected-access
@@ -43,219 +37,237 @@ _registered_solve = linear_operator_algebra._registered_solve
 
 
 class AdjointTest(test.TestCase):
-    def testRegistration(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            def _matmul(self, a):
-                pass
 
-            def _shape(self):
-                return tensor_shape.TensorShape([1, 1])
+  def testRegistration(self):
 
-            def _shape_tensor(self):
-                pass
+    class CustomLinOp(linear_operator.LinearOperator):
 
-        # Register Adjoint to a lambda that spits out the name parameter
-        @linear_operator_algebra.RegisterAdjoint(CustomLinOp)
-        def _adjoint(a):  # pylint: disable=unused-argument,unused-variable
-            return "OK"
+      def _matmul(self, a):
+        pass
 
-        self.assertEqual("OK", CustomLinOp(dtype=None).adjoint())
+      def _shape(self):
+        return tensor_shape.TensorShape([1, 1])
 
-    def testRegistrationFailures(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            pass
+      def _shape_tensor(self):
+        pass
 
-        with self.assertRaisesRegex(TypeError, "must be callable"):
-            linear_operator_algebra.RegisterAdjoint(CustomLinOp)("blah")
+    # Register Adjoint to a lambda that spits out the name parameter
+    @linear_operator_algebra.RegisterAdjoint(CustomLinOp)
+    def _adjoint(a):  # pylint: disable=unused-argument,unused-variable
+      return "OK"
 
-        # First registration is OK
-        linear_operator_algebra.RegisterAdjoint(CustomLinOp)(lambda a: None)
+    self.assertEqual("OK", CustomLinOp(dtype=None).adjoint())
 
-        # Second registration fails
-        with self.assertRaisesRegex(ValueError, "has already been registered"):
-            linear_operator_algebra.RegisterAdjoint(CustomLinOp)(lambda a: None)
+  def testRegistrationFailures(self):
 
-    def testExactAdjointRegistrationsAllMatch(self):
-        for (k, v) in _ADJOINTS.items():
-            self.assertEqual(v, _registered_adjoint(k[0]))
+    class CustomLinOp(linear_operator.LinearOperator):
+      pass
+
+    with self.assertRaisesRegex(TypeError, "must be callable"):
+      linear_operator_algebra.RegisterAdjoint(CustomLinOp)("blah")
+
+    # First registration is OK
+    linear_operator_algebra.RegisterAdjoint(CustomLinOp)(lambda a: None)
+
+    # Second registration fails
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
+      linear_operator_algebra.RegisterAdjoint(CustomLinOp)(lambda a: None)
+
+  def testExactAdjointRegistrationsAllMatch(self):
+    for (k, v) in _ADJOINTS.items():
+      self.assertEqual(v, _registered_adjoint(k[0]))
 
 
 class CholeskyTest(test.TestCase):
-    def testRegistration(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            def _matmul(self, a):
-                pass
 
-            def _shape(self):
-                return tensor_shape.TensorShape([1, 1])
+  def testRegistration(self):
 
-            def _shape_tensor(self):
-                pass
+    class CustomLinOp(linear_operator.LinearOperator):
 
-        # Register Cholesky to a lambda that spits out the name parameter
-        @linear_operator_algebra.RegisterCholesky(CustomLinOp)
-        def _cholesky(a):  # pylint: disable=unused-argument,unused-variable
-            return "OK"
+      def _matmul(self, a):
+        pass
 
-        with self.assertRaisesRegex(ValueError, "positive definite"):
-            CustomLinOp(dtype=None, is_self_adjoint=True).cholesky()
+      def _shape(self):
+        return tensor_shape.TensorShape([1, 1])
 
-        with self.assertRaisesRegex(ValueError, "self adjoint"):
-            CustomLinOp(dtype=None, is_positive_definite=True).cholesky()
+      def _shape_tensor(self):
+        pass
 
-        custom_linop = CustomLinOp(
-            dtype=None, is_self_adjoint=True, is_positive_definite=True
-        )
-        self.assertEqual("OK", custom_linop.cholesky())
+    # Register Cholesky to a lambda that spits out the name parameter
+    @linear_operator_algebra.RegisterCholesky(CustomLinOp)
+    def _cholesky(a):  # pylint: disable=unused-argument,unused-variable
+      return "OK"
 
-    def testRegistrationFailures(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            pass
+    with self.assertRaisesRegex(ValueError, "positive definite"):
+      CustomLinOp(dtype=None, is_self_adjoint=True).cholesky()
 
-        with self.assertRaisesRegex(TypeError, "must be callable"):
-            linear_operator_algebra.RegisterCholesky(CustomLinOp)("blah")
+    with self.assertRaisesRegex(ValueError, "self adjoint"):
+      CustomLinOp(dtype=None, is_positive_definite=True).cholesky()
 
-        # First registration is OK
-        linear_operator_algebra.RegisterCholesky(CustomLinOp)(lambda a: None)
+    custom_linop = CustomLinOp(
+        dtype=None, is_self_adjoint=True, is_positive_definite=True)
+    self.assertEqual("OK", custom_linop.cholesky())
 
-        # Second registration fails
-        with self.assertRaisesRegex(ValueError, "has already been registered"):
-            linear_operator_algebra.RegisterCholesky(CustomLinOp)(lambda a: None)
+  def testRegistrationFailures(self):
 
-    def testExactCholeskyRegistrationsAllMatch(self):
-        for (k, v) in _CHOLESKY_DECOMPS.items():
-            self.assertEqual(v, _registered_cholesky(k[0]))
+    class CustomLinOp(linear_operator.LinearOperator):
+      pass
+
+    with self.assertRaisesRegex(TypeError, "must be callable"):
+      linear_operator_algebra.RegisterCholesky(CustomLinOp)("blah")
+
+    # First registration is OK
+    linear_operator_algebra.RegisterCholesky(CustomLinOp)(lambda a: None)
+
+    # Second registration fails
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
+      linear_operator_algebra.RegisterCholesky(CustomLinOp)(lambda a: None)
+
+  def testExactCholeskyRegistrationsAllMatch(self):
+    for (k, v) in _CHOLESKY_DECOMPS.items():
+      self.assertEqual(v, _registered_cholesky(k[0]))
 
 
 class MatmulTest(test.TestCase):
-    def testRegistration(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            def _matmul(self, a):
-                pass
 
-            def _shape(self):
-                return tensor_shape.TensorShape([1, 1])
+  def testRegistration(self):
 
-            def _shape_tensor(self):
-                pass
+    class CustomLinOp(linear_operator.LinearOperator):
 
-        # Register Matmul to a lambda that spits out the name parameter
-        @linear_operator_algebra.RegisterMatmul(CustomLinOp, CustomLinOp)
-        def _matmul(a, b):  # pylint: disable=unused-argument,unused-variable
-            return "OK"
+      def _matmul(self, a):
+        pass
 
-        custom_linop = CustomLinOp(
-            dtype=None, is_self_adjoint=True, is_positive_definite=True
-        )
-        self.assertEqual("OK", custom_linop.matmul(custom_linop))
+      def _shape(self):
+        return tensor_shape.TensorShape([1, 1])
 
-    def testRegistrationFailures(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            pass
+      def _shape_tensor(self):
+        pass
 
-        with self.assertRaisesRegex(TypeError, "must be callable"):
-            linear_operator_algebra.RegisterMatmul(CustomLinOp, CustomLinOp)("blah")
+    # Register Matmul to a lambda that spits out the name parameter
+    @linear_operator_algebra.RegisterMatmul(CustomLinOp, CustomLinOp)
+    def _matmul(a, b):  # pylint: disable=unused-argument,unused-variable
+      return "OK"
 
-        # First registration is OK
-        linear_operator_algebra.RegisterMatmul(CustomLinOp, CustomLinOp)(lambda a: None)
+    custom_linop = CustomLinOp(
+        dtype=None, is_self_adjoint=True, is_positive_definite=True)
+    self.assertEqual("OK", custom_linop.matmul(custom_linop))
 
-        # Second registration fails
-        with self.assertRaisesRegex(ValueError, "has already been registered"):
-            linear_operator_algebra.RegisterMatmul(CustomLinOp, CustomLinOp)(
-                lambda a: None
-            )
+  def testRegistrationFailures(self):
 
-    def testExactMatmulRegistrationsAllMatch(self):
-        for (k, v) in _MATMUL.items():
-            self.assertEqual(v, _registered_matmul(k[0], k[1]))
+    class CustomLinOp(linear_operator.LinearOperator):
+      pass
+
+    with self.assertRaisesRegex(TypeError, "must be callable"):
+      linear_operator_algebra.RegisterMatmul(CustomLinOp, CustomLinOp)("blah")
+
+    # First registration is OK
+    linear_operator_algebra.RegisterMatmul(
+        CustomLinOp, CustomLinOp)(lambda a: None)
+
+    # Second registration fails
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
+      linear_operator_algebra.RegisterMatmul(
+          CustomLinOp, CustomLinOp)(lambda a: None)
+
+  def testExactMatmulRegistrationsAllMatch(self):
+    for (k, v) in _MATMUL.items():
+      self.assertEqual(v, _registered_matmul(k[0], k[1]))
 
 
 class SolveTest(test.TestCase):
-    def testRegistration(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            def _matmul(self, a):
-                pass
 
-            def _solve(self, a):
-                pass
+  def testRegistration(self):
 
-            def _shape(self):
-                return tensor_shape.TensorShape([1, 1])
+    class CustomLinOp(linear_operator.LinearOperator):
 
-            def _shape_tensor(self):
-                pass
+      def _matmul(self, a):
+        pass
 
-        # Register Solve to a lambda that spits out the name parameter
-        @linear_operator_algebra.RegisterSolve(CustomLinOp, CustomLinOp)
-        def _solve(a, b):  # pylint: disable=unused-argument,unused-variable
-            return "OK"
+      def _solve(self, a):
+        pass
 
-        custom_linop = CustomLinOp(
-            dtype=None, is_self_adjoint=True, is_positive_definite=True
-        )
-        self.assertEqual("OK", custom_linop.solve(custom_linop))
+      def _shape(self):
+        return tensor_shape.TensorShape([1, 1])
 
-    def testRegistrationFailures(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            pass
+      def _shape_tensor(self):
+        pass
 
-        with self.assertRaisesRegex(TypeError, "must be callable"):
-            linear_operator_algebra.RegisterSolve(CustomLinOp, CustomLinOp)("blah")
+    # Register Solve to a lambda that spits out the name parameter
+    @linear_operator_algebra.RegisterSolve(CustomLinOp, CustomLinOp)
+    def _solve(a, b):  # pylint: disable=unused-argument,unused-variable
+      return "OK"
 
-        # First registration is OK
-        linear_operator_algebra.RegisterSolve(CustomLinOp, CustomLinOp)(lambda a: None)
+    custom_linop = CustomLinOp(
+        dtype=None, is_self_adjoint=True, is_positive_definite=True)
+    self.assertEqual("OK", custom_linop.solve(custom_linop))
 
-        # Second registration fails
-        with self.assertRaisesRegex(ValueError, "has already been registered"):
-            linear_operator_algebra.RegisterSolve(CustomLinOp, CustomLinOp)(
-                lambda a: None
-            )
+  def testRegistrationFailures(self):
 
-    def testExactSolveRegistrationsAllMatch(self):
-        for (k, v) in _SOLVE.items():
-            self.assertEqual(v, _registered_solve(k[0], k[1]))
+    class CustomLinOp(linear_operator.LinearOperator):
+      pass
+
+    with self.assertRaisesRegex(TypeError, "must be callable"):
+      linear_operator_algebra.RegisterSolve(CustomLinOp, CustomLinOp)("blah")
+
+    # First registration is OK
+    linear_operator_algebra.RegisterSolve(
+        CustomLinOp, CustomLinOp)(lambda a: None)
+
+    # Second registration fails
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
+      linear_operator_algebra.RegisterSolve(
+          CustomLinOp, CustomLinOp)(lambda a: None)
+
+  def testExactSolveRegistrationsAllMatch(self):
+    for (k, v) in _SOLVE.items():
+      self.assertEqual(v, _registered_solve(k[0], k[1]))
 
 
 class InverseTest(test.TestCase):
-    def testRegistration(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            def _matmul(self, a):
-                pass
 
-            def _shape(self):
-                return tensor_shape.TensorShape([1, 1])
+  def testRegistration(self):
 
-            def _shape_tensor(self):
-                pass
+    class CustomLinOp(linear_operator.LinearOperator):
 
-        # Register Inverse to a lambda that spits out the name parameter
-        @linear_operator_algebra.RegisterInverse(CustomLinOp)
-        def _inverse(a):  # pylint: disable=unused-argument,unused-variable
-            return "OK"
+      def _matmul(self, a):
+        pass
 
-        with self.assertRaisesRegex(ValueError, "singular"):
-            CustomLinOp(dtype=None, is_non_singular=False).inverse()
+      def _shape(self):
+        return tensor_shape.TensorShape([1, 1])
 
-        self.assertEqual("OK", CustomLinOp(dtype=None, is_non_singular=True).inverse())
+      def _shape_tensor(self):
+        pass
 
-    def testRegistrationFailures(self):
-        class CustomLinOp(linear_operator.LinearOperator):
-            pass
+    # Register Inverse to a lambda that spits out the name parameter
+    @linear_operator_algebra.RegisterInverse(CustomLinOp)
+    def _inverse(a):  # pylint: disable=unused-argument,unused-variable
+      return "OK"
 
-        with self.assertRaisesRegex(TypeError, "must be callable"):
-            linear_operator_algebra.RegisterInverse(CustomLinOp)("blah")
+    with self.assertRaisesRegex(ValueError, "singular"):
+      CustomLinOp(dtype=None, is_non_singular=False).inverse()
 
-        # First registration is OK
-        linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
+    self.assertEqual("OK", CustomLinOp(
+        dtype=None, is_non_singular=True).inverse())
 
-        # Second registration fails
-        with self.assertRaisesRegex(ValueError, "has already been registered"):
-            linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
+  def testRegistrationFailures(self):
 
-    def testExactRegistrationsAllMatch(self):
-        for (k, v) in _INVERSES.items():
-            self.assertEqual(v, _registered_inverse(k[0]))
+    class CustomLinOp(linear_operator.LinearOperator):
+      pass
+
+    with self.assertRaisesRegex(TypeError, "must be callable"):
+      linear_operator_algebra.RegisterInverse(CustomLinOp)("blah")
+
+    # First registration is OK
+    linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
+
+    # Second registration fails
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
+      linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
+
+  def testExactRegistrationsAllMatch(self):
+    for (k, v) in _INVERSES.items():
+      self.assertEqual(v, _registered_inverse(k[0]))
 
 
 if __name__ == "__main__":
-    test.main()
+  test.main()

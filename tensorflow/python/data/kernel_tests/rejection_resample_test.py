@@ -29,158 +29,144 @@ from tensorflow.python.util import compat
 
 
 class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
-    @combinations.generate(
-        combinations.times(
-            test_base.default_test_combinations(),
-            combinations.combine(initial_known=[True, False]),
-        )
-    )
-    def testDistribution(self, initial_known):
-        classes = np.random.randint(5, size=(10000,))  # Uniformly sampled
-        target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
-        initial_dist = [0.2] * 5 if initial_known else None
-        classes = math_ops.cast(classes, dtypes.int64)  # needed for Windows build.
-        dataset = (
-            dataset_ops.Dataset.from_tensor_slices(classes)
-            .shuffle(200, seed=21)
-            .map(lambda c: (c, string_ops.as_string(c)))
-            .repeat()
-        )
 
-        get_next = self.getNext(
-            dataset.rejection_resample(
-                target_dist=target_dist,
-                initial_dist=initial_dist,
-                class_func=lambda c, _: c,
-                seed=27,
-            )
-        )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(initial_known=[True, False])))
+  def testDistribution(self, initial_known):
+    classes = np.random.randint(5, size=(10000,))  # Uniformly sampled
+    target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
+    initial_dist = [0.2] * 5 if initial_known else None
+    classes = math_ops.cast(classes, dtypes.int64)  # needed for Windows build.
+    dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
+        200, seed=21).map(lambda c: (c, string_ops.as_string(c))).repeat()
 
-        returned = []
-        while len(returned) < 2000:
-            returned.append(self.evaluate(get_next()))
+    get_next = self.getNext(
+        dataset.rejection_resample(
+            target_dist=target_dist,
+            initial_dist=initial_dist,
+            class_func=lambda c, _: c,
+            seed=27))
 
-        returned_classes, returned_classes_and_data = zip(*returned)
-        _, returned_data = zip(*returned_classes_and_data)
-        self.assertAllEqual(
-            [compat.as_bytes(str(c)) for c in returned_classes], returned_data
-        )
-        total_returned = len(returned_classes)
-        class_counts = np.array(
-            [len([True for v in returned_classes if v == c]) for c in range(5)]
-        )
-        returned_dist = class_counts / total_returned
-        self.assertAllClose(target_dist, returned_dist, atol=1e-2)
+    returned = []
+    while len(returned) < 2000:
+      returned.append(self.evaluate(get_next()))
 
-    @combinations.generate(
-        combinations.times(
-            test_base.default_test_combinations(),
-            combinations.combine(only_initial_dist=[True, False]),
-        )
-    )
-    def testEdgeCasesSampleFromInitialDataset(self, only_initial_dist):
-        init_dist = [0.5, 0.5]
-        target_dist = [0.5, 0.5] if only_initial_dist else [0.0, 1.0]
-        num_classes = len(init_dist)
-        # We don't need many samples to test that this works.
-        num_samples = 100
-        data_np = np.random.choice(num_classes, num_samples, p=init_dist)
+    returned_classes, returned_classes_and_data = zip(*returned)
+    _, returned_data = zip(*returned_classes_and_data)
+    self.assertAllEqual([compat.as_bytes(str(c)) for c in returned_classes],
+                        returned_data)
+    total_returned = len(returned_classes)
+    class_counts = np.array(
+        [len([True for v in returned_classes if v == c]) for c in range(5)])
+    returned_dist = class_counts / total_returned
+    self.assertAllClose(target_dist, returned_dist, atol=1e-2)
 
-        dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(only_initial_dist=[True, False])))
+  def testEdgeCasesSampleFromInitialDataset(self, only_initial_dist):
+    init_dist = [0.5, 0.5]
+    target_dist = [0.5, 0.5] if only_initial_dist else [0.0, 1.0]
+    num_classes = len(init_dist)
+    # We don't need many samples to test that this works.
+    num_samples = 100
+    data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
-        # Reshape distribution.
-        dataset = dataset.rejection_resample(
-            class_func=lambda x: x, target_dist=target_dist, initial_dist=init_dist
-        )
+    dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
 
-        get_next = self.getNext(dataset)
+    # Reshape distribution.
+    dataset = dataset.rejection_resample(
+        class_func=lambda x: x, target_dist=target_dist, initial_dist=init_dist)
 
-        returned = []
-        with self.assertRaises(errors.OutOfRangeError):
-            while True:
-                returned.append(self.evaluate(get_next()))
+    get_next = self.getNext(dataset)
 
-    @combinations.generate(test_base.default_test_combinations())
-    def testRandomClasses(self):
-        init_dist = [0.25, 0.25, 0.25, 0.25]
-        target_dist = [0.0, 0.0, 0.0, 1.0]
-        num_classes = len(init_dist)
-        # We don't need many samples to test a dirac-delta target distribution.
-        num_samples = 100
-        data_np = np.random.choice(num_classes, num_samples, p=init_dist)
+    returned = []
+    with self.assertRaises(errors.OutOfRangeError):
+      while True:
+        returned.append(self.evaluate(get_next()))
 
-        dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
+  @combinations.generate(test_base.default_test_combinations())
+  def testRandomClasses(self):
+    init_dist = [0.25, 0.25, 0.25, 0.25]
+    target_dist = [0.0, 0.0, 0.0, 1.0]
+    num_classes = len(init_dist)
+    # We don't need many samples to test a dirac-delta target distribution.
+    num_samples = 100
+    data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
-        # Apply a random mapping that preserves the data distribution.
-        def _remap_fn(_):
-            return math_ops.cast(
-                random_ops.random_uniform([1]) * num_classes, dtypes.int32
-            )[0]
+    dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
 
-        dataset = dataset.map(_remap_fn)
+    # Apply a random mapping that preserves the data distribution.
+    def _remap_fn(_):
+      return math_ops.cast(
+          random_ops.random_uniform([1]) * num_classes, dtypes.int32)[0]
 
-        # Reshape distribution.
-        dataset = dataset.rejection_resample(
-            class_func=lambda x: x, target_dist=target_dist, initial_dist=init_dist
-        )
+    dataset = dataset.map(_remap_fn)
 
-        get_next = self.getNext(dataset)
+    # Reshape distribution.
+    dataset = dataset.rejection_resample(
+        class_func=lambda x: x, target_dist=target_dist, initial_dist=init_dist)
 
-        returned = []
-        with self.assertRaises(errors.OutOfRangeError):
-            while True:
-                returned.append(self.evaluate(get_next()))
+    get_next = self.getNext(dataset)
 
-        classes, _ = zip(*returned)
-        bincount = np.bincount(np.array(classes), minlength=num_classes).astype(
-            np.float32
-        ) / len(classes)
+    returned = []
+    with self.assertRaises(errors.OutOfRangeError):
+      while True:
+        returned.append(self.evaluate(get_next()))
 
-        self.assertAllClose(target_dist, bincount, atol=1e-2)
+    classes, _ = zip(*returned)
+    bincount = np.bincount(
+        np.array(classes), minlength=num_classes).astype(
+            np.float32) / len(classes)
 
-    @combinations.generate(test_base.default_test_combinations())
-    def testExhaustion(self):
-        init_dist = [0.5, 0.5]
-        target_dist = [0.9, 0.1]
-        dataset = dataset_ops.Dataset.range(10000)
-        dataset = dataset.rejection_resample(
-            class_func=lambda x: x % 2, target_dist=target_dist, initial_dist=init_dist
-        )
+    self.assertAllClose(target_dist, bincount, atol=1e-2)
 
-        get_next = self.getNext(dataset)
-        returned = []
-        with self.assertRaises(errors.OutOfRangeError):
-            while True:
-                returned.append(self.evaluate(get_next()))
+  @combinations.generate(test_base.default_test_combinations())
+  def testExhaustion(self):
+    init_dist = [0.5, 0.5]
+    target_dist = [0.9, 0.1]
+    dataset = dataset_ops.Dataset.range(10000)
+    dataset = dataset.rejection_resample(
+        class_func=lambda x: x % 2,
+        target_dist=target_dist,
+        initial_dist=init_dist)
 
-        classes, _ = zip(*returned)
-        bincount = np.bincount(np.array(classes), minlength=len(init_dist)).astype(
-            np.float32
-        ) / len(classes)
+    get_next = self.getNext(dataset)
+    returned = []
+    with self.assertRaises(errors.OutOfRangeError):
+      while True:
+        returned.append(self.evaluate(get_next()))
 
-        self.assertAllClose(target_dist, bincount, atol=1e-2)
+    classes, _ = zip(*returned)
+    bincount = np.bincount(
+        np.array(classes), minlength=len(init_dist)).astype(
+            np.float32) / len(classes)
 
-    @parameterized.parameters(
-        ("float32", "float64"),
-        ("float64", "float32"),
-        ("float64", "float64"),
-        ("float64", None),
-    )
-    def testOtherDtypes(self, target_dtype, init_dtype):
-        target_dist = np.array([0.5, 0.5], dtype=target_dtype)
+    self.assertAllClose(target_dist, bincount, atol=1e-2)
 
-        if init_dtype is None:
-            init_dist = None
-        else:
-            init_dist = np.array([0.5, 0.5], dtype=init_dtype)
+  @parameterized.parameters(
+      ("float32", "float64"),
+      ("float64", "float32"),
+      ("float64", "float64"),
+      ("float64", None),
+  )
+  def testOtherDtypes(self, target_dtype, init_dtype):
+    target_dist = np.array([0.5, 0.5], dtype=target_dtype)
 
-        dataset = dataset_ops.Dataset.range(10)
-        dataset = dataset.rejection_resample(
-            class_func=lambda x: x % 2, target_dist=target_dist, initial_dist=init_dist
-        )
-        get_next = self.getNext(dataset)
-        self.evaluate(get_next())
+    if init_dtype is None:
+      init_dist = None
+    else:
+      init_dist = np.array([0.5, 0.5], dtype=init_dtype)
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.rejection_resample(
+        class_func=lambda x: x % 2,
+        target_dist=target_dist,
+        initial_dist=init_dist)
+    get_next = self.getNext(dataset)
+    self.evaluate(get_next())
 
 
 if __name__ == "__main__":
-    test.main()
+  test.main()

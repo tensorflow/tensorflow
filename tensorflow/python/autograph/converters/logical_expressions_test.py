@@ -22,55 +22,61 @@ from tensorflow.python.platform import test
 
 
 class LogicalExpressionTest(converter_testing.TestCase):
-    def test_equals(self):
-        def f(a, b):
-            return a == b
 
-        tr = self.transform(f, logical_expressions)
+  def test_equals(self):
 
-        self.assertTrue(self.evaluate(tr(constant_op.constant(1), 1)))
-        self.assertFalse(self.evaluate(tr(constant_op.constant(1), 2)))
+    def f(a, b):
+      return a == b
 
-    @test_util.run_deprecated_v1
-    def test_bool_ops(self):
-        def f(a, b, c):
-            return (a or b) and (a or b or c) and not c
+    tr = self.transform(f, logical_expressions)
 
-        tr = self.transform(f, logical_expressions)
+    self.assertTrue(self.evaluate(tr(constant_op.constant(1), 1)))
+    self.assertFalse(self.evaluate(tr(constant_op.constant(1), 2)))
 
-        self.assertTrue(self.evaluate(tr(constant_op.constant(True), False, False)))
-        self.assertFalse(self.evaluate(tr(constant_op.constant(True), False, True)))
+  @test_util.run_deprecated_v1
+  def test_bool_ops(self):
 
-    def test_comparison(self):
-        def f(a, b, c, d):
-            return a < b == c > d
+    def f(a, b, c):
+      return (a or b) and (a or b or c) and not c
 
-        tr = self.transform(f, logical_expressions)
+    tr = self.transform(f, logical_expressions)
 
-        # Note: having just the first constant a tensor tests that the
-        # operations execute in the correct order. If anything other than
-        # a < b executed first, the result would be a Python scalar and not a
-        # Tensor. This is valid as long as the dispat is automatic based on
-        # type.
-        self.assertTrue(self.evaluate(tr(constant_op.constant(1), 2, 2, 1)))
-        self.assertFalse(self.evaluate(tr(constant_op.constant(1), 2, 2, 3)))
+    self.assertTrue(self.evaluate(tr(constant_op.constant(True), False, False)))
+    self.assertFalse(self.evaluate(tr(constant_op.constant(True), False, True)))
 
-    def test_default_ops(self):
-        def f(a, b):
-            return a in b
+  def test_comparison(self):
 
-        tr = self.transform(f, logical_expressions)
+    def f(a, b, c, d):
+      return a < b == c > d
 
-        self.assertTrue(tr("a", ("a",)))
+    tr = self.transform(f, logical_expressions)
 
-    def test_unary_ops(self):
-        def f(a):
-            return ~a, -a, +a
+    # Note: having just the first constant a tensor tests that the
+    # operations execute in the correct order. If anything other than
+    # a < b executed first, the result would be a Python scalar and not a
+    # Tensor. This is valid as long as the dispat is automatic based on
+    # type.
+    self.assertTrue(self.evaluate(tr(constant_op.constant(1), 2, 2, 1)))
+    self.assertFalse(self.evaluate(tr(constant_op.constant(1), 2, 2, 3)))
 
-        tr = self.transform(f, logical_expressions)
+  def test_default_ops(self):
 
-        self.assertEqual(tr(1), (-2, -1, 1))
+    def f(a, b):
+      return a in b
+
+    tr = self.transform(f, logical_expressions)
+
+    self.assertTrue(tr('a', ('a',)))
+
+  def test_unary_ops(self):
+
+    def f(a):
+      return ~a, -a, +a
+
+    tr = self.transform(f, logical_expressions)
+
+    self.assertEqual(tr(1), (-2, -1, 1))
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()

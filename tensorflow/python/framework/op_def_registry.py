@@ -18,7 +18,6 @@
 import threading
 
 from tensorflow.core.framework import op_def_pb2
-
 # pylint: disable=invalid-import-order,g-bad-import-order, wildcard-import, unused-import
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import _op_def_registry
@@ -31,29 +30,29 @@ _cache_lock = threading.Lock()
 
 
 def get(name):
-    """Returns an OpDef for a given `name` or None if the lookup fails."""
+  """Returns an OpDef for a given `name` or None if the lookup fails."""
+  try:
+    return _cache[name]
+  except KeyError:
+    pass
+
+  with _cache_lock:
     try:
-        return _cache[name]
+      # Return if another thread has already populated the cache.
+      return _cache[name]
     except KeyError:
-        pass
+      pass
 
-    with _cache_lock:
-        try:
-            # Return if another thread has already populated the cache.
-            return _cache[name]
-        except KeyError:
-            pass
+    serialized_op_def = _op_def_registry.get(name)
+    if serialized_op_def is None:
+      return None
 
-        serialized_op_def = _op_def_registry.get(name)
-        if serialized_op_def is None:
-            return None
-
-        op_def = op_def_pb2.OpDef()
-        op_def.ParseFromString(serialized_op_def)
-        _cache[name] = op_def
-        return op_def
+    op_def = op_def_pb2.OpDef()
+    op_def.ParseFromString(serialized_op_def)
+    _cache[name] = op_def
+    return op_def
 
 
 # TODO(b/141354889): Remove once there are no callers.
 def sync():
-    """No-op. Used to synchronize the contents of the Python registry with C++."""
+  """No-op. Used to synchronize the contents of the Python registry with C++."""

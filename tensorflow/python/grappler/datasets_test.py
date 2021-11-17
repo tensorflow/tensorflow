@@ -28,404 +28,417 @@ from tensorflow.python.platform import test
 
 
 class GrapplerTest(test.TestCase):
-    def testFromTensors(self):
-        test_cases = [
-            {"tensor": 0, "shape": tensor_shape.TensorShape([])},
-            {"tensor": np.array([1, 2, 3]), "shape": tensor_shape.TensorShape([3])},
-            {
-                "tensor": np.array([[1, 2, 3]]),
-                "shape": tensor_shape.TensorShape([1, 3]),
-            },
-        ]
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                dataset = dataset_ops.Dataset.from_tensors(test_case["tensor"])
-                iterator = dataset_ops.make_one_shot_iterator(dataset)
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                self.assertEqual(
-                    test_case["shape"], op_properties["IteratorGetNext"][0].shape
-                )
+  def testFromTensors(self):
+    test_cases = [{
+        'tensor': 0,
+        'shape': tensor_shape.TensorShape([])
+    }, {
+        'tensor': np.array([1, 2, 3]),
+        'shape': tensor_shape.TensorShape([3])
+    }, {
+        'tensor': np.array([[1, 2, 3]]),
+        'shape': tensor_shape.TensorShape([1, 3])
+    }]
 
-    def testFromTensorSlices(self):
-        test_cases = [
-            {"tensor": np.array([1, 2, 3]), "shape": tensor_shape.TensorShape([])},
-            {"tensor": np.array([[1, 2, 3]]), "shape": tensor_shape.TensorShape([3])},
-            {
-                "tensor": np.array([[[1, 2, 3]]]),
-                "shape": tensor_shape.TensorShape([1, 3]),
-            },
-        ]
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        self.assertEqual(test_case['shape'],
+                         op_properties['IteratorGetNext'][0].shape)
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                dataset = dataset_ops.Dataset.from_tensor_slices(test_case["tensor"])
-                iterator = dataset_ops.make_one_shot_iterator(dataset)
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                self.assertEqual(
-                    test_case["shape"], op_properties["IteratorGetNext"][0].shape
-                )
+  def testFromTensorSlices(self):
+    test_cases = [{
+        'tensor': np.array([1, 2, 3]),
+        'shape': tensor_shape.TensorShape([])
+    }, {
+        'tensor': np.array([[1, 2, 3]]),
+        'shape': tensor_shape.TensorShape([3])
+    }, {
+        'tensor': np.array([[[1, 2, 3]]]),
+        'shape': tensor_shape.TensorShape([1, 3])
+    }]
 
-    def testFromGenerator(self):
-        test_cases = [
-            {"tensor": 0, "shape": tensor_shape.TensorShape([])},
-            {"tensor": np.array([1, 2, 3]), "shape": tensor_shape.TensorShape([3])},
-            {
-                "tensor": np.array([[1, 2, 3]]),
-                "shape": tensor_shape.TensorShape([1, 3]),
-            },
-        ]
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        dataset = dataset_ops.Dataset.from_tensor_slices(test_case['tensor'])
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        self.assertEqual(test_case['shape'],
+                         op_properties['IteratorGetNext'][0].shape)
 
-        for test_case in test_cases:
+  def testFromGenerator(self):
+    test_cases = [{
+        'tensor': 0,
+        'shape': tensor_shape.TensorShape([])
+    }, {
+        'tensor': np.array([1, 2, 3]),
+        'shape': tensor_shape.TensorShape([3])
+    }, {
+        'tensor': np.array([[1, 2, 3]]),
+        'shape': tensor_shape.TensorShape([1, 3])
+    }]
 
-            def make_generator(tensor):
-                def generator():
-                    yield tensor
+    for test_case in test_cases:
 
-                return generator
+      def make_generator(tensor):
 
-            with ops.Graph().as_default() as g:
-                dataset = dataset_ops.Dataset.from_generator(
-                    make_generator(test_case["tensor"]),
-                    dtypes.int64,
-                    output_shapes=test_case["shape"],
-                )
-                iterator = dataset_ops.make_one_shot_iterator(dataset)
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                self.assertEqual(
-                    test_case["shape"], op_properties["IteratorGetNext"][0].shape
-                )
+        def generator():
+          yield tensor
 
-    def testRange(self):
-        with ops.Graph().as_default() as g:
-            dataset = dataset_ops.Dataset.range(42)
-            iterator = dataset_ops.make_one_shot_iterator(dataset)
-            get_next = iterator.get_next()
-            train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-            train_op.append(get_next)
-            mg = meta_graph.create_meta_graph_def(graph=g)
-            grappler_item = item.Item(mg)
-            op_properties = grappler_item.GetOpProperties()
-            self.assertEqual(
-                tensor_shape.TensorShape([]), op_properties["IteratorGetNext"][0].shape
-            )
+        return generator
 
-    def _testTransformation(self, fn):
-        test_cases = [
-            {"tensor": 0, "shape": tensor_shape.TensorShape({})},
-            {"tensor": np.array([1, 2, 3]), "shape": tensor_shape.TensorShape([3])},
-            {
-                "tensor": np.array([[1, 2, 3]]),
-                "shape": tensor_shape.TensorShape([1, 3]),
-            },
-        ]
+      with ops.Graph().as_default() as g:
+        dataset = dataset_ops.Dataset.from_generator(
+            make_generator(test_case['tensor']),
+            dtypes.int64,
+            output_shapes=test_case['shape'])
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        self.assertEqual(test_case['shape'],
+                         op_properties['IteratorGetNext'][0].shape)
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                dataset = dataset_ops.Dataset.from_tensors(test_case["tensor"])
-                dataset = fn(dataset, test_case["tensor"], test_case["shape"])
-                iterator = dataset_ops.make_one_shot_iterator(dataset)
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                self.assertEqual(
-                    test_case["shape"], op_properties["IteratorGetNext"][0].shape
-                )
+  def testRange(self):
+    with ops.Graph().as_default() as g:
+      dataset = dataset_ops.Dataset.range(42)
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
+      get_next = iterator.get_next()
+      train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+      train_op.append(get_next)
+      mg = meta_graph.create_meta_graph_def(graph=g)
+      grappler_item = item.Item(mg)
+      op_properties = grappler_item.GetOpProperties()
+      self.assertEqual(
+          tensor_shape.TensorShape([]),
+          op_properties['IteratorGetNext'][0].shape)
 
-    def testConcatenate(self):
-        def fn(dataset, tensor, shape):
-            del shape
-            return dataset.concatenate(dataset_ops.Dataset.from_tensors(tensor))
+  def _testTransformation(self, fn):
+    test_cases = [{
+        'tensor': 0,
+        'shape': tensor_shape.TensorShape({})
+    }, {
+        'tensor': np.array([1, 2, 3]),
+        'shape': tensor_shape.TensorShape([3])
+    }, {
+        'tensor': np.array([[1, 2, 3]]),
+        'shape': tensor_shape.TensorShape([1, 3])
+    }]
 
-        self._testTransformation(fn)
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
+        dataset = fn(dataset, test_case['tensor'], test_case['shape'])
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        self.assertEqual(test_case['shape'],
+                         op_properties['IteratorGetNext'][0].shape)
 
-    def testPrefetch(self):
-        def fn(dataset, tensor, shape):
-            del tensor, shape
-            return dataset.prefetch(42)
+  def testConcatenate(self):
 
-        self._testTransformation(fn)
+    def fn(dataset, tensor, shape):
+      del shape
+      return dataset.concatenate(dataset_ops.Dataset.from_tensors(tensor))
 
-    def testRepeat(self):
-        def fn(dataset, tensor, shape):
-            del tensor, shape
-            return dataset.repeat(42)
+    self._testTransformation(fn)
 
-        self._testTransformation(fn)
+  def testPrefetch(self):
 
-    def testShuffle(self):
-        def fn(dataset, tensor, shape):
-            del tensor, shape
-            return dataset.shuffle(42)
+    def fn(dataset, tensor, shape):
+      del tensor, shape
+      return dataset.prefetch(42)
 
-        self._testTransformation(fn)
+    self._testTransformation(fn)
 
-    def testCache(self):
-        def fn(dataset, tensor, shape):
-            del tensor, shape
-            return dataset.cache()
+  def testRepeat(self):
 
-        self._testTransformation(fn)
+    def fn(dataset, tensor, shape):
+      del tensor, shape
+      return dataset.repeat(42)
 
-    def testTake(self):
-        def fn(dataset, tensor, shape):
-            del tensor, shape
-            return dataset.take(42)
+    self._testTransformation(fn)
 
-        self._testTransformation(fn)
+  def testShuffle(self):
 
-    def testSkip(self):
-        def fn(dataset, tensor, shape):
-            del tensor, shape
-            return dataset.skip(42)
+    def fn(dataset, tensor, shape):
+      del tensor, shape
+      return dataset.shuffle(42)
 
-        self._testTransformation(fn)
+    self._testTransformation(fn)
 
-    def testShard(self):
-        def fn(dataset, tensor, shape):
-            del tensor, shape
-            return dataset.shard(42, 0)
+  def testCache(self):
 
-        self._testTransformation(fn)
+    def fn(dataset, tensor, shape):
+      del tensor, shape
+      return dataset.cache()
 
-    def testFilter(self):
-        def fn(dataset, tensor, shape):
-            del tensor, shape
-            return dataset.filter(lambda x: True)
+    self._testTransformation(fn)
 
-        self._testTransformation(fn)
+  def testTake(self):
 
-    def as_tensor_shape(self, proto_with_symbolic_values):
-        for i in range(len(proto_with_symbolic_values.dim)):
-            if proto_with_symbolic_values.dim[i].size < -1:
-                proto_with_symbolic_values.dim[i].size = -1
-        return tensor_shape.TensorShape(proto_with_symbolic_values)
+    def fn(dataset, tensor, shape):
+      del tensor, shape
+      return dataset.take(42)
 
-    def testBatch(self):
-        test_cases = [
-            {"tensor": 0, "shape": tensor_shape.TensorShape([None])},
-            {
-                "tensor": np.array([1, 2, 3]),
-                "shape": tensor_shape.TensorShape([None, 3]),
-            },
-            {
-                "tensor": np.array([[1, 2, 3]]),
-                "shape": tensor_shape.TensorShape([None, 1, 3]),
-            },
-        ]
+    self._testTransformation(fn)
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                dataset = dataset_ops.Dataset.from_tensors(test_case["tensor"])
-                dataset = dataset.batch(42)
-                iterator = dataset_ops.make_one_shot_iterator(dataset)
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                inferred_shape = self.as_tensor_shape(
-                    op_properties["IteratorGetNext"][0].shape
-                )
-                self.assertTrue(
-                    test_case["shape"].dims[0].is_compatible_with(inferred_shape[0])
-                )
-                self.assertEqual(test_case["shape"][1:], inferred_shape[1:])
+  def testSkip(self):
 
-    def testPaddedBatch(self):
-        test_cases = [
-            {"tensor": 0, "shape": tensor_shape.TensorShape([None])},
-            {
-                "tensor": np.array([1, 2, 3]),
-                "shape": tensor_shape.TensorShape([None, 4]),
-            },
-            {
-                "tensor": np.array([[1, 2, 3]]),
-                "shape": tensor_shape.TensorShape([None, 2, 4]),
-            },
-        ]
+    def fn(dataset, tensor, shape):
+      del tensor, shape
+      return dataset.skip(42)
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                dataset = dataset_ops.Dataset.from_tensors(test_case["tensor"])
-                dataset = dataset.padded_batch(42, padded_shapes=test_case["shape"][1:])
-                iterator = dataset_ops.make_one_shot_iterator(dataset)
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                inferred_shape = self.as_tensor_shape(
-                    op_properties["IteratorGetNext"][0].shape
-                )
-                self.assertTrue(
-                    test_case["shape"].dims[0].is_compatible_with(inferred_shape[0])
-                )
-                self.assertEqual(test_case["shape"][1:], inferred_shape[1:])
+    self._testTransformation(fn)
 
-    def testFlatMap(self):
-        test_cases = [
-            {"tensor": 0, "shape": tensor_shape.TensorShape([])},
-            {"tensor": np.array([1, 2, 3]), "shape": tensor_shape.TensorShape([3])},
-            {
-                "tensor": np.array([[1, 2, 3]]),
-                "shape": tensor_shape.TensorShape([1, 3]),
-            },
-        ]
+  def testShard(self):
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                dataset = dataset_ops.Dataset.range(42)
+    def fn(dataset, tensor, shape):
+      del tensor, shape
+      return dataset.shard(42, 0)
 
-                def make_dataset(tensor):
-                    def dataset_fn(n):
-                        return dataset_ops.Dataset.from_tensors(tensor).repeat(n)
+    self._testTransformation(fn)
 
-                    return dataset_fn
+  def testFilter(self):
 
-                dataset = dataset.flat_map(make_dataset(test_case["tensor"]))
-                iterator = dataset_ops.make_one_shot_iterator(dataset)
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                self.assertEqual(
-                    test_case["shape"], op_properties["IteratorGetNext"][0].shape
-                )
+    def fn(dataset, tensor, shape):
+      del tensor, shape
+      return dataset.filter(lambda x: True)
 
-    def testInterleave(self):
-        test_cases = [
-            {"tensor": 0, "shape": tensor_shape.TensorShape([])},
-            {"tensor": np.array([1, 2, 3]), "shape": tensor_shape.TensorShape([3])},
-            {
-                "tensor": np.array([[1, 2, 3]]),
-                "shape": tensor_shape.TensorShape([1, 3]),
-            },
-        ]
+    self._testTransformation(fn)
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                dataset = dataset_ops.Dataset.range(42)
+  def as_tensor_shape(self, proto_with_symbolic_values):
+    for i in range(len(proto_with_symbolic_values.dim)):
+      if proto_with_symbolic_values.dim[i].size < -1:
+        proto_with_symbolic_values.dim[i].size = -1
+    return tensor_shape.TensorShape(proto_with_symbolic_values)
 
-                def make_dataset(tensor):
-                    def dataset_fn(n):
-                        return dataset_ops.Dataset.from_tensors(tensor).repeat(n)
+  def testBatch(self):
+    test_cases = [{
+        'tensor': 0,
+        'shape': tensor_shape.TensorShape([None])
+    }, {
+        'tensor': np.array([1, 2, 3]),
+        'shape': tensor_shape.TensorShape([None, 3])
+    }, {
+        'tensor': np.array([[1, 2, 3]]),
+        'shape': tensor_shape.TensorShape([None, 1, 3])
+    }]
 
-                    return dataset_fn
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
+        dataset = dataset.batch(42)
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        inferred_shape = self.as_tensor_shape(
+            op_properties['IteratorGetNext'][0].shape)
+        self.assertTrue(test_case['shape'].dims[0].is_compatible_with(
+            inferred_shape[0]))
+        self.assertEqual(test_case['shape'][1:], inferred_shape[1:])
 
-                dataset = dataset.interleave(
-                    make_dataset(test_case["tensor"]), cycle_length=42
-                )
-                iterator = dataset_ops.make_one_shot_iterator(dataset)
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                self.assertEqual(
-                    test_case["shape"], op_properties["IteratorGetNext"][0].shape
-                )
+  def testPaddedBatch(self):
+    test_cases = [{
+        'tensor': 0,
+        'shape': tensor_shape.TensorShape([None])
+    }, {
+        'tensor': np.array([1, 2, 3]),
+        'shape': tensor_shape.TensorShape([None, 4])
+    }, {
+        'tensor': np.array([[1, 2, 3]]),
+        'shape': tensor_shape.TensorShape([None, 2, 4])
+    }]
 
-    def testMap(self):
-        test_cases = [
-            {"tensor": 0, "shape": tensor_shape.TensorShape([])},
-            {"tensor": np.array([1, 2, 3]), "shape": tensor_shape.TensorShape([3])},
-            {
-                "tensor": np.array([[1, 2, 3]]),
-                "shape": tensor_shape.TensorShape([3, 1]),
-            },
-            {
-                "tensor": np.array([[[1, 2, 3], [4, 5, 6]]]),
-                "shape": tensor_shape.TensorShape([3, 2, 1]),
-            },
-        ]
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
+        dataset = dataset.padded_batch(42, padded_shapes=test_case['shape'][1:])
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        inferred_shape = self.as_tensor_shape(
+            op_properties['IteratorGetNext'][0].shape)
+        self.assertTrue(test_case['shape'].dims[0].is_compatible_with(
+            inferred_shape[0]))
+        self.assertEqual(test_case['shape'][1:], inferred_shape[1:])
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                dataset = dataset_ops.Dataset.from_tensors(test_case["tensor"])
-                dataset = dataset.map(array_ops.transpose)
-                iterator = dataset_ops.make_one_shot_iterator(dataset)
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                self.assertEqual(
-                    test_case["shape"], op_properties["IteratorGetNext"][0].shape
-                )
+  def testFlatMap(self):
+    test_cases = [{
+        'tensor': 0,
+        'shape': tensor_shape.TensorShape([])
+    }, {
+        'tensor': np.array([1, 2, 3]),
+        'shape': tensor_shape.TensorShape([3])
+    }, {
+        'tensor': np.array([[1, 2, 3]]),
+        'shape': tensor_shape.TensorShape([1, 3])
+    }]
 
-    def testFromStructure(self):
-        test_cases = [
-            {"shape": tensor_shape.TensorShape([])},
-            {"shape": tensor_shape.TensorShape([3])},
-            {"shape": tensor_shape.TensorShape([1, 2])},
-            {"shape": tensor_shape.TensorShape([1, 2, 3])},
-        ]
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        dataset = dataset_ops.Dataset.range(42)
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                iterator = iterator_ops.Iterator.from_structure(
-                    dtypes.int64, output_shapes=test_case["shape"]
-                )
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                self.assertEqual(
-                    test_case["shape"], op_properties["IteratorGetNext"][0].shape
-                )
+        def make_dataset(tensor):
 
-    def testFromStringHandle(self):
-        test_cases = [
-            {"shape": tensor_shape.TensorShape([])},
-            {"shape": tensor_shape.TensorShape([3])},
-            {"shape": tensor_shape.TensorShape([1, 2])},
-            {"shape": tensor_shape.TensorShape([1, 2, 3])},
-        ]
+          def dataset_fn(n):
+            return dataset_ops.Dataset.from_tensors(tensor).repeat(n)
 
-        for test_case in test_cases:
-            with ops.Graph().as_default() as g:
-                iterator = iterator_ops.Iterator.from_structure(dtypes.int64)
-                handle = iterator.string_handle()
-                iterator = iterator_ops.Iterator.from_string_handle(
-                    handle, dtypes.int64, output_shapes=test_case["shape"]
-                )
-                get_next = iterator.get_next()
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                train_op.append(get_next)
-                mg = meta_graph.create_meta_graph_def(graph=g)
-                grappler_item = item.Item(mg)
-                op_properties = grappler_item.GetOpProperties()
-                self.assertEqual(
-                    test_case["shape"], op_properties["IteratorGetNext"][0].shape
-                )
+          return dataset_fn
+
+        dataset = dataset.flat_map(make_dataset(test_case['tensor']))
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        self.assertEqual(test_case['shape'],
+                         op_properties['IteratorGetNext'][0].shape)
+
+  def testInterleave(self):
+    test_cases = [{
+        'tensor': 0,
+        'shape': tensor_shape.TensorShape([])
+    }, {
+        'tensor': np.array([1, 2, 3]),
+        'shape': tensor_shape.TensorShape([3])
+    }, {
+        'tensor': np.array([[1, 2, 3]]),
+        'shape': tensor_shape.TensorShape([1, 3])
+    }]
+
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        dataset = dataset_ops.Dataset.range(42)
+
+        def make_dataset(tensor):
+
+          def dataset_fn(n):
+            return dataset_ops.Dataset.from_tensors(tensor).repeat(n)
+
+          return dataset_fn
+
+        dataset = dataset.interleave(
+            make_dataset(test_case['tensor']), cycle_length=42)
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        self.assertEqual(test_case['shape'],
+                         op_properties['IteratorGetNext'][0].shape)
+
+  def testMap(self):
+    test_cases = [{
+        'tensor': 0,
+        'shape': tensor_shape.TensorShape([])
+    }, {
+        'tensor': np.array([1, 2, 3]),
+        'shape': tensor_shape.TensorShape([3])
+    }, {
+        'tensor': np.array([[1, 2, 3]]),
+        'shape': tensor_shape.TensorShape([3, 1])
+    }, {
+        'tensor': np.array([[[1, 2, 3], [4, 5, 6]]]),
+        'shape': tensor_shape.TensorShape([3, 2, 1])
+    }]
+
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
+        dataset = dataset.map(array_ops.transpose)
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        self.assertEqual(test_case['shape'],
+                         op_properties['IteratorGetNext'][0].shape)
+
+  def testFromStructure(self):
+    test_cases = [{
+        'shape': tensor_shape.TensorShape([])
+    }, {
+        'shape': tensor_shape.TensorShape([3])
+    }, {
+        'shape': tensor_shape.TensorShape([1, 2])
+    }, {
+        'shape': tensor_shape.TensorShape([1, 2, 3])
+    }]
+
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        iterator = iterator_ops.Iterator.from_structure(
+            dtypes.int64, output_shapes=test_case['shape'])
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        self.assertEqual(test_case['shape'],
+                         op_properties['IteratorGetNext'][0].shape)
+
+  def testFromStringHandle(self):
+    test_cases = [{
+        'shape': tensor_shape.TensorShape([])
+    }, {
+        'shape': tensor_shape.TensorShape([3])
+    }, {
+        'shape': tensor_shape.TensorShape([1, 2])
+    }, {
+        'shape': tensor_shape.TensorShape([1, 2, 3])
+    }]
+
+    for test_case in test_cases:
+      with ops.Graph().as_default() as g:
+        iterator = iterator_ops.Iterator.from_structure(dtypes.int64)
+        handle = iterator.string_handle()
+        iterator = iterator_ops.Iterator.from_string_handle(
+            handle, dtypes.int64, output_shapes=test_case['shape'])
+        get_next = iterator.get_next()
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(get_next)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        op_properties = grappler_item.GetOpProperties()
+        self.assertEqual(test_case['shape'],
+                         op_properties['IteratorGetNext'][0].shape)
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()

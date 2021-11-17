@@ -22,24 +22,24 @@ from tensorflow.python.platform import test
 
 
 class GetLayerPolicyTest(test.TestCase):
-    def test_get_layer_policy(self):
-        layer = core.Dense(4)
-        self.assertEqual(get_layer_policy.get_layer_policy(layer).name, "float32")
 
-        p = policy.Policy("mixed_float16")
-        layer = core.Dense(4, dtype=p)
-        self.assertIs(get_layer_policy.get_layer_policy(layer), p)
+  def test_get_layer_policy(self):
+    layer = core.Dense(4)
+    self.assertEqual(get_layer_policy.get_layer_policy(layer).name, 'float32')
 
-        layer = core.Dense(4, dtype="float64")
-        self.assertEqual(get_layer_policy.get_layer_policy(layer).name, "float64")
+    p = policy.Policy('mixed_float16')
+    layer = core.Dense(4, dtype=p)
+    self.assertIs(get_layer_policy.get_layer_policy(layer), p)
 
-    def test_error(self):
-        with self.assertRaisesRegex(
-            ValueError, "get_policy can only be called on a layer, but got: 1"
-        ):
-            get_layer_policy.get_layer_policy(1)
+    layer = core.Dense(4, dtype='float64')
+    self.assertEqual(get_layer_policy.get_layer_policy(layer).name, 'float64')
+
+  def test_error(self):
+    with self.assertRaisesRegex(
+        ValueError, 'get_policy can only be called on a layer, but got: 1'):
+      get_layer_policy.get_layer_policy(1)
 
 
-if __name__ == "__main__":
-    base_layer_utils.enable_v2_dtype_behavior()
-    test.main()
+if __name__ == '__main__':
+  base_layer_utils.enable_v2_dtype_behavior()
+  test.main()

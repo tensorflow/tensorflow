@@ -28,64 +28,71 @@ from tensorflow.python.platform import test
 
 
 class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
-    @combinations.generate(test_base.eager_only_combinations())
-    def testBasic(self):
-        ds = dataset_ops.Dataset.range(3)
-        self.assertEqual([0, 1, 2], list(ds.as_numpy_iterator()))
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testImmutable(self):
-        ds = dataset_ops.Dataset.from_tensors([1, 2, 3])
-        arr = next(ds.as_numpy_iterator())
-        with self.assertRaisesRegex(ValueError, "assignment destination is read-only"):
-            arr[0] = 0
+  @combinations.generate(test_base.eager_only_combinations())
+  def testBasic(self):
+    ds = dataset_ops.Dataset.range(3)
+    self.assertEqual([0, 1, 2], list(ds.as_numpy_iterator()))
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testNestedStructure(self):
-        point = collections.namedtuple("Point", ["x", "y"])
-        ds = dataset_ops.Dataset.from_tensor_slices(
-            {"a": ([1, 2], [3, 4]), "b": [5, 6], "c": point([7, 8], [9, 10])}
-        )
-        self.assertEqual(
-            [
-                {"a": (1, 3), "b": 5, "c": point(7, 9)},
-                {"a": (2, 4), "b": 6, "c": point(8, 10)},
-            ],
-            list(ds.as_numpy_iterator()),
-        )
+  @combinations.generate(test_base.eager_only_combinations())
+  def testImmutable(self):
+    ds = dataset_ops.Dataset.from_tensors([1, 2, 3])
+    arr = next(ds.as_numpy_iterator())
+    with self.assertRaisesRegex(ValueError,
+                                'assignment destination is read-only'):
+      arr[0] = 0
 
-    @combinations.generate(test_base.graph_only_combinations())
-    def testNonEager(self):
-        ds = dataset_ops.Dataset.range(10)
-        with self.assertRaises(RuntimeError):
-            ds.as_numpy_iterator()
+  @combinations.generate(test_base.eager_only_combinations())
+  def testNestedStructure(self):
+    point = collections.namedtuple('Point', ['x', 'y'])
+    ds = dataset_ops.Dataset.from_tensor_slices({
+        'a': ([1, 2], [3, 4]),
+        'b': [5, 6],
+        'c': point([7, 8], [9, 10])
+    })
+    self.assertEqual([{
+        'a': (1, 3),
+        'b': 5,
+        'c': point(7, 9)
+    }, {
+        'a': (2, 4),
+        'b': 6,
+        'c': point(8, 10)
+    }], list(ds.as_numpy_iterator()))
 
-    def _testInvalidElement(self, element):
-        ds = dataset_ops.Dataset.from_tensors(element)
-        with self.assertRaisesRegex(TypeError, "is not supported for datasets that"):
-            ds.as_numpy_iterator()
+  @combinations.generate(test_base.graph_only_combinations())
+  def testNonEager(self):
+    ds = dataset_ops.Dataset.range(10)
+    with self.assertRaises(RuntimeError):
+      ds.as_numpy_iterator()
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testSparseElement(self):
-        self._testInvalidElement(sparse_tensor.SparseTensorValue([[0]], [0], [1]))
+  def _testInvalidElement(self, element):
+    ds = dataset_ops.Dataset.from_tensors(element)
+    with self.assertRaisesRegex(TypeError,
+                                'is not supported for datasets that'):
+      ds.as_numpy_iterator()
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testRaggedElement(self):
-        lst = [[1, 2], [3], [4, 5, 6]]
-        rt = ragged_factory_ops.constant(lst)
-        ds = dataset_ops.Dataset.from_tensor_slices(rt)
-        for actual, expected in zip(ds.as_numpy_iterator(), lst):
-            self.assertTrue(np.array_equal(actual, expected))
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSparseElement(self):
+    self._testInvalidElement(sparse_tensor.SparseTensorValue([[0]], [0], [1]))
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testDatasetElement(self):
-        self._testInvalidElement(dataset_ops.Dataset.range(3))
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRaggedElement(self):
+    lst = [[1, 2], [3], [4, 5, 6]]
+    rt = ragged_factory_ops.constant(lst)
+    ds = dataset_ops.Dataset.from_tensor_slices(rt)
+    for actual, expected in zip(ds.as_numpy_iterator(), lst):
+      self.assertTrue(np.array_equal(actual, expected))
 
-    @combinations.generate(test_base.eager_only_combinations())
-    def testNestedNonTensorElement(self):
-        tuple_elem = (constant_op.constant([1, 2, 3]), dataset_ops.Dataset.range(3))
-        self._testInvalidElement(tuple_elem)
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDatasetElement(self):
+    self._testInvalidElement(dataset_ops.Dataset.range(3))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testNestedNonTensorElement(self):
+    tuple_elem = (constant_op.constant([1, 2, 3]), dataset_ops.Dataset.range(3))
+    self._testInvalidElement(tuple_elem)
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()

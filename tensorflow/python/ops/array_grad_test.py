@@ -25,110 +25,107 @@ from tensorflow.python.platform import test
 @test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class ArrayGradTest(test.TestCase):
-    def _testGrad(self, f, x):
-        max_error = gradient_checker_v2.max_error(
-            *gradient_checker_v2.compute_gradient(f, [x])
-        )
-        self.assertLess(max_error, 1e-4)
 
-    def test_gather_v2_simple(self):
-        x = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0], dtype=dtypes.float64)
+  def _testGrad(self, f, x):
+    max_error = gradient_checker_v2.max_error(
+        *gradient_checker_v2.compute_gradient(f, [x]))
+    self.assertLess(max_error, 1e-4)
 
-        def f(x):
-            return array_ops.gather_v2(
-                x, constant_op.constant([2, 0, 2, 4], dtype=dtypes.int32)
-            )
+  def test_gather_v2_simple(self):
+    x = constant_op.constant([1., 2., 3., 4., 5.], dtype=dtypes.float64)
 
-        self._testGrad(f, x)
+    def f(x):
+      return array_ops.gather_v2(
+          x, constant_op.constant([2, 0, 2, 4], dtype=dtypes.int32))
 
-    def test_gather_v2_more_index_dims(self):
-        x = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0], dtype=dtypes.float64)
+    self._testGrad(f, x)
 
-        def f(x):
-            return array_ops.gather_v2(
-                x, constant_op.constant([[2, 0], [2, 4]], dtype=dtypes.int32)
-            )
+  def test_gather_v2_more_index_dims(self):
+    x = constant_op.constant([1., 2., 3., 4., 5.], dtype=dtypes.float64)
 
-        self._testGrad(f, x)
+    def f(x):
+      return array_ops.gather_v2(
+          x, constant_op.constant([[2, 0], [2, 4]], dtype=dtypes.int32))
 
-    def test_gather_v2_more_param_dims(self):
-        x = constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float64)
+    self._testGrad(f, x)
 
-        def f(x):
-            return array_ops.gather_v2(
-                x, constant_op.constant([1, 0], dtype=dtypes.int32)
-            )
+  def test_gather_v2_more_param_dims(self):
+    x = constant_op.constant([[1., 2.], [3., 4.]], dtype=dtypes.float64)
 
-        self._testGrad(f, x)
+    def f(x):
+      return array_ops.gather_v2(
+          x, constant_op.constant([1, 0], dtype=dtypes.int32))
 
-    def test_gather_v2_axis(self):
-        x = constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float64)
+    self._testGrad(f, x)
 
-        def f(x):
-            return array_ops.gather_v2(
-                x, constant_op.constant([1, 0], dtype=dtypes.int32), axis=1
-            )
+  def test_gather_v2_axis(self):
+    x = constant_op.constant([[1., 2.], [3., 4.]], dtype=dtypes.float64)
 
-        self._testGrad(f, x)
+    def f(x):
+      return array_ops.gather_v2(
+          x, constant_op.constant([1, 0], dtype=dtypes.int32), axis=1)
 
-    def test_gather_v2_batch_dims(self):
-        x = constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float64)
+    self._testGrad(f, x)
 
-        def f(x):
-            return array_ops.gather_v2(
-                x,
-                constant_op.constant([[1, 0], [0, 0]], dtype=dtypes.int32),
-                axis=1,
-                batch_dims=1,
-            )
+  def test_gather_v2_batch_dims(self):
+    x = constant_op.constant([[1., 2.], [3., 4.]], dtype=dtypes.float64)
 
-        self._testGrad(f, x)
+    def f(x):
+      return array_ops.gather_v2(
+          x,
+          constant_op.constant([[1, 0], [0, 0]], dtype=dtypes.int32),
+          axis=1,
+          batch_dims=1)
 
-    def test_gather_v2_2batch_dims(self):
-        x = constant_op.constant([[[1.0, 2.0], [3.0, 4.0]]], dtype=dtypes.float64)
+    self._testGrad(f, x)
 
-        def f(x):
-            return array_ops.gather_v2(
-                x,
-                constant_op.constant([[[1, 0], [0, 0]]], dtype=dtypes.int32),
-                axis=2,
-                batch_dims=2,
-            )
+  def test_gather_v2_2batch_dims(self):
+    x = constant_op.constant([[[1., 2.], [3., 4.]]], dtype=dtypes.float64)
 
-        self._testGrad(f, x)
+    def f(x):
+      return array_ops.gather_v2(
+          x,
+          constant_op.constant([[[1, 0], [0, 0]]], dtype=dtypes.int32),
+          axis=2,
+          batch_dims=2)
 
-    def test_gather_v2_batch_dims_with_axis(self):
-        x = constant_op.constant([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=dtypes.float64)
+    self._testGrad(f, x)
 
-        def f(x):
-            return array_ops.gather_v2(
-                x,
-                constant_op.constant([[0], [0]], dtype=dtypes.int32),
-                axis=2,
-                batch_dims=1,
-            )
+  def test_gather_v2_batch_dims_with_axis(self):
+    x = constant_op.constant([[[1., 2.]], [[3., 4.]]], dtype=dtypes.float64)
 
-        self._testGrad(f, x)
+    def f(x):
+      return array_ops.gather_v2(
+          x,
+          constant_op.constant([[0], [0]], dtype=dtypes.int32),
+          axis=2,
+          batch_dims=1)
 
-    def test_broadcast_to(self):
-        x = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float64)
-        y = constant_op.constant([2, 3], dtype=dtypes.int32)
+    self._testGrad(f, x)
 
-        def f(x):
-            return array_ops.broadcast_to(x, y)
+  def test_broadcast_to(self):
+    x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)
+    y = constant_op.constant([2, 3], dtype=dtypes.int32)
 
-        self._testGrad(f, x)
+    def f(x):
+      return array_ops.broadcast_to(
+          x,
+          y)
 
-    @test_util.disable_xla("b/206689921")  # XLA does not support DT_INT64
-    def test_broadcast_to_int64(self):
-        x = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float64)
-        y = constant_op.constant([2, 3], dtype=dtypes.int64)
+    self._testGrad(f, x)
 
-        def f(x):
-            return array_ops.broadcast_to(x, y)
+  @test_util.disable_xla("b/206689921")  # XLA does not support DT_INT64
+  def test_broadcast_to_int64(self):
+    x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)
+    y = constant_op.constant([2, 3], dtype=dtypes.int64)
 
-        self._testGrad(f, x)
+    def f(x):
+      return array_ops.broadcast_to(
+          x,
+          y)
+
+    self._testGrad(f, x)
 
 
 if __name__ == "__main__":
-    test.main()
+  test.main()

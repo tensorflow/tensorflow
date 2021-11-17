@@ -19,38 +19,44 @@ from tensorflow.python.platform import test
 
 
 class InputSpecTest(test.TestCase):
-    def test_axes_initialization(self):
-        input_spec.InputSpec(shape=[1, None, 2, 3], axes={3: 5, "2": 2})
-        with self.assertRaisesRegex(ValueError, "Axis 4 is greater than"):
-            input_spec.InputSpec(shape=[1, None, 2, 3], axes={4: 5})
-        with self.assertRaisesRegex(TypeError, "keys in axes must be integers"):
-            input_spec.InputSpec(shape=[1, None, 2, 3], axes={"string": 5})
+
+  def test_axes_initialization(self):
+    input_spec.InputSpec(shape=[1, None, 2, 3], axes={3: 5, '2': 2})
+    with self.assertRaisesRegex(ValueError, 'Axis 4 is greater than'):
+      input_spec.InputSpec(shape=[1, None, 2, 3], axes={4: 5})
+    with self.assertRaisesRegex(TypeError, 'keys in axes must be integers'):
+      input_spec.InputSpec(shape=[1, None, 2, 3], axes={'string': 5})
 
 
 class InputSpecToTensorShapeTest(test.TestCase):
-    def test_defined_shape(self):
-        spec = input_spec.InputSpec(shape=[1, None, 2, 3])
-        self.assertAllEqual([1, None, 2, 3], input_spec.to_tensor_shape(spec).as_list())
 
-    def test_defined_ndims(self):
-        spec = input_spec.InputSpec(ndim=5)
-        self.assertAllEqual([None] * 5, input_spec.to_tensor_shape(spec).as_list())
+  def test_defined_shape(self):
+    spec = input_spec.InputSpec(shape=[1, None, 2, 3])
+    self.assertAllEqual(
+        [1, None, 2, 3], input_spec.to_tensor_shape(spec).as_list())
 
-        spec = input_spec.InputSpec(ndim=0)
-        self.assertAllEqual([], input_spec.to_tensor_shape(spec).as_list())
+  def test_defined_ndims(self):
+    spec = input_spec.InputSpec(ndim=5)
+    self.assertAllEqual(
+        [None] * 5, input_spec.to_tensor_shape(spec).as_list())
 
-        spec = input_spec.InputSpec(ndim=3, axes={1: 3, -1: 2})
-        self.assertAllEqual([None, 3, 2], input_spec.to_tensor_shape(spec).as_list())
+    spec = input_spec.InputSpec(ndim=0)
+    self.assertAllEqual(
+        [], input_spec.to_tensor_shape(spec).as_list())
 
-    def test_undefined_shapes(self):
-        spec = input_spec.InputSpec(max_ndim=5)
-        with self.assertRaisesRegex(ValueError, "unknown TensorShape"):
-            input_spec.to_tensor_shape(spec).as_list()
+    spec = input_spec.InputSpec(ndim=3, axes={1: 3, -1: 2})
+    self.assertAllEqual(
+        [None, 3, 2], input_spec.to_tensor_shape(spec).as_list())
 
-        spec = input_spec.InputSpec(min_ndim=5, max_ndim=5)
-        with self.assertRaisesRegex(ValueError, "unknown TensorShape"):
-            input_spec.to_tensor_shape(spec).as_list()
+  def test_undefined_shapes(self):
+    spec = input_spec.InputSpec(max_ndim=5)
+    with self.assertRaisesRegex(ValueError, 'unknown TensorShape'):
+      input_spec.to_tensor_shape(spec).as_list()
+
+    spec = input_spec.InputSpec(min_ndim=5, max_ndim=5)
+    with self.assertRaisesRegex(ValueError, 'unknown TensorShape'):
+      input_spec.to_tensor_shape(spec).as_list()
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()

@@ -20,11 +20,12 @@ from tensorflow.python.eager import test
 
 
 class PywrapTensorTest(test.TestCase):
-    def testGetScalarOne(self):
-        result = util.get_scalar_one()
-        self.assertIsInstance(result, np.ndarray)
-        self.assertAllEqual(result, 1.0)
+
+  def testGetScalarOne(self):
+    result = util.get_scalar_one()
+    self.assertIsInstance(result, np.ndarray)
+    self.assertAllEqual(result, 1.0)
 
 
 if __name__ == "__main__":
-    test.main()
+  test.main()

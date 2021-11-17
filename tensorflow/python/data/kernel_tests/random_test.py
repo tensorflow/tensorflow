@@ -23,37 +23,35 @@ from tensorflow.python.platform import test
 
 
 class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
-    @combinations.generate(
-        combinations.times(
-            test_base.default_test_combinations(),
-            combinations.combine(global_seed=[None, 10], local_seed=[None, 20]),
-        )
-    )
-    def testDeterminism(self, global_seed, local_seed):
-        expect_determinism = (global_seed is not None) or (local_seed is not None)
 
-        random_seed.set_random_seed(global_seed)
-        ds = dataset_ops.Dataset.random(seed=local_seed).take(10)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(global_seed=[None, 10], local_seed=[None, 20])))
+  def testDeterminism(self, global_seed, local_seed):
+    expect_determinism = (global_seed is not None) or (local_seed is not None)
 
-        output_1 = self.getDatasetOutput(ds)
-        ds = self.graphRoundTrip(ds)
-        output_2 = self.getDatasetOutput(ds)
+    random_seed.set_random_seed(global_seed)
+    ds = dataset_ops.Dataset.random(seed=local_seed).take(10)
 
-        if expect_determinism:
-            self.assertEqual(output_1, output_2)
-        else:
-            # Technically not guaranteed since the two randomly-chosen int64 seeds
-            # could match, but that is sufficiently unlikely (1/2^128 with perfect
-            # random number generation).
-            self.assertNotEqual(output_1, output_2)
+    output_1 = self.getDatasetOutput(ds)
+    ds = self.graphRoundTrip(ds)
+    output_2 = self.getDatasetOutput(ds)
 
-    @combinations.generate(test_base.default_test_combinations())
-    def testName(self):
-        dataset = (
-            dataset_ops.Dataset.random(seed=42, name="random").take(1).map(lambda _: 42)
-        )
-        self.assertDatasetProduces(dataset, [42])
+    if expect_determinism:
+      self.assertEqual(output_1, output_2)
+    else:
+      # Technically not guaranteed since the two randomly-chosen int64 seeds
+      # could match, but that is sufficiently unlikely (1/2^128 with perfect
+      # random number generation).
+      self.assertNotEqual(output_1, output_2)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.random(
+        seed=42, name="random").take(1).map(lambda _: 42)
+    self.assertDatasetProduces(dataset, [42])
 
 
 if __name__ == "__main__":
-    test.main()
+  test.main()

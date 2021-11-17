@@ -23,34 +23,39 @@ from tensorflow.python.platform import test
 
 
 class TestIOUtils(keras_parameterized.TestCase):
-    def test_ask_to_proceed_with_overwrite(self):
-        with test.mock.patch.object(builtins, "input") as mock_log:
-            mock_log.return_value = "y"
-            self.assertTrue(io_utils.ask_to_proceed_with_overwrite("/tmp/not_exists"))
 
-            mock_log.return_value = "n"
-            self.assertFalse(io_utils.ask_to_proceed_with_overwrite("/tmp/not_exists"))
+  def test_ask_to_proceed_with_overwrite(self):
+    with test.mock.patch.object(builtins, 'input') as mock_log:
+      mock_log.return_value = 'y'
+      self.assertTrue(io_utils.ask_to_proceed_with_overwrite('/tmp/not_exists'))
 
-            mock_log.side_effect = ["m", "y"]
-            self.assertTrue(io_utils.ask_to_proceed_with_overwrite("/tmp/not_exists"))
+      mock_log.return_value = 'n'
+      self.assertFalse(
+          io_utils.ask_to_proceed_with_overwrite('/tmp/not_exists'))
 
-            mock_log.side_effect = ["m", "n"]
-            self.assertFalse(io_utils.ask_to_proceed_with_overwrite("/tmp/not_exists"))
+      mock_log.side_effect = ['m', 'y']
+      self.assertTrue(io_utils.ask_to_proceed_with_overwrite('/tmp/not_exists'))
 
-    def test_path_to_string(self):
-        class PathLikeDummy(object):
-            def __fspath__(self):
-                return "dummypath"
+      mock_log.side_effect = ['m', 'n']
+      self.assertFalse(
+          io_utils.ask_to_proceed_with_overwrite('/tmp/not_exists'))
 
-        dummy = object()
-        # conversion of PathLike
-        self.assertEqual(io_utils.path_to_string(Path("path")), "path")
-        self.assertEqual(io_utils.path_to_string(PathLikeDummy()), "dummypath")
+  def test_path_to_string(self):
 
-        # pass-through, works for all versions of python
-        self.assertEqual(io_utils.path_to_string("path"), "path")
-        self.assertIs(io_utils.path_to_string(dummy), dummy)
+    class PathLikeDummy(object):
+
+      def __fspath__(self):
+        return 'dummypath'
+
+    dummy = object()
+    # conversion of PathLike
+    self.assertEqual(io_utils.path_to_string(Path('path')), 'path')
+    self.assertEqual(io_utils.path_to_string(PathLikeDummy()), 'dummypath')
+
+    # pass-through, works for all versions of python
+    self.assertEqual(io_utils.path_to_string('path'), 'path')
+    self.assertIs(io_utils.path_to_string(dummy), dummy)
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()

@@ -28,170 +28,166 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class MatchingFilesDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
-    def setUp(self):
-        super(MatchingFilesDatasetTest, self).setUp()
-        self.tmp_dir = tempfile.mkdtemp()
+class MatchingFilesDatasetTest(test_base.DatasetTestBase,
+                               parameterized.TestCase):
 
-    def tearDown(self):
-        shutil.rmtree(self.tmp_dir, ignore_errors=True)
-        super(MatchingFilesDatasetTest, self).tearDown()
+  def setUp(self):
+    super(MatchingFilesDatasetTest, self).setUp()
+    self.tmp_dir = tempfile.mkdtemp()
 
-    def _touchTempFiles(self, filenames):
-        for filename in filenames:
-            open(os.path.join(self.tmp_dir, filename), "a").close()
+  def tearDown(self):
+    shutil.rmtree(self.tmp_dir, ignore_errors=True)
+    super(MatchingFilesDatasetTest, self).tearDown()
 
-    @combinations.generate(test_base.default_test_combinations())
-    def testNonExistingDirectory(self):
-        """Test the MatchingFiles dataset with a non-existing directory."""
+  def _touchTempFiles(self, filenames):
+    for filename in filenames:
+      open(os.path.join(self.tmp_dir, filename), 'a').close()
 
-        self.tmp_dir = os.path.join(self.tmp_dir, "nonexistingdir")
-        dataset = matching_files.MatchingFilesDataset(os.path.join(self.tmp_dir, "*"))
-        self.assertDatasetProduces(dataset, expected_error=(errors.NotFoundError, ""))
+  @combinations.generate(test_base.default_test_combinations())
+  def testNonExistingDirectory(self):
+    """Test the MatchingFiles dataset with a non-existing directory."""
 
-    @combinations.generate(test_base.default_test_combinations())
-    def testEmptyDirectory(self):
-        """Test the MatchingFiles dataset with an empty directory."""
+    self.tmp_dir = os.path.join(self.tmp_dir, 'nonexistingdir')
+    dataset = matching_files.MatchingFilesDataset(
+        os.path.join(self.tmp_dir, '*'))
+    self.assertDatasetProduces(
+        dataset, expected_error=(errors.NotFoundError, ''))
 
-        dataset = matching_files.MatchingFilesDataset(os.path.join(self.tmp_dir, "*"))
-        self.assertDatasetProduces(dataset, expected_error=(errors.NotFoundError, ""))
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyDirectory(self):
+    """Test the MatchingFiles dataset with an empty directory."""
 
-    @combinations.generate(test_base.default_test_combinations())
-    def testSimpleDirectory(self):
-        """Test the MatchingFiles dataset with a simple directory."""
+    dataset = matching_files.MatchingFilesDataset(
+        os.path.join(self.tmp_dir, '*'))
+    self.assertDatasetProduces(
+        dataset, expected_error=(errors.NotFoundError, ''))
 
-        filenames = ["a", "b", "c"]
-        self._touchTempFiles(filenames)
+  @combinations.generate(test_base.default_test_combinations())
+  def testSimpleDirectory(self):
+    """Test the MatchingFiles dataset with a simple directory."""
 
-        dataset = matching_files.MatchingFilesDataset(os.path.join(self.tmp_dir, "*"))
-        self.assertDatasetProduces(
-            dataset,
-            expected_output=[
-                compat.as_bytes(os.path.join(self.tmp_dir, filename))
-                for filename in filenames
-            ],
-            assert_items_equal=True,
-        )
+    filenames = ['a', 'b', 'c']
+    self._touchTempFiles(filenames)
 
-    @combinations.generate(test_base.default_test_combinations())
-    def testFileSuffixes(self):
-        """Test the MatchingFiles dataset using the suffixes of filename."""
-
-        filenames = ["a.txt", "b.py", "c.py", "d.pyc"]
-        self._touchTempFiles(filenames)
-
-        dataset = matching_files.MatchingFilesDataset(
-            os.path.join(self.tmp_dir, "*.py")
-        )
-        self.assertDatasetProduces(
-            dataset,
-            expected_output=[
-                compat.as_bytes(os.path.join(self.tmp_dir, filename))
-                for filename in filenames[1:-1]
-            ],
-            assert_items_equal=True,
-        )
-
-    @combinations.generate(test_base.default_test_combinations())
-    def testFileMiddles(self):
-        """Test the MatchingFiles dataset using the middles of filename."""
-
-        filenames = ["aa.txt", "bb.py", "bbc.pyc", "cc.pyc"]
-        self._touchTempFiles(filenames)
-
-        dataset = matching_files.MatchingFilesDataset(
-            os.path.join(self.tmp_dir, "b*.py*")
-        )
-        self.assertDatasetProduces(
-            dataset,
-            expected_output=[
-                compat.as_bytes(os.path.join(self.tmp_dir, filename))
-                for filename in filenames[1:3]
-            ],
-            assert_items_equal=True,
-        )
-
-    @combinations.generate(test_base.default_test_combinations())
-    def testNestedDirectories(self):
-        """Test the MatchingFiles dataset with nested directories."""
-
-        filenames = []
-        width = 8
-        depth = 4
-        for i in range(width):
-            for j in range(depth):
-                new_base = os.path.join(
-                    self.tmp_dir, str(i), *[str(dir_name) for dir_name in range(j)]
-                )
-                os.makedirs(new_base)
-                child_files = ["a.py", "b.pyc"] if j < depth - 1 else ["c.txt", "d.log"]
-                for f in child_files:
-                    filename = os.path.join(new_base, f)
-                    filenames.append(filename)
-                    open(filename, "w").close()
-
-        patterns = [
-            os.path.join(
-                self.tmp_dir, os.path.join(*["**" for _ in range(depth)]), suffix
-            )
-            for suffix in ["*.txt", "*.log"]
-        ]
-
-        dataset = matching_files.MatchingFilesDataset(patterns)
-        next_element = self.getNext(dataset)
-        expected_filenames = [
-            compat.as_bytes(filename)
+    dataset = matching_files.MatchingFilesDataset(
+        os.path.join(self.tmp_dir, '*'))
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            compat.as_bytes(os.path.join(self.tmp_dir, filename))
             for filename in filenames
-            if filename.endswith(".txt") or filename.endswith(".log")
-        ]
-        actual_filenames = []
-        while True:
-            try:
-                actual_filenames.append(compat.as_bytes(self.evaluate(next_element())))
-            except errors.OutOfRangeError:
-                break
+        ],
+        assert_items_equal=True)
 
-        self.assertCountEqual(expected_filenames, actual_filenames)
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileSuffixes(self):
+    """Test the MatchingFiles dataset using the suffixes of filename."""
+
+    filenames = ['a.txt', 'b.py', 'c.py', 'd.pyc']
+    self._touchTempFiles(filenames)
+
+    dataset = matching_files.MatchingFilesDataset(
+        os.path.join(self.tmp_dir, '*.py'))
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            compat.as_bytes(os.path.join(self.tmp_dir, filename))
+            for filename in filenames[1:-1]
+        ],
+        assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileMiddles(self):
+    """Test the MatchingFiles dataset using the middles of filename."""
+
+    filenames = ['aa.txt', 'bb.py', 'bbc.pyc', 'cc.pyc']
+    self._touchTempFiles(filenames)
+
+    dataset = matching_files.MatchingFilesDataset(
+        os.path.join(self.tmp_dir, 'b*.py*'))
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            compat.as_bytes(os.path.join(self.tmp_dir, filename))
+            for filename in filenames[1:3]
+        ],
+        assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedDirectories(self):
+    """Test the MatchingFiles dataset with nested directories."""
+
+    filenames = []
+    width = 8
+    depth = 4
+    for i in range(width):
+      for j in range(depth):
+        new_base = os.path.join(self.tmp_dir, str(i),
+                                *[str(dir_name) for dir_name in range(j)])
+        os.makedirs(new_base)
+        child_files = ['a.py', 'b.pyc'] if j < depth - 1 else ['c.txt', 'd.log']
+        for f in child_files:
+          filename = os.path.join(new_base, f)
+          filenames.append(filename)
+          open(filename, 'w').close()
+
+    patterns = [
+        os.path.join(self.tmp_dir, os.path.join(*['**' for _ in range(depth)]),
+                     suffix) for suffix in ['*.txt', '*.log']
+    ]
+
+    dataset = matching_files.MatchingFilesDataset(patterns)
+    next_element = self.getNext(dataset)
+    expected_filenames = [
+        compat.as_bytes(filename)
+        for filename in filenames
+        if filename.endswith('.txt') or filename.endswith('.log')
+    ]
+    actual_filenames = []
+    while True:
+      try:
+        actual_filenames.append(compat.as_bytes(self.evaluate(next_element())))
+      except errors.OutOfRangeError:
+        break
+
+    self.assertCountEqual(expected_filenames, actual_filenames)
 
 
 class MatchingFilesDatasetCheckpointTest(
-    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
-):
-    def _build_iterator_graph(self, test_patterns):
-        return matching_files.MatchingFilesDataset(test_patterns)
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
-    @combinations.generate(
-        combinations.times(
-            test_base.default_test_combinations(),
-            checkpoint_test_base.default_test_combinations(),
-        )
-    )
-    def test(self, verify_fn):
-        tmp_dir = tempfile.mkdtemp()
-        width = 16
-        depth = 8
-        for i in range(width):
-            for j in range(depth):
-                new_base = os.path.join(
-                    tmp_dir, str(i), *[str(dir_name) for dir_name in range(j)]
-                )
-                if not os.path.exists(new_base):
-                    os.makedirs(new_base)
-                child_files = ["a.py", "b.pyc"] if j < depth - 1 else ["c.txt", "d.log"]
-                for f in child_files:
-                    filename = os.path.join(new_base, f)
-                    open(filename, "w").close()
+  def _build_iterator_graph(self, test_patterns):
+    return matching_files.MatchingFilesDataset(test_patterns)
 
-        patterns = [
-            os.path.join(tmp_dir, os.path.join(*["**" for _ in range(depth)]), suffix)
-            for suffix in ["*.txt", "*.log"]
-        ]
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    tmp_dir = tempfile.mkdtemp()
+    width = 16
+    depth = 8
+    for i in range(width):
+      for j in range(depth):
+        new_base = os.path.join(tmp_dir, str(i),
+                                *[str(dir_name) for dir_name in range(j)])
+        if not os.path.exists(new_base):
+          os.makedirs(new_base)
+        child_files = ['a.py', 'b.pyc'] if j < depth - 1 else ['c.txt', 'd.log']
+        for f in child_files:
+          filename = os.path.join(new_base, f)
+          open(filename, 'w').close()
 
-        num_outputs = width * len(patterns)
-        verify_fn(self, lambda: self._build_iterator_graph(patterns), num_outputs)
+    patterns = [
+        os.path.join(tmp_dir, os.path.join(*['**'
+                                             for _ in range(depth)]), suffix)
+        for suffix in ['*.txt', '*.log']
+    ]
 
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    num_outputs = width * len(patterns)
+    verify_fn(self, lambda: self._build_iterator_graph(patterns), num_outputs)
+
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()

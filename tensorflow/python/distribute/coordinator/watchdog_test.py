@@ -22,37 +22,37 @@ from tensorflow.python.eager import test
 
 
 class WatchDogTest(test.TestCase):
-    def testWatchDogTimeout(self):
-        tmp_file = self.create_tempfile()
-        f = open(tmp_file, "w+")
 
-        triggerred_count = [0]
+  def testWatchDogTimeout(self):
+    tmp_file = self.create_tempfile()
+    f = open(tmp_file, "w+")
 
-        def on_triggered_fn():
-            triggerred_count[0] += 1
+    triggerred_count = [0]
 
-        wd = watchdog.WatchDog(
-            timeout=3, traceback_file=f, on_triggered=on_triggered_fn
-        )
-        time.sleep(6)
+    def on_triggered_fn():
+      triggerred_count[0] += 1
 
-        self.assertGreaterEqual(triggerred_count[0], 1)
-        wd.report_closure_done()
-        time.sleep(1)
-        self.assertGreaterEqual(triggerred_count[0], 1)
-        time.sleep(5)
-        self.assertGreaterEqual(triggerred_count[0], 2)
+    wd = watchdog.WatchDog(
+        timeout=3, traceback_file=f, on_triggered=on_triggered_fn)
+    time.sleep(6)
 
-        wd.stop()
-        time.sleep(5)
-        last_triggered_count = triggerred_count[0]
-        time.sleep(10)
-        self.assertEqual(last_triggered_count, triggerred_count[0])
+    self.assertGreaterEqual(triggerred_count[0], 1)
+    wd.report_closure_done()
+    time.sleep(1)
+    self.assertGreaterEqual(triggerred_count[0], 1)
+    time.sleep(5)
+    self.assertGreaterEqual(triggerred_count[0], 2)
 
-        f.close()
-        with open(tmp_file) as f:
-            self.assertIn("Current thread", f.read())
+    wd.stop()
+    time.sleep(5)
+    last_triggered_count = triggerred_count[0]
+    time.sleep(10)
+    self.assertEqual(last_triggered_count, triggerred_count[0])
+
+    f.close()
+    with open(tmp_file) as f:
+      self.assertIn("Current thread", f.read())
 
 
 if __name__ == "__main__":
-    test.main()
+  test.main()

@@ -35,92 +35,95 @@ from tensorflow_estimator.python.estimator import model_fn
 
 # TODO(b/123904664)
 class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
-    @staticmethod
-    def _model_fn(features, labels, mode, config):
-        del labels
-        del mode
-        del config
-        global_step = training_util.get_or_create_global_step()
-        update_global_step_op = global_step.assign_add(1)
-        latest_feature = variables.VariableV1(
-            0, name="latest_feature", dtype=dtypes.int64
-        )
-        store_latest_feature_op = latest_feature.assign(features)
-        ops.add_to_collection("my_vars", global_step)
-        ops.add_to_collection("my_vars", latest_feature)
-        return model_fn.EstimatorSpec(
-            mode="train",
-            train_op=control_flow_ops.group(
-                [update_global_step_op, store_latest_feature_op]
-            ),
-            loss=constant_op.constant(2.0),
-        )
 
-    def _read_vars(self, model_dir):
-        """Returns (global_step, latest_feature)."""
-        with ops.Graph().as_default() as g:
-            ckpt_path = checkpoint_management.latest_checkpoint(model_dir)
-            meta_filename = ckpt_path + ".meta"
-            saver_lib.import_meta_graph(meta_filename)
-            saver = saver_lib.Saver()
-            with self.session(graph=g) as sess:
-                saver.restore(sess, ckpt_path)
-                return sess.run(ops.get_collection("my_vars"))
+  @staticmethod
+  def _model_fn(features, labels, mode, config):
+    del labels
+    del mode
+    del config
+    global_step = training_util.get_or_create_global_step()
+    update_global_step_op = global_step.assign_add(1)
+    latest_feature = variables.VariableV1(
+        0, name='latest_feature', dtype=dtypes.int64)
+    store_latest_feature_op = latest_feature.assign(features)
+    ops.add_to_collection('my_vars', global_step)
+    ops.add_to_collection('my_vars', latest_feature)
+    return model_fn.EstimatorSpec(
+        mode='train',
+        train_op=control_flow_ops.group(
+            [update_global_step_op, store_latest_feature_op]),
+        loss=constant_op.constant(2.0))
 
-    def _build_iterator_saver_hook(self, est):
-        return iterator_ops.CheckpointInputPipelineHook(est)
+  def _read_vars(self, model_dir):
+    """Returns (global_step, latest_feature)."""
+    with ops.Graph().as_default() as g:
+      ckpt_path = checkpoint_management.latest_checkpoint(model_dir)
+      meta_filename = ckpt_path + '.meta'
+      saver_lib.import_meta_graph(meta_filename)
+      saver = saver_lib.Saver()
+      with self.session(graph=g) as sess:
+        saver.restore(sess, ckpt_path)
+        return sess.run(ops.get_collection('my_vars'))
 
-    @combinations.generate(test_base.v1_only_combinations())
-    def testReturnDatasetFromInputFn(self):
-        def _input_fn():
-            return dataset_ops.Dataset.range(10)
+  def _build_iterator_saver_hook(self, est):
+    return iterator_ops.CheckpointInputPipelineHook(est)
 
-        est = estimator.Estimator(model_fn=self._model_fn)
+  @combinations.generate(test_base.v1_only_combinations())
+  def testReturnDatasetFromInputFn(self):
 
-        est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
-        self.assertSequenceEqual(self._read_vars(est.model_dir), (2, 1))
-        est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
-        self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
+    def _input_fn():
+      return dataset_ops.Dataset.range(10)
 
-    @combinations.generate(test_base.v1_only_combinations())
-    def testBuildIteratorInInputFn(self):
-        def _input_fn():
-            ds = dataset_ops.Dataset.range(10)
-            iterator = ds.make_one_shot_iterator()
-            return iterator.get_next()
+    est = estimator.Estimator(model_fn=self._model_fn)
 
-        est = estimator.Estimator(model_fn=self._model_fn)
+    est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
+    self.assertSequenceEqual(self._read_vars(est.model_dir), (2, 1))
+    est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
+    self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
 
-        est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
-        self.assertSequenceEqual(self._read_vars(est.model_dir), (2, 1))
-        est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
-        self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
+  @combinations.generate(test_base.v1_only_combinations())
+  def testBuildIteratorInInputFn(self):
 
-    @combinations.generate(test_base.v1_only_combinations())
-    def testDoNotRestore(self):
-        def _input_fn():
-            return dataset_ops.Dataset.range(10)
+    def _input_fn():
+      ds = dataset_ops.Dataset.range(10)
+      iterator = ds.make_one_shot_iterator()
+      return iterator.get_next()
 
-        est = estimator.Estimator(model_fn=self._model_fn)
+    est = estimator.Estimator(model_fn=self._model_fn)
 
-        est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
-        self.assertSequenceEqual(self._read_vars(est.model_dir), (2, 1))
-        est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
-        self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
-        # Hook not provided, input pipeline was not restored.
-        est.train(_input_fn, steps=2)
-        self.assertSequenceEqual(self._read_vars(est.model_dir), (6, 1))
+    est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
+    self.assertSequenceEqual(self._read_vars(est.model_dir), (2, 1))
+    est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
+    self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
 
-    @combinations.generate(test_base.v1_only_combinations())
-    def testRaiseErrorIfNoIterator(self):
-        def _input_fn():
-            return constant_op.constant(1, dtype=dtypes.int64)
+  @combinations.generate(test_base.v1_only_combinations())
+  def testDoNotRestore(self):
 
-        est = estimator.Estimator(model_fn=self._model_fn)
+    def _input_fn():
+      return dataset_ops.Dataset.range(10)
 
-        with self.assertRaises(ValueError):
-            est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
+    est = estimator.Estimator(model_fn=self._model_fn)
+
+    est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
+    self.assertSequenceEqual(self._read_vars(est.model_dir), (2, 1))
+    est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
+    self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
+    # Hook not provided, input pipeline was not restored.
+    est.train(_input_fn, steps=2)
+    self.assertSequenceEqual(self._read_vars(est.model_dir), (6, 1))
+
+  @combinations.generate(test_base.v1_only_combinations())
+  def testRaiseErrorIfNoIterator(self):
+
+    def _input_fn():
+      return constant_op.constant(1, dtype=dtypes.int64)
+
+    est = estimator.Estimator(model_fn=self._model_fn)
+
+    with self.assertRaises(ValueError):
+      est.train(
+          _input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()

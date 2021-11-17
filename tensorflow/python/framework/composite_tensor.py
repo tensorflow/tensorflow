@@ -27,97 +27,92 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export("__internal__.CompositeTensor", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class CompositeTensor(object):
-    """Abstract base class for Tensor-like objects that are composed from Tensors.
+  """Abstract base class for Tensor-like objects that are composed from Tensors.
 
-    Each `CompositeTensor` can be decomposed into a structured collection of
-    component `tf.Tensor`s, and reconstructed from those components.
+  Each `CompositeTensor` can be decomposed into a structured collection of
+  component `tf.Tensor`s, and reconstructed from those components.
 
-    The `tensorflow.python.util.nest` module has support for treating composite
-    tensors as structure, which makes it easy to flatten and reconstruct
-    composite tensors (or larger structures that contain composite tensors).
-    E.g.:
+  The `tensorflow.python.util.nest` module has support for treating composite
+  tensors as structure, which makes it easy to flatten and reconstruct
+  composite tensors (or larger structures that contain composite tensors).
+  E.g.:
 
-    ```python
-    ct = ...  # Create a composite tensor.
-    flat_list_of_tensors = nest.flatten(ct, expand_composites=True)
-    transformed_list_of_tensors = ...  # do something with the flat tensors.
-    result = nest.pack_sequence_as(ct, transformed_list_of_tensors,
-                                   expand_composites=True)
-    ```
+  ```python
+  ct = ...  # Create a composite tensor.
+  flat_list_of_tensors = nest.flatten(ct, expand_composites=True)
+  transformed_list_of_tensors = ...  # do something with the flat tensors.
+  result = nest.pack_sequence_as(ct, transformed_list_of_tensors,
+                                 expand_composites=True)
+  ```
+  """
+
+  @abc.abstractproperty
+  def _type_spec(self):
+    """A `TypeSpec` describing the type of this value."""
+    raise NotImplementedError(f"{type(self).__name__}._type_spec()")
+
+  def _shape_invariant_to_type_spec(self, shape):
+    """Returns a TypeSpec given a shape invariant (used by `tf.while_loop`).
+
+    Args:
+      shape: A `tf.TensorShape` object.  The shape invariant for this
+        `CompositeTensor`, or `None` if a default shape invariant should be used
+        (based on the value of this `CompositeTensor`).
+
+    Returns:
+      A nested structure whose values are `tf.TensorShape` objects, specifying
+      the shape invariants for the tensors that comprise this `CompositeTensor`.
     """
+    # New TypeSpec subclasses generally do not need to implement this --
+    # this method is used for backwards compatibility.  Users of tf.while_loop
+    # can specify a type by passing in TypeSpec instead.
+    raise NotImplementedError(
+        f"{type(self).__name__}._shape_invariant_to_type_spec")
 
-    @abc.abstractproperty
-    def _type_spec(self):
-        """A `TypeSpec` describing the type of this value."""
-        raise NotImplementedError(f"{type(self).__name__}._type_spec()")
+  def _consumers(self):
+    """Returns a list of `Operation`s that consume this `CompositeTensor`.
 
-    def _shape_invariant_to_type_spec(self, shape):
-        """Returns a TypeSpec given a shape invariant (used by `tf.while_loop`).
+    Returns:
+      A list of `Operation`s.
 
-        Args:
-          shape: A `tf.TensorShape` object.  The shape invariant for this
-            `CompositeTensor`, or `None` if a default shape invariant should be used
-            (based on the value of this `CompositeTensor`).
+    Raises:
+      RuntimeError: If this method is called while executing eagerly.
+    """
+    consumers = nest.flatten([
+        component.consumers()
+        for component in nest.flatten(self, expand_composites=True)
+        if getattr(component, "graph", None) is not None
+    ])
+    return list(set(consumers))
 
-        Returns:
-          A nested structure whose values are `tf.TensorShape` objects, specifying
-          the shape invariants for the tensors that comprise this `CompositeTensor`.
-        """
-        # New TypeSpec subclasses generally do not need to implement this --
-        # this method is used for backwards compatibility.  Users of tf.while_loop
-        # can specify a type by passing in TypeSpec instead.
-        raise NotImplementedError(
-            f"{type(self).__name__}._shape_invariant_to_type_spec"
-        )
-
-    def _consumers(self):
-        """Returns a list of `Operation`s that consume this `CompositeTensor`.
-
-        Returns:
-          A list of `Operation`s.
-
-        Raises:
-          RuntimeError: If this method is called while executing eagerly.
-        """
-        consumers = nest.flatten(
-            [
-                component.consumers()
-                for component in nest.flatten(self, expand_composites=True)
-                if getattr(component, "graph", None) is not None
-            ]
-        )
-        return list(set(consumers))
-
-    def __tf_tracing_type__(self, context):
-        return self._type_spec.__tf_tracing_type__(context)
+  def __tf_tracing_type__(self, context):
+    return self._type_spec.__tf_tracing_type__(context)
 
 
 _pywrap_utils.RegisterType("CompositeTensor", CompositeTensor)
 
 
 def replace_composites_with_components(structure):
-    """Recursively replaces CompositeTensors with their components.
+  """Recursively replaces CompositeTensors with their components.
 
-    Args:
-      structure: A `nest`-compatible structure, possibly containing composite
-        tensors.
+  Args:
+    structure: A `nest`-compatible structure, possibly containing composite
+      tensors.
 
-    Returns:
-      A copy of `structure`, where each composite tensor has been replaced by
-      its components.  The result will contain no composite tensors.
-      Note that `nest.flatten(replace_composites_with_components(structure))`
-      returns the same value as `nest.flatten(structure)`.
-    """
-    if isinstance(structure, CompositeTensor):
-        return replace_composites_with_components(
-            structure._type_spec._to_components(structure)
-        )  # pylint: disable=protected-access
-    elif not nest.is_nested(structure):
-        return structure
-    else:
-        return nest.map_structure(
-            replace_composites_with_components, structure, expand_composites=False
-        )
+  Returns:
+    A copy of `structure`, where each composite tensor has been replaced by
+    its components.  The result will contain no composite tensors.
+    Note that `nest.flatten(replace_composites_with_components(structure))`
+    returns the same value as `nest.flatten(structure)`.
+  """
+  if isinstance(structure, CompositeTensor):
+    return replace_composites_with_components(
+        structure._type_spec._to_components(structure))  # pylint: disable=protected-access
+  elif not nest.is_nested(structure):
+    return structure
+  else:
+    return nest.map_structure(
+        replace_composites_with_components, structure, expand_composites=False)
 
 
 # @TODO(edloper): Can we replace convert_to_tensor_or_xyz with just

@@ -23,147 +23,145 @@ from tensorflow.python.platform import test
 
 @test_util.with_eager_op_as_function
 class MemoryCheckerTest(test.TestCase):
-    def testNoLeakEmpty(self):
-        with MemoryChecker() as memory_checker:
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
 
-        memory_checker.report()
-        memory_checker.assert_no_leak_if_all_possibly_except_one()
+  def testNoLeakEmpty(self):
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
 
-    def testNoLeak1(self):
-        with MemoryChecker() as memory_checker:
-            memory_checker.record_snapshot()
-            x = constant_op.constant(1)  # pylint: disable=unused-variable
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
+    memory_checker.report()
+    memory_checker.assert_no_leak_if_all_possibly_except_one()
 
-        memory_checker.report()
-        memory_checker.assert_no_leak_if_all_possibly_except_one()
+  def testNoLeak1(self):
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      x = constant_op.constant(1)  # pylint: disable=unused-variable
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
 
-    def testNoLeak2(self):
-        helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
-        with MemoryChecker() as memory_checker:
-            memory_checker.record_snapshot()
-            helper.list_push_back(10)
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
+    memory_checker.report()
+    memory_checker.assert_no_leak_if_all_possibly_except_one()
 
-        memory_checker.report()
-        memory_checker.assert_no_leak_if_all_possibly_except_one()
+  def testNoLeak2(self):
+    helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      helper.list_push_back(10)
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
 
-    def testNoLeak3(self):
-        with MemoryChecker() as memory_checker:
-            tensors = []
-            for i in range(10):
-                if i not in (5, 7):
-                    tensors.append(constant_op.constant(1))
-                memory_checker.record_snapshot()
+    memory_checker.report()
+    memory_checker.assert_no_leak_if_all_possibly_except_one()
 
-        memory_checker.report()
-        memory_checker.assert_no_leak_if_all_possibly_except_one()
+  def testNoLeak3(self):
+    with MemoryChecker() as memory_checker:
+      tensors = []
+      for i in range(10):
+        if i not in (5, 7):
+          tensors.append(constant_op.constant(1))
+        memory_checker.record_snapshot()
 
-    def testLeak1(self):
-        with MemoryChecker() as memory_checker:
-            memory_checker.record_snapshot()
-            x = constant_op.constant(1)  # pylint: disable=unused-variable
-            memory_checker.record_snapshot()
-            y = constant_op.constant(1)  # pylint: disable=unused-variable
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
+    memory_checker.report()
+    memory_checker.assert_no_leak_if_all_possibly_except_one()
 
-        memory_checker.report()
-        with self.assertRaises(AssertionError):
-            memory_checker.assert_no_leak_if_all_possibly_except_one()
+  def testLeak1(self):
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      x = constant_op.constant(1)  # pylint: disable=unused-variable
+      memory_checker.record_snapshot()
+      y = constant_op.constant(1)  # pylint: disable=unused-variable
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
 
-    def testLeak2(self):
-        helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
-        with MemoryChecker() as memory_checker:
-            memory_checker.record_snapshot()
-            helper.list_push_back(10)
-            memory_checker.record_snapshot()
-            helper.list_push_back(11)
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
+    memory_checker.report()
+    with self.assertRaises(AssertionError):
+      memory_checker.assert_no_leak_if_all_possibly_except_one()
 
-        memory_checker.report()
-        with self.assertRaises(AssertionError):
-            memory_checker.assert_no_leak_if_all_possibly_except_one()
+  def testLeak2(self):
+    helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      helper.list_push_back(10)
+      memory_checker.record_snapshot()
+      helper.list_push_back(11)
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
 
-    def testLeak3(self):
-        with MemoryChecker() as memory_checker:
-            tensors = []
-            for _ in range(10):
-                tensors.append(constant_op.constant(1))
-                memory_checker.record_snapshot()
+    memory_checker.report()
+    with self.assertRaises(AssertionError):
+      memory_checker.assert_no_leak_if_all_possibly_except_one()
 
-        memory_checker.report()
-        with self.assertRaises(AssertionError):
-            memory_checker.assert_no_leak_if_all_possibly_except_one()
+  def testLeak3(self):
+    with MemoryChecker() as memory_checker:
+      tensors = []
+      for _ in range(10):
+        tensors.append(constant_op.constant(1))
+        memory_checker.record_snapshot()
 
-    def testLeak4(self):
-        helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
+    memory_checker.report()
+    with self.assertRaises(AssertionError):
+      memory_checker.assert_no_leak_if_all_possibly_except_one()
 
-        with MemoryChecker() as memory_checker:
-            for i in range(10):
-                helper.list_push_back(i)
-                memory_checker.record_snapshot()
+  def testLeak4(self):
+    helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
 
-        memory_checker.report()
-        with self.assertRaises(AssertionError):
-            memory_checker.assert_no_leak_if_all_possibly_except_one()
+    with MemoryChecker() as memory_checker:
+      for i in range(10):
+        helper.list_push_back(i)
+        memory_checker.record_snapshot()
 
-    def testNoNewPythonObjectsEmpty(self):
-        self.skipTest("TODO(b/150324603): Flaky test.")
-        with MemoryChecker() as memory_checker:
-            memory_checker.record_snapshot()
-            memory_checker.record_snapshot()
+    memory_checker.report()
+    with self.assertRaises(AssertionError):
+      memory_checker.assert_no_leak_if_all_possibly_except_one()
 
-        # TODO(kkb): All the builtins below are unexpected, locate and fix it.
-        memory_checker.assert_no_new_python_objects(
-            threshold={"builtins.weakref": 1, "builtins.function": 1}
-        )
+  def testNoNewPythonObjectsEmpty(self):
+    self.skipTest('TODO(b/150324603): Flaky test.')
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
 
-    def testNewPythonObjects(self):
-        with MemoryChecker() as memory_checker:
-            memory_checker.record_snapshot()
-            x = constant_op.constant(1)  # pylint: disable=unused-variable
-            memory_checker.record_snapshot()
+    # TODO(kkb): All the builtins below are unexpected, locate and fix it.
+    memory_checker.assert_no_new_python_objects(
+        threshold={'builtins.weakref': 1,
+                   'builtins.function': 1})
 
-        with self.assertRaisesRegex(AssertionError, "New Python objects"):
-            memory_checker.assert_no_new_python_objects()
+  def testNewPythonObjects(self):
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      x = constant_op.constant(1)  # pylint: disable=unused-variable
+      memory_checker.record_snapshot()
 
-    def testNewPythonObjectBelowThreshold(self):
-        class Foo(object):
-            pass
+    with self.assertRaisesRegex(AssertionError, 'New Python objects'):
+      memory_checker.assert_no_new_python_objects()
 
-        with MemoryChecker() as memory_checker:
-            memory_checker.record_snapshot()
-            foo = Foo()  # pylint: disable=unused-variable
-            memory_checker.record_snapshot()
+  def testNewPythonObjectBelowThreshold(self):
 
-        # TODO(kkb): `{'builtins.weakref': 1, 'builtins.function': 1}` is
-        # unexpected, locate and fix it.
-        memory_checker.assert_no_new_python_objects(
-            threshold={
-                "__main__.Foo": 1,
-                "builtins.weakref": 1,
-                "builtins.function": 1,
-            }
-        )
-        memory_checker.assert_no_new_python_objects(
-            threshold={
-                "__main__.Foo": 2,
-                "builtins.weakref": 1,
-                "builtins.function": 1,
-            }
-        )
+    class Foo(object):
+      pass
+
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      foo = Foo()  # pylint: disable=unused-variable
+      memory_checker.record_snapshot()
+
+    # TODO(kkb): `{'builtins.weakref': 1, 'builtins.function': 1}` is
+    # unexpected, locate and fix it.
+    memory_checker.assert_no_new_python_objects(threshold={
+        '__main__.Foo': 1,
+        'builtins.weakref': 1,
+        'builtins.function': 1,
+    })
+    memory_checker.assert_no_new_python_objects(threshold={
+        '__main__.Foo': 2,
+        'builtins.weakref': 1,
+        'builtins.function': 1,
+    })
 
 
-if __name__ == "__main__":
-    ops.enable_eager_execution()
-    test.main()
+if __name__ == '__main__':
+  ops.enable_eager_execution()
+  test.main()

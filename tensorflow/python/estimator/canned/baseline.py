@@ -23,6 +23,6 @@ from tensorflow_estimator.python.estimator.canned import baseline
 
 # Include attrs that start with single underscore.
 _HAS_DYNAMIC_ATTRIBUTES = True
-baseline.__all__ = [s for s in dir(baseline) if not s.startswith("__")]
+baseline.__all__ = [s for s in dir(baseline) if not s.startswith('__')]
 
 from tensorflow_estimator.python.estimator.canned.baseline import *

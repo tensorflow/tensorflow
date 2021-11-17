@@ -25,106 +25,101 @@ from tensorflow.python.platform import test
 
 
 class SerializableInt(int):
-    def __new__(cls, value):
-        return int.__new__(cls, value)
 
-    def get_config(self):
-        return {"value": int(self)}
+  def __new__(cls, value):
+    return int.__new__(cls, value)
 
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
+  def get_config(self):
+    return {'value': int(self)}
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(**config)
 
 
-@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LayerSerializationTest(parameterized.TestCase, test.TestCase):
-    def test_serialize_deserialize(self):
-        layer = keras.layers.Dense(
-            3, activation="relu", kernel_initializer="ones", bias_regularizer="l2"
-        )
-        config = keras.layers.serialize(layer)
-        new_layer = keras.layers.deserialize(config)
-        self.assertEqual(new_layer.activation, keras.activations.relu)
-        self.assertEqual(new_layer.bias_regularizer.__class__, keras.regularizers.L2)
-        if tf2.enabled():
-            self.assertEqual(
-                new_layer.kernel_initializer.__class__, keras.initializers.OnesV2
-            )
-        else:
-            self.assertEqual(
-                new_layer.kernel_initializer.__class__, keras.initializers.Ones
-            )
-        self.assertEqual(new_layer.units, 3)
 
-    def test_implicit_serialize_deserialize_fails_without_object(self):
-        layer = keras.layers.Dense(
-            SerializableInt(3),
-            activation="relu",
-            kernel_initializer="ones",
-            bias_regularizer="l2",
-        )
-        config = keras.layers.serialize(layer)
-        # Because we're passing an unknown class here, deserialization should fail
-        # unless we add SerializableInt to the custom object dict.
-        with self.assertRaisesRegex(
-            ValueError, "Unknown config_item: SerializableInt.*"
-        ):
-            _ = keras.layers.deserialize(config)
+  def test_serialize_deserialize(self):
+    layer = keras.layers.Dense(
+        3, activation='relu', kernel_initializer='ones', bias_regularizer='l2')
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.activation, keras.activations.relu)
+    self.assertEqual(new_layer.bias_regularizer.__class__,
+                     keras.regularizers.L2)
+    if tf2.enabled():
+      self.assertEqual(new_layer.kernel_initializer.__class__,
+                       keras.initializers.OnesV2)
+    else:
+      self.assertEqual(new_layer.kernel_initializer.__class__,
+                       keras.initializers.Ones)
+    self.assertEqual(new_layer.units, 3)
 
-    def test_implicit_serialize_deserialize_succeeds_with_object(self):
-        layer = keras.layers.Dense(
-            SerializableInt(3),
-            activation="relu",
-            kernel_initializer="ones",
-            bias_regularizer="l2",
-        )
-        config = keras.layers.serialize(layer)
-        # Because we're passing an unknown class here, deserialization should fail
-        # unless we add SerializableInt to the custom object dict.
-        new_layer = keras.layers.deserialize(
-            config, custom_objects={"SerializableInt": SerializableInt}
-        )
-        self.assertEqual(new_layer.activation, keras.activations.relu)
-        self.assertEqual(new_layer.bias_regularizer.__class__, keras.regularizers.L2)
-        if tf2.enabled():
-            self.assertEqual(
-                new_layer.kernel_initializer.__class__, keras.initializers.OnesV2
-            )
-        else:
-            self.assertEqual(
-                new_layer.kernel_initializer.__class__, keras.initializers.Ones
-            )
-        self.assertEqual(new_layer.units.__class__, SerializableInt)
-        self.assertEqual(new_layer.units, 3)
+  def test_implicit_serialize_deserialize_fails_without_object(self):
+    layer = keras.layers.Dense(
+        SerializableInt(3),
+        activation='relu',
+        kernel_initializer='ones',
+        bias_regularizer='l2')
+    config = keras.layers.serialize(layer)
+    # Because we're passing an unknown class here, deserialization should fail
+    # unless we add SerializableInt to the custom object dict.
+    with self.assertRaisesRegex(ValueError,
+                                'Unknown config_item: SerializableInt.*'):
+      _ = keras.layers.deserialize(config)
 
-    @parameterized.parameters([rnn_v1.LSTM, rnn_v2.LSTM])
-    def test_serialize_deserialize_lstm(self, layer):
-        lstm = layer(5, return_sequences=True)
-        config = keras.layers.serialize(lstm)
-        self.assertEqual(config["class_name"], "LSTM")
-        new_layer = keras.layers.deserialize(config)
-        self.assertEqual(new_layer.units, 5)
-        self.assertEqual(new_layer.return_sequences, True)
-        if tf2.enabled():
-            self.assertIsInstance(new_layer, rnn_v2.LSTM)
-        else:
-            self.assertIsInstance(new_layer, rnn_v1.LSTM)
-            self.assertNotIsInstance(new_layer, rnn_v2.LSTM)
+  def test_implicit_serialize_deserialize_succeeds_with_object(self):
+    layer = keras.layers.Dense(
+        SerializableInt(3),
+        activation='relu',
+        kernel_initializer='ones',
+        bias_regularizer='l2')
+    config = keras.layers.serialize(layer)
+    # Because we're passing an unknown class here, deserialization should fail
+    # unless we add SerializableInt to the custom object dict.
+    new_layer = keras.layers.deserialize(
+        config, custom_objects={'SerializableInt': SerializableInt})
+    self.assertEqual(new_layer.activation, keras.activations.relu)
+    self.assertEqual(new_layer.bias_regularizer.__class__,
+                     keras.regularizers.L2)
+    if tf2.enabled():
+      self.assertEqual(new_layer.kernel_initializer.__class__,
+                       keras.initializers.OnesV2)
+    else:
+      self.assertEqual(new_layer.kernel_initializer.__class__,
+                       keras.initializers.Ones)
+    self.assertEqual(new_layer.units.__class__, SerializableInt)
+    self.assertEqual(new_layer.units, 3)
 
-    @parameterized.parameters([rnn_v1.GRU, rnn_v2.GRU])
-    def test_serialize_deserialize_gru(self, layer):
-        gru = layer(5, return_sequences=True)
-        config = keras.layers.serialize(gru)
-        self.assertEqual(config["class_name"], "GRU")
-        new_layer = keras.layers.deserialize(config)
-        self.assertEqual(new_layer.units, 5)
-        self.assertEqual(new_layer.return_sequences, True)
-        if tf2.enabled():
-            self.assertIsInstance(new_layer, rnn_v2.GRU)
-        else:
-            self.assertIsInstance(new_layer, rnn_v1.GRU)
-            self.assertNotIsInstance(new_layer, rnn_v2.GRU)
+  @parameterized.parameters([rnn_v1.LSTM, rnn_v2.LSTM])
+  def test_serialize_deserialize_lstm(self, layer):
+    lstm = layer(5, return_sequences=True)
+    config = keras.layers.serialize(lstm)
+    self.assertEqual(config['class_name'], 'LSTM')
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.units, 5)
+    self.assertEqual(new_layer.return_sequences, True)
+    if tf2.enabled():
+      self.assertIsInstance(new_layer, rnn_v2.LSTM)
+    else:
+      self.assertIsInstance(new_layer, rnn_v1.LSTM)
+      self.assertNotIsInstance(new_layer, rnn_v2.LSTM)
+
+  @parameterized.parameters([rnn_v1.GRU, rnn_v2.GRU])
+  def test_serialize_deserialize_gru(self, layer):
+    gru = layer(5, return_sequences=True)
+    config = keras.layers.serialize(gru)
+    self.assertEqual(config['class_name'], 'GRU')
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.units, 5)
+    self.assertEqual(new_layer.return_sequences, True)
+    if tf2.enabled():
+      self.assertIsInstance(new_layer, rnn_v2.GRU)
+    else:
+      self.assertIsInstance(new_layer, rnn_v1.GRU)
+      self.assertNotIsInstance(new_layer, rnn_v2.GRU)
 
 
-if __name__ == "__main__":
-    test.main()
+if __name__ == '__main__':
+  test.main()
