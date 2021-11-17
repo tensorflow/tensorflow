@@ -223,6 +223,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:util",
@@ -270,6 +271,7 @@ cc_library(
     hdrs = ["subgraph_resource.h"],
     features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:cc_api",
     ] + select({
         "//tensorflow:android": [

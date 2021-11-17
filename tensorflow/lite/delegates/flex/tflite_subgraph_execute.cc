@@ -93,7 +93,7 @@ class TfLiteSubgraphExecute : public OpKernel {
     }
 
     // Copy input tensors to subgraph.
-    SetSubgraphInput(ctx, subgraph_selected);
+    SetSubgraphInput(ctx, subgraph_selected, resource->GetFlexDelegate());
 
     OP_REQUIRES(ctx, subgraph_selected.Invoke() == kTfLiteOk,
                 errors::Internal("Failed to invoke tflite subgraph"));
@@ -134,7 +134,8 @@ class TfLiteSubgraphExecute : public OpKernel {
   }
 
   void SetSubgraphInput(OpKernelContext* ctx,
-                        tflite::Subgraph& subgraph_selected) const {
+                        tflite::Subgraph& subgraph_selected,
+                        TfLiteDelegate* flex_delegate) const {
     for (int i = 0; i < subgraph_selected.inputs().size(); ++i) {
       const Tensor& tf_tensor = ctx->input(i + 1);
       TfLiteTensor* subgraph_input =
@@ -163,7 +164,8 @@ class TfLiteSubgraphExecute : public OpKernel {
         TfLiteTensorDataFree(subgraph_input);
         subgraph_input->data.raw = reinterpret_cast<char*>(tf_tensor_ptr);
         subgraph_input->bytes = required_bytes;
-        subgraph_input->data_is_stale = true;
+        subgraph_input->data_is_stale = false;
+        subgraph_input->delegate = flex_delegate;
       } else {
         tensorflow::StringPiece tensor_data = tf_tensor.tensor_data();
         OP_REQUIRES(ctx, subgraph_input->bytes == tensor_data.size(),

@@ -40,9 +40,12 @@ class DelegateData {
   // differ).
   // When `main_subgraph` parameter is provided, this function will register
   // FunctionDefs associated with each of the subgraphs attached to the
-  // `main_subgraph`.
+  // `main_subgraph` which is delegated by 'flex_delegate'.
+  // 'flex_delegate' should always be non-null when 'main_subgraph' is
+  // non-null.
   tensorflow::Status Prepare(const tensorflow::SessionOptions& session_options,
-                             Subgraph* main_subgraph = nullptr);
+                             Subgraph* main_subgraph = nullptr,
+                             TfLiteDelegate* flex_delegate = nullptr);
 
   // The EagerContext that is required for execution of Flex Ops.
   // Note: The context is lazily created after the first call to |Prepare()|.
@@ -82,7 +85,7 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
         const std::vector<std::unique_ptr<Subgraph>>&,
         std::set<std::string>* result)>& select_subgraphs_to_register,
     tensorflow::ResourceMgr* resource_mgr,
-    tensorflow::EagerContext* eager_context);
+    tensorflow::EagerContext* eager_context, TfLiteDelegate* flex_delegate);
 
 }  // namespace flex
 }  // namespace tflite
