@@ -1780,9 +1780,9 @@ class TfToTfrtConversionPass
     });
 
     // Wait for the compilation completion before returning from init function.
-    if (compiled.size() == 1) {
-      chain_value = compiled[0];
-    } else if (compiled.size() > 1) {
+    if (!compiled.empty()) {
+      // Do not forget to wait for the fallback kernels initialization.
+      compiled.insert(compiled.begin(), chain_value);
       chain_value = builder.create<tfrt::compiler::MergeChainsOp>(
           func_op.getLoc(), chain_type, compiled);
     }
