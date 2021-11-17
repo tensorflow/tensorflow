@@ -41,11 +41,9 @@ void QuantizeInt8PerChannel(const float* scale, const int64_t* zero_point,
   const int32_t num_dims = shape.size();
   const int32_t* dims_data = shape.data();
   std::vector<int> current_dim(num_dims, 0);
-  static constexpr int32_t min_val = std::numeric_limits<int8_t>::min();
-  static constexpr int32_t max_val = std::numeric_limits<int8_t>::max();
 
   do {
-    size_t offset =
+    const size_t offset =
         ReducedOutputOffset(num_dims, reinterpret_cast<const int*>(dims_data),
                             current_dim.data(), 0, nullptr);
     const int channel_idx = current_dim[quantized_dimension];
@@ -76,27 +74,22 @@ std::vector<float> GetInt8QuantizationScalePerChannel(
   const int32_t num_dims = shape.size();
   const int32_t* dims_data = shape.data();
   const int32_t channel_dim_size = shape[quantized_dimension];
-  std::vector<float> min(channel_dim_size);
-  std::vector<float> max(channel_dim_size);
-  std::vector<bool> has_min_max_value(channel_dim_size, false);
+  std::vector<float> min(channel_dim_size,
+                         std::numeric_limits<float>::max());
+  std::vector<float> max(channel_dim_size,
+                         std::numeric_limits<float>::min());
   std::vector<int> current_dim(num_dims, 0);
 
   do {
-    size_t offset =
+    const size_t offset =
         ReducedOutputOffset(num_dims, reinterpret_cast<const int*>(dims_data),
                             current_dim.data(), 0, nullptr);
     const int channel_idx = current_dim[quantized_dimension];
     const float val = data[offset];
-    if (has_min_max_value[channel_idx]) {
-      if (min[channel_idx] > val) {
-        min[channel_idx] = val;
-      } else if (max[channel_idx] < val) {
-        max[channel_idx] = val;
-      }
-    } else {
+    if (min[channel_idx] > val) {
       min[channel_idx] = val;
+    } else if (max[channel_idx] < val) {
       max[channel_idx] = val;
-      has_min_max_value[channel_idx] = true;
     }
   } while (NextIndex(num_dims, reinterpret_cast<const int*>(dims_data),
                      current_dim.data()));

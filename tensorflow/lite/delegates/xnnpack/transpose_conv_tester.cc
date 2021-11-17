@@ -223,9 +223,8 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
     int32_t filter_quantized_dimension = 0;
     std::vector<int8_t> quantized_filter_data(filter_data.size());
     if (INT8Weights()) {
+      filter_scales.resize(1, GetInt8QuantizationScale(filter_data));
       filter_zero_points.resize(1, 0);
-      filter_scales.resize(1);
-      filter_scales[0] = GetInt8QuantizationScale(filter_data);
       std::transform(
           filter_data.begin(), filter_data.end(), quantized_filter_data.begin(),
           std::bind(QuantizeInt8, std::placeholders::_1, 0, filter_scales[0]));
@@ -233,9 +232,9 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
       filter_quantized_dimension =
           static_cast<int32_t>(filter_shape.size()) - 1;
       const int32_t num_scales = filter_shape[filter_quantized_dimension];
-      filter_zero_points.resize(num_scales, 0);
       filter_scales = GetInt8QuantizationScalePerChannel(
           filter_data.data(), filter_quantized_dimension, filter_shape);
+      filter_zero_points.resize(num_scales, 0);
       QuantizeInt8PerChannel(filter_scales.data(), filter_zero_points.data(),
                              filter_quantized_dimension, filter_data.data(),
                              quantized_filter_data.data(), filter_shape);
@@ -269,18 +268,17 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
       int32_t bias_quantized_dimension = 0;
       std::vector<int8_t> quantized_bias_data(bias_data.size());
       if (INT8Weights()) {
+        bias_scales.resize(1, GetInt8QuantizationScale(bias_data));
         bias_zero_points.resize(1, 0);
-        bias_scales.resize(1);
-        bias_scales[0] = GetInt8QuantizationScale(bias_data);
         std::transform(
             bias_data.begin(), bias_data.end(), quantized_bias_data.begin(),
             std::bind(QuantizeInt8, std::placeholders::_1, 0, bias_scales[0]));
       } else {
         bias_quantized_dimension = static_cast<int32_t>(bias_shape.size()) - 1;
         const int32_t num_scales = bias_shape[bias_quantized_dimension];
-        bias_zero_points.resize(num_scales, 0);
         bias_scales = GetInt8QuantizationScalePerChannel(
             bias_data.data(), bias_quantized_dimension, bias_shape);
+        bias_zero_points.resize(num_scales, 0);
         QuantizeInt8PerChannel(bias_scales.data(), bias_zero_points.data(),
                                bias_quantized_dimension, bias_data.data(),
                                quantized_bias_data.data(), bias_shape);

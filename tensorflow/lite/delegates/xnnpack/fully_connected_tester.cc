@@ -210,9 +210,8 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
     if (INT8Weights() || INT8ChannelWiseWeights()) {
       std::vector<int8_t> quantized_filter_data(filter_data.size());
       if (INT8Weights()) {
+        filter_scales.resize(1, GetInt8QuantizationScale(filter_data));
         filter_zero_points.resize(1, 0);
-        filter_scales.resize(1);
-        filter_scales[0] = GetInt8QuantizationScale(filter_data);
         std::transform(filter_data.begin(), filter_data.end(),
                        quantized_filter_data.begin(),
                        std::bind(QuantizeInt8, std::placeholders::_1, 0,
@@ -221,9 +220,9 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
         filter_quantized_dimension =
             static_cast<int32_t>(filter_shape.size()) - 1;
         const int32_t num_scales = filter_shape[filter_quantized_dimension];
-        filter_zero_points.resize(num_scales, 0);
         filter_scales = GetInt8QuantizationScalePerChannel(
             filter_data.data(), filter_quantized_dimension, filter_shape);
+        filter_zero_points.resize(num_scales, 0);
         QuantizeInt8PerChannel(filter_scales.data(), filter_zero_points.data(),
                                filter_quantized_dimension, filter_data.data(),
                                quantized_filter_data.data(), filter_shape);

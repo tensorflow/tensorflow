@@ -342,7 +342,7 @@ must be enabled by adding extra Bazel flags when building TensorFlow Lite.
 operators using signed quantization schema. This schema is used by models
 produced by [Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
 through either post-training integer quantization or quantization-aware
-training.
+training. Post-training dynamic range quantization is not supported in XNNPACK.
 
 * `--define xnn_enable_qu8=true` flag enables XNNPACK inference for quantized
 operators using unsigned quantization schema, produced via the legacy TensorFlow
@@ -426,10 +426,6 @@ Below is the list of currently supported quantized operators:
   present, must be in 32-bit quantized format).
 * Output size, filter and bias (if present) must be static (use
   `kTfLiteMmapRo` allocation type).
-
-XNNPACK supports post-training dynamic range quantization: quantized weights
-are being unpacked, and then inference is performed with floating-point
-precision.
 
 ### Sparse Inference
 

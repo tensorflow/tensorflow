@@ -38,6 +38,10 @@ namespace tflite {
 namespace xnnpack {
 
 void PreluTester::Test(TfLiteDelegate* delegate) const {
+  if (INT8ChannelWiseWeights()) {
+    ASSERT_FALSE(SlopeShape().empty());
+  }
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto input_rng = std::bind(std::uniform_real_distribution<float>(-1.0f, 1.0f),
@@ -137,9 +141,8 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
 
     if (INT8Weights()) {
       std::vector<int8_t> quantized_slope_data(slope_data.size());
+      slope_scales.resize(1, GetInt8QuantizationScale(slope_data));
       slope_zero_points.resize(1, 0);
-      slope_scales.resize(1);
-      slope_scales[0] = GetInt8QuantizationScale(slope_data);
       std::transform(
           slope_data.begin(), slope_data.end(), quantized_slope_data.begin(),
           std::bind(QuantizeInt8, std::placeholders::_1, 0, slope_scales[0]));
@@ -152,9 +155,9 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
       std::vector<int8_t> quantized_slope_data(slope_data.size());
       slope_quantized_dimension = static_cast<int32_t>(SlopeShape().size()) - 1;
       const int32_t num_scales = SlopeShape()[slope_quantized_dimension];
-      slope_zero_points.resize(num_scales, 0);
       slope_scales = GetInt8QuantizationScalePerChannel(
           slope_data.data(), slope_quantized_dimension, SlopeShape());
+      slope_zero_points.resize(num_scales, 0);
       QuantizeInt8PerChannel(slope_scales.data(), slope_zero_points.data(),
                              slope_quantized_dimension, slope_data.data(),
                              quantized_slope_data.data(), SlopeShape());

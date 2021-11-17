@@ -68,6 +68,9 @@ void BinaryElementwiseTester::Test(tflite::BuiltinOperator binary_op,
   }
   if (FP16Weights() || INT8Weights() || INT8ChannelWiseWeights()) {
     ASSERT_TRUE(Input1Static() || Input2Static());
+    if (INT8ChannelWiseWeights()) {
+      ASSERT_FALSE(Input1Shape().empty());
+    }
   }
 
   std::random_device random_device;
@@ -225,9 +228,8 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
 
       if (INT8Weights()) {
         std::vector<int8_t> quantized_input1_data(input1_data.size());
-        input1_scales.resize(1);
+        input1_scales.resize(1, GetInt8QuantizationScale(input1_data));
         input1_zero_points.resize(1, 0);
-        input1_scales[0] = GetInt8QuantizationScale(input1_data);
         std::transform(input1_data.begin(), input1_data.end(),
                        quantized_input1_data.begin(),
                        std::bind(QuantizeInt8, std::placeholders::_1, 0,
@@ -242,9 +244,9 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
         input1_quantized_dimension =
             static_cast<int32_t>(Input1Shape().size()) - 1;
         const int32_t num_scales = Input1Shape()[input1_quantized_dimension];
-        input1_zero_points.resize(num_scales, 0);
         input1_scales = GetInt8QuantizationScalePerChannel(
             input1_data.data(), input1_quantized_dimension, Input1Shape());
+        input1_zero_points.resize(num_scales, 0);
         QuantizeInt8PerChannel(input1_scales.data(), input1_zero_points.data(),
                                input1_quantized_dimension, input1_data.data(),
                                quantized_input1_data.data(), Input1Shape());
@@ -286,9 +288,8 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
 
       if (INT8Weights()) {
         std::vector<int8_t> quantized_input2_data(input2_data.size());
-        input2_scales.resize(1);
+        input2_scales.resize(1, GetInt8QuantizationScale(input2_data));
         input2_zero_points.resize(1, 0);
-        input2_scales[0] = GetInt8QuantizationScale(input2_data);
         std::transform(input2_data.begin(), input2_data.end(),
                        quantized_input2_data.begin(),
                        std::bind(QuantizeInt8, std::placeholders::_1, 0,
@@ -303,9 +304,9 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
         input2_quantized_dimension =
             static_cast<int32_t>(Input2Shape().size()) - 1;
         const int32_t num_scales = Input1Shape()[input2_quantized_dimension];
-        input2_zero_points.resize(num_scales, 0);
         input2_scales = GetInt8QuantizationScalePerChannel(
             input2_data.data(), input2_quantized_dimension, Input2Shape());
+        input2_zero_points.resize(num_scales, 0);
         QuantizeInt8PerChannel(input2_scales.data(), input2_zero_points.data(),
                                input2_quantized_dimension, input2_data.data(),
                                quantized_input2_data.data(), Input2Shape());
