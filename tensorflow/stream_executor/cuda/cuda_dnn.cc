@@ -3418,7 +3418,7 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
 
   if (vector_size == 32) {
     return port::InternalError(
-        "cuDNN frontend doesn't support int8x32 at the moment.");
+        "cuDNN frontend doesn't support Tx32 at the moment.");
   }
 
   auto tensor_x = cudnn_frontend::TensorBuilder()
@@ -3559,8 +3559,7 @@ GetCudnnFusedOperationGraph(
 
   if (vector_size == 32) {
     return port::InternalError(
-        "cuDNN frontend doesn't support int8x32 at the "
-        "moment.");
+        "cuDNN frontend doesn't support Tx32 at the moment.");
   }
 
   auto tensor_x = cudnn_frontend::TensorBuilder()
@@ -4570,7 +4569,27 @@ port::Status CudnnSupport::GetConvolveRunners(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     ScratchAllocator* /*scratch_allocator*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
-  if (!use_cudnn_frontend) {
+  // All current versions of the frontend API lack support for Tx32
+  // convolutions.
+  const bool is_unsupported_x32 =
+      input_descriptor.layout() == dnn::kBatchDepthYX32;
+
+  const bool actually_use_cudnn_frontend =
+      use_cudnn_frontend && !is_unsupported_x32;
+
+  if (use_cudnn_frontend && !actually_use_cudnn_frontend) {
+    // This will happen once per unique conv configuration/shape that gets
+    // affected (and not, for example, on every conv launch).  Confusion over
+    // whether this has happened or not has repeatedly wasted a lot of time
+    // debugging, so it's getting promoted to an error log.
+    LOG(ERROR) << "Disabling cuDNN frontend for the following convolution:\n"
+               << "  input: " << input_descriptor.ToString() << "\n"
+               << "  filter: " << filter_descriptor.ToString() << "\n"
+               << "  " << convolution_descriptor.ToString() << "\n"
+               << "  ... because Tx32 convolutions are unsupported.";
+  }
+
+  if (!actually_use_cudnn_frontend) {
     auto cuda_compute_capability = stream->GetCudaComputeCapability();
     std::vector<dnn::AlgorithmDesc> algorithms;
     bool got_algos = false;
@@ -5137,6 +5156,39 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::ActivationMode activation_mode,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
+  // Fused convolutions with identity activations are broken in that they
+  // implicitly do ReLU on some engines, and we can't reliably detect which
+  // ones.
+  const bool is_broken_identity_fused_conv =
+#if CUDNN_VERSION < 8205
+      activation_mode == dnn::ActivationMode::kNone;
+#else
+      false;
+#endif
+
+  // All current versions of the frontend API lack support for Tx32
+  // convolutions.
+  const bool is_unsupported_x32 =
+      input_descriptor.layout() == dnn::kBatchDepthYX32;
+
+  const bool actually_use_cudnn_frontend = use_cudnn_frontend &&
+                                           !is_broken_identity_fused_conv &&
+                                           !is_unsupported_x32;
+
+  if (use_cudnn_frontend && !actually_use_cudnn_frontend) {
+    // This will happen once per unique conv configuration/shape that gets
+    // affected (and not, for example, on every conv launch).  Confusion over
+    // whether this has happened or not has repeatedly wasted a lot of time
+    // debugging, so it's getting promoted to an error.
+    LOG(ERROR) << "Disabling cuDNN frontend for the following convolution:\n"
+               << "  input: " << input_descriptor.ToString() << "\n"
+               << "  filter: " << filter_descriptor.ToString() << "\n"
+               << "  " << convolution_descriptor.ToString() << "\n"
+               << "  ... because "
+               << (is_unsupported_x32 ? "Tx32 convolutions are unsupported."
+                                      : "it uses an identity activation.");
+  }
+
   if (input_type == dnn::DataType::kInt8 &&
       !stream->GetCudaComputeCapability().IsAtLeast(6, 1)) {
     return port::UnimplementedError(
@@ -5159,7 +5211,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
                         "Relu or None activation.");
   }
 
-  if (!use_cudnn_frontend) {
+  if (!actually_use_cudnn_frontend) {
     std::vector<dnn::AlgorithmDesc> algorithms;
 
     auto cuda_compute_capability = stream->GetCudaComputeCapability();

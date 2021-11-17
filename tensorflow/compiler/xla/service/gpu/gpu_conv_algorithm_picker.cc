@@ -479,23 +479,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                                           ->config()
                                           .debug_options()
                                           .xla_gpu_enable_cudnn_frontend();
-  // Fused convolutions with identity activations are broken in that they
-  // implicitly do ReLU on some engines, and we can't reliably detect which
-  // ones.  TODO(awpr): this may be fixed in 8.2.5; consider letting this case
-  // through for newer versions.
-  const bool is_broken_identity_fused_conv =
-      config.fusion && config.fusion->mode == se::dnn::ActivationMode::kNone;
-  // All current versions of the frontend API lack support for int8x32
-  // convolutions.
-  const bool is_unsupported_int8x32 =
-      config.input_type == S8 &&
-      config.input_descriptor.layout() == se::dnn::kBatchDepthYX32;
-  const bool use_cudnn_frontend = cudnn_frontend_enabled &&
-                                  !is_broken_identity_fused_conv &&
-                                  !is_unsupported_int8x32;
 
   TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> runners,
-                      GetAlgorithms(config, stream, use_cudnn_frontend));
+                      GetAlgorithms(config, stream, cudnn_frontend_enabled));
 
   for (auto& runner_cache : runners) {
     auto alg = runner_cache.ToAlgorithmDesc();
@@ -530,7 +516,13 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     // ALGO_IMPLICIT_PRECOMP_GEMM does the right thing. Other algorithms
     // silently do Relu. See
     // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
-    if (kind == CudnnConvKind::kForwardActivation &&
+    //
+    // For cuDNN Frontend, there is no way to check whether we're using a broken
+    // algorithm, so on versions where some algorithms are broken, we don't use
+    // the cuDNN Frontend for these convs at all.  As such, if we get a
+    // frontend-based runner, we can be sure it's not one of the broken
+    // algorithms we're checking for.
+    if (!alg.is_cudnn_frontend() && kind == CudnnConvKind::kForwardActivation &&
         backend_config.activation_mode() == se::dnn::ActivationMode::kNone &&
         alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
       set_failure(AutotuneResult::DISQUALIFIED,
