@@ -4167,6 +4167,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$time_major,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized op and hold the ranges of the intermediate tensors.
@@ -4363,7 +4366,10 @@ def TFL_BidirectionalSequenceLSTMOp :
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$merge_outputs,
-    BoolAttr:$time_major
+    BoolAttr:$time_major,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   let results = (outs
@@ -4421,7 +4427,10 @@ def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
 
     // Attributes
     BoolAttr:$time_major,
-    TFL_AFAttr:$fused_activation_function
+    TFL_AFAttr:$fused_activation_function,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   let results = (outs TFL_FpTensor:$output);
@@ -4520,7 +4529,10 @@ def TFL_SVDFOp :
 
     // Attributes
     Confined<I32Attr, [IntPositive]>:$rank,
-    TFL_AFAttr:$fused_activation_function
+    TFL_AFAttr:$fused_activation_function,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8]>:$output);
