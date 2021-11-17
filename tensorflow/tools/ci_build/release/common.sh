@@ -408,7 +408,7 @@ function test_xml_summary_exit {
 }
 
 # CPU size
-MAC_CPU_MAX_WHL_SIZE=200M
+MAC_CPU_MAX_WHL_SIZE=210M
 LINUX_CPU_MAX_WHL_SIZE=175M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
