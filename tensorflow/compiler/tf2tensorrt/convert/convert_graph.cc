@@ -482,12 +482,8 @@ Status CreateTRTNode(const ConversionParams& params,
   // here, this segment will be skipped
   // TODO(aaroey): let it return proper error status for the following logic
   // instead of checking fail.
-  Node* engine_node = graph->AddNode(trt_node, &status);
+  TF_ASSIGN_OR_RETURN(Node * engine_node, graph->AddNode(trt_node));
   (*engine_nodes)[pos] = engine_node;
-  if (!status.ok()) {
-    LOG(ERROR) << "Adding node failed " << status;
-    return status;
-  }
   // Add control input and input edges to the engine node.
   for (const auto in : control_input_nodes) {
     VLOG(1) << "Connecting control edge from " << in->name() << " to "

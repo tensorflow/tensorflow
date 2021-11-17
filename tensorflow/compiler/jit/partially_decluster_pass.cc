@@ -138,10 +138,8 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
   ndef.set_name(absl::StrCat(n->name(), "/declustered"));
   MergeDebugInfo(NodeDebugInfo(n->def()), &ndef);
   RemoveFromXlaCluster(&ndef);
-  Status s;
-  Node* cloned_node = graph->AddNode(ndef, &s);
+  TF_ASSIGN_OR_RETURN(Node * cloned_node, graph->AddNode(ndef));
   cloned_node->set_assigned_device_name(n->assigned_device_name());
-  TF_RETURN_IF_ERROR(s);
 
   for (const Edge* in_edge : n->in_edges()) {
     graph->AddEdge(in_edge->src(), in_edge->src_output(), cloned_node,

@@ -49,9 +49,7 @@ class ReplicateHelper {
     NodeDef node_def = node->def();
     const string suffix = strings::StrCat("/R", allowed_device_index);
     node_def.set_name(graph->NewName(strings::StrCat(node_def.name(), suffix)));
-    Status status;
-    Node* replicated_node = graph->AddNode(node_def, &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(Node * replicated_node, graph->AddNode(node_def));
     replicated_node->set_assigned_device_name(device);
     if (replicated_node->IsArg()) {
       replicated_node->AddAttr("sub_index", allowed_device_index);
@@ -168,9 +166,7 @@ class ReplicateHelper {
         pack_builder.Input(inputs);
         NodeDef pack_def;
         TF_RETURN_IF_ERROR(pack_builder.Finalize(&pack_def));
-        Status status;
-        Node* pack_node = graph->AddNode(pack_def, &status);
-        TF_RETURN_IF_ERROR(status);
+        TF_ASSIGN_OR_RETURN(Node * pack_node, graph->AddNode(pack_def));
         pack_node->set_assigned_device_name(dst->assigned_device_name());
         for (int i = 0; i < src_replicated_nodes.size(); ++i) {
           graph->AddEdge(src_replicated_nodes[i], edge->src_output(), pack_node,

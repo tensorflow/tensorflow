@@ -68,11 +68,7 @@ Status AddConfigurationNode(const string& configuration_device_name,
               &config_def);
   // TODO(shikharagarwal): Fill with appropriate original node debug info.
 
-  Status status;
-  *configuration_node = graph->AddNode(config_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*configuration_node, graph->AddNode(config_def));
   (*configuration_node)->set_assigned_device_name(configuration_device_name);
   return Status::OK();
 }
@@ -89,11 +85,8 @@ Status AddHostConfigNode(const string& host_device_name,
               &host_config_def);
   MergeDebugInfo(NodeDebugInfo(configuration_node->def()), &host_config_def);
 
-  Status status;
-  *host_configuration_node = graph->AddNode(host_config_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*host_configuration_node,
+                      graph->AddNode(host_config_def));
   (*host_configuration_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(configuration_node, 0, *host_configuration_node, 0);
   return Status::OK();
@@ -114,11 +107,7 @@ Status AddWaitNode(const string& configuration_device_name,
                    &wait_def);
   }
 
-  Status status;
-  *wait_node = graph->AddNode(wait_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*wait_node, graph->AddNode(wait_def));
   (*wait_node)->set_assigned_device_name(configuration_device_name);
   // Get the inputs from the host configuration nodes.
   for (int i = 0; i < host_configuration_nodes.size(); ++i) {
@@ -135,11 +124,8 @@ Status AddGlobalTPUArrayNode(const string& host_device_name, Node* wait_node,
   global_tpu_array_def.set_device(host_device_name);
   MergeDebugInfo(NodeDebugInfo(wait_node->def()), &global_tpu_array_def);
 
-  Status status;
-  *global_tpu_array_node = graph->AddNode(global_tpu_array_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*global_tpu_array_node,
+                      graph->AddNode(global_tpu_array_def));
   (*global_tpu_array_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(wait_node, 0, *global_tpu_array_node, 0);
   return Status::OK();
@@ -158,11 +144,7 @@ Status AddSynchronizationNode(
   AddNodeAttr("T", DT_STRING, &sync_def);
   MergeDebugInfo(NodeDebugInfo(sync_node_def), &sync_def);
 
-  Status status;
-  Node* sync_node = graph->AddNode(sync_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(Node * sync_node, graph->AddNode(sync_def));
   sync_node->set_assigned_device_name(device_name);
   // Add control edges from the global array id nodes.
   for (auto node : global_array_id_nodes) {
@@ -194,11 +176,7 @@ Status AddShutdownNode(
   shutdown_def.set_device(shutdown_device_name);
   MergeDebugInfo(NodeDebugInfo(shutdown_node_def), &shutdown_def);
 
-  Status status;
-  *shutdown_node = graph->AddNode(shutdown_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*shutdown_node, graph->AddNode(shutdown_def));
   (*shutdown_node)->set_assigned_device_name(shutdown_device_name);
   // Replace the output control edges.
   for (const DistributedTPURewriteHelpers::OutputDependency& dep :
@@ -222,11 +200,8 @@ Status AddHostDisconnectNode(const string& host_device_name,
   MergeDebugInfo(NodeDebugInfo(post_disconnect_node->def()),
                  &host_disconnect_def);
 
-  Status status;
-  Node* host_disconnect_node = graph->AddNode(host_disconnect_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(Node * host_disconnect_node,
+                      graph->AddNode(host_disconnect_def));
   host_disconnect_node->set_assigned_device_name(host_device_name);
   // Replace the input control edges.
   for (Node* src_node : input_dependencies) {
