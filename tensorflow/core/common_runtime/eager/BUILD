@@ -191,7 +191,6 @@ tf_cuda_library(
         "//conditions:default": [
             "//tensorflow/core/distributed_runtime/coordination:coordination_service",
             "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent_impl",
             "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
@@ -225,6 +224,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:context_distributed_manager",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:logging_ops",

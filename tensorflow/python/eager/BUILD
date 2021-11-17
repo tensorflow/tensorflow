@@ -505,6 +505,7 @@ cuda_py_test(
         ":context",
         ":def_function",
         ":function",
+        ":function_cache",
         ":test",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
@@ -541,10 +542,32 @@ cuda_py_test(
         ":function_trace_type",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/types",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "function_cache_test",
+    size = "medium",
+    srcs = ["function_cache_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":function_cache",
+        ":function_trace_type",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -635,6 +658,23 @@ py_library(
 )
 
 py_library(
+    name = "function_cache",
+    srcs = ["function_cache.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":function_trace_type",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python/framework:device",
+        "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
@@ -644,7 +684,7 @@ py_library(
         ":core",
         ":execute",
         ":forwardprop_util",
-        ":function_trace_type",
+        ":function_cache",
         ":graph_only_ops",
         ":tape",
         "//tensorflow/python:dtypes",
@@ -657,7 +697,6 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",
-        "//tensorflow/python/saved_model:save_context",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -986,9 +1025,9 @@ tf_py_test(
     # --config=cuda implicitly links in XLA.
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_gpu",
         "no_oss",  # No way to force no XLA linkage in OSS build from here.
         "no_pip",
-        "nogpu",
     ],
     deps = [
         ":def_function",
@@ -1020,6 +1059,7 @@ tf_xla_py_test(
         ":def_function",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:collective_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",

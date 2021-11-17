@@ -21,6 +21,7 @@ from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.saved_model import registration
 from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training.saving import saveable_object as saveable_object_lib
 from tensorflow.python.training.saving import saveable_object_util
@@ -60,10 +61,10 @@ def _escape_local_name(name):
           .replace(r"/", _ESCAPE_CHAR + "S"))
 
 
-def _object_prefix_from_path(path_to_root):
+def _object_prefix_from_path(node_paths):
   return "/".join(
       (_escape_local_name(trackable.name)
-       for trackable in path_to_root))
+       for trackable in node_paths))
 
 
 def _slot_variable_naming_for_optimizer(optimizer_path):
@@ -141,27 +142,60 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
   return slot_variables
 
 
-def get_checkpoint_factories_and_keys(object_names):
+def _get_mapped_trackable(trackable, object_map):
+  """Returns the mapped trackable if possible, otherwise returns trackable."""
+  if object_map is None:
+    return trackable
+  else:
+    return object_map.get(trackable, trackable)
+
+
+def get_checkpoint_factories_and_keys(object_names, object_map=None):
   """Gets a map of saveable factories and corresponding checkpoint keys.
 
   Args:
     object_names: a dictionary that maps `Trackable` objects to auto-generated
       string names.
+    object_map: a dictionary mapping `Trackable` to copied `Trackable` objects.
+      The copied objects are generated from `Trackable._map_resources()` which
+      copies the object into another graph. Generally only resource objects
+      (e.g. Variables, Tables) will be in this map.
   Returns:
-    A dictionary mapping Trackables -> a list of _CheckpointFactoryData.
+    A tuple of (
+      Dictionary mapping trackable -> list of _CheckpointFactoryData,
+      Dictionary mapping registered saver name -> {object name -> trackable})
   """
   checkpoint_factory_map = object_identity.ObjectIdentityDictionary()
+  registered_savers = collections.defaultdict(dict)
   for trackable, object_name in object_names.items():
-    checkpoint_factory_map[trackable] = []
-    for name, saveable_factory in (
-        trackable._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
-      checkpoint_key = "%s/%s/%s" % (
-          object_name, _OBJECT_ATTRIBUTES_NAME, _escape_local_name(name))
-      checkpoint_factory_map[trackable].append(_CheckpointFactoryData(
-          factory=saveable_factory,
-          name=name,
-          checkpoint_key=checkpoint_key))
-  return checkpoint_factory_map
+    # object_to_save is only used to retrieve the saving functionality. For keys
+    # and other data, use the original `trackable`.
+    object_to_save = _get_mapped_trackable(trackable, object_map)
+
+    saver_name = registration.get_registered_saver_name(object_to_save)
+    if saver_name:
+      registered_savers[saver_name][object_name] = trackable
+    else:
+      checkpoint_factory_map[trackable] = []
+      for name, saveable_factory in (
+          object_to_save._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
+        checkpoint_key = "%s/%s/%s" % (
+            object_name, _OBJECT_ATTRIBUTES_NAME, _escape_local_name(name))
+        checkpoint_factory_map[trackable].append(_CheckpointFactoryData(
+            factory=saveable_factory,
+            name=name,
+            checkpoint_key=checkpoint_key))
+  return checkpoint_factory_map, registered_savers
+
+
+def _add_attributes_to_object_graph_for_registered_savers(
+    registered_savers, object_graph_proto, node_ids):
+  """Fills the object graph proto with data about the registered savers."""
+  for saver_name, trackables in registered_savers.items():
+    for object_name, trackable in trackables.items():
+      object_proto = object_graph_proto.nodes[node_ids[trackable]]
+      object_proto.registered_saver.name = saver_name
+      object_proto.registered_saver.object_name = object_name
 
 
 @tf_export("__internal__.tracking.ObjectGraphView", v1=[])
@@ -177,22 +211,27 @@ class ObjectGraphView(object):
       saveables_cache: A dictionary mapping `Trackable` objects ->
         attribute names -> SaveableObjects, used to avoid re-creating
         SaveableObjects when graph building.
-      attached_dependencies: Dependencies to attach to the root object. Used
-        when saving a Checkpoint with a defined root object.
+      attached_dependencies: List of dependencies to attach to the root object.
+        Used when saving a Checkpoint with a defined root object. To avoid
+        reference cycles, this should use the WeakTrackableReference class.
     """
-    self._root_ref = root
+    # ObjectGraphView should never contain a strong reference to root, since it
+    # may result in a cycle:
+    #   root -> deferred dependencies -> CheckpointPosition
+    #   -> CheckpointRestoreCoordinator -> ObjectGraphView -> root
+    self._root_ref = (root if isinstance(root, weakref.ref)
+                      else weakref.ref(root))
     self._saveables_cache = saveables_cache
     self._attached_dependencies = attached_dependencies
 
   def __deepcopy__(self, memo):
-    if isinstance(self._root_ref, weakref.ref):
-      # By default, weak references are not copied, which leads to surprising
-      # deepcopy behavior. To fix, we first we copy the object itself, then we
-      # make a weak reference to the copy.
-      strong_root = self._root_ref()
-      if strong_root is not None:
-        strong_copy = copy.deepcopy(strong_root, memo)
-        memo[id(self._root_ref)] = weakref.ref(strong_copy)
+    # By default, weak references are not copied, which leads to surprising
+    # deepcopy behavior. To fix, we first we copy the object itself, then we
+    # make a weak reference to the copy.
+    strong_root = self._root_ref()
+    if strong_root is not None:
+      strong_copy = copy.deepcopy(strong_root, memo)
+      memo[id(self._root_ref)] = weakref.ref(strong_copy)
     # super() does not have a __deepcopy__, so we need to re-implement it
     copied = super().__new__(type(self))
     memo[id(self)] = copied
@@ -200,7 +239,7 @@ class ObjectGraphView(object):
       setattr(copied, key, copy.deepcopy(value, memo))
     return copied
 
-  def list_dependencies(self, obj):
+  def list_children(self, obj):
     # pylint: disable=protected-access
     obj._maybe_initialize_trackable()
     dependencies = obj._checkpoint_dependencies
@@ -249,22 +288,45 @@ class ObjectGraphView(object):
     """Find shortest paths to all dependencies of self.root."""
     bfs_sorted = []
     to_visit = collections.deque([self.root])
-    path_to_root = object_identity.ObjectIdentityDictionary()
-    path_to_root[self.root] = ()
+    node_paths = object_identity.ObjectIdentityDictionary()
+    node_paths[self.root] = ()
     while to_visit:
       current_trackable = to_visit.popleft()
       bfs_sorted.append(current_trackable)
-      for name, dependency in self.list_dependencies(current_trackable):
-        if dependency not in path_to_root:
-          path_to_root[dependency] = (
-              path_to_root[current_trackable] + (
+      for name, dependency in self.list_children(current_trackable):
+        if dependency not in node_paths:
+          node_paths[dependency] = (
+              node_paths[current_trackable] + (
                   base.TrackableReference(name, dependency),))
           to_visit.append(dependency)
-    return bfs_sorted, path_to_root
+    return bfs_sorted, node_paths
 
   def _add_attributes_to_object_graph(
       self, trackable_objects, object_graph_proto, node_ids, object_names,
       object_map, call_with_mapped_captures):
+    """Create saveables/savers and corresponding protos in the object graph."""
+    # The loop below creates TrackableObject protos in the TrackableObjectGraph,
+    # which are filled in the `_add_attributes_to_object_graph_for_*` methods.
+    for checkpoint_id, (trackable, unused_object_proto) in enumerate(
+        zip(trackable_objects, object_graph_proto.nodes)):
+      assert node_ids[trackable] == checkpoint_id
+
+    checkpoint_factory_map, registered_savers = (
+        get_checkpoint_factories_and_keys(object_names, object_map))
+
+    # Add attributes, which describe what values are saved in checkpoint for
+    # this trackable.
+    _add_attributes_to_object_graph_for_registered_savers(
+        registered_savers, object_graph_proto, node_ids)
+    named_saveable_objects, feed_additions = (
+        self._add_attributes_to_object_graph_for_saveable_objects(
+            checkpoint_factory_map, object_graph_proto, node_ids, object_map,
+            call_with_mapped_captures))
+    return named_saveable_objects, feed_additions, registered_savers
+
+  def _add_attributes_to_object_graph_for_saveable_objects(
+      self, checkpoint_factory_map, object_graph_proto, node_ids, object_map,
+      call_with_mapped_captures):
     """Create SaveableObjects and corresponding SerializedTensor protos."""
     named_saveable_objects = []
     if self._saveables_cache is None:
@@ -276,27 +338,15 @@ class ObjectGraphView(object):
       # functions computing volatile Python state to be saved with the
       # checkpoint.
       feed_additions = {}
-    if object_map is None:
-      mapped_object_names = object_names
-    else:
-      mapped_object_names = object_identity.ObjectIdentityDictionary()
-      for trackable, name in object_names.items():
-        mapped_object_names[object_map.get(trackable, trackable)] = name
-    checkpoint_factory_map = get_checkpoint_factories_and_keys(
-        mapped_object_names)
-    for checkpoint_id, (trackable, object_proto) in enumerate(
-        zip(trackable_objects, object_graph_proto.nodes)):
-      assert node_ids[trackable] == checkpoint_id
-      if object_map is None:
-        object_to_save = trackable
-      else:
-        object_to_save = object_map.get(trackable, trackable)
+    for trackable, factory_data_list in checkpoint_factory_map.items():
+      object_proto = object_graph_proto.nodes[node_ids[trackable]]
       if self._saveables_cache is not None:
+        object_to_save = _get_mapped_trackable(trackable, object_map)
         cached_attributes = self._saveables_cache.setdefault(object_to_save, {})
       else:
         cached_attributes = None
 
-      for factory_data in checkpoint_factory_map[object_to_save]:
+      for factory_data in factory_data_list:
         attribute = object_proto.attributes.add()
         attribute.name = name = factory_data.name
         attribute.checkpoint_key = key = factory_data.checkpoint_key
@@ -374,6 +424,51 @@ class ObjectGraphView(object):
 
     return named_saveable_objects, feed_additions
 
+  def _add_checkpoint_values_check(self, trackable_objects, object_graph_proto):
+    """Determines which objects have checkpoint values and saves to the proto.
+
+    Args:
+      trackable_objects: A list of all trackable objects.
+      object_graph_proto: A `TrackableObjectGraph` proto.
+    """
+    # Trackable -> set of all trackables that depend on it (the "parents").
+    # If a trackable has checkpoint values, then all of the parents can be
+    # marked as having checkpoint values.
+    parents = object_identity.ObjectIdentityDictionary()
+    checkpointed_trackables = object_identity.ObjectIdentitySet()
+
+    # First pass: build dictionary of parent objects and initial set of
+    # checkpointed trackables.
+    for trackable, object_proto in zip(trackable_objects,
+                                       object_graph_proto.nodes):
+      if (object_proto.attributes or object_proto.slot_variables or
+          object_proto.HasField("registered_saver")):
+        checkpointed_trackables.add(trackable)
+      for child_proto in object_proto.children:
+        child = trackable_objects[child_proto.node_id]
+        if child not in parents:
+          parents[child] = object_identity.ObjectIdentitySet()
+        parents[child].add(trackable)
+
+    # Second pass: add all connected parents to set of checkpointed trackables.
+    to_visit = object_identity.ObjectIdentitySet()
+    to_visit.update(checkpointed_trackables)
+
+    while to_visit:
+      trackable = to_visit.pop()
+      if trackable not in parents:
+        # Some trackables may not have parents (e.g. slot variables).
+        continue
+      current_parents = parents.pop(trackable)
+      checkpointed_trackables.update(current_parents)
+      for parent in current_parents:
+        if parent in parents:
+          to_visit.add(parent)
+
+    for node_id, trackable in enumerate(trackable_objects):
+      object_graph_proto.nodes[node_id].has_checkpoint_values.value = bool(
+          trackable in checkpointed_trackables)
+
   def _fill_object_graph_proto(self, trackable_objects,
                                node_ids,
                                slot_variables,
@@ -386,18 +481,18 @@ class ObjectGraphView(object):
       assert node_ids[trackable] == checkpoint_id
       object_proto = object_graph_proto.nodes.add()
       object_proto.slot_variables.extend(slot_variables.get(trackable, ()))
-      for child in self.list_dependencies(trackable):
+      for child in self.list_children(trackable):
         child_proto = object_proto.children.add()
         child_proto.node_id = node_ids[child.ref]
         child_proto.local_name = child.name
     return object_graph_proto
 
-  def _serialize_gathered_objects(self, trackable_objects, path_to_root,
+  def _serialize_gathered_objects(self, trackable_objects, node_paths,
                                   object_map=None,
                                   call_with_mapped_captures=None):
     """Create SaveableObjects and protos for gathered objects."""
     object_names = object_identity.ObjectIdentityDictionary()
-    for obj, path in path_to_root.items():
+    for obj, path in node_paths.items():
       object_names[obj] = _object_prefix_from_path(path)
     node_ids = object_identity.ObjectIdentityDictionary()
     for node_id, node in enumerate(trackable_objects):
@@ -410,7 +505,7 @@ class ObjectGraphView(object):
         trackable_objects=trackable_objects,
         node_ids=node_ids,
         slot_variables=slot_variables)
-    named_saveable_objects, feed_additions = (
+    named_saveable_objects, feed_additions, registered_savers = (
         self._add_attributes_to_object_graph(
             trackable_objects=trackable_objects,
             object_graph_proto=object_graph_proto,
@@ -418,7 +513,11 @@ class ObjectGraphView(object):
             object_names=object_names,
             object_map=object_map,
             call_with_mapped_captures=call_with_mapped_captures))
-    return named_saveable_objects, object_graph_proto, feed_additions
+    # Gather all trackables that have checkpoint values or descendants with
+    # checkpoint values, and add that info to the proto.
+    self._add_checkpoint_values_check(trackable_objects, object_graph_proto)
+    return (named_saveable_objects, object_graph_proto, feed_additions,
+            registered_savers)
 
   def serialize_object_graph(self):
     """Determine checkpoint keys for variables and build a serialized graph.
@@ -441,24 +540,36 @@ class ObjectGraphView(object):
     Raises:
       ValueError: If there are invalid characters in an optimizer's slot names.
     """
-    trackable_objects, path_to_root = self._breadth_first_traversal()
+    named_saveable_objects, object_graph_proto, feed_additions, _ = (
+        self.serialize_object_graph_with_registered_savers())
+    return named_saveable_objects, object_graph_proto, feed_additions
+
+  def serialize_object_graph_with_registered_savers(self):
+    """Determine checkpoint keys for variables and build a serialized graph."""
+    trackable_objects, node_paths = self._breadth_first_traversal()
     return self._serialize_gathered_objects(
-        trackable_objects, path_to_root)
+        trackable_objects, node_paths)
 
   def frozen_saveable_objects(self, object_map=None, to_graph=None,
                               call_with_mapped_captures=None):
     """Creates SaveableObjects with the current object graph frozen."""
-    trackable_objects, path_to_root = self._breadth_first_traversal()
+    return self.frozen_saveables_and_savers(object_map, to_graph,
+                                            call_with_mapped_captures)[0]
+
+  def frozen_saveables_and_savers(self, object_map=None, to_graph=None,
+                                  call_with_mapped_captures=None):
+    """Generates SaveableObjects and registered savers in the frozen graph."""
+    trackable_objects, node_paths = self._breadth_first_traversal()
     if to_graph:
       target_context = to_graph.as_default
     else:
       target_context = ops.NullContextmanager
     with target_context():
-      named_saveable_objects, graph_proto, _ = self._serialize_gathered_objects(
-          trackable_objects,
-          path_to_root,
-          object_map,
-          call_with_mapped_captures)
+      named_saveable_objects, graph_proto, _, registered_savers = (
+          self._serialize_gathered_objects(trackable_objects,
+                                           node_paths,
+                                           object_map,
+                                           call_with_mapped_captures))
       with ops.device("/cpu:0"):
         object_graph_tensor = constant_op.constant(
             graph_proto.SerializeToString(), dtype=dtypes.string)
@@ -466,7 +577,7 @@ class ObjectGraphView(object):
           base.NoRestoreSaveable(
               tensor=object_graph_tensor,
               name=base.OBJECT_GRAPH_PROTO_KEY))
-    return named_saveable_objects
+    return named_saveable_objects, registered_savers
 
   def objects_ids_and_slot_variables_and_paths(self):
     """Traverse the object graph and list all accessible objects.
@@ -480,9 +591,9 @@ class ObjectGraphView(object):
       A tuple of (trackable objects, paths from root for each object,
                   object -> node id, slot variables, object_names)
     """
-    trackable_objects, path_to_root = self._breadth_first_traversal()
+    trackable_objects, node_paths = self._breadth_first_traversal()
     object_names = object_identity.ObjectIdentityDictionary()
-    for obj, path in path_to_root.items():
+    for obj, path in node_paths.items():
       object_names[obj] = _object_prefix_from_path(path)
     node_ids = object_identity.ObjectIdentityDictionary()
     for node_id, node in enumerate(trackable_objects):
@@ -491,7 +602,7 @@ class ObjectGraphView(object):
         trackable_objects=trackable_objects,
         node_ids=node_ids,
         object_names=object_names)
-    return (trackable_objects, path_to_root, node_ids, slot_variables,
+    return (trackable_objects, node_paths, node_ids, slot_variables,
             object_names)
 
   def objects_ids_and_slot_variables(self):

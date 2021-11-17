@@ -38,6 +38,7 @@ from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.eager import function_cache
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -96,10 +97,7 @@ except ImportError:
 
 
 def total_function_cache(defined):
-  # pylint: disable=protected-access
-  return (set(defined._function_cache.primary)
-          | set(defined._function_cache.arg_relaxed))
-  # pylint: enable=protected-access
+  return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
 
 def _example_indexed_slices_with_dense_shape():
@@ -115,7 +113,7 @@ def _example_indexed_slices_without_dense_shape():
 
 def _spec_for_value(value):
   """Returns the (nested) TypeSpec for a value."""
-  if nest.is_sequence(value):
+  if nest.is_nested(value):
     return nest.map_structure(_spec_for_value, value)
   elif isinstance(value, (ops.Tensor, composite_tensor.CompositeTensor)):
     return type_spec.type_spec_from_value(value)
@@ -666,7 +664,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegex(ValueError, r'got.*set'):
+    # TODO(b/201533914): Remove this flag.
+    if function_cache.USE_FULL_TRACE_TYPE:
+      expected_error = errors.InvalidArgumentError
+      expected_message = r'could not be represented through the generic tracing'
+    else:
+      expected_error = ValueError
+      expected_message = r'got.*set'
+
+    with self.assertRaisesRegex(expected_error, expected_message):
       f(set([]))
 
   def testFuncName(self):
@@ -3176,10 +3182,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(defined), 1)
 
   def _total_function_cache_def_func(self, defined):
-    # pylint: disable=protected-access
-    return (set(defined._stateful_fn._function_cache.primary)
-            | set(defined._stateful_fn._function_cache.arg_relaxed))
-    # pylint: enable=protected-access
+    return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
   def testVariableRetracingOnDtypeChanges(self):
 

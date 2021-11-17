@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/framework/resource_var.h"
@@ -33,35 +34,9 @@ namespace mlir {
 namespace tf_saved_model {
 namespace {
 
-class InitializeVariablesInSessionInitializerPass
-    : public PassWrapper<InitializeVariablesInSessionInitializerPass,
-                         OperationPass<ModuleOp>> {
- public:
-  explicit InitializeVariablesInSessionInitializerPass(
-      tensorflow::Session* session)
-      : session_(session) {}
-
-  StringRef getArgument() const final {
-    return "tf-saved-model-initialize-variables-in-session-init";
-  }
-
-  StringRef getDescription() const final {
-    return "Initialize variables in session initializer function.";
-  }
-
-  void runOnOperation() override;
-
- private:
-  void InitializeVariable(TF::VarHandleOp var_handle_op,
-                          tensorflow::Tensor* tensor, FuncOp session_init_func,
-                          OpBuilder builder);
-
-  tensorflow::Session* session_ = nullptr;
-};
-
-void InitializeVariablesInSessionInitializerPass::InitializeVariable(
-    TF::VarHandleOp var_handle_op, tensorflow::Tensor* tensor,
-    FuncOp session_init_func, OpBuilder builder) {
+void InitializeVariable(TF::VarHandleOp var_handle_op,
+                        tensorflow::Tensor* tensor, FuncOp session_init_func,
+                        OpBuilder builder) {
   tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(*tensor, &builder);
   assert(tensor_attr_or.ok() && "Expect valid tensor");
@@ -70,7 +45,7 @@ void InitializeVariablesInSessionInitializerPass::InitializeVariable(
   builder.setInsertionPointToStart(&session_init_func.getBlocks().front());
   auto var_handle_op_in_init = var_handle_op->clone();
   builder.insert(var_handle_op_in_init);
-  auto const_op = builder.create<mlir::ConstantOp>(
+  auto const_op = builder.create<mlir::arith::ConstantOp>(
       session_init_func.getLoc(), tensor_attr.getType(), tensor_attr);
 
   builder.create<TF::AssignVariableOp>(
@@ -123,16 +98,16 @@ FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
   return CreateSessionInitFunc(module);
 }
 
-void InitializeVariablesInSessionInitializerPass::runOnOperation() {
-  ModuleOp module = getOperation();
-  if (!session_) return;
+}  // namespace
 
+LogicalResult InitializeVariablesInSessionInitializer(
+    ModuleOp module, tensorflow::Session* session) {
   const tensorflow::DeviceMgr* mgr = nullptr;
-  auto status = session_->LocalDeviceManager(&mgr);
+  auto status = session->LocalDeviceManager(&mgr);
   if (!status.ok()) {
     module->emitError("failed to fetch device manager: " +
                       status.error_message());
-    return signalPassFailure();
+    return failure();
   }
 
   // Fetch all VarHandleOp.
@@ -148,10 +123,10 @@ void InitializeVariablesInSessionInitializerPass::runOnOperation() {
   }
 
   // Get resources from Session.
-  auto resource_tensors_or = GetResourcesFromSession(var_ops, session_);
+  auto resource_tensors_or = GetResourcesFromSession(var_ops, session);
   if (!resource_tensors_or.ok()) {
     module->emitError(resource_tensors_or.status().message().data());
-    return signalPassFailure();
+    return failure();
   }
 
   auto session_init_func = GetOrCreateSessionInitFunc(module);
@@ -178,14 +153,8 @@ void InitializeVariablesInSessionInitializerPass::runOnOperation() {
 
     InitializeVariable(var_op, tensor, session_init_func, builder);
   }
+  return success();
 }
 
-}  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateInitializeVariablesInSessionInitializerPass(
-    tensorflow::Session* session) {
-  return std::make_unique<InitializeVariablesInSessionInitializerPass>(session);
-}
 }  // namespace tf_saved_model
 }  // namespace mlir

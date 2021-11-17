@@ -55,7 +55,7 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFNoFallbackPass(
 /// Lowers from TF dialect to HLO dialect using tf2xla op kernels for the
 /// specified device type.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
-    llvm::StringRef device_type, bool prefer_tf2xla = false);
+    llvm::StringRef device_type = "", bool prefer_tf2xla = false);
 
 /// Replaces types that do not exist in MHLO with equivalent types that do
 /// exist.
@@ -99,14 +99,12 @@ LogicalResult legalizeTF(
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 
-// Fill in layouts in module using the TPU executor API.
-std::unique_ptr<Pass> CreateAdjustLayoutPass();
-
-// Prepare module for export to XLA HLO protos/instruction.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport();
+// Legalizes TF/XLA collective ops (TF dialect) to HLO dialect collective
+// ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 
 #define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
 

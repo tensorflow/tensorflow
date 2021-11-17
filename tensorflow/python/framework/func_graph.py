@@ -31,6 +31,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -165,7 +166,8 @@ class FuncGraph(ops.Graph):
       instead of reference.
   """
 
-  def __init__(self, name, collections=None, capture_by_value=None):
+  def __init__(self, name, collections=None, capture_by_value=None,
+               structured_input_signature=None, structured_outputs=None):
     """Construct a new FuncGraph.
 
     The graph will inherit its graph key, collections, seed, and distribution
@@ -183,16 +185,21 @@ class FuncGraph(ops.Graph):
       capture_by_value: An optional boolean. If True, the func graph will
         capture Variables by value instead of reference. By default inherit
         from outer graphs, and failing that will default to False.
+      structured_input_signature: Optional. The structured input signature to
+        use for initializing the FuncGraph. See the docstring for FuncGraph for
+        more information.
+      structured_outputs: Optional. The structured outputs to use for
+        initializing the FuncGraph. See the docstring for FuncGraph for more
+        information.
     """
     super(FuncGraph, self).__init__()
-
     self.name = name
     self.inputs = []
     self.outputs = []
     self.control_outputs = []
     self.control_captures = object_identity.ObjectIdentitySet()
-    self.structured_input_signature = None
-    self.structured_outputs = None
+    self.structured_input_signature = structured_input_signature
+    self.structured_outputs = structured_outputs
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
     self.is_control_flow_graph = False
@@ -439,7 +446,7 @@ class FuncGraph(ops.Graph):
     filtered_control_inputs = []
     for c in control_inputs:
       # Check for _UnreadVariable
-      if (isinstance(c, ops.IndexedSlices) or
+      if (isinstance(c, indexed_slices.IndexedSlices) or
           (hasattr(c, "_handle") and hasattr(c, "op"))):
         c = c.op
       graph_element = ops._as_graph_element(c)  # pylint: disable=protected-access
@@ -1026,8 +1033,8 @@ def func_graph_from_py_func(name,
     A FuncGraph.
 
   Raises:
-    TypeError: If any of `python_func`'s return values is neither `None` nor a
-      `Tensor`.
+    TypeError: If any of `python_func`'s return values is neither `None`, a
+      `Tensor` or a `tf.experimental.ExtensionType`.
     ValueError: If both `signature` and `override_flat_arg_shapes` are
       passed in.
   """
@@ -1108,10 +1115,11 @@ def func_graph_from_py_func(name,
           x = ops.convert_to_tensor_or_composite(x)
         except (ValueError, TypeError):
           raise TypeError(
-              "To be compatible with tf.eager.defun, Python functions "
-              "must return zero or more Tensors; in compilation of %s, found "
-              "return value of type %s, which is not a Tensor." %
-              (str(python_func), type(x)))
+              "To be compatible with tf.function, Python functions "
+              "must return zero or more Tensors or ExtensionTypes or None "
+              f"values; in compilation of {str(python_func)}, found return "
+              f"value of type {type(x).__name__}, which is not a Tensor or "
+              "ExtensionType.")
       if add_control_dependencies:
         x = deps_ctx.mark_as_return(x)
       return x

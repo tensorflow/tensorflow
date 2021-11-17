@@ -74,6 +74,9 @@ void AddDummyTfrtDevices(const std::vector<std::string>& device_names,
 StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
     const tensorflow::tfrt_stub::Runtime& runtime, const tfrt::BefBuffer& bef);
 
+// Returns a unique integer within this process.
+int64_t GetUniqueInt();
+
 }  // namespace tfrt
 
 #endif  // TENSORFLOW_CORE_TFRT_UTILS_H_

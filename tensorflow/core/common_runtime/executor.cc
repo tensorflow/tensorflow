@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
@@ -1105,6 +1106,7 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
     }
   } else {
     bool abort_run = false;
+    Status maybe_derived_s(s);
 
     // Some error happened. This thread of computation is done.
     {
@@ -1121,6 +1123,7 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         if (cancellation_manager_ && cancellation_manager_->IsCancelled() &&
             (errors::IsCancelled(s) || errors::IsAborted(s))) {
           status_ = StatusGroup::MakeDerived(s);
+          maybe_derived_s = status_;
         } else {
           status_ = s;
         }
@@ -1142,7 +1145,7 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         rendezvous_->StartAbort(s);
       }
       if (cancellation_manager_) {
-        cancellation_manager_->StartCancel();
+        cancellation_manager_->StartCancelWithStatus(maybe_derived_s);
       } else if (collective_executor_) {
         // If there's cancellation_manager_, collective ops aborts
         // collective_executor_ upon cancellation; otherwise we need to abort
@@ -1292,7 +1295,7 @@ void ExecutorState<PropagatorStateType>::Finish() {
         rendezvous_->StartAbort(status);
       }
       if (cancellation_manager_) {
-        cancellation_manager_->StartCancel();
+        cancellation_manager_->StartCancelWithStatus(status);
       } else if (collective_executor_) {
         // If there's cancellation_manager_, collective ops aborts
         // collective_executor_ upon cancellation; otherwise we need to abort

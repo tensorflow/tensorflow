@@ -47,12 +47,9 @@ using llvm::SmallVector;
 
 using mlir::AffineExpr;
 using mlir::AffineMap;
-using mlir::ConstantIndexOp;
-using mlir::ConstantOp;
 using mlir::failure;
 using mlir::FuncOp;
 using mlir::FunctionPass;
-using mlir::IndexCastOp;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -63,6 +60,9 @@ using mlir::success;
 using mlir::TypeRange;
 using mlir::Value;
 using mlir::ValueRange;
+using mlir::arith::ConstantIndexOp;
+using mlir::arith::ConstantOp;
+using mlir::arith::IndexCastOp;
 
 namespace linalg = mlir::linalg;
 namespace mhlo = mlir::mhlo;
@@ -124,8 +124,8 @@ bool isKnownBroadcastable(ShapeComponentAnalysis& analysis,
 LogicalResult CstrBroadcastableOpLowering::matchAndRewrite(
     shape::CstrBroadcastableOp op, mlir::PatternRewriter& rewriter) const {
   ShapeComponentAnalysis shape_component_analysis;
-  if (!isKnownBroadcastable(shape_component_analysis, op.shapes(),
-                            op.shapes().front()))
+  if (!isKnownBroadcastable(shape_component_analysis, op.getShapes(),
+                            op.getShapes().front()))
     return failure();
 
   // Replace constraint with a true witness.
@@ -207,8 +207,8 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
 LogicalResult BroadcastOpLowering::matchAndRewrite(
     shape::BroadcastOp op, mlir::PatternRewriter& rewriter) const {
   ShapeComponentAnalysis shape_component_analysis;
-  auto new_broadcast = simplifyBroadcast(shape_component_analysis, op.shapes(),
-                                         op.getLoc(), &rewriter);
+  auto new_broadcast = simplifyBroadcast(
+      shape_component_analysis, op.getShapes(), op.getLoc(), &rewriter);
   if (!new_broadcast) return failure();
   rewriter.replaceOp(op, {*new_broadcast});
   return success();

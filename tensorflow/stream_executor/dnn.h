@@ -28,6 +28,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "google/protobuf/wrappers.pb.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/stream_executor/data_type.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -779,24 +781,40 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64_t Index;
-  typedef std::string Tag;
-  AlgorithmDesc() : AlgorithmDesc(0, false) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops) {
+  AlgorithmDesc() : AlgorithmDesc(0, false, absl::nullopt) {}
+  explicit AlgorithmDesc(AlgorithmProto proto) : proto_(std::move(proto)) {}
+  AlgorithmDesc(Index a, bool use_tensor_ops)
+      : AlgorithmDesc(a, use_tensor_ops, absl::nullopt) {}
+  AlgorithmDesc(Index a, bool use_tensor_ops,
+                absl::optional<uint64_t> workspace_size) {
+    proto_.set_is_cudnn_frontend(false);
     proto_.set_algo_id(a);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
+    if (workspace_size) {
+      proto_.mutable_workspace_size()->set_value(*workspace_size);
+    }
   }
-  explicit AlgorithmDesc(Tag a) { proto_.set_exec_plan_id(a); }
-  bool IsExecutionPlan() const { return exec_plan_id() != ""; }
+  AlgorithmDesc(int64_t engine_id,
+                const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs,
+                absl::optional<uint64_t> workspace_size);
+  bool is_cudnn_frontend() const { return proto_.is_cudnn_frontend(); }
+
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }
-  Index algo_id() const { return proto_.algo_id(); }
-  Tag exec_plan_id() const { return proto_.exec_plan_id(); }
-  bool operator==(const AlgorithmDesc& other) const {
-    return algo_id() == other.algo_id() &&
-           tensor_ops_enabled() == other.tensor_ops_enabled();
+  absl::optional<uint64_t> workspace_size() const {
+    if (proto_.has_workspace_size()) {
+      return proto_.workspace_size().value();
+    }
+    return absl::nullopt;
   }
+  Index algo_id() const { return proto_.algo_id(); }
+
+  std::vector<std::pair<int64_t, int64_t>> TuningKnobs() const;
+
+  bool operator==(const AlgorithmDesc& other) const;
+
   uint64_t hash() const;
 
   AlgorithmProto ToProto() const { return proto_; }
@@ -860,7 +878,13 @@ class OpRunner<port::Status(Args...)> {
   virtual std::string ToString() const = 0;
 
   // Get the number of bytes of scratch space needed for `operator()`.
-  virtual port::StatusOr<size_t> GetWorkspaceSize() const = 0;
+  //
+  // If determining the workspace size can fail, runners should precompute and
+  // cache it at construction time.
+  virtual size_t GetWorkspaceSize() const = 0;
+
+  // Convert to an AlgorithmDesc for AoT compilation or autotuning.
+  virtual port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
 
   // Launch the operation, with the signature determined by `Sig`.
   virtual port::Status operator()(Args... args) const = 0;
@@ -914,9 +938,7 @@ class AlgorithmConfig {
   // cuDNN Frontend APIs.
   explicit AlgorithmConfig(const AlgorithmConfigProto& algorithm_config_proto) {
     const AlgorithmProto& algorithm_proto = algorithm_config_proto.algorithm();
-    algorithm_ = AlgorithmDesc(
-        algorithm_proto.algo_id(),
-        algorithm_proto.math_type() == AlgorithmProto::TENSOR_OP_MATH);
+    algorithm_ = AlgorithmDesc(algorithm_proto);
     if (algorithm_config_proto.optional_scratch_size_case() !=
         /*ONEOF_NAME_NOT_SET=*/0) {
       scratch_size_ = algorithm_config_proto.scratch_size();
@@ -925,10 +947,7 @@ class AlgorithmConfig {
         /*ONEOF_NAME_NOT_SET=*/0) {
       const AlgorithmProto& algorithm_no_scratch_proto =
           algorithm_config_proto.algorithm_no_scratch();
-      algorithm_no_scratch_ = AlgorithmDesc(
-          algorithm_no_scratch_proto.algo_id(),
-          /*use_tensor_ops=*/algorithm_no_scratch_proto.math_type() ==
-              AlgorithmProto::TENSOR_OP_MATH);
+      algorithm_no_scratch_ = AlgorithmDesc(algorithm_no_scratch_proto);
     }
   }
 
@@ -1366,14 +1385,51 @@ class DnnSupport {
       CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
-  virtual bool GetConvolveExecutionPlans(
-      dnn::ConvolutionKind kind, dnn::DataType input_type,
-      dnn::DataType output_type, Stream* stream,
+  virtual port::Status GetConvolveRunners(
+      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+      dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      ScratchAllocator* scratch_allocator,
+      std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
+
+  virtual port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+  ConvolveRunnerFromDesc(
+      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
+      dnn::DataType element_type, dnn::DataType output_type,
       const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor);
+
+  virtual port::Status GetFusedConvolveRunners(
+      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+      dnn::DataType element_type, dnn::DataType bias_type,
+      dnn::DataType output_type, double conv_input_scale,
+      double side_input_scale, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
+      dnn::ActivationMode activation_mode,
+      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
+
+  virtual port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  FusedConvolveRunnerFromDesc(
+      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
+      dnn::DataType element_type, dnn::DataType bias_type,
+      dnn::DataType output_type, double conv_scale, double side_input_scale,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      dnn::ActivationMode activation_mode);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

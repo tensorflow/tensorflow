@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -105,8 +106,9 @@ class PerceptionUtilsTest : public ::testing::Test {
 
   void SetUp() override {
     context_ = std::make_unique<mlir::MLIRContext>();
-    context_->loadDialect<mlir::StandardOpsDialect, mlir::TF::TensorFlowDialect,
-                          TensorFlowLiteDialect>();
+    context_
+        ->loadDialect<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                      mlir::TF::TensorFlowDialect, TensorFlowLiteDialect>();
     builder_ = std::unique_ptr<mlir::Builder>(new Builder(context_.get()));
 
     fused_max_unpooling_func_ =

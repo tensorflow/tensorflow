@@ -266,6 +266,9 @@ class Node {
   // property of the node (stored in props_).
   void UpdateProperties();
 
+  // Erases type information from the node.
+  void ClearTypeInfo();
+
   // Called after an incident non-control edge has changed. Does nothing if not
   // all input edges are defined.
   void RunForwardTypeInference();

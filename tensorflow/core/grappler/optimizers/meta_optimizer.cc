@@ -70,6 +70,7 @@ namespace {
 
 constexpr int kDefaultNumberOfIterations = 2;
 constexpr int kDefaultMinGraphNodes = 4;
+constexpr char kGrapplerCategory[] = "Grappler";
 
 int64_t NumEdges(const GraphDef& graph) {
   int64_t num_edges = 0;
@@ -95,8 +96,8 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "loop_optimizer" || name == "auto_mixed_precision" ||
-         name == "auto_mixed_precision_mkl";
+         name == "loop_optimizer" ||
+         absl::StartsWith(name, "auto_mixed_precision");
 }
 
 // Creates a function library stub from a real function library: copy only
@@ -221,6 +222,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
            new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
   }
 #endif
+  MK_OPT("auto_mixed_precision_cpu", "auto_mixed_precision_cpu",
+         new AutoMixedPrecision(AutoMixedPrecisionMode::CPU));
   MK_OPT("memory", "memory_optimization",
          new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("common_subgraph_elimination", "common_subgraph_elimination",
@@ -323,6 +326,12 @@ Status MetaOptimizer::InitializeOptimizers(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
   }
 #endif
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_cpu()) &&
+      AutoMixedPrecisionEnabled(
+          plugin_configs.toggle_config["auto_mixed_precision_cpu"])) {
+    optimizers->push_back(
+        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CPU));
+  }
   if (BOTH_ARE_ON(pin_to_host_optimization)) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
@@ -522,6 +531,10 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
         AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl())
             ? RewriterConfig::ON
             : RewriterConfig::OFF;
+    user_cfg.toggle_config["auto_mixed_precision_cpu"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_cpu())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
     user_cfg.toggle_config["memory_optimization"] =
         MemoryOptimizerEnabled(cfg_.memory_optimization(),
                                config_proto_.graph_options()
@@ -549,6 +562,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       PRINT_CFG("shape", "shape_optimization")
       PRINT_CFG("auto_mixed_precision", "auto_mixed_precision")
       PRINT_CFG("auto_mixed_precision_mkl", "auto_mixed_precision_mkl")
+      PRINT_CFG("auto_mixed_precision_cpu", "auto_mixed_precision_cpu")
       PRINT_CFG("pin_to_host", "pin_to_host_optimization")
       PRINT_CFG("layout", "layout_optimizer")
       PRINT_CFG("remap", "remapping")
@@ -588,6 +602,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
     if (pair.first == "debug_stripper" ||
         pair.first == "auto_mixed_precision" ||
         pair.first == "auto_mixed_precision_mkl" ||
+        pair.first == "auto_mixed_precision_cpu" ||
         pair.first == "pin_to_host_optimization" ||
         pair.first == "scoped_allocator_optimization") {
       // These optimizers are turned off by default.
@@ -620,7 +635,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     return Status::OK();
   }
 
-  const uint64 start_us = Env::Default()->NowMicros();
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kGrapplerCategory, "OptimizeMainGraph"});
 
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
   std::set<std::string> device_types;
@@ -665,7 +682,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
   *optimized_graph = std::move(item.graph);
 
   GraphOptimizationResult optimization_result(item.id);
+#ifndef ENABLE_MKL
   GraphOptimizer* sa_optimizer = nullptr;
+#endif
 
   // Constants in the graph are normally compressed after model_pruner.
   // Do it here if model pruner is disabled.
@@ -757,17 +776,12 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     DCHECK_EQ(optimized_graph->versions().producer(), original_producer);
   }
 
-  const uint64 end_us = Env::Default()->NowMicros();
-  metrics::UpdateGrapplerPassTime("OptimizeMainGraph", end_us - start_us);
-
   return Status::OK();
 }
 
 Status MetaOptimizer::RunOptimizer(
     GraphOptimizer* optimizer, Cluster* cluster, GrapplerItem* optimized_item,
     GraphDef* optimized_graph, GraphOptimizationResult* optimization_result) {
-  const uint64 start_us = Env::Default()->NowMicros();
-
   // If optimizer doesn't need a function library, we will replace it with a
   // stub before running optimization, and will put it back at the end.
   std::unique_ptr<FunctionDefLibrary> optimized_graph_function_library;
@@ -787,11 +801,13 @@ Status MetaOptimizer::RunOptimizer(
   optimized_item->graph = std::move(*optimized_graph);
   *optimized_graph = GraphDef();
   optimizer->set_deadline_usec(this->deadline_usec());
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kGrapplerCategory, optimizer->name()});
   Status status =
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
-  const uint64 end_us = Env::Default()->NowMicros();
-  const float duration_ms = (end_us - start_us) / 1000.0f;
-  metrics::UpdateGrapplerPassTime(optimizer->name(), end_us - start_us);
+  auto duration_ms = timings.DurationMicroSec().value() / 1000.0f;
+  timings.ReportAndStop();
 
   string message;
   if (!status.ok()) {
@@ -891,7 +907,9 @@ void PropagateTFDataAttrs(const FunctionLibraryDefinition& flib,
 
 Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                                           GraphDef* optimized_graph) {
-  const uint64 start_us = Env::Default()->NowMicros();
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kGrapplerCategory, "*"});
 
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
@@ -1126,9 +1144,6 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
         *optimized_graph);
   }
 
-  const uint64 end_us = Env::Default()->NowMicros();
-  metrics::UpdateGrapplerPassTime("*", end_us - start_us);
-
   return Status::OK();
 }
 
@@ -1172,6 +1187,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_mkl()) ||
+         AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_cpu()) ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }

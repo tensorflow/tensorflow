@@ -76,10 +76,10 @@ class MemorySpaceAssignmentTest : public HloTestBase,
                              .ValueOrDie();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
-            *cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
-            /*max_async_copy_to_overlap_ratio=*/10.0,
-            /*preferred_async_copy_to_overlap_ratio=*/1.5,
-            /*buffer_size_for_max_async_copy=*/0));
+            *cost_analysis, /*min_overlap_to_async_copy_ratio=*/0.8,
+            /*preferred_overlap_to_async_copy_ratio=*/1.5,
+            /*max_overlap_to_mem_size_async_copy_ratio=*/10.0,
+            /*mem_size_bytes=*/128));
     return AssignMemorySpace(
         module, /*max_outstanding_async_copies=*/-1,
         MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
@@ -4137,10 +4137,10 @@ TEST_P(MemorySpaceAssignmentTest, MoveCopyDoneEarlier) {
   });
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/4.0,
-      /*preferred_async_copy_to_overlap_ratio=*/1.5,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/1.5,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/4.0,
+      /*mem_size_bytes=*/128);
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     buffer_interval_compare, &interval_picker);
 
@@ -4684,6 +4684,243 @@ TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
         FindInstruction(module.get(), "while1")->shape().tuple_shapes_size(),
         FindInstruction(module.get(), "while2")->shape().tuple_shapes_size() +
             1);
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, add, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    negate0 = f32[3]{0} negate(p0)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, negate14, p1)
+    while = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
+    gte0 = f32[3]{0} get-tuple-element(while), index=0
+    gte1 = f32[3]{0} get-tuple-element(while), index=1
+    negate20 = f32[3]{0} negate(gte1)
+    negate21 = f32[3]{0} negate(negate20)
+    negate22 = f32[3]{0} negate(negate21)
+    negate23 = f32[3]{0} negate(negate22)
+    negate24 = f32[3]{0} negate(negate23)
+    negate25 = f32[3]{0} negate(negate24)
+    negate26 = f32[3]{0} negate(negate25)
+    negate27 = f32[3]{0} negate(negate26)
+    negate28 = f32[3]{0} negate(negate27)
+    negate29 = f32[3]{0} negate(negate28)
+    negate30 = f32[3]{0} negate(negate29)
+    negate31 = f32[3]{0} negate(negate30)
+    negate32 = f32[3]{0} negate(negate31)
+    negate33 = f32[3]{0} negate(negate32)
+    negate34 = f32[3]{0} negate(negate33)
+    ROOT add = f32[3]{0} add(negate34, gte0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  if (GetParam()) {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction()->operand(1),
+        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, op::Copy()));
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, add, gte2)
+  }
+
+  while_cond2 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body2 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, add, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple1 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, p0, p1)
+    while1 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple1), condition=while_cond1, body=while_body1
+    gte0 = f32[3]{0} get-tuple-element(while1), index=0
+    gte1 = f32[3]{0} get-tuple-element(while1), index=1
+    negate0 = f32[3]{0} negate(gte1)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    tuple2 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, negate14, p1)
+    while2 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple2), condition=while_cond2, body=while_body2
+    gte2 = f32[3]{0} get-tuple-element(while2), index=0
+    gte3 = f32[3]{0} get-tuple-element(while2), index=1
+    negate20 = f32[3]{0} negate(gte3)
+    negate21 = f32[3]{0} negate(negate20)
+    negate22 = f32[3]{0} negate(negate21)
+    negate23 = f32[3]{0} negate(negate22)
+    negate24 = f32[3]{0} negate(negate23)
+    negate25 = f32[3]{0} negate(negate24)
+    negate26 = f32[3]{0} negate(negate25)
+    negate27 = f32[3]{0} negate(negate26)
+    negate28 = f32[3]{0} negate(negate27)
+    negate29 = f32[3]{0} negate(negate28)
+    negate30 = f32[3]{0} negate(negate29)
+    negate31 = f32[3]{0} negate(negate30)
+    negate32 = f32[3]{0} negate(negate31)
+    negate33 = f32[3]{0} negate(negate32)
+    negate34 = f32[3]{0} negate(negate33)
+    ROOT add = f32[3]{0} add(negate34, gte2)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  if (GetParam()) {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction()->operand(1),
+        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                      op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
+                                    op::GetTupleElement(op::While()))));
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       AfterWhileRedundantEarlierEvictionModifiedBuffer) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    negate = f32[3]{0} negate(gte0)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(negate, add, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    negate0 = f32[3]{0} negate(p0)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, negate14, p1)
+    while = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
+    gte0 = f32[3]{0} get-tuple-element(while), index=0
+    gte1 = f32[3]{0} get-tuple-element(while), index=1
+    negate20 = f32[3]{0} negate(gte1)
+    negate21 = f32[3]{0} negate(negate20)
+    negate22 = f32[3]{0} negate(negate21)
+    negate23 = f32[3]{0} negate(negate22)
+    negate24 = f32[3]{0} negate(negate23)
+    negate25 = f32[3]{0} negate(negate24)
+    negate26 = f32[3]{0} negate(negate25)
+    negate27 = f32[3]{0} negate(negate26)
+    negate28 = f32[3]{0} negate(negate27)
+    negate29 = f32[3]{0} negate(negate28)
+    negate30 = f32[3]{0} negate(negate29)
+    negate31 = f32[3]{0} negate(negate30)
+    negate32 = f32[3]{0} negate(negate31)
+    negate33 = f32[3]{0} negate(negate32)
+    negate34 = f32[3]{0} negate(negate33)
+    ROOT add = f32[3]{0} add(negate34, gte0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  if (GetParam()) {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction()->operand(1),
+        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                      op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
+                                    op::GetTupleElement(op::While()))));
   }
 }
 
@@ -6531,10 +6768,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
                               hlo_cost_analysis, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/4.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/4.0,
+      /*mem_size_bytes=*/32);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
@@ -6630,10 +6867,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
                               hlo_cost_analysis, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/12.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/12.0,
+      /*mem_size_bytes=*/32);
 
   EXPECT_EQ(cost_analysis->options()
                 .xla_tpu_memory_space_assignment_while_execution_count,
@@ -6715,10 +6952,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
                               hlo_cost_analysis, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/12.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/12.0,
+      /*mem_size_bytes=*/32);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
@@ -6783,10 +7020,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
                               hlo_cost_analysis, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/12.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/12.0,
+      /*mem_size_bytes=*/32);
 
   LOG(INFO) << module->ToString();
 
@@ -6835,10 +7072,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
       });
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/4.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/12.0,
+      /*mem_size_bytes=*/32);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};

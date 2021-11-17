@@ -266,6 +266,9 @@ class TensorMapper(object):
 
   def __call__(self, x):
     html = ""
+    if x is None:
+      return html
+
     html += "<span class='tooltip'><span class='tooltipcontent'>"
     for i in x:
       tensor = self.data["tensors"][i]
@@ -297,23 +300,24 @@ def GenerateGraph(subgraph_idx, g, opcode_mapper):
   pixel_mult = 200  # TODO(aselle): multiplier for initial placement
   width_mult = 170  # TODO(aselle): multiplier for initial placement
   for op_index, op in enumerate(g["operators"] or []):
-
-    for tensor_input_position, tensor_index in enumerate(op["inputs"]):
-      if tensor_index not in first:
-        first[tensor_index] = ((op_index - 0.5 + 1) * pixel_mult,
-                               (tensor_input_position + 1) * width_mult)
-      edges.append({
-          "source": TensorName(tensor_index),
-          "target": OpName(op_index)
-      })
-    for tensor_output_position, tensor_index in enumerate(op["outputs"]):
-      if tensor_index not in second:
-        second[tensor_index] = ((op_index + 0.5 + 1) * pixel_mult,
-                                (tensor_output_position + 1) * width_mult)
-      edges.append({
-          "target": TensorName(tensor_index),
-          "source": OpName(op_index)
-      })
+    if op["inputs"] is not None:
+      for tensor_input_position, tensor_index in enumerate(op["inputs"]):
+        if tensor_index not in first:
+          first[tensor_index] = ((op_index - 0.5 + 1) * pixel_mult,
+                                 (tensor_input_position + 1) * width_mult)
+        edges.append({
+            "source": TensorName(tensor_index),
+            "target": OpName(op_index)
+        })
+    if op["outputs"] is not None:
+      for tensor_output_position, tensor_index in enumerate(op["outputs"]):
+        if tensor_index not in second:
+          second[tensor_index] = ((op_index + 0.5 + 1) * pixel_mult,
+                                  (tensor_output_position + 1) * width_mult)
+        edges.append({
+            "target": TensorName(tensor_index),
+            "source": OpName(op_index)
+        })
 
     nodes.append({
         "id": OpName(op_index),

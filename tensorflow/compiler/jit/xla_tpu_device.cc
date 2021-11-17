@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -50,9 +51,9 @@ static bool tpu_use_substreams_for_cross_tpu_device_transfers_flag = true;
 // Given a tensor of `shape` and `type`, as what shape should it be stored on
 // the TPU device? This function tranposes or flattens the excessively-padded
 // tensors to rank 1, but leaves other tensor shapes alone.
-StatusOr<xla::Shape> TpuShapeRepresentation(const TensorShape& shape,
-                                            DataType type,
-                                            bool use_fast_memory) {
+StatusOr<xla::Shape> TpuShapeRepresentation(
+    const TensorShape& shape, DataType type, bool use_fast_memory,
+    XlaLayoutPreference layout_preference) {
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       tensorflow::TensorShapeToXLAShape(type, shape, &xla_shape));
@@ -197,10 +198,11 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
     TF_RET_CHECK(xla_output != nullptr && !xla_output->has_shaped_buffer());
     TF_RET_CHECK(input->shape() == output->shape());
 
-    TF_ASSIGN_OR_RETURN(xla::Shape shape,
-                        dst_xla_context->shape_representation_fn()(
-                            input->shape(), input->dtype(),
-                            /*use_fast_memory=*/false));
+    TF_ASSIGN_OR_RETURN(
+        xla::Shape shape,
+        dst_xla_context->shape_representation_fn()(
+            input->shape(), input->dtype(),
+            /*use_fast_memory=*/false, XlaLayoutPreference::kNoPreference));
     TF_RETURN_IF_ERROR(xla_output->AllocateShapedBuffer(
         input->dtype(), shape, dst_xla_context->client(), dst_device_ordinal));
 
@@ -374,7 +376,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
     // We set `use_global_compute_stream` to true for TPUs as TPUs can only
     // have one program running on each core at the same time.
     options.use_global_compute_stream = true;
-    options.shape_representation_fn = &TpuShapeRepresentation;
+    options.shape_representation_fns = {&TpuShapeRepresentation};
     options.padded_shape_fn = &TpuPaddedShapeFn;
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 

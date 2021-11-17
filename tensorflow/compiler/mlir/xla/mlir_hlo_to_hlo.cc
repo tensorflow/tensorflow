@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -85,7 +86,7 @@ constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 // Array attribute. Same shape as infeed result, but contains a
 // minor_to_major array for every tensor.
 constexpr char kLayoutAttr[] = "layout";
-constexpr char kDefaultLayoutAttrName[] = "minor_to_major";
+constexpr char kDefaultLayoutAttrName[] = "xla_shape";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -201,6 +202,22 @@ static xla::Layout ExtractLayout(
     return xla::LayoutUtil::MakeLayout(minor_to_major);
   }
   return xla::LayoutUtil::MakeDescendingLayout(rank);
+}
+
+static xla::Shape ExtractXlaShape(mlir::Operation* op) {
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>(kDefaultLayoutAttrName)) {
+    return *xla::ParseShape(
+        absl::string_view(attr.getValue().data(), attr.getValue().size()));
+  } else {
+    std::vector<xla::Shape> subshapes;
+    for (mlir::Value result : op->getResults()) {
+      subshapes.push_back(xla::TypeToShape(result.getType()));
+    }
+    if (subshapes.size() > 1) {
+      return xla::ShapeUtil::MakeTupleShape(subshapes);
+    }
+    return subshapes[0];
+  }
 }
 
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
@@ -400,13 +417,20 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
 // location (converted). FileLineColLoc locations are populated by taking the
 // file name and line number, and populating `source_file` and `source_line`
 // respectively.
-static xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op) {
+static xla::OpMetadata CreateOpMetadataFromLocation(
+    mlir::Operation* op, mlir::MlirToHloConversionOptions options) {
   xla::OpMetadata metadata;
-  if (op->getLoc().isa<mlir::UnknownLoc>()) return metadata;
+  const mlir::Location& loc = op->getLoc();
+  if (loc.isa<mlir::UnknownLoc>()) return metadata;
 
-  std::string name = mlir::GetNameFromLoc(op->getLoc());
-  mlir::LegalizeNodeName(name);
+  std::string name = mlir::GetNameFromLoc(loc);
+  if (options.legalize_node_names) {
+    mlir::LegalizeNodeName(name);
+  }
   metadata.set_op_name(name);
+  std::string op_type = mlir::GetOpTypeFromLoc(loc);
+  mlir::LegalizeNodeName(op_type);
+  metadata.set_op_type(op_type);
 
   if (auto file_line_col_loc = op->getLoc().dyn_cast<mlir::FileLineColLoc>()) {
     metadata.set_source_file(file_line_col_loc.getFilename().str());
@@ -686,6 +710,19 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::PrimitiveType preferred_element_type =
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+  value_map[op] = xla::Dot(
+      lhs, rhs, Unwrap(Convert_precision_config(op.precision_config())),
+      preferred_element_type);
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
@@ -829,9 +866,8 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
-  // XLA client builder API does not support generating custom call instructions
-  // with side effect.
-  if (op.has_side_effect() || op.getNumResults() != 1) return failure();
+  if (op.getNumResults() != 1)
+    return op.emitOpError() << "with multiple results cannot be exported";
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
@@ -841,7 +877,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), args,
       xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-      /*has_side_effect=*/false, /*output_operand_aliasing=*/{},
+      op.has_side_effect(), /*output_operand_aliasing=*/{},
       /*literal=*/nullptr, /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
   return success();
@@ -1394,8 +1430,8 @@ LogicalResult ConvertToHloModule::Lower(
   // Explicitly fail for ops that are not supported for export.
   if (inst->getDialect() !=
           inst->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() &&
-      !mlir::isa<mlir::ConstantOp, mlir::CallOp, mlir::tensor::CastOp,
-                 mlir::ReturnOp>(inst)) {
+      !mlir::isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::CallOp,
+                 mlir::tensor::CastOp, mlir::ReturnOp>(inst)) {
     inst->emitOpError("unsupported op for export to XLA");
     return failure();
   }
@@ -1408,10 +1444,8 @@ LogicalResult ConvertToHloModule::Lower(
     if (options_.propagate_layouts) {
       auto* shape = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
                         ->mutable_shape();
-      if (shape->tuple_shapes().empty())
-        // TODO(kramm): merge this with ConvertLayout.
-        *shape->mutable_layout() =
-            ExtractLayout(inst, shape->dimensions().size()).ToProto();
+      // TODO(kramm): merge this with ConvertLayout.
+      *shape = ExtractXlaShape(inst).ToProto();
     }
 
     // For infeed ops stemming back to InfeedDequeueTuple, respect the layout
@@ -1477,9 +1511,13 @@ LogicalResult ConvertToHloModule::Lower(
   }
 
   if (matchPattern(inst, m_Constant(&const_attr))) {
-    xla::Layout layout;
-    layout = ExtractLayout(inst, const_attr.getType().getRank());
-    auto literal_or = CreateArrayLiteralFromAttr(const_attr, layout);
+    if (!inst->getResult(0).getType().isa<ShapedType>()) {
+      return inst->emitError(
+          "expected shaped type during constant mhlo -> hlo translation");
+    }
+
+    auto literal_or =
+        CreateArrayLiteralFromAttr(const_attr, ExtractXlaShape(inst).layout());
     if (!literal_or.ok())
       return inst->emitError(literal_or.status().ToString());
     auto constant = xla::ConstantLiteral(builder, literal_or.ValueOrDie());
@@ -1547,7 +1585,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
     mlir::CallOp call_op, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
   auto& value_map = *value_lowering;
-  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op.callee());
+  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op.getCallee());
   if (failed(RunOnFunction(callee))) return failure();
   std::vector<xla::XlaOp> operands;
   for (auto operand : call_op.getOperands()) {
@@ -1649,8 +1687,10 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
     if (!status.ok())
       return block->getParentOp()->emitError() << status.error_message();
 
-    auto arg_shape_status = shape_representation_fn_(arg_tensor_shape, dtype,
-                                                     /*use_fast_memory=*/false);
+    auto arg_shape_status = shape_representation_fn_(
+        arg_tensor_shape, dtype,
+        /*use_fast_memory=*/false,
+        tensorflow::XlaLayoutPreference::kNoPreference);
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
              << arg_shape_status.status().error_message();
@@ -1842,9 +1882,12 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                /*shape_representation_fn=*/nullptr, options);
 
   ConvertToHloModule::ValueLoweringMap lowering;
-  if (xla_params.size() != block.getArguments().size())
-    return tensorflow::errors::Internal(
-        "xla_params size != block arguments size");
+  // In general xla_params is a superset of block arguments. Constant inputs may
+  // have been removed from block arguments.
+  if (xla_params.size() < block.getArguments().size())
+    return tensorflow::errors::Internal("xla_params size (", xla_params.size(),
+                                        ") < block arguments size (",
+                                        block.getArguments().size(), ")");
   for (BlockArgument& arg : block.getArguments()) {
     auto num = arg.getArgNumber();
     lowering[arg] = xla_params[num];

@@ -284,22 +284,86 @@ bool StreamExecutor::GetConvolveAlgorithms(
   }
 }
 
-bool StreamExecutor::GetConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType input_type,
-    dnn::DataType output_type, Stream *stream,
-    const dnn::BatchDescriptor &input_descriptor,
+port::Status StreamExecutor::GetConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType output_type, Stream *stream,
+    const dnn::BatchDescriptor &input_descriptor, DeviceMemoryBase input_data,
     const dnn::FilterDescriptor &filter_descriptor,
-    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor &convolution_descriptor,
+    ScratchAllocator *scratch_allocator,
     std::vector<std::unique_ptr<const dnn::ConvRunner>> *out_exec_plans) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
-    return false;
+    return port::UnimplementedError("DNN library is not found.");
   }
-  return dnn_support->GetConvolveExecutionPlans(
-      kind, input_type, output_type, stream, input_descriptor,
-      filter_descriptor, output_descriptor, convolution_descriptor,
+  return dnn_support->GetConvolveRunners(
+      use_cudnn_frontend, kind, input_type, output_type, stream,
+      input_descriptor, input_data, filter_descriptor, filter_data,
+      output_descriptor, output_data, convolution_descriptor, scratch_allocator,
       out_exec_plans);
+}
+
+port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+StreamExecutor::ConvolveRunnerFromDesc(
+    const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
+    dnn::DataType element_type, dnn::DataType output_type,
+    const dnn::BatchDescriptor &input_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::UnimplementedError("DNN library is not found.");
+  }
+  return dnn_support->ConvolveRunnerFromDesc(
+      algorithm_desc, kind, element_type, output_type, input_descriptor,
+      filter_descriptor, output_descriptor, convolution_descriptor);
+}
+
+port::Status StreamExecutor::GetFusedConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType bias_type,
+    dnn::DataType output_type, double conv_input_scale, double side_input_scale,
+    Stream *stream, const dnn::BatchDescriptor &input_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const dnn::BatchDescriptor &bias_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    dnn::ActivationMode activation_mode,
+    std::vector<std::unique_ptr<const dnn::FusedConvRunner>> *out_exec_plans) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::UnimplementedError("DNN library is not found.");
+  }
+  return dnn_support->GetFusedConvolveRunners(
+      use_cudnn_frontend, kind, input_type, bias_type, output_type,
+      conv_input_scale, side_input_scale, stream, input_descriptor,
+      filter_descriptor, bias_descriptor, output_descriptor,
+      convolution_descriptor, activation_mode, out_exec_plans);
+}
+
+port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+StreamExecutor::FusedConvolveRunnerFromDesc(
+    const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
+    dnn::DataType element_type, dnn::DataType bias_type,
+    dnn::DataType output_type, double conv_input_scale, double side_input_scale,
+    const dnn::BatchDescriptor &input_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const dnn::BatchDescriptor &bias_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    dnn::ActivationMode activation_mode) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::UnimplementedError("DNN library is not found.");
+  }
+  return dnn_support->FusedConvolveRunnerFromDesc(
+      algorithm_desc, kind, element_type, bias_type, output_type,
+      conv_input_scale, side_input_scale, input_descriptor, filter_descriptor,
+      bias_descriptor, output_descriptor, convolution_descriptor,
+      activation_mode);
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(

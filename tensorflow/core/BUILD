@@ -631,6 +631,7 @@ cc_library(
         "//tensorflow/core/kernels:composite_tensor_ops",
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:fake_quant_ops",
+        "//tensorflow/core/kernels:filesystem_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/kernels:grappler",
@@ -829,7 +830,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
-    ],
+    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util"]),
 )
 
 # This is a link-only library to provide a DirectSession
@@ -964,6 +965,7 @@ filegroup(
         "decode_proto_ops_op_lib",
         "encode_proto_ops_op_lib",
         "experimental_dataset_ops_op_lib",
+        "filesystem_ops_op_lib",
         "function_ops_op_lib",
         "functional_grad",
         "functional_ops_op_lib",

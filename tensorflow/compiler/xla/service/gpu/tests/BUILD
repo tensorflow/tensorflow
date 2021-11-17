@@ -88,6 +88,7 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],
@@ -663,6 +664,7 @@ xla_test(
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -711,6 +713,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+        "//tensorflow/compiler/xla/service/gpu:nvptx_helper",
     ]),
 )
 
@@ -739,8 +742,8 @@ filegroup(
 )
 
 tf_cc_test(
-    name = "kernel_thunk_test",
-    srcs = ["kernel_thunk_test.cc"],
+    name = "kernel_launch_test",
+    srcs = ["kernel_launch_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
     ],
@@ -750,5 +753,21 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+py_test(
+    name = "mnist",
+    srcs = ["mnist.py"],
+    python_version = "PY3",
+    tags = [
+        "manual",
+        "no_oss",
+        "notap",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
     ],
 )

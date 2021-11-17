@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
@@ -23,7 +24,6 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
-using mlir::ConstantIndexOp;
 using mlir::failure;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -33,6 +33,7 @@ using mlir::PatternRewriter;
 using mlir::SmallVector;
 using mlir::success;
 using mlir::Value;
+using mlir::arith::ConstantIndexOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingOptions;
@@ -54,7 +55,7 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
     if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
 
     auto tiled_linalg_op = tileLinalgOp(rewriter, linalg_op, options);
-    if (!tiled_linalg_op) return failure();
+    if (failed(tiled_linalg_op)) return failure();
 
     TiledLoopOp tiled_loop =
         mlir::dyn_cast<TiledLoopOp>(*tiled_linalg_op.getValue().loops.front());

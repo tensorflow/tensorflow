@@ -36,20 +36,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
 namespace {
 struct OptimizeGlobalTensorsPass
-    : public PassWrapper<OptimizeGlobalTensorsPass, OperationPass<ModuleOp>> {
-  StringRef getArgument() const final {
-    return "tf-saved-model-optimize-global-tensors";
-  }
-
-  StringRef getDescription() const final {
-    return "Optimize tf_saved_model.global_tensor's.";
-  }
-
+    : public OptimizeGlobalTensorsPassBase<OptimizeGlobalTensorsPass> {
   void runOnOperation() override;
 };
 
@@ -170,9 +163,6 @@ void OptimizeGlobalTensorsPass::runOnOperation() {
 
   EraseUnusedGlobalTensors(module, global_tensor_uses);
 }
-
-// For "opt" to pick up this pass.
-PassRegistration<OptimizeGlobalTensorsPass> pass;
 
 }  // namespace
 

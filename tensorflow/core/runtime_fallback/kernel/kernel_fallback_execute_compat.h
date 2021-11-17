@@ -38,14 +38,21 @@ class SyncKernelFrame;
 
 namespace tensorflow {
 namespace tfd {
+class OpKernelRunner;
 
-// `builder`, `eager_context`, and `pflr` can't be null.
+ABSL_CONST_INIT extern const char kOpKernelRunnerCacheResourceName[];
+
+// Set up fallback context with common tensorflow states such as devices,
+// function library runtime. They will be forwarded to tensorflow::OpKernel as
+// in tensorflow::Executor. If `runner` is nullptr, internally it will use a
+// default runner that executes tasks in the caller thread.
 Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata = absl::nullopt);
+    const absl::optional<tfrt::ModelMetadata>& model_metadata = absl::nullopt,
+    std::function<void(std::function<void()>)>* runner = nullptr);
 
 // Runner_table can be nullptr. In that case, kernel_fallback will use
 // the default runner_table.
@@ -61,11 +68,8 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     const tfrt::ExecutionContext& exec_ctx, tfrt::string_view op_name,
     tfrt::string_view device_name, llvm::ArrayRef<tfrt::Tensor*> arguments,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
-    const tfrt::OpAttrsRef& attrs);
-
-// TODO(tfrt-devs): Consider moving following method to a separate file.
-llvm::Expected<Device*> GetTfDevice(const tfrt::ExecutionContext& exec_ctx,
-                                    const tfrt::Device& device);
+    const KernelFallbackCompatRequestState& fallback_request_state,
+    const OpKernelRunner& op_kernel_runner);
 
 }  // namespace tfd
 }  // namespace tensorflow

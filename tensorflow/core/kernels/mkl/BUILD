@@ -267,6 +267,8 @@ tf_mkl_kernel_library(
     deps = [
         "@gemmlowp",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core:nn_ops_op_lib",
@@ -449,4 +451,18 @@ tf_mkl_kernel_library(
         "mkl_transpose_op.cc",
     ],
     deps = MKL_DEPS + ["//tensorflow/core/kernels:transpose_op"],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_matmul_op_benchmark",
+    size = "small",
+    srcs = ["mkl_matmul_op_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_matmul_op",
+        "@mkl_dnn_v1//:mkl_dnn",
+    ],
 )

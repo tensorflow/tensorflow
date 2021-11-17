@@ -49,7 +49,7 @@ Status ConvertLocation(Location inst_loc,
                        NodeDef::ExperimentalDebugInfo* debug_info) {
   if (auto call_site = inst_loc.dyn_cast<CallSiteLoc>()) {
     if (auto name_loc = call_site.getCallee().dyn_cast<NameLoc>()) {
-      debug_info->add_original_node_names(name_loc.getName().c_str());
+      debug_info->add_original_node_names(name_loc.getName().data());
     }
   } else if (auto fused = inst_loc.dyn_cast<FusedLoc>()) {
     auto locations = fused.getLocations();

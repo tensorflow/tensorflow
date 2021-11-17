@@ -20,19 +20,19 @@ namespace {
 
 // Column reduction
 BM_TFMlir2(ColReduceDynamicAll, f32, /* num_threads */ 0,
-           MlirSpec("tf.Sum", "f32", {kDynamic, kDynamic},
-                    /*dims_to_reduce=*/{1}));
+           MlirSpec("tf.Sum", "f32", {kDynamicDim, kDynamicDim},
+                    /*dims_to_reduce=*/{0}));
 BM_TFMlir2(ColReduceStaticRow, f32, /* num_threads */ 0,
-           MlirSpec("tf.Sum", "f32", {kStatic, kDynamic},
-                    /*dims_to_reduce=*/{1}));
+           MlirSpec("tf.Sum", "f32", {kStaticDim, kDynamicDim},
+                    /*dims_to_reduce=*/{0}));
 BM_TFMlir2(ColReduceStaticCol, f32, /* num_threads */ 0,
-           MlirSpec("tf.Sum", "f32", {kDynamic, kStatic},
-                    /*dims_to_reduce=*/{1}));
+           MlirSpec("tf.Sum", "f32", {kDynamicDim, kStaticDim},
+                    /*dims_to_reduce=*/{0}));
 BM_TFMlir2(ColReduceStaticAll, f32, /* num_threads */ 0,
-           MlirSpec("tf.Sum", "f32", {kStatic, kStatic},
-                    /*dims_to_reduce=*/{1}));
+           MlirSpec("tf.Sum", "f32", {kStaticDim, kStaticDim},
+                    /*dims_to_reduce=*/{0}));
 BM_Eigen2(ColReduce, f32, /* num_threads */ 0, /*output rank=*/1,
-          EigenSpec({1}));
+          EigenSpec({0}));
 
 }  // namespace
 }  // namespace tensorflow

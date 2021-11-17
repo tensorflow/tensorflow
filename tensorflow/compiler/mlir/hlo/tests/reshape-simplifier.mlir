@@ -2,8 +2,8 @@
 
 // CHECK-LABEL: func @reshape_expand_front
 func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %d1 = tensor.dim %arg0, %c1 : tensor<?x?xf32>
   %shape = tensor.from_elements %c1, %d0, %d1 : tensor<3xindex>
@@ -17,8 +17,8 @@ func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {
 
 // CHECK-LABEL: func @reshape_expand_back
 func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %d1 = tensor.dim %arg0, %c1 : tensor<?x?xf32>
   %shape = tensor.from_elements %d0, %d1, %c1, %c1 : tensor<4xindex>
@@ -32,7 +32,7 @@ func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
 
 // CHECK-LABEL: func @reshape_undefined
 func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
-  %c1 = constant 1 : index
+  %c1 = arith.constant 1 : index
   %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xindex>
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf32>, tensor<3xindex>) -> tensor<1x1x1xf32>
 // CHECK: mhlo.dynamic_reshape
@@ -44,7 +44,7 @@ func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
 // CHECK-LABEL: func @compute_reshape_shape
 func @compute_reshape_shape(%arg0: tensor<?x?xf32>, %arg1: index) -> tensor<2xi32> {
   %shape = shape.shape_of %arg0: tensor<?x?xf32> -> tensor<2xindex>
-  %casted = index_cast %shape : tensor<2xindex> to tensor<2xi32>
+  %casted = arith.index_cast %shape : tensor<2xindex> to tensor<2xi32>
   %mul = mhlo.multiply %casted, %casted : tensor<2xi32>
 // CHECK:  %[[MUL:.*]] = mhlo.multiply
   %crs = mhlo.compute_reshape_shape %arg1, %mul : index, tensor<2xi32> -> tensor<2xi32>
@@ -64,6 +64,25 @@ func @compute_reshape_shape(%arg0: tensor<2xi32>, %arg1: index) -> tensor<2xi32>
 
 // -----
 
+// CHECK-LABEL: @redundant_cstr_reshapable
+func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>) -> !shape.witness {
+  // CHECK: %[[WITNESS:.*]] = shape.const_witness true
+  // CHECK: return %[[WITNESS]] : !shape.witness
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c512 = arith.constant 512 : index
+  %s0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
+  %n0 = shape.num_elements %s0 : tensor<4xindex> -> index
+  %dim00 = tensor.dim %arg0, %c0 : tensor<?x8x?x64xf32>
+  %dim02 = tensor.dim %arg0, %c2 : tensor<?x8x?x64xf32>
+  %s1_ = tensor.from_elements %dim02, %dim00, %c512 : tensor<3xindex>
+  %s1 = arith.index_cast %s1_ : tensor<3xindex> to tensor<3xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<3xi32>
+  return %w : !shape.witness
+}
+
+// -----
+
 // CHECK-LABEL: func @reshape_integration
 func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32>, %arg2: tensor<4xi32>, %arg3: tensor<512xf32>, %arg4: tensor<?x?x512xf32>, %arg5: tensor<512xf32>, %arg6: tensor<512xf32>, %arg7: tensor<512x2048xf32>, %arg8: tensor<2048xf32>, %arg9: tensor<2048x512xf32>, %arg10: tensor<512xf32>, %arg11: tensor<512xf32>, %arg12: tensor<512xf32>) -> tensor<?x512xf32> {
   %0 = mhlo.constant dense<512> : tensor<1xi32>
@@ -79,7 +98,7 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
   %5 = "mhlo.transpose"(%4) {permutation = dense<[0, 2, 1, 3]> : tensor<4xi64>} : (tensor<?x8x?x64xf32>) -> tensor<?x?x8x64xf32>
   %6 = "mhlo.transpose"(%5) {permutation = dense<[0, 1, 3, 2]> : tensor<4xi64>} : (tensor<?x?x8x64xf32>) -> tensor<?x?x64x8xf32>
   %7 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>
-  %8 = index_cast %7 : tensor<4xindex> to tensor<4xi32>
+  %8 = arith.index_cast %7 : tensor<4xindex> to tensor<4xi32>
   %9 = "mhlo.slice"(%8) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
   %10 = "mhlo.reshape"(%9) : (tensor<1xi32>) -> tensor<i32>
   %11 = "mhlo.slice"(%8) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>

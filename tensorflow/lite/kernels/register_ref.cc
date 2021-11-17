@@ -165,6 +165,9 @@ TfLiteRegistration* Register_COMPLEX_ABS();
 TfLiteRegistration* Register_CONV_3D_TRANSPOSE_REF();
 TfLiteRegistration* Register_BROADCAST_ARGS();
 TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();
+TfLiteRegistration* Register_BUCKETIZE();
+TfLiteRegistration* Register_RANDOM_UNIFORM();
+TfLiteRegistration* Register_MULTINOMIAL();
 
 namespace {
 
@@ -486,8 +489,11 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_CONV_3D_TRANSPOSE,
              Register_CONV_3D_TRANSPOSE_REF());
   AddBuiltin(BuiltinOperator_BROADCAST_ARGS, Register_BROADCAST_ARGS());
+  AddBuiltin(BuiltinOperator_MULTINOMIAL, Register_MULTINOMIAL());
   AddBuiltin(BuiltinOperator_RANDOM_STANDARD_NORMAL,
              Register_RANDOM_STANDARD_NORMAL());
+  AddBuiltin(BuiltinOperator_BUCKETIZE, Register_BUCKETIZE());
+  AddBuiltin(BuiltinOperator_RANDOM_UNIFORM, Register_RANDOM_UNIFORM());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

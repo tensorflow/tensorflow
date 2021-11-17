@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
@@ -128,6 +129,11 @@ struct PjRtCrossHostRecvBuffer {
 using PjRtCrossHostRecvNotifier =
     std::function<void(StatusOr<std::vector<PjRtCrossHostRecvBuffer>>&&)>;
 
+struct MultiSliceOptions {
+  // Number of connected slices to compile for.
+  int32_t num_slices;
+};
+
 struct CompileOptions {
   // The layouts of the arguments that the computation should expect.
   absl::optional<std::vector<Shape>> argument_layouts;
@@ -144,6 +150,10 @@ struct CompileOptions {
   // single-device executables. Beware: on GPUs, sometimes an executable
   // compiled for one device doesn't run on another.
   bool compile_portable_executable = false;
+
+  // Set multi_slice_options to trigger compilation for DCN connected multi
+  // slice operation.
+  absl::optional<MultiSliceOptions> multi_slice_options = absl::nullopt;
 };
 
 class PjRtExecutable;
@@ -246,12 +256,23 @@ class PjRtClient {
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const = 0;
 
+  // Return a device-specific default device assignment for multi-slice system.
+  // TODO(zhangqiaorjc): Convert this to pure virtual and push down.
+  virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions, int num_slices) const {
+    return Unimplemented("Multi slice device assignment is not supported.");
+  }
+
   // Returns a backend-specific HLO cost analysis visitor.
   virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() = 0;
 
   // Compile `computation` with given `options`.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) = 0;
+
+  // Variant of `Compile` that accepts an MLIR module.
+  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp module, CompileOptions options) = 0;
 
   // Generates a unique fingerprint for `executable`, may be absl::nullopt.
   virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(

@@ -22,7 +22,6 @@ from typing import Any, Callable, Iterable, List, Optional, Text, Tuple, Union
 
 from absl import logging
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tf2xla.python import xla as tf2xla
 from tensorflow.core.framework import attr_value_pb2
@@ -633,7 +632,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         op._add_control_input(self.GetControlPivot())
         # pylint: enable=protected-access
     else:
-      for index in xrange(len(op.inputs)):
+      for index in range(len(op.inputs)):
         x = op.inputs[index]
         real_x = self.AddValue(x)
         if real_x is not x:
@@ -1308,7 +1307,7 @@ def split_compile_and_replicate(
     return []
 
   # Checks all replicas have the same structure.
-  for i in xrange(1, num_replicas):
+  for i in range(1, num_replicas):
     nest.assert_same_structure(inputs[0], inputs[i])
 
   # Flatten inputs. This structure may contain None values, which will be
@@ -1409,7 +1408,7 @@ def split_compile_and_replicate(
   # Fan-in: Builds a TPUReplicatedInput node for each input.
   flat_replicated_inputs = []
   for i in range(0, len(flat_inputs[0])):
-    replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
+    replicas = [flat_inputs[replica][i] for replica in range(num_replicas)]
     flat_replicated_inputs.append(
         tpu_ops.tpu_replicated_input(
             replicas, name="input{}".format(i), index=i))

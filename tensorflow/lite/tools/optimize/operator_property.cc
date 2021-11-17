@@ -1005,6 +1005,12 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.quantizable_int16 = false;
       break;
     }
+    case BuiltinOperator_TILE:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
     case BuiltinOperator_TRANSPOSE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};

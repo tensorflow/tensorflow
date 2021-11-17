@@ -90,6 +90,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/event_pool.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/metrics.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -2409,6 +2410,16 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
   return std::unique_ptr<PjRtExecutable>(std::move(executable));
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  XlaComputation xla_computation;
+  TF_RETURN_IF_ERROR(MlirToXlaComputation(
+      module, xla_computation,
+      /*use_tuple_args=*/options.parameter_is_tupled_arguments,
+      /*return_tuple=*/false));
+  return Compile(xla_computation, options);
 }
 
 }  // namespace xla

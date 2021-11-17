@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BinaryIoU"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CategoricalAccuracy"
     mtype: "<type \'type\'>"
   }
@@ -42,6 +46,10 @@ tf_module {
   }
   member {
     name: "Hinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "IoU"
     mtype: "<type \'type\'>"
   }
   member {
@@ -90,6 +98,14 @@ tf_module {
   }
   member {
     name: "Metric"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OneHotIoU"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OneHotMeanIoU"
     mtype: "<type \'type\'>"
   }
   member {

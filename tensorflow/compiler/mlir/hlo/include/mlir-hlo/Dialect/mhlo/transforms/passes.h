@@ -144,22 +144,9 @@ std::unique_ptr<OperationPass<FuncOp>>
 createLhloLegalizeRootsToParallelLoopsPass();
 
 // Input inline fusion pass for fusion codegen
-std::unique_ptr<OperationPass<lmhlo::FusionOp>> createInputInlineFusionPass();
+std::unique_ptr<FunctionPass> createInputInlineFusionPass();
 
 }  // namespace lmhlo
-
-namespace disc_ral {
-
-std::unique_ptr<OperationPass<ModuleOp>> createRalInjectExecutionContextPass(
-    const std::string& entry_func_name = "main");
-
-// Lower some specific ops to library calls (modeled by `disc_ral.launch` op).
-std::unique_ptr<mlir::FunctionPass> createRalLowerToLibraryCallPass();
-
-// Lower disc to llvm dialect
-std::unique_ptr<OperationPass<ModuleOp>> createRalToLLVMPass();
-
-}  // namespace disc_ral
 
 }  // namespace mlir
 

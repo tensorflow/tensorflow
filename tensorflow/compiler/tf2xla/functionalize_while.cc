@@ -227,6 +227,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   // maintain the invariant of a unique Enter node per argument of the final
   // loop.
   std::vector<WhileLoopArg> args;
+  args.reserve(frame->args.size());
   for (const WhileLoopArg& arg : frame->args) {
     if (arg.is_loop_invariant) {
       args.push_back(arg);

@@ -127,7 +127,8 @@ void MatchAndRewrite(WhileOp whileOp) {
   auto getAsIndex = [&](Value val) {
     auto loc = whileOp.getLoc();
     return b.create<tensor::ExtractOp>(
-        loc, b.create<IndexCastOp>(loc, tensorIndexType, val), ValueRange());
+        loc, b.create<arith::IndexCastOp>(loc, tensorIndexType, val),
+        ValueRange());
   };
 
   // SCF for uses index type, so converted these.
@@ -146,8 +147,8 @@ void MatchAndRewrite(WhileOp whileOp) {
       loopIndVar.first.getType().cast<ShapedType>().getElementType();
   Value indVar = b.create<SplatOp>(
       whileOp.getLoc(), RankedTensorType::get({}, loopIndVarElType),
-      b.create<IndexCastOp>(whileOp.getLoc(), loopIndVarElType,
-                            forOp.getInductionVar()));
+      b.create<arith::IndexCastOp>(whileOp.getLoc(), loopIndVarElType,
+                                   forOp.getInductionVar()));
   // Update all block argument users to the SCF For args.
   for (auto* use :
        llvm::make_early_inc_range(whileOp.body().getArgument(0).getUsers())) {

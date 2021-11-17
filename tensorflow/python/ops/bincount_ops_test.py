@@ -831,6 +831,25 @@ class TestSparseCountFailureModes(test.TestCase):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
 
+class RawOpsHeapOobTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_v1_only("Test security error")
+  def testSparseCountSparseOutputBadIndicesShapeTooSmall(self):
+    indices = [1]
+    values = [[1]]
+    weights = []
+    dense_shape = [10]
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 2 but is rank 1 for"):
+      self.evaluate(
+          gen_count_ops.SparseCountSparseOutput(
+              indices=indices,
+              values=values,
+              dense_shape=dense_shape,
+              weights=weights,
+              binary_output=True))
+
+
 @test_util.run_all_in_graph_and_eager_modes
 @test_util.disable_tfrt
 class RawOpsTest(test.TestCase, parameterized.TestCase):

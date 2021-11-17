@@ -94,7 +94,8 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           [](InterpreterWrapper& self, int subgraph_index) {
             return tensorflow::PyoOrThrow(self.AllocateTensors(subgraph_index));
           },
-          py::arg("subgraph_index") = 0)
+          py::arg("subgraph_index") =
+              InterpreterWrapper::kUndeterminedSubgraphIndex)
       .def(
           "Invoke",
           [](InterpreterWrapper& self, int subgraph_index) {

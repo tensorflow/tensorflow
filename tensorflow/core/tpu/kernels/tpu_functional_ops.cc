@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -580,6 +581,16 @@ bool FindTpuReplicatedInputAndXlaSharding(
     }
   }
   return xla_spmd_input_sharded;
+}
+
+// Returns the name of the framework that rewrote the graph to support
+// inference on TPUs. This name is accessed later during metric collection.
+string GetProducerName(const string& function_name) {
+  if (absl::StrContains(function_name, "tpu_func_0") ||
+      absl::StrContains(function_name, "_with_batch") ||
+      absl::StrContains(function_name, "_optim"))
+    return "TPU_INFERENCE_CONVERTER";
+  return "UNKNOWN";
 }
 
 }  // end namespace
@@ -1784,7 +1795,14 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
         split_size = xla_sharding.tile_assignment_dimensions(dim);
       }
     }
+    if (split_dim == -1 || split_dim >= var->tensor()->dims()) {
+      return errors::InvalidArgument(
+          "sharding split_dim ", split_dim, " for variable: ", variable->name(),
+          " is -1 or large than the number of dimensions ",
+          var->tensor()->dims());
+    }
   }
+
   const string cname = ctx->resource_manager()->default_container();
   std::vector<Node*> per_core_vars;
   for (int core_index = device_ordinal;
@@ -2230,6 +2248,11 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
     if (node->IsArg() || node->IsRetval()) {
       node->set_assigned_device_name(local_device_name_);
     } else if (node->type_string() == "TPUReplicateMetadata") {
+      // Record the producer name so it can be accessed later during metric
+      // collection.
+      string producer_name = GetProducerName(func_.name());
+      node->AddAttr("_producer_name", producer_name);
+
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "num_cores_per_replica",
                                      num_core_per_replica));
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(),

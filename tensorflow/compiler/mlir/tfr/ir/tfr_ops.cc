@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -113,9 +114,10 @@ class TFRInlinerInterface : public DialectInlinerInterface {
     auto result_itype = result_type.cast<IntegerType>();
     if (input_itype.getWidth() == result_itype.getWidth()) return nullptr;
     if (input_itype.getWidth() > result_itype.getWidth()) {
-      return builder.create<TruncateIOp>(conversion_loc, result_type, input);
+      return builder.create<arith::TruncIOp>(conversion_loc, result_type,
+                                             input);
     } else {
-      return builder.create<SignExtendIOp>(conversion_loc, result_type, input);
+      return builder.create<arith::ExtSIOp>(conversion_loc, result_type, input);
     }
   }
 };
@@ -141,6 +143,8 @@ TFRDialect::TFRDialect(MLIRContext *context)
 
 Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
+  if (arith::ConstantOp::isBuildableWith(value, type))
+    return builder.create<arith::ConstantOp>(loc, type, value);
   if (ConstantOp::isBuildableWith(value, type))
     return builder.create<ConstantOp>(loc, type, value);
   return nullptr;
@@ -445,6 +449,25 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
       return failure();
     }
 
+    auto input_tensor_type = input_type.dyn_cast<TensorType>();
+    auto output_tensor_type = output_type.dyn_cast<TensorType>();
+    if (!input_tensor_type || !output_tensor_type) {
+      return failure();
+    }
+
+    // Canonicalize two tfr.cast pairs with different element type to
+    // two tfr.casts with the same element type followed by a tf.Cast
+    if (input_tensor_type.getElementType() !=
+        output_tensor_type.getElementType()) {
+      auto new_tfr_cast = rewriter.create<TFR::CastOp>(
+          cast_op.getLoc(),
+          output_tensor_type.clone(input_tensor_type.getElementType()),
+          cast_op.arg());
+      rewriter.replaceOpWithNewOp<TF::CastOp>(cast_op, output_type,
+                                              new_tfr_cast);
+      return success();
+    }
+
     // If the two types are the same, the back-to-back tfr.cast ops can be
     // removed.
     if (input_type == output_type || output_type.isa<UnrankedTensorType>()) {
@@ -455,14 +478,15 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
     // If the rank of the input tensor isn't ranked, we replace the pair
     // with tf.EnsureShape op so it can be removed after shape inference or
     // confirmed at runtime.
-    if (input_type.isa<UnrankedTensorType>() && output_type.isa<ShapedType>()) {
+    if (input_type.isa<UnrankedTensorType>()) {
       auto shape = output_type.cast<ShapedType>().getShape();
       auto shape_attr = TF::ShapeAttr::get(rewriter.getContext(), shape);
       rewriter.replaceOpWithNewOp<TF::EnsureShapeOp>(cast_op, output_type,
                                                      input, shape_attr);
+      return success();
     }
 
-    return success();
+    return failure();
   }
 };
 
@@ -521,8 +545,8 @@ class RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
       return failure();
     }
     int64_t num_tensors = preceding_build_list.getNumOperands();
-    rewriter.replaceOpWithNewOp<ConstantOp>(gl_op,
-                                            rewriter.getIndexAttr(num_tensors));
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(
+        gl_op, rewriter.getIndexAttr(num_tensors));
     return success();
   }
 };
@@ -681,7 +705,8 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
  public:
   // Replace quant_scale_factor with constant tensor equivalent to
   // TFR_ConstantTensorOp (
-  //   ConstantOp (ConstAttr<F32Attr (in_scale[0] * in_scale[1] / out_scale))
+  //   ConstantOp (ConstAttr<F32Attr (in_scale[0] * in_scale[1] /
+  //   out_scale))
   // )
   // Currently, all decompositions using this pattern (Conv2D, FC) have the
   // following preconditions:
@@ -691,12 +716,13 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
   //     (per-tensor vs per-channel) quantization, given by tf.Const -> tfr.cast
   LogicalResult matchAndRewrite(TFRQuantScaleFactorOp scale_factor_op,
                                 PatternRewriter &rewriter) const override {
-    auto out_scale_op = scale_factor_op.out_scale().getDefiningOp<ConstantOp>();
+    auto out_scale_op =
+        scale_factor_op.out_scale().getDefiningOp<arith::ConstantOp>();
     if (!out_scale_op) {
       return failure();
     }
     const double out_scale =
-        out_scale_op.value().cast<FloatAttr>().getValueAsDouble();
+        out_scale_op.getValue().cast<FloatAttr>().getValueAsDouble();
 
     auto in_scales_op =
         scale_factor_op.in_scales().getDefiningOp<BuildListOp>();
@@ -716,7 +742,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
         in_scale_attr.size() != 1) {
       return failure();
     }
-    const float in_scale = in_scale_attr.getValue<float>(0);
+    const float in_scale = in_scale_attr.getValues<float>()[0];
     auto filter_scale_op = in_scales_op.getOperand(1).getDefiningOp<CastOp>();
     if (!filter_scale_op) {
       return failure();
@@ -765,7 +791,7 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     const Location loc = rescale_op->getLoc();
     const auto result_types = rescale_op->getResultTypes();
     auto c_false =
-        rewriter.create<ConstantOp>(loc, rewriter.getBoolAttr(false));
+        rewriter.create<arith::ConstantOp>(loc, rewriter.getBoolAttr(false));
     TypeAttr f32_attr = TypeAttr::get(rewriter.getF32Type());
     TFRAttrType output_type = TFRAttrType::get(rewriter.getContext());
     auto constant_f32_op = rewriter.create<ConstOp>(loc, output_type, f32_attr);

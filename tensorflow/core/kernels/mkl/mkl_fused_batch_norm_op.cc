@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
-#include "mkldnn.hpp"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -237,7 +237,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     // BatchNorm forward primitive.
     // TODO(intel-tf): Merge all the #ifdefs and simplify code
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
-      if ((IS_SET(use_scale_shift)) && mkldnn_use_scaleshift) {
+      if (IS_SET(use_scale_shift)) {
         context_.net_args.push_back(
             {{MKLDNN_ARG_SRC, *context_.src_mem},
              {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
@@ -248,7 +248,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
     } else if (IS_SET(use_global_stats)) {
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+      if (IS_SET(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
               {{MKLDNN_ARG_SRC, *context_.src_mem},
@@ -283,7 +283,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
     } else {
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+      if (IS_SET(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
               {{MKLDNN_ARG_SRC, *context_.src_mem},
@@ -725,6 +725,43 @@ class MklFusedBatchNormOp : public OpKernel {
           errors::InvalidArgument("estimated_variance must be 1-dimensional",
                                   est_variance_tensor.shape().DebugString()));
 
+      int num_channels;
+      if (dnn_shape_src.IsMklTensor()) {
+        num_channels = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
+      } else {
+        num_channels = GetTensorDim(src_tensor, tensor_format_, 'C');
+      }
+
+      OP_REQUIRES(context, scale_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "scale must have the same number of elements "
+                      "as the channels of x, got ",
+                      scale_tensor.NumElements(), " and ", num_channels));
+
+      OP_REQUIRES(context, shift_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "offset must have the same number of elements "
+                      "as the channels of x, got ",
+                      shift_tensor.NumElements(), " and ", num_channels));
+      if (!is_training_ || exponential_avg_factor_ != 1.) {
+        std::string prefix_msg = is_training_
+                                     ? "When exponential_avg_factor != 1"
+                                     : "When is_training=false";
+        OP_REQUIRES(context, est_mean_tensor.NumElements() == num_channels,
+                    errors::InvalidArgument(
+                        prefix_msg,
+                        ", mean must have the same number "
+                        "of elements as the channels of x, got ",
+                        est_mean_tensor.NumElements(), " and ", num_channels));
+        OP_REQUIRES(
+            context, est_variance_tensor.NumElements() == num_channels,
+            errors::InvalidArgument(
+                prefix_msg,
+                ", variance must have the same "
+                "number of elements as the channels of x, got ",
+                est_variance_tensor.NumElements(), " and ", num_channels));
+      }
+
       // Handle the special case: input with 0 element and 0 batch size.
       Tensor* dst_tensor = nullptr;
       TensorShape workspace_tf_shape;
@@ -1128,6 +1165,34 @@ class MklFusedBatchNormGradOp : public OpKernel {
           context, saved_variance_tensor.dims() == 1,
           errors::InvalidArgument("saved variance must be 1-dimensional",
                                   saved_variance_tensor.shape().DebugString()));
+      OP_REQUIRES(context, tf_shape_src == tf_shape_diff_dst,
+                  errors::InvalidArgument(
+                      "x and y_backprop must have same shape, but x has shape ",
+                      src_tensor.shape(), " and y_backprop has shape ",
+                      diff_dst_tensor.shape()));
+
+      int num_channels;
+      if (dnn_shape_src.IsMklTensor()) {
+        num_channels = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
+      } else {
+        num_channels = GetTensorDim(src_tensor, tensor_format_, 'C');
+      }
+      OP_REQUIRES(context, scale_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "scale must have the same number of elements "
+                      "as the channels of x, got ",
+                      scale_tensor.NumElements(), " and ", num_channels));
+      OP_REQUIRES(context, saved_mean_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "reserve_space_1 must have the same number of "
+                      "elements as the channels of x, got ",
+                      saved_mean_tensor.NumElements(), " and ", num_channels));
+      OP_REQUIRES(
+          context, saved_variance_tensor.NumElements() == num_channels,
+          errors::InvalidArgument(
+              "reserve_space_2 must have the same number of "
+              "elements as the channels of x, got ",
+              saved_variance_tensor.NumElements(), " and ", num_channels));
 
       // Handle the special case: input with 0 element and 0 batch size.
       Tensor* diff_src_tensor = nullptr;

@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
@@ -57,11 +58,12 @@ py_library(
     ],
 )
 
-py_library(
+pytype_strict_library(
     name = "cross_device_utils",
     srcs = ["cross_device_utils.py"],
     srcs_version = "PY3",
     deps = [
+        ":collective_util",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
@@ -74,6 +76,9 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -114,6 +119,7 @@ py_library(
     deps = [
         ":cross_device_ops",
         ":distribute_lib",
+        ":merge_call_interim",
         ":mirrored_strategy",
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -320,6 +326,7 @@ py_library(
         ":distribute_lib",
         ":distribute_utils",
         ":input_lib",
+        ":input_util",
         ":mirrored_run",
         ":multi_worker_util",
         ":numpy_dataset",
@@ -333,6 +340,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
@@ -349,6 +357,7 @@ py_library(
         ":distribute_lib",
         ":distribute_utils",
         ":input_lib",
+        ":input_util",
         ":mirrored_run",
         ":multi_worker_util",
         ":numpy_dataset",
@@ -363,6 +372,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/util:tf_export",
     ],
@@ -389,6 +399,7 @@ py_library(
     deps = [
         ":distribute_lib",
         ":input_lib",
+        ":input_util",
         ":numpy_dataset",
         ":reduce_util",
         ":values",
@@ -396,6 +407,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -414,6 +426,7 @@ py_library(
         ":distribute_lib",
         ":distribute_utils",
         ":input_lib",
+        ":input_util",
         ":mirrored_strategy",
         ":multi_worker_util",
         ":numpy_dataset",
@@ -428,7 +441,9 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/tpu:tpu_strategy_util",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -588,9 +603,12 @@ py_library(
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
+        ":distribute_utils",
         ":input_lib",
+        ":input_util",
         ":numpy_dataset",
         ":reduce_util",
+        ":tpu_replicated_variable",
         ":tpu_util",
         ":tpu_values",
         ":values",
@@ -610,11 +628,19 @@ py_library(
         "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/tpu:device_assignment",
         "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
         "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -622,12 +648,10 @@ distribute_py_test(
     name = "random_generator_test",
     srcs = ["random_generator_test.py"],
     main = "random_generator_test.py",
-    shard_count = 10,
+    shard_count = 12,
     tags = [
         "multi_and_single_gpu",
-        "no_cuda_asan",  #TODO(b/195770530)
         "no_rocm",
-        "noasan",  #TODO(b/195770530)
     ],
     tpu_tags = [
         "no_oss",
@@ -1109,6 +1133,7 @@ distribute_py_test(
         ":collective_all_reduce_strategy",
         ":combinations",
         ":input_lib",
+        ":input_util",
         ":mirrored_strategy",
         ":multi_worker_test_base",
         ":reduce_util",
@@ -1121,6 +1146,7 @@ distribute_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -1816,11 +1842,13 @@ distribute_py_test(
     srcs = ["zero_batch_test.py"],
     disable_mlir_bridge = False,
     main = "zero_batch_test.py",
+    tags = [
+        "no_oss",  # Keras is not available in OSS test
+    ],
     deps = [
         ":combinations",
         ":multi_worker_test_base",
         ":strategy_combinations",
-        "//tensorflow/python:layers",
     ],
 )
 
@@ -2174,6 +2202,7 @@ py_library(
     deps = [
         ":distribute_lib",
         ":distribute_utils",
+        ":input_util",
         ":parameter_server_strategy",
         ":sharded_variable",
         "//tensorflow/python:constant_op",
@@ -2194,6 +2223,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "nomac",  # TODO(b/201788023): Attempt MultiProcessCluster to fix this.
+        "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
@@ -2257,5 +2287,73 @@ distribute_py_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_strategy_model_parallelism_test",
+    srcs = ["tpu_strategy_model_parallelism_test.py"],
+    disable_experimental = True,  # b/202779350
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":distribute_lib",
+        ":strategy_test_lib",
+        ":tpu_strategy",
+        ":tpu_values",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/module",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/tpu:device_assignment",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/training:checkpoint_management",
+        "//tensorflow/python/training/tracking:util",
+    ],
+)
+
+pytype_strict_library(
+    name = "input_util",
+    srcs = ["input_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":input_lib",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/distribute/v1:input_lib",
+    ],
+)
+
+py_library(
+    name = "merge_call_interim",
+    srcs = [
+        "merge_call_interim.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":distribute_lib",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+cuda_py_test(
+    name = "template_mirrored_strategy_test",
+    size = "small",
+    srcs = ["template_mirrored_strategy_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:template",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
 )

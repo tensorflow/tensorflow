@@ -199,18 +199,17 @@ _gen_kernel_bin_rule = rule(
         # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
         "_tfso": attr.label(
             default = Label("//tensorflow:libtensorflow_framework.so.2"),
-            cfg = "host",
+            cfg = "exec",
             allow_single_file = True,
         ),
         "_tool": attr.label(
             executable = True,
             default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel"),
-            cfg = "host",
+            cfg = "exec",
         ),
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
     },
     fragments = ["cpp"],
-    incompatible_use_toolchain_transition = True,
     outputs = {"kernel": "%{name}_kernel.o"},
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
     implementation = _gen_kernel_bin_impl,

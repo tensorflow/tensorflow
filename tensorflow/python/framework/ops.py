@@ -25,7 +25,6 @@ from absl import app
 import numpy as np
 import six
 from six.moves import map  # pylint: disable=redefined-builtin
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -60,9 +59,10 @@ from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler import trace
+from tensorflow.python.profiler import trace as profiler_trace
 from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.types import internal
+from tensorflow.python.types import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
@@ -281,6 +281,79 @@ def disable_tensor_equality():
   logging.vlog(1, "Disabling tensor equality")
   _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
+
+
+# TODO(b/202447704): Merge into TensorSpec.
+class TensorType(trace.TraceType):
+  """Represents Tensor and TensorSpec for function tracing purposes."""
+
+  def __init__(self, signature_context, shape, dtype, name):
+    self.dtype = dtype
+    self.name = name
+    self.shape_rank = shape.rank
+
+    if self.shape_rank is None or signature_context.include_tensor_ranks_only:
+      self.shape_dims = None
+    else:
+      self.shape_dims = tuple(shape.as_list())
+
+  def is_subtype_of(self, other):
+    if not isinstance(other, TensorType):
+      return False
+
+    if self.dtype != other.dtype:
+      return False
+
+    # TODO(b/206014848): Name should not be considered.
+    if self.name != other.name:
+      return False
+
+    # All Tensors are subtypes of a Tensor with no shape.
+    if other.shape_rank is None:
+      return True
+
+    # A Tensor with no rank is never a subtype of a Tensor with rank.
+    if self.shape_rank is None:
+      return False
+
+    # Tensor with a defined shape can only be subtype of another with a defined
+    # shape if they have the same number of dimensions.
+    assert self.shape_rank == len(self.shape_dims)
+    assert other.shape_rank == len(other.shape_dims)
+    if self.shape_rank != other.shape_rank:
+      return False
+
+    # A Tensor is a subtype of other if for each corresponding dimension,
+    # other has the same value or None.
+    if any(o is not None and s != o
+           for s, o in zip(self.shape_dims, other.shape_dims)):
+      return False
+
+    return True
+
+  def most_specific_common_supertype(self, others):
+    # TODO(b/202430155) Implement for shape relaxation.
+    return None
+
+  def __hash__(self) -> int:
+    return hash((self.dtype, self.name, self.shape_rank, self.shape_dims))
+
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, TensorType):
+      return False
+
+    if self.dtype != other.dtype:
+      return False
+
+    # TODO(b/206014848): Name should not be considered.
+    if self.name != other.name:
+      return False
+
+    return (self.shape_rank == other.shape_rank and
+            self.shape_dims == other.shape_dims)
 
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
@@ -1029,6 +1102,9 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     """
     return object_identity.Reference(self)
 
+  def __tf_tracing_type__(self, signature_context):
+    return TensorType(signature_context, self.shape, self.dtype, None)
+
 
 # TODO(agarwal): consider getting rid of this.
 # TODO(mdan): This object should not subclass ops.Tensor.
@@ -1555,7 +1631,7 @@ def pack_eager_tensors(tensors, ctx=None):
   return packed_tensor
 
 
-@trace.trace_wrapper("convert_to_tensor")
+@profiler_trace.trace_wrapper("convert_to_tensor")
 def convert_to_tensor(value,
                       dtype=None,
                       name=None,
@@ -2272,7 +2348,7 @@ class Operation(object):
     num_outputs = pywrap_tf_session.TF_OperationNumOutputs(self._c_op)
     output_types = [
         int(pywrap_tf_session.TF_OperationOutputType(self._tf_output(i)))
-        for i in xrange(num_outputs)
+        for i in range(num_outputs)
     ]
 
     return output_types
@@ -2452,7 +2528,7 @@ class Operation(object):
     input_types = [
         dtypes.as_dtype(
             pywrap_tf_session.TF_OperationInputType(self._tf_input(i)))
-        for i in xrange(num_inputs)
+        for i in range(num_inputs)
     ]
     return input_types
 
@@ -3090,9 +3166,14 @@ class Graph(object):
     # Estimator and optimizer V1 use cases.
     self._is_loss_scaled_by_optimizer = False
     self._container = ""
+
+    # The current AutomaticControlDependencies context manager.
+    self.experimental_acd_manager = None
     # Set to True if this graph is being built in an
     # AutomaticControlDependencies context.
+    # Deprecated: use acd_manager instead.
     self._add_control_dependencies = False
+
     # Cache for OpDef protobufs retrieved via the C API.
     self._op_def_cache = {}
     # Cache for constant results of `broadcast_gradient_args()`. The keys are
@@ -3156,7 +3237,7 @@ class Graph(object):
   def _resource_creator_scope(self, resource_type, creator):
     """Scope which defines a resource creation function used by some resource.
 
-    The resource should be a subclass of CachableResource with a class method
+    The resource should be a subclass of CapturableResource with a class method
     `cls._resource_type`, the output of which is what the `resource_type`
     argument should be. By default, `cls._resource_type` returns the class name,
     `cls.__name__`. Given a scope, creators being added with the same
@@ -3393,7 +3474,7 @@ class Graph(object):
 
     The serialized `GraphDef` can be imported into another `Graph`
     (using `tf.import_graph_def`) or used with the
-    [C++ Session API](../../../../api_docs/cc/index.md).
+    [C++ Session API](https://chromium.googlesource.com/external/github.com/tensorflow/tensorflow/+/r0.10/tensorflow/g3doc/api_docs/cc/index.md).
 
     This method is thread-safe.
 

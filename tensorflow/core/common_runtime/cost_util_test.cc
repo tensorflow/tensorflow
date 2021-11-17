@@ -23,12 +23,19 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-class TestCostMeasurement : public CostMeasurement {
+class TestGcuCostMeasurement : public CostMeasurement {
  public:
   absl::Duration GetTotalCost() override { return absl::ZeroDuration(); }
-  absl::string_view GetCostType() const override { return "test"; }
+  absl::string_view GetCostType() const override { return "test_gcu"; }
 };
-REGISTER_COST_MEASUREMENT("test", TestCostMeasurement);
+REGISTER_COST_MEASUREMENT("test_gcu", TestGcuCostMeasurement);
+
+class TestTpuCostMeasurement : public CostMeasurement {
+ public:
+  absl::Duration GetTotalCost() override { return absl::ZeroDuration(); }
+  absl::string_view GetCostType() const override { return "test_tpu"; }
+};
+REGISTER_COST_MEASUREMENT("test_tpu", TestTpuCostMeasurement);
 
 class TestRequestCostAccessor : public RequestCostAccessor {
  public:
@@ -36,14 +43,17 @@ class TestRequestCostAccessor : public RequestCostAccessor {
 };
 REGISTER_REQUEST_COST_ACCESSOR("test", TestRequestCostAccessor);
 
-TEST(CreateCostMeasurementTest, Basic) {
-  setenv("TF_COST_MEASUREMENT_TYPE", "test", /*overwrite=*/1);
-  std::unique_ptr<CostMeasurement> test_cost_measurement =
-      CreateCostMeasurement();
+TEST(CreateCostMeasurementsTest, Basic) {
+  setenv("TF_COST_MEASUREMENT_TYPE", "test_gcu, test_tpu, test_invalid",
+         /*overwrite=*/1);
+  std::vector<std::unique_ptr<CostMeasurement>> measurements =
+      CreateCostMeasurements();
 
-  ASSERT_NE(test_cost_measurement, nullptr);
-  EXPECT_EQ(test_cost_measurement->GetTotalCost(), absl::ZeroDuration());
-  EXPECT_EQ(test_cost_measurement->GetCostType(), "test");
+  EXPECT_EQ(measurements.size(), 2);
+  EXPECT_EQ(measurements[0]->GetTotalCost(), absl::ZeroDuration());
+  EXPECT_EQ(measurements[0]->GetCostType(), "test_gcu");
+  EXPECT_EQ(measurements[1]->GetTotalCost(), absl::ZeroDuration());
+  EXPECT_EQ(measurements[1]->GetCostType(), "test_tpu");
 }
 
 TEST(CreateRequestCostAccessorTest, Basic) {

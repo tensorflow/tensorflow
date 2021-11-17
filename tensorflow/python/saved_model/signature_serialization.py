@@ -94,19 +94,21 @@ def find_function_to_export(saveable_view):
   """Function to export, None if no suitable function was found."""
   # If the user did not specify signatures, check the root object for a function
   # that can be made into a signature.
-  functions = saveable_view.list_functions(saveable_view.root)
-  signature = functions.get(DEFAULT_SIGNATURE_ATTR, None)
-  if signature is not None:
-    return signature
+  children = saveable_view.list_children(saveable_view.root)
 
-  # TODO(andresp): Discuss removing this behaviour. It can lead to WTFs when a
-  # user decides to annotate more functions with tf.function and suddenly
+  # TODO(b/205014194): Discuss removing this behaviour. It can lead to WTFs when
+  # a user decides to annotate more functions with tf.function and suddenly
   # serving that model way later in the process stops working.
   possible_signatures = []
-  for function in functions.values():
-    concrete = _get_signature(function)
+  for name, child in children:
+    if not isinstance(child, (def_function.Function, defun.ConcreteFunction)):
+      continue
+    if name == DEFAULT_SIGNATURE_ATTR:
+      return child
+    concrete = _get_signature(child)
     if concrete is not None and _valid_signature(concrete):
       possible_signatures.append(concrete)
+
   if len(possible_signatures) == 1:
     single_function = possible_signatures[0]
     signature = _get_signature(single_function)
@@ -296,8 +298,7 @@ def create_signature_map(signatures):
 
 def validate_saveable_view(saveable_view):
   """Performs signature-related sanity checks on `saveable_view`."""
-  for name, dep in saveable_view.list_dependencies(
-      saveable_view.root):
+  for name, dep in saveable_view.list_children(saveable_view.root):
     if name == SIGNATURE_ATTRIBUTE_NAME:
       if not isinstance(dep, _SignatureMap):
         raise ValueError(

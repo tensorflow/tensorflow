@@ -44,6 +44,7 @@ TEST_F(SimpleOpTfTest, Output1Size_5_N_2) {
   // Prepare graph.
   TF_ASSERT_OK(NodeDefBuilder("simple_op", "SimpleOperation")
                    .Attr("output1_size", 5)
+                   .Attr("output2_suffix", "foo")
                    .Attr("N", 2)
                    .Input(FakeInput(DT_STRING))
                    .Input(FakeInput(2, DT_INT64))
@@ -60,8 +61,8 @@ TEST_F(SimpleOpTfTest, Output1Size_5_N_2) {
                          AsTensor<int>({0, 1, 2, 3, 4}, /*shape=*/{5}));
   ExpectTensorEqual<float>(
       *GetOutput(1), AsTensor<float>({0, 0.5, 1., 1.5, 2.}, /*shape=*/{5}));
-  ExpectTensorEqual<tstring>(*GetOutput(2),
-                             AsTensor<tstring>({"0", "1", "2"}, /*shape=*/{3}));
+  ExpectTensorEqual<tstring>(
+      *GetOutput(2), AsTensor<tstring>({"0", "1", "2", "foo"}, /*shape=*/{4}));
   ExpectTensorEqual<int64_t>(*GetOutput(3),
                              AsTensor<int64_t>({124}, /*shape=*/{}));
   ExpectTensorEqual<int64_t>(*GetOutput(4),
@@ -72,12 +73,13 @@ TEST_F(SimpleOpTfTest, Output1Size_3_N_0) {
   // Prepare graph.
   TF_ASSERT_OK(NodeDefBuilder("simple_op", "SimpleOperation")
                    .Attr("output1_size", 3)
+                   .Attr("output2_suffix", "foo")
                    .Attr("N", 0)
                    .Input(FakeInput(DT_STRING))
                    .Input(FakeInput(0, DT_INT64))
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<tstring>(TensorShape({}), {"abc"});
+  AddInputFromArray<tstring>(TensorShape({}), {"abcde"});
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -86,8 +88,9 @@ TEST_F(SimpleOpTfTest, Output1Size_3_N_0) {
                          AsTensor<int>({0, 1, 2, 3, 4}, /*shape=*/{5}));
   ExpectTensorEqual<float>(*GetOutput(1),
                            AsTensor<float>({0, 0.5, 1.}, /*shape=*/{3}));
-  ExpectTensorEqual<tstring>(*GetOutput(2),
-                             AsTensor<tstring>({"0", "1", "2"}, /*shape=*/{3}));
+  ExpectTensorEqual<tstring>(
+      *GetOutput(2),
+      AsTensor<tstring>({"0", "1", "2", "3", "4", "foo"}, /*shape=*/{6}));
 }
 
 }  // namespace

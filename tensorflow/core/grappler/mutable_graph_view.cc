@@ -68,6 +68,9 @@ bool IsIdentityConsumingSwitch(const MutableGraphView& graph,
     }
 
     NodeDef* input_node = graph.GetNode(tensor_id.node());
+    if (input_node == nullptr) {
+      return false;
+    }
     return IsSwitch(*input_node);
   }
   return false;

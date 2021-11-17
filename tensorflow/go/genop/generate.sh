@@ -16,7 +16,8 @@
 
 set -e
 
-go get google.golang.org/protobuf/cmd/protoc-gen-go
+go get -d google.golang.org/protobuf/proto
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 
 if [ -z "${GOPATH}" ]
 then

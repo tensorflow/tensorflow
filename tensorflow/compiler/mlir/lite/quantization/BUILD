@@ -73,6 +73,7 @@ cc_library(
     deps = [
         ":quantization_info_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
+        "//tensorflow/compiler/mlir/tensorflow:location_utils",
         "//tensorflow/core:lib_proto_parsing",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -106,6 +107,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",

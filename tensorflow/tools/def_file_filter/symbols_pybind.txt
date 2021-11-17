@@ -1,6 +1,6 @@
 [//tensorflow/python/util:cpp_python_util] # util tfe
-tensorflow::swig::IsSequence
-tensorflow::swig::IsSequenceOrComposite
+tensorflow::swig::IsNested
+tensorflow::swig::IsNestedOrComposite
 tensorflow::swig::IsCompositeTensor
 tensorflow::swig::IsTypeSpec
 tensorflow::swig::IsNamedtuple
@@ -413,6 +413,7 @@ tensorflow::metrics::TrainingTimeSaved
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
+tensorflow::ResetMlirCommonFlags
 
 [//tensorflow/core/platform:tensor_float_32_utils] # tensor_float_32
 tensorflow::enable_tensor_float_32_execution

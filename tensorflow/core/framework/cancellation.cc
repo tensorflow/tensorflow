@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -36,7 +37,13 @@ CancellationManager::CancellationManager(CancellationManager* parent)
 }
 
 void CancellationManager::StartCancel() {
-  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_to_run;
+  // An "OK" status will not be logged by a callback registered by
+  // RegisterCallbackWithErrorLogging.
+  StartCancelWithStatus(Status::OK());
+}
+
+void CancellationManager::StartCancelWithStatus(const Status& status) {
+  gtl::FlatMap<CancellationToken, CallbackConfiguration> callbacks_to_run;
   std::forward_list<CancellationManager*> children_to_cancel;
   Notification* cancelled_notification = nullptr;
   {
@@ -66,10 +73,17 @@ void CancellationManager::StartCancel() {
   // to DeregisterCallback will block until the
   // cancelled_notification_ is notified.
   for (auto key_and_value : callbacks_to_run) {
-    key_and_value.second();
+    CallbackConfiguration& config = key_and_value.second;
+    if (!status.ok() && config.log_error) {
+      LOG(WARNING) << "Cancellation callback \"" << config.name
+                   << "\" is triggered due to a "
+                   << (StatusGroup::IsDerived(status) ? "derived" : "root")
+                   << " error: " << status.ToString();
+    }
+    config.callback();
   }
   for (CancellationManager* child : children_to_cancel) {
-    child->StartCancel();
+    child->StartCancelWithStatus(status);
   }
   {
     mutex_lock l(mu_);
@@ -83,6 +97,19 @@ void CancellationManager::StartCancel() {
 
 bool CancellationManager::RegisterCallback(CancellationToken token,
                                            CancelCallback callback) {
+  return RegisterCallbackConfig(
+      token, CallbackConfiguration{callback, "", false});
+}
+
+bool CancellationManager::RegisterCallbackWithErrorLogging(
+    CancellationToken token, CancelCallback callback,
+    tensorflow::StringPiece callback_name) {
+  return RegisterCallbackConfig(
+      token, CallbackConfiguration{callback, std::string(callback_name), true});
+}
+
+bool CancellationManager::RegisterCallbackConfig(CancellationToken token,
+                                                 CallbackConfiguration config) {
   DCHECK_LT(token, next_cancellation_token_) << "Invalid cancellation token";
   mutex_lock l(mu_);
   bool should_register = !is_cancelled_ && !is_cancelling_;
@@ -90,7 +117,7 @@ bool CancellationManager::RegisterCallback(CancellationToken token,
     if (!state_) {
       state_ = absl::make_unique<State>();
     }
-    std::swap(state_->callbacks[token], callback);
+    std::swap(state_->callbacks[token], config);
   }
   return should_register;
 }
@@ -207,7 +234,7 @@ bool CancellationManager::IsCancelling() {
 }
 
 Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
-                                    std::function<void()> callback,
+                                    CancelCallback callback,
                                     std::function<void()>* deregister_fn) {
   if (cancellation_manager) {
     CancellationToken token = cancellation_manager->get_cancellation_token();

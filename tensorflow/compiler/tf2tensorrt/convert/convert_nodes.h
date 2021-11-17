@@ -99,8 +99,7 @@ struct EngineInfo {
         maximum_cached_engines(0),
         precision_mode(TrtPrecisionMode::FP32),
         use_calibration(true),
-        allow_build_at_runtime(true),
-        has_int32_input(false) {}
+        allow_build_at_runtime(true) {}
 
   string engine_name;
   string device;
@@ -119,7 +118,6 @@ struct EngineInfo {
   TrtPrecisionMode precision_mode;
   bool use_calibration;
   bool allow_build_at_runtime;
-  bool has_int32_input;
 };
 
 // Constructs a graphdef from the segment in the given graph and stores it to
@@ -387,6 +385,10 @@ class Converter {
   void SetLayerName(nvinfer1::ILayer* layer, absl::string_view main_op_name,
                     absl::string_view sub_op_name,
                     absl::optional<int> sub_op_instance = absl::nullopt);
+
+  std::unordered_map<string, TRT_TensorOrWeights>& TensorsMap() {
+    return trt_tensors_;
+  }
 
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,

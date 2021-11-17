@@ -30,6 +30,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+// XLA Layout preferences. Currently, when it comes to TPU, there are two
+// primary layout choices for any XLA argumetns (parameter or resource): (1)
+// CompactChunkPadded and (2) Linear. CompactChunkPadded is the native TPU
+// layout while Linear is native host (CPU) layout.
+// This enum allows the caller of XLA to progogate layout preference to the XLA
+// compiler.
+//   kNoPreference: the generic layout where the XLA compiler has the freedom
+//                  to assign any layout.
+//   kTpuPreferCompactChunkPaddedLayout: use native TPU layout on TPU.
+//   kTpuPreferLinearLayout: use native CPU layout on TPU. The compiler may
+//                           insert transformation TPU kernels.
+// As the layout of any argument will change from a native host layout to a
+// native TPU layout either on host or on device, XLA compiler and TPU runtime
+// must be in coordination to transform the parameters in a consistent way.
+enum class XlaLayoutPreference {
+  kNoPreference = 0,
+  kTpuPreferCompactChunkPaddedLayout = 1,
+  kTpuPreferLinearLayout = 2
+};
+
 // Helper methods for building XLA computations.
 class XlaHelpers {
  public:
@@ -78,8 +98,8 @@ class XlaHelpers {
   static xla::XlaOp ConvertElementType(const xla::XlaOp& operand,
                                        const DataType new_element_type);
 
-  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType,
-                                             bool)>
+  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType, bool,
+                                             XlaLayoutPreference)>
       ShapeRepresentationFn;
 };
 
@@ -170,19 +190,19 @@ struct XlaCompilationResult {
   // The XLA computation built from the tensorflow subgraph.
   std::shared_ptr<xla::XlaComputation> computation;
 
-  // Meta-info about encountered CollectiveReduceV2Ops.
-  struct CollectiveReduceV2OpInfo {
+  // Meta-info about encountered collective ops.
+  struct CollectiveInfo {
     int group_key;
     int group_size;
+    int next_id;
   };
 
-  // Group keys of the collectives encountered during the translation.
-  // Mapping from group keys to group sizes.
-  absl::optional<CollectiveReduceV2OpInfo> collective_reduce_info;
+  // Information of the collectives encountered during the translation.
+  absl::optional<CollectiveInfo> collective_info;
 };
 
-// Resolves the device assignment based on CollectiveReduceV2OpInfo.
-// CollectiveReduceV2OpInfo records collective ops in the cluster. Note that
+// Resolves the device assignment based on CollectiveInfo.
+// CollectiveInfo records collective ops in the cluster. Note that
 // this relies on a rendezvous and blocks until all replicas are there.
 //
 // Takes several extra configuration objects by reference since
@@ -190,8 +210,7 @@ struct XlaCompilationResult {
 // bundled into `run_options` if applicable.
 Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
-    const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
-        collective_reduce_info,
+    const absl::optional<XlaCompilationResult::CollectiveInfo>& collective_info,
     xla::ExecutableRunOptions& run_options,
     xla::DeviceAssignment& device_assignment,
     xla::gpu::GpuExecutableRunOptions& gpu_options);

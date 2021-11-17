@@ -26,6 +26,7 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/protobuf/coordination_config.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
@@ -81,6 +82,9 @@ message CreateWorkerSessionRequest {
   // worker. To prevent memory leaks, the worker should garbage collect the old
   // WorkerSessions.
   int64 master_incarnation = 6;
+
+  // Configures coordination service within worker sessions.
+  CoordinationServiceConfig coordination_service_config = 7;
 }
 
 message CreateWorkerSessionResponse {}

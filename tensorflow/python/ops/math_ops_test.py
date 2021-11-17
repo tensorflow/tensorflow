@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -218,6 +219,15 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     with test_util.use_gpu():
       res = math_ops.reduce_logsumexp(-np.inf)
       self.assertEqual(-np.inf, self.evaluate(res))
+
+  def testRaggedTensor(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.double]:
+      x_rt = ragged_factory_ops.constant([[1, 2], [], [3, 4, 5]], dtype=dtype)
+      x_np = np.array(self.evaluate(x_rt.flat_values))
+      with test_util.use_gpu():
+        y_rt = math_ops.reduce_logsumexp(x_rt)
+        y_np = np.log(np.sum(np.exp(x_np - np.max(x_np)))) + np.max(x_np)
+        self.assertAllClose(y_rt, y_np)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -489,7 +499,7 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
   def testAcceptsIndexedSlices(self):
     values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])
     indices = constant_op.constant([0, 2, 5])
-    x = math_ops.scalar_mul(-3, ops.IndexedSlices(values, indices))
+    x = math_ops.scalar_mul(-3, indexed_slices.IndexedSlices(values, indices))
     with test_util.device(use_gpu=True):
       self.assertAllEqual(
           self.evaluate(x.values), [[-6, -9], [-15, -21], [0, 3]])
@@ -558,7 +568,7 @@ class AddNTest(test_util.TensorFlowTestCase):
             [self.evaluate(g) for g in add_n_grad])
 
   def testIndexedSlices(self):
-    slc = ops.IndexedSlices(
+    slc = indexed_slices.IndexedSlices(
         array_ops.constant([1, 2], shape=[1, 2]), array_ops.constant([1]),
         array_ops.constant([2, 2]))
     slc_as_dense = np.array([[0, 0], [1, 2]])

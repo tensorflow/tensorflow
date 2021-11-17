@@ -12,21 +12,48 @@ glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {
-        "hlo_to_lhlo_with_xla/gpu_ops.mlir": tf_cuda_tests_tags() + [
-            "noasan",
-            "nomsan",
-            "noubsan",
-            "no_cuda_asan",
-        ],  # b/171751580
-        "hlo_to_lhlo_with_xla/ops.mlir": tf_cuda_tests_tags() + [
-            "nomsan",
-            "no_cuda_asan",
-        ],  # b/191025174, b/192521861
-        "hlo_to_lhlo_with_xla/passthrough.mlir": tf_cuda_tests_tags() + [
-            "nomsan",
-            "no_cuda_asan",
-            "no_cuda_asan",
-        ],  # b/191025174, b/192521861
+        "adjust-layout.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-BatchMatMulV2.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-binary-elementwise.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-collective.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-communication.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-control-flow.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-full-conversion.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-include-tf2xla-fallback.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-no-tf2xla-fallback.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-prefer-tf2xla.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-types.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "legalize-tf-with-tf2xla.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
+        "prepare-for-export.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
     },
     test_file_exts = [
         "mlir",
@@ -35,12 +62,13 @@ glob_lit_tests(
 )
 
 # Bundle together all of the test utilities that are used by tests.
+# This intentionally does not pull-in the top-level tf-opt to reduce the
+# dependencies.
 filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
         "//tensorflow/compiler/mlir:tf-mlir-translate",
-        "//tensorflow/compiler/mlir:tf-opt",
         "//tensorflow/compiler/mlir/xla:xla-opt",
         "@llvm-project//llvm:FileCheck",
     ],

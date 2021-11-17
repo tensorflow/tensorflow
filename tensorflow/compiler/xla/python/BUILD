@@ -20,6 +20,7 @@ package(
 pytype_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
+    pytype_srcs = ["xla_client.pyi"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
@@ -27,6 +28,8 @@ pytype_library(
         "@absl_py//absl/logging",
     ],
 )
+
+exports_files(["xla_client.pyi"])
 
 pyx_library(
     name = "custom_call_for_test",
@@ -226,6 +229,8 @@ cc_library(
         ":python_utils",
         ":traceback",
         ":types",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -248,6 +253,8 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@pybind11",
     ],
 )
@@ -332,6 +339,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:approx_topk",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:lu_decomposition",
         "//tensorflow/compiler/xla/client/lib:math",
@@ -467,6 +475,31 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir",
+    srcs = ["mlir.cc"],
+    hdrs = ["mlir.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":types",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CAPIIR",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
+        "@llvm-project//mlir:StandardOps",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "profiler",
     srcs = ["profiler.cc"],
     hdrs = ["profiler.h"],
@@ -548,8 +581,9 @@ pybind_extension(
     deps = [
         ":dlpack",
         ":jax_jit",
-        ":pmap_lib",
+        ":mlir",
         ":ops",
+        ":pmap_lib",
         ":profiler",
         ":py_client",
         ":pytree",

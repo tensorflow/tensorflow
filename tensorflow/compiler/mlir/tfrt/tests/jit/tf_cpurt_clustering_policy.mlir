@@ -77,6 +77,54 @@ func @add_value_constraint(%arg0 : tensor<?x?xf32>, %arg1 : tensor<?x?xf32>)
 }
 
 // -------------------------------------------------------------------------- //
+// tf.BatchMatMulV2
+// -------------------------------------------------------------------------- //
+
+// CHECK-LABEL: func @batchmatmulv2_no_constraint
+func @batchmatmulv2_no_constraint(%arg0 : tensor<?x?x?xf32>,
+                                  %arg1 : tensor<?x?x?xf32>)
+    -> tensor<?x?x?xf32> {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false}
+       : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: func @batchmatmulv2_rank_constraint
+func @batchmatmulv2_rank_constraint(%arg0 : tensor<?x?x?xf32>,
+                                    %arg1 : tensor<?x?x?xf32>)
+    -> (tensor<?x?x?xf32> { tf.constraint = "rank" }) {
+  // expected-remark@below {{operand #0 constrained to: rank}}
+  // expected-remark@below {{operand #1 constrained to: rank}}
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false}
+       : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  // expected-remark@below {{operand #0 constrained to: rank}}
+  return %0 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: func @batchmatmulv2_shape_constraint
+func @batchmatmulv2_shape_constraint(%arg0 : tensor<?x?x?xf32>,
+                                     %arg1 : tensor<?x?x?xf32>)
+    -> (tensor<?x?x?xf32> { tf.constraint = "shape" }) {
+  // expected-remark@below {{operand #0 constrained to: shape}}
+  // expected-remark@below {{operand #1 constrained to: shape}}
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false}
+       : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  // expected-remark@below {{operand #0 constrained to: shape}}
+  return %0 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: func @batchmatmulv2_value_constraint
+func @batchmatmulv2_value_constraint(%arg0 : tensor<?x?x?xf32>,
+                                     %arg1 : tensor<?x?x?xf32>)
+    -> (tensor<?x?x?xf32> { tf.constraint = "value" }) {
+  // expected-error@below {{failed to propagate results constraints}}
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false}
+       : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  // expected-remark@below {{operand #0 constrained to: value}}
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -------------------------------------------------------------------------- //
 // tf.Log1p (as an example of Cwise Unary Operation)
 // -------------------------------------------------------------------------- //
 
@@ -335,6 +383,33 @@ func @shape_value_constraints(%arg0 : tensor<?x?xf32>)
 }
 
 // -------------------------------------------------------------------------- //
+// tf.Slice
+// -------------------------------------------------------------------------- //
+
+// CHECK-LABEL: func @slice_no_constraint
+func @slice_no_constraint(%arg0 : tensor<?x?xf32>, %arg1: tensor<2xi32>,
+                          %arg2: tensor<2xi32>)
+    -> tensor<?x?xf32> {
+  // expected-remark@below {{operand #0 constrained to: shape}}
+  // expected-remark@below {{operand #1 constrained to: value}}
+  // expected-remark@below {{operand #2 constrained to: value}}
+  %0 = "tf.Slice"(%arg0, %arg1, %arg2)
+       : (tensor<?x?xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func @slice_value_constraint
+func @slice_value_constraint(%arg0 : tensor<?x?xf32>, %arg1: tensor<2xi32>,
+                            %arg2: tensor<2xi32>)
+    -> (tensor<?x?xf32> { tf.constraint = "value" }) {
+  // expected-error@below {{failed to propagate results constraints}}
+  %0 = "tf.Slice"(%arg0, %arg1, %arg2)
+       : (tensor<?x?xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x?xf32>
+  // expected-remark@below {{operand #0 constrained to: value}}
+  return %0 : tensor<?x?xf32>
+}
+
+// -------------------------------------------------------------------------- //
 // tf.StridedSlice
 // -------------------------------------------------------------------------- //
 
@@ -475,6 +550,34 @@ func @fill_value_constraint(%arg0 : tensor<?xi32>, %arg1 : tensor<f32>)
 }
 
 // -------------------------------------------------------------------------- //
+// tf.OneHot
+// -------------------------------------------------------------------------- //
+
+// CHECK-LABEL: func @onehot_no_constraint
+func @onehot_no_constraint(%arg0: tensor<?xi32>, %arg1: tensor<i32>,
+                           %arg2: tensor<f32>, %arg3: tensor<f32>)
+    -> tensor<?x2xf32> {
+  // expected-remark@below {{operand #0 constrained to: shape}}
+  // expected-remark@below {{operand #1 constrained to: value}}
+  %0 = "tf.OneHot"(%arg0, %arg1, %arg2, %arg3) {axis = -1 : i64}
+       : (tensor<?xi32>, tensor<i32>, tensor<f32>, tensor<f32>)
+       -> tensor<?x2xf32>
+  return %0 : tensor<?x2xf32>
+}
+
+// CHECK-LABEL: func @onehot_value_constraint
+func @onehot_value_constraint(%arg0: tensor<?xi32>, %arg1: tensor<i32>,
+                              %arg2: tensor<f32>, %arg3: tensor<f32>)
+    -> (tensor<?x2xf32> { tf.constraint = "value" }) {
+  // expected-error@below {{failed to propagate results constraints}}
+  %0 = "tf.OneHot"(%arg0, %arg1, %arg2, %arg3) {axis = -1 : i64}
+       : (tensor<?xi32>, tensor<i32>, tensor<f32>, tensor<f32>)
+       -> tensor<?x2xf32>
+  // expected-remark@below {{operand #0 constrained to: value}}
+  return %0 : tensor<?x2xf32>
+}
+
+// -------------------------------------------------------------------------- //
 // tf.Range
 // -------------------------------------------------------------------------- //
 
@@ -611,4 +714,55 @@ func @broadcast_to_value_constraint(%arg0 : tensor<?xf32>, %arg1 : tensor<?xi32>
        : (tensor<?xf32>, tensor<?xi32>) -> tensor<?xf32>
   // expected-remark@below {{operand #0 constrained to: value}}
   return %0 : tensor<?xf32>
+}
+
+// -------------------------------------------------------------------------- //
+// tf.Squeeze
+// -------------------------------------------------------------------------- //
+
+// CHECK-LABEL: func @squeeze_no_constraint_no_squeeze_dims
+func @squeeze_no_constraint_no_squeeze_dims(%arg0 : tensor<?x?xi32>)
+    -> tensor<?xi32> {
+  // expected-remark@below {{operand #0 constrained to: shape}}
+  %0 = "tf.Squeeze"(%arg0) : (tensor<?x?xi32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+// CHECK-LABEL: func @squeeze_no_constraint
+func @squeeze_no_constraint(%arg0 : tensor<?x?xi32>)
+    -> tensor<?xi32> {
+  // expected-remark@below {{operand #0 constrained to: rank}}
+  %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [0] }
+       : (tensor<?x?xi32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+// CHECK-LABEL: func @squeeze_rank_constraint
+func @squeeze_rank_constraint(%arg0 : tensor<?x?xi32>)
+    -> (tensor<?xi32> { tf.constraint = "rank" }) {
+  // expected-remark@below {{operand #0 constrained to: rank}}
+  %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [0] }
+       : (tensor<?x?xi32>) -> tensor<?xi32>
+  // expected-remark@below {{operand #0 constrained to: rank}}
+  return %0 : tensor<?xi32>
+}
+
+// CHECK-LABEL: func @squeeze_shape_constraint
+func @squeeze_shape_constraint(%arg0 : tensor<?x?xi32>)
+    -> (tensor<?xi32> { tf.constraint = "shape" }) {
+  // expected-remark@below {{operand #0 constrained to: shape}}
+  %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [0] }
+       : (tensor<?x?xi32>) -> tensor<?xi32>
+  // expected-remark@below {{operand #0 constrained to: shape}}
+  return %0 : tensor<?xi32>
+}
+
+// CHECK-LABEL: func @squeeze_value_constraint
+func @squeeze_value_constraint(%arg0 : tensor<?x?xi32>)
+    -> (tensor<?xi32> { tf.constraint = "value" }) {
+  // expected-error@below {{failed to propagate results constraints}}
+  %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [0] }
+       : (tensor<?x?xi32>) -> tensor<?xi32>
+  // expected-remark@below {{operand #0 constrained to: value}}
+  return %0 : tensor<?xi32>
 }

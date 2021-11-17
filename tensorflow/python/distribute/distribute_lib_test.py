@@ -24,6 +24,7 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -80,9 +81,9 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
-                                           [distribute_lib.InputContext()],
-                                           self._container_strategy())
+    return input_lib_v1.InputFunctionIterator(input_fn, self._input_workers,
+                                              [distribute_lib.InputContext()],
+                                              self._container_strategy())
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     return dataset_fn(distribute_lib.InputContext())

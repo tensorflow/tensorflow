@@ -331,7 +331,7 @@ Status GetInitializedTensorListForElement(xla::XlaOp list, xla::XlaOp element,
     // Prepare dynamic dimension dimensions for zero tensor list. The dynamic
     // sizes are created by reading the dynamic dimension size of sub-elements.
     std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
-    for (int64_t i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+    for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
       std::vector<xla::XlaOp> dynamic_dims;
       const xla::Shape& shape = list_shape.tuple_shapes(i);
       dynamic_dims.push_back(leading_dim_dynamic_size);

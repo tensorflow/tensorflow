@@ -169,7 +169,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
-  pm.addPass(CreateTPUVariableReformattingPass());
+  pm.addPass(CreateTPUVariableRuntimeReformattingPass());
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
@@ -213,6 +213,10 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
   pm.addNestedPass<FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
   pm.addPass(createSymbolDCEPass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
+    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
+  }
   pm.addPass(CreateVerifySuitableForExportPass());
 }
 

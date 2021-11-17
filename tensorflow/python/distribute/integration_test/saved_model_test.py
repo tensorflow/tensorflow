@@ -638,8 +638,15 @@ class PSStrategySaveAndLoadTest(test.TestCase):
 
     with strategy.scope():
       loaded = tf.saved_model.load(model_dir)
-    self.assertRegex(loaded.v1.device, "/job:ps/replica:0/task:0")
-    self.assertRegex(loaded.v2.device, "/job:ps/replica:0/task:1")
+
+    # Make sure that the variables are created on different devices. SavedModel
+    # may load the variables in a different order compared to the creation order
+    # so the devices may not be exactly the same as before.
+    self.assertTrue(
+        ("/job:ps/replica:0/task:0" in loaded.v1.device and
+         "/job:ps/replica:0/task:1" in loaded.v2.device) or
+        ("/job:ps/replica:0/task:1" in loaded.v1.device and
+         "/job:ps/replica:0/task:0" in loaded.v2.device))
     self.assertAllEqual(loaded(tf.identity(1)), [6, 6, 6, 6])
 
   def test_load_to_different_strategy(self):

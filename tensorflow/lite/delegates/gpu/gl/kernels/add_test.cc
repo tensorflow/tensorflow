@@ -132,6 +132,90 @@ TEST(AddTest, InputTensorWithRuntimeBroadcast) {
                         {11.0, 22.0, 13.0, 24.0, 15.0, 26.0, 17.0, 28.0}));
 }
 
+TEST(AddTest, InputTensorWithConstantHWC) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 2);
+
+  ElementwiseAttributes attr;
+  Tensor<HWC, DataType::FLOAT32> tensor;
+  tensor.shape = HWC(2, 2, 2);
+  tensor.id = 1;
+  tensor.data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  attr.param = std::move(tensor);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {input},
+                      {output});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}));
+  ASSERT_OK(model.Invoke(*NewAddNodeShader()));
+  EXPECT_THAT(
+      model.GetOutput(0),
+      Pointwise(FloatNear(1e-6), {2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0}));
+}
+
+TEST(AddTest, InputTensorWithConstantHWCBroadcastChannels) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 2);
+
+  ElementwiseAttributes attr;
+  Tensor<HWC, DataType::FLOAT32> tensor;
+  tensor.shape = HWC(2, 2, 1);
+  tensor.id = 1;
+  tensor.data = {1.0, 2.0, 3.0, 4.0};
+  attr.param = std::move(tensor);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {input},
+                      {output});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}));
+  ASSERT_OK(model.Invoke(*NewAddNodeShader()));
+  EXPECT_THAT(
+      model.GetOutput(0),
+      Pointwise(FloatNear(1e-6), {2.0, 3.0, 5.0, 6.0, 8.0, 9.0, 11.0, 12.0}));
+}
+
+TEST(AddTest, InputTensorWithConstantHWCBroadcastWidth) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 2);
+
+  ElementwiseAttributes attr;
+  Tensor<HWC, DataType::FLOAT32> tensor;
+  tensor.shape = HWC(2, 1, 2);
+  tensor.id = 1;
+  tensor.data = {1.0, 2.0, 3.0, 4.0};
+  attr.param = std::move(tensor);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {input},
+                      {output});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}));
+  ASSERT_OK(model.Invoke(*NewAddNodeShader()));
+  EXPECT_THAT(
+      model.GetOutput(0),
+      Pointwise(FloatNear(1e-6), {2.0, 4.0, 4.0, 6.0, 8.0, 10.0, 10.0, 12.0}));
+}
+
 }  // namespace
 }  // namespace gl
 }  // namespace gpu

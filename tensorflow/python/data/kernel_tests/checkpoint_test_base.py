@@ -482,7 +482,7 @@ class CheckpointTestBase(test.TestCase):
       actual = actual.tolist()
     self.assertEqual(type(expected), type(actual))
 
-    if nest.is_sequence(expected):
+    if nest.is_nested(expected):
       self.assertEqual(len(expected), len(actual))
       if isinstance(expected, dict):
         for key1, key2 in zip(sorted(expected), sorted(actual)):

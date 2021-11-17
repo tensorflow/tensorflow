@@ -73,6 +73,7 @@ CollectiveAllReduceStrategy = (
 def _get_tpu_strategy_creator(steps_per_run,
                               use_single_core=False,
                               enable_packed_variable=False,
+                              enable_spmd_xla_paritioning=False,
                               **kwargs):
 
   def _create_tpu_strategy():
@@ -110,10 +111,16 @@ def _get_tpu_strategy_creator(steps_per_run,
 
     # Steps per run is only supported in TF 1.x
     if tf2.enabled():
-      strategy = tpu_lib.TPUStrategyV2(resolver, device_assignment, **kwargs)
+      strategy = tpu_lib.TPUStrategyV2(
+          resolver,
+          device_assignment,
+          experimental_spmd_xla_partitioning=enable_spmd_xla_paritioning,
+          **kwargs)
     else:
       strategy = tpu_lib.TPUStrategyV1(resolver, steps_per_run,
                                        device_assignment, **kwargs)
+    if enable_packed_variable and enable_spmd_xla_paritioning:
+      raise ValueError("Packed Variable is not compatiable with SPMD mode")
     strategy._enable_packed_variable_in_eager_mode = enable_packed_variable  # pylint: disable=protected-access
     return strategy
 
@@ -326,6 +333,11 @@ tpu_strategy = combinations.NamedDistribution(
 tpu_strategy_packed_var = combinations.NamedDistribution(
     "TPUPackedVar",
     _get_tpu_strategy_creator(steps_per_run=2, enable_packed_variable=True),
+    required_tpu=True)
+tpu_strategy_spmd = combinations.NamedDistribution(
+    "TPUUseSPMD",
+    _get_tpu_strategy_creator(
+        steps_per_run=2, enable_spmd_xla_paritioning=True),
     required_tpu=True)
 tpu_strategy_one_step = combinations.NamedDistribution(
     "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1), required_tpu=True)

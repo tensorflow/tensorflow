@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 
+#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,8 @@ enum class TfrtTpuInfraTarget {
   kBridgeFallback,  // TPU support but choose kTpurt or kTfFallback depending on
                     // whether the graph has unsupported feature in Bridge
 };
+
+std::ostream& operator<<(std::ostream& os, TfrtTpuInfraTarget tpu_target);
 
 struct TfrtCompileOptions {
   // TODO(tfrt-devs): Ideally, compiler should make the decision where

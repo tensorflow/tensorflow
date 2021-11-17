@@ -207,6 +207,19 @@ TEST_P(TileTest, Int64Matrix64Multipliers) {
       /*multiply_type=*/TensorType_INT64, GetParam());
 }
 
+TEST_P(TileTest, Int8Matrix) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  Check<int8_t>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{11, 12, 13, 21, 22, 23},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/{11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
+      /*input_type=*/TensorType_INT8,
+      /*multiply_type=*/TensorType_INT32, GetParam());
+}
+
 TEST_P(TileTest, StringMatrix) {
   Check<std::string>(
       /*input_shape=*/{2, 3},

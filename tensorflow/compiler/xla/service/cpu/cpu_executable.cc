@@ -52,6 +52,15 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+static std::string ModuleUniqueName(absl::string_view module_name,
+                                    const HloModule* module) {
+  std::string unique_id;
+  if (module != nullptr) {
+    unique_id = absl::StrCat("module.", module->unique_id(), ".");
+  }
+  return absl::StrCat(unique_id, module_name);
+}
+
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
@@ -66,8 +75,9 @@ CpuExecutable::CpuExecutable(
   if (assignment_) {
     buffer_assignment_.reset(new BufferAssignmentProto(assignment_->ToProto()));
   }
-  XlaDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
-                                             buffer_assignment_);
+  XlaDebugInfoManager::Get()->RegisterModule(
+      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
+      buffer_assignment_);
 
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
@@ -85,8 +95,9 @@ CpuExecutable::CpuExecutable(
 }
 
 CpuExecutable::~CpuExecutable() {
-  XlaDebugInfoManager::Get()->UnregisterModule(module_name_, shared_module(),
-                                               buffer_assignment_);
+  XlaDebugInfoManager::Get()->UnregisterModule(
+      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
+      buffer_assignment_);
 }
 
 static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
@@ -187,11 +198,12 @@ Status CpuExecutable::ExecuteComputeFunction(
                              profile_counters_size);
   VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
 
+  XlaCustomCallStatus status;
   // For the entry computation (like all global computations), all inputs and
   // outputs are in the buffer table, and both the result pointer and args array
   // pointers are unused (so we set them to 'nullptr').
   compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
-                    profile_counters);
+                    &status, profile_counters);
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -205,6 +217,12 @@ Status CpuExecutable::ExecuteComputeFunction(
           hlo_execution_profile->total_cycles_executed(
               *module().entry_computation()));
     }
+  }
+
+  absl::optional<absl::string_view> error_message =
+      CustomCallStatusGetMessage(&status);
+  if (error_message) {
+    return InternalError("CustomCall failed: %s", *error_message);
   }
 
   return Status::OK();

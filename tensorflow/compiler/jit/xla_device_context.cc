@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -87,7 +88,7 @@ XlaDeviceContext::XlaDeviceContext(
     std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
     xla::LocalClient* client,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-    thread::ThreadPool* thread_pool, bool use_fast_mem)
+    thread::ThreadPool* thread_pool)
     : stream_(std::move(compute_stream)),
       host_to_device_stream_(std::move(host_to_device_stream)),
       device_to_host_stream_(std::move(device_to_host_stream)),
@@ -95,18 +96,11 @@ XlaDeviceContext::XlaDeviceContext(
       client_(client),
       transfer_manager_(client->backend().transfer_manager()),
       shape_representation_fn_(std::move(shape_representation_fn)),
-      thread_pool_(thread_pool),
-      use_fast_mem_(use_fast_mem) {
+      thread_pool_(thread_pool) {
   CHECK(host_to_device_stream_ != nullptr);
   CHECK(stream_ != nullptr);
   if (!shape_representation_fn_) {
-    shape_representation_fn_ =
-        [](const TensorShape& shape, DataType dtype,
-           bool use_fast_memory) -> StatusOr<xla::Shape> {
-      xla::Shape xla_shape;
-      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
-      return xla_shape;
-    };
+    shape_representation_fn_ = tensorflow::IdentityShapeRepresentationFn();
   }
 }
 
@@ -128,8 +122,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     return;
   }
 
-  VLOG(2) << "CopyCPUTensorToDevice use_fast_mem " << use_fast_mem_ << " "
-          << this << " "
+  VLOG(2) << "CopyCPUTensorToDevice " << this << " "
           << reinterpret_cast<const void*>(cpu_tensor->tensor_data().data())
           << " "
           << reinterpret_cast<const void*>(device_tensor->tensor_data().data())
@@ -144,7 +137,8 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     TF_ASSIGN_OR_RETURN(
         xla::Shape shape,
         shape_representation_fn_(device_tensor->shape(), device_tensor->dtype(),
-                                 use_fast_mem_));
+                                 /*fast_mem=*/false,
+                                 XlaLayoutPreference::kNoPreference));
 
     // The device tensor should always be fresh.
     TF_RET_CHECK(!xla_tensor->has_shaped_buffer());

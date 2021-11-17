@@ -28,8 +28,8 @@ func @equal() -> (i1, i1, i1, i1) {
   %diff_str = tfr.equal %3,%5 -> i1
   return %same_type, %diff_type, %same_str, %diff_str  : i1, i1, i1, i1
 
-// CHECK-DAG: %true = constant true
-// CHECK-DAG: %false = constant false
+// CHECK-DAG: %true = arith.constant true
+// CHECK-DAG: %false = arith.constant false
 // CHECK-NEXT: return %true, %false, %true, %false : i1, i1, i1, i1
 }
 
@@ -50,7 +50,7 @@ func @constant_tensor_array() -> !tfr.tensor {
 
 // CHECK-LABEL: constant_tensor_scalar
 func @constant_tensor_scalar() -> !tfr.tensor {
-  %0 = "std.constant"() {value = 42 : i32} : () -> i32
+  %0 = "arith.constant"() {value = 42 : i32} : () -> i32
   %1 = "tfr.constant_tensor"(%0) : (i32) -> !tfr.tensor
   return %1 : !tfr.tensor
 
@@ -161,10 +161,25 @@ func @quant_qparam_invalid(%arg0: tensor<1x3x!quant.calibrated<f32<-1.0:1.0>>>) 
 
 // -----
 
+// CHECK-LABEL: redundant_cast_with_different_element_type
+func @redundant_cast_with_different_element_type(%arg0: tensor<*xf32>) -> (tensor<*xi32>, tensor<2xi32>) {
+  %0 = "tfr.cast"(%arg0) : (tensor<*xf32>) -> !tfr.tensor
+  %1 = "tfr.cast"(%0) : (!tfr.tensor) -> tensor<*xi32>
+  %2 = "tfr.cast"(%0) : (!tfr.tensor) -> tensor<2xi32>
+  return %1, %2 : tensor<*xi32>, tensor<2xi32>
+
+// CHECK: %[[tf_cast_unranked:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi32>
+// CHECK: %[[ensure_shape:.*]] = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<2>} : (tensor<*xf32>) -> tensor<2xf32>
+// CHECK: %[[tf_cast_ranked:.*]] = "tf.Cast"(%[[ensure_shape]]) {Truncate = false} : (tensor<2xf32>) -> tensor<2xi32>
+// CHECK: return %[[tf_cast_unranked]], %[[tf_cast_ranked]] :  tensor<*xi32>, tensor<2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: build_const_list
 func @build_const_list() -> !tfr.attr {
-  %0 = "std.constant"() {value = 42 : i32} : () -> i32
-  %1 = "std.constant"() {value = 41 : i32} : () -> i32
+  %0 = "arith.constant"() {value = 42 : i32} : () -> i32
+  %1 = "arith.constant"() {value = 41 : i32} : () -> i32
   %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   return %2 : !tfr.attr
 
@@ -176,8 +191,8 @@ func @build_const_list() -> !tfr.attr {
 
 // CHECK-LABEL: build_high_dim_const_list
 func @build_high_dim_const_list() -> !tfr.attr {
-  %0 = "std.constant"() {value = 42 : i32} : () -> i32
-  %1 = "std.constant"() {value = 41 : i32} : () -> i32
+  %0 = "arith.constant"() {value = 42 : i32} : () -> i32
+  %1 = "arith.constant"() {value = 41 : i32} : () -> i32
   %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   %3 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   %4 = "tfr.build_list"(%2, %3) : (!tfr.attr, !tfr.attr) -> !tfr.attr
@@ -195,6 +210,6 @@ func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
   %1 = "tfr.get_length"(%0) : (!tfr.tensor_list) -> index
   return %1 : index
 
-// CHECK-NEXT: %[[c:.*]] = constant 2 : index
+// CHECK-NEXT: %[[c:.*]] = arith.constant 2 : index
 // CHECK-NEXT: return %[[c]] : index
 }

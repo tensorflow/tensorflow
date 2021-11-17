@@ -39,7 +39,6 @@ add_mlir_library(ChloPasses
   MLIRChloLegalizeToHloIncGen
   MLIRMhloPassIncGen
   MLIRLmhloPassIncGen
-  MLIRDiscRalPassIncGen
 
   LINK_COMPONENTS
   Core
@@ -76,7 +75,6 @@ add_mlir_library(MhloPasses
   mhlo_flatten_tuple.cc
 
   DEPENDS
-  MLIRDiscRalPassIncGen
   MLIRhlo_opsIncGen
   MLIRMhloLowerComplexIncGen
   MLIRMhloPassIncGen
@@ -107,6 +105,8 @@ add_mlir_library(MhloToLhloConversion
   LINK_LIBS PUBLIC
   MhloDialect
   LmhloDialect
+  MLIRArithmetic
+  MLIRArithmeticTransforms
   MLIRIR
   MLIRPass
   MLIRMath
@@ -176,7 +176,6 @@ add_mlir_library(MhloLhloToLinalg
   MLIRlhlo_opsIncGen
   MLIRMhloPassIncGen
   MLIRLmhloPassIncGen
-  MLIRDiscRalPassIncGen
 
   LINK_COMPONENTS
   Core
@@ -224,49 +223,9 @@ add_mlir_library(LmhloPasses
   MLIRTransformUtils
 )
 
-add_mlir_library(DiscRalPasses
-  ral_inject_execution_context.cc
-  ral_lower_to_library_call.cc
-
-  DEPENDS
-  MLIRdisc_ral_opsIncGen
-  MLIRDiscRalPassIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  DiscRalDialect
-  MLIRIR
-  MLIRLLVMCommonConversion
-  MLIRPass
-)
-
-add_mlir_library(DiscRalToLLVM
-  ral_legalize_to_llvm.cc
-
-  DEPENDS
-  MLIRdisc_ral_opsIncGen
-  MLIRDiscRalPassIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  DiscRalDialect
-  MLIRGPUOps
-  MLIRIR
-  MLIRLLVMCommonConversion
-  MLIRPass
-  MLIRStandardOpsTransforms
-  MLIRStandardToLLVM
-)
-
 add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
-  DiscRalPasses
-  DiscRalToLLVM
   MhloPasses
   MhloToLhloConversion
   MhloToMemrefConversion

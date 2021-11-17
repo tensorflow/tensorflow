@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
@@ -370,6 +371,16 @@ StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
 
   return std::unique_ptr<PjRtExecutable>(std::move(executable));
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  XlaComputation xla_computation;
+  TF_RETURN_IF_ERROR(MlirToXlaComputation(
+      module, xla_computation,
+      /*use_tuple_args=*/options.parameter_is_tupled_arguments,
+      /*return_tuple=*/false));
+  return Compile(xla_computation, options);
 }
 
 StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
@@ -1516,9 +1527,18 @@ TfrtCpuExecutable::ExecuteHelper(
     tensorflow::port::ScopedFlushDenormal flush;
     tensorflow::port::ScopedSetRound round(FE_TONEAREST);
 
+    XlaCustomCallStatus status;
+
     // Call generated function.
     cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
-                                       buffer_pointers.data(), nullptr);
+                                       buffer_pointers.data(), &status,
+                                       nullptr);
+
+    absl::optional<absl::string_view> error_message =
+        xla::CustomCallStatusGetMessage(&status);
+    if (error_message) {
+      return InternalError("Generated function failed: %s", *error_message);
+    }
   } else {
     // TODO(zhangqiaorjc): Only async launch expensive computations. Need
     // heuristics to decide what computation is expensive.
@@ -1558,12 +1578,23 @@ TfrtCpuExecutable::ExecuteHelper(
           tensorflow::port::ScopedFlushDenormal flush;
           tensorflow::port::ScopedSetRound round(FE_TONEAREST);
 
+          XlaCustomCallStatus status;
+
           // Call generated function.
           cpu_executable->compute_function()(result_buffer, &run_options,
                                              nullptr, buffer_pointers.data(),
-                                             nullptr);
-          // CPU computation completes.
-          execute_event.SetStateConcrete();
+                                             &status, nullptr);
+
+          absl::optional<absl::string_view> error_message =
+              xla::CustomCallStatusGetMessage(&status);
+          if (error_message) {
+            // CPU computation fails with an error.
+            execute_event.SetError(absl::StrFormat(
+                "Generated function failed: %s", *error_message));
+          } else {
+            // CPU computation completes.
+            execute_event.SetStateConcrete();
+          }
         });
   }
 

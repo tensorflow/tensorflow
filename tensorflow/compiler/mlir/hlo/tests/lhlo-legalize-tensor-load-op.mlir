@@ -4,9 +4,9 @@
 // CHECK-LABEL: forward_extract_op
 // CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<3xindex>)
 func @forward_extract_op(%arg0: memref<?x?xf32>, %arg1: memref<3xindex>) -> memref<?x?x?xf32> {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
-  %c2 = constant 2 : index
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
   // CHECK-NOT: memref.tensor_load
   // CHECK-NOT: tensor.extract
   // CHECK: %[[DIM0:.*]] = memref.load %[[ARG1]][%c0]

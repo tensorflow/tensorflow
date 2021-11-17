@@ -59,13 +59,6 @@ using llvm_ir::SetToFirstInsertPoint;
 
 namespace {
 
-int64_t GlobalRandomValue() {
-  static auto* mu = new tensorflow::mutex();
-  static std::mt19937_64 rng{42};
-  tensorflow::mutex_lock l(*mu);
-  return rng();
-}
-
 StatusOr<llvm::Value*> EmitReducePrecisionIR(
     PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
     int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilder<>* b) {
@@ -2821,7 +2814,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   const Window& window = reduce_window->window();
   llvm_ir::ForLoopNest loops(IrName(reduce_window), b_, index_type);
   std::vector<int64_t> window_size;
-  for (const auto& dim : window.dimensions()) {
+  const auto& dimensions = window.dimensions();
+  window_size.reserve(dimensions.size());
+  for (const auto& dim : dimensions) {
     window_size.push_back(dim.size());
   }
   const IrArray::Index window_index = loops.AddLoopsForShape(

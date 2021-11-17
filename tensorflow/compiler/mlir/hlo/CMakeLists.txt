@@ -39,7 +39,7 @@ option(MHLO_ENABLE_BINDINGS_PYTHON "Enables MHLO python bindings" OFF)
 #-------------------------------------------------------------------------------
 set(MHLO_EXTERNAL_PROJECT_BUILD OFF)
 
-if(PROJECT_NAME STREQUAL "LLVM")
+if(NOT (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR) AND NOT MLIR_BINARY_DIR)
   # Building as part of LLVM via the external project mechanism.
   set(MHLO_EXTERNAL_PROJECT_BUILD ON)
 else()
@@ -108,10 +108,7 @@ add_definitions(${LLVM_DEFINITIONS})
 
 if(MHLO_ENABLE_BINDINGS_PYTHON)
   include(MLIRDetectPythonEnv)
-  mlir_detect_pybind11_install()
-  find_package(Python3 ${LLVM_MINIMUM_PYTHON_VERSION}
-  COMPONENTS Interpreter Development NumPy REQUIRED)
-  find_package(pybind11 2.6 CONFIG REQUIRED)
+  mlir_configure_python_dev_packages()
 endif()
 
 #-------------------------------------------------------------------------------

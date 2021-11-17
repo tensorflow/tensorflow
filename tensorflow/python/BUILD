@@ -146,6 +146,7 @@ py_library(
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
         ":distributed_framework_test_lib",
+        ":filesystem_ops",
         ":functional_ops",
         ":gradient_checker",
         ":gradient_checker_v2",
@@ -276,6 +277,7 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
     ],
@@ -515,8 +517,11 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
+        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
         "//tensorflow/python/kernel_tests/v1_compat_tests:__pkg__",
         "//tensorflow/python/training:__pkg__",
+        "//tensorflow/security/fuzzing/google:__pkg__",
     ],
     deps = [
         "//tensorflow/c/kernels:bitcast_op_lib",
@@ -569,6 +574,7 @@ tf_gen_op_wrapper_private_py(
     name = "checkpoint_ops_gen",
     visibility = [
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/io_ops:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
 )
@@ -594,6 +600,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
     ],
     deps = [
         "//tensorflow/core:control_flow_ops_op_lib",
@@ -610,6 +617,8 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
+        "//tensorflow/python/kernel_tests/data_structures:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
 )
@@ -633,6 +642,13 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "filesystem_ops_gen",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "image_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
@@ -642,6 +658,8 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
+        "//tensorflow/python/kernel_tests/io_ops:__pkg__",
         "//tensorflow/python/training:__pkg__",
         "//tensorflow/python/training/tracking:__pkg__",
     ],
@@ -658,6 +676,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/framework:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
         "//tensorflow/python/summary:__pkg__",
         "//tensorflow/python/summary/writer:__pkg__",
     ],
@@ -734,6 +753,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/math_ops:__pkg__",
     ],
 )
 
@@ -743,13 +763,19 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
+        "//tensorflow/python/kernel_tests/sparse_ops:__pkg__",
         "//tensorflow/python/tools:__pkg__",
+        "//tensorflow/security/fuzzing/google:__pkg__",
     ],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "count_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/security/fuzzing/google:__pkg__",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -818,6 +844,8 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/framework:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
+        "//tensorflow/python/kernel_tests/variables:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
 )
@@ -1593,6 +1621,16 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "filesystem_ops",
+    srcs = ["ops/filesystem_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":filesystem_ops_gen",
+        "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
 
@@ -2831,7 +2869,6 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_cuda_asan",  # TODO(b/171511582): re-enable.
-        "noasan",  # TODO(b/199895990):re-enable
     ],
     deps = [
         ":array_ops",
@@ -2967,7 +3004,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "notsan",  # TODO(b/206640843): flaky in tsan.
+    ],
     deps = [
         ":client_testlib",
         ":config",
@@ -3195,7 +3235,6 @@ pywrap_tensorflow_macro(
         ":safe_ptr",
         ":py_exception_registry",
         "//tensorflow/python/lib/core:py_func_lib",
-        "//tensorflow/python/lib/io:py_record_reader_lib",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
@@ -3954,11 +3993,13 @@ tf_python_pybind_extension(
         "//tensorflow/core/lib/llvm_rtti",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -3981,6 +4022,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:tfe_cancellationmanager_internal_hdrs_only",
+        "//tensorflow/c/eager:tfe_op_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -4062,11 +4104,6 @@ alias(
 alias(
     name = "py_util",
     actual = "//tensorflow/python/lib/core:py_util",
-)
-
-alias(
-    name = "py_record_reader_lib",
-    actual = "//tensorflow/python/lib/io:py_record_reader_lib",
 )
 
 alias(

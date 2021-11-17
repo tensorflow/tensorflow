@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -44,17 +45,8 @@ constexpr llvm::StringRef kOutlinedFuncPrefix = "_tpu_v1_compat_outlined_func";
 // This is only intended for V1 compatibility mode where the bridge runs without
 // feed/fetches on session create/extend.
 struct TPUBridgeExecutorIslandOutlining
-    : public PassWrapper<TPUBridgeExecutorIslandOutlining,
-                         OperationPass<ModuleOp>> {
-  StringRef getArgument() const final {
-    return "tf-executor-tpu-v1-island-outlining";
-  }
-
-  StringRef getDescription() const final {
-    return "Outline TPU clusters from island into a nested module, so it can "
-           "be processed like a V2 module, intended for V1 compatibility mode";
-  }
-
+    : public TF::TPUBridgeExecutorIslandOutliningPassBase<
+          TPUBridgeExecutorIslandOutlining> {
   void runOnOperation() override;
 };
 
@@ -177,8 +169,6 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     });
   }
 }
-
-PassRegistration<TPUBridgeExecutorIslandOutlining> tpu_pass;
 
 }  // namespace
 

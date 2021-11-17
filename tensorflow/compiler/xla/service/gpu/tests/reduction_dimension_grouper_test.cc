@@ -100,7 +100,7 @@ ENTRY main {
 
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
-// CHECK: (f32[100,10]{1,0}, u32[100,10]{1,0}) reduce(f32[100,10,96]{2,1,0} %bitcast, u32[100,10,96]{2,1,0} %bitcast.1, f32[] %zero, u32[] %zero_idx), dimensions={2}
+// CHECK: (f32[100,10]{1,0}, u32[100,10]{1,0}) reduce(f32[100,10,96]{2,1,0} %bitcast.3, u32[100,10,96]{2,1,0} %bitcast.2, f32[] %zero_1, u32[] %zero_idx_1), dimensions={2}
 )");
 }
 

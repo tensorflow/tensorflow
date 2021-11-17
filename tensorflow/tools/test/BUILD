@@ -107,7 +107,7 @@ tf_cc_logged_benchmark(
 
 tf_py_logged_benchmark(
     name = "rnn_op_benchmark",
-    target = "//tensorflow/python/kernel_tests:rnn_test",
+    target = "//tensorflow/python/kernel_tests/nn_ops:rnn_test",
 )
 
 tf_py_logged_benchmark(

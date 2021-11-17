@@ -53,9 +53,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
+#include "tensorflow/compiler/mlir/xla/transforms/adjust_layout.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -102,9 +104,10 @@ Status GetXlaInputShapes(
 
     DataType dtype;
     TF_RETURN_IF_ERROR(ConvertToDataType(func_type.getInput(i), &dtype));
-    TF_ASSIGN_OR_RETURN(xla_shape,
-                        shape_representation_fn(arg_shapes[i].shape, dtype,
-                                                /*use_fast_memory=*/false));
+    TF_ASSIGN_OR_RETURN(
+        xla_shape, shape_representation_fn(arg_shapes[i].shape, dtype,
+                                           /*use_fast_memory=*/false,
+                                           XlaLayoutPreference::kNoPreference));
 
     // Rewrite layout with sharding, if sharding is set.
     auto sharding =
@@ -141,7 +144,8 @@ Status GetOutputInfo(
     std::vector<XlaResourceUpdate>* resource_updates) {
   auto shape_representation_fn_no_fast_memory =
       [shape_representation_fn](const TensorShape& shape, DataType dtype) {
-        return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false);
+        return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false,
+                                       XlaLayoutPreference::kNoPreference);
       };
 
   mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
@@ -332,6 +336,7 @@ void CreateConvertMlirToXlaHloPipeline(
   }
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
+  pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
   // from static to dynamic shapes. This could be generated if the shape
@@ -530,12 +535,11 @@ Status CompileSerializedMlirToXlaHlo(
   tensor_or_resource_shapes.reserve(arg_shapes.size());
   for (const auto& arg_shape : arg_shapes)
     tensor_or_resource_shapes.push_back({arg_shape});
-  return CompileMlirToXlaHlo(mlir_module.get(), tensor_or_resource_shapes,
-                             device_type, use_tuple_args, analyse_graph,
-                             /*use_return_tuple=*/true,
-                             /*use_resource_updates_for_aliases=*/false,
-                             shape_representation_fn, compilation_result,
-                             custom_legalization_passes);
+  return CompileMlirToXlaHlo(
+      mlir_module.get(), tensor_or_resource_shapes, device_type, use_tuple_args,
+      analyse_graph, /*use_return_tuple=*/true,
+      /*use_resource_updates_for_aliases=*/false, shape_representation_fn,
+      compilation_result, custom_legalization_passes);
 }
 
 // Rewrites the given module with specified args. For each of the constant args,
@@ -736,6 +740,17 @@ Status CompileGraphToXlaHlo(
       module.get(), args, device_type, use_tuple_args, analyse_graph,
       /*use_return_tuple=*/true, shape_representation_fn, compilation_result,
       custom_legalization_passes);
+}
+
+void RegisterConvertMlirToXlaHloPipelineWithDefaults() {
+  static mlir::PassPipelineRegistration<> pipeline(
+      "tf-to-hlo-pipeline",
+      "Convert TF dialect to HLO dialect (used for compilation in bridge).",
+      [](mlir::OpPassManager& pm) {
+        tensorflow::CreateConvertMlirToXlaHloPipeline(
+            pm, /*device_type=*/"XLA_CPU_JIT", /*prefer_tf2xla=*/false,
+            /*custom_legalization_passes=*/{});
+      });
 }
 
 }  // namespace tensorflow

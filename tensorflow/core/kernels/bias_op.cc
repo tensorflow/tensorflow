@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -458,6 +459,12 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                     output->NumElements() * sizeof(T));
     stream->ThenMemZero(&output_ptr, output->NumElements() * sizeof(T));
     if (output_backprop.NumElements() <= 0) return;
+    if (OpDeterminismRequired()) {
+      // ComputeWithReduceSum is the only deterministic algorithm.
+      ComputeWithReduceSum(context, output_backprop, batch, width, height,
+                           depth, channel, output);
+      return;
+    }
 
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = output_backprop.dtype();

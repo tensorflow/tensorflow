@@ -27,11 +27,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<10xf32>) -> tensor<10xf32>
     // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[MUL]]) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
     // CHECK: %[[CAST:.*]] = "tf.Cast"(%[[ADD]]) {{.*}} : (tensor<10xf32>) -> tensor<*xf32>
-    // CHECK: %[[UNKNOWN:.*]] = addf %[[CAST]], %[[CAST]] : tensor<*xf32>
+    // CHECK: %[[UNKNOWN:.*]] = arith.addf %[[CAST]], %[[CAST]] : tensor<*xf32>
     // CHECK: return %[[UNKNOWN]] : tensor<*xf32>
     %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1xf32>, tensor<10xf32>) -> tensor<*xf32>
     %1 = "tf.Add"(%0, %0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %2 = addf %1, %1 : tensor<*xf32>
+    %2 = arith.addf %1, %1 : tensor<*xf32>
     return %2 : tensor<*xf32>
   }
 
@@ -199,13 +199,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0:2 = "tf.WhileRegion"(%arg0, %unshaped) ({
        // CHECK: {{.*}}({{.+}}: tensor<i32>, {{.+}}: tensor<1x2x3xf32>):
        ^bb0(%carg0: tensor<i32>, %carg1: tensor<*xf32>):
-         %limit = constant dense<5> : tensor<i32>
+         %limit = arith.constant dense<5> : tensor<i32>
          %cond = "tf.NotEqual"(%carg0, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
          "tf.Yield"(%cond) : (tensor<i1>) -> ()
       }, {
        // CHECK: {{.*}}({{.+}}: tensor<i32>, {{.+}}: tensor<1x2x3xf32>):
        ^bb0(%barg0: tensor<i32>, %barg1: tensor<*xf32>):
-        %one = constant dense<1> : tensor<i32>
+        %one = arith.constant dense<1> : tensor<i32>
         %sub = "tf.Sub"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
         // CHECK: "tf.Neg"({{.+}}) : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
         %neg = "tf.Neg"(%barg1) : (tensor<*xf32>) -> tensor<*xf32>
@@ -714,7 +714,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: operand_as_shape
   func @operand_as_shape(%18: tensor<i32>, %39: tensor<1x4x4x32xf32>) -> () {
-    %cst_5 = constant dense<512> : tensor<i32>
+    %cst_5 = arith.constant dense<512> : tensor<i32>
     %19 = "tf.Pack"(%18, %cst_5) {N = 2 : i64, T = i32, axis = 0 : i64, device = ""} : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
     // CHECK: -> tensor<1x512xf32>
     %40 = "tf.Reshape"(%39, %19) {T = f32, Tshape = i32, device = ""} : (tensor<1x4x4x32xf32>, tensor<2xi32>) -> tensor<?x?xf32>
@@ -745,8 +745,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<*xi8>
     // CHECK: %[[CAST_RESULT_3:.*]] = "tf.Cast"(%arg2)
     // CHECK-SAME: (tensor<*xf32>) -> tensor<*xi8>
-    // CHECK: %[[ADDI:.*]] = addi %[[CAST_RESULT_2]], %[[CAST_RESULT_2]]
-    %2 = addi %28, %28 : tensor<*xi8>
+    // CHECK: %[[ADDI:.*]] = arith.addi %[[CAST_RESULT_2]], %[[CAST_RESULT_2]]
+    %2 = arith.addi %28, %28 : tensor<*xi8>
     // CHECK: %[[CAST_RESULT_0:.*]] = "tf.Cast"(%arg0)
     // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xui8>
     // CHECK: %[[CAST_RESULT_1:.*]] = "tf.Cast"(%arg0)
@@ -766,7 +766,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: "tf.Cast"(%{{.*}}) {Truncate = false} : (tensor<1x8x2xf32>) -> tensor<*xf32>
     // CHECK: (tensor<i32>, tensor<1x8x2xf32>) -> (tensor<1x8x1xf32>, tensor<1x8x1xf32>)
     %3:2 = "tf.Split"(%0, %1) {device = ""} : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
-    %4 = addf %1, %1 : tensor<*xf32>
+    %4 = arith.addf %1, %1 : tensor<*xf32>
     return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
   }
 
@@ -781,7 +781,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: "tf.Cast"(%{{.*}}) {Truncate = false} : (tensor<1x8x2xf32>) -> tensor<*xf32>
     // CHECK: (tensor<i32>, tensor<1x8x2xf32>) -> (tensor<1x8x1xf32>, tensor<1x8x1xf32>)
     %3:2 = "tf.Split"(%0, %1) {device = ""} : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
-    %4 = addf %1, %1 : tensor<*xf32>
+    %4 = arith.addf %1, %1 : tensor<*xf32>
     return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
   }
 
@@ -807,7 +807,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   func @operand_pack_unranked(%arg0: tensor<*xf32>) -> () {
    // CHECK: tf.Pack
    %outputs_0 = "tf.Pack"(%arg0) {axis = 0 : i64, device = ""} : (tensor<*xf32>) -> tensor<*xf32>
-   %outputs_2 = "tf.TensorSliceDataset"(%outputs_0) {device = "", output_shapes = [#tf_type.shape<>]} : (tensor<*xf32>) -> tensor<!tf_type.variant>
+   %outputs_2 = "tf.TensorSliceDataset"(%outputs_0) {device = "", output_shapes = [#tf_type.shape<>], metadata=""} : (tensor<*xf32>) -> tensor<!tf_type.variant>
    return
   }
 
@@ -1168,7 +1168,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
   // CHECK-LABEL: unppack_const_quant() -> tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>
   func @unppack_const_quant() -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) {
-    %cst = constant dense<5> : tensor<2xi8>
+    %cst = arith.constant dense<5> : tensor<2xi8>
     %0 = "quant.scast"(%cst) : (tensor<2xi8>) -> tensor<2x!quant.uniform<u8:f32, 0.007:128>>
     // CHECK: (tensor<*x!quant.uniform<u8:f32, 7.000000e-03:128>>, tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>)
     %1:2 = "tfl.unpack"(%0) {axis = 0 : i32, num = 2 : i32} : (tensor<2x!quant.uniform<u8:f32, 0.007:128>>) -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>, tensor<*x!quant.uniform<u8:f32, 0.007:128>>)
@@ -1275,7 +1275,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       f._tf_data_function = true,
       output_shapes = [#tf_type.shape<64>, #tf_type.shape<69>, #tf_type.shape<73>, #tf_type.shape<12>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<64>, #tf_type.shape<64>, #tf_type.shape<>, #tf_type.shape<>],
       output_types = [i32, i32, i32, i64, i32, i32, f32, i64, i32, i32, i32, f32],
-      preserve_cardinality = false, use_inter_op_parallelism = true} : (tensor<!tf_type.variant>, tensor<!tf_type.resource>, tensor<i64>, tensor<i64>) -> tensor<*x!tf_type.variant>
+      preserve_cardinality = false,
+      use_inter_op_parallelism = true,
+      metadata = ""} : (tensor<!tf_type.variant>, tensor<!tf_type.resource>, tensor<i64>, tensor<i64>) -> tensor<*x!tf_type.variant>
     // For this test case the first 12 inputs to the function f below will be
     // from ParallelMapDataset, while the remaining one is a captured input.
     %75 = "tf.MapDataset"(%74, %arg3) {
@@ -1284,7 +1286,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       f._tf_data_function = true,
       output_shapes = [#tf_type.shape<64>, #tf_type.shape<69>, #tf_type.shape<10>],
       output_types = [i32, i32, i32],
-      preserve_cardinality = false, use_inter_op_parallelism = true} : (tensor<*x!tf_type.variant>, tensor<10xi32>) -> tensor<*x!tf_type.variant>
+      preserve_cardinality = false,
+      use_inter_op_parallelism = true,
+      metadata = ""} : (tensor<*x!tf_type.variant>, tensor<10xi32>) -> tensor<*x!tf_type.variant>
     return
   }
 
@@ -1311,13 +1315,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       %arg10 : tensor<!tf_type.resource<tensor<640x4096xf32>>>,
       %arg11 : tensor<!tf_type.resource<tensor<512xf32>>>
       ) {
-    %cst_0 = constant dense<0.1> : tensor<f32>
-    %cst_2 = constant dense<2> : tensor<i64>
-    %cst_12 = constant dense<0> : tensor<i32>
-    %cst_13 = constant dense<> : tensor<0x!tf_type.string>
+    %cst_0 = arith.constant dense<0.1> : tensor<f32>
+    %cst_2 = arith.constant dense<2> : tensor<i64>
+    %cst_12 = arith.constant dense<0> : tensor<i32>
+    %cst_13 = arith.constant dense<> : tensor<0x!tf_type.string>
     %51 = "tf.RepeatDataset"(%arg1, %cst_2) {device = "",
       output_shapes = [#tf_type.shape<?>, #tf_type.shape<?x?x512>, #tf_type.shape<?x?>, #tf_type.shape<?x300>, #tf_type.shape<?x300>, #tf_type.shape<?x300>, #tf_type.shape<?x300>, #tf_type.shape<?>, #tf_type.shape<?>],
-      output_types = [!tf_type.string, f32, f32, i32, i32, f32, f32, !tf_type.string, !tf_type.string]} : (tensor<*x!tf_type.variant>, tensor<i64>) -> tensor<!tf_type.variant>
+      output_types = [!tf_type.string, f32, f32, i32, i32, f32, f32, !tf_type.string, !tf_type.string],
+      metadata = ""} : (tensor<*x!tf_type.variant>, tensor<i64>) -> tensor<!tf_type.variant>
 
     %117:6 = "tf.ReduceDataset"(%51, %cst_12, %cst_12, %cst_12, %cst_12, %cst_13, %cst_13, %arg2, %arg3, %arg4, %arg5, %arg6, %arg6, %arg6, %arg6, %arg7, %arg8, %arg9, %arg10, %cst_0, %arg0, %arg6, %arg11, %arg6, %arg6, %arg6, %arg6, %arg9) {
 
@@ -1342,9 +1347,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: infer_output_type_for_restore
   func @infer_output_type_for_restore(%arg0: tensor<!tf_type.string>) -> (tensor<!tf_type.resource<tensor<192x2680xf32>>>, tensor<!tf_type.resource<tensor<128xf32>>>) {
-    %cst = constant dense<"client/1"> : tensor<1x!tf_type.string>
-    %cst_0 = constant dense<"train/0"> : tensor<1x!tf_type.string>
-    %cst_1 = constant dense<""> : tensor<1x!tf_type.string>
+    %cst = arith.constant dense<"client/1"> : tensor<1x!tf_type.string>
+    %cst_0 = arith.constant dense<"train/0"> : tensor<1x!tf_type.string>
+    %cst_1 = arith.constant dense<""> : tensor<1x!tf_type.string>
     %0 = "tf.VarHandleOp"() {container = "", shared_name = "foo"} : () -> tensor<!tf_type.resource<tensor<192x2680xf32>>>
     // CHECK: (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<192x2680xf32>
     %1 = "tf.RestoreV2"(%arg0, %cst, %cst_1) {device = ""} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<*xf32>

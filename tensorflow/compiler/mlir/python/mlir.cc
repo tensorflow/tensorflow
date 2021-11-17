@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
@@ -42,6 +44,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
+#include "tensorflow/compiler/mlir/tosa/tf_passes.h"
+#include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
+#include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_body.h"
@@ -58,12 +67,38 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+// All the passes we will make available to Python by default.
+// TODO(tf): this should be sharded instead of being monolithic like that.
+static void RegisterPasses() {
+  static bool unique_registration = [] {
+    mlir::registerAllPasses();
+    mlir::registerTensorFlowPasses();
+    mlir::TFDevice::registerTensorFlowDevicePasses();
+    mlir::mhlo::registerAllMhloPasses();
+    mlir::lmhlo::registerAllLmhloPasses();
+    // These are in compiler/mlir/xla and not part of the above MHLO
+    // passes.
+    mlir::mhlo::registerXlaPasses();
+    mlir::mhlo::registerTfXlaPasses();
+    mlir::mhlo::registerLegalizeTFPass();
+    mlir::mhlo::registerLegalizeTFControlFlowPass();
+    mlir::mhlo::registerLegalizeTfTypesPassPass();
+    mlir::tosa::registerLegalizeTosaPasses();
+    mlir::tosa::registerTFtoTOSALegalizationPipeline();
+    mlir::tosa::registerTFLtoTOSALegalizationPipeline();
+    mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
+    mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
+    return true;
+  }();
+  (void)unique_registration;
+}
 
 // Runs pass pipeline `pass_pipeline` on `module` if `pass_pipeline` is not
 // empty.
 std::string RunPassPipelineOnModule(mlir::ModuleOp module,
                                     const std::string &pass_pipeline,
                                     bool show_debug_info, TF_Status *status) {
+  RegisterPasses();
   if (!pass_pipeline.empty()) {
     mlir::PassManager pm(module.getContext());
     std::string error;
@@ -351,6 +386,7 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
                                         const std::string &pass_pipeline,
                                         bool show_debug_info,
                                         TF_Status *status) {
+  RegisterPasses();
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::MLIRContext context(registry);
@@ -368,7 +404,6 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
   mlir::PassManager pm(&context);
   std::string error;
   llvm::raw_string_ostream error_stream(error);
-  mlir::registerAllPasses();
   if (failed(mlir::parsePassPipeline(pass_pipeline, pm, error_stream))) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  ("Invalid pass_pipeline: " + error_stream.str()).c_str());

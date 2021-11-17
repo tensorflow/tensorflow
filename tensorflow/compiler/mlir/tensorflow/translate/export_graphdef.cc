@@ -437,6 +437,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // Extract input & output names if set.
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
+  llvm::SmallVector<llvm::StringRef, 2> unique_output_names;
   auto dict_attr =
       function->getAttrOfType<mlir::DictionaryAttr>(kEntryFuncAttr);
   if (dict_attr) {
@@ -486,7 +487,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       mlir::LegalizeNodeName(tensor_id_node);
 
       // Ensure name does not get reused.
-      (void)exporter.op_to_name_.GetUniqueName(tensor_id_node);
+      unique_output_names.push_back(
+          exporter.op_to_name_.GetUniqueName(tensor_id_node));
     }
   }
 
@@ -549,7 +551,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // tf_executor.NextIteration.Sink will be used instead.
       continue;
     } else if (auto fetch = llvm::dyn_cast<mlir::tf_executor::FetchOp>(inst)) {
-      TF_RETURN_IF_ERROR(exporter.AddFetchNode(function, fetch, output_names));
+      TF_RETURN_IF_ERROR(
+          exporter.AddFetchNode(function, fetch, unique_output_names));
     } else if (auto island =
                    llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
       Operation& inner_op = island.GetBody().front();
@@ -660,18 +663,6 @@ Status Exporter::ConvertLibFunction(
       (*func_def.mutable_resource_arg_unique_id())[i] =
           resource_arg_unique_id_attr.getInt();
     }
-
-    llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
-        function.getArgAttrs(i);
-    if (func_arg_i_attrs.empty()) continue;
-    absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-        kDeviceAttr, kResourceArgUniqueIdAttr};
-    FunctionDef::ArgAttrs func_def_arg_i_attrs;
-    TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
-                                         /*remove_ref_type=*/false,
-                                         func_def_arg_i_attrs.mutable_attr()));
-    if (func_def_arg_i_attrs.attr().empty()) continue;
-    (*func_def.mutable_arg_attr())[i] = std::move(func_def_arg_i_attrs);
   }
 
   (*flib->add_function()) = std::move(func_def);

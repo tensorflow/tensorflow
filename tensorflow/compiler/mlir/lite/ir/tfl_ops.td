@@ -877,6 +877,10 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
       $_state.addTypes(value.getType());
     }]>
   ];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [
@@ -924,7 +928,8 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const",
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
       [DeclareOpInterfaceMethods<InferTypeOpInterface>,
-       DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+       DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
+       DynamicRangeQuantizableOp]> {
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
@@ -985,7 +990,8 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
 
 def TFL_DepthwiseConv2DOp :
     TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3,
-                [DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+                [DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
+                DynamicRangeQuantizableOp]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
@@ -1027,7 +1033,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     AffineQuantizedOpInterface,
     AffineOpCoefficient<-1, 1>,
     TFL_SparseOp,
-    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
+    DynamicRangeQuantizableOp]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -1037,7 +1044,10 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
     TFL_AFAttr:$fused_activation_function,
     TFL_FullyConnectedOptionsWeightFormatAttr:$weights_format,
-    BoolAttr:$keep_num_dims
+    BoolAttr:$keep_num_dims,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   // Depending on the weights format, this op can have one or two outputs.
@@ -1072,7 +1082,8 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
        Or<[TFL_TCresVTEtIsSameAsOp<0, 0>,
            And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
-                CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>]> {
+                CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>,
+   DynamicRangeQuantizableOp]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -2554,6 +2565,34 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let hasFolder = 1;
 }
 
+def TFL_PolyCallOp : Op<TFL_Dialect, "poly_call", [
+    DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+    SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = [{Poly call}];
+
+  let description = [{
+    Have multiple function bodies for the same computation. This allows a
+    program compiler/interpreter to choose one of the available options to
+    execute the program based on which one is most suitable for the target
+    backend.
+
+    input:  A list of input tensors whose types are T.
+    output: A list of output tensors whose types are T.
+
+    call:  Multiple regions, each of which encapsulates the same semantic
+           computation but in different forms.
+  }];
+
+  let arguments = (ins Variadic<AnyTensor>:$input);
+
+  let results = (outs Variadic<AnyTensor>:$output);
+
+  let regions = (region VariadicRegion<SizedRegion<1>>:$calls);
+
+  let hasCanonicalizer = 1;
+}
+
+
 def TFL_PowOp : TFL_Op<"pow", [
     ResultsBroadcastableShape,
     NoSideEffect,
@@ -3140,11 +3179,11 @@ def TFL_TileOp: TFL_Op<"tile", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I32, I64, UI8, QUI8, TFL_Str]>:$input,
+    TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Str]>:$input,
     TFL_I32OrI64Tensor:$multiples);
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I32, I64, UI8, QUI8, TFL_Str]>:$output);
+    TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Str]>:$output);
 
   let hasOptions = 0;
 }
@@ -3903,12 +3942,12 @@ def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
     TFL_TensorOf<[F32, QI16]>:$prev_state_input,
 
     // Attributes
-    DefaultValuedAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
+    DefaultValuedStrAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the BASIC kernel only, constrain it.
     Confined<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
+      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
       [TFL_LSTM_KT_BASIC]>:$kernel_type
   );
 
@@ -4012,12 +4051,15 @@ Ba et al. 'Layer Normalization'
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the FULL kernel only, constrain it.
     Confined<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "FULL">,
+      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "FULL">,
       [TFL_LSTM_KT_FULL]>:$kernel_type,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized LSTM op and hold the ranges of the intermediate tensors.
-    // The type for intermediate tenssors are be quant.calibrated when imported
+    // The type for intermediate tensors are be quant.calibrated when imported
     // to only store calibrated min, max values. The proper quantization spec is
     // determined while going through quantization passes.
     OptionalAttr<TypeAttr>:$input_to_input_intermediate,
@@ -4137,10 +4179,13 @@ def TFL_UnidirectionalSequenceLSTMOp :
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$time_major,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized op and hold the ranges of the intermediate tensors.
-    // The type for intermediate tenssors are be quant.calibrated when imported
+    // The type for intermediate tensors are be quant.calibrated when imported
     // to only store calibrated min, max values. The proper quantization spec is
     // determined while going through quantization passes.
     OptionalAttr<TypeAttr>:$input_to_input_intermediate,
@@ -4333,7 +4378,10 @@ def TFL_BidirectionalSequenceLSTMOp :
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$merge_outputs,
-    BoolAttr:$time_major
+    BoolAttr:$time_major,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   let results = (outs
@@ -4391,7 +4439,10 @@ def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
 
     // Attributes
     BoolAttr:$time_major,
-    TFL_AFAttr:$fused_activation_function
+    TFL_AFAttr:$fused_activation_function,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   let results = (outs TFL_FpTensor:$output);
@@ -4490,7 +4541,10 @@ def TFL_SVDFOp :
 
     // Attributes
     Confined<I32Attr, [IntPositive]>:$rank,
-    TFL_AFAttr:$fused_activation_function
+    TFL_AFAttr:$fused_activation_function,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8]>:$output);
@@ -4806,8 +4860,8 @@ def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name
+    DefaultValuedStrAttr<StrAttr, "">:$container,
+    DefaultValuedStrAttr<StrAttr, "">:$shared_name
   );
 
   let results = (outs TFL_ResourceTensor:$resource_handle);
@@ -5103,6 +5157,70 @@ broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
   let results = (outs
     TFL_I32OrI64Tensor:$r0
   );
+}
+
+def TFL_BucketizeOp
+    : TFL_Op<"bucketize", [NoSideEffect, NoQuantizableResult, SameOperandsAndResultShape]> {
+  let summary = "Bucketizes 'input' based on 'boundaries'.";
+
+  let description = [{
+Example:
+
+If the inputs are `boundaries = [0, 10, 100]` and
+`input = [[-5, 10000][150, 10][5, 100]]`,
+then the output will be `output = [[0, 3][3, 2][1, 3]]`.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, F64, I32, I64]>:$input,
+    F32ArrayAttr:$boundaries
+  );
+
+  let results = (outs
+    TFL_TensorOf<[I32]>:$output
+  );
+
+  let hasOptions = 1;
+}
+
+def TFL_RandomUniformOp : TFL_Op<"random_uniform", [NoQuantizableResult]> {
+  let summary = "Outputs random values from a uniform distribution.";
+
+  let description = [{
+The generated values follow a uniform distribution in the range `[0, 1)`. The
+lower bound 0 is included in the range, while the upper bound 1 is excluded.
+  }];
+
+  let arguments = (ins
+    TFL_I32Tensor:$shape,
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+   let results = (outs
+    TFL_TensorOf<[F32]>:$out);
+  let hasOptions = 1;
+  let customOption = "RandomOptions";
+}
+
+def TFL_RandomStandardNormalOp : TFL_Op<"random_standard_normal", [
+  NoQuantizableResult]> {
+  let summary = "Outputs random values from a normal distribution.";
+
+  let description = [{
+The generated values will have mean 0 and standard deviation 1.
+  }];
+
+  let arguments = (ins
+    TFL_I32Tensor:$shape,
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32]>:$out);
+  let hasOptions = 1;
+  let customOption = "RandomOptions";
 }
 
 #endif // TFL_OPS

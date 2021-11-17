@@ -42,15 +42,18 @@ def reset_eager(fn):
       return fn(*args, **kwargs)
     finally:
       # Reset the context.
-      context._context = None
+      context._reset_mlir_flags()
+      context._reset_context()
       ops.enable_eager_execution_internal()
       assert context._context is not None
 
   return wrapper
 
 
+@test_util.with_eager_op_as_function
 class ConfigTest(test.TestCase, parameterized.TestCase):
 
+  @test_util.disable_eager_op_as_function('b/204320409')
   @test_util.run_gpu_only
   @reset_eager
   def testDevicePolicy(self):
@@ -223,6 +226,14 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         context.context().config.experimental.mlir_bridge_rollout,
         config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_DISABLED)
+
+  @reset_eager
+  def testResetMlirFlags(self):
+    # Default value of enable_mlir_bridge is false.
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+    self.assertEqual(
+        context.context().config.experimental.mlir_bridge_rollout,
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_UNSPECIFIED)
 
   @reset_eager
   def testEnableMlirGraphOptimization(self):

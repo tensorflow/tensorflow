@@ -39,12 +39,12 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Program.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetMachine.h"
@@ -585,6 +585,7 @@ std::vector<string> GetROCDLPaths(std::string amdgpu_version,
 
   // Construct full path to ROCDL bitcode libraries.
   std::vector<string> result;
+  result.reserve(rocdl_filenames->size() + 1);
   for (auto& filename : *rocdl_filenames) {
     result.push_back(tensorflow::io::JoinPath(rocdl_dir_path, filename));
   }

@@ -31,6 +31,7 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import device
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import session_ops
@@ -73,7 +74,7 @@ class SessionInterface(object):
 
 
 def _get_indexed_slices_value_from_fetches(fetched_vals):
-  return ops.IndexedSlicesValue(
+  return indexed_slices.IndexedSlicesValue(
       fetched_vals[0], fetched_vals[1],
       fetched_vals[2] if len(fetched_vals) == 3 else None)
 
@@ -119,7 +120,7 @@ _REGISTERED_EXPANSIONS = [
      lambda feed: [feed.indices, feed.values, feed.dense_shape]),
     # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
     # IndexedSlicesValues or normal tuples.
-    (ops.IndexedSlices,
+    (indexed_slices.IndexedSlices,
      lambda fetch: ([fetch.values, fetch.indices] if fetch.dense_shape is None
                     else [fetch.values, fetch.indices, fetch.dense_shape
                          ], _get_indexed_slices_value_from_fetches),

@@ -19,8 +19,11 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 namespace data {
@@ -30,6 +33,34 @@ constexpr int64_t Model::kOptimizationPeriodMinMs;
 constexpr int64_t Model::kOptimizationPeriodMaxMs;
 
 namespace {
+
+// Returns true if all parameters have reached their max values.
+bool AreAllParametersMax(const Model::ModelParameters& parameters) {
+  for (const auto& pair : parameters) {
+    if (pair.second->value < pair.second->max) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Records the ram usage of hill climbing algorithm.
+void RecordAutotuneRamUsage(int64 ram_budget, double max_buffered_bytes) {
+  if (ram_budget == 0) {
+    return;
+  }
+  const auto memory_info = port::GetMemoryInfo();
+  // Records ratio of memory used since RootDataset was created over the ram
+  // budget.
+  const auto original_free_memory = ram_budget / kRamBudgetShare;
+  const auto current_free_memory = memory_info.free;
+  metrics::RecordTFDataAutotuneUsedRamBudgetRatio(
+      (original_free_memory - current_free_memory) / ram_budget);
+  // Records ratio of maximum buffer bytes tf.data could use over the ram
+  // budget.
+  metrics::RecordTFDataAutotuneMaxBufferBudgetRatio(
+      max_buffered_bytes / static_cast<double>(ram_budget));
+}
 
 // Helper function for node traversal that doesn't skip any nodes.
 inline bool IsAnyNode(const std::shared_ptr<Node> node) { return true; }
@@ -1650,18 +1681,26 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
   }
+  if (!port::JobName().empty()) {
+    RecordAutotuneRamUsage(ram_budget, TotalMaximumBufferedBytes(snapshot));
+  }
   OptimizationParams optimization_params;
   optimization_params.set_algorithm(algorithm);
   optimization_params.set_cpu_budget(cpu_budget);
   optimization_params.set_ram_budget(ram_budget);
   optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
+    case AutotuneAlgorithm::DEFAULT:
     case AutotuneAlgorithm::HILL_CLIMB:
       OptimizeHillClimb(snapshot, optimization_params, cancellation_manager);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
       OptimizeGradientDescent(snapshot, optimization_params,
                               cancellation_manager);
+      break;
+    case AutotuneAlgorithm::MAX_PARALLELISM:
+      OptimizeMaxParallelism(snapshot, optimization_params,
+                             cancellation_manager);
       break;
     default:
       VLOG(2) << "Autotuning algorithm was not recognized. Aborting "
@@ -1702,14 +1741,8 @@ bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
     *cpu_budget_reached = (model_parallelism > cpu_budget);
   }
 
-  bool all_max = true;
-  for (auto& pair :
-       (*cpu_budget_reached ? buffer_size_parameters : parameters)) {
-    if (std::round(pair.second->value) < pair.second->max) {
-      all_max = false;
-      break;
-    }
-  }
+  bool all_max = AreAllParametersMax(
+      *cpu_budget_reached ? buffer_size_parameters : parameters);
 
   // If all parameters have reached their maximum values or RAM budget is
   // reached, we stop the iterations.
@@ -1833,15 +1866,15 @@ void Model::OptimizeGradientDescent(
   UpdateStateValues(&parameters);
 }
 
-void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
-                              const OptimizationParams& optimization_params,
-                              CancellationManager* cancellation_manager) {
+void Model::OptimizeHillClimbHelper(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager, StopPredicate should_stop) {
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
   if (parameters.empty()) {
-    VLOG(2) << "The Hill Climb optimization is terminated since no node with "
-               "tunable parameters has recorded elements.";
+    VLOG(2) << "There are no tunable parameters.";
     return;
   }
   VLOG(2) << "Number of tunable parameters: " << parameters.size();
@@ -1858,19 +1891,11 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
     const double output_time =
         OutputTime(snapshot, optimization_params.model_input_time(),
                    /*gradients=*/nullptr);
-    bool all_max = true;
-    for (auto& pair : parameters) {
-      if (pair.second->value < pair.second->max) {
-        all_max = false;
-        break;
-      }
-    }
-    if (output_time < processing_time / optimization_params.cpu_budget() ||
-        all_max ||
-        TotalMaximumBufferedBytes(snapshot) >
-            optimization_params.ram_budget()) {
+    if (should_stop(parameters, processing_time, output_time,
+                    TotalMaximumBufferedBytes(snapshot))) {
       break;
     }
+
     double best_delta = -1.0L;
     Parameter* best_parameter = nullptr;
     for (auto& pair : parameters) {
@@ -1891,14 +1916,64 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
     }
     if (!best_parameter) {
       VLOG(2) << "Failed to find a tunable parameter that would further "
-                 "decrease the output time. This means that the autotuning "
+                 "decrease the output time. This suggests that the hill-climb "
                  "optimization got stuck in a local maximum. The optimization "
-                 "attempt will terminate early.";
+                 "attempt will stop now.";
       break;
     }
     best_parameter->value++;
   }
   UpdateStateValues(&parameters);
+}
+
+void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
+                              const OptimizationParams& optimization_params,
+                              CancellationManager* cancellation_manager) {
+  auto should_stop = [&optimization_params](const ModelParameters& parameters,
+                                            double processing_time,
+                                            double output_time,
+                                            double buffered_bytes) {
+    const bool all_max = AreAllParametersMax(parameters);
+    const bool output_time_budget_exceeded =
+        output_time < processing_time / optimization_params.cpu_budget();
+    const bool ram_budget_exceeded =
+        buffered_bytes > optimization_params.ram_budget();
+    if (all_max) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("all_max");
+    }
+    if (output_time_budget_exceeded) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("output_time");
+    }
+    if (ram_budget_exceeded) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("max_buffered_bytes");
+    }
+    return all_max || output_time_budget_exceeded || ram_budget_exceeded;
+  };
+  OptimizeHillClimbHelper(snapshot, optimization_params, cancellation_manager,
+                          should_stop);
+}
+
+void Model::OptimizeMaxParallelism(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager) {
+  auto should_stop = [&optimization_params](const ModelParameters& parameters,
+                                            double processing_time,
+                                            double output_time,
+                                            double buffered_bytes) {
+    const bool all_max = AreAllParametersMax(parameters);
+    const bool ram_budget_exceeded =
+        buffered_bytes > optimization_params.ram_budget();
+    if (all_max) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("all_max");
+    }
+    if (ram_budget_exceeded) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("max_buffered_bytes");
+    }
+    return all_max || ram_budget_exceeded;
+  };
+  OptimizeHillClimbHelper(snapshot, optimization_params, cancellation_manager,
+                          should_stop);
 }
 
 double Model::OutputTime(std::shared_ptr<Node> node, double model_input_time,

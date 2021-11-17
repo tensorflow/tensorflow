@@ -71,6 +71,7 @@ class CollectiveOpsTest : public HloTestBase {
       }
     )";
     std::vector<string> replica_group_strs;
+    replica_group_strs.reserve(replica_groups.size());
     for (const auto& g : replica_groups) {
       replica_group_strs.push_back(
           absl::StrFormat("{%s}", absl::StrJoin(g, ",")));
@@ -375,8 +376,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
     HloRunner::ReplicatedExecuteOptions opts;
   };
   std::vector<ExecutableInfo> executables;
-  for (const auto& devices :
-       std::vector<std::vector<int64_t>>{{0, 1}, {1, 2}, {0, 1, 2}}) {
+  const auto devices_vec =
+      std::vector<std::vector<int64_t>>{{0, 1}, {1, 2}, {0, 1, 2}};
+  executables.reserve(devices_vec.size());
+  for (const auto& devices : devices_vec) {
     executables.emplace_back();
     auto& e = executables.back();
 
@@ -545,6 +548,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   ASSERT_EQ(results.size(), 4);
 
   std::vector<float> input_vec_doubled;
+  input_vec_doubled.reserve(input_vec.size());
   for (float n : input_vec) {
     input_vec_doubled.push_back(n * 2);
   }

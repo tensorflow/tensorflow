@@ -53,11 +53,12 @@ class TfBinaryBcastTest(test.TestCase):
     arg2 = np.random.uniform(0, 10.0, size=(4)).astype(np.float32)
 
     for specialize in specializations:
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+      for vectorize in [True, False]:
+        compiled = cpurt.compile(mlir_function, 'test', specialize, vectorize)
 
-      [res] = cpurt.execute(compiled, [arg0, arg1, arg2])
-      ref = np.arctan2((np.log1p(arg0) - arg1) * arg2, arg2)
-      np.testing.assert_allclose(res, ref, atol=1e-05)
+        [res] = cpurt.execute(compiled, [arg0, arg1, arg2])
+        ref = np.arctan2((np.log1p(arg0) - arg1) * arg2, arg2)
+        np.testing.assert_allclose(res, ref, atol=1e-05)
 
   def test_bcast_2d_2d(self):
     mlir_function = """
@@ -119,6 +120,28 @@ class TfBinaryBcastTest(test.TestCase):
 
       np.testing.assert_allclose(res, t_2, atol=0.0)
 
+  def test_bcast_3d_3d(self):
+    mlir_function = """
+      func @test(%arg0: tensor<?x?x12xf32>,
+                 %arg1: tensor<?x?x12xf32>) -> tensor<?x?x12xf32> {
+        %0 = "tf.AddV2"(%arg0, %arg1)
+             : (tensor<?x?x12xf32>, tensor<?x?x12xf32>) -> tensor<?x?x12xf32>
+        return %0 : tensor<?x?x12xf32>
+      }"""
+
+    d0 = np.random.randint(1, 10)
+    d1 = np.random.randint(1, 10)
+
+    arg0 = np.random.uniform(0, 10.0, size=(d0, d1, 12)).astype(np.float32)
+    arg1 = np.random.uniform(0, 10.0, size=(d0, d1, 12)).astype(np.float32)
+
+    for specialize in specializations:
+      for vectorize in [True, False]:
+        compiled = cpurt.compile(mlir_function, 'test', specialize, vectorize)
+
+        [res] = cpurt.execute(compiled, [arg0, arg1])
+        np.testing.assert_allclose(res, arg0 + arg1, atol=0.0)
+
   def test_bcast_unranked_0d(self):
     mlir_function = """
       func @compute(%arg0: tensor<*xf32> {cpurt.constraint = "rank"},
@@ -156,6 +179,25 @@ class TfBinaryBcastTest(test.TestCase):
 
     np.testing.assert_allclose(res, np.add(arg0, arg1), atol=0.0)
 
+  # Test that the non-broadcastable shapes error is handled at run time.
+  def test_bcast_1d_1d_error(self):
+    mlir_function = """
+      func @compute(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>)
+          -> tensor<?xf32> {
+        %0 = "tf.AddV2"(%arg0, %arg1)
+             : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+        return %0 : tensor<?xf32>
+      }"""
+
+    arg0 = np.random.uniform(0, 10.0, size=(2)).astype(np.float32)
+    arg1 = np.random.uniform(0, 10.0, size=(3)).astype(np.float32)
+
+    for specialize in specializations:
+      compiled = cpurt.compile(mlir_function, 'compute', specialize)
+
+      with self.assertRaisesRegex(Exception, 'required broadcastable shapes'):
+        cpurt.execute(compiled, [arg0, arg1])
+
   # Test that 0-ranked operands are correctly specialized.
   def test_bcast_value_rank0(self):
     mlir_function = """
@@ -187,11 +229,10 @@ class TfBinaryBcastTest(test.TestCase):
              : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
         return %0 : tensor<*xf32>
       }"""
-    try:
+
+    with self.assertRaisesRegex(Exception,
+                                'Cannot sink operand type: tensor<f32>'):
       cpurt.compile(mlir_function, 'compute')
-    except Exception:  # pylint: disable=broad-except
-      return
-    raise RuntimeError('Compilation should have failed')
 
 
 if __name__ == '__main__':

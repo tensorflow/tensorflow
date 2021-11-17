@@ -823,6 +823,7 @@ bzl_library(
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
+        "//tensorflow/core/platform/default:experimental_cc_shared_library_bzl",  # copybara:comment(oss only)
         "//third_party/llvm_openmp:openmp_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
@@ -1286,9 +1287,6 @@ py_library(
         "//conditions:default": [":tf_python_api_gen_v1"],
     }) + [
         ":root_init_gen",
-        "//tensorflow/python/keras/api:keras_python_api_gen",
-        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
-        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],

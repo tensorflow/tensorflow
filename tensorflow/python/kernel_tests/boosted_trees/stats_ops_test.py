@@ -17,9 +17,11 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import boosted_trees_ops
+from tensorflow.python.ops import gen_boosted_trees_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import googletest
 
@@ -1664,6 +1666,199 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
   def testMakeStatsSummaryNumericalPrecisionMegaBatch(self):
     """Tests numeric precision."""
     self._verify_precision(length=50000000)
+
+  def testBoostedTreesCalculateBestGainsPerFeatureSecurity(self):
+    node_id_range = [1, 2]
+    stats_summary_list = [[[[]]]]
+    l1 = [1.0]
+    l2 = [1.0]
+    tree_complexity = [1.0]
+    min_node_weight = [1.17]
+    max_splits = 1
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_calculate_best_gains_per_feature(
+          node_id_range=node_id_range,
+          stats_summary_list=stats_summary_list,
+          l1=l1,
+          l2=l2,
+          tree_complexity=tree_complexity,
+          min_node_weight=min_node_weight,
+          max_splits=max_splits)
+
+  def testBoostedTreesCalculateBestFeatureSplitSecurity(self):
+    node_id_range = [1, 2]
+    stats_summary = [[[[]]]]
+    split_type = 'equality'
+    l1 = [1.0]
+    l2 = [1.0]
+    tree_complexity = [1.0]
+    min_node_weight = [1.17]
+    logits_dimension = 5
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_calculate_best_feature_split(
+          node_id_range=node_id_range,
+          stats_summary=stats_summary,
+          l1=l1,
+          l2=l2,
+          tree_complexity=tree_complexity,
+          min_node_weight=min_node_weight,
+          logits_dimension=logits_dimension,
+          split_type=split_type)
+
+  def testBoostedTreesCalculateBestFeatureSplitSecurity2(self):
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_calculate_best_feature_split(
+          node_id_range=[0, 8],
+          stats_summary=[[[[1.0], [2.0], [3.0]]]],
+          l1=[0.5],
+          l2=[0.5],
+          tree_complexity=[0.1],
+          min_node_weight=[1.0],
+          logits_dimension=8)
+
+  def testBoostedTreesCalculateBestFeatureSplitV2Security(self):
+    node_id_range = [1, 2]
+    stats_summaries_list = [[[[[]]]]]
+    split_types = ['inequality']
+    candidate_feature_ids = [1, 2, 3, 4]
+    l1 = [1.0]
+    l2 = [1.0]
+    tree_complexity = [1.0]
+    min_node_weight = [1.17]
+    logits_dimension = 5
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_calculate_best_feature_split_v2(
+          node_id_range=node_id_range,
+          stats_summaries_list=stats_summaries_list,
+          split_types=split_types,
+          candidate_feature_ids=candidate_feature_ids,
+          l1=l1,
+          l2=l2,
+          tree_complexity=tree_complexity,
+          min_node_weight=min_node_weight,
+          logits_dimension=logits_dimension)
+
+  def testBoostedTreesSparseCalculateBestFeatureSplitSecurity(self):
+    node_id_range = []
+    stats_summary_indices = [[]]
+    stats_summary_values = [1.0]
+    stats_summary_shape = [1, 1, 1, 1]
+    l1 = [1.0]
+    l2 = [1.0]
+    tree_complexity = [0.5]
+    min_node_weight = [1.0]
+    logits_dimension = 3
+    split_type = 'inequality'
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_sparse_calculate_best_feature_split(
+          node_id_range=node_id_range,
+          stats_summary_indices=stats_summary_indices,
+          stats_summary_values=stats_summary_values,
+          stats_summary_shape=stats_summary_shape,
+          l1=l1,
+          l2=l2,
+          tree_complexity=tree_complexity,
+          min_node_weight=min_node_weight,
+          logits_dimension=logits_dimension,
+          split_type=split_type)
+
+  def testBoostedTreesSparseCalculateBestFeatureSplitSecurity2(self):
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_sparse_calculate_best_feature_split(
+          node_id_range=[0, 1],
+          stats_summary_indices=[[0, -1, -1, -1], [1, 0, -1, 0], [1, 0, 0, -1]],
+          stats_summary_values=[0.1, 0.2, 0.3],
+          stats_summary_shape=[1, 1, 1, 1],
+          l1=[0.5],
+          l2=[0.5],
+          tree_complexity=[0.1],
+          min_node_weight=[1.0],
+          logits_dimension=1)
+
+  def testBoostedTreesMakeStatsSummarySecurity(self):
+    node_ids = [1, 2]
+    gradients = [[]]
+    hessians = [[0.2], [0.1]]
+    bucketized_features_list = [[1], [2]]
+    max_splits = 3
+    num_buckets = 3
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_make_stats_summary(
+          node_ids=node_ids,
+          gradients=gradients,
+          hessians=hessians,
+          bucketized_features_list=bucketized_features_list,
+          max_splits=max_splits,
+          num_buckets=num_buckets)
+
+  def testBoostedTreesMakeStatsSummarySecurity2(self):
+    node_ids = [1, 2, 3]
+    gradients = [[0.1], [0.2]]
+    hessians = [[0.2], [0.1]]
+    bucketized_features_list = [[1], [2]]
+    max_splits = 3
+    num_buckets = 3
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_make_stats_summary(
+          node_ids=node_ids,
+          gradients=gradients,
+          hessians=hessians,
+          bucketized_features_list=bucketized_features_list,
+          max_splits=max_splits,
+          num_buckets=num_buckets)
+
+  def testBoostedTreesAggregateStatsSecurity(self):
+    node_ids = [1, 2]
+    gradients = [[]]
+    hessians = [[100.0]]
+    feature = [[0, 0, 0]]
+    max_splits = 100
+    num_buckets = 100
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_aggregate_stats(
+          node_ids=node_ids,
+          gradients=gradients,
+          hessians=hessians,
+          feature=feature,
+          max_splits=max_splits,
+          num_buckets=num_buckets)
+
+  def testBoostedTreesAggregateStatsSecurity2(self):
+    node_ids = [-10]
+    gradients = [[0.0, 0.0]]
+    hessians = [[100.0]]
+    feature = [[0, 0, 0]]
+    max_splits = 100
+    num_buckets = 100
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      self.evaluate(
+          gen_boosted_trees_ops.boosted_trees_aggregate_stats(
+              node_ids=node_ids,
+              gradients=gradients,
+              hessians=hessians,
+              feature=feature,
+              max_splits=max_splits,
+              num_buckets=num_buckets))
+
+  def testBoostedTreesSparseAggregateStatsSecurity(self):
+    node_ids = []
+    gradients = [[1.0]]
+    hessians = [[100.0]]
+    feature_indices = [[0, 0, 0]]
+    feature_values = [0, 0, 0]
+    feature_shape = [0, 0, 0]
+    max_splits = 100
+    num_buckets = 100
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_boosted_trees_ops.boosted_trees_sparse_aggregate_stats(
+          node_ids=node_ids,
+          gradients=gradients,
+          hessians=hessians,
+          feature_indices=feature_indices,
+          feature_values=feature_values,
+          feature_shape=feature_shape,
+          max_splits=max_splits,
+          num_buckets=num_buckets)
 
 
 class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):

@@ -31,7 +31,9 @@ TileProto Tile::ToProto() const {
 
 string Tile::ToString() const {
   std::vector<string> elements;
-  for (auto dim : dimensions()) {
+  const auto& dims = dimensions();
+  elements.reserve(dims.size());
+  for (auto dim : dims) {
     if (dim >= 0) {
       elements.push_back(std::to_string(dim));
     } else {

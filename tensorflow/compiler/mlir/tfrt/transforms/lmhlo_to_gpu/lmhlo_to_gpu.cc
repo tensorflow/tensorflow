@@ -21,7 +21,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -42,6 +42,7 @@ namespace tensorflow {
 
 void populateCclConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCholeskyConversionPattern(RewritePatternSet&, TypeConverter&);
+void populateConvolutionConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCustomCallConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateGemmConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateTriangularSolveConversionPattern(RewritePatternSet&,
@@ -74,6 +75,7 @@ void ConvertLmhloToGpuPass::runOnFunction() {
   RewritePatternSet patterns(context);
   populateCclConversionPattern(patterns, converter);
   populateCholeskyConversionPattern(patterns, converter);
+  populateConvolutionConversionPattern(patterns, converter);
   populateCustomCallConversionPattern(patterns, converter);
   populateGemmConversionPattern(patterns, converter);
   populateTriangularSolveConversionPattern(patterns, converter);

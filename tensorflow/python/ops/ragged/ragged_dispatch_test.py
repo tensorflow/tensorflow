@@ -22,12 +22,15 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
@@ -148,14 +151,72 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           {'op': math_ops.nextafter,
            'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
            'x2': 0},
+          {'op': math_ops.to_bfloat16,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.float32),
+           'expected_dtype': dtypes.bfloat16},
+          {'op': math_ops.to_complex128,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.float32),
+           'expected_dtype': dtypes.complex128},
+          {'op': math_ops.to_complex64,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.float32),
+           'expected_dtype': dtypes.complex64},
+          {'op': math_ops.to_double,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.float32),
+           'expected_dtype': dtypes.double},
+          {'op': math_ops.to_float,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.int32),
+           'expected_dtype': dtypes.float32},
+          {'op': math_ops.to_int32,
+           'x': ragged_factory_ops.constant_value(
+               [[2, 3], [3]], dtype=dtypes.int64),
+           'expected_dtype': dtypes.int32},
+          {'op': math_ops.to_int64,
+           'x': ragged_factory_ops.constant_value(
+               [[2, 3], [3]], dtype=dtypes.int32),
+           'expected_dtype': dtypes.int64},
+          {'op': image_ops_impl.convert_image_dtype,
+           'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+           'dtype': dtypes.float32,
+           'expected_dtype': dtypes.float32},
+          {'op': image_ops_impl.adjust_brightness,
+           'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+           'delta': 0.2},
+          {'op': image_ops_impl.adjust_gamma,
+           'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'gamma': 2,
+           'gain': 1.2},
+          {'op': image_ops_impl.stateless_random_brightness,
+           'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+           'max_delta': 0.2,
+           'seed': (1, 2)},
+          {'op': image_ops_impl.random_brightness,
+           'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+           'max_delta': 0.2,
+           'seed': 12},
+          {'op': string_ops.unicode_transcode,
+           'x': ragged_factory_ops.constant_value(
+               [['tensor', 'flower'], ['2.0']]),
+           'input_encoding': 'UTF-8',
+           'output_encoding': 'UTF-16-BE'},
       ]
       )  # pyformat: disable
-  def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
+  def testUnaryElementwiseOp(self,
+                             x,
+                             op=math_ops.abs,
+                             expected_dtype=None,
+                             **extra_args):
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
+    random_seed.set_random_seed(1234)
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
     dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
+    random_seed.set_random_seed(1234)
     expected_flat_values = array_ops.reshape(op(dense_x, **extra_args), [-1])
 
     # Check that the result has the expected shape.
@@ -167,6 +228,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       result_flat_values = array_ops.reshape(result, [-1])
     self.assertAllEqual(expected_flat_values, result_flat_values)
+
+    if expected_dtype is not None:
+      self.assertEqual(result.dtype, expected_dtype)
 
   @parameterized.parameters(
       [
@@ -233,21 +297,21 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               [[[1, 2], [3], [4]], [[], [5, 7, 8]]]),
            'y': ragged_factory_ops.constant_value(
                [[[3, 8], [2], [5]], [[], [1, 9, 8]]]),
-           'use_kwargs': ('x', 'y')},
+           'use_kwargs': {'x': 'x', 'y': 'y'}},
           {'x': ragged_factory_ops.constant_value(
               [[[1, 2]], [[3, 4], [5, 6], [7, 8]]],
               ragged_rank=1),
            'y': ragged_factory_ops.constant_value(
                [[[9, 3]], [[5, 2], [3, 4], [7, 6]]],
                ragged_rank=1),
-           'use_kwargs': ('x', 'y')},
+           'use_kwargs': {'x': 'x', 'y': 'y'}},
           {'x': ragged_factory_ops.constant_value(
               [[[1, 2]], [[3, 4], [5, 6], [7, 8]]],
               ragged_rank=1),
            'y': ragged_factory_ops.constant_value(
                [[[9, 3]], [[5, 2], [3, 4], [7, 6]]],
                ragged_rank=1),
-           'use_kwargs': ('x',)},
+           'use_kwargs': {'y': 'y'}},
       ] +
       #=========================================================================
       # Test each binary op.
@@ -263,22 +327,43 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       [{'x': ragged_factory_ops.constant_value([[True, True], [False]]),
         'y': ragged_factory_ops.constant_value([[False, True], [False]]),
         'op': op}
-       for op in test_ops.BINARY_BOOL_OPS]
-      )  # pyformat: disable
+       for op in test_ops.BINARY_BOOL_OPS] +
+      #=========================================================================
+      # Test each binary op.
+      #=========================================================================
+      [
+          {'x': 3,
+           'y': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'op': math_ops.scalar_mul},
+          {'x': 3,
+           'y': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'op': math_ops.scalar_mul_v2},
+          {'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'y': ragged_factory_ops.constant_value([[5.0, 1.0], [12.0]]),
+           'op': nn_impl.sigmoid_cross_entropy_with_logits_v2,
+           'use_kwargs': {'x': 'labels', 'y': 'logits'}},
+      ])  # pyformat: disable
   def testBinaryElementwiseOp(self, x, y, op=math_ops.add, **extra_args):
-    use_kwargs = extra_args.pop('use_kwargs', ())
-    if 'x' in use_kwargs and 'y' in use_kwargs:
-      result = op(x=x, y=y, **extra_args)
-    elif 'y' in use_kwargs:
-      result = op(x, y=y, **extra_args)
-    else:
-      result = op(x, y, **extra_args)
+    use_kwargs = extra_args.pop('use_kwargs', {})
+
+    def compute(x, y):
+      if 'x' in use_kwargs and 'y' in use_kwargs:
+        extra_args[use_kwargs['x']] = x
+        extra_args[use_kwargs['y']] = y
+        return op(**extra_args)
+      elif 'y' in use_kwargs:
+        extra_args[use_kwargs['y']] = y
+        return op(x, **extra_args)
+      else:
+        assert 'x' not in use_kwargs, use_kwargs
+        return op(x, y, **extra_args)
+
+    result = compute(x, y)
 
     # Run the wrapped op on the dense values, for comparison.
     dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
     dense_y = y.flat_values if ragged_tensor.is_ragged(y) else y
-    expected_flat_values = array_ops.reshape(
-        op(dense_x, dense_y, **extra_args), [-1])
+    expected_flat_values = array_ops.reshape(compute(dense_x, dense_y), [-1])
 
     # Check that the result has the expected shape.
     self.assertSameShape(y, result)
@@ -363,9 +448,11 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         string_ops.string_to_hash_bucket_strong,
         string_ops.string_to_number,
         string_ops.regex_full_match,
+        string_ops.regex_replace,
         string_ops.substr,
         string_ops.substr_v2,
         string_ops.substr_deprecated,
+        string_ops.unicode_transcode,
         clip_ops.clip_by_value,
         array_ops.check_numerics,
         math_ops.cast,
@@ -373,7 +460,21 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         math_ops.nextafter,
         math_ops.tensor_equals,
         math_ops.tensor_not_equals,
-        string_ops.regex_replace,
+        math_ops.to_bfloat16,
+        math_ops.to_complex128,
+        math_ops.to_complex64,
+        math_ops.to_double,
+        math_ops.to_float,
+        math_ops.to_int32,
+        math_ops.to_int64,
+        math_ops.scalar_mul,
+        math_ops.scalar_mul_v2,
+        image_ops_impl.adjust_brightness,
+        image_ops_impl.adjust_gamma,
+        image_ops_impl.stateless_random_brightness,
+        image_ops_impl.random_brightness,
+        image_ops_impl.convert_image_dtype,
+        nn_impl.sigmoid_cross_entropy_with_logits_v2,
     ]
     untested_ops = (
         set(dispatch.unary_elementwise_apis() +
@@ -384,7 +485,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             test_ops.BINARY_INT_OPS + other_tested_ops))
     untested_ops = sorted(f'{x.__module__}.{x.__name__}' for x in untested_ops)
     self.assertEmpty(
-        list(untested_ops), 'One or more ops elementwise are not tested; please'
+        untested_ops, 'One or more ops elementwise are not tested; please'
         ' add them to ragged_tensor_test_ops.py or ragged_dispatch_test.py')
 
   def testElementwiseOpUnknownRankError(self):

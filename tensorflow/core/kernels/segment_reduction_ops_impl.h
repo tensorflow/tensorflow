@@ -110,7 +110,9 @@ class SegmentReductionOp : public OpKernel {
                 errors::InvalidArgument("Shape must be at least rank 1"));
 
     TensorShape output_shape = input.shape();
-    output_shape.set_dim(0, output_rows);
+    // Since we're changing the first dimension of the shape, we need to make
+    // sure the new shape won't overflow.
+    OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(0, output_rows));
 
     // Note that we do not initialize the output buffer with a default value, so
     // we need to explicitly set missing indices to the default value.
@@ -290,7 +292,10 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
                         done);
 
       TensorShape output_shape = input.shape();
-      output_shape.set_dim(0, output_rows);
+      // Since we're changing the first dimension of the shape, we need to make
+      // sure the new shape won't overflow.
+      OP_REQUIRES_OK_ASYNC(context,
+                           output_shape.SetDimWithStatus(0, output_rows), done);
 
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(

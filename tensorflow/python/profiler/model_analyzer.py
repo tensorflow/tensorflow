@@ -130,7 +130,7 @@ class Profiler(object):
     # Currently we are only allowed to create 1 profiler per process.
     profiler = Profiler(sess.graph)
 
-    for i in xrange(total_steps):
+    for i in range(total_steps):
       if i % 10000 == 0:
         run_meta = tf.compat.v1.RunMetadata()
         _ = sess.run(...,

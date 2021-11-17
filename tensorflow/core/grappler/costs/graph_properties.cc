@@ -1134,7 +1134,12 @@ class SymbolicShapeRefiner {
         GetUnknownOutputShape(node, output_port);
     InferenceContext* ctx = GetContext(node);
     if (ctx == nullptr) {
-      return errors::InvalidArgument("Missing context");
+      return errors::InvalidArgument("SetUnknownShape: Missing context");
+    }
+    if (output_port < 0 || output_port >= ctx->num_outputs()) {
+      return errors::InvalidArgument(
+          "SetUnknownShape: output_port must be in [0, ", ctx->num_outputs(),
+          ") but was ", output_port);
     }
     ctx->set_output(output_port, shape);
     return Status::OK();
@@ -2762,8 +2767,7 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return InferFromCostGraph(metadata.cost_graph());
 }
 
-Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def,
-                                             bool allow_symbolic_shapes) const {
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
   *output_graph_def = item_.graph;
   for (int i = 0; i < output_graph_def->node_size(); i++) {
     auto node = output_graph_def->mutable_node(i);
@@ -2772,9 +2776,7 @@ Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def,
     for (const auto& tensor_property : tensor_properties) {
       TensorShapeProto* proto = attr_output_shape.mutable_list()->add_shape();
       *proto = tensor_property.shape();
-      if (!allow_symbolic_shapes) {
-        NormalizeShapeForOutput(proto);
-      }
+      NormalizeShapeForOutput(proto);
     }
     (*node->mutable_attr())["_output_shapes"] = std::move(attr_output_shape);
   }

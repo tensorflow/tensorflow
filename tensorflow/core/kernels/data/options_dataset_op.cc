@@ -67,7 +67,13 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    return input_->Get(ctx, index, out_tensors);
+  }
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);

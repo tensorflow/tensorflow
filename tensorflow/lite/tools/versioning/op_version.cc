@@ -514,6 +514,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TILE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 3;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteString) {
         return 2;
       }

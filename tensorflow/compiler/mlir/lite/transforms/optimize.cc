@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -207,7 +208,8 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
 // of `indices` are from 0 to n-1, the output tensor are identical to the
 // `params`.
 bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
-                                              DenseIntElementsAttr indices) {
+                                              DenseIntElementsAttr indices,
+                                              Type output_type) {
   auto params_type = params.getType().dyn_cast<RankedTensorType>();
   auto indices_type = indices.getType().dyn_cast<RankedTensorType>();
   // Checks the shape of `params` is [n, ...], shape of `indices` is [n, 1]. 2D
@@ -217,6 +219,10 @@ bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
       indices_type.getDimSize(0) != params_type.getDimSize(0) ||
       indices_type.getDimSize(1) != 1)
     return false;
+
+  // Checks the `params_type` is equal to `output_type`. If not equal, we
+  // cannot replace the scatter_nd/gather_nd op with `params`.
+  if (params_type != output_type) return false;
 
   // Checks the value in `indices` is from 0 to n-1.
   int cur_value = 0;
@@ -264,8 +270,8 @@ bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
   // Checks if `begin` is all 0s, and `size[i]` is equal to either -1 or
   // `input.shape[i]`.
   for (uint64_t i = 0; i < rank; ++i) {
-    if (begin_attr.getValue<APInt>({i}).getSExtValue() != 0) return false;
-    int64_t si = size_attr.getValue<APInt>({i}).getSExtValue();
+    if (begin_attr.getValues<APInt>()[i].getSExtValue() != 0) return false;
+    int64_t si = size_attr.getValues<APInt>()[i].getSExtValue();
     if (si != -1 && si != input_ty.getDimSize(i)) return false;
   }
 
@@ -355,9 +361,9 @@ static bool ShapeMatchesReduceWithKeepAxes(Value input,
   auto type_shape = type.getShape();
   for (uint64_t i = 0; i < type.getRank(); ++i) {
     if (axes_set.contains(i)) {
-      if (shape_attr.getValue<APInt>({i}) != 1) return false;
+      if (shape_attr.getValues<APInt>()[i] != 1) return false;
     } else {
-      if (shape_attr.getValue<APInt>({i}) != type_shape[i]) return false;
+      if (shape_attr.getValues<APInt>()[i] != type_shape[i]) return false;
     }
   }
   return true;
@@ -555,7 +561,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         RankedTensorType type = RankedTensorType::get(
             {num_channels}, constant_val_type.getElementType());
         auto attr = rewriter.getZeroAttr(type);
-        bias = rewriter.create<ConstantOp>(add_op.getLoc(), type, attr);
+        bias = rewriter.create<arith::ConstantOp>(add_op.getLoc(), type, attr);
         auto none_af = rewriter.getStringAttr("NONE");
         bias =
             rewriter.create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
@@ -581,7 +587,8 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         /*fused_activation_function=*/
         rewriter.getStringAttr(add_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr(fc_op.weights_format()),
-        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(add_op, fc.output());
 
     return success();
@@ -638,7 +645,8 @@ struct FuseAddAndFullyConnected
         /*bias=*/old_bias,
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
-        /*keep_num_dims=*/rewriter.getBoolAttr(true));
+        /*keep_num_dims=*/rewriter.getBoolAttr(true),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
 
     // Create the updated FC.
     auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
@@ -650,7 +658,8 @@ struct FuseAddAndFullyConnected
         /*fused_activation_function=*/
         rewriter.getStringAttr(fc_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
-        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
 
     return success();
@@ -706,7 +715,8 @@ struct FuseMulAndFullyConnected
         /*fused_activation_function=*/
         rewriter.getStringAttr(fc_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
-        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
 
     return success();
@@ -734,9 +744,14 @@ struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
     auto fc = rewriter.create<FullyConnectedOp>(
         FusedLoc::get(relu_op.getContext(),
                       {fully_connected_op.getLoc(), relu_op.getLoc()}),
-        relu_op.getType(), fully_connected_op.input(),
-        fully_connected_op.filter(), fully_connected_op.bias(),
-        new_activation_func, new_weights_format, new_keep_num_dims);
+        relu_op.getType(), /*input=*/fully_connected_op.input(),
+        /*filter=*/fully_connected_op.filter(),
+        /*bias=*/fully_connected_op.bias(),
+        /*fused_activation_function=*/new_activation_func,
+        /*weights_format=*/new_weights_format,
+        /*keep_num_dims=*/new_keep_num_dims,
+        /*asymmetric_quantize_inputs=*/
+        fully_connected_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(relu_op, fc.output());
 
     return success();
@@ -791,7 +806,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     }
 
     auto new_op =
-        rewriter.create<ConstantOp>(mul_op.getLoc(), new_type, new_cst);
+        rewriter.create<arith::ConstantOp>(mul_op.getLoc(), new_type, new_cst);
     Value new_const_val = new_op.getResult();
 
     // Rewrite. Since the folder of TFL::MulOp couldn't broadcast the operands,
@@ -814,7 +829,8 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
         /*fused_activation_function=*/
         rewriter.getStringAttr(mul_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr(fc_op.weights_format()),
-        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(mul_op, fc.output());
 
     return success();
@@ -826,18 +842,21 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
 // the TFL_DequantizeOp.
 // def : Pat<(TFL_MulOp (TFL_Conv2DOp:$conv_output $input,
 //                          (TFL_DequantizeOp (TFL_QuantizeOp
-//                              (ConstantOp F32ElementsAttr:$filter), $qtype)),
-//                          (ConstantOp F32ElementsAttr:$bias),
+//                              (Arith_ConstantOp F32ElementsAttr:$filter),
+//                              $qtype)),
+//                          (Arith_ConstantOp F32ElementsAttr:$bias),
 //                          $h_factor, $w_factor, TFL_AF_None,
 //                          $padding, $stride_h, $stride_w),
-//                      (ConstantOp F32ElementsAttr:$value), $act_fn),
+//                      (Arith_ConstantOp F32ElementsAttr:$value), $act_fn),
 //           (TFL_Conv2DOp $input,
 //                      (TFL_DequantizeOp (TFL_QuantizeOp
-//                          (TFL_MulOp (ConstantOp $filter),
-//                                     (ConstantOp (ExpandTo4DForConv $value)),
+//                          (TFL_MulOp (Arith_ConstantOp $filter),
+//                                     (Arith_ConstantOp (ExpandTo4DForConv
+//                                     $value)),
 //                                      TFL_AF_None),
 //                          (RescaleQtype $qtype, $value))),
-//                      (TFL_MulOp (ConstantOp $bias), (ConstantOp $value),
+//                      (TFL_MulOp (Arith_ConstantOp $bias), (Arith_ConstantOp
+//                      $value),
 //                          TFL_AF_None),
 //                      $h_factor, $w_factor, $act_fn,
 //                      $padding, $stride_h, $stride_w),
@@ -1074,11 +1093,11 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
 
 // If the operand to a broadcastable op is a splat constant, try to replace it
 // with a 0-d constant, e.g. before this optimization,
-//   %cst = constant dense<1.0> : tensor<16x16x4xf32>
+//   %cst = arith.constant dense<1.0> : tensor<16x16x4xf32>
 //   %0 = "tfl.conv_2d"...
 //   %1 = "tfl.add"(%0, %cst) : (tensor<16x16x4xf32>, tensor<16x16x4xf32>)
 // After this optimization:
-//   %cst = constant dense<1.0> : tensor<f32>
+//   %cst = arith.constant dense<1.0> : tensor<f32>
 //   %0 = "tfl.conv_2d"...
 //   %1 = "tfl.add"(%0, %cst) : (tensor<16x16x4xf32>, tensor<f32>)
 // This pattern can enable more fusing opportunities when the binary op is
@@ -1122,9 +1141,9 @@ struct ScalarizeSplatConstantForBroadcastableOps
     auto scalar_elements_attr = DenseElementsAttr::get(
         RankedTensorType::get({},
                               splat_elements_attr.getType().getElementType()),
-        splat_elements_attr.getSplatValue());
+        splat_elements_attr.getSplatValue<mlir::Attribute>());
 
-    auto scalar_constant_op = rewriter.create<ConstantOp>(
+    auto scalar_constant_op = rewriter.create<arith::ConstantOp>(
         splat_operand.getLoc(), scalar_elements_attr.getType(),
         scalar_elements_attr);
 
@@ -1277,7 +1296,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 // does not alter the last dimension as FullyConnected will collapse all other
 // dimensions into a single dimension. For example,
 //
-//   %shape = constant dense<[1, 128, 64]> : tensor<3xi32>
+//   %shape = arith.constant dense<[1, 128, 64]> : tensor<3xi32>
 //   %reshape = tfl.reshape(%input, %shape) // %input: tensor<128x64xf32>
 //   %fc = tfl.fully_connected(%reshape, %filter, %bias)
 //           {keep_num_dims = false, weights_format = "DEFAULT"}
@@ -1323,14 +1342,14 @@ struct RemoveReshapeBeforeFullyConnected
   }
 };
 
-// Remove Reshape after FullyConnected when `keep_num_dims=false`, the Reshaoe
+// Remove Reshape after FullyConnected when `keep_num_dims=false`, the Reshape
 // does not alter the last dimension and it restores the batch dimensions
 // collapsed by the FullyConnected op due to `keep_num_dims=false`. For example,
 //
 //   // %input: tensor<4x16x32xf32>
 //   %fc = tfl.fully_connected(%input, %filter, %bias)
 //           {keep_num_dims = false, weights_format = "DEFAULT"}
-//   %shape = constant dense<[4, 16, 32]> : tensor<3xi32>
+//   %shape = arith.constant dense<[4, 16, 32]> : tensor<3xi32>
 //   %rs = tfl.reshape(%fc, %shape)
 //
 // can be canonicalized to
@@ -1369,10 +1388,15 @@ struct RemoveReshapeAfterFullyConnected
 
     llvm::SmallVector<Type, 1> output_type{reshape_op.getType()};
     rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
-        reshape_op, output_type, fully_connected_op.input(),
-        fully_connected_op.filter(), fully_connected_op.bias(),
+        reshape_op, output_type, /*input=*/fully_connected_op.input(),
+        /*filter=*/fully_connected_op.filter(),
+        /*bias=*/fully_connected_op.bias(),
+        /*fused_activation_function=*/
         fully_connected_op.fused_activation_function(),
-        fully_connected_op.weights_format(), /*keep_num_dims=*/true);
+        /*weights_format=*/fully_connected_op.weights_format(),
+        /*keep_num_dims=*/true,
+        /*asymmetric_quantize_inputs=*/
+        fully_connected_op.asymmetric_quantize_inputsAttr());
     return success();
   }
 };
@@ -1387,7 +1411,7 @@ struct RemoveReshapeAfterFullyConnected
 //
 // can be optimized to
 //
-//   %cst = constant dense<[1, 6]> : tensor<2xi32>
+//   %cst = arith.constant dense<[1, 6]> : tensor<2xi32>
 //   %res = "tfl.reshape"(%input, %cst)
 struct FuseUnpackAndConcatToReshape
     : public OpRewritePattern<TFL::ConcatenationOp> {

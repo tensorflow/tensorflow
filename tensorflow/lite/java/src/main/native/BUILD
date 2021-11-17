@@ -69,6 +69,7 @@ cc_library_with_tflite(
         "-ldl",
     ],
     tflite_deps = [
+        "//tensorflow/lite/core/shims:c_api_without_op_resolver",
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:create_op_resolver_header",
         "//tensorflow/lite/core/shims:framework_stable",

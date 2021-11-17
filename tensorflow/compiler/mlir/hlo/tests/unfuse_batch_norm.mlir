@@ -103,10 +103,10 @@ func @batchNormInference_dynamic_shape(
     %x: tensor<?x?x?x?xf32>, %scale: tensor<?xf32>, %offset: tensor<?xf32>,
     %mean: tensor<?xf32>, %variance: tensor<?xf32>)
     -> tensor<?x?x?x?xf32> {
-  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
-  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
-  // CHECK-DAG: %[[C2:.*]] = constant 2 : index
-  // CHECK-DAG: %[[C3:.*]] = constant 3 : index
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
   // CHECK-DAG: %[[EPS:.+]] = mhlo.constant dense<1.000000e-03> : tensor<f32>
   // CHECK-DAG: %[[DIM:.+]] = tensor.dim %[[VARIANCE]], %[[C0]] : tensor<?xf32>
   // CHECK-DAG: %[[TO_DIM_TENSOR:.+]] = tensor.from_elements %[[DIM]] : tensor<1xindex>

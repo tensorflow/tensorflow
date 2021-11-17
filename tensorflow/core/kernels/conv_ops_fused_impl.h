@@ -550,6 +550,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                    dnn_activation_mode,  // activation_mode
                                    /*is_contrib=*/false}};
 
+    se::dnn::DataType element_type = se::dnn::ToDataType<T>::value;
+
     auto entry_or = AutotuneFusedConv<T>(
         cudnn_use_autotune, FusedConvAutotuneMap::GetInstance(),
         conv_parameters, context, input_desc, filter_desc, bias_desc,
@@ -563,13 +565,39 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     Status cudnn_launch_status;
     if (!autotune_entry.is_algorithm_config()) {
       auto& runners = autotune_entry.GetOpRunners();
+      se::dnn::FusedConvOp::Config config{se::dnn::ConvolutionKind::FORWARD,
+                                          element_type,
+                                          element_type,
+                                          element_type,
+                                          kConvScale,
+                                          kSideInputScale,
+                                          input_desc,
+                                          filter_desc,
+                                          bias_desc,
+                                          output_desc,
+                                          conv_desc,
+                                          dnn_activation_mode};
+      auto primary_or =
+          runners.primary->GetOrCreateRunner(config, stream->parent());
+      OP_REQUIRES_OK(context, primary_or.status());
+      auto* primary = primary_or.ValueOrDie();
+
+      const se::dnn::FusedConvRunner* no_scratch_fallback = nullptr;
+      if (runners.no_scratch_fallback) {
+        auto no_scratch_fallback_or =
+            runners.no_scratch_fallback->GetOrCreateRunner(config,
+                                                           stream->parent());
+        OP_REQUIRES_OK(context, no_scratch_fallback_or.status());
+        no_scratch_fallback = no_scratch_fallback_or.ValueOrDie();
+      }
+
       auto runner_and_scratch_or =
-          AllocateScratchOrFallback<se::dnn::FusedConvSignature>(
-              &scratch_allocator, runners);
+          AllocateScratchOrFallback<se::dnn::FusedConvOp::Signature>(
+              &scratch_allocator, primary, no_scratch_fallback);
       OP_REQUIRES_OK(context, runner_and_scratch_or.status());
       auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
-      auto& runner = *std::get<std::shared_ptr<const se::dnn::FusedConvRunner>>(
-          runner_and_scratch);
+      auto& runner =
+          *std::get<const se::dnn::FusedConvRunner*>(runner_and_scratch);
       cudnn_launch_status = runner(
           stream, input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr,
           std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);

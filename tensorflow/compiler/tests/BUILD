@@ -283,6 +283,7 @@ tf_xla_py_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
@@ -842,7 +843,6 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform_test",
-        "@six_archive//:six",
     ],
 )
 
@@ -2136,6 +2136,24 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/ops/risc:risc_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "const_arg_test",
+    size = "small",
+    srcs = ["const_arg_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:is_mlir_bridge_test_false",
+        "//tensorflow/python:platform_test",
     ],
 )
 

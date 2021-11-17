@@ -28,8 +28,11 @@ namespace tf_saved_model {
 // Returns failure in case fetching variables from session failed, success
 // otherwise.
 LogicalResult MarkInitializedVariablesInFunction(FuncOp function,
-                                                 tensorflow::Session* session,
-                                                 mlir::MLIRContext* context);
+                                                 tensorflow::Session* session);
+// Apply `MarkInitializedVariablesInFunction` to every non-empty function in the
+// module.
+LogicalResult MarkInitializedVariablesInFunction(ModuleOp module,
+                                                 tensorflow::Session* session);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

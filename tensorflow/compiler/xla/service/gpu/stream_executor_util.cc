@@ -490,6 +490,10 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       return se::dnn::ToDataType<float>::value;
     case F64:
       return se::dnn::ToDataType<double>::value;
+    case S8:
+      return se::dnn::ToDataType<int8>::value;
+    case S32:
+      return se::dnn::ToDataType<int32>::value;
     default:
       break;
   }
@@ -526,10 +530,13 @@ StatusOr<AutotuneResult> PickBestResult(
       });
 
   if (filtered_results.empty()) {
-    return InternalError(
-        "All algorithms tried for %s failed. Falling back to "
-        "default algorithm. ",
-        instr.ToString());
+    std::ostringstream msg;
+    msg << "All algorithms tried for " << instr.ToString()
+        << " failed. Falling back to default algorithm.  Per-algorithm errors:";
+    for (const auto& result : profile_results) {
+      msg << "\n  " << result.failure().msg();
+    }
+    return InternalError("%s", msg.str());
   }
 
   auto selected_result = filtered_results.begin();

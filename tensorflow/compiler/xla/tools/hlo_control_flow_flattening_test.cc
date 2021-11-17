@@ -28,6 +28,8 @@ namespace op = xla::testing::opcode_matchers;
 
 using HloControlFlowFlatteningTest = HloTestBase;
 
+constexpr int kDefaultMaxLoopCount = 1000;
+
 TEST_F(HloControlFlowFlatteningTest, WhileRoot) {
   absl::string_view hlo_string = R"(
   HloModule While
@@ -497,6 +499,103 @@ TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
               op::CustomCall(op::CustomCall(op::Parameter(0))));
 }
 
+void CheckWhileBound(HloInstruction* while_op, int expected_bound) {
+  auto* cond = while_op->while_condition();
+  ASSERT_NE(cond, nullptr);
+  auto* hlo_bound = cond->root_instruction()->operand(1);
+  EXPECT_TRUE(hlo_bound->IsConstant());
+  if (hlo_bound->IsConstant()) {
+    EXPECT_TRUE(hlo_bound->literal().IsAll(expected_bound));
+  }
+}
+
+TEST_F(HloControlFlowFlatteningTest, MaxOuterLoopCount) {
+  absl::string_view hlo_string = R"(
+  HloModule NestedWhileComp
+
+  InnerBody {
+    constant.8 = pred[] constant(false)
+    parameter.5 = (s32[], s32[]) parameter(0)
+    get-tuple-element.6 = s32[] get-tuple-element(parameter.5), index=0
+    constant.9 = s32[] constant(1)
+    add.10 = s32[] add(get-tuple-element.6, constant.9)
+    get-tuple-element.7 = s32[] get-tuple-element(parameter.5), index=1
+    constant.11 = s32[] constant(1)
+    add.12 = s32[] add(get-tuple-element.7, constant.11)
+    ROOT tuple.13 = (s32[], s32[]) tuple(add.10, add.12)
+  }
+
+  InnerCond {
+    parameter.15 = (s32[], s32[]) parameter(0)
+    get-tuple-element.17 = s32[] get-tuple-element(parameter.15), index=1
+    constant.18 = pred[] constant(false)
+    get-tuple-element.16 = s32[] get-tuple-element(parameter.15), index=0
+    inner_bound = s32[] constant(100)
+    ROOT compare.20 = pred[] compare(get-tuple-element.16, inner_bound), direction=LT
+  }
+
+  OuterBody {
+    constant.24 = pred[] constant(false)
+    constant.25 = s32[] constant(0)
+    parameter.22 = (s32[]) parameter(0)
+    get-tuple-element.23 = s32[] get-tuple-element(parameter.22), index=0
+    tuple.26 = (s32[], s32[]) tuple(constant.25, get-tuple-element.23)
+    inner_while = (s32[], s32[]) while(tuple.26), condition=InnerCond, body=InnerBody
+    get-tuple-element.28 = s32[] get-tuple-element(inner_while), index=0
+    get-tuple-element.29 = s32[] get-tuple-element(inner_while), index=1
+    tuple.30 = (s32[], s32[]) tuple(get-tuple-element.28, get-tuple-element.29)
+    get-tuple-element.31 = s32[] get-tuple-element(tuple.30), index=0
+    get-tuple-element.32 = s32[] get-tuple-element(tuple.30), index=1
+    ROOT tuple.33 = (s32[]) tuple(get-tuple-element.32)
+  }
+
+  OuterCond {
+    constant.37 = pred[] constant(false)
+    parameter.35 = (s32[]) parameter(0)
+    get-tuple-element.36 = s32[] get-tuple-element(parameter.35), index=0
+    outer_bound = s32[] constant(1000)
+    ROOT compare.39 = pred[] compare(get-tuple-element.36, outer_bound), direction=LT
+  }
+
+  ENTRY NestedWhileComp {
+    constant.1 = pred[] constant(false)
+    constant.2 = s32[] constant(0)
+    tuple.3 = (s32[]) tuple(constant.2)
+    outer_while = (s32[]) while(tuple.3), condition=OuterCond, body=OuterBody
+    get-tuple-element.41 = s32[] get-tuple-element(outer_while), index=0
+    tuple.42 = (s32[]) tuple(get-tuple-element.41)
+    get-tuple-element.43 = s32[] get-tuple-element(tuple.42), index=0
+    ROOT tuple.44 = (s32[]) tuple(get-tuple-element.43)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  constexpr int kWhileExecutionCount = 5;
+  constexpr int kExistingInnerLoopCount = 100;
+  constexpr int kMaxLoopCount = 10;
+  HloControlFlowFlattening flattening(kWhileExecutionCount, kMaxLoopCount);
+  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  LOG(INFO) << module->ToString();
+
+  auto* outer_while =
+      module->entry_computation()->GetInstructionWithName("outer_while");
+  ASSERT_NE(outer_while, nullptr);
+  // Checks that the outer while loop has changed its loop bound.
+  CheckWhileBound(outer_while, kMaxLoopCount);
+  auto* while_body = outer_while->while_body();
+  ASSERT_NE(while_body, nullptr);
+
+  auto* inner_while = while_body->GetInstructionWithName("inner_while");
+  ASSERT_NE(inner_while, nullptr);
+  // Checks that the inner loop bound has not changed.
+  CheckWhileBound(inner_while, kExistingInnerLoopCount);
+}
+
 TEST_F(HloControlFlowFlatteningTest, MatchLtUseInferedLoopCount) {
   absl::string_view hlo_string = R"(
   HloModule While
@@ -525,7 +624,8 @@ TEST_F(HloControlFlowFlatteningTest, MatchLtUseInferedLoopCount) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123),
+  EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123,
+                         kDefaultMaxLoopCount),
             100);
 }
 
@@ -557,7 +657,8 @@ TEST_F(HloControlFlowFlatteningTest, MatchGtUseInferedLoopCount) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123),
+  EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123,
+                         kDefaultMaxLoopCount),
             50);
 }
 
@@ -589,7 +690,8 @@ TEST_F(HloControlFlowFlatteningTest, NotMatchEqUseDefaultLoopCount) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123),
+  EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123,
+                         kDefaultMaxLoopCount),
             123);
 }
 

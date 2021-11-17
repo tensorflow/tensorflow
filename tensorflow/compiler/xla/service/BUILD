@@ -1474,6 +1474,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -2496,6 +2497,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_pass",
+        ":op_expander_pass",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -2980,6 +2982,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core/lib/math:math_util",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm",
         "@com_google_absl//absl/algorithm:container",

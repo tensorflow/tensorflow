@@ -44,7 +44,9 @@ namespace {
 Literal CreatePredLiteral(bool pred, const Shape& reference_shape) {
   if (reference_shape.IsTuple()) {
     std::vector<Literal> sub_literals;
-    for (const Shape& shape : reference_shape.tuple_shapes()) {
+    const auto& reference_shape_tuple_shapes = reference_shape.tuple_shapes();
+    sub_literals.reserve(reference_shape_tuple_shapes.size());
+    for (const Shape& shape : reference_shape_tuple_shapes) {
       sub_literals.emplace_back(CreatePredLiteral(pred, shape));
     }
     return Literal::MoveIntoTuple(absl::MakeSpan(sub_literals));
@@ -63,7 +65,9 @@ Literal CreatePredLiteral(bool pred, const Shape& reference_shape) {
 Literal CreateS64Literal(int64_t value, const Shape& reference_shape) {
   if (reference_shape.IsTuple()) {
     std::vector<Literal> sub_literals;
-    for (const Shape& shape : reference_shape.tuple_shapes()) {
+    const auto& reference_shape_tuple_shapes = reference_shape.tuple_shapes();
+    sub_literals.reserve(reference_shape_tuple_shapes.size());
+    for (const Shape& shape : reference_shape_tuple_shapes) {
       sub_literals.emplace_back(CreateS64Literal(value, shape));
     }
     return Literal::MoveIntoTuple(absl::MakeSpan(sub_literals));
@@ -1278,7 +1282,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           auto accum = b.AddInstruction(HloInstruction::CreateConstant(
               LiteralUtil::CreateR0<bool>(false)));
 
-          for (int64_t i = 0; i < root_shape.tuple_shapes_size(); ++i) {
+          for (int i = 0; i < root_shape.tuple_shapes_size(); ++i) {
             auto lhs = b.AddInstruction(
                 HloInstruction::CreateParameter(i, scalar_shape, "lhs"));
             auto rhs = b.AddInstruction(HloInstruction::CreateParameter(
@@ -1494,6 +1498,7 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
 
       // Gather dependencies and transform them into literals.
       std::vector<Literal> literals;
+      literals.reserve(item.dependencies.size());
       for (CacheKey& dep_key : item.dependencies) {
         TF_RET_CHECK(evaluated.contains(dep_key));
         literals.emplace_back(evaluated.at(dep_key).Clone());

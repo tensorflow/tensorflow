@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -29,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-void populateFusionConversionPattern(mlir::RewritePatternSet&);
+void populateKernelOpsPattern(mlir::RewritePatternSet&);
 
 namespace {
 
@@ -41,13 +42,14 @@ struct ConvertLmhloToGpuBinaryPass
  private:
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    populateFusionConversionPattern(patterns);
+    populateKernelOpsPattern(patterns);
     if (failed(applyOpPatternsAndFold(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    registry.insert<mlir::StandardOpsDialect, mlir::gpu::GPUDialect>();
+    registry.insert<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                    mlir::gpu::GPUDialect>();
   }
 };
 
