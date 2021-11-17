@@ -475,7 +475,7 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,8]{1,0} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm"
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,8]{0,1} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm"
   )",
                       /*print_operand_shape=*/true);
   } else {
@@ -506,7 +506,7 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,8]{1,0} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,8]{0,1} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0
   )",
                       /*print_operand_shape=*/true);
   } else {
@@ -536,7 +536,7 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,8]{1,0} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,8]{0,1} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0
   )",
                       /*print_operand_shape=*/true);
   } else {
@@ -564,7 +564,7 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[16,12]{1,0} custom-call(s8[16,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,12]{1,0} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm"
+; CHECK: s32[16,12]{1,0} custom-call(s8[16,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,12]{0,1} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm"
   )",
                       /*print_operand_shape=*/true);
   } else {
