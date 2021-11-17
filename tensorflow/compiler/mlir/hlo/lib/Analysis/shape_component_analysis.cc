@@ -663,7 +663,7 @@ bool ShapeComponentAnalysis::SymbolicDimension::isKnownNotNegativeOne() const {
 
   // For constants we know if it's -1 or not.
   if (auto cexpr = expr.dyn_cast<AffineConstantExpr>())
-    if (cexpr.getValue() != -1) return true;
+    return cexpr.getValue() != -1;
 
   // Multiplying symbols that are never negative gives a positive result.
   // TODO(kramerb): Could the analysis provide a generic interface for this?
