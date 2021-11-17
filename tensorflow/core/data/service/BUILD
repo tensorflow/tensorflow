@@ -884,12 +884,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:standalone",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/platform:thread_annotations",
     ] + tf_grpc_cc_dependencies(),
 )
 

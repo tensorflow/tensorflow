@@ -28,9 +28,6 @@ string Hostname();
 // string.
 string JobName();
 
-// Returns the Borg job UID as an int64_t if it exists. Otherwise return -1.
-int64_t JobUid();
-
 }  // namespace port
 }  // namespace tensorflow
 
