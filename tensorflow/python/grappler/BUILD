@@ -254,6 +254,60 @@ py_library(
     ],
 )
 
+#######
+
+filegroup(
+    name = "meta_optimizer_def_file",
+    srcs = ["//tensorflow/core/grappler/optimizers:meta_optimizer"],
+    output_group = "def_file",
+)
+
+cc_binary(
+    name = "meta_optimizer.dll",
+    deps = ["//tensorflow/core/grappler/optimizers:meta_optimizer"],
+    win_def_file = ":meta_optimizer_def_file",
+    linkshared = 1,
+)
+
+filegroup(
+    name = "meta_optimizer_import",
+    srcs = [":meta_optimizer.dll"],
+    output_group = "interface_library",
+)
+
+cc_import(
+    name = "meta_optimizer_shared",
+    interface_library = ":meta_optimizer_import",
+    shared_library = "meta_optimizer.dll",
+)
+
+cc_binary(
+    name = "tf_optimizer_wrapper_bin",
+    srcs = ["tf_optimizer_wrapper_empty.cc"] + [
+        "//tensorflow/cc:pywrap_required_hdrs",
+        "//tensorflow/core/grappler:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/verifiers:pywrap_required_hdrs",
+    ],
+    deps = [
+        # Imitate how _pywrap_tf_optimizer link to _pywrap_ternsorflow_internal.pyd
+        ":meta_optimizer_shared",
+
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "@pybind11",
+    ],
+)
+
+
+#######
+
 tf_python_pybind_extension(
     name = "_pywrap_tf_optimizer",
     srcs = ["tf_optimizer_wrapper.cc"],
