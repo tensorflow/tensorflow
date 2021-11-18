@@ -68,6 +68,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // By default, copy TF's Eigen style min_max behavior with nans.
   opts.set_xla_cpu_enable_fast_min_max(true);
 
+  opts.set_xla_gpu_enable_cudnn_frontend(true);
   opts.set_xla_gpu_enable_fast_min_max(true);
   opts.set_xla_gpu_strict_conv_algorithm_picker(true);
 
