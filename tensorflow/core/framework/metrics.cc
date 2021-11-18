@@ -136,6 +136,11 @@ auto* tf_data_service_jobs_created_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/service/jobs_created", "Number of tf.data service jobs.",
     "processing_mode", "coordinated_read");
 
+auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
+    "/tensorflow/data/service/num_client_iterators",
+    "Number of tf.data service client iterators created.", "worker_uid",
+    "deployment_mode", "processing_mode", "is_coordinated_read");
+
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -317,6 +322,23 @@ void RecordTFDataServiceJobsCreated(
       is_coordinated_read ? "true" : "false";
   tf_data_service_jobs_created_counter
       ->GetCell(sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceClientIterators(
+    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read) {
+  const std::string deployment_mode_str =
+      tensorflow::data::DeploymentMode_Name(deployment_mode);
+  const std::string sharding_policy_str =
+      data::ProcessingModeDef::ShardingPolicy_Name(
+          processing_mode.sharding_policy());
+  const std::string coordinated_read_str =
+      is_coordinated_read ? "true" : "false";
+  tf_data_service_client_iterators_counter
+      ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
+                sharding_policy_str, coordinated_read_str)
       ->IncrementBy(1);
 }
 

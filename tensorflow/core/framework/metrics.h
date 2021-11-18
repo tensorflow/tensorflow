@@ -112,6 +112,12 @@ void RecordTFDataServiceJobsCreated(
     const tensorflow::data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read);
 
+// Records tf.data service iterators created by clients.
+void RecordTFDataServiceClientIterators(
+    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read);
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").

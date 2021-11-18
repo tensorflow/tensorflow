@@ -182,7 +182,7 @@ message ClientHeartbeatRequest {
   }
 }
 
-// Next tag: 4
+// Next tag: 5
 message ClientHeartbeatResponse {
   // A list of all tasks that the client should read from.
   repeated TaskInfo task_info = 1;
@@ -192,6 +192,9 @@ message ClientHeartbeatResponse {
   }
   // Whether the job has finished.
   bool job_finished = 2;
+  // tf.data service deployment mode. Supported values are "REMOTE",
+  // "COLOCATED", and "HYBRID". If unspecified, it is assumed to be "REMOTE".
+  DeploymentMode deployment_mode = 4;
 }
 
 // Next tag: 3

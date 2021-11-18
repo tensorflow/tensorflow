@@ -953,6 +953,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     task_info->set_starting_round(task->starting_round);
   }
   response->set_job_finished(job->finished);
+  response->set_deployment_mode(config_.deployment_mode());
   VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
   return Status::OK();
