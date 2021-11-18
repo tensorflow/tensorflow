@@ -14,7 +14,7 @@ tensorflow::swig::IsVariable
 tensorflow::swig::SameNamedtuples
 tensorflow::swig::AssertSameStructure
 tensorflow::swig::Flatten
-tensorflow::swig::IsSequenceForData
+tensorflow::swig::IsNestedForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
 tensorflow::swig::RegisterPyObject
