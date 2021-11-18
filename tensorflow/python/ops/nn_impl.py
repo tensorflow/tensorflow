@@ -1672,7 +1672,6 @@ def fused_batch_norm(
 
   # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
   # prevent exception (see cudnn.h).
-  
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon >= min_epsilon else min_epsilon
 
