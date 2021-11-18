@@ -185,6 +185,12 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   } else if (scheme == "har") {
     TF_RETURN_IF_ERROR(SplitArchiveNameAndPath(path, nn));
     libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str());
+  } else if (scheme == "ofs" || schema == "cosn") {
+      size_t length = path.size();
+      StringPiece ofsPath = fname;
+      ofsPath.remove_suffix(length);
+      nn = string(ofsPath);
+      libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str())
   } else {
     libhdfs()->hdfsBuilderSetNameNode(builder,
                                       nn.empty() ? "default" : nn.c_str());
@@ -540,5 +546,7 @@ Status HadoopFileSystem::Stat(const string& fname, FileStatistics* stats) {
 REGISTER_FILE_SYSTEM("hdfs", HadoopFileSystem);
 REGISTER_FILE_SYSTEM("viewfs", HadoopFileSystem);
 REGISTER_FILE_SYSTEM("har", HadoopFileSystem);
+REGISTER_FILE_SYSTEM("ofs", HadoopFileSystem);
+REGISTER_FILE_SYSTEM("cosn", HadoopFileSystem);
 
 }  // namespace tensorflow
