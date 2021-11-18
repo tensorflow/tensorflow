@@ -137,7 +137,7 @@ auto* tf_data_service_jobs_created_counter = monitoring::Counter<2>::New(
     "processing_mode", "coordinated_read");
 
 auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
-    "/tensorflow/data/service/num_client_iterators",
+    "/tensorflow/data/service/client_iterators",
     "Number of tf.data service client iterators created.", "worker_uid",
     "deployment_mode", "processing_mode", "is_coordinated_read");
 
