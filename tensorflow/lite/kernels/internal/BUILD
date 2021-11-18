@@ -420,11 +420,11 @@ cc_library(
     name = "quantization_util_single_rounding",
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
     defines = [
         "TFLITE_SINGLE_ROUNDING=1",
     ],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
         "//conditions:default": ["-lm"],
