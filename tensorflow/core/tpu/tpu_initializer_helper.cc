@@ -91,7 +91,9 @@ bool TryAcquireTpuLock() {
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
       if (lockf(fd, F_TLOCK, 0) != 0) {
-        LOG(INFO) << "libtpu.so already in use by another process. Not "
+        LOG(INFO) << "libtpu.so already in use by another process. "
+		     "Run \"$ sudo lsof -w /dev/accel0\" to figure out "
+		     "which process is using the TPU. Not "
                      "attempting to load libtpu.so in this process.";
         should_load_library = false;
       } else {
