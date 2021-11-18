@@ -139,9 +139,20 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     const Literal* literal, absl::optional<Window> window,
     absl::optional<ConvolutionDimensionNumbers> dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
-  if (operand_shapes_with_layout.has_value())
-    return Unimplemented(
-        "CustomCall doesn't support operands shapes with layout");
+  mlir::ArrayAttr operand_layouts;
+  mlir::ArrayAttr result_layouts;
+  if (operand_shapes_with_layout.has_value()) {
+    TF_ASSIGN_OR_RETURN(operand_layouts,
+                        ExtractLayoutsFromShapes(
+                            operand_shapes_with_layout.value(), &builder_));
+    if (shape.IsTuple()) {
+      TF_ASSIGN_OR_RETURN(result_layouts,
+                          ExtractLayoutsFromTuple(shape, &builder_));
+    } else {
+      TF_ASSIGN_OR_RETURN(result_layouts,
+                          ExtractLayoutsFromShapes({shape}, &builder_));
+    }
+  }
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
   TF_ASSIGN_OR_RETURN(auto mlir_api_version,
@@ -162,7 +173,8 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       builder_.getStringAttr(opaque),
       /*api_version=*/
       mlir::mhlo::CustomCallApiVersionAttr::get(builder_.getContext(),
-                                                mlir_api_version));
+                                                mlir_api_version),
+      operand_layouts, result_layouts);
   return MakeXlaOp(op.getResult(0));
 }
 
