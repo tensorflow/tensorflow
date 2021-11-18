@@ -190,7 +190,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
       StringPiece ofsPath = fname;
       ofsPath.remove_suffix(length);
       nn = string(ofsPath);
-      libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str())
+      libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str());
   } else {
     libhdfs()->hdfsBuilderSetNameNode(builder,
                                       nn.empty() ? "default" : nn.c_str());
