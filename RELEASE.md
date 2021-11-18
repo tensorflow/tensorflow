@@ -49,6 +49,13 @@
   enabling tracking of nested keras models created in TF1-style, when used with
   the `tf.compat.v1.keras.utils.track_tf1_style_variables` decorator.
 
+* `tf.keras`:
+  * Preprocessing Layers
+    * Added a `tf.keras.layers.experimental.preprocessing.HashedCrossing`
+      layer which applies the hashing trick to the concatenation of crossed
+      scalar inputs. This provides a stateless way to try adding feature crosses
+      of integer or string data to a model.
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
