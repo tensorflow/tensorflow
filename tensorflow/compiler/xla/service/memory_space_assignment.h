@@ -104,7 +104,6 @@ class MemorySpaceAssignmentCostAnalysis {
   // speed up the lookup.
   struct Cache {
     absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
-    absl::flat_hash_map<HloPosition, float> memory_boundedness;
   };
 
   virtual ~MemorySpaceAssignmentCostAnalysis() = default;

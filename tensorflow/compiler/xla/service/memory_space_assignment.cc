@@ -250,13 +250,6 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
 float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
     MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
-  if (cache != nullptr) {
-    auto memory_boundedness_it =
-        cache->memory_boundedness.find(interval.buffer->defining_position());
-    if (memory_boundedness_it != cache->memory_boundedness.end()) {
-      return memory_boundedness_it->second;
-    }
-  }
   float alternate_mem_benefit =
       GetAlternateMemoryBenefit(interval.buffer->defining_position(), cache);
 
@@ -288,12 +281,7 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
   // Penalize larger buffers by dividing the benefit by the square root of the
   // size. Empirically, we observed this resulted in better performance compared
   // to dividing by the size.
-  float memory_boundedness = alternate_mem_benefit / std::sqrt(interval.size);
-  if (cache != nullptr) {
-    cache->memory_boundedness[interval.buffer->defining_position()] =
-        memory_boundedness;
-  }
-  return memory_boundedness;
+  return alternate_mem_benefit / std::sqrt(interval.size);
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
