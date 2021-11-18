@@ -2243,6 +2243,7 @@ tf_cc_test(
         "requires-gpu-sm70",
     ],
     deps = [
+        ":cublas_cudnn",
         ":cudnn_fused_conv_rewriter",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:test_helpers",
