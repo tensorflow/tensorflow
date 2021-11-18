@@ -208,6 +208,9 @@ absl::Status ReserveGraphTensors(
       RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
                                             data_type, layout, &storage_type));
       tensor_desc = TensorDescriptor{data_type, storage_type, layout};
+      if (storage_type == TensorStorageType::TEXTURE_2D) {
+        tensor_desc.use_buffer_for_write_only_2d_texture = true;
+      }
     }
     tensor_desc.shape = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
     tensor_reserver->Add(t->id, tensor_desc);

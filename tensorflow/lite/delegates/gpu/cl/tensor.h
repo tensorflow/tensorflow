@@ -104,6 +104,10 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
                                     CLContext* context);
 
  private:
+  friend absl::Status CreateSharedImage2DBufferTensor(
+      const CLContext& context, cl_mem memory, const BHWDC& shape,
+      const TensorDescriptor& descriptor, int width_pixel_alignment,
+      Tensor* result);
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
 
@@ -124,6 +128,8 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   bool buffer_based_ = false;
   BHWDC shape_;
   TensorDescriptor descriptor_;
+  // for use with TEXTURE_2D and when texture created from buffer.
+  int aligned_texture_width_;
 };
 
 using TensorPtr = std::shared_ptr<Tensor>;

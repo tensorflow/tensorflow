@@ -345,7 +345,8 @@ Tensor::Tensor(Tensor&& tensor)
       memory_owner_(tensor.memory_owner_),
       buffer_based_(tensor.buffer_based_),
       shape_(tensor.shape_),
-      descriptor_(tensor.descriptor_) {
+      descriptor_(tensor.descriptor_),
+      aligned_texture_width_(tensor.aligned_texture_width_) {
   tensor.memory_ = nullptr;
   tensor.image_buffer_memory_ = nullptr;
 }
@@ -359,6 +360,7 @@ Tensor& Tensor::operator=(Tensor&& tensor) {
     std::swap(buffer_based_, tensor.buffer_based_);
     std::swap(shape_, tensor.shape_);
     std::swap(descriptor_, tensor.descriptor_);
+    std::swap(aligned_texture_width_, tensor.aligned_texture_width_);
   }
   return *this;
 }
@@ -426,18 +428,26 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
     resources->buffers.push_back({"buffer", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D ||
              descriptor_.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
-    cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
-    resources->images2d.push_back({"image2d", mem});
+    if (obj_ptr->GetAccess() == AccessType::WRITE &&
+        tensor_desc->use_buffer_for_write_only_2d_texture) {
+      resources->ints.push_back(
+          {"aligned_texture_width", aligned_texture_width_});
+      resources->buffers.push_back({"buffer", memory_});
+    } else {
+      cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
+      resources->images2d.push_back({"image2d", mem});
+    }
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_ARRAY) {
     resources->image2d_arrays.push_back({"image2d_array", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
     resources->images3d.push_back({"image3d", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
-    if (obj_ptr->GetAccess() == AccessType::READ) {
+    if (obj_ptr->GetAccess() == AccessType::WRITE &&
+        tensor_desc->use_buffer_for_write_only_image_buffer) {
+      resources->buffers.push_back({"buffer", memory_});
+    } else {
       resources->image_buffers.push_back(
           {"image_buffer", image_buffer_memory_});
-    } else {
-      resources->buffers.push_back({"buffer", memory_});
     }
   }
 
@@ -634,6 +644,7 @@ absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
       context, memory, descriptor.data_type, width, height, channels,
       width_pixel_alignment, &image_memory));
   *result = Tensor(memory, false, image_memory, shape, descriptor);
+  result->aligned_texture_width_ = AlignByN(width, width_pixel_alignment);
   return absl::OkStatus();
 }
 
