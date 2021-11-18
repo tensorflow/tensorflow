@@ -542,12 +542,12 @@ class OrderedPropagatorState : public PropagatorState {
 
    private:
     static bool compare(TaggedNode const& lhs, TaggedNode const& rhs) {
-      std::tuple<int, uint64, int64_t> lhs_prio = {lhs.node_item->node_id,
-                                                   lhs.input_frame->frame_id,
-                                                   lhs.input_iter->iter_num};
-      std::tuple<int, uint64, int64_t> rhs_prio = {rhs.node_item->node_id,
-                                                   rhs.input_frame->frame_id,
-                                                   rhs.input_iter->iter_num};
+      std::tuple<int, uint64, int64_t> lhs_prio{lhs.node_item->node_id,
+                                                lhs.input_frame->frame_id,
+                                                lhs.input_iter->iter_num};
+      std::tuple<int, uint64, int64_t> rhs_prio{rhs.node_item->node_id,
+                                                rhs.input_frame->frame_id,
+                                                rhs.input_iter->iter_num};
       return lhs_prio < rhs_prio;
     }
 
