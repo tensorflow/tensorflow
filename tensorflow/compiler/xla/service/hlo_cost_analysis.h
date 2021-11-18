@@ -199,7 +199,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   static int64_t GetConvolutionFlops(const HloInstruction* convolution);
 
   // Returns the estimated dot flops.
-  static int64_t GetDotFlops(const HloInstruction* dot);
+  static int64_t GetDotFlops(const Shape& lhs_shape, const Shape& result_shape,
+                             const DotDimensionNumbers& dnums);
 
  protected:
   typedef std::unordered_map<const HloInstruction*, Properties> HloToProperties;
