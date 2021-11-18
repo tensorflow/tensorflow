@@ -94,15 +94,15 @@ struct LhloToScalarOp<lmhlo::FloorOp> {
 };
 template <>
 struct LhloToScalarOp<lmhlo::MaxOp> {
-  using FOp = ::mlir::MaxFOp;
-  using IOp = ::mlir::MaxSIOp;
-  using UOp = ::mlir::MaxUIOp;
+  using FOp = ::mlir::arith::MaxFOp;
+  using IOp = ::mlir::arith::MaxSIOp;
+  using UOp = ::mlir::arith::MaxUIOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::MinOp> {
-  using FOp = ::mlir::MinFOp;
-  using IOp = ::mlir::MinSIOp;
-  using UOp = ::mlir::MinUIOp;
+  using FOp = ::mlir::arith::MinFOp;
+  using IOp = ::mlir::arith::MinSIOp;
+  using UOp = ::mlir::arith::MinUIOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::LogOp> {

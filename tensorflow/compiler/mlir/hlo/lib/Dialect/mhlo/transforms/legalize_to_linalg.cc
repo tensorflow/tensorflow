@@ -2236,7 +2236,7 @@ struct DepthwiseConvOpOnTensorsConversion
 
       auto reshaped_output_type = RankedTensorType::get(
           reshaped_output_dims, result_type.getElementType());
-      auto conv = rewriter.create<linalg::DepthwiseConv2DNhwcOp>(
+      auto conv = rewriter.create<linalg::DepthwiseConv2DNhwcHwcmOp>(
           op.getLoc(), reshaped_output_type, ValueRange{input, filter},
           ValueRange{zero_tensor}, window_strides, rhs_dilation,
           PruneAttributeList(op));
@@ -2277,7 +2277,7 @@ struct DepthwiseConvOpOnTensorsConversion
       Value reshaped_filter = rewriter.create<linalg::TensorCollapseShapeOp>(
           loc, filter_shape, filter, collapsed_dim_list);
 
-      rewriter.replaceOpWithNewOp<linalg::DepthwiseConv2DNhwOp>(
+      rewriter.replaceOpWithNewOp<linalg::DepthwiseConv2DNhwcHwcOp>(
           op, result_type, ValueRange{input, reshaped_filter},
           ValueRange{zero_tensor}, window_strides, rhs_dilation,
           PruneAttributeList(op));
