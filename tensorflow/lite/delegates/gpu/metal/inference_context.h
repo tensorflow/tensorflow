@@ -132,6 +132,11 @@ class InferenceContext {
   void EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
                               int flush_period);
 
+  API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+  void AddResources(id<MTLComputeCommandEncoder> command_encoder);
+  API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+  void EncodeWithICB(id<MTLComputeCommandEncoder> command_encoder);
+
   void Profile(id<MTLDevice> device, ProfilingInfo* result);
   // Returns size in bytes for all intermediate(runtime) tensors that owned by
   // this inference context. Do not include constant tensors.
@@ -182,6 +187,8 @@ class InferenceContext {
 
   std::map<ValueId, MetalSpatialTensor> strong_shape_tensors_;
   std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
+
+  id<MTLIndirectCommandBuffer> icb_ = nullptr;
 };
 
 // Runs specific transforms for the graph.

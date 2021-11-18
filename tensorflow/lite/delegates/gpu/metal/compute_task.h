@@ -62,6 +62,8 @@ class ComputeTask {
 
   void Encode(id<MTLComputeCommandEncoder> encoder);
 
+  API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+  void EncodeToICB(id<MTLIndirectComputeCommand> icb_command);
   API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
   void AddResourcesToEncoder(id<MTLComputeCommandEncoder> encoder) const;
 
@@ -84,6 +86,7 @@ class ComputeTask {
   MetalArguments metal_args_;
 
   bool use_arguments_buffer_ = false;  // optional
+  bool need_icb_support_ = false;      // optional
   id<MTLArgumentEncoder> arguments_encoder_ = nullptr;
   id<MTLBuffer> arg_buffer_ = nullptr;
 };

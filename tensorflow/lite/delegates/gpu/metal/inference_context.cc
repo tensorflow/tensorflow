@@ -442,6 +442,29 @@ absl::Status InferenceContext::InitFromGraph(
   BindTensorsToOperations();
   RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
   RETURN_IF_ERROR(Tune(TuningType::kFast, &metal_device));
+
+  bool add_icb_support = false;
+  if (add_icb_support) {
+    if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
+      MTLIndirectCommandBufferDescriptor* icb_desc =
+          [[MTLIndirectCommandBufferDescriptor alloc] init];
+      icb_desc.commandTypes = MTLIndirectCommandTypeConcurrentDispatch;
+      icb_desc.inheritBuffers = NO;
+      icb_desc.inheritPipelineState = NO;
+      icb_desc.maxKernelBufferBindCount = 1;
+
+      icb_ = [device_id newIndirectCommandBufferWithDescriptor:icb_desc
+                                               maxCommandCount:nodes_.size()
+                                                       options:0];
+
+      for (int i = 0; i < nodes_.size(); ++i) {
+        id<MTLIndirectComputeCommand> icb_command =
+            [icb_ indirectComputeCommandAtIndex:i];
+        auto& node = nodes_[i];
+        node.task.EncodeToICB(icb_command);
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -737,6 +760,22 @@ void InferenceContext::EncodeWithEncoder(
     auto& task = nodes_[i].task;
     task.Encode(command_encoder);
   }
+}
+
+API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+void InferenceContext::AddResources(
+    id<MTLComputeCommandEncoder> command_encoder) {
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto& task = nodes_[i].task;
+    task.AddResourcesToEncoder(command_encoder);
+  }
+}
+
+API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+void InferenceContext::EncodeWithICB(
+    id<MTLComputeCommandEncoder> command_encoder) {
+  [command_encoder executeCommandsInBuffer:icb_
+                                 withRange:NSMakeRange(0, nodes_.size())];
 }
 
 void InferenceContext::Profile(id<MTLDevice> device, ProfilingInfo* result) {
