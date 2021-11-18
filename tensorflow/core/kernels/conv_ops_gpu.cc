@@ -296,10 +296,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
       auto profile_result = algorithms[0];
       results.emplace_back();
       auto& result = results.back();
-      result.mutable_conv()->set_algorithm(
-          profile_result.algorithm().algo_id());
-      result.mutable_conv()->set_tensor_ops_enabled(
-          profile_result.algorithm().tensor_ops_enabled());
+      *result.mutable_algorithm() = profile_result.algorithm().ToProto();
 
       result.set_scratch_bytes(profile_result.scratch_size());
       *result.mutable_run_time() = proto_utils::ToDurationProto(
@@ -317,9 +314,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
         if (miopen_launch_status.ok() && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();
-          result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-          result.mutable_conv()->set_tensor_ops_enabled(
-              profile_algorithm.tensor_ops_enabled());
+          *result.mutable_algorithm() = profile_algorithm.ToProto();
 
           result.set_scratch_bytes(scratch_allocator.TotalByteSize());
           *result.mutable_run_time() = proto_utils::ToDurationProto(
