@@ -288,6 +288,19 @@ void AllocateAndParseFlags() {
   AllocateAndParseCpurtFlags();
 }
 
+void ResetFlags() {
+  delete build_ops_flags;
+  delete mark_for_compilation_flags;
+  delete device_flags;
+  delete ops_flags;
+  delete jitter_flags;
+  delete mlir_flags;
+  delete flag_list;
+  delete cpurt_flags;
+  delete cpurt_flag_list;
+  AllocateAndParseFlags();
+}
+
 }  // namespace
 
 bool SetXlaAutoJitFlagFromFlagString(const string& value) {
@@ -326,18 +339,7 @@ MlirCommonFlags* GetMlirCommonFlags() {
   return mlir_flags;
 }
 
-void ResetMlirCommonFlags() {
-  delete build_ops_flags;
-  delete mark_for_compilation_flags;
-  delete device_flags;
-  delete ops_flags;
-  delete jitter_flags;
-  delete mlir_flags;
-  delete flag_list;
-  delete cpurt_flags;
-  delete cpurt_flag_list;
-  AllocateAndParseFlags();
-}
+void ResetMlirCommonFlags() { ResetFlags(); }
 
 const CpuRtFlags& GetCpuRtFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
