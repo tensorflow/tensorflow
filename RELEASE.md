@@ -25,6 +25,10 @@
         favor of direct arguments: `max_workspace_size_bytes`, `precision_mode`,
         `minimum_segment_size`, `maximum_cached_engines`, `use_calibration` and
         `allow_build_at_runtime`.
+    *   Added a new parameter called `save_gpu_specific_engines` to the
+        `.save()` function inside `TrtGraphConverterV2`. When `False`, the
+        `.save()` function won't save any TRT engines that have been built. When
+        `True` (default), the original behavior is preserved.
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
