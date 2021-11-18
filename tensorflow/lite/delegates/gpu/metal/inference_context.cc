@@ -761,6 +761,18 @@ void InferenceContext::Profile(id<MTLDevice> device, ProfilingInfo* result) {
   }
 }
 
+uint64_t InferenceContext::GetIntermediateTensorsSize() const {
+  uint64_t total_memory = 0;
+  for (const auto& t : strong_shape_tensors_) {
+    total_memory += t.second.GetMemorySizeInBytes();
+  }
+  for (const auto& b : shared_buffers_) {
+    total_memory += [b length];
+  }
+
+  return total_memory;
+}
+
 void InferenceContext::EncodeWithCommandBuffer(
     id<MTLCommandBuffer> command_buffer) {
   for (int i = 0; i < nodes_.size(); ++i) {

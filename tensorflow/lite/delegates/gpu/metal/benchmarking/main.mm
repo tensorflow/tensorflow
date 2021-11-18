@@ -71,6 +71,9 @@ absl::Status GPUBenchmark(GraphFloat32* graph, int num_tests, int iterations,
     inference_context.Profile(device, &profiling_info);
     std::cout << profiling_info.GetDetailedReport() << std::endl;
   }
+  uint64_t mem_bytes = inference_context.GetIntermediateTensorsSize();
+  std::cout << "Memory for intermediate tensors - " << mem_bytes / 1024.0 / 1024.0 << " MB"
+            << std::endl;
   const std::string precision_str = use_fp16 ? "FP16" : "FP32";
   std::cout << "Measuring started: (" << num_tests << " tests, " << iterations
       << " iterations every test, " << precision_str << " precision)" << std::endl;

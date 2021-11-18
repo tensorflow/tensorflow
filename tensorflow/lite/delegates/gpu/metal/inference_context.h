@@ -133,6 +133,9 @@ class InferenceContext {
                               int flush_period);
 
   void Profile(id<MTLDevice> device, ProfilingInfo* result);
+  // Returns size in bytes for all intermediate(runtime) tensors that owned by
+  // this inference context. Do not include constant tensors.
+  uint64_t GetIntermediateTensorsSize() const;
 
  private:
   enum class TensorMemoryType {
