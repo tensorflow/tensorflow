@@ -15749,6 +15749,41 @@ This is the label for the given minibatch entry.}]>:$labels
   let verifier = [{ return Verify(*this); }];
 }
 
+def TF_SparseTensorDenseMatMulOp : TF_Op<"SparseTensorDenseMatMul", [NoSideEffect]> {
+  let summary = [{
+Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
+  }];
+
+  let description = [{
+No validity checking is performed on the indices of A.  However, the following
+input format is recommended for optimal behavior:
+
+if adjoint_a == false:
+  A should be sorted in lexicographically increasing order.  Use SparseReorder
+  if you're not sure.
+if adjoint_a == true:
+  A should be sorted in order of increasing dimension 1 (i.e., "column major"
+  order instead of "row major" order).
+  }];
+
+  let arguments = (ins
+    Arg<TF_I32OrI64Tensor, [{2-D.  The `indices` of the `SparseTensor`, size `[nnz, 2]` Matrix.}]>:$a_indices,
+    Arg<TF_Tensor, [{1-D.  The `values` of the `SparseTensor`, size `[nnz]` Vector.}]>:$a_values,
+    Arg<TF_Int64Tensor, [{1-D.  The `shape` of the `SparseTensor`, size `[2]` Vector.}]>:$a_shape,
+    Arg<TF_Tensor, [{2-D.  A dense Matrix.}]>:$b,
+
+    DefaultValuedAttr<BoolAttr, "false">:$adjoint_a,
+    DefaultValuedAttr<BoolAttr, "false">:$adjoint_b
+  );
+
+  let results = (outs
+    TF_Tensor:$product
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SparseToDenseOp : TF_Op<"SparseToDense", [NoSideEffect]> {
   let summary = "Converts a sparse representation into a dense tensor.";
 
