@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -1358,7 +1359,11 @@ void ExecutorState<PropagatorStateType>::Finish() {
 }
 
 void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
-  if (immutable_state_.requires_control_flow_support()) {
+  if (OpOrderDeterminismRequired()) {
+    (new ExecutorState<OrderedPropagatorState>(args, immutable_state_,
+                                               &kernel_stats_))
+        ->RunAsync(std::move(done));
+  } else if (immutable_state_.requires_control_flow_support()) {
     (new ExecutorState<PropagatorState>(args, immutable_state_, &kernel_stats_))
         ->RunAsync(std::move(done));
   } else {
