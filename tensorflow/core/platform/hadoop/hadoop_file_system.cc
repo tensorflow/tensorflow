@@ -185,7 +185,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   } else if (scheme == "har") {
     TF_RETURN_IF_ERROR(SplitArchiveNameAndPath(path, nn));
     libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str());
-  } else if (scheme == "ofs" || schema == "cosn") {
+  } else if (scheme == "ofs" || scheme == "cosn") {
       size_t length = path.size();
       StringPiece ofsPath = fname;
       ofsPath.remove_suffix(length);
