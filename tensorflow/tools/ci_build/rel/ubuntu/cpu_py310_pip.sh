@@ -27,6 +27,9 @@ export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.10'
 export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
 
+# Installs requirements for bazel build
+install_ubuntu_pip_deps_novenv ${TF_PYTHON_VERSION}
+
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 

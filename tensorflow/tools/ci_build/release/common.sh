@@ -189,6 +189,20 @@ function remove_venv_ubuntu () {
   rm -rf ~/.venv/tf
 }
 
+function install_ubuntu_pip_deps_novenv () {
+  # Install on default python Env (No Virtual Env for pip packages)
+  PIP_CMD="${1} -m pip"
+  if [[ "$1" == "python3.10" ]]; then
+    REQUIREMENTS_FNAME="requirements_ubuntu_py310.txt"
+  else
+    REQUIREMENTS_FNAME="requirements_ubuntu.txt"
+  fi
+  ${PIP_CMD} install --upgrade pip wheel auditwheel~=3.3.1
+  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/${REQUIREMENTS_FNAME}
+  ${PIP_CMD} list
+
+}
+
 function upload_wheel_cpu_ubuntu() {
   # Upload the built packages to pypi.
   for WHL_PATH in $(ls pip_pkg/tf_nightly_cpu-*dev*.whl); do
