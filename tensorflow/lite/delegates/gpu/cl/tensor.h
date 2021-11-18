@@ -155,13 +155,13 @@ absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
 absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
                                              cl_mem memory, const BHWC& shape,
                                              const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment,
+                                             int width_pixel_alignment,
                                              Tensor* result);
 
 absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
                                              cl_mem memory, const BHWDC& shape,
                                              const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment,
+                                             int width_pixel_alignment,
                                              Tensor* result);
 
 template <DataType T>
