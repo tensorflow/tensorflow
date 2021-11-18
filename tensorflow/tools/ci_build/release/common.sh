@@ -166,7 +166,7 @@ function install_ubuntu_pip_deps {
   # when upgrading auditwheel modify upload_wheel_cpu_ubuntu and upload_wheel_gpu_ubuntu
   # to match the filename generated.
   ${PIP_CMD} install --upgrade pip wheel auditwheel~=3.3.1
-  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/${REQUIREMENTS_FNAME}
   ${PIP_CMD} list
 }
 
@@ -175,6 +175,11 @@ function setup_venv_ubuntu () {
   # First argument needs to be the python executable.
   ${1} -m venv ~/.venv/tf
   source ~/.venv/tf/bin/activate
+  if [[ "$1" == "python3.10" ]]; then
+    REQUIREMENTS_FNAME="requirements_ubuntu_py310.txt"
+  else
+    REQUIREMENTS_FNAME="requirements_ubuntu.txt"
+  fi
   install_ubuntu_pip_deps
 }
 
