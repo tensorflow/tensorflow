@@ -394,9 +394,14 @@ Status MetaOptimizer::InitializeOptimizers(
 
 Status MetaOptimizer::InitializeOptimizersByName(
     const std::set<string>& device_types,
-    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+    bool is_main_graph) const {
   std::set<string> initialized_custom_optimizers;
-  for (const string& optimizer_name : cfg_.optimizers()) {
+  auto& config_optimizers =
+      (!is_main_graph && cfg_.override_function_library_optimizers())
+          ? cfg_.function_library_optimizers()
+          : cfg_.optimizers();
+  for (const string& optimizer_name : config_optimizers) {
     auto optimizer = MakeNewOptimizer(optimizer_name, device_types);
     if (optimizer) {
       VLOG(2) << "Registered default graph optimizer: " << optimizer_name;
@@ -417,15 +422,21 @@ Status MetaOptimizer::InitializeOptimizersByName(
       VLOG(2) << "Can't register an optimizer by name: " << optimizer_name;
     }
   }
+
   return InitializeCustomGraphOptimizers(
-      device_types, initialized_custom_optimizers, optimizers);
+      device_types, initialized_custom_optimizers, optimizers, is_main_graph);
 }
 
 Status MetaOptimizer::InitializeCustomGraphOptimizers(
     const std::set<string>& device_types,
     const std::set<string>& pre_initialized_optimizers,
-    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
-  for (const auto& optimizer_config : cfg_.custom_optimizers()) {
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+    bool is_main_graph) const {
+  auto& config_custom_optimizers =
+      (!is_main_graph && cfg_.override_function_library_optimizers())
+          ? cfg_.function_library_custom_optimizers()
+          : cfg_.custom_optimizers();
+  for (const auto& optimizer_config : config_custom_optimizers) {
     if (pre_initialized_optimizers.find(optimizer_config.name()) !=
         pre_initialized_optimizers.end()) {
       continue;
@@ -455,13 +466,18 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
               << optimizer_config.name();
     }
   }
-  return InitializePluginGraphOptimizers(device_types, optimizers);
+  return InitializePluginGraphOptimizers(device_types, optimizers,
+                                         is_main_graph);
 }
 
 Status MetaOptimizer::InitializePluginGraphOptimizers(
     const std::set<string>& device_types,
-    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
-  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return Status::OK();
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+    bool is_main_graph) const {
+  bool use_plugin_optimizers =
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF &&
+      (is_main_graph || !cfg_.disable_plugin_optimizers_for_function_library());
+  if (!use_plugin_optimizers) return Status::OK();
   auto plugin_optimizers =
       PluginGraphOptimizerRegistry::CreateOptimizers(device_types);
   for (auto& plugin_optimizer : plugin_optimizers) {
@@ -625,7 +641,8 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
 }
 
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
-                                    GraphDef* optimized_graph) {
+                                    GraphDef* optimized_graph,
+                                    bool is_main_graph) {
   int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
                                                     : cfg_.min_graph_nodes();
   if (item.graph.node_size() < min_graph_nodes) {
@@ -642,7 +659,10 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
   std::set<std::string> device_types;
   TF_RETURN_IF_ERROR(GetGraphDevice(item.graph, &device_types));
-  if (cfg_.optimizers().empty()) {
+  if (!is_main_graph && cfg_.override_function_library_optimizers()) {
+    TF_RETURN_IF_ERROR(
+        InitializeOptimizersByName(device_types, &optimizers, false));
+  } else if (cfg_.optimizers().empty()) {
     TF_RETURN_IF_ERROR(InitializeOptimizers(device_types, &optimizers));
   } else {
     TF_RETURN_IF_ERROR(InitializeOptimizersByName(device_types, &optimizers));
@@ -1107,7 +1127,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       } else {
         GrapplerFunctionItem func_item_copy = func_item;
         TF_RETURN_IF_ERROR(OptimizeGraph(cluster, std::move(func_item_copy),
-                                         &optimized_func_graph));
+                                         &optimized_func_graph, false));
       }
 
       // Function body optimization might have created new specialized

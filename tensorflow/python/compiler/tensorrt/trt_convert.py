@@ -311,6 +311,13 @@ def _get_tensorrt_rewriter_config(conversion_params,
     rewriter_config_with_trt.optimizers.extend(
         ["constfold", "layout", "constfold"])
 
+    # TODO: change defaults, this is just a placeholder
+    rewriter_config_with_trt.override_function_library_optimizers = True
+    rewriter_config_with_trt.disable_plugin_optimizers_for_function_library \
+      = True
+    rewriter_config_with_trt.function_library_optimizers.extend(
+        ["constfold"])
+
   rewriter_config_with_trt.meta_optimizer_iterations = (
       rewriter_config_pb2.RewriterConfig.ONE)
   optimizer = rewriter_config_with_trt.custom_optimizers.add()

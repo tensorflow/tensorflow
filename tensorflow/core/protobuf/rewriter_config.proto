@@ -220,4 +220,25 @@ message RewriterConfig {
   // VerifierConfig specifying the verifiers to be run at the end, after all
   // optimizers have run.
   VerifierConfig post_optimization_verifier_config = 301;
+
+  // If override_function_library_optimizers is true, specifies the
+  // optimizations to turn on when optimizing the function library, and the
+  // order of the optimizations.
+  repeated string function_library_optimizers = 400;
+
+  // If override_function_library_optimizers is true, specifies the
+  // custom optimizers to apply when optimizing the function library.
+  repeated CustomGraphOptimizer function_library_custom_optimizers = 401;
+
+  // If true, will use the optimizers defined by function_library_optimizers and
+  // function_library_custom_optimizers when optimizing the function library
+  // (doesn't affect optimization of the main graph).
+  //
+  // This can also be used to disable optimization of the function library by
+  // keeping these lists empty.
+  bool override_function_library_optimizers = 402;
+
+  // If true, override the value of use_plugin_optimizers when optimizing the
+  // function library.
+  bool disable_plugin_optimizers_for_function_library = 403;
 }

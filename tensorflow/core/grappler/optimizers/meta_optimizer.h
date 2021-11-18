@@ -68,15 +68,18 @@ class MetaOptimizer : public GraphOptimizer {
   // Initialize active optimizers from RewriterConfig optimizer names.
   Status InitializeOptimizersByName(
       const std::set<string>& device_types,
-      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+      bool is_main_graph = true) const;
   // Initialize active optimizers from RewriterConfig.custom_optimizers.
   Status InitializeCustomGraphOptimizers(
       const std::set<string>& device_types,
       const std::set<string>& pre_initialized_optimizers,
-      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+      bool is_main_graph = true) const;
   Status InitializePluginGraphOptimizers(
       const std::set<string>& device_types,
-      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+      bool is_main_graph = true) const;
   // Returns the config for a custom graph optimizer. Null if none was found.
   const RewriterConfig::CustomGraphOptimizer* GetCustomGraphOptimizerConfig(
       const string& name) const;
@@ -92,7 +95,7 @@ class MetaOptimizer : public GraphOptimizer {
   // Run optimization pass over a single GrapplerItem. Meta optimizer might run
   // multiple such passes: 1) for the main graph 2) for the function library
   Status OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
-                       GraphDef* optimized_graph);
+                       GraphDef* optimized_graph, bool is_main_graph = true);
 
   DeviceBase* const cpu_device_;  // may be NULL
   ConfigProto config_proto_;
