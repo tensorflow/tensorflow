@@ -1617,6 +1617,13 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
                                 node_ids_t->shape().DebugString()));
     const auto node_ids = node_ids_t->vec<int32>();
     const auto num_nodes = node_ids_t->NumElements();
+    for (int i = 0; i < num_nodes; ++i) {
+      OP_REQUIRES(
+          context, node_ids(i) <= max_splits_,
+          errors::InvalidArgument(
+              "Nodes in node_ids must be at most max_splits. Node ", i, " is ",
+              node_ids(i), " which is greater than ", max_splits_));
+    }
 
     // gradients.
     const Tensor* gradients_t;
@@ -1705,13 +1712,13 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
               "feature_indices should be increasing but got feature_indices(",
               i, ", 0) < ", prev_instance, " (feature_indices(", i - 1, "0))"));
       // the node id within a tree.
+      // We don't need the node id here, we just validate that the `instance`
+      // is a valid index as this is needed later in the code.
       OP_REQUIRES(context, instance < num_nodes,
                   errors::InvalidArgument("feature_indices(", i,
                                           "0) is not a valid index in the "
                                           "node_ids vector (must be less than ",
                                           num_nodes, ", got ", instance, ")"));
-      const int32_t node_id = node_ids(instance);
-      DCHECK_LE(node_id, max_splits_);
       // the feature dimension.
       const int32_t f_dim = feature_indices(i, 1);
       DCHECK_LE(f_dim, feature_dims);
