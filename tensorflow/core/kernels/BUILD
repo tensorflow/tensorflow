@@ -4,6 +4,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_cuda_or_rocm",
+    "if_google",
     "if_mobile",
     "if_not_windows",
     "if_oss",
@@ -82,7 +83,13 @@ load(
 #
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
+    features = if_google(
+        [
+            "-layering_check",
+            "-parse_headers",
+        ],
+        ["-layering_check"],
+    ),
     licenses = ["notice"],
 )
 
