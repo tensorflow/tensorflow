@@ -1187,8 +1187,10 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
         f_map.clear();
       }
       previous_node_id = node_id;
-      DCHECK_LE(node_id_first, node_id);
-      DCHECK_LT(node_id, node_id_last);
+      OP_REQUIRES(
+          context, node_id_first <= node_id && node_id < node_id_last,
+          errors::InvalidArgument("node_id = ", node_id, " which is not in [",
+                                  node_id_first, ", ", node_id_last, ")"));
       const int32_t feature_dim = stats_summary_indices(idx, 1);
       const int32_t bucket_id = stats_summary_indices(idx, 2);
       const int32_t stat_dim = stats_summary_indices(idx, 3);
