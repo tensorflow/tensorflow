@@ -2074,7 +2074,7 @@ tf_module {
   }
   member_method {
     name: "IsTPUEmbeddingInitialized"
-    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'config\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "IsVariableInitialized"
