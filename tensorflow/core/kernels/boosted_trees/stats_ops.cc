@@ -1118,6 +1118,10 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
 
     const Tensor* l2_t;
     OP_REQUIRES_OK(context, context->input("l2", &l2_t));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(l2_t->shape()),
+        errors::InvalidArgument("l2 must be a scalar, got a tensor of shape ",
+                                l2_t->shape().DebugString()));
     const auto l2 = l2_t->scalar<float>()();
 
     const Tensor* tree_complexity_t;
