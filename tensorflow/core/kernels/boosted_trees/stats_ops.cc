@@ -1651,6 +1651,11 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
                 errors::InvalidArgument(
                     "feature_indices must be a matrix, received shape ",
                     feature_indices_t->shape().DebugString()));
+    OP_REQUIRES(
+        context, feature_indices_t->shape().dim_size(1) == 2,
+        errors::InvalidArgument(
+            "feature_indices must be a matrix of shape [?, 2], received shape ",
+            feature_indices_t->shape().DebugString()));
     const auto feature_indices = feature_indices_t->matrix<int32>();
 
     // feature values.
