@@ -68,8 +68,11 @@ void BinaryElementwiseTester::Test(tflite::BuiltinOperator binary_op,
   }
   if (FP16Weights() || INT8Weights() || INT8ChannelWiseWeights()) {
     ASSERT_TRUE(Input1Static() || Input2Static());
-    if (INT8ChannelWiseWeights()) {
+    if (INT8ChannelWiseWeights() && Input1Static()) {
       ASSERT_FALSE(Input1Shape().empty());
+    }
+    if (INT8ChannelWiseWeights() && Input2Static()) {
+      ASSERT_FALSE(Input2Shape().empty());
     }
   }
 

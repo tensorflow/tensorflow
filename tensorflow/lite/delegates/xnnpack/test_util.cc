@@ -86,11 +86,8 @@ std::vector<float> GetInt8QuantizationScalePerChannel(
                             current_dim.data(), 0, nullptr);
     const int channel_idx = current_dim[quantized_dimension];
     const float val = data[offset];
-    if (min[channel_idx] > val) {
-      min[channel_idx] = val;
-    } else if (max[channel_idx] < val) {
-      max[channel_idx] = val;
-    }
+    min[channel_idx] = std::min(min[channel_idx], val);
+    max[channel_idx] = std::max(max[channel_idx], val);
   } while (NextIndex(num_dims, reinterpret_cast<const int*>(dims_data),
                      current_dim.data()));
 
