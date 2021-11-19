@@ -1667,6 +1667,15 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
                     "feature_values must be a vector, received shape ",
                     feature_values_t->shape().DebugString()));
     const auto feature_values = feature_values_t->vec<int32>();
+    const auto num_features = feature_values_t->NumElements();
+    for (int i = 0; i < num_features; ++i) {
+      OP_REQUIRES(
+          context, feature_values(i) <= num_buckets_,
+          errors::InvalidArgument(
+              "Features in feature_values must be at most num_buckets. Node ",
+              i, " is ", feature_values(i), " which is greater than ",
+              num_buckets_));
+    }
 
     // feature shape.
     const Tensor* feature_shape_t;
@@ -1729,7 +1738,6 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
       DCHECK_LE(f_dim, feature_dims);
       // the bucket id of the value.
       const int32_t bucket_id = feature_values(i);
-      DCHECK_LE(bucket_id, num_buckets_);
 
       // Add statistics for the missing entries into default bucket.
       // The last bucket is default bucket.
