@@ -1730,9 +1730,15 @@ static void AddRangeStats(OpKernelContext* const context,
                           const TTypes<int32>::ConstVec& node_ids,
                           const int32_t feature_dims, const int32_t bucket_id,
                           const int32_t logits_dims, const int32_t stats_dims) {
-  DCHECK_LE(start_instance, end_instance);
+  OP_REQUIRES(context, start_instance <= end_instance,
+              errors::InvalidArgument(
+                  "start_instance = ", start_instance,
+                  " which is not at most end_instance=", end_instance));
   if (start_instance == end_instance) {
-    DCHECK_LT(start_feature_dim, end_feature_dim);
+    OP_REQUIRES(context, start_feature_dim < end_feature_dim,
+                errors::InvalidArgument(
+                    "start_feature_dim = ", start_feature_dim,
+                    " which is not at most end_feature_dim=", end_feature_dim));
   }
   for (int32_t instance = start_instance; instance <= end_instance;
        ++instance) {
