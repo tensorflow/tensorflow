@@ -676,6 +676,10 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
     // Split types.
     const Tensor* split_types_t;
     OP_REQUIRES_OK(context, context->input("split_types", &split_types_t));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(split_types_t->shape()),
+        errors::InvalidArgument("split_types must be a vector, received shape ",
+                                split_types_t->shape().DebugString()));
     const auto split_types = split_types_t->vec<tstring>();
     DCHECK_EQ(split_types.size(), num_features_);
     // Validate.
