@@ -278,6 +278,10 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     OP_REQUIRES(
         context, node_id_range_t->NumElements() == 2,
         errors::InvalidArgument("node_id_range argument must have shape [2]"));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(node_id_range_t->shape()),
+                errors::InvalidArgument(
+                    "node_id_range must be a vector, received shape ",
+                    node_id_range_t->shape().DebugString()));
     const auto node_id_range = node_id_range_t->vec<int32>();
     const int32_t node_id_first = node_id_range(0);  // inclusive
     const int32_t node_id_last = node_id_range(1);   // exclusive
