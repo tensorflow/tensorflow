@@ -1686,7 +1686,10 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
     for (int i = 0; i < num_sparse_entries; ++i) {
       // the instance number within a batch
       const int32_t instance = feature_indices(i, 0);
-      DCHECK_LE(instance, batch_size);
+      OP_REQUIRES(context, instance <= batch_size,
+                  errors::InvalidArgument("feature_indices(", i,
+                                          "0) should be at most batch size (",
+                                          batch_size, " but got ", instance));
       DCHECK_GE(instance, prev_instance);
       // the node id within a tree.
       const int32_t node_id = node_ids(instance);
