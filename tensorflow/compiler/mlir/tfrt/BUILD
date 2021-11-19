@@ -280,6 +280,7 @@ cc_library(
         "transforms/insert_tensor_copy.cc",
         "transforms/lower_saved_model.cc",
         "transforms/merge_tf_if_ops.cc",
+        "transforms/optimize.cc",
         "transforms/optimize_tf_control_flow_side_effect.cc",
         "transforms/remote_run_encapsulate.cc",
         "transforms/remove_device_attribute.cc",
