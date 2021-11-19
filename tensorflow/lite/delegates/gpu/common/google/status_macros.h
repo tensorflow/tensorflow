@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_STATUS_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_STATUS_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GOOGLE_STATUS_MACROS_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GOOGLE_STATUS_MACROS_H_
 
-#include "absl/status/status.h"  // IWYU pragma: export
-#include "tensorflow/lite/delegates/gpu/common/google/status_macros.h"  // IWYU pragma: export
+#define RETURN_IF_ERROR(s) \
+  {                        \
+    auto c = (s);          \
+    if (!c.ok()) return c; \
+  }
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_STATUS_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GOOGLE_STATUS_MACROS_H_

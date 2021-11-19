@@ -325,7 +325,10 @@ cc_test(
 cc_library(
     name = "status",
     hdrs = ["status.h"],
-    deps = ["@com_google_absl//absl/status"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/google:status_macros",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(
