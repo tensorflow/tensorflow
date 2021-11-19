@@ -1625,6 +1625,10 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
     // hessians.
     const Tensor* hessians_t;
     OP_REQUIRES_OK(context, context->input("hessians", &hessians_t));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsMatrix(hessians_t->shape()),
+        errors::InvalidArgument("hessians must be a matrix, received shape ",
+                                hessians_t->shape().DebugString()));
     const auto hessians = hessians_t->matrix<float>();
 
     // feature indices.
