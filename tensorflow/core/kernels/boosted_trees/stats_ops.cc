@@ -1527,6 +1527,10 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
     // feature.
     const Tensor* feature_t;
     OP_REQUIRES_OK(context, context->input("feature", &feature_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(feature_t->shape()),
+                errors::InvalidArgument(
+                    "feature must be a matrix, got a tensor of shape ",
+                    feature_t->shape().DebugString()));
     const auto feature = feature_t->matrix<int32>();
 
     // Infer batch size, feature dimension and stats dimension.
