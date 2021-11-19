@@ -4574,8 +4574,12 @@ port::Status CudnnSupport::GetConvolveRunners(
   const bool is_unsupported_x32 =
       input_descriptor.layout() == dnn::kBatchDepthYX32;
 
+  // cuDNN frontend support became sufficiently stable to use in 8.1.
+  // TODO(awpr): remove this condition once support for cuDNN 8.0 is dropped.
+  const bool is_pre_frontend_cudnn = CUDNN_VERSION < 8100;
+
   const bool actually_use_cudnn_frontend =
-      use_cudnn_frontend && !is_unsupported_x32;
+      use_cudnn_frontend && !is_pre_frontend_cudnn && !is_unsupported_x32;
 
   if (use_cudnn_frontend && !actually_use_cudnn_frontend) {
     // This will happen once per unique conv configuration/shape that gets
@@ -4586,7 +4590,10 @@ port::Status CudnnSupport::GetConvolveRunners(
                << "  input: " << input_descriptor.ToString() << "\n"
                << "  filter: " << filter_descriptor.ToString() << "\n"
                << "  " << convolution_descriptor.ToString() << "\n"
-               << "  ... because Tx32 convolutions are unsupported.";
+               << "  ... because "
+               << (is_unsupported_x32
+                       ? "Tx32 convolutions are unsupported."
+                       : "the current cuDNN version does not support it.");
   }
 
   if (!actually_use_cudnn_frontend) {
@@ -5171,11 +5178,22 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
   const bool is_unsupported_x32 =
       input_descriptor.layout() == dnn::kBatchDepthYX32;
 
-  const bool actually_use_cudnn_frontend = use_cudnn_frontend &&
-                                           !is_broken_identity_fused_conv &&
-                                           !is_unsupported_x32;
+  // cuDNN frontend support became sufficiently stable to use in 8.1.
+  // TODO(awpr): remove this condition once support for cuDNN 8.0 is dropped.
+  const bool is_pre_frontend_cudnn = CUDNN_VERSION < 8100;
+
+  const bool actually_use_cudnn_frontend =
+      use_cudnn_frontend && !is_pre_frontend_cudnn &&
+      !is_broken_identity_fused_conv && !is_unsupported_x32;
 
   if (use_cudnn_frontend && !actually_use_cudnn_frontend) {
+    const char* reason = "the current cuDNN version does not support it.";
+    if (is_unsupported_x32) {
+      reason = "Tx32 convolutions are unsupported.";
+    } else if (is_broken_identity_fused_conv) {
+      reason = "it uses an identity activation.";
+    }
+
     // This will happen once per unique conv configuration/shape that gets
     // affected (and not, for example, on every conv launch).  Confusion over
     // whether this has happened or not has repeatedly wasted a lot of time
@@ -5184,9 +5202,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
                << "  input: " << input_descriptor.ToString() << "\n"
                << "  filter: " << filter_descriptor.ToString() << "\n"
                << "  " << convolution_descriptor.ToString() << "\n"
-               << "  ... because "
-               << (is_unsupported_x32 ? "Tx32 convolutions are unsupported."
-                                      : "it uses an identity activation.");
+               << "  ... because " << reason;
   }
 
   if (input_type == dnn::DataType::kInt8 &&
