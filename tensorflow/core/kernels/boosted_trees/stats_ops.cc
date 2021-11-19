@@ -1460,6 +1460,12 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
                     "hessians must be a matrix, got a tensor of shape ",
                     hessians_t->shape().DebugString()));
     const auto hessians = hessians_t->matrix<float>();
+    OP_REQUIRES(
+        context, node_ids.size() == hessians.dimension(0),
+        errors::InvalidArgument(
+            "node_ids size should match 0th dim of hessians. node ids "
+            "size: ",
+            node_ids.size(), ", hessians dim0: ", hessians.dimension(0)));
     // bucketized_features
     OpInputList bucketized_features_list;
     OP_REQUIRES_OK(context, context->input_list("bucketized_features_list",
