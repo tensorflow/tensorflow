@@ -13,6 +13,7 @@ glob_lit_tests(
         "ccl.mlir": ["nomsan"],
         "cholesky.mlir": ["nomsan"],
         "common.mlir": ["nomsan"],
+        "convolution.mlir": ["nomsan"],
         "custom_call.mlir": ["nomsan"],
         "fusion.mlir": [
             "nomsan",
