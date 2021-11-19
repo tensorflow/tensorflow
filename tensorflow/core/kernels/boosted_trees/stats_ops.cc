@@ -1485,6 +1485,11 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
     // Partition by node, and then bucketize.
     for (int feature_idx = 0; feature_idx < num_features_; ++feature_idx) {
       const auto& features = bucketized_features_list[feature_idx].vec<int32>();
+      OP_REQUIRES(
+          context, features.size() == node_ids.size(),
+          errors::InvalidArgument("feature ", feature_idx,
+                                  " should have same size as node_ids, got ",
+                                  features.size(), " and ", node_ids.size()));
       for (int i = 0; i < batch_size; ++i) {
         const int32_t node = node_ids(i);
         const int32_t bucket = features(i);
