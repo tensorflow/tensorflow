@@ -1683,6 +1683,14 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
     int prev_instance = 0;
     int prev_f_dim = -1;
 
+    if (num_sparse_entries > 0) {
+      OP_REQUIRES(
+          context, feature_indices(0, 0) >= 0,
+          errors::InvalidArgument("feature_indices should be non-negative but "
+                                  "got feature_indices(0, 0)=",
+                                  feature_indices(0, 0)));
+    }
+
     for (int i = 0; i < num_sparse_entries; ++i) {
       // the instance number within a batch
       const int32_t instance = feature_indices(i, 0);
@@ -1690,7 +1698,11 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
                   errors::InvalidArgument("feature_indices(", i,
                                           "0) should be at most batch size (",
                                           batch_size, " but got ", instance));
-      DCHECK_GE(instance, prev_instance);
+      OP_REQUIRES(
+          context, instance >= prev_instance,
+          errors::InvalidArgument(
+              "feature_indices should be increasing but got feature_indices(",
+              i, ", 0) < ", prev_instance, " (feature_indices(", i - 1, "0))"));
       // the node id within a tree.
       const int32_t node_id = node_ids(instance);
       DCHECK_LE(node_id, max_splits_);
