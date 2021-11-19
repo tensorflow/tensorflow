@@ -1649,6 +1649,10 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
     const Tensor* feature_values_t;
     OP_REQUIRES_OK(context,
                    context->input("feature_values", &feature_values_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(feature_values_t->shape()),
+                errors::InvalidArgument(
+                    "feature_values must be a vector, received shape ",
+                    feature_values_t->shape().DebugString()));
     const auto feature_values = feature_values_t->vec<int32>();
 
     // feature shape.
