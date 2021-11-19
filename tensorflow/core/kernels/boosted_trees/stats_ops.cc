@@ -311,10 +311,14 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     OP_REQUIRES(context, l1_t->NumElements() == 1,
                 errors::InvalidArgument("l1 argument must be a scalar"));
     const auto l1 = l1_t->scalar<float>()();
-    DCHECK_GE(l1, 0);
+    OP_REQUIRES(context, l1 >= 0,
+                errors::InvalidArgument("l1 = ", l1, " but it should be >= 0"));
     if (logits_dim_ > 1) {
       // Multi-class L1 regularization not supported yet.
-      DCHECK_EQ(l1, 0);
+      OP_REQUIRES(
+          context, l1 == 0,
+          errors::InvalidArgument(
+              "l1 != 0 is not yet supported for multi-class regularization"));
     }
 
     const Tensor* l2_t;
