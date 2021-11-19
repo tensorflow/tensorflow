@@ -716,7 +716,11 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
                     "candidate_feature_ids must be a vector, received shape ",
                     candidate_feature_ids_t->shape().DebugString()));
     const auto candidate_feature_ids = candidate_feature_ids_t->vec<int32>();
-    DCHECK_EQ(candidate_feature_ids.size(), num_features_);
+    OP_REQUIRES(context, candidate_feature_ids.size() == num_features_,
+                errors::InvalidArgument(
+                    "Invalid candidate_feature_ids size, got ",
+                    candidate_feature_ids.size(),
+                    " but expected to match num_features ", num_features_));
 
     // L1, L2, tree_complexity, min_node_weight.
     const Tensor* l1_t;
