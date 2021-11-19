@@ -209,7 +209,7 @@ OwningRewritePatternList PatternsIncludeOps(
     // If the pattern is in include_ops then include it.
     bool include =
         !pat_op_name ||
-        include_ops.count(pat_op_name->getAbstractOperation()->typeID);
+        include_ops.count(pat_op_name->getRegisteredInfo()->getTypeID());
     if (include) to.add(std::move(pattern));
   }
 
