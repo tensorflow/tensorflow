@@ -1937,7 +1937,6 @@ tf_py_test(
         "no_windows",
         "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
-        "notap",  # TODO(b/206443120): Re-enable after flakiness resolved
         "notsan",  # TODO(b/149948895): Re-enable.
     ],
     deps = [
