@@ -1616,6 +1616,7 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
         errors::InvalidArgument("node_ids must be a vector, received shape ",
                                 node_ids_t->shape().DebugString()));
     const auto node_ids = node_ids_t->vec<int32>();
+    const auto num_nodes = node_ids_t->NumElements();
 
     // gradients.
     const Tensor* gradients_t;
@@ -1704,6 +1705,11 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
               "feature_indices should be increasing but got feature_indices(",
               i, ", 0) < ", prev_instance, " (feature_indices(", i - 1, "0))"));
       // the node id within a tree.
+      OP_REQUIRES(context, instance < num_nodes,
+                  errors::InvalidArgument("feature_indices(", i,
+                                          "0) is not a valid index in the "
+                                          "node_ids vector (must be less than ",
+                                          num_nodes, ", got ", instance, ")"));
       const int32_t node_id = node_ids(instance);
       DCHECK_LE(node_id, max_splits_);
       // the feature dimension.
