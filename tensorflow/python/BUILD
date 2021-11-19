@@ -208,6 +208,7 @@ py_library(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:_pywrap_python_op_gen",
+        "//tensorflow/python/framework:_test_metrics_util",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",

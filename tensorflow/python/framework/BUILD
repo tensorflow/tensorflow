@@ -1288,6 +1288,7 @@ py_library(
         "//tensorflow_estimator/python/estimator:__subpackages__",
     ],
     deps = [
+        ":_test_metrics_util",
         ":errors",
         ":for_generated_wrappers",
         ":gpu_util",
@@ -2115,6 +2116,17 @@ py_test(
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_test_metrics_util",
+    srcs = ["test_metrics_util.cc"],
+    module_name = "_test_metrics_util",
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -1036,6 +1037,12 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   if (executor_type.empty() && IsSingleThreadedExecutorCompatible(g.get())) {
     executor_type = "SINGLE_THREADED_EXECUTOR";
   }
+
+  metrics::IncrementTestCounter("flr_executor",
+                                (executor_type == "SINGLE_THREADED_EXECUTOR")
+                                    ? "single_threaded"
+                                    : "default");
+
   TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, *g, &exec));
   {
     // Guard item since it is already inserted in items_.

@@ -226,6 +226,10 @@ auto* tpu_variable_distribution_time_usecs = monitoring::Counter<0>::New(
     "at the start of a call to TPUExecute.  Timer starts at RunGraph "
     "invocation and ends when TPUExecute args are ready on the current task.");
 
+auto* test_counters =
+    monitoring::Counter<2>::New("/tensorflow/core/test_counters",
+                                "Counters used for testing.", "name", "label");
+
 }  // namespace
 
 monitoring::Counter<2>* GetGraphOptimizationCounter() {
@@ -458,6 +462,24 @@ void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs) {
 void RecordUnusedOutput(const string& op_name) {
   graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
 }
+
+void IncrementTestCounter(const string& name, const string& label) {
+  test_counters->GetCell(name, label)->IncrementBy(1);
+}
+
+const monitoring::CounterCell* TestCounter(const string& name,
+                                           const string& label) {
+  return test_counters->GetCell(name, label);
+}
+
+TestDelta::TestDelta(const string& name, const string& label)
+    : cell_(TestCounter(name, label)) {
+  Reset();
+}
+
+void TestDelta::Reset() { last_value_ = cell_->value(); }
+
+int64 TestDelta::Get() { return cell_->value() - last_value_; }
 
 }  // namespace metrics
 }  // namespace tensorflow
