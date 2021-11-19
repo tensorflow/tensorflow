@@ -654,7 +654,9 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
                                                 &stats_summaries_list));
 
     // Infer dimensions of a stats_summary.
-    DCHECK_GT(stats_summaries_list.size(), 0);
+    OP_REQUIRES(
+        context, stats_summaries_list.size() >= 0,
+        errors::InvalidArgument("Got an empty list for stats_summaries_list"));
     const int32_t feature_dims = stats_summaries_list[0].dim_size(1);
     // The last bucket is for default/missing value.
     const int32_t num_buckets = stats_summaries_list[0].dim_size(2) - 1;
