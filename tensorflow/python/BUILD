@@ -2869,6 +2869,7 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_cuda_asan",  # TODO(b/171511582): re-enable.
+        "no_windows",  #TODO(b/207035199): re-enable
     ],
     deps = [
         ":array_ops",
