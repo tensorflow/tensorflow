@@ -1720,7 +1720,8 @@ static void AddInstanceStatsToMap(
 // Add statistics to StatsPartitionMap for bucket_id ranging from
 // (start_instance, start_feature_dim) to (end_instance, end_feature_dim),
 // inclusive on start and end instances, exclusive on end feature dim.
-static void AddRangeStats(const int start_instance, const int end_instance,
+static void AddRangeStats(OpKernelContext* const context,
+                          const int start_instance, const int end_instance,
                           const int start_feature_dim,
                           const int end_feature_dim,
                           StatsPartitionMap* stats_map,
@@ -1903,8 +1904,8 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
       // Add statistics for the missing entries into default bucket.
       // The last bucket is default bucket.
       const int missing_entry_bucket = num_buckets_;
-      AddRangeStats(prev_instance, instance, prev_f_dim, f_dim, &stats_map,
-                    gradients, hessians, node_ids, feature_dims,
+      AddRangeStats(context, prev_instance, instance, prev_f_dim, f_dim,
+                    &stats_map, gradients, hessians, node_ids, feature_dims,
                     missing_entry_bucket, logits_dims, stats_dims);
       prev_instance = instance;
       prev_f_dim = f_dim;
@@ -1913,9 +1914,9 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
       AddInstanceStatsToMap(instance, f_dim, bucket_id, logits_dims, stats_dims,
                             &stats_map, gradients, hessians, node_ids);
     }
-    AddRangeStats(prev_instance, batch_size - 1, prev_f_dim, feature_dims,
-                  &stats_map, gradients, hessians, node_ids, feature_dims,
-                  num_buckets_, logits_dims, stats_dims);
+    AddRangeStats(context, prev_instance, batch_size - 1, prev_f_dim,
+                  feature_dims, &stats_map, gradients, hessians, node_ids,
+                  feature_dims, num_buckets_, logits_dims, stats_dims);
 
     // Serialize statistics info map to tensor output.
     const int64_t num_slots = stats_map.size() * stats_dims;
