@@ -106,6 +106,10 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
     const Tensor* min_node_weight_t;
     OP_REQUIRES_OK(context,
                    context->input("min_node_weight", &min_node_weight_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_node_weight_t->shape()),
+                errors::InvalidArgument(
+                    "min_node_weight must be a scalar, got a tensor of shape ",
+                    min_node_weight_t->shape().DebugString()));
     const auto min_node_weight = min_node_weight_t->scalar<float>()();
 
     // Allocate output lists of tensors:
