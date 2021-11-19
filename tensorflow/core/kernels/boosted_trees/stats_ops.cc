@@ -692,7 +692,10 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
         errors::InvalidArgument("split_types must be a vector, received shape ",
                                 split_types_t->shape().DebugString()));
     const auto split_types = split_types_t->vec<tstring>();
-    DCHECK_EQ(split_types.size(), num_features_);
+    OP_REQUIRES(context, split_types.size() == num_features_,
+                errors::InvalidArgument(
+                    "Invalid split_types size, got ", split_types.size(),
+                    " but expected to match num_features ", num_features_));
     // Validate.
     for (int i = 0; i < num_features_; ++i) {
       if (!(split_types(i) == kInequalitySplit ||
