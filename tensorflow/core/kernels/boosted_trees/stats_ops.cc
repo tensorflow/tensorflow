@@ -1616,6 +1616,10 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
     // gradients.
     const Tensor* gradients_t;
     OP_REQUIRES_OK(context, context->input("gradients", &gradients_t));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsMatrix(gradients_t->shape()),
+        errors::InvalidArgument("gradients must be a matrix, received shape ",
+                                gradients_t->shape().DebugString()));
     const auto gradients = gradients_t->matrix<float>();
 
     // hessians.
