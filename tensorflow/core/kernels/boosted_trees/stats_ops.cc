@@ -1692,6 +1692,11 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
     const int64_t stats_dims = logits_dims + hessians_dims;
     const int64_t num_sparse_entries = feature_indices_t->dim_size(0);
     const int32_t feature_dims = feature_shape(1);
+    OP_REQUIRES(context, num_features == num_sparse_entries,
+                errors::InvalidArgument(
+                    "Number of elements in feature_values must match number of "
+                    "sparse entries in feature_indices. Got ",
+                    num_features, " and ", num_sparse_entries));
     for (int i = 0; i < num_sparse_entries; ++i) {
       const int32_t f_dim = feature_indices(i, 1);
       OP_REQUIRES(
