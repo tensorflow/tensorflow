@@ -746,7 +746,8 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
         errors::InvalidArgument("l2 must be a scalar, got a tensor of shape ",
                                 l2_t->shape().DebugString()));
     const auto l2 = l2_t->scalar<float>()();
-    DCHECK_GE(l2, 0);
+    OP_REQUIRES(context, l2 >= 0,
+                errors::InvalidArgument("l2 = ", l2, " but it should be >= 0"));
     const Tensor* tree_complexity_t;
     OP_REQUIRES_OK(context,
                    context->input("tree_complexity", &tree_complexity_t));
