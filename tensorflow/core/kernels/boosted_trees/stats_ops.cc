@@ -1635,6 +1635,10 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
     const Tensor* feature_indices_t;
     OP_REQUIRES_OK(context,
                    context->input("feature_indices", &feature_indices_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(feature_indices_t->shape()),
+                errors::InvalidArgument(
+                    "feature_indices must be a matrix, received shape ",
+                    feature_indices_t->shape().DebugString()));
     const auto feature_indices = feature_indices_t->matrix<int32>();
 
     // feature values.
