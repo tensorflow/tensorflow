@@ -674,7 +674,11 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
     // Vector of stats_summaries; each element is stats for feature of shape
     // [max_splits, feature_dim, num_buckets, logits_dim + hessian_dim].
     std::vector<TTypes<float, 4>::ConstTensor> stats_summaries;
-    DCHECK_EQ(stats_summaries_list.size(), num_features_);
+    OP_REQUIRES(context, stats_summaries_list.size() == num_features_,
+                errors::InvalidArgument(
+                    "Invalid stats_summaries_list size, got ",
+                    stats_summaries_list.size(),
+                    " but expected to match num_features ", num_features_));
     stats_summaries.reserve(num_features_);
     for (const auto& tensor : stats_summaries_list) {
       stats_summaries.emplace_back(tensor.tensor<float, 4>());
