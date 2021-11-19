@@ -1099,6 +1099,11 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     const Tensor* stats_summary_shape_t;
     OP_REQUIRES_OK(
         context, context->input("stats_summary_shape", &stats_summary_shape_t));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(stats_summary_shape_t->shape()),
+        errors::InvalidArgument(
+            "stats_summary_shape must be a vector, got a tensor of shape ",
+            stats_summary_shape_t->shape().DebugString()));
     const auto stats_summary_shape = stats_summary_shape_t->vec<int32>();
     const int32_t num_buckets = stats_summary_shape(2) - 1;
     const int32_t stats_dims = stats_summary_shape(3);
