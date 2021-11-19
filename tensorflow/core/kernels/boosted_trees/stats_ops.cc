@@ -1408,6 +1408,10 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
     // node_ids
     const Tensor* node_ids_t;
     OP_REQUIRES_OK(context, context->input("node_ids", &node_ids_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(node_ids_t->shape()),
+                errors::InvalidArgument(
+                    "node_ids must be a vector, got a tensor of shape ",
+                    node_ids_t->shape().DebugString()));
     const auto node_ids = node_ids_t->vec<int32>();
     // gradients
     const Tensor* gradients_t;
