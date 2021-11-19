@@ -1078,6 +1078,11 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     const Tensor* stats_summary_indices_t;
     OP_REQUIRES_OK(context, context->input("stats_summary_indices",
                                            &stats_summary_indices_t));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsMatrix(stats_summary_indices_t->shape()),
+        errors::InvalidArgument(
+            "stats_summary_indices must be a matrix, got a tensor of shape ",
+            stats_summary_indices_t->shape().DebugString()));
     const auto stats_summary_indices = stats_summary_indices_t->matrix<int32>();
     const int32_t num_sparse_entries = stats_summary_indices_t->dim_size(0);
 
