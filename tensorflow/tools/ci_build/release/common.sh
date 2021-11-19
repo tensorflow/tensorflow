@@ -197,7 +197,7 @@ function install_ubuntu_pip_deps_novenv () {
   else
     REQUIREMENTS_FNAME="requirements_ubuntu.txt"
   fi
-  ${PIP_CMD} install --upgrade pip wheel auditwheel~=3.3.1
+  ${PIP_CMD} install --upgrade setuptools pip wheel auditwheel~=3.3.1
   ${PIP_CMD} install -r tensorflow/tools/ci_build/release/${REQUIREMENTS_FNAME}
   ${PIP_CMD} list
 
