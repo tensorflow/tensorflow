@@ -728,6 +728,10 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
     const Tensor* tree_complexity_t;
     OP_REQUIRES_OK(context,
                    context->input("tree_complexity", &tree_complexity_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(tree_complexity_t->shape()),
+                errors::InvalidArgument(
+                    "tree_complexity must be a scalar, got a tensor of shape ",
+                    tree_complexity_t->shape().DebugString()));
     const auto tree_complexity = tree_complexity_t->scalar<float>()();
     const Tensor* min_node_weight_t;
     OP_REQUIRES_OK(context,
