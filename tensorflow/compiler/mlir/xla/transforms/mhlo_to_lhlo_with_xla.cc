@@ -1109,7 +1109,7 @@ Status SetupCommonCollectiveOpAttributes(OpT op, const HloInstruction* instr,
   auto* collective = xla::Cast<xla::HloCollectiveInstruction>(instr);
   auto replica_groups_attr = xla::HloFunctionImporter::ConvertReplicaGroups(
       collective->replica_groups(), &builder);
-  op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
+  op->setAttr(replica_groups_attr.getName(), replica_groups_attr.getValue());
   op.constrain_layoutAttr(builder.getBoolAttr(collective->constrain_layout()));
   SetupChannelIdAttribute(op, collective, builder);
   return Status::OK();
@@ -1231,8 +1231,8 @@ LhloDialectEmitter::EmitCollectivePermuteOp(const HloInstruction* instr) {
   mlir::NamedAttribute source_target_pairs_attr =
       xla::HloFunctionImporter::ConvertSourceTargetPairs(
           permute->source_target_pairs(), &builder_);
-  permute_op->setAttr(source_target_pairs_attr.first,
-                      source_target_pairs_attr.second);
+  permute_op->setAttr(source_target_pairs_attr.getName(),
+                      source_target_pairs_attr.getValue());
   return permute_op;
 }
 

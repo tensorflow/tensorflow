@@ -562,7 +562,7 @@ class FallbackBatchFunctionOpConversion
 
     llvm::SmallVector<NamedAttribute, 12> attr_array;
     for (auto &key_and_value : op->getAttrs()) {
-      StringRef name = key_and_value.first;
+      StringRef name = key_and_value.getName();
       if (name == "_output_shapes" || name == "f") {
         continue;
       }

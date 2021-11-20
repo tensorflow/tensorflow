@@ -1292,11 +1292,11 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
 
   for (int i = 0; i < func.getNumArguments(); i++) {
     for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
-      TF_RET_CHECK(attr.first == "lmhlo.params" ||
-                   attr.first == "lmhlo.param_shape_index" ||
-                   attr.first == "lmhlo.constant_name" ||
-                   attr.first == "lmhlo.must_alias" ||
-                   attr.first == "lmhlo.output_index");
+      TF_RET_CHECK(attr.getName() == "lmhlo.params" ||
+                   attr.getName() == "lmhlo.param_shape_index" ||
+                   attr.getName() == "lmhlo.constant_name" ||
+                   attr.getName() == "lmhlo.must_alias" ||
+                   attr.getName() == "lmhlo.output_index");
     }
   }
 

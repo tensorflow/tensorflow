@@ -65,7 +65,7 @@ SmallVector<NamedAttribute> PruneAttributeList(OpTy op) {
   elided_attrs.insert(op_attributes.begin(), op_attributes.end());
   SmallVector<NamedAttribute> preserved_attrs;
   for (auto attr : op->getAttrs()) {
-    if (elided_attrs.count(attr.first)) continue;
+    if (elided_attrs.count(attr.getName())) continue;
     preserved_attrs.push_back(attr);
   }
   return preserved_attrs;

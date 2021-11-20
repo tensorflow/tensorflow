@@ -259,7 +259,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       mlir::Operation* new_operation =
           func_builder->create<mlir::mhlo::ConstOp>(loc, attr.ValueOrDie());
       for (auto attr : attributes) {
-        new_operation->setAttr(attr.first, attr.second);
+        new_operation->setAttr(attr.getName(), attr.getValue());
       }
       return new_operation;
     }

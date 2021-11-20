@@ -439,9 +439,9 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
   if (!frontend_attributes_dict) return frontend_attributes;
 
   for (const auto& attr : frontend_attributes_dict)
-    if (auto value_str_attr = attr.second.dyn_cast<mlir::StringAttr>())
+    if (auto value_str_attr = attr.getValue().dyn_cast<mlir::StringAttr>())
       frontend_attributes.mutable_map()->insert(
-          {attr.first.str(), value_str_attr.getValue().str()});
+          {attr.getName().str(), value_str_attr.getValue().str()});
 
   return frontend_attributes;
 }

@@ -289,7 +289,7 @@ void FindCalleesRecursive(const mlir::SymbolTable &symbol_table,
   func.walk([&](mlir::Operation *op) {
     for (const auto &named_attr : op->getAttrs()) {
       if (auto symbol_attr =
-              named_attr.second.dyn_cast<mlir::FlatSymbolRefAttr>()) {
+              named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
         auto symbol = symbol_attr.getValue();
         if (!callees.contains(symbol)) {
           callees.insert(symbol);

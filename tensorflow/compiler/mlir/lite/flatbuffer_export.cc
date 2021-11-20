@@ -253,15 +253,15 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
     for (auto& named_attr : inst->getAttrDictionary()) {
       os << (!first ? ", " : "");
       first = false;
-      os << named_attr.first.getValue() << " = ";
-      if (auto element_attr = named_attr.second.dyn_cast<ElementsAttr>()) {
+      os << named_attr.getName().getValue() << " = ";
+      if (auto element_attr = named_attr.getValue().dyn_cast<ElementsAttr>()) {
         if (element_attr.getNumElements() <= kLargeElementsAttr) {
           element_attr.print(os);
         } else {
           os << "<large>";
         }
       } else {
-        named_attr.second.print(os);
+        named_attr.getValue().print(os);
       }
     }
     os << "}";
@@ -1551,8 +1551,8 @@ Translator::CreateMetadataVector() {
   std::vector<BufferOffset<tflite::Metadata>> metadata;
   if (dict_attr) {
     for (const auto& named_attr : dict_attr) {
-      StringRef name = named_attr.first;
-      mlir::Attribute attr = named_attr.second;
+      StringRef name = named_attr.getName();
+      mlir::Attribute attr = named_attr.getValue();
       if (auto content = attr.dyn_cast<StringAttr>()) {
         metadata.push_back(BuildMetadata(name, content.getValue()));
       } else {
@@ -1604,8 +1604,8 @@ std::vector<std::string> GetStringsFromDictionaryAttr(
 
     auto attrs = arg_attr.getValue();
     for (const auto attr : attrs) {
-      if (attr.first.str() == attr_name) {
-        auto array_attr = attr.second.dyn_cast_or_null<mlir::ArrayAttr>();
+      if (attr.getName().str() == attr_name) {
+        auto array_attr = attr.getValue().dyn_cast_or_null<mlir::ArrayAttr>();
         if (!array_attr || array_attr.empty()) continue;
         auto string_attr = array_attr[0].dyn_cast_or_null<mlir::StringAttr>();
         if (!string_attr) continue;

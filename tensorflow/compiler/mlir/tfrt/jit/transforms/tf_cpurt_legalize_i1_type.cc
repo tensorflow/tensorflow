@@ -91,7 +91,7 @@ static bool isLegalType(const Type type) {
 }
 
 static bool isLegalAttribute(NamedAttribute attr) {
-  if (auto int_attr = attr.second.dyn_cast<DenseIntElementsAttr>()) {
+  if (auto int_attr = attr.getValue().dyn_cast<DenseIntElementsAttr>()) {
     // Only RankedTensorType is expected.
     ShapedType shaped_type = int_attr.getType();
     if (!shaped_type.isa<RankedTensorType>()) return true;
@@ -105,7 +105,7 @@ static bool isLegalAttribute(NamedAttribute attr) {
 
 static NamedAttribute convertAttribute(NamedAttribute attr,
                                        ConversionPatternRewriter &rewriter) {
-  if (auto int_attr = attr.second.dyn_cast<DenseIntElementsAttr>()) {
+  if (auto int_attr = attr.getValue().dyn_cast<DenseIntElementsAttr>()) {
     ShapedType shaped_type = int_attr.getType();
     // Only RankedTensorType is expected.
     if (!shaped_type.isa<RankedTensorType>()) return attr;
@@ -121,8 +121,8 @@ static NamedAttribute convertAttribute(NamedAttribute attr,
 
     auto i8_tensor_type =
         RankedTensorType::get(shaped_type.getShape(), rewriter.getI8Type());
-    return std::make_pair(
-        attr.first, DenseElementsAttr::get(i8_tensor_type, new_i8_values));
+    return NamedAttribute(
+        attr.getName(), DenseElementsAttr::get(i8_tensor_type, new_i8_values));
   }
 
   // TODO(diegocaballero): Add support for TypeAttr if/when we have a use case.

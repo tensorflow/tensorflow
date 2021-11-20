@@ -538,7 +538,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   }
 
   for (const auto& attr : op_->getAttrs()) {
-    if (attr.second.isa<SymbolRefAttr>()) {
+    if (attr.getValue().isa<SymbolRefAttr>()) {
       return op_->emitRemark()
              << "ops with symbol references are not supported";
     }
