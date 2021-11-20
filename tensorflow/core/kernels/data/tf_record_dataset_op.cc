@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tf_record_dataset_op.h"
 
+#include "tensorflow/core/data/file_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -246,8 +247,10 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       }
 
       // Actually move on to next file.
-      const string& next_filename = dataset()->filenames_[current_file_index_];
-      TF_RETURN_IF_ERROR(env->NewRandomAccessFile(next_filename, &file_));
+      TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
+          file_utils::TranslateFileName(
+              dataset()->filenames_[current_file_index_]),
+          &file_));
       reader_ = absl::make_unique<io::SequentialRecordReader>(
           file_.get(), dataset()->options_);
       return Status::OK();
