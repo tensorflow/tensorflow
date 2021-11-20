@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/ops_util.h"
@@ -79,9 +80,12 @@ class WhereOp : public XlaOpKernel {
 
     xla::XlaOp result = xla::ConcatInDim(ctx->builder(), to_concat, 1);
     result = xla::ConvertElementType(result, ctx->output_xla_type(0));
+
     // Dynamic padder will handle the dynamic dimension.
-    xla::XlaOp result_padded = xla::SetDimensionSize(result, length, 0);
-    ctx->SetOutput(0, result_padded);
+    StatusOr<xla::XlaOp> result_padded = xla::SetDimensionSizeWithRebound(
+        &ctx->value_inference(), result, length, 0);
+    OP_REQUIRES_OK(ctx, result_padded.status());
+    ctx->SetOutput(0, *result_padded);
   }
 };
 
