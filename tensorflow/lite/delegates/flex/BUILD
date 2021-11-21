@@ -291,12 +291,18 @@ cc_library(
 tf_cc_test(
     name = "kernel_test",
     size = "small",
-    srcs = ["kernel_test.cc"],
+    srcs = [
+        "kernel.h",
+        "kernel_test.cc",
+    ],
     tags = ["no_gpu"],  # GPU + flex is not officially supported.
     deps = [
         ":delegate",
         ":delegate_data",
         ":test_util",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_googletest//:gtest_main",
     ],

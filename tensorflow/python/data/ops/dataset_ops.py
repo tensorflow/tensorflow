@@ -5103,7 +5103,7 @@ class PaddedBatchDataset(UnaryDataset):
 
     # If padding_values is a single element and input_shapes is a structure,
     # "broadcast" padding_values to the same structure as input_shapes.
-    if nest.is_sequence(input_shapes) and not nest.is_sequence(padding_values):
+    if nest.is_nested(input_shapes) and not nest.is_nested(padding_values):
       padding_values = nest.map_structure(lambda _: padding_values,
                                           input_shapes)
 

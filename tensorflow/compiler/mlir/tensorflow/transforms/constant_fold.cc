@@ -113,7 +113,7 @@ LogicalResult ConstantFoldFallbackHook(
   if (has_empty_numerical_results &&
       // TODO(jpienaar): Remove this once some unmodeled op behavior is
       // addressed.
-      inst->getAbstractOperation()) {
+      inst->isRegistered()) {
     for (Type ty : inst->getResultTypes()) {
       auto shaped_ty = ty.cast<ShapedType>();
       results.push_back(

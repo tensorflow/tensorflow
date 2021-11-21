@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -103,7 +104,7 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
 }
 
 StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
-    const GpuConvConfig& config, se::Stream* stream) {
+    const GpuConvConfig& config, se::Stream* stream, bool use_cudnn_frontend) {
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
                       GetDNNConvKindFromCudnnConvKind(config.kind));
 
@@ -127,7 +128,7 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
       }
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
       TF_RETURN_IF_ERROR(stream_exec->GetFusedConvolveRunners(
-          /* use_cudnn_frontend = */ false,
+          use_cudnn_frontend,
           // This refers to the kind of convolution op inside the fusion, not
           // the whole fused graph.
           se::dnn::ConvolutionKind::FORWARD, input_type,
@@ -154,8 +155,8 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
       TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
-          /* use_cudnn_frontend = */ false, kind, input_type, output_type,
-          stream, config.input_descriptor,
+          use_cudnn_frontend, kind, input_type, output_type, stream,
+          config.input_descriptor,
           /* input_data = */ DeviceMemoryBase(nullptr),
           config.filter_descriptor,
           /* filter_data = */ DeviceMemoryBase(nullptr),
@@ -473,8 +474,14 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
+  const bool cudnn_frontend_enabled = instr->parent()
+                                          ->parent()
+                                          ->config()
+                                          .debug_options()
+                                          .xla_gpu_enable_cudnn_frontend();
+
   TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> runners,
-                      GetAlgorithms(config, stream));
+                      GetAlgorithms(config, stream, cudnn_frontend_enabled));
 
   for (auto& runner_cache : runners) {
     auto alg = runner_cache.ToAlgorithmDesc();
@@ -509,7 +516,13 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     // ALGO_IMPLICIT_PRECOMP_GEMM does the right thing. Other algorithms
     // silently do Relu. See
     // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
-    if (kind == CudnnConvKind::kForwardActivation &&
+    //
+    // For cuDNN Frontend, there is no way to check whether we're using a broken
+    // algorithm, so on versions where some algorithms are broken, we don't use
+    // the cuDNN Frontend for these convs at all.  As such, if we get a
+    // frontend-based runner, we can be sure it's not one of the broken
+    // algorithms we're checking for.
+    if (!alg.is_cudnn_frontend() && kind == CudnnConvKind::kForwardActivation &&
         backend_config.activation_mode() == se::dnn::ActivationMode::kNone &&
         alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
       set_failure(AutotuneResult::DISQUALIFIED,

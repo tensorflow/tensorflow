@@ -43,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -85,7 +86,11 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testFromDatasetIdOmitsCompression(self, compression):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.from_tensor_slices(
-        list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+        list("abcdefghijklmnopqrstuvwxyz"))
+    def to_upper(x):
+      return script_ops.numpy_function(
+          func=lambda x: x.decode("utf-8").upper(), inp=[x], Tout=dtypes.string)
+    dataset = dataset.map(to_upper, num_parallel_calls=dataset_ops.AUTOTUNE)
     with mock.patch.object(compat, "forward_compatible", return_value=True):
       dataset_id = data_service_ops.register_dataset(
           cluster.dispatcher.target, dataset=dataset, compression=compression)

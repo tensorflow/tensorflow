@@ -59,10 +59,12 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     baseline_abs, test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Abs, DT_INT8, DT_INT8, baseline_abs,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Abs, DT_INT16, DT_INT16, baseline_abs,
                       test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
 
 /// Test `tf.Acos`.
 
@@ -852,6 +854,7 @@ GENERATE_DEFAULT_TEST_2(Relu, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_relu, test::OpsTestConfig())
 
 // Test the JIT-compiled kernels.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Relu, DT_INT8, DT_INT8, baseline_relu,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Relu, DT_INT16, DT_INT16, baseline_relu,
@@ -866,6 +869,7 @@ GENERATE_DEFAULT_TEST(Relu, DT_UINT32, DT_UINT32, baseline_relu,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Relu, DT_UINT64, DT_UINT64, baseline_relu,
                       test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
 
 /// Test `tf.Rint`.
 
@@ -876,6 +880,7 @@ T baseline_rint(T x) {
 }
 
 // Test the JIT-compiled kernel.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST_2(Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_rint,
                         test::OpsTestConfig().ExpectStrictlyEqual())
@@ -904,6 +909,7 @@ TEST_F(UnaryOpsTest, RintWithCache) {
 
   if (original_env != nullptr) setenv(kTFJitCacheDirEnvVar, original_env, 1);
 }
+#endif
 
 GENERATE_DEFAULT_TEST(Rint, DT_FLOAT, DT_FLOAT, baseline_rint,
                       test::OpsTestConfig().ExpectStrictlyEqual())
@@ -1028,10 +1034,12 @@ GENERATE_DEFAULT_TEST(Sign, DT_COMPLEX128, DT_COMPLEX128, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Sign, DT_INT8, DT_INT8, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Sign, DT_INT16, DT_INT16, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
 
 /// Test `tf.Sin`.
 
@@ -1182,6 +1190,7 @@ GENERATE_DEFAULT_TEST(ZerosLike, DT_INT64, DT_INT64, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(ZerosLike, DT_INT8, DT_INT8, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(ZerosLike, DT_INT16, DT_INT16, baseline_zeros_like,
@@ -1194,6 +1203,7 @@ GENERATE_DEFAULT_TEST(ZerosLike, DT_UINT32, DT_UINT32, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(ZerosLike, DT_UINT64, DT_UINT64, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
 
 }  // namespace
 }  // namespace tensorflow

@@ -126,46 +126,55 @@ struct RemoveRedundantCstrReshapable final
         shapeComponentAnalysis.dimensionsForShapeTensor(op.dynamic_shape());
     if (!dynShapeDims) return failure();
 
-    // If any of the dynamic shape's dimensions may be -1, we cannot do
-    // anything.
-    // TODO(frgossen): We can still eliminate the constraint if there is exactly
-    // one -1 and the remaining factors are a subset of the factors for the
-    // number of elements.
-    if (llvm::any_of(*dynShapeDims, [](const auto &d) {
-          return !d.isKnownNotNegativeOne();
-        })) {
-      return failure();
+    // We can handle two cases:
+    //   - there is exactly one -1 in the dynamic shape, i.e. a unique wildcard
+    //     dimension, or
+    //   - there is no -1 in the dynamic shape, i.e. no wildcard dimension.
+    bool unique_wildcard_dimension = false;
+    for (const auto &d : *dynShapeDims) {
+      if (d.isConstant(-1)) {
+        if (unique_wildcard_dimension) return failure();
+        unique_wildcard_dimension = true;
+      } else if (!d.isKnownNotNegativeOne()) {
+        return failure();
+      }
     }
 
-    // We can only handle simple products with constants and symbols.
-    SmallVector<AffineSymbolExpr> symbolicFactors;
+    // We can only handle simple products with constants and symbols. Find all
+    // the factors based on the number of elements.
+    SmallVector<AffineSymbolExpr> remainingSymbolicFactorsNumElems;
     int64_t concreteProductNumElems = 1;
     if (!IsSimpleProduct(numElementsDim.expr, &concreteProductNumElems,
-                         &symbolicFactors)) {
+                         &remainingSymbolicFactorsNumElems)) {
       return failure();
     }
+    assert(concreteProductNumElems >= 1 &&
+           "number of elements cannot entail negative or zero factors");
 
     // Find all factors based on the dynamic shape.
     //   - Accumulate the conrete product to later compare it against its
     //     equivalent based on the number of elements.
     //   - Remove symbolic factors from the list and fail if we find an unknown
-    //     factor or a factor remains in the list, i.e. if the sets of symbolic
-    //     factors differ.
+    //     factor, i.e. if the symbolic factors based on the dynamic shape are
+    //     not a subset of the factors based on the number of elements.
     int64_t concreteProductDynShape = 1;
     for (auto d : *dynShapeDims) {
       if (auto constExpr = d.expr.dyn_cast<AffineConstantExpr>()) {
-        concreteProductDynShape *= constExpr.getValue();
+        if (constExpr.getValue() != -1)
+          concreteProductDynShape *= constExpr.getValue();
         continue;
       }
       if (auto symExpr = d.expr.dyn_cast<AffineSymbolExpr>()) {
         auto symDynShape = d.symbols[symExpr.getPosition()];
         bool isFactorInBothProducts = false;
-        for (int i = 0; i < symbolicFactors.size(); ++i) {
+        for (int i = 0; i < remainingSymbolicFactorsNumElems.size(); ++i) {
           auto symNumElements =
-              numElementsDim.symbols[symbolicFactors[i].getPosition()];
+              numElementsDim
+                  .symbols[remainingSymbolicFactorsNumElems[i].getPosition()];
           if (symDynShape == symNumElements) {
-            symbolicFactors[i] = symbolicFactors.back();
-            symbolicFactors.pop_back();
+            remainingSymbolicFactorsNumElems[i] =
+                remainingSymbolicFactorsNumElems.back();
+            remainingSymbolicFactorsNumElems.pop_back();
             isFactorInBothProducts = true;
             break;
           }
@@ -175,14 +184,22 @@ struct RemoveRedundantCstrReshapable final
       }
       return failure();
     }
+    assert(concreteProductDynShape >= 1 &&
+           "concrete product must not aggregate negative or zero factors");
 
-    // If symbolic factors remain, we cannot prove the products to be equal.
-    if (!symbolicFactors.empty()) return failure();
+    if (unique_wildcard_dimension) {
+      // The wildcard dimension subsumes the remaining symbolic factors and
+      // potentially also a concrete factor.
+      if (concreteProductNumElems % concreteProductDynShape != 0)
+        return failure();
+      rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
+      return success();
+    }
 
-    // The products can only differ in the concrete factors at this point, which
-    // we can evaluate statically.
-    bool productsEq = concreteProductNumElems == concreteProductDynShape;
-    rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, productsEq);
+    // W/o a wildcard, the symbolic and concrete products must be equal.
+    bool isReshapable = remainingSymbolicFactorsNumElems.empty() &&
+                        concreteProductNumElems == concreteProductDynShape;
+    rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, isReshapable);
     return success();
   }
   bool IsSimpleProduct(

@@ -1639,6 +1639,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     for _ in range(2):
       _create_and_delete_variable()
       checker.record_snapshot()
+    checker.stop()
     checker.report()
     checker.assert_no_leak_if_all_possibly_except_one()
 

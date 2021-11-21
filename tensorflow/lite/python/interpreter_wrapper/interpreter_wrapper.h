@@ -44,8 +44,6 @@ class InterpreterWrapper {
  public:
   using Model = FlatBufferModel;
 
-  static constexpr int kUndeterminedSubgraphIndex = -1;
-
   // SWIG caller takes ownership of pointer.
   static InterpreterWrapper* CreateWrapperCPPFromFile(
       const char* model_path, int op_resolver_id,

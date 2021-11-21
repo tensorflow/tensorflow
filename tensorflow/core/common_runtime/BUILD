@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "if_libtpu",
     "tf_cc_test",
     "tf_cc_test_mkl",
@@ -50,7 +51,13 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    features = ["-layering_check"],
+    features = if_google(
+        [
+            "-layering_check",
+            "-parse_headers",
+        ],
+        ["-layering_check"],
+    ),
     licenses = ["notice"],
 )
 

@@ -26,7 +26,33 @@ enabled = False
 
 @tf_export("profiler.experimental.Trace", v1=[])
 class Trace(object):
+<<<<<<< HEAD
     """Context manager that generates a trace event in the profiler.
+=======
+  """Context manager that generates a trace event in the profiler.
+
+  A trace event will start when entering the context, and stop and save the
+  result to the profiler when exiting the context. Open TensorBoard Profile tab
+  and choose trace viewer to view the trace event in the timeline.
+
+  Trace events are created only when the profiler is enabled. More information
+  on how to use the profiler can be found at
+  https://tensorflow.org/guide/profiler
+
+  Example usage:
+  ```python
+  tf.profiler.experimental.start('logdir')
+  for step in range(num_steps):
+    # Creates a trace event for each training step with the step number.
+    with tf.profiler.experimental.Trace("Train", step_num=step, _r=1):
+      train_fn()
+  tf.profiler.experimental.stop()
+  ```
+  """
+
+  def __init__(self, name, **kwargs):
+    """Creates a trace event in the profiler.
+>>>>>>> e948532a7253ddab639ee688e0c66dad5075c8c1
 
     A trace event will start when entering the context, and stop and save the
     result to the profiler when exiting the context. Open TensorBoard Profile tab

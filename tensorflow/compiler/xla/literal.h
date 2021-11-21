@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -260,7 +261,7 @@ class LiteralBase {
   }
 
   // Compute a hash for this literal.
-  size_t Hash() const;
+  size_t Hash(int64_t byte_limit = std::numeric_limits<int64_t>::max()) const;
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.

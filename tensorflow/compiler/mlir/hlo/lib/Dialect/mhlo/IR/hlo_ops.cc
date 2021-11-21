@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <set>
 #include <unordered_map>
 #include <utility>
@@ -246,6 +247,101 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
   assert(type && "unsupported attribute type for building mhlo.constant");
   result.types.push_back(type);
   result.addAttribute("value", value);
+}
+
+//===----------------------------------------------------------------------===//
+// CustomCallOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(CustomCallOp op) {
+  // If both operand and result layout attributes are not specified then nothing
+  // to verify.
+  if (!op.operand_layouts().hasValue() && !op.result_layouts().hasValue())
+    return success();
+
+  // Layout constraints for either both operands & results or none should be
+  // specified.
+  if (op.operand_layouts().hasValue() != op.result_layouts().hasValue())
+    return op.emitOpError() << "Layout attributes should be specified for "
+                               "either both operands and results or none.";
+
+  // Helper function to verify types and the corresponding layouts.
+  auto verify_types_and_layouts =
+      [&op](TypeRange types, mlir::ArrayAttr layouts,
+            const std::string& value_name) -> LogicalResult {
+    if (types.size() != layouts.size())
+      return op.emitOpError()
+             << "Number of " << value_name << "s must match the number of "
+             << value_name << " layouts, " << types.size()
+             << " != " << layouts.size();
+
+    for (const auto& indexed_type_and_layout :
+         llvm::enumerate(llvm::zip(types, layouts))) {
+      // Get index for more descriptive error message.
+      auto index = indexed_type_and_layout.index();
+
+      auto type = std::get<0>(indexed_type_and_layout.value());
+      auto layout = std::get<1>(indexed_type_and_layout.value())
+                        .cast<DenseIntElementsAttr>();
+
+      if (type.isa<TupleType>())
+        return op.emitOpError() << "Tuple types are not fully supported with "
+                                   "layout constraints yet";
+      auto tensor_type = type.dyn_cast<TensorType>();
+
+      // For non-tensor types such as !mhlo.token, the layout should be empty.
+      if (!tensor_type) {
+        if (layout.empty()) continue;
+        return op.emitOpError()
+               << "Only tensor types can have non-empty layout: " << value_name
+               << " #" << index << " of type " << type << " has layout "
+               << layout;
+      }
+
+      // For unranked tensors, we cannot verify the compatibility with layout
+      // any further.
+      if (!tensor_type.hasRank()) continue;
+
+      // Layout must be a permutation of [0, N) where N is the rank of the
+      // tensor type.
+      std::vector<int64_t> range(tensor_type.getRank());
+      std::iota(range.begin(), range.end(), 0);
+      if (tensor_type.getRank() != layout.size() ||
+          !std::is_permutation(range.begin(), range.end(), layout.begin()))
+        return op.emitOpError()
+               << "incorrect layout " << layout << " for type " << type
+               << ", layout must be a permutation of [0, "
+               << tensor_type.getRank() << ")";
+    }
+    return success();
+  };
+
+  // At this point both `operand_layouts` and `result_layouts` are defined.
+  ArrayAttr operand_layouts = op.operand_layouts().getValue();
+  ArrayAttr result_layouts = op.result_layouts().getValue();
+
+  // Full support for layouts for arbitrary nesting of tuples is not
+  // supported yet.
+  //
+  // If result does not have any tuples, then i-th element of `result_layouts`
+  // specifies the layout constraints on i-th result.
+  //
+  // For the common case of a single tuple result packing non-tuple values, the
+  // i-th element of `result_layouts` specifies layout for i-th element of the
+  // result tuple.
+  TypeRange result_types;
+  if (op->getNumResults() == 1 && op->getResult(0).getType().isa<TupleType>())
+    result_types = op->getResult(0).getType().cast<TupleType>().getTypes();
+  else
+    result_types = op->getResultTypes();
+
+  // Verify that operands and operand layouts match.
+  if (failed(verify_types_and_layouts(op->getOperandTypes(), operand_layouts,
+                                      "operand")))
+    return failure();
+
+  // Verify that results and result layouts match.
+  return verify_types_and_layouts(result_types, result_layouts, "result");
 }
 
 //===----------------------------------------------------------------------===//

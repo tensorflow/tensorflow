@@ -102,8 +102,8 @@ mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,
 
   llvm::SmallVector<mlir::Attribute, 4> op_attr_array;
   for (const auto &key_value : op_attrs) {
-    auto key = builder.getStringAttr(key_value.first.strref());
-    auto value = key_value.second;
+    auto key = key_value.getName();
+    auto value = key_value.getValue();
     op_attr_array.push_back(builder.getArrayAttr({key, value}));
   }
 
@@ -114,8 +114,8 @@ mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,
   if (options.has_func_attr) {
     llvm::SmallVector<mlir::Attribute, 4> op_func_attr_array;
     for (const auto &key_value : op_func_attrs) {
-      auto key = builder.getStringAttr(key_value.first.strref());
-      auto value = key_value.second;
+      auto key = key_value.getName();
+      auto value = key_value.getValue();
       op_func_attr_array.push_back(builder.getArrayAttr({key, value}));
     }
 

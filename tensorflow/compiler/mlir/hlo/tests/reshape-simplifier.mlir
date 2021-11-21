@@ -65,7 +65,8 @@ func @compute_reshape_shape(%arg0: tensor<2xi32>, %arg1: index) -> tensor<2xi32>
 // -----
 
 // CHECK-LABEL: @redundant_cstr_reshapable
-func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>) -> !shape.witness {
+func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
+    -> !shape.witness {
   // CHECK: %[[WITNESS:.*]] = shape.const_witness true
   // CHECK: return %[[WITNESS]] : !shape.witness
   %c0 = arith.constant 0 : index
@@ -78,6 +79,68 @@ func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>) -> !shape.witness 
   %s1_ = tensor.from_elements %dim02, %dim00, %c512 : tensor<3xindex>
   %s1 = arith.index_cast %s1_ : tensor<3xindex> to tensor<3xi32>
   %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<3xi32>
+  return %w : !shape.witness
+}
+
+// -----
+
+// CHECK-LABEL: @redundant_cstr_reshapable
+func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
+    -> !shape.witness {
+  // CHECK: %[[WITNESS:.*]] = shape.const_witness true
+  // CHECK: return %[[WITNESS]] : !shape.witness
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c128 = arith.constant 128 : i32
+  %cminus1 = arith.constant -1 : i32
+  %s0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
+  %n0 = shape.num_elements %s0 : tensor<4xindex> -> index
+  %dim02 = tensor.dim %arg0, %c2 : tensor<?x8x?x64xf32>
+  %dim02_ = arith.index_cast %dim02 : index to i32
+  %s1 = tensor.from_elements %dim02_, %cminus1, %c128 : tensor<3xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<3xi32>
+  return %w : !shape.witness
+}
+
+// -----
+
+// CHECK-LABEL: @nonredundant_cstr_reshapable
+func @nonredundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
+    -> !shape.witness {
+  // CHECK: %[[WITNESS:.*]] = mhlo.cstr_reshapable %{{.*}}, %{{.*}}
+  // CHECK: return %[[WITNESS]] : !shape.witness
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c42 = arith.constant 42 : i32
+  %cminus1 = arith.constant -1 : i32
+  %s0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
+  %n0 = shape.num_elements %s0 : tensor<4xindex> -> index
+  %dim02 = tensor.dim %arg0, %c2 : tensor<?x8x?x64xf32>
+  %dim02_ = arith.index_cast %dim02 : index to i32
+  %s1 = tensor.from_elements %dim02_, %cminus1, %c42 : tensor<3xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<3xi32>
+  return %w : !shape.witness
+}
+
+// -----
+
+// CHECK-LABEL: @redundant_cstr_reshapable
+func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
+    -> !shape.witness {
+  // CHECK: %[[WITNESS:.*]] = shape.const_witness true
+  // CHECK: return %[[WITNESS]] : !shape.witness
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c64 = arith.constant 64 : i32
+  %cminus1 = arith.constant -1 : i32
+  %s0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
+  %n0 = shape.num_elements %s0 : tensor<4xindex> -> index
+  %dim00 = tensor.dim %arg0, %c0 : tensor<?x8x?x64xf32>
+  %dim02 = tensor.dim %arg0, %c2 : tensor<?x8x?x64xf32>
+  %dim00_ = arith.index_cast %dim00 : index to i32
+  %dim02_ = arith.index_cast %dim02 : index to i32
+  %s1 = tensor.from_elements %dim02_, %dim00_ , %c64, %cminus1 : tensor<4xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<4xi32>
   return %w : !shape.witness
 }
 

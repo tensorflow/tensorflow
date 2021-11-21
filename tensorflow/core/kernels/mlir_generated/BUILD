@@ -374,9 +374,8 @@ tf_kernel_library(
 tf_kernel_library(
     name = "gpu_constant_op",
     srcs = if_mlir_generated_gpu_kernels_enabled([
-        "gpu_op_zeros_like.cc",
-    ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_ones_like.cc",
+        "gpu_op_zeros_like.cc",
     ]),
     copts = if_mlir_generated_experimental_kernels_enabled([
         "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
@@ -384,10 +383,9 @@ tf_kernel_library(
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
+        ":gpu_ones_like_kernels",
         ":gpu_zeros_like_kernels",
         "//third_party/eigen3",
-    ]) + if_mlir_generated_experimental_kernels_enabled([
-        ":gpu_ones_like_kernels",
     ]),
 )
 

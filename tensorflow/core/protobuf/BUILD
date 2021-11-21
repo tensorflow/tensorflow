@@ -6,6 +6,10 @@
 
 # For platform specific build config
 load(
+    "//tensorflow:tensorflow.bzl",
+    "if_google",
+)
+load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
@@ -18,6 +22,7 @@ package(
         "//tensorflow/core:__subpackages__",
         "//tensorflow_models:__subpackages__",
     ],
+    features = if_google(["-parse_headers"]),
     licenses = ["notice"],
 )
 

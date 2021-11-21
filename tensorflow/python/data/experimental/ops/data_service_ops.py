@@ -915,24 +915,38 @@ def _from_dataset_id(processing_mode,
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
   """
-  processing_mode = _get_validated_sharding_policy(processing_mode)
-  if isinstance(service, tuple):
-    protocol, address = service
-  else:
-    protocol, address = _parse_service(service)
-  _validate_compression(compression)
-  if job_name is not None:
-    if not isinstance(job_name, six.string_types) and not isinstance(
-        job_name, ops.Tensor):
+  def _get_element_spec():
+    """Fetches the element spec from the server."""
+    data_service_metadata = None
+    dataset_id_val = tensor_util.constant_value(dataset_id)
+    try:
+      data_service_metadata = _pywrap_server_lib.TF_DATA_GetDataServiceMetadata(
+          dataset_id_val, address, protocol)
+    except NotImplementedError as err:
       raise ValueError(
-          "`job_name` must be a string or Tensor, but `job_name` was of type "
-          f"{type(job_name)}. job_name={job_name}.")
+          "The tf.data service is running an earlier version of TensorFlow "
+          "that requires specifying `element_spec` as an argument to "
+          "`from_dataset_id`. Please either supply an element spec or update "
+          "the tf.data service to the latest version.") from err
+    except RuntimeError:
+      # This error results from dataset ID not found. A more appropriate error
+      # will be raised when the dataset is created.
+      pass
 
-  if element_spec is None:
-    if not context.executing_eagerly():
+    if not data_service_metadata or not data_service_metadata.element_spec:
+      dataset_id_val = tensor_util.constant_value(dataset_id)
       raise ValueError(
-          "In graph mode `element_spec` must be provided manually.")
+          f"Failed to fetch element spec for dataset id {dataset_id_val} from "
+          "tf.data service. If the dataset was registered in graph mode or "
+          "inside a tf.function, the `element_spec` must be specified as an "
+          "argument to `from_dataset_id`.")
 
+    struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
+    struct_pb.ParseFromString(data_service_metadata.element_spec)
+    return nested_structure_coder.decode_proto(struct_pb)
+
+  def _legacy_get_element_spec():
+    """Fetches the element spec from the server."""
     dataset_id_val = tensor_util.constant_value(dataset_id)
     try:
       encoded_spec = _pywrap_server_lib.TF_DATA_GetElementSpec(
@@ -954,7 +968,29 @@ def _from_dataset_id(processing_mode,
 
     struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
     struct_pb.ParseFromString(encoded_spec)
-    element_spec = nested_structure_coder.decode_proto(struct_pb)
+    return nested_structure_coder.decode_proto(struct_pb)
+
+  processing_mode = _get_validated_sharding_policy(processing_mode)
+  if isinstance(service, tuple):
+    protocol, address = service
+  else:
+    protocol, address = _parse_service(service)
+  _validate_compression(compression)
+  if job_name is not None:
+    if not isinstance(job_name, six.string_types) and not isinstance(
+        job_name, ops.Tensor):
+      raise ValueError(
+          "`job_name` must be a string or Tensor, but `job_name` was of type "
+          f"{type(job_name)}. job_name={job_name}.")
+
+  if not element_spec:
+    if not context.executing_eagerly():
+      raise ValueError(
+          "In graph mode `element_spec` must be provided manually.")
+    if compat.forward_compatible(2021, 12, 10):
+      element_spec = _get_element_spec()
+    else:
+      element_spec = _legacy_get_element_spec()
 
   dataset = _DataServiceDataset(
       dataset_id=dataset_id,

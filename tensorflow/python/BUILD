@@ -208,6 +208,7 @@ py_library(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:_pywrap_python_op_gen",
+        "//tensorflow/python/framework:_test_metrics_util",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
@@ -2869,6 +2870,7 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_cuda_asan",  # TODO(b/171511582): re-enable.
+        "no_windows",  #TODO(b/207035199): re-enable
     ],
     deps = [
         ":array_ops",

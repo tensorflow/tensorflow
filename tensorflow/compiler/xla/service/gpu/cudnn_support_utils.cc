@@ -18,7 +18,7 @@ limitations under the License.
 #include <functional>
 
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace xla {

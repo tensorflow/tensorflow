@@ -212,8 +212,6 @@ class TfLiteSubgraphExecute : public OpKernel {
           subgraph_selected.tensor(subgraph_selected.outputs()[i]);
 
       Tensor tensor;
-      fprintf(stdout, "1111111\n");
-      fflush(stdout);
       OP_REQUIRES_OK(
           ctx, tflite::flex::SetTfTensorFromTfLite(subgraph_output, &tensor));
       ctx->set_output(i, std::move(tensor));

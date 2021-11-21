@@ -129,7 +129,10 @@ the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
 
 ### XNNPACK delegate provider
 *   `use_xnnpack`: `bool` (default=false) \
-    Whether to use the XNNPack delegate.
+    Whether to explicitly apply the XNNPACK delegate. Note the XNNPACK delegate
+    could be implicitly applied by the TF Lite runtime regardless the value of
+    this parameter. To disable this implicit application, set the value to
+    `false` explicitly.
 
 ### CoreML delegate provider
 *   `use_coreml`: `bool` (default=false) \

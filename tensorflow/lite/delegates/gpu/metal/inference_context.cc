@@ -208,6 +208,9 @@ absl::Status ReserveGraphTensors(
       RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
                                             data_type, layout, &storage_type));
       tensor_desc = TensorDescriptor{data_type, storage_type, layout};
+      if (storage_type == TensorStorageType::TEXTURE_2D) {
+        tensor_desc.use_buffer_for_write_only_2d_texture = true;
+      }
     }
     tensor_desc.shape = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
     tensor_reserver->Add(t->id, tensor_desc);
@@ -439,6 +442,29 @@ absl::Status InferenceContext::InitFromGraph(
   BindTensorsToOperations();
   RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
   RETURN_IF_ERROR(Tune(TuningType::kFast, &metal_device));
+
+  bool add_icb_support = false;
+  if (add_icb_support) {
+    if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
+      MTLIndirectCommandBufferDescriptor* icb_desc =
+          [[MTLIndirectCommandBufferDescriptor alloc] init];
+      icb_desc.commandTypes = MTLIndirectCommandTypeConcurrentDispatch;
+      icb_desc.inheritBuffers = NO;
+      icb_desc.inheritPipelineState = NO;
+      icb_desc.maxKernelBufferBindCount = 1;
+
+      icb_ = [device_id newIndirectCommandBufferWithDescriptor:icb_desc
+                                               maxCommandCount:nodes_.size()
+                                                       options:0];
+
+      for (int i = 0; i < nodes_.size(); ++i) {
+        id<MTLIndirectComputeCommand> icb_command =
+            [icb_ indirectComputeCommandAtIndex:i];
+        auto& node = nodes_[i];
+        node.task.EncodeToICB(icb_command);
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -736,6 +762,22 @@ void InferenceContext::EncodeWithEncoder(
   }
 }
 
+API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+void InferenceContext::AddResources(
+    id<MTLComputeCommandEncoder> command_encoder) {
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto& task = nodes_[i].task;
+    task.AddResourcesToEncoder(command_encoder);
+  }
+}
+
+API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+void InferenceContext::EncodeWithICB(
+    id<MTLComputeCommandEncoder> command_encoder) {
+  [command_encoder executeCommandsInBuffer:icb_
+                                 withRange:NSMakeRange(0, nodes_.size())];
+}
+
 void InferenceContext::Profile(id<MTLDevice> device, ProfilingInfo* result) {
   result->dispatches.resize(nodes_.size());
   id<MTLCommandQueue> command_queue = [device newCommandQueue];
@@ -759,6 +801,18 @@ void InferenceContext::Profile(id<MTLDevice> device, ProfilingInfo* result) {
       dispatch_info.duration = (end - start) / static_cast<float>(kRuns);
     }
   }
+}
+
+uint64_t InferenceContext::GetIntermediateTensorsSize() const {
+  uint64_t total_memory = 0;
+  for (const auto& t : strong_shape_tensors_) {
+    total_memory += t.second.GetMemorySizeInBytes();
+  }
+  for (const auto& b : shared_buffers_) {
+    total_memory += [b length];
+  }
+
+  return total_memory;
 }
 
 void InferenceContext::EncodeWithCommandBuffer(

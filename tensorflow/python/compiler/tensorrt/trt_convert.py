@@ -1281,11 +1281,17 @@ class TrtGraphConverterV2(object):
 
     self._build_called_once = True
 
-  def save(self, output_saved_model_dir):
+  def save(self, output_saved_model_dir, save_gpu_specific_engines=True):
     """Save the converted SavedModel.
 
     Args:
       output_saved_model_dir: directory to saved the converted SavedModel.
+      save_gpu_specific_engines: whether to save TRT engines that have been
+        built. When True, all engines are saved and when False, the engines 
+        are not saved and will be rebuilt at inference time. By using
+        save_gpu_specific_engines=False after doing INT8 calibration, inference 
+        can be done on different GPUs than the GPU that the model was calibrated
+        and saved on.
     """
     assert self._converted
 
@@ -1308,7 +1314,8 @@ class TrtGraphConverterV2(object):
         gen_trt_ops.serialize_trt_resource(
             resource_name=canonical_engine_name,
             filename=filename,
-            delete_resource=True)
+            delete_resource=True,
+            save_gpu_specific_engines=save_gpu_specific_engines)
       except errors.NotFoundError:
         logging.info(
             "Could not find %s in TF-TRT cache. "

@@ -90,6 +90,11 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   id<MTLBuffer> GetBufferHandle() const;
 
  private:
+  friend absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
+                                                      const TensorDescriptor& descriptor,
+                                                      int row_bytes_alignment,
+                                                      MetalSpatialTensor* result);
+
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
 
@@ -108,6 +113,8 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   bool texture_mem_owner_;
   BHWDC shape_;
   TensorDescriptor descriptor_;
+  // for use with TEXTURE_2D and when texture created from buffer.
+  int aligned_texture_width_;
 };
 
 absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,

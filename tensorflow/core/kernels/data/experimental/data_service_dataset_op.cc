@@ -691,6 +691,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         worker_thread_cv_.notify_all();
       }
       UpdateTasks(resp);
+      RecordTFMetrics(resp);
     }
 
     void UpdateTasks(const ClientHeartbeatResponse& resp)
@@ -766,6 +767,19 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return false;
       }
       return true;
+    }
+
+    void RecordTFMetrics(const ClientHeartbeatResponse& resp)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      for (const auto& task : resp.task_info()) {
+        if (worker_uids_.contains(task.worker_uid())) {
+          continue;
+        }
+        metrics::RecordTFDataServiceClientIterators(
+            task.worker_uid(), resp.deployment_mode(),
+            dataset()->processing_mode_, dataset()->is_coordinated_read_);
+        worker_uids_.insert(task.worker_uid());
+      }
     }
 
     void UpdateLocalTasks() TF_LOCKS_EXCLUDED(mu_) {
@@ -1277,6 +1291,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     bool job_finished_ = false;
     bool should_finish_job_ TF_GUARDED_BY(mu_) = true;
+
+    // The set of worker UIDs that we have already recorded metrics for.
+    absl::flat_hash_set<int64_t> worker_uids_ TF_GUARDED_BY(mu_);
 
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
     std::unique_ptr<Thread> task_thread_manager_ TF_GUARDED_BY(mu_);

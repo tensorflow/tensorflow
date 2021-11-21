@@ -320,7 +320,6 @@ bazel clean
 update_bazel_flags
 # Build. This outputs the file `build_pip_package`.
 bazel build \
-  --experimental_cc_shared_library \
   --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
   ${TF_BUILD_FLAGS} \
   ${PIP_BUILD_TARGET} \

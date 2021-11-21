@@ -1968,7 +1968,7 @@ mlir::Operation* ImporterBase::CreateOperation(
   }
 
   mlir::OperationName name = inner_op->getName();
-  if (!name.getAbstractOperation() &&
+  if (!name.isRegistered() &&
       // Skip unmodelled ops that are handled differently.
       (node_type_name != "_Arg" && node_type_name != "_Retval") &&
       // Skip if warning already reported.
@@ -2108,7 +2108,7 @@ Status ImporterBase::ConvertNode(const Node& node) {
   using FuncPairType = std::pair<const std::string*, const AttrValue*>;
   std::vector<FuncPairType> funcs;
   result.attributes.reserve(node.attrs().size() + 2);
-  auto abstract_op = result.name.getAbstractOperation();
+  auto abstract_op = result.name.getRegisteredInfo();
   auto derived_op =
       abstract_op
           ? abstract_op->getInterface<mlir::DerivedAttributeOpInterface>()
