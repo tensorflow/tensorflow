@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes_detail.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
@@ -145,6 +145,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::FakeParamOp>(),
     TypeID::get<TF::FakeQuantWithMinMaxArgsGradientOp>(),
     TypeID::get<TF::FakeQuantWithMinMaxVarsGradientOp>(),
+    TypeID::get<TF::FakeQuantWithMinMaxVarsPerChannelOp>(),
+    TypeID::get<TF::FakeQuantWithMinMaxVarsPerChannelGradientOp>(),
     TypeID::get<TF::FloorDivOp>(),
     TypeID::get<TF::FloorModOp>(),
     TypeID::get<TF::GreaterOp>(),
@@ -265,7 +267,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaBroadcastHelperOp>(),
     TypeID::get<TF::XlaConvOp>(),
     TypeID::get<TF::XlaConvV2Op>(),
-    TypeID::get<TF::XlaDynamicSliceOp>(),
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
     TypeID::get<TF::XlaKeyValueSortOp>(),
     TypeID::get<TF::XlaPadOp>(),
@@ -273,9 +274,9 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   };
   // clang-format on
 
-  auto* abstractOp = op->getAbstractOperation();
+  auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
-  return ops->count(abstractOp->typeID);
+  return ops->count(abstractOp->getTypeID());
 }
 // LINT.ThenChange(:Tf2XlaPreferred)
 
@@ -314,6 +315,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::_EagerConstOp>(),
     TypeID::get<TF::EmptyOp>(),
     TypeID::get<TF::ExpandDimsOp>(),
+    TypeID::get<TF::FakeQuantWithMinMaxVarsOp>(),
     TypeID::get<TF::FillOp>(),
     TypeID::get<TF::FusedBatchNormOp>(),
     TypeID::get<TF::FusedBatchNormGradOp>(),
@@ -384,18 +386,13 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::XdivyOp>(),
     TypeID::get<TF::XlaAllReduceOp>(),
     TypeID::get<TF::XlaGatherOp>(),
-    TypeID::get<TF::XlaReplicaIdOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
     TypeID::get<TF::ZerosLikeOp>(),
-
-    // XlaOpKernel makes use of compiler options which we don't feed in the
-    // fallback.
-    // TypeID::get<TF::FakeQuantWithMinMaxVarsOp>(),
   };
   // clang-format on
-  auto* abstractOp = op->getAbstractOperation();
+  auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
-  return ops->count(abstractOp->typeID);
+  return ops->count(abstractOp->getTypeID());
 }
 // LINT.ThenChange()
 
@@ -407,9 +404,9 @@ bool IsOpAllowedForTesting(Operation* op) {
     TypeID::get<TF::ConstOp>(),
   };
   // clang-format on
-  auto* abstractOp = op->getAbstractOperation();
+  auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
-  return ops->count(abstractOp->typeID);
+  return ops->count(abstractOp->getTypeID());
 }
 
 namespace {
@@ -541,7 +538,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   }
 
   for (const auto& attr : op_->getAttrs()) {
-    if (attr.second.isa<SymbolRefAttr>()) {
+    if (attr.getValue().isa<SymbolRefAttr>()) {
       return op_->emitRemark()
              << "ops with symbol references are not supported";
     }

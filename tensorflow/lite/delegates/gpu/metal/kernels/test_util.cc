@@ -157,13 +157,49 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
   }
   RETURN_IF_ERROR(gpu_task.UpdateParams());
 
-  id<MTLCommandQueue> command_queue = [device_.device() newCommandQueue];
-  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
-  id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-  gpu_task.Encode(encoder);
-  [encoder endEncoding];
-  [command_buffer commit];
-  [command_buffer waitUntilCompleted];
+  bool use_icb = false;
+  if (use_icb) {
+    if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
+      MTLIndirectCommandBufferDescriptor* icb_desc =
+          [[MTLIndirectCommandBufferDescriptor alloc] init];
+      icb_desc.commandTypes = MTLIndirectCommandTypeConcurrentDispatch;
+      icb_desc.inheritBuffers = NO;
+      icb_desc.inheritPipelineState = NO;
+      icb_desc.maxKernelBufferBindCount = 1;
+
+      id<MTLIndirectCommandBuffer> icb =
+          [device_.device() newIndirectCommandBufferWithDescriptor:icb_desc
+                                                   maxCommandCount:1
+                                                           options:0];
+
+      id<MTLIndirectComputeCommand> icb_command =
+          [icb indirectComputeCommandAtIndex:0];
+      gpu_task.EncodeToICB(icb_command);
+      [icb_command setBarrier];
+
+      id<MTLCommandQueue> command_queue = [device_.device() newCommandQueue];
+      id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+      id<MTLComputeCommandEncoder> encoder =
+          [command_buffer computeCommandEncoder];
+      gpu_task.AddResourcesToEncoder(encoder);
+      [encoder executeCommandsInBuffer:icb withRange:NSMakeRange(0, 1)];
+      [encoder endEncoding];
+      [command_buffer commit];
+      [command_buffer waitUntilCompleted];
+    } else {
+      return absl::InternalError(
+          "Indirect compute command buffer available since ios 13");
+    }
+  } else {
+    id<MTLCommandQueue> command_queue = [device_.device() newCommandQueue];
+    id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder =
+        [command_buffer computeCommandEncoder];
+    gpu_task.Encode(encoder);
+    [encoder endEncoding];
+    [command_buffer commit];
+    [command_buffer waitUntilCompleted];
+  }
 
   for (int i = 0; i < dst_cpu.size(); ++i) {
     dst_cpu[i]->shape = dst_sizes[i];

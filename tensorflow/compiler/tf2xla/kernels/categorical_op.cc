@@ -112,7 +112,7 @@ class CategoricalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(output_type(0), &xla_output_type));
     xla::XlaOp argmax = xla::ArgMax(softmax_entries, xla_output_type,
-                                    /*axis=*/class_dimension, /*stable=*/true);
+                                    /*axis=*/class_dimension);
 
     if (num_samples == 1 && !num_samples_is_dynamic) {
       argmax = xla::Reshape(argmax, {batch_size, 1});

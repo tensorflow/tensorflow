@@ -746,7 +746,7 @@ class Saver(object):
   saver = tf.compat.v1.train.Saver(...variables...)
   # Launch the graph and train, saving the model every 1,000 steps.
   sess = tf.compat.v1.Session()
-  for step in xrange(1000000):
+  for step in range(1000000):
       sess.run(..training_op..)
       if step % 1000 == 0:
           # Append the step number to the checkpoint name:
@@ -1482,7 +1482,7 @@ def import_meta_graph(meta_graph_or_file,
   # Remember the training_op we want to run by adding it to a collection.
   tf.compat.v1.add_to_collection('train_op', train_op)
   sess = tf.compat.v1.Session()
-  for step in xrange(1000000):
+  for step in range(1000000):
       sess.run(train_op)
       if step % 1000 == 0:
           # Saves checkpoint, which by default also exports a meta_graph
@@ -1501,7 +1501,7 @@ def import_meta_graph(meta_graph_or_file,
     # tf.get_collection() returns a list. In this example we only want
     # the first one.
     train_op = tf.get_collection('train_op')[0]
-    for step in xrange(1000000):
+    for step in range(1000000):
       sess.run(train_op)
   ```
 

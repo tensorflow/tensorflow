@@ -1,6 +1,6 @@
 """Provides the repository macro to import gemmlowp."""
 
-load("//third_party:repo.bzl", "tf_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     """Imports gemmlowp."""
@@ -15,8 +15,5 @@ def repo():
         name = "gemmlowp",
         sha256 = GEMMLOWP_SHA256,
         strip_prefix = "gemmlowp-{commit}".format(commit = GEMMLOWP_COMMIT),
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/gemmlowp/archive/{commit}.zip".format(commit = GEMMLOWP_COMMIT),
-            "https://github.com/google/gemmlowp/archive/{commit}.zip".format(commit = GEMMLOWP_COMMIT),
-        ],
+        urls = tf_mirror_urls("https://github.com/google/gemmlowp/archive/{commit}.zip".format(commit = GEMMLOWP_COMMIT)),
     )

@@ -14,17 +14,11 @@
 # ==============================================================================
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
-from typing import Dict, Optional, Sequence
-import weakref
-
-import numpy as np
+from typing import Dict, Hashable, Optional, Sequence, Tuple, Type
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import core
-from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
-from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.framework import errors
 from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 
@@ -32,7 +26,8 @@ from tensorflow.python.util import _pywrap_utils
 class SignatureContext(trace.TracingContext):
   """Container for variables and flags shared across signature tracing."""
 
-  def __init__(self):
+  def __init__(self, include_tensor_ranks_only=False):
+    self._include_tensor_ranks_only = include_tensor_ranks_only
     self._global_to_local_id = {}
 
   # TODO(b/202772221): Consider dropping after alias pattern matching is
@@ -44,19 +39,29 @@ class SignatureContext(trace.TracingContext):
 
     return self._global_to_local_id[local_id]
 
+  # TODO(b/202430155): Remove this flag after TraceType shape relaxation.
+  @property
+  def include_tensor_ranks_only(self):
+    return self._include_tensor_ranks_only
+
 
 class GenericType(trace.TraceType):
   """Represents an arbitrary Python object."""
 
   def __init__(self, obj):
     self._object = obj
-    self._object_hash = self._make_hash(obj)
+    self._object_hash = hash(obj)
 
   def is_subtype_of(self, other: trace.TraceType) -> bool:
     return self == other
 
   def most_specific_common_supertype(
       self, others: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
+    if not others:
+      raise errors.InvalidArgumentError(
+          "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
+      )
+
     return None
 
   def __eq__(self, other) -> bool:
@@ -71,71 +76,33 @@ class GenericType(trace.TraceType):
   def __repr__(self):
     return f"{self.__class__.__name__}(obj={self._object!r})"
 
-  # TODO(b/195985838): Cleanup once Tensor protocol is implemented.
-  def _make_hash(self, elem):
-    """Deals with special cases while hashing arbitrary Python objects."""
-    try:
-      return hash(elem)
-    except TypeError:
-      # TODO(slebedev): consider using nest.
-      if isinstance(elem, tuple):
-        return hash(tuple(map(self._make_hash, elem)))
 
-      # TFE_Py_EncodeArg weakrefs arguments it does not recognize, and we expect
-      # all recognized types to be hashable.
-      assert isinstance(elem, weakref.ReferenceType)
-      v = elem()
+# TODO(b/182990542): Trigger function cache to remove associated concrete
+# function at the deletion of referrant.
+class WeakrefType(GenericType):
+  """Represents weakref of an arbitrary Python object."""
 
-      if resource_variable_ops.is_resource_variable(v):
-        # We special case variables here to use unique_id as the cache key. This
-        # ensures we have to retrace whenever a different variable is passed in.
-        # This is needed to support cases where the user may use the id of a
-        # variable in the function perhaps as a lookup in a dictionary.
-        #
-        # This choice leads to more retracing when we could have possibly used
-        # the shape and dtype instead. However, we expect the number of
-        # variables in a program to be bounded, and correspondingly the number
-        # of retraces.
-        #
-        # Note we also include the class name to avoid collisions with strings.
-        return hash((v.__class__, v._unique_id))  # pylint: disable=protected-access
+  def __eq__(self, other):
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
 
-      if self._is_ndarray(v):
-        # Numpy arrays are not hashable, but when calling functions we treat
-        # them in the same way as tf.Tensors.
-        if not hasattr(v, "shape") or not hasattr(v, "dtype"):
-          # TODO(tomhennigan) De-dup with _as_ndarray in _convert_numpy_inputs.
-          v = self._as_ndarray(v)
-        return hash(tensor_spec.TensorSpec(v.shape, v.dtype))
+    if not isinstance(other, WeakrefType):
+      return False
 
-      raise ValueError(
-          "Arguments to a tf.function must be a nested structure of "
-          "Tensors, Variables, NumPy arrays, or hashable Python "
-          f"objects, got {type(v)}.")
+    if self._object() is None or other._object() is None:
+      return False
 
-  def _as_ndarray(self, value):
-    """Converts value to an ndarray, assumes _is_ndarray(value)."""
-    # TODO(tomhennigan) Support __array_interface__ too (including for
-    # _convert_numpy_inputs).
-    return value.__array__()
+    if self._object() is other._object():
+      return True
 
-  def _is_ndarray(self, value):
-    """Tests whether the given value is an ndarray (and not a TF tensor/var)."""
-    # TODO(tomhennigan) Support __array_interface__ too.
-    return hasattr(value, "__array__") and not (
-        isinstance(value, ops.Tensor) or
-        isinstance(value, resource_variable_ops.BaseResourceVariable) or
-        hasattr(value, "_should_act_as_resource_variable")
+    return self._object == other._object
 
-        # For legacy reasons we do not automatically promote Numpy strings.
-        or isinstance(value, np.str_)
-        # NumPy dtypes have __array__ as unbound methods.
-        or isinstance(value, type)
-        # CompositeTensors should be flattened instead.
-        or isinstance(value, composite_tensor.CompositeTensor))
+  def __hash__(self):
+    return self._object_hash
 
 
 _pywrap_utils.RegisterType("GenericType", GenericType)
+_pywrap_utils.RegisterType("WeakrefType", WeakrefType)
 
 
 class OrderedCollectionType(trace.TraceType):
@@ -172,6 +139,11 @@ class OrderedCollectionType(trace.TraceType):
 
   def most_specific_common_supertype(self, others: Sequence[trace.TraceType]):
     """See base class."""
+    if not others:
+      raise errors.InvalidArgumentError(
+          "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
+      )
+
     if not all(self._has_same_structure(other) for other in others):
       return None
 
@@ -211,8 +183,22 @@ class TupleType(OrderedCollectionType):
   pass
 
 
+class AttrsType(OrderedCollectionType):
+  """Represents a class annotated by attr.s.
+
+  Each attr.s class has a fixed, ordered set of attributes. Therefore, we only
+  need to consider the class type and the underlying attributes. Extra
+  metadata including attribute names can be ignored.
+  """
+
+  def __init__(self, classtype: Type[object],
+               attributes: Tuple[trace.TraceType]):
+    super().__init__(GenericType(classtype), *attributes)
+
+
 _pywrap_utils.RegisterType("ListType", ListType)
 _pywrap_utils.RegisterType("TupleType", TupleType)
+_pywrap_utils.RegisterType("AttrsType", AttrsType)
 
 
 class DictType(trace.TraceType):
@@ -222,23 +208,55 @@ class DictType(trace.TraceType):
     mapping: A mapping from TraceType objects to TraceType objects.
   """
 
-  def __init__(self, mapping: Dict[trace.TraceType, trace.TraceType]):
+  def __init__(self, mapping: Dict[Hashable, trace.TraceType]):
     self.mapping = mapping
 
-  # TODO(b/202429845): Figure out how to subtype DictType.
+  def _has_same_structure(self, other):
+    if not isinstance(other, DictType):
+      return False
+
+    return self.mapping.keys() == other.mapping.keys()
+
   def is_subtype_of(self, other: trace.TraceType) -> bool:
     """See base class."""
-    return self == other
+    if not self._has_same_structure(other):
+      return False
+
+    # We need all keys to be present because there can be logic relying on
+    # their existence or lack thereof and hence can not guarantee subtype based
+    # on a subset or superset of keys.
+    # Only the tracing code can explicitly check for key dependencies and inform
+    # that decision.
+    return all(self.mapping[key].is_subtype_of(other.mapping[key])
+               for key in self.mapping)
 
   def most_specific_common_supertype(self, others: Sequence[trace.TraceType]):
     """See base class."""
-    return None
+
+    if not others:
+      raise errors.InvalidArgumentError(
+          "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
+      )
+
+    if not all(self._has_same_structure(other) for other in others):
+      return None
+
+    new_mapping = {}
+    for key in self.mapping.keys():
+      common = self.mapping[key].most_specific_common_supertype(
+          [other.mapping[key] for other in others])
+      if common is None:
+        return None
+      else:
+        new_mapping[key] = common
+
+    return DictType(new_mapping)
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
 
-    if not isinstance(other, DictType):
+    if not self._has_same_structure(other):
       return False
 
     return self.mapping == other.mapping
@@ -268,14 +286,17 @@ def get_arg_spec(inputs, include_tensor_ranks_only,
     A TraceType object representing the function arguments.
   """
 
-  # TODO(b/201533914): Drop GenericType once TFE_Py_EncodeArg returns TraceType.
-  signature_context = SignatureContext()
+  signature_context = SignatureContext(include_tensor_ranks_only)
   try:
-    return GenericType(
-        pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
-                                    include_tensor_ranks_only,
-                                    encode_variables_by_resource_id,
-                                    use_full_trace_type))
+    encoding = pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
+                                           include_tensor_ranks_only,
+                                           encode_variables_by_resource_id,
+                                           use_full_trace_type)
+    if use_full_trace_type:
+      return encoding
+    else:
+      # TODO(b/201533914): Drop when use_full_trace_type flag is removed.
+      return GenericType(encoding)
+
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
     raise core._status_to_exception(e) from None  # pylint: disable=protected-access
-

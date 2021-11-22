@@ -63,7 +63,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
       {fallback_init_func.data(), fallback_init_func.size()});
   if (func == nullptr) return tensorflow::Status::OK();
 
-  auto ready_chain = GetReadyChain(host);
+  auto ready_chain = GetReadyChain();
 
   DCHECK_EQ(func->argument_types().size(), 1);
 
@@ -114,6 +114,11 @@ StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
                     host_context->diag_handler(), host_context->allocator());
   TF_RET_CHECK(bef_file) << "failed to open BEF";
   return bef_file;
+}
+
+int64_t GetUniqueInt() {
+  static std::atomic<int64_t> id(0);
+  return id.fetch_add(1, std::memory_order_relaxed);
 }
 
 }  // namespace tfrt

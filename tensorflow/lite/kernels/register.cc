@@ -332,9 +332,11 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_VAR_HANDLE, Register_VAR_HANDLE());
   AddBuiltin(BuiltinOperator_READ_VARIABLE, Register_READ_VARIABLE());
   AddBuiltin(BuiltinOperator_ASSIGN_VARIABLE, Register_ASSIGN_VARIABLE());
+  AddBuiltin(BuiltinOperator_MULTINOMIAL, Register_MULTINOMIAL());
   AddBuiltin(BuiltinOperator_RANDOM_STANDARD_NORMAL,
              Register_RANDOM_STANDARD_NORMAL());
   AddBuiltin(BuiltinOperator_BUCKETIZE, Register_BUCKETIZE());
+  AddBuiltin(BuiltinOperator_RANDOM_UNIFORM, Register_RANDOM_UNIFORM());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

@@ -38,6 +38,7 @@ from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
+from tensorflow.python.types import trace
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -486,6 +487,31 @@ class DistributedVarOp(object):
     return hash((self.name, self.graph, tuple(self.traceback), self.type))
 
 
+class DistributedVariableTraceType(trace.TraceType):
+  """Class outlining the Tracing Protocol for DistributedVariable."""
+
+  def __init__(self, shape, dtype):
+    self.components = (tuple(shape.as_list()), dtype)
+
+  def is_subtype_of(self, other):
+    return self == other
+
+  def most_specific_common_supertype(self, others):
+    return None
+
+  def __hash__(self) -> int:
+    return hash(self.components)
+
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, DistributedVariableTraceType):
+      return False
+
+    return self.components == other.components
+
+
 class DistributedVariable(DistributedDelegate, variables_lib.Variable,
                           core.Tensor):
   """Holds a map from replica to variables."""
@@ -877,6 +903,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
           self, sparse_delta, use_locking=use_locking, name=name)
     return values_util.scatter_update(
         self, sparse_delta, use_locking=use_locking, name=name)
+
+  def __tf_tracing_type__(self, _):
+    return DistributedVariableTraceType(self.shape, self.dtype)
 
   def _gather_saveables_for_checkpoint(self):
     """Overrides Trackable method.

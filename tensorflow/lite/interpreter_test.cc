@@ -1056,6 +1056,57 @@ TEST(BasicInterpreter, DynamicTensorsResizeDescendants) {
   ASSERT_EQ(interpreter.tensor(3)->bytes, sizeof(float) * 10 * 14);
 }
 
+TEST(BasicInterpreter, ReleaseDynamicTensors) {
+  // Assemble a graph with a node that has dynamically sized output (via the
+  // pad op), followed by a node with a standard element-wise op (negate).
+  Interpreter interpreter;
+  interpreter.AddTensors(4);
+  interpreter.SetInputs({0, 1});
+  interpreter.SetOutputs({3});
+  TfLiteQuantizationParams quant;
+  interpreter.SetTensorParametersReadWrite(/*tensor_index=*/0,
+                                           /*type=*/kTfLiteFloat32, /*name=*/"",
+                                           /*dims=*/{2, 2, 1, 1},
+                                           /*quantization=*/quant);
+  interpreter.SetTensorParametersReadWrite(
+      /*tensor_index=*/1, /*type=*/kTfLiteInt32, /*name=*/"", /*dims=*/{4, 2},
+      /*quantization=*/quant);
+  interpreter.SetTensorParametersReadWrite(/*tensor_index=*/2,
+                                           /*type=*/kTfLiteFloat32, /*name=*/"",
+                                           /*dims=*/{}, /*quantization=*/quant);
+  interpreter.SetTensorParametersReadWrite(/*tensor_index=*/3,
+                                           /*type=*/kTfLiteFloat32, /*name=*/"",
+                                           /*dims=*/{}, /*quantization=*/quant);
+
+  TfLiteRegistration* pad_op = tflite::ops::builtin::Register_PADV2();
+  TfLiteRegistration* neg_op = tflite::ops::builtin::Register_NEG();
+  interpreter.AddNodeWithParameters(
+      /*inputs=*/{0, 1}, /*outputs=*/{2}, /*init_data=*/nullptr,
+      /*init_data_size=*/0, /*builtin_data=*/nullptr, /*registration=*/pad_op);
+  interpreter.AddNodeWithParameters(
+      /*inputs=*/{2}, /*outputs=*/{3}, /*init_data=*/nullptr,
+      /*init_data_size=*/0, /*builtin_data=*/nullptr, /*registration=*/neg_op);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Configure [[2,2],[4,4]] padding and execute the graph.
+  const std::vector<int> padding = {2, 2, 2, 2, 0, 0, 0, 0};
+  int* tensor_value = interpreter.typed_tensor<int>(1);
+  for (int i = 0; i < padding.size(); ++i) {
+    tensor_value[i] = padding[i];
+  }
+
+  // Invoke without calling `EnsureDynamicTensorsAreReleased`.
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+  ASSERT_NE(interpreter.tensor(2)->data.raw, nullptr);
+
+  interpreter.EnsureDynamicTensorsAreReleased();
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  // Check that the intermediate dynamic tensor's memory is released.
+  ASSERT_EQ(interpreter.tensor(2)->data.raw, nullptr);
+  ASSERT_EQ(interpreter.tensor(3)->bytes, sizeof(float) * 6 * 6);
+}
+
 TEST(InterpreterTensorsCapacityTest, TestWithinHeadroom) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(Interpreter::kTensorsReservedCapacity),

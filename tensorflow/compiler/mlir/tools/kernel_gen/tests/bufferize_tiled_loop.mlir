@@ -81,3 +81,37 @@ func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
   // CHECK:       linalg.yield
   return %sum : tensor<10xf32>
 }
+
+// -----
+
+func @tiled_add_broadcast(%A: tensor<1x?x12xf32>, %B: tensor<?x?x12xf32>,
+                          %shape: tensor<3xi32>) -> tensor<?x?x12xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %AA = "mhlo.dynamic_broadcast_in_dim"(%A, %shape)
+    {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
+    : (tensor<1x?x12xf32>, tensor<3xi32>) -> tensor<?x?x12xf32>
+
+  %d0 = tensor.dim %AA, %c0 : tensor<?x?x12xf32>
+  %d1 = tensor.dim %AA, %c1 : tensor<?x?x12xf32>
+  %sum = linalg.tiled_loop (%i0, %i1, %i2) = (%c0, %c0, %c0) to (%d0, %d1, %c8)
+       step (%c1, %c1, %c8)
+       ins (%A_ = %AA: tensor<?x?x12xf32>)
+       outs (%B_ = %B: tensor<?x?x12xf32>) {
+    %v_in = vector.transfer_read %A_[%i0, %i1, %i2], %cst
+          {in_bounds = [true, true, true]}
+          : tensor<?x?x12xf32>, vector<1x1x8xf32>
+    %v_add = arith.addf %v_in, %v_in : vector<1x1x8xf32>
+    %v_out = vector.transfer_write %v_add, %B_[%i0, %i1, %i2]
+           {in_bounds = [true, true, true]}
+           : vector<1x1x8xf32>, tensor<?x?x12xf32>
+    linalg.yield %v_out : tensor<?x?x12xf32>
+  }
+  // CHECK: memref.copy
+  // CHECK: linalg.tiled_loop
+  // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{[0-9]+}}: memref<?x?x12xf32>)
+  // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<?x?x12xf32>)
+  return %sum : tensor<?x?x12xf32>
+}

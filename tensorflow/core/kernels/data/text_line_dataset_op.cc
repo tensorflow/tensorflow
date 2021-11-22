@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/text_line_dataset_op.h"
 
+#include "tensorflow/core/data/file_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -190,7 +191,9 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
 
       // Actually move on to next file.
       TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
-          dataset()->filenames_[current_file_index_], &file_));
+          file_utils::TranslateFileName(
+              dataset()->filenames_[current_file_index_]),
+          &file_));
       input_stream_ =
           absl::make_unique<io::RandomAccessInputStream>(file_.get(), false);
 

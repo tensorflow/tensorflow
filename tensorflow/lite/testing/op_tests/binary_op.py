@@ -80,22 +80,6 @@ def make_binary_op_tests(options,
       },
       {
           "dtype": [tf.float32],
-          "input_shape_1": [[0]],
-          "input_shape_2": [[1]],
-          "activation": [False],
-          "fully_quantize": [False],
-          "dynamic_range_quantize": [False],
-      },
-      {
-          "dtype": [tf.float32],
-          "input_shape_1": [[1]],
-          "input_shape_2": [[0]],
-          "activation": [False],
-          "fully_quantize": [False],
-          "dynamic_range_quantize": [False],
-      },
-      {
-          "dtype": [tf.float32],
           "input_shape_1": [[1, 3, 4, 3]],
           "input_shape_2": [[1, 3, 4, 3]],
           "activation": [False],
@@ -190,29 +174,21 @@ def make_binary_op_tests(options,
     ]
 
   if options.use_experimental_converter:
-    test_parameters = test_parameters + [
-        # High dimension broadcasting support in MLIR converter.
-        {
-            "dtype": [tf.float32],
-            "input_shape_1": [[8, 7, 6, 5, 4, 3, 2, 1],
-                              [8, 7, 6, 5, None, 3, 2, 1], [2, None]],
-            "input_shape_2": [[4, 3, 2, 1], [None, 3, 2, 1]],
-            "activation": [False],
-            "fully_quantize": [False],
-            "dynamic_range_quantize": [False],
-            "dynamic_size_value": [4, 1],
-        },
-        # Zero in input shape.
-        {
-            "dtype": [tf.float32],
-            "input_shape_1": [[1, 0], [1, None]],
-            "input_shape_2": [[4, 3, 2, 1], [4, None, 2, 1]],
-            "activation": [False],
-            "fully_quantize": [False],
-            "dynamic_range_quantize": [False],
-            "dynamic_size_value": [0],
-        },
-    ]
+    if not options.skip_high_dimension_inputs:
+      test_parameters = test_parameters + [
+          # High dimension broadcasting support in MLIR converter.
+          # Note(b/204360746): XNNPack delegate don't support high dimension.
+          {
+              "dtype": [tf.float32],
+              "input_shape_1": [[8, 7, 6, 5, 4, 3, 2, 1],
+                                [8, 7, 6, 5, None, 3, 2, 1], [2, None]],
+              "input_shape_2": [[4, 3, 2, 1], [None, 3, 2, 1]],
+              "activation": [False],
+              "fully_quantize": [False],
+              "dynamic_range_quantize": [False],
+              "dynamic_size_value": [4, 1],
+          }
+      ]
 
   # test_parameters include fully_quantize option only when
   # allow_fully_quantize is True.

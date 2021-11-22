@@ -124,8 +124,8 @@ bool isKnownBroadcastable(ShapeComponentAnalysis& analysis,
 LogicalResult CstrBroadcastableOpLowering::matchAndRewrite(
     shape::CstrBroadcastableOp op, mlir::PatternRewriter& rewriter) const {
   ShapeComponentAnalysis shape_component_analysis;
-  if (!isKnownBroadcastable(shape_component_analysis, op.shapes(),
-                            op.shapes().front()))
+  if (!isKnownBroadcastable(shape_component_analysis, op.getShapes(),
+                            op.getShapes().front()))
     return failure();
 
   // Replace constraint with a true witness.
@@ -207,8 +207,8 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
 LogicalResult BroadcastOpLowering::matchAndRewrite(
     shape::BroadcastOp op, mlir::PatternRewriter& rewriter) const {
   ShapeComponentAnalysis shape_component_analysis;
-  auto new_broadcast = simplifyBroadcast(shape_component_analysis, op.shapes(),
-                                         op.getLoc(), &rewriter);
+  auto new_broadcast = simplifyBroadcast(
+      shape_component_analysis, op.getShapes(), op.getLoc(), &rewriter);
   if (!new_broadcast) return failure();
   rewriter.replaceOp(op, {*new_broadcast});
   return success();
@@ -367,10 +367,9 @@ struct SymbolicShapeOptimizationPass
 
     // Add shape dialect canonicalization patterns to fold shape operations
     // after constraints are replaced with constant witness.
-    mlir::Dialect* shape_dialect = ctx->getLoadedDialect<shape::ShapeDialect>();
-    for (auto* op : ctx->getRegisteredOperations()) {
-      if (op->dialect.getTypeID() == shape_dialect->getTypeID())
-        op->getCanonicalizationPatterns(patterns, ctx);
+    for (auto op : ctx->getRegisteredOperations()) {
+      if (llvm::isa<shape::ShapeDialect>(op.getDialect()))
+        op.getCanonicalizationPatterns(patterns, ctx);
     }
 
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));

@@ -20,6 +20,7 @@ namespace tensorflow {
 
 // Types of per-request cost.
 constexpr char kTpuCostName[] = "tpu";
+constexpr char kGcuCostName[] = "gcu";
 constexpr char kNoOpCostName[] = "no_op";
 
 // Each type of per-request cost could have the following versions.
@@ -33,6 +34,8 @@ constexpr char kNoSmearSuffix[] = "_no_smear";
 // Full names of per-request cost.
 constexpr char kTpuWithSmearCostName[] = "tpu_with_smear";
 constexpr char kTpuNoSmearCostName[] = "tpu_no_smear";
+constexpr char kGcuWithSmearCostName[] = "gcu_with_smear";
+constexpr char kGcuNoSmearCostName[] = "gcu_no_smear";
 
 }  // namespace tensorflow
 

@@ -161,12 +161,6 @@ class XlaCompiler {
     // for CPU.
     bool allow_cpu_custom_calls = false;
 
-    // If both this and 'allow_cpu_custom_calls' are true then tf.fake_quant_*
-    // ops will be emitted as custom calls to a 'fake_quant_with_min_max_vars'
-    // function accepting the input, min, max, num_bits, and narrow_range values
-    // as runtime arguments.
-    bool custom_fake_quant_op_calls = false;
-
     // If set, the XLA representation of variables represented to XLA as the
     // shape given by this shape function. Variables are reshaped to this shape
     // on write, and reshaped to their original shape on read.

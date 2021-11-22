@@ -1,0 +1,38 @@
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow:tensorflow.bzl", "if_oss")
+
+package(licenses = ["notice"])
+
+glob_lit_tests(
+    data = [":test_utilities"],
+    driver = "//tensorflow/compiler/mlir:run_lit.sh",
+    features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),
+    tags_override = {
+        "async_conversion.mlir": ["nomsan"],
+        "blas.mlir": ["nomsan"],
+        "ccl.mlir": ["nomsan"],
+        "cholesky.mlir": ["nomsan"],
+        "common.mlir": ["nomsan"],
+        "convolution.mlir": ["nomsan"],
+        "custom_call.mlir": ["nomsan"],
+        "fusion.mlir": [
+            "nomsan",
+            "no_oss",
+        ],
+        "memcpy.mlir": ["nomsan"],
+        "memset.mlir": ["nomsan"],
+    },
+    test_file_exts = ["mlir"],
+)
+
+# Bundle together all of the test utilities that are used by tests.
+filegroup(
+    name = "test_utilities",
+    testonly = True,
+    data = [
+        "//tensorflow/compiler/mlir/tfrt:lhlo-tfrt-opt",
+        "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
+        "@llvm-project//mlir:run_lit.sh",
+    ],
+)

@@ -253,16 +253,15 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
     for (auto& named_attr : inst->getAttrDictionary()) {
       os << (!first ? ", " : "");
       first = false;
-      named_attr.first.print(os);
-      os << " = ";
-      if (auto element_attr = named_attr.second.dyn_cast<ElementsAttr>()) {
+      os << named_attr.getName().getValue() << " = ";
+      if (auto element_attr = named_attr.getValue().dyn_cast<ElementsAttr>()) {
         if (element_attr.getNumElements() <= kLargeElementsAttr) {
           element_attr.print(os);
         } else {
           os << "<large>";
         }
       } else {
-        named_attr.second.print(os);
+        named_attr.getValue().print(os);
       }
     }
     os << "}";
@@ -717,7 +716,7 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
     // arith::ConstantOp have ElementAttr at this point due to validation of the
     // TFLite module.
-    attr = cst.value().cast<ElementsAttr>();
+    attr = cst.getValue().cast<ElementsAttr>();
   } else if (auto cst = dyn_cast<mlir::TF::ConstOp>(inst)) {
     attr = cst.value();
   } else if (auto cst = dyn_cast<tfl::ConstOp>(inst)) {
@@ -948,7 +947,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
   auto get_call_index = [&](mlir::Block& b) -> Optional<int> {
     if (b.getOperations().size() != 2) return llvm::None;
     if (auto call_op = dyn_cast<mlir::CallOp>(b.front()))
-      return subgraph_index_map_.at(call_op.callee().str());
+      return subgraph_index_map_.at(call_op.getCallee().str());
     return llvm::None;
   };
   auto body_subgraph_index = get_call_index(op.body().front());
@@ -1552,8 +1551,8 @@ Translator::CreateMetadataVector() {
   std::vector<BufferOffset<tflite::Metadata>> metadata;
   if (dict_attr) {
     for (const auto& named_attr : dict_attr) {
-      StringRef name = named_attr.first;
-      mlir::Attribute attr = named_attr.second;
+      StringRef name = named_attr.getName();
+      mlir::Attribute attr = named_attr.getValue();
       if (auto content = attr.dyn_cast<StringAttr>()) {
         metadata.push_back(BuildMetadata(name, content.getValue()));
       } else {
@@ -1605,8 +1604,8 @@ std::vector<std::string> GetStringsFromDictionaryAttr(
 
     auto attrs = arg_attr.getValue();
     for (const auto attr : attrs) {
-      if (attr.first.str() == attr_name) {
-        auto array_attr = attr.second.dyn_cast_or_null<mlir::ArrayAttr>();
+      if (attr.getName().str() == attr_name) {
+        auto array_attr = attr.getValue().dyn_cast_or_null<mlir::ArrayAttr>();
         if (!array_attr || array_attr.empty()) continue;
         auto string_attr = array_attr[0].dyn_cast_or_null<mlir::StringAttr>();
         if (!string_attr) continue;

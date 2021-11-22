@@ -116,6 +116,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_libtpu([
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
+        "//tensorflow/core/tpu/graph_rewrite:configure_tpu_embedding_rewrite_registration",
         "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
     ]),
     alwayslink = 1,
@@ -132,6 +133,7 @@ cc_library(
         ":xla_kernel_creator",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
         "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -159,6 +161,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -182,9 +185,12 @@ cc_library(
     deps = [
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_proto_parsing",
@@ -239,6 +245,7 @@ XLA_DEVICE_DEPS = [
     "@com_google_absl//absl/synchronization",
     "@com_google_absl//absl/types:optional",
     "//tensorflow/compiler/jit/ops:xla_ops",
+    "//tensorflow/compiler/tf2xla:layout_util",
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:tf2xla_util",
     "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -460,6 +467,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 

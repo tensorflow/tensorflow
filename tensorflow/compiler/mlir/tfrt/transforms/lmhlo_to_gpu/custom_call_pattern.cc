@@ -19,9 +19,12 @@
 //
 //===----------------------------------------------------------------------===//
 #include <functional>
+#include <iterator>
 #include <string>
 
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "llvm/ADT/Sequence.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -37,39 +40,30 @@ struct CustomCallRewritePattern
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::CustomCallOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    int64_t target_args_count, target_results_count;
-    llvm::SmallVector<int64_t, 4> args_to_target_args,
-        results_to_target_results;
-
-    if (op.target_arg_mapping()) {
-      lmhlo::CustomCallTargetArgMapping target_mapping =
-          *op.target_arg_mapping();
-
-      target_args_count = target_mapping.num_args().getInt();
-      target_results_count = target_mapping.num_results().getInt();
-
-      for (const auto& attr : target_mapping.args_to_target_args().getValue()) {
-        args_to_target_args.push_back(attr.dyn_cast<IntegerAttr>().getInt());
+    llvm::SmallVector<int32_t, 4> indices;
+    if (auto mapping = op.target_arg_mapping()) {
+      auto num_args = mapping->num_args().getInt();
+      auto num_results = mapping->num_results().getInt();
+      indices.resize(num_args + num_results, -1);
+      for (auto pair : llvm::enumerate(mapping->args_to_target_args())) {
+        indices[pair.value().cast<IntegerAttr>().getInt()] = pair.index();
       }
-      for (const auto& attr :
-           target_mapping.results_to_target_results().getValue()) {
-        results_to_target_results.push_back(
-            attr.dyn_cast<IntegerAttr>().getInt());
+      for (auto pair : llvm::enumerate(mapping->results_to_target_results())) {
+        indices[pair.value().cast<IntegerAttr>().getInt() + num_args] =
+            pair.index() + op.args().size();
       }
     } else {
-      target_args_count = op.args().size();
-      target_results_count = op.output().size();
+      int32_t num_indices = op.args().size() + op.output().size();
+      indices.reserve(num_indices);
+      llvm::copy(llvm::seq(0, num_indices), std::back_inserter(indices));
     }
 
-    mlir::Type chain_type = rewriter.getType<tfrt::compiler::ChainType>();
-    chain = rewriter.create<xla::gpu::CustomCallOp>(
-        op.getLoc(), chain_type, stream, chain, adaptor.getOperands(),
-        rewriter.getI64ArrayAttr(args_to_target_args),
-        op.backend_config().str(),
-        rewriter.getI64ArrayAttr(results_to_target_results), target_args_count,
-        target_results_count);
+    Value result = rewriter.create<xla::gpu::CustomCallOp>(
+        op.getLoc(), chain.getType(), stream, adaptor.getOperands(), chain,
+        op.call_target_nameAttr(), rewriter.getI32ArrayAttr(indices),
+        op.backend_configAttr());
     rewriter.eraseOp(op);
-    return chain;
+    return result;
   }
 };
 

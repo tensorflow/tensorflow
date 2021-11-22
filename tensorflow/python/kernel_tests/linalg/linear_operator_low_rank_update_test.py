@@ -15,6 +15,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -178,7 +179,12 @@ class LinearOperatorLowRankUpdatetestWithDiagUseCholesky(
   _is_diag_update_positive = True
   _use_v = False
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Decrease tolerance since we are testing with condition numbers as high as
     # 1e4.
     self._atol[dtypes.float32] = 1e-5
@@ -201,7 +207,12 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
   _is_diag_update_positive = False
   _use_v = False
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Decrease tolerance since we are testing with condition numbers as high as
     # 1e4.  This class does not use Cholesky, and thus needs even looser
     # tolerance.
@@ -221,7 +232,12 @@ class LinearOperatorLowRankUpdatetestNoDiagUseCholesky(
   _is_diag_update_positive = None
   _use_v = False
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Decrease tolerance since we are testing with condition numbers as high as
     # 1e4.
     self._atol[dtypes.float32] = 1e-5
@@ -244,7 +260,12 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
   _is_diag_update_positive = None
   _use_v = True
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Decrease tolerance since we are testing with condition numbers as high as
     # 1e4.  This class does not use Cholesky, and thus needs even looser
     # tolerance.
@@ -265,7 +286,16 @@ class LinearOperatorLowRankUpdatetestWithDiagNotSquare(
   _is_diag_update_positive = True
   _use_v = True
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
 
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
+
+
+@test_util.run_all_without_tensor_float_32(
+    "Linear op calls matmul which uses TensorFloat-32.")
 class LinearOperatorLowRankUpdateBroadcastsShape(test.TestCase):
   """Test that the operator's shape is the broadcast of arguments."""
 

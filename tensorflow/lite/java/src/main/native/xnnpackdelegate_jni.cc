@@ -16,17 +16,17 @@ limitations under the License.
 #include <jni.h>
 
 #include "tensorflow/lite/core/shims/c/common.h"
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 
 using tflite::jni::CastLongToPointer;
 
 namespace {
 
-using DeleteFunction = void(TfLiteDelegate*);
+using DeleteFunction = void(TfLiteOpaqueDelegate*);
 
-TfLiteDelegate* convertLongToDelegate(JNIEnv* env, jlong delegate_handle) {
-  return CastLongToPointer<TfLiteDelegate>(env, delegate_handle);
+TfLiteOpaqueDelegate* convertLongToDelegate(JNIEnv* env,
+                                            jlong delegate_handle) {
+  return CastLongToPointer<TfLiteOpaqueDelegate>(env, delegate_handle);
 }
 
 DeleteFunction* convertLongToDeleteFunction(JNIEnv* env,
@@ -44,7 +44,7 @@ Java_org_tensorflow_lite_XnnpackDelegate_applyDeleteFunction(
     jlong delegate_handle) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return;
 
-  TfLiteDelegate* delegate = convertLongToDelegate(env, delegate_handle);
+  TfLiteOpaqueDelegate* delegate = convertLongToDelegate(env, delegate_handle);
   if (delegate == nullptr) return;
   DeleteFunction* delete_function =
       convertLongToDeleteFunction(env, delete_function_handle);

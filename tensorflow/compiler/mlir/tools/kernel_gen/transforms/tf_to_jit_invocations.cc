@@ -46,8 +46,6 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-static constexpr StringRef kEmitCInterfaceAttrName = "llvm.emit_c_interface";
-
 bool IsTFOperation(Operation *op) {
   return op != nullptr &&
          op->getDialect() ==
@@ -179,8 +177,6 @@ struct PackJITCompileOpPattern
         tmp_module_builder.getFunctionType(body->getArgumentTypes(),
                                            yield_op->getOperandTypes()));
     jit_function->setAttr(tf_framework::TFFrameworkDialect::kTFEntryAttrName,
-                          tmp_module_builder.getUnitAttr());
-    jit_function->setAttr(kEmitCInterfaceAttrName,
                           tmp_module_builder.getUnitAttr());
     jit_function.getBody().takeBody(op.getBodyRegion());
     tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());

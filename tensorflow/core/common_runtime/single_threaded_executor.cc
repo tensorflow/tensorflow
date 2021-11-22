@@ -45,18 +45,6 @@ Status ValidateOp(const Node& n) {
         ".  Perhaps your graph contains old-style control flow primitives? "
         "Try using tf.compat.v1.enable_control_flow_v2().");
   }
-  if (n.IsSend() || n.IsHostSend() || n.IsRecv() || n.IsHostRecv()) {
-    return errors::Unimplemented(
-        "Single-threaded executor does not support partitioned graphs.  "
-        "But saw send/recv node ",
-        n.name());
-  }
-  if (n.IsCollective()) {
-    return errors::Unimplemented(
-        "Single-threaded executor does not support collective ops.  But "
-        "saw collective node ",
-        n.name());
-  }
   return Status::OK();
 }
 

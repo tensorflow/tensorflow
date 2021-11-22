@@ -177,6 +177,8 @@ class OpOptionData {
     op_to_option_["MINIMUM"] = "MaximumMinimumOptions";
     op_to_option_["CONV_3D_TRANSPOSE"] = "Conv3DOptions";
     op_to_option_["RANDOM_STANDARD_NORMAL"] = "RandomOptions";
+    op_to_option_["RANDOM_UNIFORM"] = "RandomOptions";
+    op_to_option_["MULTINOMIAL"] = "RandomOptions";
 
     // These operators are not real ones.
     op_to_option_["CUSTOM"] = "";    // TODO(aselle): maybe something else.

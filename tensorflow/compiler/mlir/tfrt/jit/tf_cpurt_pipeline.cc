@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
@@ -73,6 +74,11 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Transform TF operation to HLO.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass());
 
+  if (options.legalize_i1_tensors) {
+    // Convert 'i1' tensors into 'i8' tensors.
+    pm.addPass(CreateCpuRtLegalizeI1TypesPass());
+  }
+
   // Resolve all shape constraints (e.g. broadcast constraints that can be
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
@@ -110,14 +116,16 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
 
   // Perform tiling-padding-vectorization if vectorization is enabled.
   if (options.vectorize) {
+    pm.addNestedPass<mlir::FuncOp>(CreateDetensorizeLinalgPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePeelTiledLoopsPass());
-
     pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
     pm.addPass(mlir::createCanonicalizerPass());
 
-    pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
+    // TODO(b/205537489): Re-enable tiling after the padding function is fixed.
+    // pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateSinkUnusedOutputs());
     pm.addNestedPass<mlir::FuncOp>(CreateVectorizeTiledOpsPass());
   }
 
@@ -130,6 +138,10 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
+  // Now that all compute operations are converted to standard (as a side effect
+  // of bufferizing to memref dialect) we can remove the remaining references
+  // to unsigned types.
+  pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
   pm.addPass(mlir::createTensorConstantBufferizePass(/*alignment=*/64));
@@ -168,10 +180,13 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   vec_to_scf_options.unroll = true;
   pm.addNestedPass<mlir::FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
+
+  pm.addNestedPass<mlir::FuncOp>(CreateMathApproximationPass({"all"}));
 }
 
 void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm) {
   TfCpuRtPipelineOptions options;
+  options.vectorize = tensorflow::GetCpuRtFlags().vectorize;
   CreateTfCpuRtPipeline(pm, options);
 }
 

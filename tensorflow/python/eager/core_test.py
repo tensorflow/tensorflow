@@ -864,6 +864,7 @@ class TFETest(test_util.TensorFlowTestCase):
           attrs=('T', dtypes.float32.as_datatype_enum, 'squeeze_dims',
                  ['0', '2']))
 
+  @test_util.disable_eager_op_as_function('b/206994108')
   def testExecuteListTypeListShapeAttr(self):
     execute(
         b'Barrier',
@@ -1060,6 +1061,7 @@ class TFETest(test_util.TensorFlowTestCase):
         empty_handle.shape.as_list())
 
 
+@test_util.with_eager_op_as_function
 class SendRecvTest(test_util.TensorFlowTestCase):
 
   cpu_device = '/job:localhost/replica:0/task:0/device:CPU:0'

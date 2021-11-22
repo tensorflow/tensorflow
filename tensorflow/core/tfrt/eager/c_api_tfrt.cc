@@ -603,7 +603,7 @@ AsyncValueRef<Chain>* ContextInterface::GetChain() {
   {
     tensorflow::mutex_lock l(chain_map_mu_);
     if (thread_local_chain_.find(thread_id) == thread_local_chain_.end()) {
-      auto chain = GetReadyChain(GetHostContext());
+      auto chain = GetReadyChain();
       thread_local_chain_[thread_id] = std::move(chain);
     }
     return &thread_local_chain_[thread_id];
@@ -1391,7 +1391,7 @@ tensorflow::Status OperationInterface::Execute(
   if (TF_PREDICT_FALSE(chain->IsError())) {
     s = CreateTfErrorStatus(chain->GetError());
     // TODO(tfrt-devs): Assess if we need a explicit API to clear error.
-    *chain = GetReadyChain(host);
+    *chain = GetReadyChain();
   }
 
   for (size_t i = 0, e = result_ths.size(); i != e; ++i) {

@@ -186,7 +186,7 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
       return;
     }
 
-    auto op_type_id = op->getAbstractOperation()->typeID;
+    auto op_type_id = op->getRegisteredInfo()->getTypeID();
     bool is_shape_calc_op = false;
     // Follow the rule of kPlaceRuleMap exist, or else follow
     // kShapeCalcOperandMap
@@ -266,7 +266,7 @@ void MarkShapeCalc::markShapeCalculationOps(
       }
     } else {
       // Mark operands into shape calculation set according to the lookup table.
-      auto op_type_id = op.getAbstractOperation()->typeID;
+      auto op_type_id = op.getRegisteredInfo()->getTypeID();
       auto iter = kShapeCalcOperandMap.find(op_type_id);
       if (iter != kShapeCalcOperandMap.end()) {
         for (auto operand_idx : iter->second) {

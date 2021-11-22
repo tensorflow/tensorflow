@@ -126,8 +126,8 @@ double TargetHardware::GetOpCost(mlir::Operation* op) const {
   if (registered_ops == nullptr) {
     return kDefaultFixedValuedCost;
   }
-  auto* abstract_op = op->getAbstractOperation();
-  auto hardware_op = registered_ops->find(abstract_op->typeID);
+  auto abstract_op = op->getRegisteredInfo();
+  auto hardware_op = registered_ops->find(abstract_op->getTypeID());
   if (hardware_op == registered_ops->end()) return kDefaultFixedValuedCost;
   return hardware_op->second->GetOpCost(op);
 }
@@ -137,8 +137,8 @@ bool TargetHardware::IsOpSupported(mlir::Operation* op) const {
   if (registered_ops == nullptr) {
     return false;
   }
-  auto* abstract_op = op->getAbstractOperation();
-  auto hardware_op = registered_ops->find(abstract_op->typeID);
+  auto abstract_op = op->getRegisteredInfo();
+  auto hardware_op = registered_ops->find(abstract_op->getTypeID());
   if (hardware_op == registered_ops->end()) return false;
   return hardware_op->second->IsOpSupported(op);
 }

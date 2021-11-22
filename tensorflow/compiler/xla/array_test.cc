@@ -135,15 +135,33 @@ TEST(ArrayTest, DataPointer) {
   EXPECT_EQ(arr.data()[0], 1);
 }
 
+TEST(ArrayTest, StringificationEmpty) {
+  Array<int64_t> arr({}, 0);
+  constexpr absl::string_view expected = "";
+  EXPECT_EQ(expected, arr.ToString());
+}
+
 TEST(ArrayTest, Stringification1D) {
   Array<int64_t> arr({2}, 1);
   const string expected = R"([1, 1])";
   EXPECT_EQ(expected, arr.ToString());
 }
 
+TEST(ArrayTest, StringificationEmpty1D) {
+  Array<int64_t> arr({0}, 0);
+  constexpr absl::string_view expected = "[]";
+  EXPECT_EQ(expected, arr.ToString());
+}
+
 TEST(ArrayTest, Stringification2D) {
   Array<int64_t> arr({2, 3}, 7);
   const string expected = "[[7, 7, 7],\n [7, 7, 7]]";
+  EXPECT_EQ(expected, arr.ToString());
+}
+
+TEST(ArrayTest, StringificationEmpty2D) {
+  Array<int64_t> arr({0, 0}, 0);
+  constexpr absl::string_view expected = "[[]]";
   EXPECT_EQ(expected, arr.ToString());
 }
 
@@ -155,6 +173,18 @@ TEST(ArrayTest, Stringification3D) {
  [[5, 5, 5, 5],
   [5, 5, 5, 5],
   [5, 5, 5, 5]]])";
+  EXPECT_EQ(expected, arr.ToString());
+}
+
+TEST(ArrayTest, StringificationEmpty3D) {
+  Array<int64_t> arr({0, 0, 0}, 0);
+  constexpr absl::string_view expected = "[[[]]]";
+  EXPECT_EQ(expected, arr.ToString());
+}
+
+TEST(ArrayTest, Stringification3DOneZeroDim) {
+  Array<int64_t> arr({1, 0, 2}, 0);
+  constexpr absl::string_view expected = "[[[, ]]]";
   EXPECT_EQ(expected, arr.ToString());
 }
 

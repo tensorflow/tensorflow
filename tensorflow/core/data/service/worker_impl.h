@@ -119,6 +119,9 @@ class DataServiceWorkerImpl {
       standalone::Dataset& dataset, const TaskDef& task_def) const;
 
   const experimental::WorkerConfig config_;
+  // Worker Borg job UID for telemetry. -1 if not supported.
+  const int64_t worker_uid_;
+
   // The worker's own address.
   std::string worker_address_;
   std::string transfer_address_;

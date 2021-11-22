@@ -165,7 +165,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::TanhGradOp>(),
     TypeID::get<TF::XlaDotOp>(),
     TypeID::get<TF::XlaDotV2Op>(),
+    TypeID::get<TF::XlaDynamicSliceOp>(),
     TypeID::get<TF::XlaEinsumOp>(),
+    TypeID::get<TF::XlaReplicaIdOp>(),
     TypeID::get<TF::XlaSortOp>(),
     TypeID::get<TF::XlogyOp>(),
     TypeID::get<TF::ZetaOp>(),
@@ -207,7 +209,7 @@ OwningRewritePatternList PatternsIncludeOps(
     // If the pattern is in include_ops then include it.
     bool include =
         !pat_op_name ||
-        include_ops.count(pat_op_name->getAbstractOperation()->typeID);
+        include_ops.count(pat_op_name->getRegisteredInfo()->getTypeID());
     if (include) to.add(std::move(pattern));
   }
 

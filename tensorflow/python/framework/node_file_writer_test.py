@@ -96,7 +96,7 @@ class NodeFileWriterTest(test.TestCase):
       node_def.ParseFromString(node_def_bytes[cur_pos:cur_pos + size])
       # When running eager op as function is enabled we expect these extra nodes
       # to show up in the list of executed nodes.
-      if node_def.op not in ('_Arg', '_Retval'):
+      if node_def.op not in ('_Arg', '_Retval', 'NoOp'):
         node_defs.append(node_def)
       cur_pos += size
     self.assertEqual(cur_pos, len(node_def_bytes))

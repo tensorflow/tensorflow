@@ -161,6 +161,21 @@ func @quant_qparam_invalid(%arg0: tensor<1x3x!quant.calibrated<f32<-1.0:1.0>>>) 
 
 // -----
 
+// CHECK-LABEL: redundant_cast_with_different_element_type
+func @redundant_cast_with_different_element_type(%arg0: tensor<*xf32>) -> (tensor<*xi32>, tensor<2xi32>) {
+  %0 = "tfr.cast"(%arg0) : (tensor<*xf32>) -> !tfr.tensor
+  %1 = "tfr.cast"(%0) : (!tfr.tensor) -> tensor<*xi32>
+  %2 = "tfr.cast"(%0) : (!tfr.tensor) -> tensor<2xi32>
+  return %1, %2 : tensor<*xi32>, tensor<2xi32>
+
+// CHECK: %[[tf_cast_unranked:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi32>
+// CHECK: %[[ensure_shape:.*]] = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<2>} : (tensor<*xf32>) -> tensor<2xf32>
+// CHECK: %[[tf_cast_ranked:.*]] = "tf.Cast"(%[[ensure_shape]]) {Truncate = false} : (tensor<2xf32>) -> tensor<2xi32>
+// CHECK: return %[[tf_cast_unranked]], %[[tf_cast_ranked]] :  tensor<*xi32>, tensor<2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: build_const_list
 func @build_const_list() -> !tfr.attr {
   %0 = "arith.constant"() {value = 42 : i32} : () -> i32

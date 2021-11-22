@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -102,13 +103,86 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
   return se::DeviceMemory<uint8>(buffer_addr);
 }
 
-StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
-    const HloCustomCallInstruction* instr,
-    absl::Span<se::DeviceMemoryBase> operand_buffers,
-    se::DeviceMemoryBase result_buffer, se::StreamExecutor* stream_exec,
-    ScratchAllocator* scratch_allocator, se::Stream* stream) {
-  std::vector<se::dnn::ProfileResult> algorithms;
+StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
+    const GpuConvConfig& config, se::Stream* stream, bool use_cudnn_frontend) {
+  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
+                      GetDNNConvKindFromCudnnConvKind(config.kind));
 
+  TF_ASSIGN_OR_RETURN(se::dnn::DataType input_type,
+                      GetDNNDataTypeFromPrimitiveType(config.input_type));
+
+  TF_ASSIGN_OR_RETURN(se::dnn::DataType output_type,
+                      GetDNNDataTypeFromPrimitiveType(config.output_type));
+
+  se::StreamExecutor* stream_exec = stream->parent();
+
+  std::vector<MaybeFusedConvRunner> result;
+
+  switch (kind) {
+    default:
+      return InternalError("Unknown ConvolutionKind %d", kind);
+    case se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION: {
+      if (!config.fusion) {
+        return InternalError(
+            "GpuConvConfig had fusion ConvolutionKind but no FusionConfig.");
+      }
+      std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
+      TF_RETURN_IF_ERROR(stream_exec->GetFusedConvolveRunners(
+          use_cudnn_frontend,
+          // This refers to the kind of convolution op inside the fusion, not
+          // the whole fused graph.
+          se::dnn::ConvolutionKind::FORWARD, input_type,
+          BiasTypeForInputType(input_type), output_type,
+          /* conv_input_scale = */ config.conv_result_scale,
+          /* side_input_scale = */ config.fusion->side_input_scale, stream,
+          config.input_descriptor, config.filter_descriptor,
+          GetBiasDescriptor(config), config.output_descriptor, config.conv_desc,
+          config.fusion->mode, &runners));
+      for (auto& runner : runners) {
+        TF_ASSIGN_OR_RETURN(
+            auto runner_cache,
+            se::dnn::LazyOpRunner<se::dnn::FusedConvOp>::FromOpRunner(
+                std::move(runner)));
+        result.emplace_back(std::move(runner_cache));
+      }
+      break;
+    }
+
+    case se::dnn::ConvolutionKind::FORWARD:
+    case se::dnn::ConvolutionKind::BACKWARD_DATA:
+    case se::dnn::ConvolutionKind::BACKWARD_FILTER: {
+      std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
+      // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
+      // allocator are unused; so, they're all provided as nullptr.
+      TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
+          use_cudnn_frontend, kind, input_type, output_type, stream,
+          config.input_descriptor,
+          /* input_data = */ DeviceMemoryBase(nullptr),
+          config.filter_descriptor,
+          /* filter_data = */ DeviceMemoryBase(nullptr),
+          config.output_descriptor,
+          /* output_data = */ DeviceMemoryBase(nullptr), config.conv_desc,
+          nullptr, &runners));
+      for (auto& runner : runners) {
+        TF_ASSIGN_OR_RETURN(
+            auto runner_cache,
+            se::dnn::LazyOpRunner<se::dnn::ConvOp>::FromOpRunner(
+                std::move(runner)));
+        result.emplace_back(std::move(runner_cache));
+      }
+      break;
+    }
+  }
+
+  return result;
+}
+
+StatusOr<std::vector<std::unique_ptr<const se::dnn::ConvRunner>>>
+GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
+                    absl::Span<se::DeviceMemoryBase> operand_buffers,
+                    se::DeviceMemoryBase result_buffer,
+                    se::StreamExecutor* stream_exec,
+                    ScratchAllocator* scratch_allocator, se::Stream* stream) {
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
@@ -120,14 +194,15 @@ StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
   TF_ASSIGN_OR_RETURN(GpuConvParams params,
                       GetGpuConvParams(config, operand_buffers, result_buffer));
 
-  bool succ = stream_exec->GetMIOpenConvolveAlgorithms(
-      kind, dtype, stream, params.config.input_descriptor, params.input_buf,
+  std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
+  TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
+      /* use_cudnn_frontend = */ false, kind, dtype, dtype, stream,
+      params.config.input_descriptor, params.input_buf,
       params.config.filter_descriptor, params.filter_buf,
       params.config.output_descriptor, params.output_buf,
-      params.config.conv_desc, scratch_allocator, &algorithms);
-  DCHECK(succ);
+      params.config.conv_desc, scratch_allocator, &runners));
 
-  return algorithms;
+  return runners;
 }
 
 string NumBytesToString(int64_t bytes) {
@@ -399,14 +474,18 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
-  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind dnn_kind,
-                      GetDNNConvKindFromCudnnConvKind(config.kind));
+  const bool cudnn_frontend_enabled = instr->parent()
+                                          ->parent()
+                                          ->config()
+                                          .debug_options()
+                                          .xla_gpu_enable_cudnn_frontend();
 
-  std::vector<AlgorithmDesc> algorithms;
-  if (!stream_exec_->GetConvolveAlgorithms(dnn_kind, &algorithms)) {
-    return Status(tensorflow::error::UNKNOWN, "GetConvolveAlgorithms failed.");
-  }
-  for (const AlgorithmDesc& alg : algorithms) {
+  TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> runners,
+                      GetAlgorithms(config, stream, cudnn_frontend_enabled));
+
+  for (auto& runner_cache : runners) {
+    auto alg = runner_cache.ToAlgorithmDesc();
+
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
         absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                      alg.ToString()),
@@ -414,14 +493,22 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     profile_results.emplace_back();
     AutotuneResult& result = profile_results.back();
-    result.mutable_conv()->set_algorithm(alg.algo_id());
-    result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
+    *result.mutable_algorithm() = alg.ToProto();
 
-    if (absl::c_linear_search(disabled_algos, alg)) {
+    auto set_failure = [&result](AutotuneResult::FailureKind kind,
+                                 absl::string_view msg) {
+      result.mutable_failure()->set_kind(kind);
+      result.mutable_failure()->set_msg(/* *sigh* */ msg.data(), msg.size());
+    };
+
+    AlgorithmDesc alg_key(alg.algo_id(), alg.tensor_ops_enabled(),
+                          absl::nullopt);
+
+    if (absl::c_linear_search(disabled_algos, alg_key)) {
       LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
                 << " for conv " << instr->ToString();
-      result.mutable_failure()->set_kind(AutotuneResult::DISQUALIFIED);
-      result.mutable_failure()->set_msg("Disqualified for being known-buggy.");
+      set_failure(AutotuneResult::DISQUALIFIED,
+                  "Disqualified for being known-buggy.");
       continue;
     }
 
@@ -429,11 +516,17 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     // ALGO_IMPLICIT_PRECOMP_GEMM does the right thing. Other algorithms
     // silently do Relu. See
     // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
-    if (kind == CudnnConvKind::kForwardActivation &&
+    //
+    // For cuDNN Frontend, there is no way to check whether we're using a broken
+    // algorithm, so on versions where some algorithms are broken, we don't use
+    // the cuDNN Frontend for these convs at all.  As such, if we get a
+    // frontend-based runner, we can be sure it's not one of the broken
+    // algorithms we're checking for.
+    if (!alg.is_cudnn_frontend() && kind == CudnnConvKind::kForwardActivation &&
         backend_config.activation_mode() == se::dnn::ActivationMode::kNone &&
         alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
-      result.mutable_failure()->set_kind(AutotuneResult::DISQUALIFIED);
-      result.mutable_failure()->set_msg("Disqualified for implicit RELU.");
+      set_failure(AutotuneResult::DISQUALIFIED,
+                  "Disqualified for implicit RELU.");
       continue;
     }
 
@@ -444,30 +537,47 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
             << instr->ToString();
 
+    absl::optional<size_t> workspace_size =
+        runner_cache.ToAlgorithmDesc().workspace_size();
+    if (!workspace_size) {
+      set_failure(AutotuneResult::UNKNOWN,
+                  "Internal error: missing workspace size from "
+                  "OpRunner::ToAlgorithmDesc()");
+      continue;
+    }
+    auto scratch_or = scratch_allocator.AllocateBytes(*workspace_size);
+    if (!scratch_or.ok()) {
+      set_failure(AutotuneResult::DISQUALIFIED,
+                  absl::StrCat("Scratch allocation failed: ",
+                               scratch_or.status().ToString()));
+      continue;
+    }
+    se::DeviceMemoryBase scratch_memory = scratch_or.ValueOrDie();
+
     // Use assignment instead of brace-list to make GCC 4.9 happy.
     RunConvOptions options;
     options.profile_result = &profile_result;
-    options.algo_override = alg;
+    options.runner_cache = &runner_cache;
     Status launch_status =
         RunGpuConv(config, absl::MakeSpan(operand_buffers), result_buffer,
-                   &scratch_allocator, stream, options);
+                   scratch_memory, stream, options);
 
     if (!launch_status.ok()) {
       VLOG(4) << "Launch failed: " << launch_status;
-      result.mutable_failure()->set_kind(AutotuneResult::DISQUALIFIED);
-      result.mutable_failure()->set_msg(
-          absl::StrCat("Profiling failure on cuDNN engine ", alg.ToString(),
-                       ": ", launch_status.ToString()));
+      set_failure(AutotuneResult::DISQUALIFIED,
+                  absl::StrCat("Profiling failure on cuDNN engine ",
+                               alg.ToString(), ": ", launch_status.ToString()));
       continue;
     }
 
     if (!profile_result.is_valid()) {
       VLOG(4) << "Launch succeeded but profile result is invalid.";
       // Not DISQUALIFIED: this means something went wrong internally.
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
-      result.mutable_failure()->set_msg(absl::StrCat(
-          "Launch succeeded but profile result is invalid, with cuDNN engine ",
-          alg.ToString(), ": ", launch_status.ToString()));
+      set_failure(
+          AutotuneResult::UNKNOWN,
+          absl::StrCat("Launch succeeded but profile result is invalid, "
+                       "with cuDNN engine ",
+                       alg.ToString(), ": ", launch_status.ToString()));
       continue;
     }
 
@@ -583,15 +693,15 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     // omitting logging through the logger.
     if (!crash_on_checking_failure) {
       tensorflow::Logger::GetSingleton()->LogProto(log);
-    }
-  }
-
-  // Crash on miscompares and redzone violations if desired.  Do this after
-  // logging the autotuning results, otherwise we won't get any data!
-  for (const auto& result : profile_results) {
-    if (result.has_failure() &&
-        result.failure().kind() != AutotuneResult::DISQUALIFIED) {
-      CHECK(!crash_on_checking_failure);
+    } else {
+      // Crash on miscompares and redzone violations if desired.
+      for (const auto& profile : profile_results) {
+        if (profile.has_failure() &&
+            profile.failure().kind() != AutotuneResult::DISQUALIFIED) {
+          LOG(FATAL) << "crash_on_checking_failure encountered errors:\n\n"
+                     << log.DebugString();
+        }
+      }
     }
   }
 
@@ -640,27 +750,30 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   ScratchAllocator scratch_allocator(device_ordinal, allocator);
 
   TF_ASSIGN_OR_RETURN(
-      std::vector<se::dnn::ProfileResult> algorithms,
+      std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners,
       GetMIOpenAlgorithms(instr, absl::MakeSpan(operand_buffers), result_buffer,
                           stream_exec_, &scratch_allocator, stream));
 
   std::vector<AutotuneResult> profile_results;
 
-  if (algorithms.size() == 1) {
-    auto profile_result = algorithms[0];
+  if (runners.size() == 1) {
+    TF_ASSIGN_OR_RETURN(auto alg, runners[0]->ToAlgorithmDesc());
+    auto algorithm_proto = alg.ToProto();
     profile_results.emplace_back();
     auto& result = profile_results.back();
-    result.mutable_conv()->set_algorithm(profile_result.algorithm().algo_id());
-    result.mutable_conv()->set_tensor_ops_enabled(
-        profile_result.algorithm().tensor_ops_enabled());
+    *result.mutable_algorithm() = algorithm_proto;
 
-    result.set_scratch_bytes(profile_result.scratch_size());
-    *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
-        absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+    result.set_scratch_bytes(runners[0]->GetWorkspaceSize());
+
+    // TODO(awpr): if the profile result time for a singleton algorithm is
+    // needed, plumb it via OpRunner; we'll need to do this to let TF ops avoid
+    // re-profiling ROCm algorithms anyway.
+    *result.mutable_run_time() =
+        tensorflow::proto_utils::ToDurationProto(absl::Milliseconds(-1));
   } else {
     TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
-    for (const auto& miopen_alg : algorithms) {
-      const auto& alg = miopen_alg.algorithm();
+    for (auto& runner : runners) {
+      TF_ASSIGN_OR_RETURN(auto alg, runner->ToAlgorithmDesc());
       XLA_SCOPED_LOGGING_TIMER_LEVEL(
           absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                        alg.ToString()),
@@ -670,14 +783,23 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
               << instr->ToString();
 
+      TF_ASSIGN_OR_RETURN(
+          DeviceMemoryBase scratch_memory,
+          scratch_allocator.AllocateBytes(runner->GetWorkspaceSize()));
+
+      TF_ASSIGN_OR_RETURN(auto lazy_runner,
+                          se::dnn::LazyOpRunner<se::dnn::ConvOp>::FromOpRunner(
+                              std::move(runner)));
+
+      MaybeFusedConvRunner runner_cache(std::move(lazy_runner));
+
       // Use assignment instead of brace-list to make GCC 4.9 happy.
       RunConvOptions options;
       options.profile_result = &profile_result;
-      options.algo_override = alg;
-      options.scratch_size_override = miopen_alg.scratch_size();
+      options.runner_cache = &runner_cache;
       Status launch_status =
           RunGpuConv(config, absl::MakeSpan(operand_buffers), result_buffer,
-                     &scratch_allocator, stream, options);
+                     scratch_memory, stream, options);
 
       if (!launch_status.ok()) {
         continue;
@@ -689,8 +811,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
 
       profile_results.emplace_back();
       AutotuneResult& result = profile_results.back();
-      result.mutable_conv()->set_algorithm(alg.algo_id());
-      result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
+      *result.mutable_algorithm() = alg.ToProto();
 
       int64_t scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       result.set_scratch_bytes(scratch_bytes_used);
@@ -717,18 +838,20 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
       PickBestAlgorithm(Cast<HloCustomCallInstruction>(instr));
   if (!best_algo_or.ok()) {
     auto msg = absl::StrFormat(
-        "Failed to determine best cudnn convolution algorithm: "
-        "%s\n\nConvolution performance may be suboptimal.",
-        best_algo_or.status().ToString());
+        "Failed to determine best cudnn convolution algorithm for:\n%s\n\n"
+        "Original error: %s",
+        instr->ToString(), best_algo_or.status().ToString());
 
     if (strict) {
       return Unknown(
-          "%s  To ignore this failure and try to use a fallback algorithm, use "
+          "%s\n\nTo ignore this failure and try to use a fallback algorithm "
+          "(which may have suboptimal performance), use "
           "XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false.  Please "
           "also file a bug for the root cause of failing autotuning.",
           msg);
     }
-    LOG(WARNING) << msg;
+    LOG(WARNING)
+        << msg << "\n\nAs a result, convolution performance may be suboptimal.";
     return false;
   }
 
@@ -748,8 +871,9 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
-  backend_config.set_algorithm(best_algo.conv().algorithm());
-  backend_config.set_tensor_ops_enabled(best_algo.conv().tensor_ops_enabled());
+  *backend_config.mutable_algorithm() = best_algo.algorithm();
+  backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
+      best_algo.scratch_bytes());
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));

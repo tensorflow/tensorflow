@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -96,11 +97,130 @@ struct RemoveComputeReshapeShape final
 
     if (llvm::any_of(*dynamic_shape, [](const auto &dim) {
           return !dim.isKnownNotNegativeOne();
-        }))
+        })) {
       return failure();
+    }
     rewriter.replaceOp(op, op.dynamic_shape());
     shapeComponentAnalysis.reset();
     return success();
+  }
+  ShapeComponentAnalysis &shapeComponentAnalysis;
+};
+
+struct RemoveRedundantCstrReshapable final
+    : public OpRewritePattern<mhlo::CstrReshapableOp> {
+  RemoveRedundantCstrReshapable(MLIRContext *ctx,
+                                ShapeComponentAnalysis &shapeComponentAnalysis)
+      : OpRewritePattern(ctx), shapeComponentAnalysis(shapeComponentAnalysis) {}
+  LogicalResult matchAndRewrite(mhlo::CstrReshapableOp op,
+                                PatternRewriter &rewriter) const override {
+    // Get shape analysis info for the number of elements.
+    auto numElementsDims =
+        shapeComponentAnalysis.dimensionsForShapeTensor(op.num_elements());
+    if (!numElementsDims) return failure();
+    assert(numElementsDims->size() == 1 && "expect one value for a scalar");
+    auto numElementsDim = numElementsDims->front();
+
+    // Get shape analysis info for the dynamic shape.
+    auto dynShapeDims =
+        shapeComponentAnalysis.dimensionsForShapeTensor(op.dynamic_shape());
+    if (!dynShapeDims) return failure();
+
+    // We can handle two cases:
+    //   - there is exactly one -1 in the dynamic shape, i.e. a unique wildcard
+    //     dimension, or
+    //   - there is no -1 in the dynamic shape, i.e. no wildcard dimension.
+    bool unique_wildcard_dimension = false;
+    for (const auto &d : *dynShapeDims) {
+      if (d.isConstant(-1)) {
+        if (unique_wildcard_dimension) return failure();
+        unique_wildcard_dimension = true;
+      } else if (!d.isKnownNotNegativeOne()) {
+        return failure();
+      }
+    }
+
+    // We can only handle simple products with constants and symbols. Find all
+    // the factors based on the number of elements.
+    SmallVector<AffineSymbolExpr> remainingSymbolicFactorsNumElems;
+    int64_t concreteProductNumElems = 1;
+    if (!IsSimpleProduct(numElementsDim.expr, &concreteProductNumElems,
+                         &remainingSymbolicFactorsNumElems)) {
+      return failure();
+    }
+    assert(concreteProductNumElems >= 1 &&
+           "number of elements cannot entail negative or zero factors");
+
+    // Find all factors based on the dynamic shape.
+    //   - Accumulate the conrete product to later compare it against its
+    //     equivalent based on the number of elements.
+    //   - Remove symbolic factors from the list and fail if we find an unknown
+    //     factor, i.e. if the symbolic factors based on the dynamic shape are
+    //     not a subset of the factors based on the number of elements.
+    int64_t concreteProductDynShape = 1;
+    for (auto d : *dynShapeDims) {
+      if (auto constExpr = d.expr.dyn_cast<AffineConstantExpr>()) {
+        if (constExpr.getValue() != -1)
+          concreteProductDynShape *= constExpr.getValue();
+        continue;
+      }
+      if (auto symExpr = d.expr.dyn_cast<AffineSymbolExpr>()) {
+        auto symDynShape = d.symbols[symExpr.getPosition()];
+        bool isFactorInBothProducts = false;
+        for (int i = 0; i < remainingSymbolicFactorsNumElems.size(); ++i) {
+          auto symNumElements =
+              numElementsDim
+                  .symbols[remainingSymbolicFactorsNumElems[i].getPosition()];
+          if (symDynShape == symNumElements) {
+            remainingSymbolicFactorsNumElems[i] =
+                remainingSymbolicFactorsNumElems.back();
+            remainingSymbolicFactorsNumElems.pop_back();
+            isFactorInBothProducts = true;
+            break;
+          }
+        }
+        if (!isFactorInBothProducts) return failure();
+        continue;
+      }
+      return failure();
+    }
+    assert(concreteProductDynShape >= 1 &&
+           "concrete product must not aggregate negative or zero factors");
+
+    if (unique_wildcard_dimension) {
+      // The wildcard dimension subsumes the remaining symbolic factors and
+      // potentially also a concrete factor.
+      if (concreteProductNumElems % concreteProductDynShape != 0)
+        return failure();
+      rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
+      return success();
+    }
+
+    // W/o a wildcard, the symbolic and concrete products must be equal.
+    bool isReshapable = remainingSymbolicFactorsNumElems.empty() &&
+                        concreteProductNumElems == concreteProductDynShape;
+    rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, isReshapable);
+    return success();
+  }
+  bool IsSimpleProduct(
+      AffineExpr expr, int64_t *concreteProduct,
+      SmallVectorImpl<AffineSymbolExpr> *symbolicFactors) const {
+    auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>();
+    if (binExpr && binExpr.getKind() == AffineExprKind::Mul) {
+      return IsSimpleProduct(binExpr.getLHS(), concreteProduct,
+                             symbolicFactors) &&
+             IsSimpleProduct(binExpr.getRHS(), concreteProduct,
+                             symbolicFactors);
+    }
+    if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
+      symbolicFactors->push_back(symExpr);
+      return true;
+    }
+    if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+      *concreteProduct *= constExpr.getValue();
+      return true;
+    }
+    return false;
   }
   ShapeComponentAnalysis &shapeComponentAnalysis;
 };
@@ -120,12 +240,18 @@ class ReshapeSimplifierPass final
 void ReshapeSimplifierPass::runOnFunction() {
   MLIRContext *ctx = &getContext();
   mlir::RewritePatternSet patterns(ctx);
-
   ShapeComponentAnalysis shapeComponentAnalysis;
-  patterns.insert<ReshapeToExpandShape>(ctx, shapeComponentAnalysis);
-  patterns.insert<RemoveComputeReshapeShape>(ctx, shapeComponentAnalysis);
 
-  (void)mlir::applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  // clang-format off
+  patterns.insert<ReshapeToExpandShape,
+                  RemoveComputeReshapeShape,
+                  RemoveRedundantCstrReshapable>(ctx, shapeComponentAnalysis);
+  // clang-format on
+
+  if (failed(mlir::applyPatternsAndFoldGreedily(getFunction(),
+                                                std::move(patterns)))) {
+    signalPassFailure();
+  }
 }
 
 std::unique_ptr<FunctionPass> createReshapeSimplifierPass() {

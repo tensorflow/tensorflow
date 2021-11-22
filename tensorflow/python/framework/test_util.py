@@ -49,6 +49,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -56,6 +57,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import gpu_util
 from tensorflow.python.framework import importer
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
@@ -1206,7 +1208,63 @@ def disable_eager_op_as_function(unused_msg):
     func._disable_eager_op_as_function = True
     return func
 
+  # Once the environment flag is flipped and `run_eager_op_as_function_enabled`
+  # is True by default, the `with_eager_op_as_function` wrapper will not add a
+  # separate test for eager_op_as_function execution. In that case the test with
+  # the original name needs to be disabled.
+  if context.run_eager_op_as_function_enabled():
+    return _disable_test(execute_func=False)
+
   return wrapper
+
+
+def set_xla_env_flag(func=None, flag=""):
+  """Decorator for setting XLA_FLAGS prior to running a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will allow users to set any xla flags
+  exposed via the XLA_FLAGS environment variable, execute the test, then reset
+  the XLA_FLAGS to the state it was in prior to this test.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @set_xla_env_flag(flag='--xla_gpu_enable_fast_min_max=false')
+    def testFoo(self):
+      ...
+
+  Args:
+    func: The function to be wrapped.
+    flag: The xla flag to be set in the XLA_FLAGS env variable.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+      original_xla_flags = os.environ.get("XLA_FLAGS")
+      new_xla_flags = flag
+      if original_xla_flags:
+        new_xla_flags = new_xla_flags + " " + original_xla_flags
+      os.environ["XLA_FLAGS"] = new_xla_flags
+      try:
+        return f(*args, **kwargs)
+      finally:
+        if original_xla_flags is None:
+          del os.environ["XLA_FLAGS"]
+        else:
+          os.environ["XLA_FLAGS"] = original_xla_flags
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
 
 
 def build_as_function_and_v1_graph(func=None):
@@ -2469,8 +2527,8 @@ class TensorFlowTestCase(googletest.TestCase):
           return ragged_tensor_value.RaggedTensorValue(
               self._eval_tensor(tensor.values),
               self._eval_tensor(tensor.row_splits))
-        elif isinstance(tensor, ops.IndexedSlices):
-          return ops.IndexedSlicesValue(
+        elif isinstance(tensor, indexed_slices.IndexedSlices):
+          return indexed_slices.IndexedSlicesValue(
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
               dense_shape=tensor.dense_shape.numpy())
@@ -2866,6 +2924,8 @@ class TensorFlowTestCase(googletest.TestCase):
                                atol=1e-6,
                                path=None,
                                msg=None):
+    if ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b):
+      return self._assertRaggedClose(a, b, rtol, atol, msg)
     path = path or []
     path_str = (("[" + "][".join(str(p) for p in path) + "]") if path else "")
     msg = msg if msg else ""
@@ -2961,8 +3021,6 @@ class TensorFlowTestCase(googletest.TestCase):
           to the nested structure, e.g. given `a = [(1, 1), {'d': (6, 7)}]` and
           `[p] = [1]['d']`, then `a[p] = (6, 7)`.
     """
-    if ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b):
-      return self._assertRaggedClose(a, b, rtol, atol, msg)
     self._assertAllCloseRecursive(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
@@ -3459,16 +3517,15 @@ class TensorFlowTestCase(googletest.TestCase):
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
   # Fix Python 3+ compatibility issues
-  if not six.PY2:
-    # pylint: disable=invalid-name
+  # pylint: disable=invalid-name
 
-    # Silence a deprecation warning
-    assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
+  # Silence a deprecation warning
+  assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
 
-    # assertItemsEqual is assertCountEqual as of 3.2.
-    assertItemsEqual = googletest.TestCase.assertCountEqual
+  # assertItemsEqual is assertCountEqual as of 3.2.
+  assertItemsEqual = googletest.TestCase.assertCountEqual
 
-    # pylint: enable=invalid-name
+  # pylint: enable=invalid-name
 
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):
@@ -3772,3 +3829,20 @@ def run_functions_eagerly(run_eagerly):
     yield
   finally:
     def_function.run_functions_eagerly(initial_state)
+
+
+class TestDelta(object):
+  """A utility class to track increments to test counters."""
+
+  def __init__(self, name, label):
+    self.name = name
+    self.label = label
+    self.Reset()
+
+  def Reset(self):
+    self.last_value = _test_metrics_util.test_counter_value(
+        self.name, self.label)
+
+  def Get(self):
+    value = _test_metrics_util.test_counter_value(self.name, self.label)
+    return value - self.last_value

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 
+#include <algorithm>
 #include <iterator>
 #include <utility>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -969,25 +971,38 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   FunctionLibraryDefinition* data_lib_def = &data->lib_def_;
   FunctionNameGenerator name_generator(
       data_lib_def, absl::StrCat(function_name, "_", random::New64()));
-  auto subgraph_size = subgraphs.size();
-  gtl::InlinedVector<Status, 4> instantiate_status(subgraph_size);
-  BlockingCounter counter(static_cast<int>(subgraph_size));
-  auto runner = [this, subgraph_size](std::function<void()> fn) {
+  auto num_subgraphs = subgraphs.size();
+  gtl::InlinedVector<Status, 4> instantiate_status(num_subgraphs);
+  BlockingCounter counter(static_cast<int>(num_subgraphs));
+  auto runner = [this, num_subgraphs](std::function<void()> fn) {
     // NOTE: Only use thread pool to instantiate sub-function when there are
     // more than 8 sub-functions. We want to avoid cost of switching thread when
     // there are only a few sub-functions.
-    if (default_thread_pool_ != nullptr && subgraph_size > 8) {
+    if (default_thread_pool_ != nullptr && num_subgraphs > 8) {
       default_thread_pool_->Schedule(fn);
     } else {
       fn();
     }
   };
+  // Currently, only single-device graphs support synchronous execution.
+  bool safe_for_sync_execution = false;
+  if (num_subgraphs == 1) {
+    // Old-style control flow can deadlock with the single-threaded executor.
+    const auto& nodes = subgraphs.begin()->second->nodes();
+    auto unsafe = [](const Node* node) { return node->IsControlFlow(); };
+    safe_for_sync_execution = std::none_of(nodes.begin(), nodes.end(), unsafe);
+    metrics::IncrementTestCounter(
+        "pflr_sync_safety", safe_for_sync_execution ? "safe" : "unsafe_op");
+  } else {
+    metrics::IncrementTestCounter("pflr_sync_safety", "partitioned");
+  }
   for (const auto& pair : subgraphs) {
     Status* status = &instantiate_status[i];
     string unique_name = name_generator.GetName();
     ComponentFunctionData* comp_data = &data->glue_[pair.first];
     runner([this, &pair, dev_set, comp_data, unique_name, data_lib_def,
-            &control_ret, &options, status, &counter, &data] {
+            &control_ret, &options, status, &counter, &data,
+            safe_for_sync_execution] {
       const string& target = pair.first;
 
       const string& device_type =
@@ -1020,6 +1035,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       opts.lib_def = data_lib_def;
       opts.create_kernels_eagerly = options.create_kernels_eagerly;
       opts.state_handle = options.state_handle;
+      opts.allow_small_function_optimizations =
+          options.allow_small_function_optimizations && safe_for_sync_execution;
       auto attrs = AttrSlice(&shard.attr());
       VLOG(1) << "Start instantiating component function " << unique_name
               << " on device " << target;

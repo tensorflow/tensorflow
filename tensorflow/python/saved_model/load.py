@@ -29,7 +29,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import handle_data_util
@@ -40,7 +39,6 @@ from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
-from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
@@ -58,6 +56,12 @@ from tensorflow.python.util.tf_export import tf_export
 
 # API label for SavedModel metrics.
 _LOAD_V2_LABEL = "load_v2"
+
+# Built-in registrations use the "oneof kind" field in the SavedObject proto,
+# instead of "registered_name" field. The "kind" field has almost the same
+# functionality as the registered_name, but only contains built-in TensorFlow
+# types (like variable, functions, assets).
+_BUILT_IN_REGISTRATIONS = {"asset": tracking.Asset}
 
 
 def _unused_handle():
@@ -142,7 +146,9 @@ class Loader(object):
     self._export_dir = export_dir
     self._concrete_functions = (
         function_deserialization.load_function_def_library(
-            meta_graph.graph_def.library, wrapper_function=_WrapperFunction))
+            library=meta_graph.graph_def.library,
+            saved_object_graph=self._proto,
+            wrapper_function=_WrapperFunction))
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
 
@@ -274,7 +280,6 @@ class Loader(object):
     # trigger other functions to be executed. For now it is only guaranteed to
     # work if the captures of a function only trigger functions without
     # captures.
-    self._setup_functions_structures()
     self._setup_functions_captures()
 
     self._create_saveable_object_factories()
@@ -322,28 +327,6 @@ class Loader(object):
       if reference.local_name == "__call__" and not callable(obj):
         setattr(type(obj), "__call__", _call_attribute)
 
-  def _setup_functions_structures(self):
-    """Setup structure for inputs and outputs of restored functions."""
-    coder = nested_structure_coder.StructureCoder()
-    for name, proto in sorted(self._proto.concrete_functions.items()):
-      concrete_function = self._concrete_functions[name]
-      # By setting the structured_outputs directly, we can rely on this
-      # function_lib.ConcreteFunction object to perform the output repacking
-      # logic. The only limitation of that logic is that it only works
-      # with output that is convertible to Tensors and the conversion
-      # always happens. For example tf.TensorShape([2, 3]) will be
-      # converted to Tensor representing [2, 3].
-      original_outputs = coder.decode_proto(proto.output_signature)
-      # The original_outputs here had Tensors converted to TensorSpecs, so
-      # the restored function's structured_outputs field will not be
-      # exactly the same. Fortunately the repacking logic cares only about
-      # the structure; and the unpacking logic cares only about structure
-      # and types.
-      concrete_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
-      concrete_function._func_graph.structured_input_signature = (  # pylint: disable=protected-access
-          coder.decode_proto(proto.canonicalized_input_signature))
-      concrete_function._initialize_function_spec()  # pylint: disable=protected-access
-
   def _setup_functions_captures(self):
     """Setup captures and variables in restored functions."""
     concrete_functions = sorted(self._proto.concrete_functions.items())
@@ -357,7 +340,7 @@ class Loader(object):
           for node_id in proto.bound_inputs
           if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
       ]
-      # TODO(andresp): This is only injecting the captured inputs into the
+      # TODO(b/205010575): This is only injecting the captured inputs into the
       # concrete function, note that we did not modify the FuncGraph
       # itself.
       captured_inputs_list = []
@@ -525,7 +508,7 @@ class Loader(object):
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
-    # TODO(andresp): Clean use of private methods of TrackableSaver.
+    # TODO(b/205010730): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
     saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     with ops.device("CPU"):
@@ -550,6 +533,13 @@ class Loader(object):
       for object_id, obj in dict(checkpoint.object_by_proto_id).items():
         position = base.CheckpointPosition(checkpoint=checkpoint,
                                            proto_id=object_id)
+        registered_saver = position.get_registered_saver_name()
+        if registered_saver:
+          raise NotImplementedError(
+              "Loading a SavedModel that uses registered checkpoint saver is "
+              f"not supported in graph mode. The loaded object {obj} uses the "
+              f"saver registered with the name {registered_saver}.")
+
         restore_ops = position.restore_ops()
         if restore_ops:
           if resource_variable_ops.is_resource_variable(obj):
@@ -596,13 +586,20 @@ class Loader(object):
       the trackable children.
     """
     registered_class = registration.get_registered_class(proto.registered_name)
+    if registered_class is not None:
+      user_proto = proto.serialized_user_proto
+    else:
+      registered_class = _BUILT_IN_REGISTRATIONS.get(proto.WhichOneof("kind"))
+      user_proto = proto
     if registered_class:
       dependencies = {}
       for reference in proto.dependencies:
         dependencies[reference.local_name] = nodes[reference.node_id]
       obj = registered_class._deserialize_from_proto(  # pylint: disable=protected-access
-          proto=proto.serialized_user_proto,
-          dependencies=dependencies)
+          proto=user_proto,
+          dependencies=dependencies,
+          export_dir=self._export_dir,
+          asset_file_def=self._asset_file_def)
       return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
     else:
       return self._recreate_default(proto, node_id)
@@ -612,7 +609,6 @@ class Loader(object):
     factory = {
         "user_object": (
             lambda: self._recreate_user_object(proto.user_object, node_id)),
-        "asset": lambda: self._recreate_asset(proto.asset),
         "function": lambda: self._recreate_function(proto.function),
         "bare_concrete_function": functools.partial(
             self._recreate_bare_concrete_function,
@@ -646,15 +642,6 @@ class Loader(object):
       pass
 
     return _UserObject(), setattr
-
-  def _recreate_asset(self, proto):
-    filename = file_io.join(
-        saved_model_utils.get_assets_dir(self._export_dir),
-        self._asset_file_def[proto.asset_file_def_index].filename)
-    asset = tracking.Asset(filename)
-    if not context.executing_eagerly():
-      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset.asset_path)
-    return asset, setattr
 
   def _recreate_function(self, proto):
     return function_deserialization.recreate_function(

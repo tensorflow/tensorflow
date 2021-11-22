@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text-with-layouts %s | FileCheck %s
+// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text --with-layouts=true --print-layouts=true %s | FileCheck %s
 
 // Checks exporting layouts
 

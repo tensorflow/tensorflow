@@ -91,7 +91,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       // coincide with laucnh operands as memref parameters get expanded when
       // lowered to llvm.
       int kernel_p = 0;
-      OpBuilder b = OpBuilder::atBlockBegin(&kernel.body().front());
+      OpBuilder b = OpBuilder::atBlockBegin(&kernel.getBody().front());
       llvm::SmallDenseMap<int64_t, Value> constants;
       auto loc = kernel.getLoc();
       for (auto operand : launch.operands()) {

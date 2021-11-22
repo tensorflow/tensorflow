@@ -476,6 +476,10 @@ flatbuffers::Offset<data::TensorDescriptor> Encode(
   tensor_builder.add_layout(ToFB(desc.layout));
   tensor_builder.add_shape(shape_fb);
   tensor_builder.add_data(data_fb);
+  tensor_builder.add_use_buffer_for_write_only_2d_texture(
+      desc.use_buffer_for_write_only_2d_texture);
+  tensor_builder.add_use_buffer_for_write_only_image_buffer(
+      desc.use_buffer_for_write_only_image_buffer);
   return tensor_builder.Finish();
 }
 
@@ -492,6 +496,10 @@ void Decode(const data::TensorDescriptor* fb_desc, TensorDescriptor* desc) {
   desc->data =
       std::vector<uint8_t>(fb_desc->data()->data(),
                            fb_desc->data()->data() + fb_desc->data()->size());
+  desc->use_buffer_for_write_only_2d_texture =
+      fb_desc->use_buffer_for_write_only_2d_texture();
+  desc->use_buffer_for_write_only_image_buffer =
+      fb_desc->use_buffer_for_write_only_image_buffer();
 }
 
 absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {

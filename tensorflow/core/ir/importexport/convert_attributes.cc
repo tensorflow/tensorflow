@@ -49,7 +49,7 @@ Status ConvertLocation(Location inst_loc,
                        NodeDef::ExperimentalDebugInfo* debug_info) {
   if (auto call_site = inst_loc.dyn_cast<CallSiteLoc>()) {
     if (auto name_loc = call_site.getCallee().dyn_cast<NameLoc>()) {
-      debug_info->add_original_node_names(name_loc.getName().c_str());
+      debug_info->add_original_node_names(name_loc.getName().data());
     }
   } else if (auto fused = inst_loc.dyn_cast<FusedLoc>()) {
     auto locations = fused.getLocations();
@@ -245,8 +245,8 @@ Status ConvertAttributes(
     bool remove_ref_type, AttrValueMap* values) {
   AttrValueMap func_call_attrs;
   for (const NamedAttribute& named_attr : attrs) {
-    auto name_strref = named_attr.first.str();
-    auto attr = named_attr.second;
+    auto name_strref = named_attr.getName().str();
+    auto attr = named_attr.getValue();
     absl::string_view name(name_strref.data(), name_strref.size());
     if (name == "name" || name == "device" || attrs_to_ignore.contains(name)) {
       // The name, device spec of a TF op or function are not stored as

@@ -280,19 +280,15 @@ LayoutAssignment::LayoutConstraints::InsertOperandLayoutConstraint(
 
 void LayoutAssignment::PushAddedConstraints(
     const LayoutConstraint* constraint) {
-  added_constraints_.push_back(constraint);
-  // Move the new constraint from the end of the worklist forward if its
-  // priority is higher than those ahead of it in the worklist. Assuming the
-  // worklist is already sorted, this works like a bubble sort, where the lower
-  // priority constraints are always pushed to the tail of the worklist.
-  for (int64_t i = added_constraints_.size() - 2; i >= 0; --i) {
-    if (added_constraints_[i]->priority() <
-        added_constraints_[i + 1]->priority()) {
-      std::swap(added_constraints_[i + 1], added_constraints_[i]);
-    } else {
-      break;
-    }
-  }
+  // Insert a new constraint to the first location where it's strictly greater
+  // than all the subsequent constraints. Assumes invariant that the list is
+  // sorted.
+  auto it = absl::c_upper_bound(
+      added_constraints_, constraint,
+      [&](const LayoutConstraint* a, const LayoutConstraint* b) {
+        return a->priority() > b->priority();
+      });
+  added_constraints_.insert(it, constraint);
 }
 
 Status LayoutAssignment::SetArrayOperandLayout(

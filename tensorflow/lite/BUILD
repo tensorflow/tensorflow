@@ -691,6 +691,7 @@ config_setting(
 
 cc_library(
     name = "tflite_with_xnnpack_enabled",
+    compatible_with = get_compatible_with_portable(),
     defines = ["TFLITE_BUILD_WITH_XNNPACK_DELEGATE"],
     visibility = ["//visibility:private"],
     deps = [
@@ -1031,6 +1032,15 @@ cc_library(
         ":kernel_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
+    name = "create_op_resolver_header",
+    hdrs = ["create_op_resolver.h"],
+    deps = [
+        ":mutable_op_resolver",
+        ":op_resolver",
     ],
 )
 

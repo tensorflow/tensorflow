@@ -4,6 +4,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 package(
     default_visibility = [
@@ -132,14 +136,14 @@ filegroup(
     srcs = [
         "benchmark_testlib.h",
         "testlib.h",
-    ],
+    ] + if_mkl(["mkl_testlib.h"]),
 )
 
 filegroup(
     name = "testlib_srcs",
     srcs = [
         "testlib.cc",
-    ],
+    ] + if_mkl(["mkl_testlib.cc"]),
 )
 
 filegroup(

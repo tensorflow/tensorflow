@@ -24,6 +24,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using SignatureHash = XlaCompilationCache::Signature::Hash;
+
 TEST(XlaCompilationCacheTest, SignatureEquality) {
   NameAttrList fn;
   fn.set_name("afunction");
@@ -49,9 +51,45 @@ TEST(XlaCompilationCacheTest, SignatureEquality) {
   for (int i = 0; i < signatures.size(); ++i) {
     for (int j = 0; j < signatures.size(); ++j) {
       EXPECT_EQ(i == j, signatures[i] == signatures[j])
-          << signatures[i].HumanString() << " " << signatures[j].HumanString();
+          << "s1: " << signatures[i].HumanString() << "\n"
+          << "s2: " << signatures[j].HumanString();
+      EXPECT_EQ(i == j,
+                signatures[i].HumanString() == signatures[j].HumanString())
+          << "s1: " << signatures[i].HumanString() << "\n"
+          << "s2: " << signatures[j].HumanString();
+      EXPECT_EQ(i == j, SignatureHash()(signatures[i]) ==
+                            SignatureHash()(signatures[j]))
+          << "s1: " << signatures[i].HumanString() << "\n"
+          << "s1_hash: " << SignatureHash()(signatures[i]) << "\n"
+          << "s2: " << signatures[j].HumanString() << "\n"
+          << "s2_hash: " << SignatureHash()(signatures[j]);
     }
   }
+}
+
+TEST(XlaCompilationCacheTest, SignatureUniqueness) {
+  NameAttrList fn;
+  fn.set_name("afunction");
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kConstant;
+  args[0].type = DT_INT32;
+  args[0].constant_value = Tensor(DT_INT32, {4, 0});
+
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({4, 0});
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaCompilationCache::Signature s1,
+                          XlaCompilationCache::BuildSignature(fn, args));
+
+  using std::swap;  // go/using-std-swap
+  swap(args[0], args[1]);
+  TF_ASSERT_OK_AND_ASSIGN(XlaCompilationCache::Signature s2,
+                          XlaCompilationCache::BuildSignature(fn, args));
+
+  EXPECT_NE(s1.HumanString(), s2.HumanString());
+  EXPECT_NE(SignatureHash()(s1), SignatureHash()(s2));
+  EXPECT_FALSE(s1 == s2);
 }
 
 TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {

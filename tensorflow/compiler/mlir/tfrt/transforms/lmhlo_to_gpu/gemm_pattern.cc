@@ -24,7 +24,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"

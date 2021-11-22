@@ -584,6 +584,9 @@ def string_join(inputs, separator="", name=None):
 dispatch.register_unary_elementwise_api(gen_string_ops.as_string)
 dispatch.register_unary_elementwise_api(gen_string_ops.decode_base64)
 dispatch.register_unary_elementwise_api(gen_string_ops.encode_base64)
+dispatch.register_unary_elementwise_api(gen_string_ops.string_lower)
+dispatch.register_unary_elementwise_api(gen_string_ops.string_upper)
+dispatch.register_unary_elementwise_api(gen_string_ops.unicode_transcode)
 dispatch.register_unary_elementwise_api(gen_string_ops.string_strip)
 dispatch.register_unary_elementwise_api(
     gen_string_ops.string_to_hash_bucket_fast)

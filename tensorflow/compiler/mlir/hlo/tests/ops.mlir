@@ -2002,6 +2002,125 @@ func @custom_call_multiple_inputs_outputs(%x: tensor<2xf32>, %token: !mhlo.token
 
 // -----
 
+// CHECK: func @custom_call_multiple_inputs_outputs_with_layout
+func @custom_call_multiple_inputs_outputs_with_layout(%x: tensor<2xf32>, %token: !mhlo.token) -> tensor<f32> {
+  %0:3 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>],
+    result_layouts = [dense<> : tensor<0xindex>, dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> (tensor<f32>, tensor<2xf32>, !mhlo.token)
+  return %0#0 : tensor<f32>
+}
+
+// -----
+
+// CHECK: func @custom_call_tuple_output_with_layout
+func @custom_call_tuple_output_with_layout(%x: tensor<2xf32>, %token: !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token> {
+  %0 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+  return %0 : tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+}
+
+// -----
+
+func @custom_call_only_operand_layout_constraints(%x: tensor<2xf32>, %token: !mhlo.token) -> tensor<2xf32> {
+  // expected-error@+1 {{Layout attributes should be specified for either both operands and results or none}}
+  %0:3 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> (tensor<2xf32>, tensor<2xf32>, !mhlo.token)
+  return %0#0 : tensor<2xf32>
+}
+
+// -----
+
+func @custom_call_layout_mismatch_num_operands(%x: tensor<2xf32>, %token: !mhlo.token) -> tensor<2xf32> {
+  // expected-error@+1 {{Number of operands must match the number of operand layouts, 2 != 1}}
+  %0:3 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> (tensor<2xf32>, tensor<2xf32>, !mhlo.token)
+  return %0#0 : tensor<2xf32>
+}
+
+// -----
+
+func @custom_call_layout_mismatch_num_results() -> tensor<2xf32> {
+  // expected-error@+1 {{Number of results must match the number of result layouts, 3 != 2}}
+  %0:3 = "mhlo.custom_call"() {
+    call_target_name = "foo",
+    operand_layouts = [],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>]
+  } : () -> (tensor<2xf32>, tensor<2xf32>, !mhlo.token)
+  return %0#0 : tensor<2xf32>
+}
+
+// -----
+
+func @custom_call_layout_mismatch_num_results_tuple(%x: tensor<2xf32>, %token: !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token> {
+  // expected-error@+1 {{Number of results must match the number of result layouts, 3 != 2}}
+  %0 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+  return %0 : tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+}
+
+// -----
+
+func @custom_call_tuple_operand_input(%x: tuple<tensor<2xf32>>, %token: !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token> {
+  // expected-error@+1 {{Tuple types are not fully supported with layout constraints yet}}
+  %0 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tuple<tensor<2xf32>>, !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+  return %0 : tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+}
+
+// -----
+
+func @custom_call_token_with_layout(%token: !mhlo.token) {
+  // expected-error@+1 {{Only tensor types can have non-empty layout: operand #0 of type '!mhlo.token' has layout dense<[0, 1]> : tensor<2xindex>}}
+  "mhlo.custom_call"(%token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0, 1]> : tensor<2xindex>],
+    result_layouts = []
+  } : (!mhlo.token) -> ()
+  return
+}
+
+// -----
+
+func @custom_call_mismatch_tensor_and_layout_rank(%arg: tensor<2x3xf32>) {
+  // expected-error@+1 {{incorrect layout dense<[0, 1, 2]> : tensor<3xindex> for type 'tensor<2x3xf32>', layout must be a permutation of [0, 2)}}
+  "mhlo.custom_call"(%arg) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0, 1, 2]> : tensor<3xindex>],
+    result_layouts = []
+  } : (tensor<2x3xf32>) -> ()
+  return
+}
+
+// -----
+
+func @custom_call_mismatch_tensor_and_layout_permutation(%arg: tensor<1x2x3xf32>) {
+  // expected-error@+1 {{incorrect layout dense<[0, 1, 3]> : tensor<3xindex> for type 'tensor<1x2x3xf32>', layout must be a permutation of [0, 3)}}
+  "mhlo.custom_call"(%arg) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0, 1, 3]> : tensor<3xindex>],
+    result_layouts = []
+  } : (tensor<1x2x3xf32>) -> ()
+  return
+}
+
+// -----
+
 // CHECK: func @reduce_window
 func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
@@ -2084,6 +2203,178 @@ func @conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> ten
          {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = ["DEFAULT", "DEFAULT"]} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   return %0 : tensor<1x8x8x16xf32>
+}
+
+// CHECK: func @conv_empty_spatial_dimensions
+// CHECK: mhlo.convolution
+// CHECK-SAME: dim_numbers = [b, f]x[i, o]->[b, f]
+// CHECK-SAME{LITERAL}: window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [], reverse = []}
+func @conv_empty_spatial_dimensions(%arg0: tensor<3x2xf16>, %arg1: tensor<2x2xf16>) -> tuple<tensor<3x2xf16>> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+         dim_numbers = [b, f]x[i, o]->[b, f],
+         window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [], reverse = []}
+         {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = ["DEFAULT", "DEFAULT"]}
+       : (tensor<3x2xf16>, tensor<2x2xf16>) -> tensor<3x2xf16>
+  %1 = "mhlo.tuple"(%0) : (tensor<3x2xf16>) -> tuple<tensor<3x2xf16>>
+  return %1 : tuple<tensor<3x2xf16>>
+}
+// -----
+
+func @conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
+  // expected-error @+3 {{'mhlo.convolution' Expected array with 2 elements, got 3 elements instead}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+         dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+         window = {stride = [1, 1], pad = [[1, 1, 1], [1, 1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+         {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = ["DEFAULT", "DEFAULT"]} :
+       (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
+  return %0 : tensor<1x8x8x16xf32>
+}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.conv = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 1, 0, f]>
+module attributes { mhlo.conv = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 2,
+      kernel_output_feature_dimension = 3,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [2, 1]>} {}
+
+// -----
+
+// CHECK-LABEL: func @convolution
+// CHECK: mhlo.convolution
+// CHECK-SAME: dim_numbers = [b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]
+// CHECK-SAME{LITERAL}: window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
+func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+     dim_numbers = [b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
+  return %0 : tensor<3x5x5x4xf32>
+}
+
+// -----
+
+// CHECK: module
+// CHECK: mhlo.conv = #mhlo.conv<[b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]>
+module attributes {
+  mhlo.conv = #mhlo.conv<[b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected dimension c, expecting b, f}}
+  mhlo.conv = #mhlo.conv<[c, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected dimension b, expecting i, o}}
+  mhlo.conv = #mhlo.conv<[b, 0, 1, f]x[0, 1, b, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected dimension i, expecting o}}
+  mhlo.conv = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, i]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Expected dimensions f not specified}}
+  mhlo.conv = #mhlo.conv<[b, 0, 1]x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected keyword b}}
+  mhlo.conv = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o, b]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{expected '['}}
+  mhlo.conv = #mhlo.conv<{b, 0, 1, f}x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Expected spatial dimensions 0 not specified}}
+  mhlo.conv = #mhlo.conv<[b, f, 1]x[o, 0, 1, i]->[f, b, 0, 1]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Duplicate entries for spatial dimension 1}}
+  mhlo.conv = #mhlo.conv<[b, f, 1, 0, 1]x[o, 0, 1, i]->[f, b, 0, 1]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected dimension -2}}
+  mhlo.conv = #mhlo.conv<[b, f, 1, -2]x[o, 0, 1, i]->[f, b, 0, 1]>
+} {}
+
+// -----
+
+func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+  // expected-error@+3{{Expected array with 2 elements, got 3 elements instead}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, 1], pad = [[0, 1, 2], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
+  return %0 : tensor<3x5x5x4xf32>
+}
+
+// -----
+
+func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+  // expected-error@+3{{Unexpected keyword stide}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stide = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
+  return %0 : tensor<3x5x5x4xf32>
+}
+// -----
+
+func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+  // expected-error@+3{{expected integer value}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, b], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
+  return %0 : tensor<3x5x5x4xf32>
+}
+// -----
+
+func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+  // expected-error@+3{{Unexpected keyword stride}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2], stride=[2,1]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
+  return %0 : tensor<3x5x5x4xf32>
 }
 
 // -----

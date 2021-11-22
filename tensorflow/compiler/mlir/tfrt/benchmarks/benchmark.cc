@@ -31,6 +31,9 @@ using ::tfrt::HostContext;
 using ::tfrt::cpu::jit::CompilationOptions;
 using ::tfrt::cpu::jit::MemrefType;
 
+const bool kStaticDim = false;
+const bool kDynamicDim = true;
+
 std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
   return std::make_unique<HostContext>(
       [](const tfrt::DecodedDiagnostic& diag) {
@@ -52,8 +55,9 @@ std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads) {
 mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
                                        RemainingResults results,
                                        unsigned result_index, const Type* type,
+                                       const Type* runtime_type,
                                        void* result_ptr) {
-  DCHECK(llvm::isa<MemrefType>(type)) << "expected memref result";
+  DCHECK(llvm::isa<MemrefType>(runtime_type)) << "expected memref result";
   // Cast result to the arbitrary chosen memref type and rank because we only
   // need to know the base pointer value.
   auto* memref = static_cast<StridedMemRefType<float, 0>*>(result_ptr);
@@ -81,7 +85,8 @@ JitExecutable& CreateJitExecutable(
   static auto* cache = new llvm::StringMap<std::unique_ptr<JitExecutable>>();
 
   std::string key =
-      llvm::formatv("{0}/{1}", mlir_input.data(), opts.num_worker_threads);
+      llvm::formatv("{0}/{1}/{2}", mlir_input.data(), opts.num_worker_threads,
+                    hash_value(tf_cpurt_opts));
 
   // Compile and cache MLIR function.
   auto it = cache->find(key);

@@ -152,7 +152,7 @@ xla::Status FixTupleTableAsync(se::Stream* stream,
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
         element_index.push_back(0);
-        for (int64_t i = 0; i < element_shape.tuple_shapes_size(); ++i) {
+        for (int i = 0; i < element_shape.tuple_shapes_size(); ++i) {
           // Gather all children of the tuple element.
           element_index.back() = i;
           elements.push_back(mem->Buffer(element_index).AsDeviceMemoryBase());
@@ -351,9 +351,11 @@ std::pair<CancellationToken, bool> RegisterCancellation(
   CancellationToken token = cancellation_manager->get_cancellation_token();
   // Don't rely on OpKernelContext being available when the callback runs.
   Env* env = ctx->env();
-  bool already_cancelled = !cancellation_manager->RegisterCallback(
-      token,
-      [device_ordinal, env]() { TPUCancelExecution(env, device_ordinal); });
+  bool already_cancelled =
+      !cancellation_manager->RegisterCallbackWithErrorLogging(
+          token,
+          [device_ordinal, env]() { TPUCancelExecution(env, device_ordinal); },
+          absl::StrCat("TPUCancellation on device ", device_ordinal));
   return std::pair<CancellationToken, bool>(token, already_cancelled);
 }
 

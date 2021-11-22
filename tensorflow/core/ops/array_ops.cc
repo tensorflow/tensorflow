@@ -776,7 +776,7 @@ REGISTER_OP("OnesLike")
     .Output("y: T")
     .Attr(
         "T: {bfloat16, half, float, double, int8, uint8, int16, uint16, int32, "
-        "int64, complex64, complex128, bool}")
+        "uint32, int64, uint64, complex64, complex128, bool}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 // --------------------------------------------------------------------------
@@ -1291,7 +1291,7 @@ REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .SetForwardTypeFn(full_type::ReplicateInputs())
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Snapshot")

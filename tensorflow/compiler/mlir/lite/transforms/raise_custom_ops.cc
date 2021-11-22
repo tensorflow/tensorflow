@@ -43,6 +43,10 @@ namespace {
 // wrap it by a TFL::CustomTfOp.
 struct RaiseCustomOpsPass
     : public PassWrapper<RaiseCustomOpsPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const final {
+    registry.insert<TensorFlowLiteDialect>();
+  }
+
  public:
   explicit RaiseCustomOpsPass()
       : target_op_names(target_ops.begin(), target_ops.end()) {}
@@ -81,7 +85,7 @@ void RaiseCustomOpsPass::runOnFunction() {
     // - the op is targeted explicitly, or
     // - the op isn't registered when there are no target list.
     if (target_op_names.contains(op_name) ||
-        (target_op_names.empty() && !op->getAbstractOperation())) {
+        (target_op_names.empty() && !op->isRegistered())) {
       custom_ops.push_back(op);
     }
   });

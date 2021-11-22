@@ -287,6 +287,23 @@ cc_library(
     ] + tf_grpc_cc_dependencies(),
 )
 
+tf_cc_test(
+    name = "dispatcher_client_test",
+    srcs = ["dispatcher_client_test.cc"],
+    deps = [
+        ":data_transfer",
+        ":dispatcher_client",
+        ":test_cluster",
+        ":test_util",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+    ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
+)
+
 cc_library(
     name = "dispatcher_impl",
     srcs = ["dispatcher_impl.cc"],
@@ -867,6 +884,12 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:standalone",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:thread_annotations",
     ] + tf_grpc_cc_dependencies(),
 )
 

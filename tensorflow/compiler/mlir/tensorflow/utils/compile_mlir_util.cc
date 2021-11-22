@@ -56,7 +56,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/adjust_layout.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -103,9 +105,10 @@ Status GetXlaInputShapes(
 
     DataType dtype;
     TF_RETURN_IF_ERROR(ConvertToDataType(func_type.getInput(i), &dtype));
-    TF_ASSIGN_OR_RETURN(xla_shape,
-                        shape_representation_fn(arg_shapes[i].shape, dtype,
-                                                /*use_fast_memory=*/false));
+    TF_ASSIGN_OR_RETURN(
+        xla_shape, shape_representation_fn(arg_shapes[i].shape, dtype,
+                                           /*use_fast_memory=*/false,
+                                           XlaLayoutPreference::kNoPreference));
 
     // Rewrite layout with sharding, if sharding is set.
     auto sharding =
@@ -142,7 +145,8 @@ Status GetOutputInfo(
     std::vector<XlaResourceUpdate>* resource_updates) {
   auto shape_representation_fn_no_fast_memory =
       [shape_representation_fn](const TensorShape& shape, DataType dtype) {
-        return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false);
+        return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false,
+                                       XlaLayoutPreference::kNoPreference);
       };
 
   mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
@@ -333,6 +337,7 @@ void CreateConvertMlirToXlaHloPipeline(
   }
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
+  pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
   // from static to dynamic shapes. This could be generated if the shape

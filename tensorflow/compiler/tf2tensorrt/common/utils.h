@@ -20,6 +20,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -86,6 +87,26 @@ namespace tensorrt {
 // Initializes the TensorRT plugin registry if this hasn't been done yet.
 void MaybeInitializeTrtPlugins(nvinfer1::ILogger* trt_logger);
 
+class IONamePrefixes {
+ public:
+  static constexpr const char* const kInputPHName = "TensorRTInputPH_";
+  static constexpr const char* const kOutputPHName = "TensorRTOutputPH_";
+};
+
+// Gets the binding index of a tensor in an engine.
+//
+// The binding index is looked up using the tensor's name and the profile index.
+// Profile index should be set to zero, if we do not have optimization profiles.
+Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
+                          const nvinfer1::ICudaEngine* cuda_engine,
+                          int* binding_index);
+
+// Gets the binding index of a tensor in an engine.
+//
+// Same as above, but uses the network input index to identify the tensor.
+Status GetTrtBindingIndex(int network_input_idx, int profile_index,
+                          const nvinfer1::ICudaEngine* cuda_engine,
+                          int* binding_index);
 }  // namespace tensorrt
 }  // namespace tensorflow
 

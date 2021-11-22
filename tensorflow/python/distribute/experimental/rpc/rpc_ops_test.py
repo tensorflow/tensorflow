@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -36,6 +37,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
+@test_util.with_eager_op_as_function
 class RpcOpsTest(test.TestCase):
 
   def setUp(self):
@@ -394,8 +396,8 @@ class RpcOpsTest(test.TestCase):
         "add", [constant_op.constant(20),
                 constant_op.constant(30)])
     self.assertAllEqual(result_or.is_ok(), False)
-    error_code, _ = result_or.get_error()
-    self.assertAllEqual(error_code, errors.DEADLINE_EXCEEDED)
+    error_code, error_message = result_or.get_error()
+    self.assertAllEqual(error_code, errors.DEADLINE_EXCEEDED, error_message)
 
     # Specifying reasonable timeout for call should succeed.
     result_or = client.call(

@@ -16,6 +16,7 @@ import contextlib
 
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -171,6 +172,13 @@ class LinearOperatorCirculantTestHermitianSpectrum(
   dtypes here though.  So in some cases the matrix will be complex but with
   zero imaginary part.
   """
+
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
 
   def operator_and_matrix(self,
                           shape_info,
@@ -488,6 +496,13 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
   dtypes here though.  So in some cases the matrix will be complex but with
   zero imaginary part.
   """
+
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
 
   @staticmethod
   def skip_these_tests():

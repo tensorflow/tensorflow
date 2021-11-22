@@ -18,6 +18,9 @@ limitations under the License.
 #include <stdint.h>
 
 #include <limits>
+#ifndef TF_LITE_STATIC_MEMORY
+#include <string>
+#endif  // TF_LITE_STATIC_MEMORY
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -149,8 +152,12 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
 
-inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
-inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
+inline int NumInputs(const TfLiteNode* node) {
+  return node->inputs == nullptr ? 0 : node->inputs->size;
+}
+inline int NumOutputs(const TfLiteNode* node) {
+  return node->outputs == nullptr ? 0 : node->outputs->size;
+}
 
 #ifndef TF_LITE_STATIC_MEMORY
 inline int NumIntermediates(const TfLiteNode* node) {
@@ -281,6 +288,9 @@ bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2);
 TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
                                      const TfLiteTensor* input,
                                      TfLiteIntArray** output_shape);
+
+const std::string GetShapeDebugString(const TfLiteIntArray* shape);
+
 #endif  // !defined(TF_LITE_STATIC_MEMORY)
 
 // Calculates the output_shape that is necessary for element-wise operations

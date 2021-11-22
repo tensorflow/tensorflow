@@ -44,6 +44,29 @@ limitations under the License.
 
 namespace xla {
 
+std::vector<int64_t> ToMixedRadix(const int64_t n,
+                                  absl::Span<const int64_t> bounds) {
+  if (bounds.empty()) {
+    return {};
+  }
+
+  std::vector<int64_t> digits;
+  digits.reserve(bounds.size());
+  int64_t divisor = Product(bounds);
+  CHECK_GT(divisor, 0);
+  int64_t remainder = n % divisor;
+  for (const int64_t radix : bounds) {
+    CHECK_GT(radix, 0);
+    divisor /= radix;
+    CHECK_GT(divisor, 0);
+
+    // The divisor is always 1 for the last iteration.
+    digits.push_back(remainder / divisor);
+    remainder = remainder % divisor;
+  }
+  return digits;
+}
+
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();

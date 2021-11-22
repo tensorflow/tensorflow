@@ -138,7 +138,9 @@ fi
 
 run_configure_for_gpu_build
 
-bazel build --config=release_gpu_windows ${EXTRA_BUILD_FLAGS} \
+bazel build \
+  --experimental_cc_shared_library \
+  --config=release_gpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
   tensorflow/tools/pip_package:build_pip_package || exit $?
 
@@ -165,7 +167,9 @@ TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 # GPU tests are very flaky when running concurrently, so set local_test_jobs=1
-bazel test --announce_rc --config=opt -k --test_output=errors \
+bazel test \
+  --experimental_cc_shared_library \
+  --announce_rc --config=opt -k --test_output=errors \
   --test_env=TF_GPU_COUNT \
   ${EXTRA_TEST_FLAGS} \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \

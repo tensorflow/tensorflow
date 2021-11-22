@@ -38,7 +38,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -394,8 +394,8 @@ Value RewriteCallOp(OpBuilder& builder, CallOp call,
   auto new_result_types = llvm::to_vector<4>(call.getResultTypes());
   new_result_types.push_back(token.getType());
   auto new_call = builder.create<CallOp>(
-      call.getLoc(), new_result_types, new_symbol ? *new_symbol : call.callee(),
-      new_operands);
+      call.getLoc(), new_result_types,
+      new_symbol ? *new_symbol : call.getCallee(), new_operands);
 
   for (auto results : llvm::zip(call.getResults(), new_call.getResults()))
     std::get<0>(results).replaceAllUsesWith(std::get<1>(results));
@@ -834,7 +834,7 @@ bool IsFunctionCallWithCommunication(
     Operation* op,
     const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite) {
   if (auto call = dyn_cast<mlir::CallOp>(op))
-    return funcs_to_rewrite.count(call.callee());
+    return funcs_to_rewrite.count(call.getCallee());
 
   return false;
 }

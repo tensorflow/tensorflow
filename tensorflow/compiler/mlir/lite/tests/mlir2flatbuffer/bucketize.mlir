@@ -37,7 +37,11 @@ func @main(tensor<3x2xf32>) -> tensor<3x2xi32> {
   // CHECK-NEXT:       outputs: [ 2 ],
   // CHECK-NEXT:       operators: [ {
   // CHECK-NEXT:         inputs: [ 1 ],
-  // CHECK-NEXT:         outputs: [ 2 ]
+  // CHECK-NEXT:         outputs: [ 2 ],
+  // CHECK-NEXT:         builtin_options_type: BucketizeOptions,
+  // CHECK-NEXT:         builtin_options: {
+  // CHECK-NEXT:           boundaries: [ 0.0, 10.0, 100.0 ]
+  // CHECK-NEXT:         }
   // CHECK-NEXT:       } ],
   // CHECK-NEXT:       name: "main"
   // CHECK-NEXT:     } ],

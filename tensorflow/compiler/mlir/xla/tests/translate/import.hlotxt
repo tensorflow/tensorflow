@@ -292,8 +292,47 @@ add {
 %test_custom_call (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
   %arg1 = f32[2,3] parameter(0)
   %arg2 = f32[5,5] parameter(1)
-// CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {api_version = 1 : i32, backend_config = "bar", call_target_name = "foo", has_side_effect = true, xla_shape = {{.*}}} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
+  // CHECK-SAME: api_version = 1 : i32
+  // CHECK-SAME: backend_config = "bar"
+  // CHECK-SAME: call_target_name = "foo"
+  // CHECK-SAME: has_side_effect = true
+  // CHECK-SAME: : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
   ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", backend_config="bar", custom_call_has_side_effect=true
+}
+
+// CHECK-LABEL:  func private @test_custom_call_layout
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>, [[ARG_1:%.*]]: tensor<5x5xf32>, [[ARG_2:%.*]]: !mhlo.token, [[ARG_3:%.*]]: tensor<i32>) -> tensor<1x2x3xf32>
+%test_custom_call_layout (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
+  %arg1 = f32[2,3] parameter(0)
+  %arg2 = f32[5,5] parameter(1)
+  %arg3 = token[] parameter(2)
+  %arg4 = s32[] parameter(3)
+  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]]) {
+  // CHECK-SAME: api_version = 1 : i32
+  // CHECK-SAME: backend_config = "bar"
+  // CHECK-SAME: call_target_name = "foo"
+  // CHECK-SAME: has_side_effect = true
+  // CHECK-SAME: operand_layouts = [dense<[0, 1]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>, dense<> : tensor<0xindex>, dense<> : tensor<0xindex>]
+  // CHECK-SAME: result_layouts = [dense<[0, 2, 1]> : tensor<3xindex>]
+  // CHECK-SAME: : (tensor<2x3xf32>, tensor<5x5xf32>, !mhlo.token, tensor<i32>) -> tensor<1x2x3xf32>
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2, token[] %arg3, s32[] %arg4), custom_call_target="foo", backend_config="bar", custom_call_has_side_effect=true, operand_layout_constraints={f32[2,3]{0,1}, f32[5,5]{1,0}, token[], s32[]}
+}
+
+// CHECK-LABEL:  func private @test_custom_call_tuple_output
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> tuple<tensor<1x2x3xf32>, tensor<3x7x9xi32>>
+%test_custom_call_tuple_output (arg1: f32[2,3], arg2: f32[5,5]) -> (f32[1,2,3], s32[3,7,9]) {
+  %arg1 = f32[2,3] parameter(0)
+  %arg2 = f32[5,5] parameter(1)
+  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
+  // CHECK-SAME: api_version = 1 : i32
+  // CHECK-SAME: backend_config = "bar"
+  // CHECK-SAME: call_target_name = "foo"
+  // CHECK-SAME: has_side_effect = true
+  // CHECK-SAME: operand_layouts = [dense<[0, 1]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>]
+  // CHECK-SAME: result_layouts = [dense<[0, 2, 1]> : tensor<3xindex>, dense<[2, 0, 1]> : tensor<3xindex>]
+  // CHECK-SAME: : (tensor<2x3xf32>, tensor<5x5xf32>) -> tuple<tensor<1x2x3xf32>, tensor<3x7x9xi32>>
+  ROOT %custom-call = (f32[1,2,3]{0,2,1}, s32[3,7,9]{2,0,1}) custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", backend_config="bar", custom_call_has_side_effect=true, operand_layout_constraints={f32[2,3]{0,1}, f32[5,5]{1,0}}
 }
 
 // CHECK-LABEL:  func private @test_div(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
@@ -636,7 +675,7 @@ add {
 %test_rng_normal (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
   %Arg_0.1 = f32[] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
-  // CHECK:  [[CST:%.*]] = arith.constant dense<[2, 3, 5]> : tensor<3xi64>
+  // CHECK:  [[CST:%.*]] = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
   // CHECK:  "mhlo.rng_normal"([[ARG0]], [[ARG1]], [[CST]])
   ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_normal
 }
@@ -646,7 +685,7 @@ add {
 %test_rng_uniform (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
   %Arg_0.1 = f32[] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
-  // CHECK:  [[CST:%.*]] = arith.constant dense<[2, 3, 5]> : tensor<3xi64>
+  // CHECK:  [[CST:%.*]] = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
   // CHECK:  "mhlo.rng_uniform"([[ARG0]], [[ARG1]], [[CST]])
   ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_uniform
 }

@@ -118,19 +118,17 @@ auto* saved_model_init_time_seconds =
 
 constexpr char kDeadlineExceededMessage[] = "Deadline exceeded.";
 
-// Return a unique id within this process.
-//
-// TODO(tfrt-devs): Consider making it per-model to reduce contention.
-int64_t GetNextStepId() {
-  static std::atomic<int64_t> id(0);
-  return id.fetch_add(1, std::memory_order_relaxed);
-}
-
 tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
   return tensorflow::Tensor(tensorflow::tstring(str));
 }
 
-StatusOr<RCReference<RequestContext>> SetUpRequestContext(
+struct RequestInfo {
+  RCReference<RequestContext> tfrt_request_context;
+  std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface> request_queue;
+  std::function<void(std::function<void()>)> runner;
+};
+
+StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
     const SavedModel::RunOptions& run_options,
     const ModelMetadata& model_metadata, tfrt::HostContext* host,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
@@ -139,18 +137,36 @@ StatusOr<RCReference<RequestContext>> SetUpRequestContext(
   DCHECK(host);
   DCHECK(work_queue);
   // Create request context and prepare deadline tracker.
+  // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
+  // contention.
   RequestContextBuilder request_context_builder(host, resource_context,
-                                                GetNextStepId());
+                                                GetUniqueInt());
 
+  // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
+  // directly.
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  auto status = work_queue->InitializeRequest(&request_context_builder,
-                                              &intra_op_threadpool);
-  if (!status.ok()) return status;
+
+  // TODO(b/198671794): The per-request queue should be passed through Run()
+  // directly.
+  TF_ASSIGN_OR_RETURN(auto request_queue,
+                      work_queue->InitializeRequest(&request_context_builder,
+                                                    &intra_op_threadpool));
+
+  auto request_info = std::make_unique<RequestInfo>();
+
+  // If a per-request queue is not provided, use the original queue in the
+  // tensorflow::Executor::Args::Runner.
+  auto* inter_op_queue = request_queue ? request_queue.get() : work_queue;
+  request_info->runner = [inter_op_queue](std::function<void()> f) {
+    inter_op_queue->AddTask(std::move(f));
+  };
+
+  request_info->request_queue = std::move(request_queue);
 
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, &fallback_state.device_manager(),
       &fallback_state.process_function_library_runtime(), intra_op_threadpool,
-      model_metadata));
+      model_metadata, &request_info->runner));
 
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfCpuRtRequestContext(&request_context_builder));
@@ -162,7 +178,10 @@ StatusOr<RCReference<RequestContext>> SetUpRequestContext(
   if (!expected_req_ctx) {
     return tensorflow::errors::Internal(StrCat(expected_req_ctx.takeError()));
   }
-  return std::move(expected_req_ctx.get());
+
+  request_info->tfrt_request_context = std::move(expected_req_ctx.get());
+
+  return request_info;
 }
 
 // Create the tensor for the bound input, which can be a variable or an asset.
@@ -242,12 +261,12 @@ tensorflow::Status RunInitializers(
     tfrt::ResourceContext* resource_context,
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
   auto* host = runtime.core_runtime()->GetHostContext();
-  TF_ASSIGN_OR_RETURN(auto req_ctx,
+  TF_ASSIGN_OR_RETURN(auto request_info,
                       SetUpRequestContext(/*run_options=*/{}, model_metadata,
                                           host, runtime.work_queue(),
                                           resource_context, fallback_state));
 
-  tfrt::ExecutionContext exec_ctx(req_ctx);
+  tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
 
   // Run "_tfrt_fallback_init" first to initialize fallback-specific states. It
   // is the special function created by compiler, which calls a sequence of
@@ -263,7 +282,7 @@ tensorflow::Status RunInitializers(
 
     const auto& signature = initializers_and_signatures.signature_map.at(init);
 
-    auto ready_chain = GetReadyChain(host);
+    auto ready_chain = GetReadyChain();
 
     // The actual arguments are the concat of side-effect chain and assets.
     llvm::SmallVector<AsyncValue*, 1> arguments;
@@ -1188,7 +1207,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
   auto* host = runtime().core_runtime()->GetHostContext();
 
   TF_ASSIGN_OR_RETURN(
-      auto req_ctx,
+      auto request_info,
       SetUpRequestContext(run_options, options_.model_metadata, host,
                           run_options.work_queue ? run_options.work_queue
                                                  : runtime().work_queue(),
@@ -1196,7 +1215,8 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
   tensorflow::profiler::TraceMeProducer traceme(
       // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
-      [request_id = req_ctx->id(), signature_name, this] {
+      [request_id = request_info->tfrt_request_context->id(), signature_name,
+       this] {
         return tensorflow::profiler::TraceMeEncode(
             "TfrtModelRun",
             {{"_r", 1},
@@ -1205,7 +1225,8 @@ tensorflow::Status SavedModelImpl::RunInternal(
              {"model_id", StrCat(options_.model_metadata.name,
                                  options_.model_metadata.version)}});
       },
-      tensorflow::profiler::ContextType::kTfrtExecutor, req_ctx->id());
+      tensorflow::profiler::ContextType::kTfrtExecutor,
+      request_info->tfrt_request_context->id());
 
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {
@@ -1213,12 +1234,19 @@ tensorflow::Status SavedModelImpl::RunInternal(
     if (absl::ToChronoTime(absl::Now()) > deadline) {
       return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
     }
-    req_deadline_tracker_.CancelRequestOnDeadline(deadline, req_ctx);
+    req_deadline_tracker_.CancelRequestOnDeadline(
+        deadline, request_info->tfrt_request_context);
   }
 
-  ExecutionContext exec_ctx{req_ctx};
+  ExecutionContext exec_ctx{request_info->tfrt_request_context};
   if (run_options.work_queue) {
+    // TODO(b/198671794): Avoid creating `request_queue` when the `work_queue`
+    // in `run_options` is specified.
     exec_ctx.set_work_queue(run_options.work_queue);
+  } else if (request_info->request_queue) {
+    exec_ctx.set_work_queue(request_info->request_queue.get());
+  } else {
+    exec_ctx.set_work_queue(runtime().work_queue());
   }
 
   llvm::SmallVector<AsyncValue*, 4> arguments;
@@ -1228,7 +1256,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
   // The first argument is a chain for side-effects. Since SavedModel::Run()
   // only returns when side-effects are visible, we can use a ready chain here.
-  arguments.push_back(GetReadyChain(host).release());
+  arguments.push_back(GetReadyChain().release());
 
   for (const auto& input : inputs) {
     arguments.push_back(
@@ -1253,11 +1281,11 @@ tensorflow::Status SavedModelImpl::RunInternal(
       })};
 
   // Wait for the function execution before checking chain and results.
-  host->Await(executed);
+  exec_ctx.work_queue().Await(executed);
 
   // Wait for all results including the side-effect chain. This ensures that all
   // side-effects are visible when SavedModel::Run() returns.
-  host->Await(chain_and_results);
+  exec_ctx.work_queue().Await(chain_and_results);
 
   DCHECK(!chain_and_results.empty());
 
@@ -1295,7 +1323,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
   // Check if error is due to cancellation.
   // TODO(tfrt-devs): report cancellation reason from runtime.
-  if (req_ctx->IsCancelled()) {
+  if (request_info->tfrt_request_context->IsCancelled()) {
     // Currently a request can only be cancelled by an expired timer.
     return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
   }

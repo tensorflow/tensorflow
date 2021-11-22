@@ -381,6 +381,8 @@ enum BuiltinOperator : int32 {
   BROADCAST_ARGS = 145,
   RANDOM_STANDARD_NORMAL = 146,
   BUCKETIZE = 147,
+  RANDOM_UNIFORM = 148,
+  MULTINOMIAL = 149,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -1087,8 +1089,8 @@ table AssignVariableOptions {
 }
 
 table RandomOptions {
-  seed: int;
-  seed2: int;
+  seed: long;
+  seed2: long;
 }
 
 table BucketizeOptions {

@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
+#include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -71,14 +72,21 @@ TfCpurtExecutor::TfCpurtExecutor()
 TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
                                                  const std::string& entrypoint,
                                                  Specialization specialization,
-                                                 bool vectorize) {
+                                                 bool vectorize,
+                                                 bool legalize_i1_tensors) {
   CompilationOptions opts;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
-  opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
+  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    mlir::RegisterAllTensorFlowDialects(registry);
+    // Needed to verify function argument attributes which are used to
+    // annotate dynamic shaped types with static type information.
+    mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
+  };
   opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
     tensorflow::TfCpuRtPipelineOptions opts;
     opts.vectorize = vectorize;
+    opts.legalize_i1_tensors = legalize_i1_tensors;
     tensorflow::CreateTfCpuRtPipeline(pm, opts);
   };
   opts.specialization = specialization;
@@ -106,7 +114,7 @@ static const char* ToPythonStructFormat(DType dtype_kind) {
     case DType::Unsupported:
       throw std::runtime_error("Unsupported dtype.");
     case DType::UI8:
-      throw std::runtime_error("Unimplemented.");
+      return "B";
     case DType::UI16:
       return "H";
     case DType::UI32:
@@ -116,7 +124,7 @@ static const char* ToPythonStructFormat(DType dtype_kind) {
     case DType::I1:
       return "?";
     case DType::I8:
-      throw std::runtime_error("Unimplemented.");
+      return "b";
     case DType::I16:
       return "h";
     case DType::I32:
@@ -146,6 +154,8 @@ static const char* ToPythonStructFormat(DType dtype_kind) {
 static DType FromPythonStructFormat(char dtype) {
   // Reference: https://docs.python.org/3/library/struct.html
   switch (dtype) {
+    case 'B':
+      return DType::UI8;
     case 'H':
       return DType::UI16;
     case 'I':
@@ -154,6 +164,8 @@ static DType FromPythonStructFormat(char dtype) {
       return DType::UI64;
     case '?':
       return DType::I1;
+    case 'b':
+      return DType::I8;
     case 'h':
       return DType::I16;
     case 'i':
@@ -284,28 +296,29 @@ std::vector<py::array> TfCpurtExecutor::Execute(
     ConvertPyArrayMemrefDesc(arguments[i], &memrefs[i]);
 
   // Get an executable that might be specialized to the operands.
-  AsyncValuePtr<Executable> executable =
+  llvm::Expected<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(memrefs, exec_ctx);
+  if (auto err = executable.takeError())
+    throw std::runtime_error(
+        StrCat("Failed to get Executable: ", std::move(err)));
 
   // Wait for the compilation completion.
-  host_context_.Await({executable.CopyRef()});
+  host_context_.Await({executable->CopyRef()});
 
-  if (executable.IsError())
+  if (executable->IsError())
     throw std::runtime_error(
-        StrCat("Failed to get Executable: ", executable.GetError()));
+        StrCat("Failed to get Executable: ", executable->GetError()));
 
   // Prepare storage for returned values.
-  size_t num_results = executable->signature().num_results();
-  std::vector<RCReference<AsyncValue>> result_storage;
-  result_storage.reserve(num_results);
-  for (int i = 0; i < num_results; ++i) result_storage.emplace_back();
+  unsigned num_results = (*executable)->num_results();
+  std::vector<RCReference<AsyncValue>> result_storage(num_results);
 
   RemainingResults results(result_storage);
 
   // Convert returned memrefs to Tensors.
   PyBindingReturnValueConverter converter(results);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
-  if (auto err = executable->Execute(memrefs, converter, exec_ctx))
+  if (auto err = (*executable)->Execute(memrefs, converter, exec_ctx))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));
 
   // Pull Python arrays out of async values.
@@ -323,6 +336,17 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   return ret_values;
 }
 
+bool TfCpurtExecutor::BuiltWith(const std::string& cpu_feature) {
+  if (cpu_feature == "AVX2") {
+#ifdef __AVX2__
+    return true;
+#else
+    return false;
+#endif
+  }
+  return false;
+}
+
 }  // namespace tensorflow
 
 PYBIND11_MODULE(_tf_cpurt_executor, m) {
@@ -337,6 +361,8 @@ PYBIND11_MODULE(_tf_cpurt_executor, m) {
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
                tensorflow::TfCpurtExecutor::Specialization::kEnabled,
-           py::arg("vectorize") = false)
-      .def("execute", &tensorflow::TfCpurtExecutor::Execute);
+           py::arg("vectorize") = false, py::arg("legalize_i1_tensors") = false)
+      .def("execute", &tensorflow::TfCpurtExecutor::Execute)
+      .def("built_with", &tensorflow::TfCpurtExecutor::BuiltWith,
+           py::arg("cpu_feature"));
 }

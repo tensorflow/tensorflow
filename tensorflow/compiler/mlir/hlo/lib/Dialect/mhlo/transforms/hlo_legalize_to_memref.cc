@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
+#include <functional>
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -46,12 +47,12 @@ class SignlessOpConversion : public OpConversionPattern<T> {
         remove_sign_converter_(remove_sign_converter) {}
 
   LogicalResult matchAndRewrite(
-      T op, ArrayRef<Value> operands,
+      T op, typename T::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
     // Sign-convert operands and result type.
     SmallVector<Value> converted_operands;
-    for (auto operand : operands) {
+    for (auto operand : adaptor.getOperands()) {
       Type original = operand.getType();
       Type converted = remove_sign_converter_->convertType(original);
       if (converted == original) {
@@ -159,10 +160,10 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
  public:
   HloToMemrefDynamicBroadcastInDimOpConverter(
       TypeConverter& converter, RemoveSignTypeConverter* sign_converter,
-      MLIRContext* ctx, bool enforce_identity_maps)
+      MLIRContext* ctx, std::function<bool(Operation*)> enforce_identity_maps)
       : BaseOpConversion<mhlo::DynamicBroadcastInDimOp>(converter,
                                                         sign_converter, ctx),
-        enforce_identity_maps_(enforce_identity_maps) {}
+        enforce_identity_maps_(std::move(enforce_identity_maps)) {}
 
   Value signlessRewrite(mhlo::DynamicBroadcastInDimOp op,
                         ArrayRef<Value> operands, Type op_result_type,
@@ -171,7 +172,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     if (!result_type) return {};
     Value result = InsertDynamicMemrefCastOp(op, operands.front(), &rewriter);
 
-    if (enforce_identity_maps_) {
+    if (enforce_identity_maps_(op)) {
       result = CreateCopy(op, result, &rewriter);
     }
 
@@ -232,7 +233,11 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
         result_dim_size = b->create<arith::IndexCastOp>(loc, result_dim_size,
                                                         b->getIndexType());
       }
-      sizes.push_back(result_dim_size);
+      if (result_type.isDynamicDim(i)) {
+        sizes.push_back(result_dim_size);
+      } else {
+        sizes.push_back(b->getIndexAttr(result_type.getDimSize(i)));
+      }
 
       auto it = output_to_input_dim.find(i);
       // If the rank of the output is greater than the rank of the input, i.e.
@@ -256,13 +261,11 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
       strides.push_back(select);
     }
 
-    // Type-erased memref type with static rank, dynamic sizes and strides.
+    // Type-erased memref type with static rank and dynamic strides.
     SmallVector<int64_t, 2> dynamic_layout(result_rank,
                                            MemRefType::kDynamicStrideOrOffset);
-    SmallVector<int64_t, 2> dynamic_shape(result_rank,
-                                          MemRefType::kDynamicSize);
     auto type_erased_memref_type = MemRefType::get(
-        dynamic_shape, operand_type.getElementType(),
+        result_type.getShape(), operand_type.getElementType(),
         makeStridedLinearLayoutMap(dynamic_layout,
                                    /*offset=*/0, b->getContext()));
 
@@ -278,6 +281,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     auto loc = op.getLoc();
     SmallVector<Value, 4> dynamic_operands;
     for (int i = 0; i < result_type.getRank(); ++i) {
+      if (!result_type.isDynamicDim(i)) continue;
       auto index = b->createOrFold<arith::ConstantIndexOp>(loc, i);
       Value size =
           b->create<tensor::ExtractOp>(loc, op.output_dimensions(), index);
@@ -295,7 +299,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     return copy;
   }
 
-  bool enforce_identity_maps_;
+  std::function<bool(Operation*)> enforce_identity_maps_;
 };
 
 struct HloLegalizeToMemrefPass
@@ -331,10 +335,11 @@ struct HloLegalizeToMemrefPass
 
 void populateHLOToMemrefConversionPattern(
     BufferizeTypeConverter* converter, RemoveSignTypeConverter* sign_converter,
-    OwningRewritePatternList* patterns, bool enforce_identity_maps) {
+    OwningRewritePatternList* patterns,
+    std::function<bool(Operation*)> enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
   patterns->insert<HloToMemrefDynamicBroadcastInDimOpConverter>(
-      *converter, sign_converter, context, enforce_identity_maps);
+      *converter, sign_converter, context, std::move(enforce_identity_maps));
   patterns->insert<HloToMemrefDynamicReshapeConverter,
                    HloToMemrefReshapeUnrankedConverter>(
       *converter, sign_converter, context);

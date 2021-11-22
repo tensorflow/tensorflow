@@ -18,7 +18,6 @@ import itertools
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
@@ -191,7 +190,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
   # def test_large_batch_memory_fail(self):
   #   if test.is_gpu_available(cuda_only=True):
   #     rank = 1
-  #     for dims in xrange(rank, rank + 3):
+  #     for dims in range(rank, rank + 3):
   #       self._check_memory_fail(
   #           np.mod(np.arange(np.power(128, dims)), 64).reshape(
   #               (128,) * dims).astype(np.complex64), rank)
@@ -246,7 +245,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     if context.executing_eagerly():
       return
     for rank in VALID_FFT_RANKS:
-      for dims in xrange(0, rank):
+      for dims in range(0, rank):
         x = np.zeros((1,) * dims).astype(np.complex64)
         with self.assertRaisesWithPredicateMatch(
             ValueError, "Shape must be .*rank {}.*".format(rank)):
@@ -281,6 +280,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.disable_xla("b/155276727")
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):
@@ -518,7 +518,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     if context.executing_eagerly():
       return
     for rank in VALID_FFT_RANKS:
-      for dims in xrange(0, rank):
+      for dims in range(0, rank):
         x = np.zeros((1,) * dims).astype(np.complex64)
         with self.assertRaisesWithPredicateMatch(
             ValueError, "Shape .* must have rank at least {}".format(rank)):
@@ -526,7 +526,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         with self.assertRaisesWithPredicateMatch(
             ValueError, "Shape .* must have rank at least {}".format(rank)):
           self._tf_ifft(x, rank)
-      for dims in xrange(rank, rank + 2):
+      for dims in range(rank, rank + 2):
         x = np.zeros((1,) * rank)
 
         # Test non-rank-1 fft_length produces an error.

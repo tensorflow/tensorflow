@@ -101,6 +101,13 @@ tensorflow::Device* GetDeviceFromFallbackState(
   return kernel_runner.device();
 }
 
+std::function<void(std::function<void()>)>* GetDefaultRunner() {
+  static auto* const default_runner =
+      new std::function<void(std::function<void()>)>(
+          [](const std::function<void()>& f) { f(); });
+  return default_runner;
+}
+
 }  // namespace
 
 Status SetUpKernelFallbackCompatRequestContext(
@@ -108,7 +115,8 @@ Status SetUpKernelFallbackCompatRequestContext(
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata) {
+    const absl::optional<tfrt::ModelMetadata>& model_metadata,
+    std::function<void(std::function<void()>)>* runner) {
   DCHECK(builder);
   DCHECK(device_manager);
   DCHECK(pflr);
@@ -122,8 +130,9 @@ Status SetUpKernelFallbackCompatRequestContext(
           kFallbackResourceArray);
 
   builder->context_data().emplace<KernelFallbackCompatRequestState>(
-      device_manager, builder->id(), runner_table, resource_array,
-      user_intra_op_threadpool, model_metadata, pflr);
+      runner ? runner : GetDefaultRunner(), device_manager, builder->id(),
+      runner_table, resource_array, user_intra_op_threadpool, model_metadata,
+      pflr);
 
   return Status::OK();
 }
@@ -146,7 +155,7 @@ Status SetUpKernelFallbackCompatRequestContext(
 
   auto& fallback_request_state =
       builder->context_data().emplace<KernelFallbackCompatRequestState>(
-          eager_context->local_device_mgr(), step_id,
+          GetDefaultRunner(), eager_context->local_device_mgr(), step_id,
           tfrt::OwnedOrUnownedPtr<ScopedStepContainer>{
               eager_context->StepContainer()},
           eager_context->GetCollectiveExecutorHandle(),
@@ -384,7 +393,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     const KernelFallbackCompatRequestState& fallback_request_state,
     const OpKernelRunner& op_kernel_runner) {
-  auto op_chain = tfrt::GetReadyChain(exec_ctx.host());
+  auto op_chain = tfrt::GetReadyChain();
   tensorflow::Status status;
 
   auto expected_input_tf_tensors = ConvertInputTensors(arguments, exec_ctx);

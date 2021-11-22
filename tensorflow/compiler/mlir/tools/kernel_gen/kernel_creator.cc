@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -97,8 +98,8 @@ bool IsSmallAlloc(Value alloc) {
     if (type.getRank() <= kMaxRankOfAllocatedMemRef) {
       for (Value alloc_arg : alloc.getDefiningOp()->getOperands()) {
         if (auto select = alloc_arg.getDefiningOp<mlir::SelectOp>()) {
-          if (!select.true_value().getDefiningOp<mlir::RankOp>() ||
-              !select.false_value().getDefiningOp<mlir::RankOp>())
+          if (!select.getTrueValue().getDefiningOp<mlir::RankOp>() ||
+              !select.getFalseValue().getDefiningOp<mlir::RankOp>())
             return false;
         } else if (!alloc_arg.getDefiningOp<mlir::RankOp>()) {
           return false;
@@ -332,6 +333,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
 
   // Expand memref_reshape to its ranked form so that we can propagate
   // scalars and avoid allocation.
+  pm.addNestedPass<mlir::FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createStdExpandOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());

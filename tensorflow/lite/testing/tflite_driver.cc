@@ -196,8 +196,8 @@ class TfLiteDriver::DataExpectation {
       if (CompareTwoValues(computed, reference)) {
         good_output = false;
         if (verbose) {
-          std::cerr << "  index " << i << ": got " << computed
-                    << ", but expected " << reference << std::endl;
+          std::cerr << "  Tensor[" << tensor.name << "] index " << i << ": got "
+                    << computed << ", but expected " << reference << std::endl;
         }
       }
     }
@@ -521,6 +521,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
   switch (tensor->type) {
+    case kTfLiteFloat64: {
+      const auto& values = testing::Split<double>(csv_values, ",");
+      if (!CheckSizes<double>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     case kTfLiteFloat32: {
       const auto& values = testing::Split<float>(csv_values, ",");
       if (!CheckSizes<float>(tensor->bytes, values.size())) return;
@@ -707,8 +713,9 @@ bool TfLiteDriver::CheckResults() {
       // Do not invalidate anything here. Instead, simply output the
       // differences and return false. Invalidating would prevent all
       // subsequent invocations from running..
-      std::cerr << "There were errors in invocation '" << GetInvocationId()
-                << "', output tensor '" << id << "':" << std::endl;
+      std::cerr << "TfLiteDriver: There were errors in invocation '"
+                << GetInvocationId() << "', validating output tensor '" << id
+                << "':" << std::endl;
       p.second->Check(/*verbose=*/true, *tensor);
       success = false;
       SetOverallSuccess(false);
@@ -721,8 +728,10 @@ bool TfLiteDriver::CheckResults() {
       // Do not invalidate anything here. Instead, simply output the
       // differences and return false. Invalidating would prevent all
       // subsequent invocations from running..
-      std::cerr << "There were errors in invocation '" << GetInvocationId()
-                << "', output tensor '" << id << "':" << std::endl;
+      std::cerr << "TfLiteDriver: There were errors in invocation '"
+                << GetInvocationId()
+                << "', validating the shape of output tensor '" << id
+                << "':" << std::endl;
       p.second->CheckShape(/*verbose=*/true, *tensor);
       success = false;
       SetOverallSuccess(false);

@@ -323,8 +323,8 @@ func @decompose_resource_apply_adagradv2(%arg0: tensor<f32>, %arg1: tensor<f32>,
     // CHECK: [[VAR_DELTA:%.*]] = "tf.Div"([[LR_MULTIPLY]], [[DIVISOR]]) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
     // CHECK: [[OLD_VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
     // CHECK: [[NEW_VAR:%.*]] = "tf.Sub"(%9, %8) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[NEW_VAR]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
-    // CHECK: "tf.AssignVariableOp"([[ACC_HANDLE]], [[NEW_ACC]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
+    // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[NEW_VAR]]) {validate_shape = false} : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
+    // CHECK: "tf.AssignVariableOp"([[ACC_HANDLE]], [[NEW_ACC]]) {validate_shape = false} : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
 
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xf32>>>
     %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xf32>>>
@@ -351,8 +351,8 @@ func @decompose_resource_apply_adagrad(%arg0: tensor<f32>, %arg1: tensor<f32>) -
     // CHECK: %[[DIV:.*]] = "tf.Div"(%[[LR_MULTIPLY]], %[[SQRT]]) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
     // CHECK: %[[VAR:.*]] = "tf.ReadVariableOp"(%[[VAR_HANDLE]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
     // CHECK: %[[VAR_NEW:.*]] = "tf.Sub"(%[[VAR]], %[[DIV]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[VAR_NEW]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
-    // CHECK: "tf.AssignVariableOp"(%[[ACCUM_HANDLE]], %[[ACCUM_NEW]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
+    // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[VAR_NEW]]) {validate_shape = false} : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
+    // CHECK: "tf.AssignVariableOp"(%[[ACCUM_HANDLE]], %[[ACCUM_NEW]]) {validate_shape = false} : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xf32>>>
     %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xf32>>>
 
@@ -452,9 +452,9 @@ func @decompose_resource_apply_adam_nesterov(%arg0: tensor<f32>, %arg1: tensor<f
   // CHECK: [[VAL_105:%.*]] = "tf.Div"([[VAL_102]], [[VAL_104]])
   // CHECK: [[OLD_VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
   // CHECK: [[NEW_VAR:%.*]] = "tf.Sub"([[OLD_VAR]], [[VAL_105]])
-  // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[NEW_VAR]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
-  // CHECK: "tf.AssignVariableOp"([[M_HANDLE]], [[NEW_M]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
-  // CHECK: "tf.AssignVariableOp"([[V_HANDLE]], [[NEW_V]]) : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
+  // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[NEW_VAR]]) {validate_shape = false} : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
+  // CHECK: "tf.AssignVariableOp"([[M_HANDLE]], [[NEW_M]]) {validate_shape = false} : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
+  // CHECK: "tf.AssignVariableOp"([[V_HANDLE]], [[NEW_V]]) {validate_shape = false} : (tensor<*x!tf_type.resource<tensor<*xf32>>>, tensor<*xf32>) -> ()
 
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xf32>>>
     %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xf32>>>
@@ -585,7 +585,7 @@ func @decompose_resource_apply_RMS_prop(%arg0: tensor<*x!tf_type.resource>, %arg
     // CHECK: %[[ONE_RHO:.*]] = "tf.Sub"(%[[ONE]], %[[RHO]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[GRAD_SQUARE]], %[[ONE_RHO]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: %[[MS_NEW:.*]] = "tf.AddV2"(%[[MS_RHO]], %[[MUL]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
-    // CHECK: "tf.AssignVariableOp"(%[[MS_HANDLE]], %[[MS_NEW]]) : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> ()
+    // CHECK: "tf.AssignVariableOp"(%[[MS_HANDLE]], %[[MS_NEW]]) {validate_shape = false} : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> ()
     // CHECK: %[[MOM:.*]] = "tf.ReadVariableOp"(%[[MOM_HANDLE]]) : (tensor<*x!tf_type.resource>) -> tensor<*xf32>
     // CHECK: %[[MOMENTUM_MOM:.*]] = "tf.Mul"(%[[MOMENTUM]], %[[MOM]]) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
     // CHECK: %[[LR_GRAD:.*]] = "tf.Mul"(%[[LR]], %[[GRAD]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -593,10 +593,10 @@ func @decompose_resource_apply_RMS_prop(%arg0: tensor<*x!tf_type.resource>, %arg
     // CHECK: %[[SQRT:.*]] = "tf.Sqrt"(%[[ADD]]) : (tensor<*xf32>) -> tensor<*xf32>
     // CHECK: %[[DIV:.*]] = "tf.Div"(%[[LR_GRAD]], %[[SQRT]]) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
     // CHECK: %[[MOM_NEW:.*]] = "tf.AddV2"(%[[MOMENTUM_MOM]], %[[DIV]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    // CHECK: "tf.AssignVariableOp"(%[[MOM_HANDLE]], %[[MOM_NEW]]) : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> ()
+    // CHECK: "tf.AssignVariableOp"(%[[MOM_HANDLE]], %[[MOM_NEW]]) {validate_shape = false} : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> ()
     // CHECK: %[[VAR:.*]] = "tf.ReadVariableOp"(%[[VAR_HANDLE]]) : (tensor<*x!tf_type.resource>) -> tensor<*xf32>
     // CHECK: %[[VAR_NEW:.*]] = "tf.Sub"(%[[VAR]], %[[MOM_NEW]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[VAR_NEW]]) : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> ()
+    // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[VAR_NEW]]) {validate_shape = false} : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> ()
     "tf.ResourceApplyRMSProp"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7) {use_locking = false} : (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
     tf_device.return
   }) : () -> ()
@@ -752,8 +752,8 @@ func @decompose_resource_apply_proximal_adagrad_op(%lr: tensor<f32>, %l1: tensor
     // CHECK-DAG: %[[SCALED_L2:.*]] = "tf.Mul"(%[[ADAGRAD_LR]], %[[L2]]) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
     // CHECK-DAG: %[[DENOMINATOR:.*]] = "tf.Add"(%[[ONE]], %[[SCALED_L2]]) : (tensor<f32>, tensor<4xf32>) -> tensor<4xf32>
     // CHECK-DAG: %[[VAR_NEW:.*]] = "tf.Div"(%[[NUMERATOR]], %[[DENOMINATOR]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-    // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[VAR_NEW]]) : (tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
-    // CHECK-DAG: "tf.AssignVariableOp"(%[[ACCUM_HANDLE]], %[[ACCUM_NEW]]) : (tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+    // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[VAR_NEW]]) {validate_shape = false} : (tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+    // CHECK-DAG: "tf.AssignVariableOp"(%[[ACCUM_HANDLE]], %[[ACCUM_NEW]]) {validate_shape = false} : (tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
 
     "tf.ResourceApplyProximalAdagrad"(%var, %accum, %lr, %l1, %l2, %grad) {use_locking = false} : (tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<4xf32>) -> ()
 

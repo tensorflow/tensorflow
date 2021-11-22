@@ -136,7 +136,13 @@ struct ComputeOpAndFuncBufferizePass
     // Configure bufferize pattern for functions and lhlo.
     mhlo::populateHLOToMemrefConversionPattern(
         &converter, &remove_sign_converter, &patterns,
-        /*enforce_identity_map=*/false);
+        /*enforce_identity_map=*/[](Operation* op) {
+          // Force identity maps for return and tiled_loop as they don't support
+          // memrefs with affine_maps.
+          return llvm::any_of(op->getUsers(), [](Operation* user) {
+            return isa<mlir::ReturnOp>(user) || isa<linalg::TiledLoopOp>(user);
+          });
+        });
     populateFuncOpTypeConversionPattern(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
