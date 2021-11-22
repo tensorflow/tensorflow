@@ -54,6 +54,19 @@ struct MetalNode {
   MetalNode& operator=(const MetalNode&) = delete;
 };
 
+struct GpuNode {
+  std::unique_ptr<GPUOperation> gpu_operation;
+  std::vector<ValueId> inputs;
+  std::vector<ValueId> outputs;
+  std::string name;
+
+  GpuNode() = default;
+  GpuNode(GpuNode&& node) = default;
+  GpuNode& operator=(GpuNode&& node) = default;
+  GpuNode(const GpuNode&) = delete;
+  GpuNode& operator=(const GpuNode&) = delete;
+};
+
 class InferenceContext {
  public:
   struct CreateInferenceInfo {
@@ -74,7 +87,7 @@ class InferenceContext {
     std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
     std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
     std::vector<std::pair<ValueId, ValueId>> output_ids_and_refs;
-    std::vector<MetalNode> nodes;
+    std::vector<GpuNode> nodes;
     absl::flat_hash_map<ValueId, TensorDescriptor> tensors;
     absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
   };
