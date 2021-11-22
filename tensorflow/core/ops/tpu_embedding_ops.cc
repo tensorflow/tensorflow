@@ -73,7 +73,12 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
         return errors::InvalidArgument("Malformed tpu_embedding_config.");
       }
       std::vector<TensorShapeProto> output_shapes;
-      TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
+      if (config.feature_descriptor_size() == 0) {
+        TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
+      } else {
+        TF_RETURN_IF_ERROR(
+            ComputeOutputTensorShapesFromFeature(config, &output_shapes));
+      }
       if (c->num_outputs() != output_shapes.size()) {
         return errors::InvalidArgument("num outputs != size of output shapes");
       }
