@@ -2649,5 +2649,6 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:sorting.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:sorting_test",
         "//tensorflow/compiler/xla/service/gpu/tests:tree_reduction_rewriter_test",
+        "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
     ],
 )
