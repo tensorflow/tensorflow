@@ -84,7 +84,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(compression=[None, "AUTO"])))
   def testFromDatasetIdOmitsCompression(self, compression):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, data_transfer_protocol="grpc")
     dataset = dataset_ops.Dataset.from_tensor_slices(
         list("abcdefghijklmnopqrstuvwxyz"))
     def to_upper(x):
@@ -106,7 +107,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       combinations.times(test_base.eager_only_combinations(),
                          combinations.combine(compression=[None, "AUTO"])))
   def testFromDatasetIdOmitsElementSpecAndCompression(self, compression):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, data_transfer_protocol="grpc")
     dataset = dataset_ops.Dataset.from_tensor_slices(
         list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
     with mock.patch.object(compat, "forward_compatible", return_value=True):
@@ -121,7 +123,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
   def testCompressionMismatch(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, data_transfer_protocol="grpc")
     dataset = dataset_ops.Dataset.from_tensor_slices(
         list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
     with mock.patch.object(compat, "forward_compatible", return_value=False):
