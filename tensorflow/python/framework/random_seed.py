@@ -325,7 +325,7 @@ def set_seed(seed):
   ```
 
   When multiple identical random ops are wrapped in a `tf.function`, their
-  behaviors change because the ops no long share the same counter. For example:
+  behaviors change because the ops no longer share the same counter. For example:
 
   ```python
   @tf.function
