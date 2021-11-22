@@ -953,24 +953,39 @@ gpu_kernel_library(
     # unroll_factors = "4",
 )
 
-[
-    gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
-        op = op,
-        tile_size = "1024",
-        types = [
-            "f16",
-            "f32",
-            "f64",
-            "i64",
-        ],
-        unroll_factors = "4",
-    )
-    for op in [
-        "square",
-        "squared_difference",
-    ]
-]
+gpu_kernel_library(
+    name = "gpu_square_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    op = "square",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_squared_difference_kernels",
+    op = "squared_difference",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
 
 gpu_kernel_library(
     name = "gpu_add_v2_kernels",

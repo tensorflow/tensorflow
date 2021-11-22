@@ -15921,11 +15921,11 @@ I.e., \\(y = x * x = x^2\\).
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -17398,8 +17398,8 @@ Given an input tensor, this function computes hyperbolic tangent of every
   >>> x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
   >>> tf.math.tanh(x)
   <tf.Tensor: shape=(8,), dtype=float32, numpy=
-  array([-1.0       , -0.99990916, -0.46211717,  0.7615942 ,  0.8336547 ,
-          0.9640276 ,  0.9950547 ,  1.0       ], dtype=float32)>
+  array([-1.0, -0.99990916, -0.46211717,  0.7615942 ,  0.8336547 ,
+          0.9640276 ,  0.9950547 ,  1.0], dtype=float32)>
   }];
 
   let arguments = (ins

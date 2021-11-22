@@ -1158,8 +1158,8 @@ TEST_F(UnaryOpsTest, TanhNaN) {
 /// Test `tf.Square`.
 
 template <typename T>
-T baseline_square(T inp) {
-  return inp * inp;
+T baseline_square(T x) {
+  return x * x;
 }
 
 GENERATE_DEFAULT_TEST(Square, DT_HALF, DT_HALF, baseline_square,
@@ -1170,6 +1170,22 @@ GENERATE_DEFAULT_TEST(Square, DT_DOUBLE, DT_DOUBLE, baseline_square,
                       test::OpsTestConfig())
 GENERATE_DEFAULT_TEST(Square, DT_INT64, DT_INT64, baseline_square,
                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+GENERATE_DEFAULT_TEST(Square, DT_INT8, DT_INT8, baseline_square,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Square, DT_INT16, DT_INT16, baseline_square,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Square, DT_UINT8, DT_UINT8, baseline_square,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Square, DT_UINT16, DT_UINT16, baseline_square,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Square, DT_UINT32, DT_UINT32, baseline_square,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Square, DT_UINT64, DT_UINT64, baseline_square,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
 
 /// Test `tf.ZerosLike`.
 
