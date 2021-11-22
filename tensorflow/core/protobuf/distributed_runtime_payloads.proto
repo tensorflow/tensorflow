@@ -9,7 +9,7 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobu
 // grpc::Status `error_details` since grpc::Status lacks payload API.
 // TODO(b/204231601): Use GRPC API once supported.
 message GrpcPayloadContainer {
-  map<string, string> payloads = 1;
+  map<string, bytes> payloads = 1;
 }
 
 // If included as a payload, this message flags the Status to have lost payloads
