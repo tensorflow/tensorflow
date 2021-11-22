@@ -755,8 +755,8 @@ def tf_cc_shared_object(
         native.filegroup(
             name = name,
             srcs = select({
-                "//tensorflow:windows": [":%s.dll" % (name)],
-                "//tensorflow:macos": [":lib%s%s.dylib" % (name, longsuffix)],
+                clean_dep("//tensorflow:windows"): [":%s.dll" % (name)],
+                clean_dep("//tensorflow:macos"): [":lib%s%s.dylib" % (name, longsuffix)],
                 "//conditions:default": [":lib%s.so%s" % (name, longsuffix)],
             }),
             visibility = visibility,
