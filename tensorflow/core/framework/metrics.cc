@@ -481,5 +481,15 @@ void TestDelta::Reset() { last_value_ = cell_->value(); }
 
 int64 TestDelta::Get() { return cell_->value() - last_value_; }
 
+void UpdateTfMlirGraphOptimizationPassStateCounter(
+    const std::string& pass_state, const std::string& processing_state) {
+  static auto* metric = monitoring::Counter<2>::New(
+      "/tensorflow/core/tf_mlir_update_graph_optimization_pass_state_counter",
+      "Tracks changes in a graph's UpdateTfMlirGraphOptimizationPassState",
+      "PassState", "ProcessingState");
+
+  metric->GetCell(pass_state, processing_state)->IncrementBy(1);
+}
+
 }  // namespace metrics
 }  // namespace tensorflow
