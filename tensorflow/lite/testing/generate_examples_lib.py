@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Generate a series of TensorFlow graphs that become tflite test cases.
 
 Usage:
@@ -264,6 +263,8 @@ class Options(object):
     self.make_edgetpu_tests = False
     # Whether to generate test cases for TF PTQ.
     self.make_tf_ptq_tests = False
+    # For TF Quantization only: where conversion for HLO target.
+    self.hlo_aware_conversion = True
     # The function to convert a TensorFLow model to TFLite model.
     # See the document for `toco_convert` function for its required signature.
     self.tflite_convert_function = None

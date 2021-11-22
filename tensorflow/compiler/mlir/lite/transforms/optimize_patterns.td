@@ -998,7 +998,8 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
     $bias,
     TFL_AF_None,
     TFL_FCWO_Default,
-    ConstBoolAttrFalse),
+    ConstBoolAttrFalse,
+    $asymmetric_quantize_inputs),
   (TFL_EmbeddingLookupOp
     $indices,
     (TFL_TransposeOp

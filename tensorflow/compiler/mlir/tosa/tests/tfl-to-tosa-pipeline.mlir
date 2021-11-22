@@ -161,9 +161,7 @@ func @test_exp(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_rcp
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1x1x1xf32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reciprocal"(%arg0)
-// CHECK: %[[VAR3:.*]] = "tosa.mul"(%[[VAR1]], %[[VAR0]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.reciprocal"(%arg0)
 func @test_rcp(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<1.000000e+00> : tensor<f32>
   %0 = "tfl.div"(%cst, %arg0)  {fused_activation_function = "NONE"}  : (tensor<f32>, tensor<13x21x3xf32>) -> tensor<*xf32>
@@ -1086,10 +1084,11 @@ func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tensor<f32
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1xf32>}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<6.10360876E-5> : tensor<1x1x1xf32>}
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.mul"(%arg0, %[[VAR0]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.cast"(%[[VAR4]])
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.add"(%[[VAR4]], %[[VAR1]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.cast"(%[[VAR5]])
 // CHECK-DAG: %[[VAR8:.*]] = "tosa.cast"(%[[VAR7]])
 // CHECK-DAG: %[[VAR10:.*]] = "tosa.sub"(%[[VAR8]], %[[VAR1]])
-// CHECK: %[[VAR12:.*]] = "tosa.mul"(%[[VAR10]], %[[VAR2]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR12:.*]] = "tosa.mul"(%[[VAR10]], %[[VAR2]]) {shift = 0 : i32}
 func @test_fakequant_with_min_max_args(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.quantize"(%arg0)  {qtype = tensor<13x21x3x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>}  : (tensor<13x21x3xf32>) -> tensor<*x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>
   %1 = "tfl.dequantize"(%0) : (tensor<*x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>) -> tensor<13x21x3xf32>
@@ -1110,11 +1109,9 @@ func @test_dequantize_float(%arg0: tensor<10xf16>) -> tensor<*xf32> {
 
 // CHECK-LABEL: @test_dequantize_quant_uniform
 func @test_dequantize_quant_uniform(%arg0: tensor<4x!quant.uniform<i8:f32, 1.0:-1>>) -> tensor<*xf32> {
-  // CHECK-DAG: %[[VAL0:.+]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1xf32>}
-  // CHECK-DAG: %[[VAL1:.+]] = "tosa.const"() {value = dense<-1.000000e+00> : tensor<1xf32>}
-  // CHECK-DAG: %[[VAL2:.+]] = "tosa.cast"(%arg0)
-  // CHECK-DAG: %[[VAL4:.+]] = "tosa.sub"(%[[VAL2]], %[[VAL1]])
-  // CHECK: %[[VAL6:.+]] = "tosa.mul"(%[[VAL4]], %[[VAL0]]) {shift = 0 : i32}
+  // CHECK-DAG: %[[VAL0:.+]] = "tosa.const"() {value = dense<-1.000000e+00> : tensor<1xf32>}
+  // CHECK-DAG: %[[VAL1:.+]] = "tosa.cast"(%arg0)
+  // CHECK-DAG: %[[VAL2:.+]] = "tosa.sub"(%[[VAL1]], %[[VAL0]])
   %0 = "tfl.dequantize"(%arg0) : (tensor<4x!quant.uniform<i8:f32, 1.0:-1>>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -1483,7 +1480,6 @@ func @test_fullyconnected_hybrid(%arg0: tensor<14x19xf32>) -> tensor<*xf32> {
   // cast, subtract, and multiplication.
   // CHECK: "tosa.cast"
   // CHECK: "tosa.sub"
-  // CHECK: "tosa.mul"
   // CHECK: "tosa.fully_connected"
   %0 = "tfl.pseudo_qconst"() {qtype = tensor<36x36x!quant.uniform<i8:f32, 1.0>>, value = dense<42> : tensor<28x19xi8>} : () -> tensor<28x19x!quant.uniform<i8:f32, 1.0>>
   %1 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<28xf32>} : () -> tensor<28xf32>

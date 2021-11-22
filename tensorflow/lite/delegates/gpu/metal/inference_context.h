@@ -54,6 +54,19 @@ struct MetalNode {
   MetalNode& operator=(const MetalNode&) = delete;
 };
 
+struct GpuNode {
+  std::unique_ptr<GPUOperation> gpu_operation;
+  std::vector<ValueId> inputs;
+  std::vector<ValueId> outputs;
+  std::string name;
+
+  GpuNode() = default;
+  GpuNode(GpuNode&& node) = default;
+  GpuNode& operator=(GpuNode&& node) = default;
+  GpuNode(const GpuNode&) = delete;
+  GpuNode& operator=(const GpuNode&) = delete;
+};
+
 class InferenceContext {
  public:
   struct CreateInferenceInfo {
@@ -74,7 +87,7 @@ class InferenceContext {
     std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
     std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
     std::vector<std::pair<ValueId, ValueId>> output_ids_and_refs;
-    std::vector<MetalNode> nodes;
+    std::vector<GpuNode> nodes;
     absl::flat_hash_map<ValueId, TensorDescriptor> tensors;
     absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
   };
@@ -132,7 +145,15 @@ class InferenceContext {
   void EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
                               int flush_period);
 
+  API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+  void AddResources(id<MTLComputeCommandEncoder> command_encoder);
+  API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+  void EncodeWithICB(id<MTLComputeCommandEncoder> command_encoder);
+
   void Profile(id<MTLDevice> device, ProfilingInfo* result);
+  // Returns size in bytes for all intermediate(runtime) tensors that owned by
+  // this inference context. Do not include constant tensors.
+  uint64_t GetIntermediateTensorsSize() const;
 
  private:
   enum class TensorMemoryType {
@@ -179,6 +200,8 @@ class InferenceContext {
 
   std::map<ValueId, MetalSpatialTensor> strong_shape_tensors_;
   std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
+
+  id<MTLIndirectCommandBuffer> icb_ = nullptr;
 };
 
 // Runs specific transforms for the graph.

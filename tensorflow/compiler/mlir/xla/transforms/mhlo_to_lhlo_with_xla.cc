@@ -53,10 +53,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -904,12 +906,21 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         builder_.getF64FloatAttr(backend_config.conv_result_scale()));
 
     const auto& algorithm = backend_config.algorithm();
+    std::vector<int64_t> knob_ids;
+    std::vector<int64_t> knob_values;
+    for (const auto& entry : algorithm.tuning_knobs()) {
+      knob_ids.push_back(entry.first);
+      knob_values.push_back(entry.second);
+    }
 
     auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
         builder_.getI64IntegerAttr(algorithm.algo_id()),
         builder_.getBoolAttr(
             algorithm.math_type() ==
             stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH),
+        builder_.getI64ArrayAttr(knob_ids),
+        builder_.getI64ArrayAttr(knob_values),
+        builder_.getBoolAttr(algorithm.is_cudnn_frontend()),
         builder_.getI64IntegerAttr(algorithm.has_workspace_size()
                                        ? algorithm.workspace_size().value()
                                        : -1),
@@ -1098,7 +1109,7 @@ Status SetupCommonCollectiveOpAttributes(OpT op, const HloInstruction* instr,
   auto* collective = xla::Cast<xla::HloCollectiveInstruction>(instr);
   auto replica_groups_attr = xla::HloFunctionImporter::ConvertReplicaGroups(
       collective->replica_groups(), &builder);
-  op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
+  op->setAttr(replica_groups_attr.getName(), replica_groups_attr.getValue());
   op.constrain_layoutAttr(builder.getBoolAttr(collective->constrain_layout()));
   SetupChannelIdAttribute(op, collective, builder);
   return Status::OK();
@@ -1220,8 +1231,8 @@ LhloDialectEmitter::EmitCollectivePermuteOp(const HloInstruction* instr) {
   mlir::NamedAttribute source_target_pairs_attr =
       xla::HloFunctionImporter::ConvertSourceTargetPairs(
           permute->source_target_pairs(), &builder_);
-  permute_op->setAttr(source_target_pairs_attr.first,
-                      source_target_pairs_attr.second);
+  permute_op->setAttr(source_target_pairs_attr.getName(),
+                      source_target_pairs_attr.getValue());
   return permute_op;
 }
 

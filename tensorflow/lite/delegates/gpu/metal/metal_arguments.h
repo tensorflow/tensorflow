@@ -36,7 +36,8 @@ class MetalArguments : public ArgumentsBinder {
   MetalArguments() = default;
 
   absl::Status Init(const std::map<std::string, std::string>& linkables,
-                    MetalDevice* device, Arguments* args, std::string* code);
+                    bool use_arguments_buffer, MetalDevice* device,
+                    Arguments* args, std::string* code);
 
   // Move only
   MetalArguments(MetalArguments&& args) = default;
@@ -52,6 +53,12 @@ class MetalArguments : public ArgumentsBinder {
   void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset,
               int texture_offset = 0) const;
 
+  // For usage with Argument Buffers
+  API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+  void AddResourcesToEncoder(id<MTLComputeCommandEncoder> encoder) const;
+  API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+  void EncodeArguments(id<MTLArgumentEncoder> arguments_encoder);
+
  private:
   // creates structure with layout:
   // struct uniforms_buffer {
@@ -60,16 +67,16 @@ class MetalArguments : public ArgumentsBinder {
   //   float val_2;
   //   int dummy;  // for alignment
   // };
-  std::string ScalarArgumentsToStructWithScalarFields(Arguments* args,
-                                                      std::string* code);
+  std::string ScalarArgumentsToStructWithScalarFields(
+      const std::string& call_prefix, Arguments* args, std::string* code);
 
   // creates structure with layout:
   // struct uniforms_buffer {
   //   int4 val_0_val_1_dummy_dummy;
   //   float4 val_2_dummy_dummy_dummy;
   // };
-  std::string ScalarArgumentsToStructWithVec4Fields(Arguments* args,
-                                                    std::string* code);
+  std::string ScalarArgumentsToStructWithVec4Fields(
+      const std::string& call_prefix, Arguments* args, std::string* code);
 
   absl::Status AllocateObjects(const Arguments& args, id<MTLDevice> device);
   absl::Status AddObjectArgs(const GpuInfo& gpu_info, const Arguments& args);
@@ -77,6 +84,8 @@ class MetalArguments : public ArgumentsBinder {
   void AddGPUResources(const std::string& name, const GPUResources& resources);
 
   std::string GetListOfArgs(int buffer_offset, int textures_offset = 0);
+
+  std::string GetArgumentBufferStructDefinition(bool add_constants_struct);
 
   absl::Status SetGPUResources(const std::string& name,
                                const GPUResourcesWithValue& resources);

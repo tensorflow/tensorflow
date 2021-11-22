@@ -1,4 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = [
@@ -15,10 +17,39 @@ package_group(
     ],
 )
 
+td_library(
+    name = "ptq_td_files",
+    srcs = [
+        "fallback_to_flex_patterns.td",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:ArithmeticOpsTdFiles",
+        "@llvm-project//mlir:StdOpsTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "ptq_fallback_to_flex_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "fallback_to_flex_patterns.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "fallback_to_flex_patterns.td",
+    deps = [":ptq_td_files"],
+)
+
 cc_library(
     name = "tf_quantization_passes",
     srcs = [
         "fallback_to_flex_ops.cc",
+        "fallback_to_flex_patterns.inc",
         "tf_to_quant.cc",
     ],
     hdrs = [

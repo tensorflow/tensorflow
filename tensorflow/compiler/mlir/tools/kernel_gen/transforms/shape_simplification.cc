@@ -233,12 +233,9 @@ struct ShapeSimplification
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(&getContext());
 
-    Dialect *shape_dialect = context->getLoadedDialect<shape::ShapeDialect>();
-    Dialect *mhlo_dialect = context->getLoadedDialect<mhlo::MhloDialect>();
-    for (auto *op : context->getRegisteredOperations()) {
-      if (op->dialect.getTypeID() == shape_dialect->getTypeID() ||
-          op->dialect.getTypeID() == mhlo_dialect->getTypeID())
-        op->getCanonicalizationPatterns(patterns, context);
+    for (auto op : context->getRegisteredOperations()) {
+      if (isa<shape::ShapeDialect, mhlo::MhloDialect>(op.getDialect()))
+        op.getCanonicalizationPatterns(patterns, context);
     }
 
     patterns.insert<BroadcastRemoveSubsumedOperandsPattern,

@@ -51,8 +51,8 @@ constexpr std::array<const char*, 19> kTFDataOptimizations = {
     "parallel_batch",
     "slack",
     "autotune_buffer_sizes",
-    "inject_prefetch",
     "inject_prefetch_eligible",
+    "inject_prefetch",
     "disable_prefetch_legacy_autotune",
     "enable_gradient_descent",
     "make_deterministic"};

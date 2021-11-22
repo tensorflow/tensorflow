@@ -79,8 +79,8 @@ interfaces are specifically designed for each task to achieve the best
 performance and usability. Task Library works cross-platform and is supported on
 Java, C++, and Swift (coming soon).
 
-To use the Support Library in your Android app, we recommend using the AAR
-hosted at MavenCentral for
+To use the Task Library in your Android app, we recommend using the AAR hosted
+at MavenCentral for
 [Task Vision library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-vision)
 and
 [Task Text library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-text)
@@ -90,8 +90,9 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-audio:0.3.0'
 }
 ```
 
@@ -120,7 +121,7 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-support:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.3.0'
 }
 ```
 

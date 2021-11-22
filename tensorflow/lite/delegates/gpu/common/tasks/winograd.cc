@@ -29,7 +29,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace {
-std::string GetKernelWinograd4x4To36() {
+std::string GetKernelWinograd4x4To36(const OperationDef& op_def) {
   std::string c;
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
   c += "__constant FLT Bt[36] = {\n";
@@ -44,6 +44,8 @@ std::string GetKernelWinograd4x4To36() {
     c += "\n";
   }
   c += "};\n";
+
+  const auto src_desc = op_def.src_tensors[0];
   c += R"(
 MAIN_FUNCTION($0) {
   int X = GLOBAL_ID_0 * 4;
@@ -58,27 +60,48 @@ MAIN_FUNCTION($0) {
       I[y][x] = INIT_FLT4(0.0f);
     }
   }
-  int src_base = S * args.src_tensor.Height() * args.src_tensor.Width();
 )";
+  if (src_desc.IsLinear()) {
+    c += "  args.src_tensor.GetAddress(src_base, 0, 0, S);\n";
+  }
   for (int y = 0; y < 6; ++y) {
     const std::string s_y = std::to_string(y);
     c += "  {\n";
     c += "    int coord_y = Y + " + s_y + " + args.padding_y;\n";
-    c += "    bool in_y = coord_y >= 0 && coord_y < "
-         "args.src_tensor.Height();\n";
-    c += "    coord_y = clamp(coord_y, 0, args.src_tensor.Height() - 1);\n";
-    c += "    int src_adress_y = src_base + coord_y * "
-         "args.src_tensor.Width();\n";
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      c += "    bool in_y = coord_y >= 0 && coord_y < "
+           "args.src_tensor.Height();\n";
+      c += "    coord_y = clamp(coord_y, 0, args.src_tensor.Height() - 1);\n";
+    }
+    if (src_desc.IsLinear()) {
+      c += "    int src_adress_y = src_base + coord_y * "
+           "args.src_tensor.Width();\n";
+    }
     for (int x = 0; x < 6; ++x) {
       const std::string s_x = std::to_string(x);
       c += "    {\n";
       c += "      int coord_x = X + " + s_x + " + args.padding_x;\n";
-      c += "      bool in_x = coord_x >= 0 && coord_x < "
-           "args.src_tensor.Width();\n";
-      c += "      FLT mult = INIT_FLT(in_y && in_x);\n";
-      c += "      coord_x = clamp(coord_x, 0, args.src_tensor.Width() - 1);\n";
-      c += "      FLT4 src = args.src_tensor.Read(src_adress_y + coord_x) * "
-           "mult;\n";
+      if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+        c += "      bool in_x = coord_x >= 0 && coord_x < "
+             "args.src_tensor.Width();\n";
+        c += "      coord_x = clamp(coord_x, 0, args.src_tensor.Width()-1);\n";
+      }
+      std::string multiplier;
+      if (!src_desc.SupportsZeroClamp(Axis::WIDTH) &&
+          !src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+        multiplier = " * INIT_FLT(in_y && in_x)";
+      } else if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+        multiplier = " * INIT_FLT(in_x)";
+      } else if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+        multiplier = " * INIT_FLT(in_y)";
+      }
+      if (src_desc.IsLinear()) {
+        c += "      FLT4 src = args.src_tensor.Read(src_adress_y + coord_x)" +
+             multiplier + ";\n";
+      } else {
+        c += "      FLT4 src = args.src_tensor.Read(coord_x, coord_y, S)" +
+             multiplier + ";\n";
+      }
       c += "      I[0][" + s_x + "] += Bt[" + std::to_string(y) + "] * src;\n";
       c += "      I[1][" + s_x + "] += Bt[" + std::to_string(y + 6) +
            "] * src;\n";
@@ -94,8 +117,11 @@ MAIN_FUNCTION($0) {
     }
     c += "  }\n";
   }
-  c += R"(
 
+  const auto dst_desc = op_def.dst_tensors[0];
+
+  if (dst_desc.IsLinear()) {
+    c += R"(
   int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
   args.dst_tensor.GetAddress(dst_adress, dst_x, 0, S);
   for (int y = 0; y < 6; ++y) {
@@ -120,10 +146,30 @@ MAIN_FUNCTION($0) {
   }
 }
 )";
+  } else {
+    c += R"(
+  int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
+  for (int y = 0; y < 6; ++y) {
+    FLT4 value = I[y][0] + Bt[2] * I[y][2] + Bt[4] * I[y][4];
+    args.dst_tensor.Write(value, dst_x, y * 6 + 0, S);
+    value = Bt[7] * I[y][1] + Bt[8] * I[y][2] + Bt[9] * I[y][3] + Bt[10] * I[y][4];
+    args.dst_tensor.Write(value, dst_x, y * 6 + 1, S);
+    value = Bt[13] * I[y][1] + Bt[14] * I[y][2] + Bt[15] * I[y][3] + Bt[16] * I[y][4];
+    args.dst_tensor.Write(value, dst_x, y * 6 + 2, S);
+    value = Bt[19] * I[y][1] + Bt[20] * I[y][2] + Bt[21] * I[y][3] + Bt[22] * I[y][4];
+    args.dst_tensor.Write(value, dst_x, y * 6 + 3, S);
+    value = Bt[25] * I[y][1] + Bt[26] * I[y][2] + Bt[27] * I[y][3] + Bt[28] * I[y][4];
+    args.dst_tensor.Write(value, dst_x, y * 6 + 4, S);
+    value = Bt[31] * I[y][1] + Bt[33] * I[y][3] + I[y][5];
+    args.dst_tensor.Write(value, dst_x, y * 6 + 5, S);
+  }
+}
+)";
+  }
   return c;
 }
 
-std::string GetKernelWinograd36To4x4() {
+std::string GetKernelWinograd36To4x4(const OperationDef& op_def) {
   std::string c;
   auto at_mat = AtMatrixForWinograd4x4To6x6();
   c += "__constant FLT At[24] = {\n";
@@ -138,6 +184,9 @@ std::string GetKernelWinograd36To4x4() {
     c += "\n";
   }
   c += "};\n";
+
+  const auto src_desc = op_def.src_tensors[0];
+
   c += R"(
 MAIN_FUNCTION($0) {
   int tile_id = GLOBAL_ID_0;
@@ -147,13 +196,16 @@ MAIN_FUNCTION($0) {
   int tile_y = (tile_id / tiles_count_x) * 4;
   if (tile_x >= args.dst_tensor.Width() || tile_y >= args.dst_tensor.Height()) return;
 
-  int src_adress = Z * args.src_tensor.Height() * args.src_tensor.Width() + tile_id;
   FLT4 I[4][6];
   for (int y = 0; y < 4; ++y) {
     for (int x = 0; x < 6; ++x) {
       I[y][x] = INIT_FLT4(0.0f);
     }
   }
+)";
+  if (src_desc.IsLinear()) {
+    c += R"(
+  args.src_tensor.GetAddress(src_adress, tile_id, 0, Z);
   for (int y = 0; y < 6; ++y) {
     for (int x = 0; x < 6; ++x, src_adress += args.src_tensor.Width()) {
       FLT4 src = args.src_tensor.Read(src_adress);
@@ -163,6 +215,21 @@ MAIN_FUNCTION($0) {
       I[3][x] += src * At[y + 18];
     }
   }
+)";
+  } else {
+    c += R"(
+  for (int y = 0; y < 6; ++y) {
+    for (int x = 0; x < 6; ++x) {
+      FLT4 src = args.src_tensor.Read(tile_id, y * 6 + x, Z);
+      I[0][x] += src * At[y];
+      I[1][x] += src * At[y + 6];
+      I[2][x] += src * At[y + 12];
+      I[3][x] += src * At[y + 18];
+    }
+  }
+)";
+  }
+  c += R"(
 
   FLT4 bias_val = args.biases.Read(Z);
   for (int y = 0; y < 4 && tile_y + y < args.dst_tensor.Height(); ++y) {
@@ -218,7 +285,7 @@ absl::Status Winograd4x4To36::BindArguments(ArgumentsBinder* args) {
 Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
                                       const Padding2D& padding) {
   Winograd4x4To36 desc(definition, padding);
-  desc.code_ = GetKernelWinograd4x4To36();
+  desc.code_ = GetKernelWinograd4x4To36(definition);
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -250,11 +317,6 @@ Winograd4x4To36TileX6::Winograd4x4To36TileX6(const OperationDef& definition,
 std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     const OperationDef& op_def, const GpuInfo& gpu_info) {
   std::string c;
-
-  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
-  const bool is_image_buffer =
-      src_tensor_type == TensorStorageType::IMAGE_BUFFER;
-  const bool is_buffer = src_tensor_type == TensorStorageType::BUFFER;
 
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
@@ -316,32 +378,36 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   c += "  bt_ar[4] = t1.x;\n";
   c += "  bt_ar[5] = t1.y;\n";
   auto read_src = [&](const std::string& src, const std::string& xs) {
-    if (is_image_buffer) {
-      c += "    ACCUM_FLT4 " + src +
-           " = args.src_tensor.Read<ACCUM_FLT>(src_a_" + xs + " + offset);\n";
-    } else if (is_buffer) {
-      c += "    ACCUM_FLT4 " + src +
-           " = args.src_tensor.Read<ACCUM_FLT>(src_a_" + xs + " + offset) * m" +
-           xs + "_x;\n";
+    std::string read_statement;
+    if (src_desc.IsLinear()) {
+      read_statement =
+          "args.src_tensor.Read<ACCUM_FLT>(src_a_" + xs + " + offset)";
     } else {
-      c += "    ACCUM_FLT4 " + src +
-           " = args.src_tensor.Read<ACCUM_FLT>(tile_x + args.padding_x + " +
-           xs + ", yc, DST_Z);\n";
+      read_statement =
+          "args.src_tensor.Read<ACCUM_FLT>(xc" + xs + ", yc, DST_Z)";
     }
+    std::string multiplier;
+    if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+      if (!(src_desc.IsLinear() && src_desc.ReturnsZeroForNegOneRead())) {
+        multiplier = " * m" + xs + "_x";
+      }
+    }
+    c += "    ACCUM_FLT4 " + src + " = " + read_statement + multiplier + ";\n";
   };
-  if (is_buffer || is_image_buffer) {
-    for (int x = 0; x < 6; ++x) {
-      const std::string xs = std::to_string(x);
-      c += "  int xc" + xs + " = tile_x + args.padding_x + " + xs + ";\n";
-      c += "  ACCUM_FLT m" + xs + "_x = TO_ACCUM_FLT(xc" + xs + " >= 0 && xc" +
-           xs + " < args.src_tensor.Width());\n";
+  for (int x = 0; x < 6; ++x) {
+    const std::string xs = std::to_string(x);
+    c += "  int xc" + xs + " = tile_x + args.padding_x + " + xs + ";\n";
+    if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
       c += "  bool inx" + xs + " = (xc" + xs + " >= 0 && xc" + xs +
            " < args.src_tensor.Width());\n";
+      c += "  ACCUM_FLT m" + xs + "_x = TO_ACCUM_FLT(inx" + xs + ");\n";
       c += "  xc" + xs + " = clamp(xc" + xs +
            ", 0, args.src_tensor.Width() - 1);\n";
+    }
+    if (src_desc.IsLinear()) {
       c += "  args.src_tensor.GetAddress(src_a_" + xs + ", xc" + xs +
            ", 0, DST_Z);\n";
-      if (is_image_buffer) {
+      if (src_desc.ReturnsZeroForNegOneRead()) {
         c += "  src_a_" + xs +
              " = select(-args.src_tensor.Width() * args.src_tensor.Height(), "
              "src_a_" +
@@ -354,8 +420,9 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   if (manual_unroll) {
     c += "  {\n";
     c += "    int yc = tile_y + args.padding_y;\n";
-    if (is_buffer || is_image_buffer) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
+      c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
       c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
       c += "    ACCUM_FLT bt = bt_ar[0] * TO_ACCUM_FLT(iny);\n";
     } else {
@@ -372,8 +439,9 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
       const std::string ys = std::to_string(y);
       c += "  {\n";
       c += "    int yc = tile_y + args.padding_y + (" + ys + ");\n";
-      if (is_buffer || is_image_buffer) {
+      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
         c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
+        c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
         c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
         c += "    ACCUM_FLT bt = bt_ar[" + ys + "] * TO_ACCUM_FLT(iny);\n";
       } else {
@@ -396,8 +464,9 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     c += "  I5 = INIT_ACCUM_FLT4(0.0f);\n";
     c += "  for (int y = 0; y < 6; ++y) {\n";
     c += "    int yc = tile_y + args.padding_y + y;\n";
-    if (is_buffer || is_image_buffer) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
+      c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
       c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
       c += "    ACCUM_FLT bt = bt_ar[y] * TO_ACCUM_FLT(iny);\n";
     } else {
@@ -536,7 +605,7 @@ Winograd36To4x4 CreateWinograd36To4x4(
     const OperationDef& definition,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
   Winograd36To4x4 desc(definition);
-  desc.code_ = GetKernelWinograd36To4x4();
+  desc.code_ = GetKernelWinograd36To4x4(definition);
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);

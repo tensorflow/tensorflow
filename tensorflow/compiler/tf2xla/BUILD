@@ -583,6 +583,28 @@ cc_library(
 )
 
 cc_library(
+    name = "layout_util",
+    srcs = [
+        "layout_util.cc",
+    ],
+    hdrs = [
+        "layout_util.h",
+    ],
+    deps = [
+        ":common",
+        ":xla_argument",
+        ":xla_helpers",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "common",
     srcs = [
         "literal_util.cc",

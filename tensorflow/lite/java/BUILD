@@ -753,6 +753,7 @@ jni_binary_with_tflite(
     linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":tflite_version_script.lds",
     tflite_deps = [
+        "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native",
     ],
     deps = [
@@ -760,7 +761,6 @@ jni_binary_with_tflite(
         # allows bundling of the C lib w/ AAR distribution.
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
 )
@@ -774,13 +774,13 @@ jni_binary_with_tflite(
     linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":tflite_version_script.lds",
     tflite_deps = [
+        "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native:native_stable",
     ],
     deps = [
         # Note that we explicitly include the C API here for convenience, as it
         # allows bundling of the C lib w/ AAR distribution.
         "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/delegates/nnapi/java/src/main/native",
     ],
 )
 

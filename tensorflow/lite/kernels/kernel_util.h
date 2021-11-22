@@ -152,8 +152,12 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
 
-inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
-inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
+inline int NumInputs(const TfLiteNode* node) {
+  return node->inputs == nullptr ? 0 : node->inputs->size;
+}
+inline int NumOutputs(const TfLiteNode* node) {
+  return node->outputs == nullptr ? 0 : node->outputs->size;
+}
 
 #ifndef TF_LITE_STATIC_MEMORY
 inline int NumIntermediates(const TfLiteNode* node) {

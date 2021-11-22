@@ -191,7 +191,11 @@ class TridiagonalMulOpTest(test.TestCase):
 
   def testInvalidShapesEagerGpu(self):
     if test.is_built_with_rocm():
+<<<<<<< HEAD
         self.skipTest('Incorrect Regex on rocm')
+=======
+      self.skipTest('Incorrect Regex on rocm')
+>>>>>>> upstream/master
     if not test.is_gpu_available():
       self.skipTest('Test requires GPU')
     self._testErrorWithShapesEager('Input must have rank >= 2, but got ',

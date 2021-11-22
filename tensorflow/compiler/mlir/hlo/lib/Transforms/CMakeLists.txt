@@ -29,5 +29,6 @@ add_mlir_library(MLIRBufferTransforms
   MLIRHLOAnalysis
   MLIRIR
   MLIRPass
+  MLIRShape
   MLIRTransforms
 )

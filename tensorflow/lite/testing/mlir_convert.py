@@ -57,6 +57,12 @@ def mlir_convert(
       saved_model_dir, [signature_key])
   converter.allow_custom_ops = extra_toco_options.allow_custom_ops
   converter.experimental_new_quantizer = options.mlir_quantizer
+  if options.make_tf_ptq_tests:
+    if options.hlo_aware_conversion:
+      tf_quantization_mode = "DEFAULT"
+    else:
+      tf_quantization_mode = "LEGACY_INTEGER"
+    converter._experimental_tf_quantization_mode = tf_quantization_mode  # pylint: disable=protected-access
 
   if options.run_with_flex:
     converter.target_spec.supported_ops = set(

@@ -1017,7 +1017,12 @@ bool ConstantFolding::IsFoldableUncached(
       }
     }
     for (const auto& output_prop : output_props) {
-      const PartialTensorShape output_shape(output_prop.shape());
+      PartialTensorShape output_shape;
+      if (!PartialTensorShape::BuildPartialTensorShape(output_prop.shape(),
+                                                       &output_shape)
+               .ok()) {
+        return false;
+      }
       if (output_shape.IsFullyDefined()) {
         const int64_t num_bytes =
             output_shape.num_elements() * DataTypeSize(output_prop.dtype());

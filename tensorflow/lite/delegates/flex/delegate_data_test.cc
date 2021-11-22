@@ -98,7 +98,8 @@ TEST(DelegateDataTest, CheckFunctionDef) {
   main_subgraph.SetName("main");
   TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
       main_subgraph, select_subgraphs_to_register,
-      eager_context->HostCPU()->resource_manager(), eager_context));
+      eager_context->HostCPU()->resource_manager(), eager_context,
+      /*flex_delegate=*/nullptr));
 
   const string add_fdef_txt = R"pb(
     signature {
@@ -228,7 +229,8 @@ TEST(DelegateDataTest, CheckFunctionDefWithOnlyMainGraph) {
   main_subgraph.SetName("main");
   TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
       main_subgraph, select_subgraphs_to_register,
-      eager_context->HostCPU()->resource_manager(), eager_context));
+      eager_context->HostCPU()->resource_manager(), eager_context,
+      /*flex_delegate=*/nullptr));
 
   EXPECT_EQ(eager_context->GetFunctionDef("main"), nullptr);
 

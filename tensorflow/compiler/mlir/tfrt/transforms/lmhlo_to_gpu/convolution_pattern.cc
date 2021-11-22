@@ -21,6 +21,7 @@
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -225,7 +226,7 @@ struct ConvolutionRewritePattern
 
     auto handle = rewriter.create<tfrt::gpu::DnnCreateOp>(op.getLoc(), stream);
     auto algo_const = rewriter.create<tfrt::compiler::ConstantUI64Op>(
-        op.getLoc(), config.algorithm.algorithm().value().algo_id());
+        op.getLoc(), config.algorithm.algo_id());
     auto out_chain = GetConvOp(op, adaptor, compute_type, handle,
                                input_tensor_desc, output_tensor_desc,
                                filter_desc, conv_desc, algo_const, rewriter);

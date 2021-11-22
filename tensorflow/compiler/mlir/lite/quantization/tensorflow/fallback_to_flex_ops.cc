@@ -48,6 +48,8 @@ bool IsAllowListedOpInLegacyMode(Operation *op) {
           TF::Conv2DBackpropInputOp,
           TF::Conv2DOp,
           TF::DepthwiseConv2dNativeOp,
+          TF::FakeQuantWithMinMaxVarsOp,
+          TF::FakeQuantWithMinMaxVarsPerChannelOp,
           TF::GatherV2Op,
           TF::IdentityOp,
           TF::MatMulOp,
@@ -84,6 +86,8 @@ bool IsAllowListedOpInDefaultMode(Operation *op) {
           TF::Conv2DBackpropInputOp,
           TF::Conv2DOp,
           TF::DepthwiseConv2dNativeOp,
+          TF::FakeQuantWithMinMaxVarsOp,
+          TF::FakeQuantWithMinMaxVarsPerChannelOp,
           TF::IdentityOp,
           TF::MatMulOp,
           TF::PartitionedCallOp,
@@ -252,6 +256,8 @@ bool FallbackToFlexOps::ConvertToFlexOp(Operation *op) {
   return true;
 }
 
+#include "tensorflow/compiler/mlir/lite/quantization/tensorflow/fallback_to_flex_patterns.inc"
+
 void FallbackToFlexOps::runOnFunction() {
   if (mode_.empty()) return;
 
@@ -260,6 +266,7 @@ void FallbackToFlexOps::runOnFunction() {
 
   // Convert binary ops to BiasAdd ops if possible.
   OwningRewritePatternList patterns(ctx);
+  populateWithGenerated(patterns);
   patterns.insert<ConvertAddToBiasAddPattern, ConvertSubToBiasAddPattern>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 

@@ -247,6 +247,9 @@ tf_device::ClusterOp CreateClusterOp(Cluster& cluster, StringAttr policy = {});
 // Optionally resolve constraints that can be statically satisfied by the
 // value type, and stop constraints propagation early.
 //
+// Optionally emits remarks attached to operation that failed to propagate
+// results constraints to its operands (for testing purpose).
+//
 // Returns failure if constraints can't be propagated through some of the
 // operations accepted by the filter (there is no clustering policy for an
 // operation, or constraints can't be satisfied by the policy), and attaches
@@ -254,13 +257,14 @@ tf_device::ClusterOp CreateClusterOp(Cluster& cluster, StringAttr policy = {});
 mlir::LogicalResult PropagateValuesConstraints(
     llvm::ArrayRef<Operation*> root, std::function<bool(Operation*)> filter,
     const ClusteringPolicySet& policies, ValuesConstraintSet& constraints,
-    bool resolve = false);
+    bool resolve = false, bool emit_remarks = false);
 
 // Propagates initial constraints on the values in the `region` to the other
 // values in the same region, using user provided set of clustering policies.
 mlir::LogicalResult PropagateValuesConstraints(
     mlir::Region& region, const ClusteringPolicySet& policies,
-    ValuesConstraintSet& constraints, bool resolve = false);
+    ValuesConstraintSet& constraints, bool resolve = false,
+    bool emit_remarks = false);
 
 // Emits constraints remarks for all operations that use constrained values.
 void EmitValueConstraintsRemarks(const ValuesConstraintSet& constraints);

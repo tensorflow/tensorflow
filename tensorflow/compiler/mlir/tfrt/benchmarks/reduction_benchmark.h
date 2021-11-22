@@ -214,8 +214,15 @@ void RunReductionEigenBenchmark(::testing::benchmark::State& state,
   BENCHMARK(BM_mlir__##INPUT_RANK##D_##NAME##_##TYPE##_##NUM_THREADS)      \
       ->MeasureProcessCPUTime()
 
-#define ARGS_1D \
-  Args({3})->Args({8})->Args({80})->Args({800})->Args({8000})->Args({8131})
+#define ARGS_1D         \
+  Args({3})             \
+      ->Args({8})       \
+      ->Args({80})      \
+      ->Args({800})     \
+      ->Args({8000})    \
+      ->Args({8131})    \
+      ->Args({1000000}) \
+      ->Args({1010131})
 
 #define BM_TFMlir1(NAME, TYPE, NUM_THREADS, SPEC) \
   BM_TFMlir(NAME, TYPE, NUM_THREADS, 1, SPEC)->ARGS_1D

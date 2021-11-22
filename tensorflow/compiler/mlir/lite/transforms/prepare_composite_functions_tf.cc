@@ -386,11 +386,11 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     bool tfl_fusable_op = false;
     for (auto attr_item : dict_attr) {
       // Push other attributes except the TFLFusableOp.
-      if (attr_item.first == kTFLFusableOp &&
-          attr_item.second.dyn_cast<BoolAttr>().getValue()) {
+      if (attr_item.getName() == kTFLFusableOp &&
+          attr_item.getValue().dyn_cast<BoolAttr>().getValue()) {
         tfl_fusable_op = true;
       } else {
-        attributes.push_back(attr_item);
+        attributes.push_back({attr_item.getName(), attr_item.getValue()});
       }
     }
 

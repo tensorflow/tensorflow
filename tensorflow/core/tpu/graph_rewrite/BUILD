@@ -46,7 +46,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_init_mode",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_options",
-        "//tensorflow/core/tpu/kernels:tpu_execute_op_options",
     ],
 )
 

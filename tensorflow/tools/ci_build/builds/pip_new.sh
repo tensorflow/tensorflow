@@ -270,7 +270,7 @@ PIP_WHL_DIR=$(realpath "${PIP_WHL_DIR}") # Get absolute path
 WHL_PATH=""
 # Determine the major.minor versions of python being used (e.g., 3.7).
 # Useful for determining the directory of the local pip installation.
-PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -c1-3)
+PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -d. -f1-2)
 
 if [[ -z "${PY_MAJOR_MINOR_VER}" ]]; then
   die "ERROR: Unable to determine the major.minor version of Python."
@@ -320,7 +320,6 @@ bazel clean
 update_bazel_flags
 # Build. This outputs the file `build_pip_package`.
 bazel build \
-  --experimental_cc_shared_library \
   --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
   ${TF_BUILD_FLAGS} \
   ${PIP_BUILD_TARGET} \
