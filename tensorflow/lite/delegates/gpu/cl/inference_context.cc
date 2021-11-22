@@ -55,7 +55,7 @@ namespace cl {
 
 namespace {
 bool IsReady(const absl::flat_hash_set<ValueId>& ready_tensors,
-             const CLNode& node) {
+             const GpuNode& node) {
   for (const ValueId in_id : node.inputs) {
     if (ready_tensors.find(in_id) == ready_tensors.end()) {
       return false;
@@ -79,13 +79,13 @@ std::vector<std::pair<ValueId, TensorDescriptor>> GetCLNodeTensors(
   return result;
 }
 
-absl::Status MergeCLNodes(CLNode* src, CLNode* dst) {
+absl::Status MergeGpuNodes(GpuNode* src, GpuNode* dst) {
   for (int j = 1; j < src->inputs.size(); ++j) {
     dst->inputs.push_back(src->inputs[j]);
   }
   dst->outputs[0] = src->outputs[0];
   dst->name += " linked : " + src->name;
-  return dst->cl_operation.AddOperation(&src->cl_operation);
+  return dst->gpu_operation->AddOperation(src->gpu_operation.get());
 }
 
 void AddUsage(ValueId id, int task_index,
@@ -302,29 +302,29 @@ absl::Status ConvertOperations(
       mapping_to_global_ids[j] = global_id;
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
-      CLNode cl_node;
-      cl_node.cl_operation.Init(std::move(gpu_op.operation));
-      cl_node.inputs.resize(gpu_op.input_ids.size());
+      GpuNode gpu_node;
+      gpu_node.gpu_operation = std::move(gpu_op.operation);
+      gpu_node.inputs.resize(gpu_op.input_ids.size());
       for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
         int id = gpu_op.input_ids[j];
         if (id >= 0) {
-          cl_node.inputs[j] = id;
+          gpu_node.inputs[j] = id;
         } else {
-          cl_node.inputs[j] = mapping_to_global_ids[-(id + 1)];
+          gpu_node.inputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      cl_node.outputs.resize(gpu_op.output_ids.size());
+      gpu_node.outputs.resize(gpu_op.output_ids.size());
       for (int j = 0; j < gpu_op.output_ids.size(); ++j) {
         int id = gpu_op.output_ids[j];
         if (id >= 0) {
-          cl_node.outputs[j] = id;
+          gpu_node.outputs[j] = id;
           tensor_usages[id] = i;
         } else {
-          cl_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
+          gpu_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      cl_node.name = gpu_op.name;
-      gpu_model->nodes.push_back(std::move(cl_node));
+      gpu_node.name = gpu_op.name;
+      gpu_model->nodes.push_back(std::move(gpu_node));
     }
   }
 
@@ -359,19 +359,19 @@ absl::Status Merge(InferenceContext::GpuModel* gpu_model) {
       continue;
     }
     auto& linkable_node = nodes[next_nodes[0]];
-    if (!linkable_node.cl_operation.GetGpuOperation().IsLinkable() ||
+    if (!linkable_node.gpu_operation->IsLinkable() ||
         linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
       continue;
     }
     const auto& original_dst_def =
-        node.cl_operation.GetDefinition().dst_tensors[0];
+        node.gpu_operation->GetDefinition().dst_tensors[0];
     const auto& link_dst_def =
-        linkable_node.cl_operation.GetDefinition().dst_tensors[0];
+        linkable_node.gpu_operation->GetDefinition().dst_tensors[0];
     if (original_dst_def != link_dst_def) {
       continue;
     }
-    RETURN_IF_ERROR(MergeCLNodes(&linkable_node, &node));
+    RETURN_IF_ERROR(MergeGpuNodes(&linkable_node, &node));
     nodes.erase(nodes.begin() + next_nodes[0]);
     i -= 1;
   }
@@ -442,7 +442,13 @@ absl::Status InferenceContext::InitFromGraph(
   for (const auto& output : gpu_model.output_ids_and_refs) {
     output_ids_.push_back(output.first);
   }
-  nodes_ = std::move(gpu_model.nodes);
+  nodes_.resize(gpu_model.nodes.size());
+  for (int i = 0; i < gpu_model.nodes.size(); ++i) {
+    nodes_[i].cl_operation.Init(std::move(gpu_model.nodes[i].gpu_operation));
+    nodes_[i].inputs = gpu_model.nodes[i].inputs;
+    nodes_[i].outputs = gpu_model.nodes[i].outputs;
+    nodes_[i].name = gpu_model.nodes[i].name;
+  }
   const_tensors_descs_ = std::move(gpu_model.const_tensors);
   tensors_descs_ = std::move(gpu_model.tensors);
 
