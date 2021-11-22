@@ -3241,7 +3241,208 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
                   ArrayFloatNear(expected_outputs, 0));
 }
 
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+#if IS_TRT_VERSION_GE(8, 2, 1, 6) || defined(TF_TRT_USE_EFFICIENT_NMS_PLUGIN)
+
+TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
+  // Get the NodeDef for CombinedNMS.
+  auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
+                            bool pad_per_class = false) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto boxes_tensor = ops::Placeholder(s.WithOpName("boxes"), tf_type);
+    auto scores_tensor = ops::Placeholder(s.WithOpName("scores"), tf_type);
+    auto max_output_size_per_class =
+        ops::Placeholder(s.WithOpName("max_output_size_per_class"), DT_INT32);
+    auto max_total_size =
+        ops::Placeholder(s.WithOpName("max_total_size"), DT_INT32);
+    auto iou_threshold =
+        ops::Placeholder(s.WithOpName("iou_threshold"), tf_type);
+    auto score_threshold =
+        ops::Placeholder(s.WithOpName("score_threshold"), tf_type);
+    auto nms_attrs = ops::CombinedNonMaxSuppression::Attrs()
+                         .PadPerClass(pad_per_class)
+                         .ClipBoxes(clip_boxes);
+
+    auto nms_op = ops::CombinedNonMaxSuppression(
+        s.WithOpName("my_nms"), boxes_tensor, scores_tensor,
+        max_output_size_per_class, max_total_size, iou_threshold,
+        score_threshold, nms_attrs);
+    return nms_op.operation.node()->def();
+  };
+
+  struct TestParams {
+    const std::string description;
+    const std::vector<int32> boxes_tensor_dims;
+    const std::vector<int32> scores_tensor_dims;
+    const std::vector<float> boxes_values;
+    const std::vector<float> scores_values;
+    const int32 max_output_size_per_class;
+    const int32 max_total_size;
+    const float iou_threshold;
+    const float score_threshold;
+    bool pad_per_class;
+    bool clip_boxes;
+    const std::vector<std::vector<int32>> expected_output_dims;
+    const std::vector<float> exp_boxes;
+    const std::vector<float> exp_scores;
+    const std::vector<float> exp_classes;
+    const std::vector<float> exp_num_detections;
+    Status conversion_status;
+    Status runtime_status;
+  };
+
+  Status conv_status =
+      trt_mode_ == TrtTestMode::kImplicitBatch
+          ? errors::Unimplemented(
+                "Implict batch mode not supported with CombinedNMS")
+          : Status::OK();
+
+  std::vector<TestParams> params = {
+      TestParams{"Test 1: clip boxes",
+                 {1, 1, 3, 4},  // boxes dims
+                 {1, 1, 3},     // scores dims
+                                // boxes values:
+                 {0, 0, 0.3, 1.4, 0, 0, 0.3, 1.4, 0, 0, 0.3, 1.4},
+                 {0.4, 0.7, 0.3},  // scores values
+                 3,                // max_output_size_per_class
+                 2,                // max_total_size
+                 0.1,              // IOU threshold
+                 0,                // score_threshold
+                 false,            // pad_per_class
+                 true,             // clip_boxes
+                 {{1, 2, 4},       // expected_nmsed_boxes_dims
+                  {1, 2},          // expected_nmsed_scores_dims
+                  {1, 2},          // expected_nmsed_classes_dims
+                  {1}},            // expected_valid_detections_dims
+                                   // exp_boxes_values:
+                 {0, 0, 0.3, 1.0, 0, 0, 0.3, 1.0},
+                 {0.7, 0.4},  // exp_scores
+                 {1, 0},      // exp_classes
+                 {2},         // exp_num_detections
+                 conv_status},
+      TestParams{
+          "Test 2: iou threshold",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 1},     // scores dims
+                         // boxes values:
+          {0, 0, 5, 10, 0, 1, 5, 11, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 4, 3, 2, 1},  // scores values
+          4,                // max_output_size_per_class
+          4,                // max_total_size
+          0.7,              // IOU threshold
+          0,                // score threshold
+          false,            // pad_per_class
+          false,            // clip_boxes
+          {{1, 4, 4},       // expected nmsed_boxes_dims
+           {1, 4},          // expected nmsed_scores_dims
+           {1, 4},          // expected_nmsed_classes_dims
+           {1}},            // expected_valid_detections_dims
+                            // exp_boxes_values:
+          {0, 0, 5, 10, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 3, 2, 1},  // exp_scores
+          {0, 0, 0, 0},  // exp_classes
+          {4},           // exp_num_detections
+          conv_status},
+      TestParams{
+          "Test 3: score threshold",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 1},     // scores dims
+                         // boxes values:
+          {0, 0, 5, 10, 0, 1, 5, 11, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 4, 3, 2, 1},  // scores values
+          4,                // max_output_size_per_class
+          4,                // max_total_size
+          0.1,              // IOU threshold
+          2,                // score threshold
+          false,            // pad_per_class
+          false,            // clip_boxes
+          {{1, 4, 4},       // expected nmsed_boxes_dims
+           {1, 4},          // expected nmsed_scores_dims
+           {1, 4},          // expected_nmsed_classes_dims
+           {1}},            // expected_valid_detections_dims
+                            // exp_boxes_values:
+          {0, 0, 5, 10, 8, 0, 12, 4, 0, 0, 0, 0, 0, 0, 0, 0},
+          {5, 3, 0, 0},  // exp_scores
+          {0, 0, 0, 0},  // exp_classes
+          {2},           // exp_num_detections
+          conv_status},
+      TestParams{
+          "Test 4: per class size and pad",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 2},     // scores dims
+                         // boxes values:
+          {0, 0, 5, 10, 0, 1, 5, 11, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          // scores values:
+          {5, 0, 0, 4, 3, 0, 2, 0, 1, 0},
+          1,           // max_output_size_per_class
+          4,           // max_total_size
+          0.1,         // IOU threshold
+          0,           // score threshold
+          true,        // pad_per_class
+          false,       // clip_boxes
+          {{1, 2, 4},  // expected nmsed_boxes_dims
+           {1, 2},     // expected nmsed_scores_dims
+           {1, 2},     // expected_nmsed_classes_dims
+           {1}},       // expected_valid_detections_dims
+                       // exp_boxes_values:
+          {0, 0, 5, 10, 0, 1, 5, 11},
+          {5, 4},  // exp_scores
+          {0, 1},  // exp_classes
+          {2},     // exp_num_detections
+          conv_status},
+      TestParams{
+          "Test 5: different box coordinate order",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 2},     // scores dims
+                         // boxes values:
+          {5, 10, 0, 0, 5, 11, 0, 1, 12, 4, 8, 0, 10, 6, 6, 2, 11, 12, 8, 9},
+          // scores values:
+          {5, 0, 0, 4, 3, 0, 2, 0, 1, 0},
+          1,           // max_output_size_per_class
+          4,           // max_total_size
+          0.1,         // IOU threshold
+          0,           // score threshold
+          true,        // pad_per_class
+          false,       // clip_boxes
+          {{1, 2, 4},  // expected nmsed_boxes_dims
+           {1, 2},     // expected nmsed_scores_dims
+           {1, 2},     // expected_nmsed_classes_dims
+           {1}},       // expected_valid_detections_dims
+                       // exp_boxes_values:
+          {5, 10, 0, 0, 5, 11, 0, 1},
+          {5, 4},  // exp_scores
+          {0, 1},  // exp_classes
+          {2},     // exp_num_detections
+          conv_status},
+  };
+
+  for (auto p : params) {
+    Reset();
+    SCOPED_TRACE(p.description);
+    AddTestTensor("boxes", p.boxes_tensor_dims, p.boxes_values);
+    AddTestTensor("scores", p.scores_tensor_dims, p.scores_values);
+    AddTestWeights<int32>("max_output_size_per_class", {1},
+                          {p.max_output_size_per_class});
+    AddTestWeights<int32>("max_total_size", {1}, {p.max_total_size});
+    AddTestWeights<float>("iou_threshold", {1}, {p.iou_threshold}, tf_type_);
+    AddTestWeights<float>("score_threshold", {1}, {p.score_threshold},
+                          tf_type_);
+
+    auto node_def = get_nms_nodedef(tf_type_, p.clip_boxes, p.pad_per_class);
+
+    TestOpConverterMultiOut("my_nms", node_def, p.expected_output_dims,
+                            p.conversion_status, p.runtime_status,
+                            {
+                                ElementsAreArray(p.exp_boxes),
+                                ElementsAreArray(p.exp_scores),
+                                ElementsAreArray(p.exp_classes),
+                                ElementsAreArray(p.exp_num_detections),
+                            },
+                            {tf_type_, tf_type_, tf_type_, DT_INT32});
+  }
+}
+
+#elif IS_TRT_VERSION_GE(7, 1, 3, 0)
+
 TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
   // Get the NodeDef for CombinedNMS.
   auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
@@ -3444,6 +3645,7 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
                             {tf_type_, tf_type_, tf_type_, DT_INT32});
   }
 }
+
 #endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 template <typename T>
