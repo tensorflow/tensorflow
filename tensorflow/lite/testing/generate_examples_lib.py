@@ -60,13 +60,7 @@ from tensorflow.lite.testing.op_tests.conv3d import make_conv3d_tests
 from tensorflow.lite.testing.op_tests.conv3d_transpose import make_conv3d_transpose_tests
 from tensorflow.lite.testing.op_tests.conv_activation import make_conv_relu_tests, make_conv_relu1_tests, make_conv_relu6_tests
 from tensorflow.lite.testing.op_tests.conv_bias_activation import make_conv_bias_relu6_tests
-# Note: This is a regression test for a bug (b/112303004) that Toco incorrectly
-# transforms Conv into DepthwiseConv when two Conv ops share the same constant
-# weight tensor.
 from tensorflow.lite.testing.op_tests.conv_to_depthwiseconv_with_shared_weights import make_conv_to_depthwiseconv_with_shared_weights_tests
-# Note: This is a regression test for a bug (b/112436267) that Toco incorrectly
-# fuses weights when multiple Conv2D/FULLY_CONNECTED ops share the same constant
-# weight tensor.
 from tensorflow.lite.testing.op_tests.conv_with_shared_weights import make_conv_with_shared_weights_tests
 from tensorflow.lite.testing.op_tests.cos import make_cos_tests
 from tensorflow.lite.testing.op_tests.cumsum import make_cumsum_tests
@@ -199,6 +193,7 @@ from tensorflow.lite.testing.zip_test_utils import get_test_function
 # A map from regular expression to bug number. Any test failure with label
 # matching the expression will be considered due to the corresponding bug.
 KNOWN_BUGS = {
+    # TODO(b/192473002) investigate if it can be removed for MLIR converter.
     # TOCO doesn't support scalars as input.
     # Concat doesn't work with a single input tensor
     r"concat.*num_tensors=1": "67378344",
@@ -248,9 +243,7 @@ class Options(object):
     self.output_path = None
     # Particular zip to output.
     self.zip_to_output = None
-    # Path to toco tool.
-    self.toco = None
-    # If a particular model is affected by a known bug count it as a Toco
+    # If a particular model is affected by a known bug count it as a converter
     # error.
     self.known_bugs_are_errors = False
     # Raise an exception if any converter error is encountered.
@@ -266,7 +259,7 @@ class Options(object):
     # For TF Quantization only: where conversion for HLO target.
     self.hlo_aware_conversion = True
     # The function to convert a TensorFLow model to TFLite model.
-    # See the document for `toco_convert` function for its required signature.
+    # See the document for `mlir_convert` function for its required signature.
     self.tflite_convert_function = None
     # A map from regular expression to bug number. Any test failure with label
     # matching the expression will be considered due to the corresponding bug.
@@ -327,7 +320,7 @@ def generate_examples(options):
   else:
     # Remove suffixes to extract the test name from the output name.
     test_name = re.sub(
-        r"(_(|toco-flex|forward-compat|edgetpu|mlir-quant))?(_xnnpack)?\.zip$",
+        r"(_(|with-flex|forward-compat|edgetpu|mlir-quant))?(_xnnpack)?\.zip$",
         "",
         out,
         count=1)
@@ -370,7 +363,7 @@ def generate_multi_set_examples(options, test_sets):
 
       # Remove suffix and set test_name to run proper test generation function.
       multi_gen_state.test_name = re.sub(
-          r"(_(|toco-flex|forward-compat|mlir-quant))?$",
+          r"(_(|with-flex|forward-compat|mlir-quant))?$",
           "",
           test_name,
           count=1)

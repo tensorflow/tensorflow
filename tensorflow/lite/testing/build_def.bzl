@@ -409,9 +409,7 @@ def mlir_generated_test_models():
 
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
-
-    # TODO(b/146025965): Remove reference to toco.
-    return ["toco-flex", "forward-compat", "", "mlir-quant"]
+    return ["with-flex", "forward-compat", "", "mlir-quant"]
 
 def generated_test_delegates():
     """Returns a list of delegates."""
@@ -472,7 +470,7 @@ def common_test_args_for_generated_models(conversion_mode, failing):
 
     # Flex conversion shouldn't suffer from the same conversion bugs
     # listed for the default TFLite kernel backend.
-    if conversion_mode == "toco-flex":
+    if conversion_mode == "with-flex":
         args.append("--ignore_known_bugs=false")
 
     return args
@@ -525,9 +523,8 @@ def gen_zip_test(
         flags += " --make_forward_compat_test"
     elif conversion_mode == "mlir-quant":
         flags += " --mlir_quantizer"
-        # TODO(b/146025965): Remove reference to toco.
 
-    elif conversion_mode == "toco-flex":
+    elif conversion_mode == "with-flex":
         flags += " --ignore_converter_errors --run_with_flex"
     if test_name.startswith(merged_test_model_name() + "_"):
         flags += flags_for_merged_test_models(test_name, conversion_mode, delegate)

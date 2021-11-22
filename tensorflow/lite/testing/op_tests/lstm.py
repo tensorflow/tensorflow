@@ -15,7 +15,7 @@
 """Test configs for lstm."""
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
-from tensorflow.lite.testing.zip_test_utils import ExtraTocoOptions
+from tensorflow.lite.testing.zip_test_utils import ExtraConvertOptions
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 from tensorflow.python.ops import rnn
@@ -86,8 +86,8 @@ def make_lstm_tests(options):
     return input_values, out
 
   # TODO(zhixianyan): Automatically generate rnn_states for lstm cell.
-  extra_toco_options = ExtraTocoOptions()
-  extra_toco_options.rnn_states = (
+  extra_convert_options = ExtraConvertOptions()
+  extra_convert_options.rnn_states = (
       "{state_array:rnn/BasicLSTMCellZeroState/zeros,"
       "back_edge_source_array:rnn/basic_lstm_cell/Add_1,size:4},"
       "{state_array:rnn/BasicLSTMCellZeroState/zeros_1,"
@@ -98,5 +98,5 @@ def make_lstm_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      extra_toco_options,
+      extra_convert_options,
       use_frozen_graph=True)
