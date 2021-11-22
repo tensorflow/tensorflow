@@ -991,10 +991,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto conv_result_slice, GetAllocationSlice(conv_result));
   TF_ASSIGN_OR_RETURN(auto scratch_slice, GetAllocationSlice(scratch_result));
 
-  if (IsBefThunkEnabled() &&
-      (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp>(op) ||
-       mlir::isa<mlir::lmhlo_gpu::ConvBackwardInputOp>(op) ||
-       mlir::isa<mlir::lmhlo_gpu::ConvBackwardFilterOp>(op))) {
+  if (IsBefThunkEnabled()) {
     operand_slices.push_back(conv_result_slice);
     operand_slices.push_back(scratch_slice);
     TF_ASSIGN_OR_RETURN(

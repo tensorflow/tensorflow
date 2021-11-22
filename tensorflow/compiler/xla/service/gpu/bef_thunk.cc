@@ -244,7 +244,9 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   }
   if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp>(op) ||
       mlir::isa<mlir::lmhlo_gpu::ConvBackwardInputOp>(op) ||
-      mlir::isa<mlir::lmhlo_gpu::ConvBackwardFilterOp>(op)) {
+      mlir::isa<mlir::lmhlo_gpu::ConvBackwardFilterOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvForwardFusedOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvForwardFusedSideInputOp>(op)) {
     return Thunk::Kind::kConvolution;
   }
   return tensorflow::errors::Unimplemented(
@@ -473,11 +475,13 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
 }
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
-CreateDefaultExecutionContext() {
+CreateDefaultExecutionContext(
+    tfrt::ResourceContext* resource_context = nullptr) {
   return CreateExecutionContext(
       [](tfrt::RequestContextBuilder& request_context_builder) {
         return Status::OK();
-      });
+      },
+      resource_context);
 }
 
 #if XLA_ENABLE_XCCL
@@ -626,7 +630,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 #endif  // XLA_ENABLE_XCCL
   if (!exec_ctx) {
-    if (kind() == Thunk::kKernel) {
+    if (kind() == Thunk::kKernel || kind() == Thunk::kConvolution) {
       tensorflow::mutex_lock lock(mutex_);
       using AsyncStreamRef = tfrt::AsyncValueRef<tfrt::gpu::GpuStream>;
       CUcontext context = static_cast<AsyncStreamRef>(stream)->context()->get();
@@ -635,8 +639,13 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
         it = resource_contexts_.emplace_hint(it, context,
                                              new tfrt::ResourceContext());
       }
-      TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
-                                        gpu_module_data_, it->second.get()));
+      if (kind() == Thunk::kKernel) {
+        TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
+                                          gpu_module_data_, it->second.get()));
+      } else {  // kind() == Thunk::kConvolution
+        TF_ASSIGN_OR_RETURN(exec_ctx,
+                            CreateDefaultExecutionContext(it->second.get()));
+      }
     } else {
       TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
     }
