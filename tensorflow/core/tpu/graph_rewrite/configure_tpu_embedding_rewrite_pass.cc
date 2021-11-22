@@ -63,11 +63,7 @@ Status AddSynchronizationNode(
   sync_def.set_device(device_name);
   MergeDebugInfo(NodeDebugInfo(sync_node_def), &sync_def);
 
-  Status status;
-  Node* sync_node = graph->AddNode(sync_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(Node * sync_node, graph->AddNode(sync_def));
   sync_node->set_assigned_device_name(device_name);
   // Add control edges from the global array id nodes.
   for (auto node : global_array_id_nodes) {
@@ -95,11 +91,7 @@ Status AddPartitionerEmbeddingNode(const string& configuration_device_name,
   partitioner_def.set_device(configuration_device_name);
   AddNodeAttr("config", config, &partitioner_def);
 
-  Status status;
-  *partitioner_node = graph->AddNode(partitioner_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*partitioner_node, graph->AddNode(partitioner_def));
   (*partitioner_node)->set_assigned_device_name(configuration_device_name);
   // Replace the input control edges.
   for (Node* src_node : input_dependencies) {
@@ -119,11 +111,7 @@ Status AddMemoryConfigurationEmbeddingNode(const string& host_device_name,
   embedding_def.set_device(host_device_name);
   AddNodeAttr("config", config, &embedding_def);
 
-  Status status;
-  *embedding_node = graph->AddNode(embedding_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*embedding_node, graph->AddNode(embedding_def));
   (*embedding_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(partitioner_node, 0, *embedding_node, 0);
   return Status::OK();
@@ -144,11 +132,7 @@ Status AddHostConfigurationEmbeddingNode(const string& host_device_name,
     MergeDebugInfo(NodeDebugInfo(memory_nodes[0]->def()), &embedding_def);
   }
 
-  Status status;
-  *embedding_node = graph->AddNode(embedding_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*embedding_node, graph->AddNode(embedding_def));
   (*embedding_node)->set_assigned_device_name(host_device_name);
   // Add inputs from the partitioner node and all the memory nodes.
   graph->AddEdge(partitioner_node, 0, *embedding_node, 0);
@@ -170,11 +154,7 @@ Status AddSetupPropagationEmbeddingNode(
     MergeDebugInfo(NodeDebugInfo(embedding_nodes[0]->def()), &node_def);
   }
 
-  Status status;
-  *node = graph->AddNode(node_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*node, graph->AddNode(node_def));
   (*node)->set_assigned_device_name(device_name);
   // Add inputs from the embedding nodes.
   for (int i = 0; i < embedding_nodes.size(); ++i) {

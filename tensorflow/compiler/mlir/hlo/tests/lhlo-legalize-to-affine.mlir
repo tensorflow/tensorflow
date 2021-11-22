@@ -10,7 +10,7 @@ func @min_op(%lhs: memref<4x3x2x1xf32>, %rhs: memref<4x3x2x1xf32>,
   // CHECK-NEXT:       affine.for %[[L:.*]] = 0 to 1 {
   // CHECK-NEXT:         %[[LHS:.*]] = affine.load %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
   // CHECK-NEXT:         %[[RHS:.*]] = affine.load %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
-  // CHECK-NEXT:         %[[MIN:.*]] = minf %[[LHS]], %[[RHS]] : f32
+  // CHECK-NEXT:         %[[MIN:.*]] = arith.minf %[[LHS]], %[[RHS]] : f32
   // CHECK-NEXT:         affine.store %[[MIN]], %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
   // CHECK:      return
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"} :
@@ -68,7 +68,7 @@ func @int_div_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
 // CHECK-LABEL: func @float_max_op
 func @float_max_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
-  // CHECK: maxf %{{.*}}, %{{.*}} : f32
+  // CHECK: arith.maxf %{{.*}}, %{{.*}} : f32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
   return
@@ -77,7 +77,7 @@ func @float_max_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
 // CHECK-LABEL: func @int_max_op
 func @int_max_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
-  // CHECK: maxsi %{{.*}}, %{{.*}} : i32
+  // CHECK: arith.maxsi %{{.*}}, %{{.*}} : i32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
   return
@@ -87,7 +87,7 @@ func @int_max_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
 // CHECK-LABEL: func @float_min_op
 func @float_min_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
-  // CHECK: minf %{{.*}}, %{{.*}} : f32
+  // CHECK: arith.minf %{{.*}}, %{{.*}} : f32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
   return
@@ -96,7 +96,7 @@ func @float_min_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
 // CHECK-LABEL: func @int_min_op
 func @int_min_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
-  // CHECK: minsi %{{.*}}, %{{.*}} : i32
+  // CHECK: arith.minsi %{{.*}}, %{{.*}} : i32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
   return

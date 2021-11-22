@@ -2466,12 +2466,10 @@ LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
   }
 
   // Default to non-time_major.
-  bool time_majored = attr.getNamed("time_major").hasValue()
-                          ? attr.getNamed("time_major")
-                                .getValue()
-                                .second.cast<BoolAttr>()
-                                .getValue()
-                          : false;
+  Optional<mlir::NamedAttribute> time_major_attr = attr.getNamed("time_major");
+  bool time_majored =
+      time_major_attr ? time_major_attr->getValue().cast<BoolAttr>().getValue()
+                      : false;
 
   int batch =
       time_majored ? input_type.getDimSize(1) : input_type.getDimSize(0);

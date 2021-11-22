@@ -58,7 +58,7 @@ static mlir::LogicalResult FilterTfgSpecificArgResultAttributes(
     mlir::NamedAttrList list;
     for (mlir::NamedAttribute attr : dict_attr.getValue()) {
       // Skip if the attribute has "tfg" prefix.
-      if (attr.first.getValue().startswith("tfg")) continue;
+      if (attr.getName().getValue().startswith("tfg")) continue;
       list.append(attr);
     }
     output.push_back(list.getDictionary(context));
@@ -70,11 +70,11 @@ static mlir::LogicalResult ReformatOpAttributes(
     mlir::MLIRContext *context, llvm::ArrayRef<mlir::NamedAttribute> attrs,
     llvm::SmallVectorImpl<mlir::NamedAttribute> &output) {
   for (mlir::NamedAttribute attr : attrs) {
-    if (attr.first.strref().contains(
+    if (attr.getName().strref().contains(
             mlir::tfg::TFGraphDialect::getDeviceAttrKey())) {
       tensorflow::DeviceNameUtils::ParsedName parsed_name;
       if (!tensorflow::DeviceNameUtils::ParseFullName(
-              attr.second.cast<mlir::StringAttr>().getValue().str(),
+              attr.getValue().cast<mlir::StringAttr>().getValue().str(),
               &parsed_name))
         return mlir::failure();
       if (!parsed_name.has_type) {

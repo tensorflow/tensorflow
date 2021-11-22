@@ -265,7 +265,7 @@ void *TensorFlowDialect::getRegisteredInterfaceForOp(
     mlir::TypeID interface, mlir::OperationName opName) {
   if (interface == TypeID::get<mlir::MemoryEffectOpInterface>()) {
     // Don't use fallback for modelled ops.
-    if (opName.getAbstractOperation()) return nullptr;
+    if (opName.isRegistered()) return nullptr;
 
     // Only use fallback interface for known not-stateful ops.
     const tensorflow::OpRegistrationData *op_reg_data = nullptr;

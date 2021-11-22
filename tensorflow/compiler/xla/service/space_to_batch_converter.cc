@@ -418,9 +418,8 @@ bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
       if (c.kernel_spatial_dim_size != 1) {
         return false;
       }
-    } else if (c.kernel_spatial_dim_size != c.base_dilation_factor + 1 ||
-               (low_pad != c.base_dilation_factor - 1 &&
-                low_pad != c.base_dilation_factor)) {
+    } else if (low_pad != c.base_dilation_factor - 1 &&
+               low_pad != c.base_dilation_factor) {
       // Only support dilations such that base dilation factor and low pad are
       // compatible with kernel_spatial_dim_size to be compatible with
       // HaloDuplicateWithSlice.
@@ -3507,24 +3506,30 @@ ConvolutionVisitor::ConvDetails ConvolutionVisitor::GetConvolutionDetails(
           .dimensions(get_first_chosen_spatial_dim(convolution))
           .base_dilation();
 
-  const int64_t spatial_size =
-      input_dim_size + (base_dilation_factor > 1 ? 0 : inherent_low_padding) +
-      inherent_high_padding;
+  bool is_base_dilated = base_dilation_factor > 1;
 
-  const int64_t halo_size =
-      std::max(kernel_spatial_dim_size - 1 - (base_dilation_factor - 1),
-               static_cast<int64_t>(0));
+  const int64_t spatial_size = input_dim_size +
+                               (is_base_dilated ? 0 : inherent_low_padding) +
+                               inherent_high_padding;
+
+  const int64_t last_overlap = base_dilation_factor == inherent_low_padding
+                                   ? kernel_spatial_dim_size
+                                   : kernel_spatial_dim_size - 1;
+  const int64_t halo_size = is_base_dilated
+                                ? last_overlap / base_dilation_factor
+                                : kernel_spatial_dim_size - 1;
 
   const int64_t high_padding_for_base_dilation =
-      inherent_low_padding == 0 || base_dilation_factor == inherent_low_padding
-          ? base_dilation_factor - 1
-          : 0;
+      inherent_low_padding == 0 ? base_dilation_factor - 1
+                                : last_overlap % base_dilation_factor;
+
   const int64_t high_padding_for_conv =
-      base_dilation_factor == 1 ? 0 : high_padding_for_base_dilation;
+      is_base_dilated ? high_padding_for_base_dilation : 0;
+
   const int64_t low_padding_for_conv =
-      base_dilation_factor == 1                      ? 0
-      : base_dilation_factor == inherent_low_padding ? 0
-                                                     : inherent_low_padding;
+      is_base_dilated && (base_dilation_factor != inherent_low_padding)
+          ? inherent_low_padding
+          : 0;
 
   return ConvDetails{spatial_dimensions_to_split,
                      inherent_low_padding,

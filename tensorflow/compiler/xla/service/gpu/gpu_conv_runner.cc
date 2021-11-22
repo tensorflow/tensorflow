@@ -28,7 +28,7 @@ namespace xla {
 namespace gpu {
 
 se::dnn::BatchDescriptor GetBiasDescriptor(const GpuConvConfig& config) {
-  se::dnn::BatchDescriptor result;
+  se::dnn::BatchDescriptor result(config.output_descriptor.ndims());
   result.set_count(1)
       .set_height(1)
       .set_width(1)
@@ -46,6 +46,9 @@ se::dnn::BatchDescriptor GetBiasDescriptor(const GpuConvConfig& config) {
             return layout;
         }
       }());
+  if (result.ndims() == 3) {
+    result.set_spatial_dim(se::dnn::DimIndex::Z, 1);
+  }
   return result;
 }
 

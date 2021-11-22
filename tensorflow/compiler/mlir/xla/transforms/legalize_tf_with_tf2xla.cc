@@ -274,9 +274,9 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   };
   // clang-format on
 
-  auto* abstractOp = op->getAbstractOperation();
+  auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
-  return ops->count(abstractOp->typeID);
+  return ops->count(abstractOp->getTypeID());
 }
 // LINT.ThenChange(:Tf2XlaPreferred)
 
@@ -390,9 +390,9 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::ZerosLikeOp>(),
   };
   // clang-format on
-  auto* abstractOp = op->getAbstractOperation();
+  auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
-  return ops->count(abstractOp->typeID);
+  return ops->count(abstractOp->getTypeID());
 }
 // LINT.ThenChange()
 
@@ -404,9 +404,9 @@ bool IsOpAllowedForTesting(Operation* op) {
     TypeID::get<TF::ConstOp>(),
   };
   // clang-format on
-  auto* abstractOp = op->getAbstractOperation();
+  auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
-  return ops->count(abstractOp->typeID);
+  return ops->count(abstractOp->getTypeID());
 }
 
 namespace {
@@ -538,7 +538,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   }
 
   for (const auto& attr : op_->getAttrs()) {
-    if (attr.second.isa<SymbolRefAttr>()) {
+    if (attr.getValue().isa<SymbolRefAttr>()) {
       return op_->emitRemark()
              << "ops with symbol references are not supported";
     }

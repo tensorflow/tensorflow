@@ -51,6 +51,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import map_ops
+from tensorflow.python.ops import rnn
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
@@ -2634,14 +2635,13 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     input_data = tf.constant(
         np.array(np.random.random_sample((3, 10)), dtype=np.float32))
 
-    cell = tf.compat.v1.nn.rnn_cell.LSTMCell(10)
+    cell = tf.keras.layers.LSTMCell(10)
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[3, 10], dtype=tf.float32)])
     def model(x):
       seq = tf.split(x, 3, 0)
-      return tf.compat.v1.nn.static_rnn(
-          cell, seq, dtype=tf.float32, sequence_length=[1])
+      return rnn.static_rnn(cell, seq, dtype=tf.float32, sequence_length=[1])
 
     concrete_func = model.get_concrete_function()
 
@@ -2690,12 +2690,13 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     input_data = tf.constant(
         np.array(np.random.random_sample((3, 10, 10)), dtype=np.float32))
 
-    cell = tf.compat.v1.nn.rnn_cell.LSTMCell(10)
+    cell = tf.keras.layers.LSTMCell(10)
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[3, 10, 10], dtype=tf.float32)])
     def model(x):
-      return tf.compat.v1.nn.dynamic_rnn(cell, x, dtype=tf.float32)
+      rnn_layer = tf.keras.layers.RNN([cell], return_sequences=True)
+      return rnn_layer(x)
 
     concrete_func = model.get_concrete_function()
 
@@ -2706,10 +2707,10 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)
-    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    lite_outputs = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertLen(lite_outputs, 1)
+    actual_value = lite_outputs[0]
     for expected, actual in zip(expected_value, actual_value):
-      if not isinstance(expected, ops.EagerTensor):
-        expected = expected.c
       self.assertAllClose(expected, actual)
 
   @parameterized.named_parameters(

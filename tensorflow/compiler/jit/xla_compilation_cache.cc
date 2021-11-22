@@ -271,10 +271,8 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
   // _Arg nodes, and let CompileGraph walk it. This could be optimized.
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
-  Status status;
   // First create the actual node we care about computing.
-  Node* main_node = graph->AddNode(node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * main_node, graph->AddNode(node_def));
 
   // Create dummy _Arg nodes. Link these to `node` and also via a control
   // dependency edge to the _SOURCE node.

@@ -1583,8 +1583,8 @@ using FuseBinaryOpToFollowingConv2D = FuseBinaryOpToFollowingAffineOp<Conv2DOp>;
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  OwningRewritePatternList *patterns) {
-  for (auto *op : context->getRegisteredOperations())
-    op->getCanonicalizationPatterns(*patterns, context);
+  for (auto op : context->getRegisteredOperations())
+    op.getCanonicalizationPatterns(*patterns, context);
 }
 
 void OptimizePass::runOnFunction() {

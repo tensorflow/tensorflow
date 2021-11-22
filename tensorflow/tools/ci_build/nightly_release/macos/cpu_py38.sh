@@ -35,7 +35,6 @@ export PYTHON_BIN_PATH=$(which python3.8)
 
 # Build the pip package
 bazel build \
-  --experimental_cc_shared_library \
   --config=release_cpu_macos \
   --repo_env=PYTHON_BIN_PATH="$PYTHON_BIN_PATH" \
   tensorflow/tools/pip_package:build_pip_package

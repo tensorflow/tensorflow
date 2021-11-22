@@ -112,6 +112,12 @@ void RecordTFDataServiceJobsCreated(
     const tensorflow::data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read);
 
+// Records tf.data service iterators created by clients.
+void RecordTFDataServiceClientIterators(
+    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read);
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
@@ -268,6 +274,25 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
 
 // Updates the metrics stored about time BFC allocator spents during delay.
 void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
+
+// Increments (by 1) a simple integer counter that is exposed for testing.
+void IncrementTestCounter(const string& name, const string& label);
+
+// Read-only access to a counter for testing.
+const monitoring::CounterCell* TestCounter(const string& name,
+                                           const string& label);
+
+// Read-only wrapper for a TestCounter to track increments between calls.
+class TestDelta {
+ public:
+  TestDelta(const string& name, const string& label);
+  void Reset();
+  int64 Get();
+
+ private:
+  const monitoring::CounterCell* cell_;
+  int64 last_value_;
+};
 
 }  // namespace metrics
 }  // namespace tensorflow

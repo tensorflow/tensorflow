@@ -177,5 +177,30 @@ class RunEagerOpAsFunctionTest(test.TestCase):
     cs = critical_section_ops.CriticalSection(shared_name="cs")
     cs.execute(lambda: 1.0)
 
+
+class RunEagerOpAsFunctionInternalsTest(test.TestCase):
+
+  @test_util.enable_eager_op_as_function
+  def testSimpleGraphUsesDefaultExecutor(self):
+    if context.num_gpus():
+      self.skipTest("CPU-only test (requires unpartitioned graph).")
+
+    default_executor = test_util.TestDelta("flr_executor", "default")
+    single_threaded = test_util.TestDelta("flr_executor", "single_threaded")
+    array_ops.fill([2], constant_op.constant(7, dtype=dtypes.int64))
+    assert default_executor.Get() > 0
+    assert single_threaded.Get() == 0
+
+  @test_util.enable_eager_op_as_function
+  def testPartitionedGraphUsesDefaultExecutor(self):
+    if not context.num_gpus():
+      self.skipTest("GPU-only test (requires partitioned graph).")
+
+    default_executor = test_util.TestDelta("flr_executor", "default")
+    single_threaded = test_util.TestDelta("flr_executor", "single_threaded")
+    array_ops.fill([2], constant_op.constant(7, dtype=dtypes.int64))
+    assert default_executor.Get() > 0
+    assert single_threaded.Get() == 0
+
 if __name__ == "__main__":
   test.main()

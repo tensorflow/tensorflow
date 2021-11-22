@@ -364,9 +364,7 @@ Status Exporter::AddInstructionNode(Operation* inst) {
                       ConvertTFDialectOpToNodeDef(
                           inst, name, /*ignore_unregistered_attrs=*/false));
 
-  Status status;
-  Node* node = graph_->AddNode(*node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
   DCHECK(node != nullptr);
   nodes_[inst] = node;
   return Status::OK();
@@ -381,9 +379,7 @@ bool IsEntryFunctionArg(BlockArgument arg) {
 Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
                                  llvm::StringRef name) {
   TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
-  Status status;
-  Node* node = graph_->AddNode(*node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
   args_[arg] = node;
   return Status::OK();
 }
@@ -392,7 +388,6 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
 // names will be used per node in order instead of generating a unique name.
 Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
                               llvm::ArrayRef<llvm::StringRef> names) {
-  Status status;
   auto& return_nodes = returns_[fetch];
   for (auto operand_and_idx : llvm::enumerate(fetch.getOperands())) {
     if (operand_and_idx.value().getType().isa<mlir::tf_executor::ControlType>())
@@ -403,8 +398,7 @@ Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
         GetReturnNode(function, operand_and_idx.value(),
                       operand_and_idx.index(),
                       names.empty() ? "" : names[operand_and_idx.index()]));
-    Node* node = graph_->AddNode(*node_def, &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
     return_nodes.push_back(node);
   }
   return Status::OK();

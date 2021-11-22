@@ -91,11 +91,13 @@ class DispatcherState {
         : address(register_worker.worker_address()),
           transfer_address(register_worker.transfer_address()),
           tags(register_worker.worker_tags().begin(),
-               register_worker.worker_tags().end()) {}
+               register_worker.worker_tags().end()),
+          uid(register_worker.worker_uid()) {}
 
     const std::string address;
     const std::string transfer_address;
     const std::vector<std::string> tags;
+    const int64_t uid;
   };
 
   // A key for identifying a named job. The key contains a user-specified name,
@@ -197,13 +199,15 @@ class DispatcherState {
           worker_address(create_task_update.worker_address()),
           transfer_address(create_task_update.transfer_address()),
           worker_tags(create_task_update.worker_tags().begin(),
-                      create_task_update.worker_tags().end()) {}
+                      create_task_update.worker_tags().end()),
+          worker_uid(create_task_update.worker_uid()) {}
 
     const int64_t task_id;
     const std::shared_ptr<Job> job;
     const std::string worker_address;
     const std::string transfer_address;
     const std::vector<std::string> worker_tags;
+    const int64_t worker_uid;
     int64_t starting_round = 0;
     bool finished = false;
     bool removed = false;

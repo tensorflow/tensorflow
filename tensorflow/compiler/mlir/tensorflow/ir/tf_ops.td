@@ -1564,12 +1564,60 @@ def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResour
   let results = (outs);
 }
 
-def TF_TPUCompileMlirAndExecuteOp : TF_Op<"TPUCompileMlirAndExecute", []> {
+def TF_SetStaticDimensionBoundsOp : TF_Op<"SetStaticDimensionBounds", []> {
+  let summary = "Op used to indicate to the compiler and runtime the static bounds of a tensor.";
+  let description = [{
+The information passed through this op can possibly be used by the compiler and
+runtime to perform certain optimizations such as more efficient DMAs. The
+bounds passed via this op should be considered advisory only, and depending on
+the implementation, might do nothing and simply be an identity
+
+`input`: The tensor that has dynamic dimensions.
+`static_shape`: The static shape of the tensor, corresponds to the maximum bounds of each dimension.
+`output` is the input tensor with no changes done to it.
+
+Example usage:
+
+def tpu_call(args):
+  def model_fn(args):
+    # do something with dynamic tensor
+
+  @function.Defun(capture_resource_var_by_value=False)
+  def tpu_subgraph():
+      return tf.tpu.rewrite(model_fn, args)
+
+  return tf.raw_ops.TPUPartitionedCall(
+      args=tpu_subgraph.captured_inputs,
+      Tout=[o.type for o in tpu_subgraph.definition.signature.output_arg],
+      f=tpu_subgraph,
+      device_ordinal=[0])
+
+static_shape = tf.placeholder(tf.int32, shape=([3]), name='static_size')
+
+w = tf.Variable(tf.constant([[1.0], [2.0], [3.0]]), name='w')
+
+w_dyn = tf.SetDynamicDimensionBounds(w, static_size])
+tpu_call([w_dyn])
+}];
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$static_shape
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+}
+
+def TF_TPUCompileMlirAndExecuteOp : TF_Op<"TPUCompileMlirAndExecute", [AttrSizedOperandSegments]> {
   let summary = "Op that compiles a computation in MLIR into a TPU program, and loads and executes it on a TPU device.";
 
   let description = [{
 For the internal use of the TPU compiler.
 
+'static_shapes' are tensors specifying the maximum dimension sizes for the tensors specified in `dynamic_operands`.
+'args' are inputs to the TPU computation.
+'operands_with_static_shape' are the indices of the operands that have a maximal static shape specified.
 'mlir_module' is a serialized MLIR module with a `main` function that contains
 target computation.
 'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
@@ -1579,6 +1627,8 @@ topology.
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    Variadic<TF_I32OrI64Tensor>:$static_shapes,
+    OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
     DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
     StrAttr:$metadata
   );

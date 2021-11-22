@@ -251,8 +251,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensors.append(array_ops.zeros(s))
 
     def encode_tensors(tensors):
-      function_trace_type.get_arg_spec(tensors, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(tensors, False, False, True)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_tensors(tensors), number=iterations)
@@ -272,8 +271,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensor_specs.append(tensor_spec.TensorSpec(s, dtypes.int32))
 
     def encode_tensor_specs(tensor_specs):
-      function_trace_type.get_arg_spec(tensor_specs, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(tensor_specs, False, False, True)
 
     iterations = 100000
     t = timeit.timeit(
@@ -295,8 +293,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     ]
 
     def encode_variables(var_list):
-      function_trace_type.get_arg_spec(var_list, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(var_list, False, False, True)
 
     iterations = 10000
     t = timeit.timeit(lambda: encode_variables(var_list), number=iterations)
@@ -316,8 +313,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     model = keras.Model(inputs=inputs, outputs=outputs)
 
     def encode_model(model):
-      function_trace_type.get_arg_spec(model, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(model, False, False, True)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_model(model), number=iterations)
@@ -364,8 +360,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
 
     def encode_struct(struct):
-      function_trace_type.get_arg_spec(struct, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(struct, False, False, True)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_struct(struct), number=iterations)

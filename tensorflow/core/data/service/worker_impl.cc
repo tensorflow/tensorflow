@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/status.h"
@@ -111,7 +112,7 @@ LocalWorkers::AddressToWorkerMap* LocalWorkers::local_workers_ =
     new AddressToWorkerMap();
 
 DataServiceWorkerImpl::DataServiceWorkerImpl(const WorkerConfig& config)
-    : config_(ApplyWorkerDefaults(config)) {
+    : config_(ApplyWorkerDefaults(config)), worker_uid_(port::JobUid()) {
   metrics::RecordTFDataServiceWorkerCreated();
 }
 
@@ -491,6 +492,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   request.set_worker_address(worker_address_);
   request.set_transfer_address(transfer_address_);
   *request.mutable_worker_tags() = config_.worker_tags();
+  request.set_worker_uid(worker_uid_);
   *request.mutable_current_tasks() = {current_tasks.begin(),
                                       current_tasks.end()};
   TF_ASSIGN_OR_RETURN(WorkerHeartbeatResponse response,

@@ -30,15 +30,6 @@ bool NodeCmpByNameResourcesLast::operator()(const Node* lhs,
          std::tie(rhs_is_resource, rhs->name());
 }
 
-StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph) {
-  Status status;
-  Node* inserted_node = graph->AddNode(node_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
-  return inserted_node;
-}
-
 StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
   const char* const kRetValOp = "_Retval";
   NodeDef ret_def;
@@ -46,7 +37,7 @@ StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
   ret_def.set_name(absl::StrCat(kRetValOp, index));
   AddNodeAttr("T", type, &ret_def);
   AddNodeAttr("index", index, &ret_def);
-  return AddNodeDefToGraph(ret_def, graph);
+  return graph->AddNode(ret_def);
 }
 
 Status ExtractWhileLoopFrames(

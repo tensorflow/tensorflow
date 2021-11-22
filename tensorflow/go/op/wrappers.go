@@ -42989,13 +42989,30 @@ func ResourceSparseApplyRMSProp(scope *Scope, var_ tf.Output, ms tf.Output, mom 
 	return scope.AddOperation(opspec)
 }
 
+// IsTPUEmbeddingInitializedAttr is an optional argument to IsTPUEmbeddingInitialized.
+type IsTPUEmbeddingInitializedAttr func(optionalAttr)
+
+// IsTPUEmbeddingInitializedConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func IsTPUEmbeddingInitializedConfig(value string) IsTPUEmbeddingInitializedAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
 // Whether TPU Embedding is initialized in a distributed TPU system.
-func IsTPUEmbeddingInitialized(scope *Scope) (is_tpu_embedding_initialized tf.Output) {
+func IsTPUEmbeddingInitialized(scope *Scope, optional ...IsTPUEmbeddingInitializedAttr) (is_tpu_embedding_initialized tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "IsTPUEmbeddingInitialized",
+
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

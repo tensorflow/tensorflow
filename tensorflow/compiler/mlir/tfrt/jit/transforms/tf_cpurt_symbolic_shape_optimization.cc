@@ -367,10 +367,9 @@ struct SymbolicShapeOptimizationPass
 
     // Add shape dialect canonicalization patterns to fold shape operations
     // after constraints are replaced with constant witness.
-    mlir::Dialect* shape_dialect = ctx->getLoadedDialect<shape::ShapeDialect>();
-    for (auto* op : ctx->getRegisteredOperations()) {
-      if (op->dialect.getTypeID() == shape_dialect->getTypeID())
-        op->getCanonicalizationPatterns(patterns, ctx);
+    for (auto op : ctx->getRegisteredOperations()) {
+      if (llvm::isa<shape::ShapeDialect>(op.getDialect()))
+        op.getCanonicalizationPatterns(patterns, ctx);
     }
 
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));

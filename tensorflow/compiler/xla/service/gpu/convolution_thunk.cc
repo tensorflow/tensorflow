@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/strings/str_cat.h"
@@ -37,8 +38,19 @@ ConvolutionThunk::ConvolutionThunk(
       operand_buffers_(std::move(operand_slices)),
       result_buffer_(result_slice),
       scratch_buffer_(scratch_slice),
-      config_(std::move(config)),
-      runner_cache_(config_) {}
+      config_(std::move(config)) {}
+
+MaybeFusedConvRunner& ConvolutionThunk::GetOrCreateRunner(
+    const stream_executor::Stream* stream) {
+  tensorflow::mutex_lock lock(mu_);
+  auto it = runner_cache_.find(stream);
+  if (it == runner_cache_.end()) {
+    it = runner_cache_
+             .insert({stream, std::make_unique<MaybeFusedConvRunner>(config_)})
+             .first;
+  }
+  return *it->second;
+}
 
 Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
@@ -55,7 +67,7 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
   RunConvOptions opts;
-  opts.runner_cache = &runner_cache_;
+  opts.runner_cache = &GetOrCreateRunner(params.stream);
 
   TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
                                 result_buffer, scratch, params.stream, opts));

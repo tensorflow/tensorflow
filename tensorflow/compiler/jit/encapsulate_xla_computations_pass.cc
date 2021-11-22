@@ -340,11 +340,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       graph->RemoveNode(node);
     }
 
-    Status status;
-    Node* xla_launch = graph->AddNode(def, &status);
-    if (!status.ok()) {
-      return status;
-    }
+    TF_ASSIGN_OR_RETURN(Node * xla_launch, graph->AddNode(def));
     for (int i = 0, end = data_inputs.size(); i < end; ++i) {
       graph->AddEdge(data_inputs[i].first, data_inputs[i].second, xla_launch,
                      i);

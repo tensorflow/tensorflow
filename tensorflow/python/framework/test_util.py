@@ -49,6 +49,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -3828,3 +3829,20 @@ def run_functions_eagerly(run_eagerly):
     yield
   finally:
     def_function.run_functions_eagerly(initial_state)
+
+
+class TestDelta(object):
+  """A utility class to track increments to test counters."""
+
+  def __init__(self, name, label):
+    self.name = name
+    self.label = label
+    self.Reset()
+
+  def Reset(self):
+    self.last_value = _test_metrics_util.test_counter_value(
+        self.name, self.label)
+
+  def Get(self):
+    value = _test_metrics_util.test_counter_value(self.name, self.label)
+    return value - self.last_value

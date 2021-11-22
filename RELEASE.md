@@ -25,6 +25,10 @@
         favor of direct arguments: `max_workspace_size_bytes`, `precision_mode`,
         `minimum_segment_size`, `maximum_cached_engines`, `use_calibration` and
         `allow_build_at_runtime`.
+    *   Added a new parameter called `save_gpu_specific_engines` to the
+        `.save()` function inside `TrtGraphConverterV2`. When `False`, the
+        `.save()` function won't save any TRT engines that have been built. When
+        `True` (default), the original behavior is preserved.
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
@@ -45,6 +49,16 @@
       initialization time upto 90% when OpenCL is available.
   * Deprecated `Interpreter::SetNumThreads`, in favor of
     `InterpreterBuilder::SetNumThreads`.
+* Adds `tf.compat.v1.keras.utils.get_or_create_layer` to aid migration to TF2 by
+  enabling tracking of nested keras models created in TF1-style, when used with
+  the `tf.compat.v1.keras.utils.track_tf1_style_variables` decorator.
+
+* `tf.keras`:
+  * Preprocessing Layers
+    * Added a `tf.keras.layers.experimental.preprocessing.HashedCrossing`
+      layer which applies the hashing trick to the concatenation of crossed
+      scalar inputs. This provides a stateless way to try adding feature crosses
+      of integer or string data to a model.
 
 # Thanks to our Contributors
 
@@ -63,6 +77,8 @@ This release contains contributions from many people at Google, as well as:
   * The methods `Model.to_yaml()` and `keras.models.model_from_yaml` have been replaced to raise a `RuntimeError` as they can be abused to cause arbitrary code execution. It is recommended to use JSON serialization instead of YAML, or, a better alternative, serialize to H5.
   * `LinearModel` and `WideDeepModel` are moved to the `tf.compat.v1.keras.models.` namespace (`tf.compat.v1.keras.models.LinearModel` and `tf.compat.v1.keras.models.WideDeepModel`), and their `experimental` endpoints (`tf.keras.experimental.models.LinearModel` and `tf.keras.experimental.models.WideDeepModel`) are being deprecated.
   * RNG behavior change for all `tf.keras.initializers` classes. For any class constructed with a fixed seed, it will no longer generate same value when invoked multiple times. Instead, it will return different value, but a determinisitic sequence. This change will make the initialize behavior align between v1 and v2.
+  * Metrics update and collection logic in default `Model.train_step()` is now
+    customizable via overriding `Model.compute_metrics()`.
 
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with TF SavedModel's Signature concept.
