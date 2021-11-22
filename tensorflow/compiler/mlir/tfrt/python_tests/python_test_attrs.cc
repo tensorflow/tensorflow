@@ -39,8 +39,8 @@ void PythonTestAttrsDialect::initialize() {}
   auto arg_type = arg.getType().dyn_cast<RankedTensorType>();
   if (!arg_type) return success();
 
-  if (attribute.first == GetStaticTypeAttrName()) {
-    auto type_attr = attribute.second.dyn_cast<TypeAttr>();
+  if (attribute.getName() == GetStaticTypeAttrName()) {
+    auto type_attr = attribute.getValue().dyn_cast<TypeAttr>();
     if (!type_attr) {
       return op->emitError()
              << GetStaticTypeAttrName()
@@ -82,8 +82,8 @@ void PythonTestAttrsDialect::initialize() {}
                   "argument tensor";
       }
     }
-  } else if (attribute.first == GetShapeValueAttrName()) {
-    auto dense_attr = attribute.second.dyn_cast<DenseIntElementsAttr>();
+  } else if (attribute.getName() == GetShapeValueAttrName()) {
+    auto dense_attr = attribute.getValue().dyn_cast<DenseIntElementsAttr>();
     if (!dense_attr) {
       return op->emitError()
              << GetShapeValueAttrName()

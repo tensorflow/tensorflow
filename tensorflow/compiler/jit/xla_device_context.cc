@@ -87,7 +87,7 @@ XlaDeviceContext::XlaDeviceContext(
     std::shared_ptr<se::Stream> device_to_host_stream,
     std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
     xla::LocalClient* client,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     thread::ThreadPool* thread_pool)
     : stream_(std::move(compute_stream)),
       host_to_device_stream_(std::move(host_to_device_stream)),
@@ -95,13 +95,10 @@ XlaDeviceContext::XlaDeviceContext(
       device_to_device_streams_(std::move(device_to_device_streams)),
       client_(client),
       transfer_manager_(client->backend().transfer_manager()),
-      shape_representation_fn_(std::move(shape_representation_fn)),
+      shape_determination_fns_(std::move(shape_determination_fns)),
       thread_pool_(thread_pool) {
   CHECK(host_to_device_stream_ != nullptr);
   CHECK(stream_ != nullptr);
-  if (!shape_representation_fn_) {
-    shape_representation_fn_ = tensorflow::IdentityShapeRepresentationFn();
-  }
 }
 
 void XlaDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
@@ -133,12 +130,14 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
   CHECK(xla_tensor);
 
+  XlaLayoutPreference layout_preference =
+      shape_determination_fns_.layout_preference_fn(
+          device_tensor->shape(), device_tensor->dtype(), absl::nullopt);
   Status status = [&]() -> Status {
-    TF_ASSIGN_OR_RETURN(
-        xla::Shape shape,
-        shape_representation_fn_(device_tensor->shape(), device_tensor->dtype(),
-                                 /*fast_mem=*/false,
-                                 XlaLayoutPreference::kNoPreference));
+    TF_ASSIGN_OR_RETURN(xla::Shape shape,
+                        shape_determination_fns_.shape_representation_fn(
+                            device_tensor->shape(), device_tensor->dtype(),
+                            /*fast_mem=*/false, layout_preference));
 
     // The device tensor should always be fresh.
     TF_RET_CHECK(!xla_tensor->has_shaped_buffer());

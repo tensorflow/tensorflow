@@ -164,6 +164,8 @@ struct AppleInfo {
   explicit AppleInfo(const std::string& gpu_description);
   AppleGpu gpu_type;
 
+  bool IsA7GenerationGpu() const;
+  bool IsA8GenerationGpu() const;
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
@@ -309,6 +311,9 @@ struct OpenClInfo {
   int max_work_group_size_y;
   int max_work_group_size_z;
   int max_work_group_total_size;
+
+  // The row pitch alignment size in pixels for 2D images created from a buffer.
+  // The value returned must be a power of 2.
   uint64_t image_pitch_alignment;
   uint64_t base_addr_align_in_bits;
 
@@ -352,6 +357,13 @@ struct MetalInfo {
   int max_work_group_size_z;
 
   uint64_t buffer_max_size;
+
+  uint64_t image2d_max_width;
+  uint64_t image2d_max_height;
+  uint64_t image_array_max_layers;
+  uint64_t image3d_max_width;
+  uint64_t image3d_max_height;
+  uint64_t image3d_max_depth;
 };
 
 struct GpuInfo {

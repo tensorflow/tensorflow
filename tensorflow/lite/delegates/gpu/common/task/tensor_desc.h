@@ -103,6 +103,22 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   BHWDC shape;
   std::vector<uint8_t> data;
 
+  // applicable only for TEXTURE_2D.
+  // When Texture 2d created from buffer, we can use it as texture or as buffer.
+  // This option allows to use texture 2d as buffer when we use it as dst
+  // tensor(write only).
+  // Currently supported only for Metal/OpenCL.
+  // By default false.
+  bool use_buffer_for_write_only_2d_texture = false;
+
+  // applicable only for IMAGE_BUFFER.
+  // We can use image buffer as image or as buffer.
+  // This option allows to use image buffer as buffer when we use it as dst
+  // tensor(write only).
+  // Currently supported only for Metal/OpenCL.
+  // By default true.
+  bool use_buffer_for_write_only_image_buffer = true;
+
  private:
   absl::Status PerformReadSelector(
       const GpuInfo& gpu_info, const std::vector<std::string>& args,

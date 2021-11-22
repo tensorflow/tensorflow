@@ -41,7 +41,7 @@ class Trace(object):
   tf.profiler.experimental.start('logdir')
   for step in range(num_steps):
     # Creates a trace event for each training step with the step number.
-    with tf.profiler.experimental.Trace("Train", step_num=step):
+    with tf.profiler.experimental.Trace("Train", step_num=step, _r=1):
       train_fn()
   tf.profiler.experimental.stop()
   ```

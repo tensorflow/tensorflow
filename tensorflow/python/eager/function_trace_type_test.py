@@ -115,13 +115,13 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   def testTensorEquality(self):
     context = function_trace_type.SignatureContext()
     tensor_a = array_ops.zeros([11, 3, 5],
-                               dtype=dtypes.int32)._tf_tracing_type(context)
+                               dtype=dtypes.int32).__tf_tracing_type__(context)
     tensor_b = array_ops.zeros([11, 4, 5],
-                               dtype=dtypes.int32)._tf_tracing_type(context)
-    tensor_c = array_ops.zeros([11, 3, 5],
-                               dtype=dtypes.float32)._tf_tracing_type(context)
+                               dtype=dtypes.int32).__tf_tracing_type__(context)
+    tensor_c = array_ops.zeros(
+        [11, 3, 5], dtype=dtypes.float32).__tf_tracing_type__(context)
     tensor_d = array_ops.ones([11, 3, 5],
-                              dtype=dtypes.int32)._tf_tracing_type(context)
+                              dtype=dtypes.int32).__tf_tracing_type__(context)
 
     self.assertNotEqual(tensor_a, tensor_b)
     self.assertNotEqual(tensor_a, tensor_c)
@@ -132,11 +132,12 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   def testTensorAndSpecEquality(self):
     context = function_trace_type.SignatureContext()
     tensor = array_ops.zeros([11, 3, 5],
-                             dtype=dtypes.int32)._tf_tracing_type(context)
-    spec = tensor_spec.TensorSpec([11, 3, 5],
-                                  dtype=dtypes.int32)._tf_tracing_type(context)
+                             dtype=dtypes.int32).__tf_tracing_type__(context)
+    spec = tensor_spec.TensorSpec(
+        [11, 3, 5], dtype=dtypes.int32).__tf_tracing_type__(context)
     spec_with_name = tensor_spec.TensorSpec(
-        [11, 3, 5], dtype=dtypes.int32, name='name')._tf_tracing_type(context)
+        [11, 3, 5], dtype=dtypes.int32,
+        name='name').__tf_tracing_type__(context)
 
     self.assertEqual(tensor, spec)
     self.assertNotEqual(tensor, spec_with_name)
@@ -145,9 +146,9 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   def testTensorShapeUnknown(self):
     context = function_trace_type.SignatureContext()
     spec_1 = tensor_spec.TensorSpec(
-        None, dtype=dtypes.int32)._tf_tracing_type(context)
+        None, dtype=dtypes.int32).__tf_tracing_type__(context)
     spec_2 = tensor_spec.TensorSpec(
-        None, dtype=dtypes.int32)._tf_tracing_type(context)
+        None, dtype=dtypes.int32).__tf_tracing_type__(context)
     self.assertEqual(spec_1, spec_2)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -250,8 +251,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensors.append(array_ops.zeros(s))
 
     def encode_tensors(tensors):
-      function_trace_type.get_arg_spec(tensors, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(tensors, False, False, True)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_tensors(tensors), number=iterations)
@@ -271,8 +271,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensor_specs.append(tensor_spec.TensorSpec(s, dtypes.int32))
 
     def encode_tensor_specs(tensor_specs):
-      function_trace_type.get_arg_spec(tensor_specs, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(tensor_specs, False, False, True)
 
     iterations = 100000
     t = timeit.timeit(
@@ -294,8 +293,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     ]
 
     def encode_variables(var_list):
-      function_trace_type.get_arg_spec(var_list, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(var_list, False, False, True)
 
     iterations = 10000
     t = timeit.timeit(lambda: encode_variables(var_list), number=iterations)
@@ -315,8 +313,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     model = keras.Model(inputs=inputs, outputs=outputs)
 
     def encode_model(model):
-      function_trace_type.get_arg_spec(model, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(model, False, False, True)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_model(model), number=iterations)
@@ -363,8 +360,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
 
     def encode_struct(struct):
-      function_trace_type.get_arg_spec(struct, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      function_trace_type.get_arg_spec(struct, False, False, True)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_struct(struct), number=iterations)

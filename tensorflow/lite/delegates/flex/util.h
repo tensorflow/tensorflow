@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_UTIL_H_
 
+#include <string>
+
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -48,6 +50,16 @@ const char* TfLiteTypeToTfTypeName(TfLiteType type);
 inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
   return tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant;
 }
+
+// Returns the encoded string name for a TF Lite resource variable tensor.
+// This function will return a string in the format:
+// tflite_resource_variable:resource_id.
+std::string TfLiteResourceIdentifier(const TfLiteTensor* tensor);
+
+// Parses out the resource ID from the given `resource_handle` and sets it
+// to the corresponding TfLiteTensor. Returns true if succeed.
+bool GetTfLiteResourceTensorFromResourceHandle(
+    const tensorflow::ResourceHandle& resource_handle, TfLiteTensor* tensor);
 
 }  // namespace flex
 }  // namespace tflite

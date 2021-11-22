@@ -1,5 +1,4 @@
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -19,6 +18,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -321,22 +322,21 @@ Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
 }
 
 /* static */
-int64_t HloCostAnalysis::GetDotFlops(const HloInstruction* dot) {
-  const Shape& lhs_shape = dot->operand(0)->shape();
-  const Shape& dot_shape = dot->shape();
-  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  // Count of elements along the reduction dimension (last dimension for the
-  // rhs).
+int64_t HloCostAnalysis::GetDotFlops(const Shape& lhs_shape,
+                                     const Shape& result_shape,
+                                     const DotDimensionNumbers& dnums) {
+  // Count of elements along the reduction dimensions.
   int64_t reduction_width = 1;
   for (auto dim : dnums.lhs_contracting_dimensions()) {
     reduction_width *= lhs_shape.dimensions(dim);
   }
   // Each output element requires reduction_width FMA operations.
-  return kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
+  return kFmaFlops * ShapeUtil::ElementsIn(result_shape) * reduction_width;
 }
 
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
-  current_properties_[kFlopsKey] = GetDotFlops(dot);
+  current_properties_[kFlopsKey] = GetDotFlops(
+      dot->operand(0)->shape(), dot->shape(), dot->dot_dimension_numbers());
   return Status::OK();
 }
 
@@ -973,10 +973,40 @@ Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 }
 
 Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
-  // Mark applicable fields as "unknown", since we don't know what CustomCall
-  // does.  This is better than returning an error, which would stop iteration,
-  // and therefore would prevent us from getting *any* stats for a computation
-  // which contains a CustomCall.
+  if (custom_call->custom_call_target() == gpu::kGemmCallTarget) {
+    // The naming conventions and meanings of gemm parameters are documented
+    // here:
+    // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm
+    TF_ASSIGN_OR_RETURN(auto gemm_config,
+                        custom_call->backend_config<gpu::GemmBackendConfig>());
+
+    // Technically, in addition to the dot product (A * B), cuBLAS gemm also
+    // performs additional scaling (by factor 'alpha') and addition with a
+    // scaled third matrix (beta * C), which will introduce additional
+    // multiplications and additions. But total FLOPS will be dominated by the
+    // dot product, so we don't include these extra multiplications and
+    // additions in the FLOPS calculation.
+
+    // Also, this calculation assumes that the strides for the gemm are
+    // properly set such that none of the inputs in a batch overlap with any
+    // other batches. If they do, this will undercount the FLOPS, because it
+    // assumes that the strides are implicit in the sizes of the batch
+    // dimensions.
+
+    // Finally, this is technically incorrect if the element type of this
+    // gemm is an integer type, because in that case no floating point
+    // operations are involved at all! But we still calculate FLOPS because the
+    // number is sometimes required for ad-hoc calculations.
+    current_properties_[kFlopsKey] =
+        GetDotFlops(custom_call->operand(0)->shape(), custom_call->shape(),
+                    gemm_config.dot_dimension_numbers());
+    return Status::OK();
+  }
+
+  // Mark applicable fields as "unknown", since we don't know what this
+  // CustomCall does.  This is better than returning an error, which would stop
+  // iteration, and therefore would prevent us from getting *any* stats for a
+  // computation which contains a CustomCall.
   current_properties_[kOptimalSecondsKey] = -1;
   current_properties_[kBytesAccessedKey] = -1;
   SetOutputBytesAccessed(-1);

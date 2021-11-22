@@ -1044,7 +1044,10 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
     TFL_AFAttr:$fused_activation_function,
     TFL_FullyConnectedOptionsWeightFormatAttr:$weights_format,
-    BoolAttr:$keep_num_dims
+    BoolAttr:$keep_num_dims,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   // Depending on the weights format, this op can have one or two outputs.
@@ -1100,7 +1103,10 @@ in the batch dimensions and broadcasting.
     TFL_TensorOf<[F32, QI8, QI16, I8]>:$x,
     TFL_TensorOf<[F32, QI8, QI16, I8]>:$y,
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
-    DefaultValuedAttr<BoolAttr, "false">:$adj_y
+    DefaultValuedAttr<BoolAttr, "false">:$adj_y,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
    let results = (outs
@@ -4038,8 +4044,8 @@ Ba et al. 'Layer Normalization'
     Confined<
       DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "FULL">,
       [TFL_LSTM_KT_FULL]>:$kernel_type,
-    // Used in post-training dynamic range quantization. When imported/exported
-    // from/to flatbuffer, it is false by defaut unless the value is provided.
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
     OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
 
     // Types of the optional intermediate tensors, which exist for fully
@@ -4164,6 +4170,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$time_major,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized op and hold the ranges of the intermediate tensors.
@@ -4360,7 +4369,10 @@ def TFL_BidirectionalSequenceLSTMOp :
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$merge_outputs,
-    BoolAttr:$time_major
+    BoolAttr:$time_major,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   let results = (outs
@@ -4418,7 +4430,10 @@ def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
 
     // Attributes
     BoolAttr:$time_major,
-    TFL_AFAttr:$fused_activation_function
+    TFL_AFAttr:$fused_activation_function,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   let results = (outs TFL_FpTensor:$output);
@@ -4517,7 +4532,10 @@ def TFL_SVDFOp :
 
     // Attributes
     Confined<I32Attr, [IntPositive]>:$rank,
-    TFL_AFAttr:$fused_activation_function
+    TFL_AFAttr:$fused_activation_function,
+    // Used in post-training dynamic range quantization. If the value is true,
+    // input activations are asymmetrically quantized.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8]>:$output);

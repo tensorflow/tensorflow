@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,9 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_CORE_SHIMS_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_H_
-#define TENSORFLOW_LITE_CORE_SHIMS_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_H_
+#ifndef TENSORFLOW_CORE_DATA_FILE_UTILS_H_
+#define TENSORFLOW_CORE_DATA_FILE_UTILS_H_
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/nnapi_plugin.h"
+#include <string>
 
-#endif  // TENSORFLOW_LITE_CORE_SHIMS_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_H_
+namespace tensorflow {
+namespace data {
+namespace file_utils {
+
+// Returns a modified file name that can be used to do implementation specific
+// file name manipulation/optimization.
+std::string TranslateFileName(const std::string& fname);
+
+}  // namespace file_utils
+}  // namespace data
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_DATA_PORT_UTILS_H_

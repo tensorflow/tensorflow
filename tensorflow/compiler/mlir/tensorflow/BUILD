@@ -1514,6 +1514,7 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":location_utils",
         ":mangling_util",
         ":tensorflow",
         ":tensorflow_attributes",
@@ -1532,6 +1533,15 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "location_utils",
+    srcs = ["utils/location_utils.cc"],
+    hdrs = ["utils/location_utils.h"],
+    deps = [
+        "@llvm-project//mlir:IR",
     ],
 )
 

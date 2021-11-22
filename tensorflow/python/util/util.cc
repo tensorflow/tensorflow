@@ -611,7 +611,7 @@ int IsNestedOrCompositeHelper(PyObject* o) {
   return is_nested || is_composite || is_type_spec;
 }
 
-int IsSequenceForDataHelper(PyObject* o) {
+int IsNestedForDataHelper(PyObject* o) {
   return IsNestedHelper(o) == 1 && !PyList_Check(o) &&
          !IsSparseTensorValueType(o);
 }
@@ -1004,11 +1004,11 @@ bool IsCompositeTensor(PyObject* o) { return IsCompositeTensorHelper(o) == 1; }
 
 bool IsTypeSpec(PyObject* o) { return IsTypeSpecHelper(o) == 1; }
 
-bool IsSequenceForData(PyObject* o) { return IsSequenceForDataHelper(o) == 1; }
+bool IsNestedForData(PyObject* o) { return IsNestedForDataHelper(o) == 1; }
 
 PyObject* FlattenForData(PyObject* nested) {
   PyObject* list = PyList_New(0);
-  if (FlattenHelper(nested, list, IsSequenceForDataHelper,
+  if (FlattenHelper(nested, list, IsNestedForDataHelper,
                     GetValueIteratorForData)) {
     return list;
   } else {
@@ -1133,7 +1133,7 @@ PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            IsSequenceForDataHelper, GetValueIterator, false);
+                            IsNestedForDataHelper, GetValueIterator, false);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
     // from custom mappings).

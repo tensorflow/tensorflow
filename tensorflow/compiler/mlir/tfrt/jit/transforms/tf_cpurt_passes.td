@@ -129,6 +129,19 @@ def Fusion : FunctionPass<"tf-cpurt-fusion"> {
   ];
 }
 
+def CpuRtLegalizeI1Types : Pass<"tf-cpurt-legalize-i1-types", "mlir::ModuleOp"> {
+  let summary = "Legalize 'i1' tensor types";
+  let constructor = "tensorflow::CreateCpuRtLegalizeI1TypesPass()";
+  let description = [{
+    Convert 'i1' tensor types used in any operation into 'i8' tensor types.
+  }];
+  let dependentDialects = [
+    "mlir::TF::TensorFlowDialect",
+    "mlir::mhlo::MhloDialect",
+    "mlir::StandardOpsDialect",
+  ];
+}
+
 def SymbolicShapeOptimization
     : FunctionPass<"tf-cpurt-symbolic-shape-optimization"> {
   let summary = "Optimizes broadcasts based on the symbolic shapes";

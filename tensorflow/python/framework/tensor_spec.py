@@ -226,8 +226,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
   def _to_batched_tensor_list(self, value):
     return self._to_tensor_list(value)
 
-  # TODO(b/202447704): Rename to __tf_tracing_type__ at protocol export.
-  def _tf_tracing_type(self, signature_context):
+  def __tf_tracing_type__(self, signature_context):
     return ops.TensorType(signature_context, self.shape, self.dtype, self.name)
 
 

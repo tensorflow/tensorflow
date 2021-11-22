@@ -1052,6 +1052,21 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
           op.backend_config().tensor_ops_enabled().getValue()
               ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
               : se::dnn::AlgorithmProto::DEFAULT_MATH);
+      for (int i = 0; i < op.backend_config().knob_ids().size(); ++i) {
+        // N.B. tuning_knobs is a map rather than a repeated field, so this
+        // doesn't require reserving space up front.
+        (*algorithm
+              ->mutable_tuning_knobs())[op.backend_config()
+                                            .knob_ids()[i]
+                                            .template cast<mlir::IntegerAttr>()
+                                            .getInt()] =
+            op.backend_config()
+                .knob_values()[i]
+                .template cast<mlir::IntegerAttr>()
+                .getInt();
+      }
+      algorithm->set_is_cudnn_frontend(
+          op.backend_config().is_cudnn_frontend().getValue());
       auto workspace_size = op.backend_config().workspace_size().getInt();
       if (workspace_size >= 0) {
         algorithm->mutable_workspace_size()->set_value(workspace_size);

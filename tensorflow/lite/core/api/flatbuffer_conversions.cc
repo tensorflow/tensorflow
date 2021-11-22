@@ -786,6 +786,17 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_MULTINOMIAL: {
+      auto params = safe_allocator.Allocate<TfLiteRandomParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* multinomial_params =
+              op->builtin_options_as_RandomOptions()) {
+        params->seed = multinomial_params->seed();
+        params->seed2 = multinomial_params->seed2();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     case BuiltinOperator_RANDOM_STANDARD_NORMAL: {
       auto params = safe_allocator.Allocate<TfLiteRandomParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);

@@ -260,6 +260,7 @@ StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
           << proto_utils::FromDurationProto(results[idx].run_time())
           << " with algo " << results[idx].algorithm().algo_id()
           << ", workspace bytes " << results[idx].scratch_bytes();
+
   se::dnn::AlgorithmConfig result(
       se::dnn::AlgorithmDesc(results[idx].algorithm()),
       results[idx].scratch_bytes());

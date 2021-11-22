@@ -136,6 +136,7 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
 // across the async compilation tasks boundary.
 struct TfCpuRtPipelineOpts {
   bool vectorize;
+  bool legalize_i1_tensors;
 };
 
 // Prints memref descriptor as a tensor type: tensor<NxMxf32>.
@@ -341,6 +342,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
       opts.register_pass_pipeline = [tf_cpurt_opts](OpPassManager& pm) {
         TfCpuRtPipelineOptions opts;
         opts.vectorize = tf_cpurt_opts->vectorize;
+        opts.legalize_i1_tensors = tf_cpurt_opts->legalize_i1_tensors;
         return CreateTfCpuRtPipeline(pm, opts);
       };
     } else {
@@ -643,15 +645,15 @@ static void Execute(RepeatedArguments<FallbackTensor> operands,
 // tensors operands in the debug mode: prints compilation diagnostics to the
 // standard output. Should be used only in tests for verifying compiler
 // internals.
-static void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
-                         RemainingResults results,
-                         Attribute<bool> debug_specializations,
-                         StringAttribute device,
-                         CompilationUnitAttribute kernel,
-                         Attribute<bool> vectorize,
-                         const ExecutionContext& exec_ctx) {
+void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
+                  RemainingResults results,
+                  Attribute<bool> debug_specializations, StringAttribute device,
+                  CompilationUnitAttribute kernel, Attribute<bool> vectorize,
+                  Attribute<bool> legalize_i1_tensors,
+                  const ExecutionContext& exec_ctx) {
   TfCpuRtPipelineOpts opts;
   opts.vectorize = *vectorize;
+  opts.legalize_i1_tensors = *legalize_i1_tensors;
   ExecuteImpl(operands, results, device, kernel, exec_ctx,
               *debug_specializations, opts);
 }

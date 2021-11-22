@@ -142,7 +142,10 @@ def FallbackDebugExecuteOp : TF_CPURT_Op<"fallback.debug.execute"> {
     BoolAttr:$debug_specializations,
     // Compiler options for lowering from Tensorflow dialect to the dialects
     // supported by the CPURT (see the `tf-cpurt-pipeline` options).
-    BoolAttr:$vectorize
+    BoolAttr:$vectorize,
+    // Compiler options for lowering from Tensorflow dialect to the dialects
+    // supported by the CPURT (see the `tf-cpurt-pipeline` options).
+    BoolAttr:$legalize_i1_tensors
   );
 
   let results = (outs

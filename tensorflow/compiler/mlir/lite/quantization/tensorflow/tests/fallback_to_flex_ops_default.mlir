@@ -63,3 +63,38 @@ func @floor_mod(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5xf32> {
 // CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0, %arg1) {custom_code = "FlexFloorMod", custom_option = opaque<"tfl", "{{.*}}"> : tensor<45xi8>} : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
 // CHECK: return %[[CUSTOM_0]] : tensor<5xf32>
 }
+
+// CHECK-LABEL: identity_with_const
+func @identity_with_const() -> tensor<*xf32> {
+  %cst = "tf.Const"() {device = "", value = dense<[2.167590e-01, 2.89403105]> : tensor<2xf32>} : () -> tensor<2xf32>
+  %cst_1 = "tf.Const"() {device = "", value = dense<1.000000e-03> : tensor<f32>} : () -> tensor<f32>
+  %0 = "tf.Identity"(%cst) {device = ""} : (tensor<2xf32>) -> tensor<*xf32>
+  %1 = "tf.AddV2"(%0, %cst_1) {device = ""} : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+  return %1 : tensor<*xf32>
+// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<[2.177590e-01, 2.89503098]> : tensor<2xf32>} : () -> tensor<*xf32>
+// CHECK: return %[[CONST_0]] : tensor<*xf32>
+}
+
+func @identity(%arg0: tensor<2xf32>) -> tensor<*xf32> {
+  %cst_1 = "tf.Const"() {device = "", value = dense<1.000000e-03> : tensor<f32>} : () -> tensor<f32>
+  %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<2xf32>) -> tensor<*xf32>
+  %1 = "tf.AddV2"(%0, %cst_1) {device = ""} : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+  return %1 : tensor<*xf32>
+// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<1.000000e-03> : tensor<f32>} : () -> tensor<f32>
+// CHECK: %[[IDENTITY_0:.*]] = "tf.Identity"(%arg0) {device = ""} : (tensor<2xf32>) -> tensor<*xf32>
+// CHECK: %[[ADDV2_0:.*]] = "tfl.custom"(%0, %cst) {custom_code = "FlexAddV2", custom_option = opaque<"tfl", "0x0541646456320016120541646456321A001A002A070A015412023001320000021F191414042801"> : tensor<39xi8>} : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+// CHECK: return %[[ADDV2_0]] : tensor<*xf32>
+}
+
+// CHECK-LABEL: bias_add_with_identity
+func @bias_add_with_identity(%arg0: tensor<4xi32>, %arg1: tensor<3x3x1x32xf32>, %arg2: tensor<15x14x14x32xf32>) -> tensor<15x28x28x1xf32> {
+  %cst = "tf.Const"() {device = "", value = dense<[2.167590e-01]> : tensor<1xf32>} : () -> tensor<1xf32>
+  %cst_1 = "tf.Const"() {device = "", value = dense<1.000000e-03> : tensor<f32>} : () -> tensor<f32>
+  %0 = "tf.Identity"(%cst) {device = ""} : (tensor<1xf32>) -> tensor<1xf32>
+  %1 = "tf.AddV2"(%0, %cst_1) {device = ""} : (tensor<1xf32>, tensor<f32>) -> tensor<1xf32>
+  %2 = "tf.Conv2DBackpropInput"(%arg0, %arg1, %arg2) {strides = [1, 2, 2, 1], padding="SAME", dilations=[1, 1, 1, 1]}: (tensor<4xi32>, tensor<3x3x1x32xf32>, tensor<15x14x14x32xf32>) -> tensor<15x28x28x1xf32>
+  %3 = "tf.AddV2"(%2, %1): (tensor<15x28x28x1xf32>, tensor<1xf32>) -> tensor<15x28x28x1xf32>
+  return %2 : tensor<15x28x28x1xf32>
+// CHECK: %[[CONV2DBACKPROPINPUT_0:.*]] = "tf.Conv2DBackpropInput"(%arg0, %arg1, %arg2) {dilations = [1, 1, 1, 1], padding = "SAME", strides = [1, 2, 2, 1]} : (tensor<4xi32>, tensor<3x3x1x32xf32>, tensor<15x14x14x32xf32>) -> tensor<15x28x28x1xf32>
+// CHECK: return %[[CONV2DBACKPROPINPUT_0]] : tensor<15x28x28x1xf32>
+}

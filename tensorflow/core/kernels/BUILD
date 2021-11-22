@@ -4,6 +4,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_cuda_or_rocm",
+    "if_google",
     "if_mobile",
     "if_not_windows",
     "if_oss",
@@ -82,7 +83,13 @@ load(
 #
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
+    features = if_google(
+        [
+            "-layering_check",
+            "-parse_headers",
+        ],
+        ["-layering_check"],
+    ),
     licenses = ["notice"],
 )
 
@@ -1086,15 +1093,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "constant_op",
-    copts = if_mlir_generated_experimental_kernels_enabled([
-        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
-    ]) + if_mlir_generated_gpu_kernels_enabled(
+    copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     # *.cu.cc sources are compiled with gpu_copts instead of copts.
-    gpu_copts = if_mlir_generated_experimental_kernels_enabled([
-        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
-    ]) + if_mlir_generated_gpu_kernels_enabled(
+    gpu_copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     prefix = "constant_op",

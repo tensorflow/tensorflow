@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace flex {
@@ -139,6 +141,40 @@ TEST(UtilTest, TypeConversionsFromTensorFlow) {
   EXPECT_EQ(kTfLiteBool, GetTensorFlowLiteType(TF_BOOL));
   EXPECT_EQ(kTfLiteResource, GetTensorFlowLiteType(TF_RESOURCE));
   EXPECT_EQ(kTfLiteVariant, GetTensorFlowLiteType(TF_VARIANT));
+}
+
+TEST(UtilTest, GetTfLiteResourceIdentifier) {
+  // Constructs a fake resource tensor.
+  TfLiteTensor tensor;
+  tensor.allocation_type = kTfLiteDynamic;
+  tensor.type = kTfLiteResource;
+  std::vector<int> dims = {1};
+  tensor.dims = ConvertVectorToTfLiteIntArray(dims);
+  tensor.data.raw = nullptr;
+  TfLiteTensorRealloc(sizeof(int32_t), &tensor);
+  tensor.delegate = nullptr;
+  tensor.data.i32[0] = 1;
+
+  EXPECT_EQ(TfLiteResourceIdentifier(&tensor), "tflite_resource_variable:1");
+  TfLiteIntArrayFree(tensor.dims);
+  TfLiteTensorDataFree(&tensor);
+}
+
+TEST(UtilTest, GetTfLiteResourceTensorFromResourceHandle) {
+  tensorflow::ResourceHandle handle;
+  handle.set_name("tflite_resource_variable:1");
+
+  TfLiteTensor tensor;
+  tensor.allocation_type = kTfLiteDynamic;
+  tensor.type = kTfLiteResource;
+  tensor.data.raw = nullptr;
+  std::vector<int> dims = {1};
+  tensor.dims = ConvertVectorToTfLiteIntArray(dims);
+  EXPECT_TRUE(GetTfLiteResourceTensorFromResourceHandle(handle, &tensor));
+  EXPECT_EQ(tensor.data.i32[0], 1);
+
+  TfLiteIntArrayFree(tensor.dims);
+  TfLiteTensorDataFree(&tensor);
 }
 
 }  // namespace

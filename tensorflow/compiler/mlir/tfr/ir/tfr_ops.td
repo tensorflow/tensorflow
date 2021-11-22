@@ -444,7 +444,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     llvm::StringSet<> getDefinedAttributeNames() {
       llvm::StringSet<> all_attrs;
       for (auto& attr : (*this)->getAttrs()) {
-        all_attrs.insert(attr.first.strref());
+        all_attrs.insert(attr.getName().strref());
       }
       for (const auto& operand : llvm::enumerate(getType().getInputs())) {
         if (auto attr_name = getArgAttrOfType<StringAttr>(

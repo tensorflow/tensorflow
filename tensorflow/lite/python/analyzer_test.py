@@ -188,6 +188,21 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
       self.assertIn("  'y' : T#1_0", txt)
       self.assertIn("  'sub_result' : T#1_2", txt)
 
+  def testTxtWithoutInput(self):
+
+    @tf.function()
+    def func():
+      return tf.cos(1.0)
+
+    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [func.get_concrete_function()], func)
+    fb_model = converter.convert()
+    mock_stdout = io.StringIO()
+    with test.mock.patch.object(sys, 'stdout', mock_stdout):
+      analyzer.ModelAnalyzer.analyze(model_content=fb_model)
+    txt = mock_stdout.getvalue()
+    self.assertIn('Subgraph#0 main() -> [T#0]', txt)
+
 
 if __name__ == '__main__':
   test.main()
