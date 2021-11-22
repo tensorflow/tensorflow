@@ -30,7 +30,9 @@ inline bool IsTFLDialectNonConstOp(Operation* op) {
   return true;
 }
 
-bool IsTFLNonQuantDequantizeOp(Operation* op);
+// Returns true if 'op' is not TFL Quant / Dequant op. Returns False otherwise
+// or if 'op' is null.
+bool NotTFLQuantDequantizeOp(Operation* op);
 
 // Returns true if it is a shaped type of f32 elements.
 inline bool IsF32ShapedType(Type t) {

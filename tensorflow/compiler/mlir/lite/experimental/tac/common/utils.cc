@@ -19,9 +19,8 @@ namespace mlir {
 namespace TFL {
 namespace tac {
 
-bool IsTFLNonQuantDequantizeOp(Operation* op) {
-  if (op->getDialect() == nullptr) return false;
-  if (op->getDialect()->getNamespace() != "tfl") return false;
+bool NotTFLQuantDequantizeOp(Operation* op) {
+  if (!op) return false;
   if (llvm::isa<TFL::QuantizeOp, TFL::DequantizeOp>(op)) return false;
   return true;
 }

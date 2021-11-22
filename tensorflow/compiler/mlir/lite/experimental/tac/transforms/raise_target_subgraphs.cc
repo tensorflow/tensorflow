@@ -67,7 +67,7 @@ struct Subgraph {
 
 // This will exclude arguments & consts & quantize/dequantize ops.
 inline bool IsTFLNonConstQuatnizeOp(Operation* op) {
-  return IsTFLDialectNonConstOp(op) && IsTFLNonQuantDequantizeOp(op);
+  return IsTFLDialectNonConstOp(op) && NotTFLQuantDequantizeOp(op);
 }
 
 inline bool IsTFLNonConstQuatnizeOp(const Value& value) {

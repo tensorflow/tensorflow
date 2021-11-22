@@ -192,7 +192,7 @@ bool AlternativeSubgraphPass::IsAllSupportedbySpec(
     FuncOp func, const InferenceDeviceType& device_inference_type) {
   bool found_unsupported = false;
   func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op) && IsTFLNonQuantDequantizeOp(op) &&
+    if (IsTFLDialectNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
         !IsSupported(op, device_inference_type.hardware)) {
       found_unsupported = true;
     }

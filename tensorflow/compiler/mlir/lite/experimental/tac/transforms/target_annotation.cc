@@ -126,7 +126,7 @@ void TargetAnnotationPass::runOnFunction() {
 
   func.walk([&](Operation* op) {
     // We only care about TFL dialect.
-    if (IsTFLDialectNonConstOp(op) && IsTFLNonQuantDequantizeOp(op)) {
+    if (IsTFLDialectNonConstOp(op) && NotTFLQuantDequantizeOp(op)) {
       SetTargetAnnotation(op, device_specs_flag_, &builder);
     }
   });
