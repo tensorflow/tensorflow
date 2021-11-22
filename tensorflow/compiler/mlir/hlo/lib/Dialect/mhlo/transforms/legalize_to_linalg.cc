@@ -1103,8 +1103,7 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
         adaptor.operand().getType().template cast<ShapedType>();
     ShapedType result_type = GetHloOpResultType<isLHLO>(reshape_op);
 
-    if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
-      return failure();
+    if (!result_type.hasStaticShape()) return failure();
 
     result_type = this->typeConverter->convertType(result_type)
                       .template cast<ShapedType>();
@@ -1124,8 +1123,9 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     // First scan all dimensions in the source shapes to see whether we have a
     // perfect case where consecutive dimensions in source are collapsed. For
     // such case we can just generate one single linalg.reshape.
-    bool is_collapsing_source = true;
-    while (curr_src_dim < src_shape.size() && curr_dst_dim < dst_shape.size()) {
+    bool is_collapsing_source = operand_type.hasStaticShape();
+    while (is_collapsing_source && curr_src_dim < src_shape.size() &&
+           curr_dst_dim < dst_shape.size()) {
       int64_t dst_size = dst_shape[curr_dst_dim];
       int64_t src_size = src_shape[curr_src_dim];
       while (src_size < dst_size && curr_src_dim < src_shape.size()) {
@@ -1167,8 +1167,7 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
         return exprs;
       };
       Location loc = reshape_op.getLoc();
-      int64_t total_elems = std::accumulate(src_shape.begin(), src_shape.end(),
-                                            1, std::multiplies<int64_t>());
+      int64_t total_elems = result_type.getNumElements();
       auto elem_type = operand_type.getElementType();
       SmallVector<ReassociationExprs, 4> collapsing_map = {
           // Use operand_type here because we need to collapse all operands
@@ -1188,9 +1187,12 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
         rewriter.replaceOpWithNewOp<linalg::CopyOp>(reshape_op, reshape_buffer,
                                                     adaptor.getOperands()[1]);
       } else {
-        auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
         Value collapsed_op = rewriter.create<linalg::TensorCollapseShapeOp>(
-            loc, collapsed_type, adaptor.getOperands()[0], collapsing_map);
+            loc, adaptor.operand(), collapsing_map);
+        // Cast to a known static type if the input has dynamic dimensions.
+        auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
+        collapsed_op =
+            rewriter.create<tensor::CastOp>(loc, collapsed_type, collapsed_op);
         rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
             reshape_op, result_type, collapsed_op, expanding_map);
       }

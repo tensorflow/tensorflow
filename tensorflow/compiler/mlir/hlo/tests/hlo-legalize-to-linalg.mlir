@@ -768,6 +768,17 @@ func @reshape2_4D_4D(%arg0: tensor<4x1x1x1024xi32>) -> tensor<4x1024x1x1xi32> {
 
 // -----
 
+// CHECK-LABEL: func @reshape_dynamic_in
+func @reshape_dynamic_in(%arg0: tensor<?x?xf32>) -> tensor<2x4x5xf32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<?x?xf32>) -> tensor<2x4x5xf32>
+  return %0 : tensor<2x4x5xf32>
+}
+// CHECK: %[[FLATTEN:.*]] = linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1]] : tensor<?x?xf32> into tensor<?xf32>
+// CHECK: %[[CAST:.*]] = tensor.cast %[[FLATTEN]] : tensor<?xf32> to tensor<40xf32>
+// CHECK: linalg.tensor_expand_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<40xf32> into tensor<2x4x5xf32>
+
+// -----
+
 // CHECK-LABEL: func @minf
 func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %0 = "mhlo.minimum"(%lhs, %rhs) {someattr}
