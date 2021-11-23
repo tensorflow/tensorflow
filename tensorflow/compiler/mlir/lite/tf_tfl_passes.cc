@@ -299,10 +299,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
-    if (pass_config.enable_tflite_variables) {
-      pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
-      pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
-    }
+    pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
+    pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
