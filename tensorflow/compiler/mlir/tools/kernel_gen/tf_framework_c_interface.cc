@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/stream_executor/stream.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
@@ -253,10 +254,17 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
     return nullptr;
   }
 
+  // Determine the unique architecture for the current GPU, if any.
+  SmallVector<std::string, 1> architectures;
+  stream_executor::CudaComputeCapability cc =
+      ctx->op_device_context()->stream()->GetCudaComputeCapability();
+#if defined(GOOGLE_CUDA)
+  architectures.push_back(absl::StrCat("sm_", cc.major, cc.minor));
+#elif defined(TENSORFLOW_USE_ROCM)
+  architectures.push_back(absl::StrCat("gfx", cc.major, cc.minor));
+#endif
+
   // Construct `SmallVector`s from arguments.
-  llvm::SmallVector<std::string, 8> architectures =
-      SmallVectorFromCArray<std::string, char*>(num_architectures,
-                                                architectures_ptr);
   llvm::SmallVector<int64_t, 8> tile_sizes =
       SmallVectorFromCArray<int64_t>(num_tile_sizes, tile_sizes_ptr);
   llvm::SmallVector<int64_t, 8> unroll_factors =
@@ -277,6 +285,9 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
 extern "C" void _mlir_ciface_tf_jit_execute(void* op_kernel_ctx, void* callable,
                                             void* result, int64_t num_args,
                                             void* args_ptr) {
+  // JIT compilation must have failed earlier if there is no callable ptr.
+  if (callable == nullptr) return;
+
   // Build the argument array according to `ExecutionEngine`'s calling
   // convention.
   auto* typed_args_ptr = static_cast<::UnrankedMemRefType<void>*>(args_ptr);
