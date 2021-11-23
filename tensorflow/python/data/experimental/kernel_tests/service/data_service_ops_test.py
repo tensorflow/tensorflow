@@ -120,13 +120,9 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
           dataset_id=dataset_id)
       self.assertDatasetProduces(dataset, list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations()))
-  def testCompressionMismatch(self):
+  def _testCompressionMismatch(self, dataset):
     cluster = data_service_test_base.TestCluster(
         num_workers=1, data_transfer_protocol="grpc")
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
     with mock.patch.object(compat, "forward_compatible", return_value=False):
       dataset_id = data_service_ops._register_dataset(
           cluster.dispatcher.target, dataset=dataset, compression=None)
@@ -136,8 +132,29 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
           service=cluster.dispatcher.target,
           dataset_id=dataset_id,
           element_spec=dataset.element_spec)
-      with self.assertRaisesRegex(errors.InvalidArgumentError, "Type mismatch"):
+      with self.assertRaises(errors.InvalidArgumentError):
         self.getDatasetOutput(dataset)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testCompressionDtypeMismatch(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+    self._testCompressionMismatch(dataset)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testCompressionShapeMismatch(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2], [3, 4]])
+    self._testCompressionMismatch(dataset)
+
+  # Only test eager mode since nested datasets are not allowed in graph mode.
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations()))
+  def testCompressionVariantMismatch(self):
+    # Use a nested dataset as an example of a variant.
+    dataset = dataset_ops.Dataset.from_tensors(dataset_ops.Dataset.range(10))
+    self._testCompressionMismatch(dataset)
 
   @combinations.generate(test_base.default_test_combinations())
   def testDistributeInvalidCompression(self):
