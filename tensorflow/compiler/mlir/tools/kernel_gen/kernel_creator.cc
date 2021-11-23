@@ -394,14 +394,6 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
 }
 
 Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
-  auto gpu_modules = module.getOps<mlir::gpu::GPUModuleOp>();
-  auto num_modules = std::distance(gpu_modules.begin(), gpu_modules.end());
-  if (num_modules != 1) {
-    LOG(WARNING) << "There should be exactly one GPU Module, but got "
-                 << num_modules
-                 << ". Currently we leak memory if there is more than one "
-                    "module, see https://bugs.llvm.org/show_bug.cgi?id=48385";
-  }
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
   return tensorflow::errors::Internal(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
