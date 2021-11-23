@@ -144,13 +144,8 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
 // Static
 constexpr char CLArguments::kArgsPrefix[];
 
-absl::Status CLArguments::Init(
-    const GpuInfo& gpu_info,
-    const std::map<std::string, std::string>& linkables, CLContext* context,
-    Arguments* args, std::string* code) {
-  RETURN_IF_ERROR(args->AddObjectsScalarArgs(gpu_info));
-  RETURN_IF_ERROR(args->ResolveSelectorsPass(gpu_info, linkables, code));
-  args->GetActiveArguments(*code);
+absl::Status CLArguments::Init(const GpuInfo& gpu_info, CLContext* context,
+                               Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
   RETURN_IF_ERROR(AddObjectArgs(gpu_info, *args));
   object_refs_ = std::move(args->object_refs_);

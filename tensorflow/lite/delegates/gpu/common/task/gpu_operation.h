@@ -120,7 +120,7 @@ class GPUOperation {
       TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
-  void AssembleCode(const GpuInfo& gpu_info);
+  absl::Status AssembleCode(const GpuInfo& gpu_info);
 
   virtual absl::Status PostCompileCheck(const GpuInfo& gpu_info,
                                         const KernelInfo& kernel_info) {
