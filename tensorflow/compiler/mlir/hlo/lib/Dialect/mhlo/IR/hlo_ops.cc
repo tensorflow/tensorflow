@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -2785,6 +2786,200 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
   }
 
   return failure();
+}
+
+// Checks the following eligibility criteria for compact printing of
+// mhlo.reduce:
+// E1. The reduce-op wraps a single inner-op in the associated region.
+// E2. The single operation is a commutative binary-op from mhlo dialect, zero
+//     region, producing single result such that the operands and result all
+//     have the same type.
+// E3. The reduce-op consist of at least one input-operand; The operand-types of
+//     inner-op should be derived trivially from the element-type of reduce-op's
+//     first input-operand.
+// E4. The  arguments of the region's only basic block are forwarded perfectly
+//     to inner-op's operands.
+// E5. The reduce-op, inner-op, blocks arguments, and the return-op all have the
+//     same location.
+// E6. The single operation result is perfectly forwarded to the reduce op
+//     return.
+static bool isEligibleForCompactPrint(ReduceOp op) {
+  // Check E1.
+  auto& block = op.body().front();
+  if (!hasSingleElement(block.without_terminator())) return false;
+
+  Operation& innerOp = *block.begin();
+
+  // Check E2.
+  if (!innerOp.getDialect() ||
+      !innerOp.getDialect()->getNamespace().equals("mhlo"))
+    return false;
+
+  if (innerOp.getNumOperands() != 2 ||
+      !innerOp.hasTrait<mlir::OpTrait::OneResult>() ||
+      !innerOp.hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
+      !innerOp.hasTrait<mlir::OpTrait::IsCommutative>() ||
+      !innerOp.hasTrait<mlir::OpTrait::ZeroRegion>())
+    return false;
+
+  // Check E3.
+  if (op.inputs().empty()) return false;
+
+  auto elemType = op.inputs()[0].getType().cast<TensorType>().getElementType();
+  auto expectedInnerOpType = RankedTensorType::get(/*shape=*/{}, elemType);
+  if (innerOp.getOperands()[0].getType() != expectedInnerOpType) return false;
+
+  // Check E4.
+  if (!llvm::equal(block.getArguments(), innerOp.getOperands())) return false;
+
+  // Check E5.
+  auto retOp = dyn_cast<ReturnOp>(block.getTerminator());
+  if (!retOp) return false;
+
+  auto blockArgLoc = block.getArgument(0).getLoc();
+  if (blockArgLoc != block.getArgument(1).getLoc()) return false;
+
+  if (innerOp.getLoc() != op.getLoc() || retOp.getLoc() != op.getLoc() ||
+      blockArgLoc != op.getLoc())
+    return false;
+
+  // Check E6.
+  return llvm::equal(innerOp.getResults(), retOp.getOperands());
+}
+
+void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
+  if (op.getNumOperands()) {
+    p << ' ';
+    p.printOperands(op.getOperands());
+  }
+
+  // If the reduce-op is eligible for compact printing, we emit the one-liner:
+  //  mhlo.reduce applies <inner-op> across dimensions = [...] : <func-type>
+  // Note: We are not printing the function type of reduction operation. We
+  // have some simplifying assumptions (refer to IsEligibleForCompactPrint::E3)
+  // to derive the type from that of reduce-op.
+  if (isEligibleForCompactPrint(op)) {
+    Operation& innerOp = op.body().front().front();
+    p << " applies ";
+    printEscapedString(innerOp.getName().getStringRef(), p.getStream());
+
+    p << " across dimensions = [";
+    llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
+    p << "]";
+  } else {
+    p << " (";
+    p.printRegion(op.getRegion());
+    p << ")";
+    p.printOptionalAttrDict(op->getAttrs());
+  }
+
+  p << " : ";
+  p.printFunctionalType(op);
+}
+
+ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  Location currLocation = parser.getEncodedSourceLoc(loc);
+
+  // Parse the operands of reduce-op.
+  SmallVector<OpAsmParser::OperandType, 2> operands;
+  if (parser.parseOperandList(operands)) return failure();
+
+  // Check if we are parsing the pretty-printed version of reduce-op:
+  //  mhlo.reduce applies <inner-op> across dimensions = [...] : <func-type>
+  // Else fallback to parsing the generic (or "non pretty-printed") version of
+  // reduce-op.
+  if (!succeeded(parser.parseOptionalKeyword("applies")))
+    return parser.parseGenericOperationAfterOpName(
+        result, llvm::makeArrayRef(operands));
+
+  // Parse the inner-op name and check if the contract on inner-op
+  // mentioned in "isEligibleForCompactPrint::E2" for pretty-priting is met.
+  FailureOr<OperationName> innerOpNameInfo = parser.parseCustomOperationName();
+  if (failed(innerOpNameInfo)) return failure();
+
+  StringRef innerOpName = innerOpNameInfo->getStringRef();
+  Dialect* innerOpDialect = innerOpNameInfo->getDialect();
+  if (!innerOpDialect || !innerOpDialect->getNamespace().equals("mhlo") ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::NOperands<2>::Impl>() ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::OneResult>() ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::IsCommutative>() ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::ZeroRegion>()) {
+    parser.emitError(loc,
+                     "expected the inner-op to be a commutative binary-op from "
+                     "mhlo dialect, zero region, producing single result such "
+                     "that the operands and result all have the same type");
+    return failure();
+  }
+
+  // Parse the inner-op dimensions, reduce-op's function-type and
+  // optional location.
+  SmallVector<int64_t> dimensions;
+  auto parseDim = [&]() -> ParseResult {
+    if (parser.parseInteger(dimensions.emplace_back())) return failure();
+    return success();
+  };
+
+  Optional<Location> explicitLoc;
+  FunctionType reduceOpFntype;
+  if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
+      parser.parseEqual() ||
+      parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseDim) ||
+      parser.parseColon() || parser.parseType(reduceOpFntype) ||
+      parser.parseOptionalLocationSpecifier(explicitLoc))
+    return failure();
+
+  if (!reduceOpFntype || reduceOpFntype.getInputs().empty()) {
+    if (!reduceOpFntype)
+      return parser.emitError(loc, "expected function type");
+    else
+      return parser.emitError(loc,
+                              "input types missing in reduce-op function type");
+  }
+
+  // If location of reduce-op is explicitly provided, then use it; Else use
+  // the parser's current location.
+  Location reduceOpLoc = explicitLoc.getValueOr(currLocation);
+
+  // Derive the SSA-values for reduce-op's operands.
+  if (parser.resolveOperands(operands, reduceOpFntype.getInputs(), loc,
+                             result.operands))
+    return failure();
+
+  // Derive the type of inner-op from that of reduce-op's input operand.
+  auto innerOpType = RankedTensorType::get(
+      /*shape=*/{}, getElementTypeOrSelf(reduceOpFntype.getInput(0)));
+
+  // Add a region for reduce-op.
+  Region& region = *result.addRegion();
+
+  // Create a basic-block inside reduce-op's region.
+  Block& block = region.emplaceBlock();
+  auto lhs = block.addArgument(innerOpType, reduceOpLoc);
+  auto rhs = block.addArgument(innerOpType, reduceOpLoc);
+
+  // Create and insert an "inner-op" operation in the block.
+  OpBuilder builder(parser.getBuilder().getContext());
+  builder.setInsertionPointToStart(&block);
+
+  OperationState innerOpState(reduceOpLoc, innerOpName);
+  innerOpState.operands.push_back(lhs);
+  innerOpState.operands.push_back(rhs);
+  innerOpState.addTypes(innerOpType);
+
+  Operation* innerOp = builder.createOperation(innerOpState);
+
+  // Insert a return statement in the block returning the inner-op's result.
+  builder.create<ReturnOp>(innerOp->getLoc(), innerOp->getResults());
+
+  // Populate the reduce-op operation-state with result-type, location, and
+  // dimension attribute.
+  result.addTypes(reduceOpFntype.getResults());
+  result.location = innerOp->getLoc();
+  result.addAttribute("dimensions", GetI64ElementsAttr(dimensions, &builder));
+
+  return success();
 }
 
 // Return true if type1 and type2 are tensors and have the same

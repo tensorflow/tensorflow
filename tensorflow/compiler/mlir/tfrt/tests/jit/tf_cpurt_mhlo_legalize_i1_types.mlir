@@ -79,7 +79,7 @@ func @reduce_op(%arg0: tensor<?x?xi1>) -> tensor<?xi1> {
 // CHECK-LABEL:   func @reduce_op(
 // CHECK-SAME:                    %[[IN_0:.*]]: tensor<?x?xi8>) -> tensor<?xi8> {
 // CHECK:           %[[TRUE:.*]] = mhlo.constant dense<1> : tensor<i8>
-// CHECK:           %[[RED:.*]] = "mhlo.reduce"(%[[IN_0]], %[[TRUE]]) ( {
+// CHECK:           %[[RED:.*]] = mhlo.reduce %[[IN_0]], %[[TRUE]] ( {
 // CHECK:           ^bb0(%[[ARG_0:.*]]: tensor<i8>, %[[ARG_1:.*]]: tensor<i8>):
 // CHECK:             %[[AND:.*]] = mhlo.and %[[ARG_0]], %[[ARG_1]] : tensor<i8>
 // CHECK:             "mhlo.return"(%[[AND]]) : (tensor<i8>) -> ()
