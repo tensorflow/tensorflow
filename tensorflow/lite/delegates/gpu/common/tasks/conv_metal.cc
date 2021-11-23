@@ -688,11 +688,62 @@ int GetRecommendedBlockSize(const AppleInfo& apple_info,
   }
 }
 
+struct WorkGroupSizeOption {
+  enum class ThreadMapping { kDefault, kLinearSpatial, kLinearAll };
+  int3 work_group_size;
+  int work_groups_count;
+  ThreadMapping thread_mapping;
+  float penalty = 1.0f;
+};
+
+WorkGroupSizeOption CreateWorkGroupSizeOption(
+    const int3& work_group_size,
+    WorkGroupSizeOption::ThreadMapping mapping_type, float penalty,
+    const BHWC& dst_shape, const int3& block_size) {
+  WorkGroupSizeOption wg;
+  wg.work_group_size = work_group_size;
+  wg.thread_mapping = mapping_type;
+  wg.penalty = penalty;
+  if (mapping_type == WorkGroupSizeOption::ThreadMapping::kDefault) {
+    wg.work_groups_count =
+        GetGroupsCount(dst_shape, work_group_size, block_size);
+  } else if (mapping_type ==
+             WorkGroupSizeOption::ThreadMapping::kLinearSpatial) {
+    wg.work_groups_count =
+        GetGroupsCountForLinearWH(dst_shape, work_group_size, block_size);
+  } else if (mapping_type == WorkGroupSizeOption::ThreadMapping::kLinearAll) {
+    wg.work_groups_count =
+        GetGroupsCountForLinearWHS(dst_shape, work_group_size, block_size);
+  }
+  return wg;
+}
+
 ConvolutionMetal::ConvParams GetConvParamsForA7A8(
     const AppleInfo& apple_info, const Convolution2DAttributes& attr,
     const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
   const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
+  int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
+  int3 block_size = int3(1, 1, 1);
+  if (blk_total_size >= 4 && (dst_slices % 4 == 0 || dst_slices >= 16)) {
+    block_size.z = 4;
+    blk_total_size /= 4;
+  } else if (blk_total_size >= 2 && (dst_slices % 2 == 0 || dst_slices >= 4)) {
+    block_size.z = 2;
+    blk_total_size /= 2;
+  }
+  if (blk_total_size >= 4) {
+    block_size.x = 2;
+    block_size.y = 2;
+    blk_total_size /= 4;
+  } else if (blk_total_size >= 2) {
+    if (dst_shape.w % 2 != 0 && dst_shape.h % 2 == 0) {
+      block_size.y = 2;
+    } else {
+      block_size.x = 2;
+    }
+    blk_total_size /= 2;
+  }
 
   ConvolutionMetal::ConvParams params;
   params.weights_upload_type =
@@ -700,57 +751,88 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(
   params.x_kernel_is_1 = IsKernelXIs1(attr);
   params.y_kernel_is_1 = IsKernelYIs1(attr);
   params.src_depth_loop_size = 1;
-  params.block_size = int3(1, 1, 1);
-  params.linear_wh = false;
-  params.linear_whs = false;
-  params.work_group_launch_order = int3(0, 1, 2);
+  params.block_size = block_size;
   params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
 
-  int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
+  std::vector<WorkGroupSizeOption> options;
+  options.push_back(CreateWorkGroupSizeOption(
+      {8, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.0f, dst_shape,
+      params.block_size));
+  options.push_back(CreateWorkGroupSizeOption(
+      {4, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.01f, dst_shape,
+      params.block_size));
+  options.push_back(CreateWorkGroupSizeOption(
+      {4, 2, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.25f, dst_shape,
+      params.block_size));
+  options.push_back(CreateWorkGroupSizeOption(
+      {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.0f,
+      dst_shape, params.block_size));
+  options.push_back(CreateWorkGroupSizeOption(
+      {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.01f,
+      dst_shape, params.block_size));
+  options.push_back(CreateWorkGroupSizeOption(
+      {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.25f,
+      dst_shape, params.block_size));
+  options.push_back(CreateWorkGroupSizeOption(
+      {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.0f,
+      dst_shape, params.block_size));
+  options.push_back(CreateWorkGroupSizeOption(
+      {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.01f,
+      dst_shape, params.block_size));
+  options.push_back(CreateWorkGroupSizeOption(
+      {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.25f,
+      dst_shape, params.block_size));
 
-  if (blk_total_size >= 4 && (dst_slices % 4 == 0 || dst_slices >= 16)) {
-    params.block_size.z = 4;
-    blk_total_size /= 4;
-  } else if (blk_total_size >= 2 && (dst_slices % 2 == 0 || dst_slices >= 4)) {
-    params.block_size.z = 2;
-    blk_total_size /= 2;
-  }
-  if (blk_total_size >= 4) {
-    params.block_size.x = 2;
-    params.block_size.y = 2;
-    blk_total_size /= 4;
-  } else if (blk_total_size >= 2) {
-    if (dst_shape.w % 2 != 0 && dst_shape.h % 2 == 0) {
-      params.block_size.y = 2;
-    } else {
-      params.block_size.x = 2;
+  float optimum = options[0].work_groups_count * options[0].penalty *
+                  options[0].work_group_size.x * options[0].work_group_size.y *
+                  options[0].work_group_size.z;
+  int optimum_index = 0;
+  for (int i = 1; i < options.size(); ++i) {
+    float local_optimum = options[i].work_groups_count * options[i].penalty *
+                          options[i].work_group_size.x *
+                          options[i].work_group_size.y *
+                          options[i].work_group_size.z;
+    if (local_optimum < optimum) {
+      optimum = local_optimum;
+      optimum_index = i;
     }
-    blk_total_size /= 2;
   }
 
-  params.work_group_size = params.block_size.x <= params.block_size.y
-                               ? int3(8, 4, 1)
-                               : int3(4, 8, 1);
-
-  int g1 = GetGroupsCount(dst_shape, params.work_group_size, params.block_size);
-  int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, params.block_size);
-  int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, params.block_size);
-
-  if (g2 < g1) {
+  WorkGroupSizeOption optimum_wg = options[optimum_index];
+  if (optimum_wg.thread_mapping ==
+      WorkGroupSizeOption::ThreadMapping::kLinearSpatial) {
     params.linear_wh = true;
-    params.work_group_size = int3(32, 1, 1);
-    params.work_group_launch_order = int3(0, 1, 2);
-  }
-  float precise_threshold = 3.1f;
-  float precise_ratio = static_cast<float>(g2) / static_cast<float>(g3);
-  if (precise_ratio > precise_threshold) {
+    params.linear_whs = false;
+    params.work_group_size = optimum_wg.work_group_size;
+    params.work_group_launch_order = int3(1, 0, 2);
+  } else if (optimum_wg.thread_mapping ==
+             WorkGroupSizeOption::ThreadMapping::kLinearAll) {
     params.linear_wh = false;
     params.linear_whs = true;
-    params.work_group_size = int3(32, 1, 1);
+    params.work_group_size = optimum_wg.work_group_size;
+    params.work_group_launch_order = int3(0, 1, 2);
     params.weights_upload_type =
         ConvolutionMetal::WeightsUploadType::GLOBAL_MEM;
+  } else {
+    // default 3D workgroup
+    params.linear_wh = false;
+    params.linear_whs = false;
+    params.work_group_size = optimum_wg.work_group_size;
+    params.work_group_launch_order = int3(2, 0, 1);
   }
-
+  int total_elements =
+      params.block_size.x * params.block_size.y * params.block_size.z;
+  if (total_elements == 1) {
+    if (src_slices % 4 == 0) {
+      params.src_depth_loop_size = 4;
+    } else if (src_slices % 2 == 0) {
+      params.src_depth_loop_size = 2;
+    }
+  } else if (total_elements == 2) {
+    if (src_slices % 2 == 0) {
+      params.src_depth_loop_size = 2;
+    }
+  }
   if (params.src_depth_loop_size == src_slices) {
     params.need_src_loop = false;
   }
@@ -806,7 +888,7 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
   params.work_group_size = int3(8, 4, 1);
   params.work_group_launch_order = int3(2, 0, 1);
   params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
-  int g1 = GetGroupsCount(dst_shape, {8, 4, 1}, block_size);
+  int g1 = GetGroupsCount(dst_shape, params.work_group_size, block_size);
   int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, block_size);
   int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, block_size);
   if (g2 < g1) {
