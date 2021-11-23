@@ -234,9 +234,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "libxsmm_archive",
         build_file = "//third_party:libxsmm.BUILD",
-        sha256 = "9c0af4509ea341d1ee2c6c19fc6f19289318c3bd4b17844efeb9e7f9691abf76",
-        strip_prefix = "libxsmm-1.14",
-        urls = tf_mirror_urls("https://github.com/hfp/libxsmm/archive/1.14.tar.gz"),
+        sha256 = "e491ccadebc5cdcd1fc08b5b4509a0aba4e2c096f53d7880062a66b82a0baf84",
+        strip_prefix = "libxsmm-1.16.3",
+        urls = tf_mirror_urls("https://github.com/hfp/libxsmm/archive/1.16.3.tar.gz"),
     )
 
     tf_http_archive(
