@@ -608,7 +608,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
-        ":convert_type",
+        "tfl_convert_type",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -646,7 +646,7 @@ cc_library(
         "transforms/prepare_quantize_helper.h",
     ],
     deps = [
-        "convert_type",
+        "tfl_convert_type",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
@@ -782,7 +782,7 @@ cc_library(
         "flatbuffer_operator.h",
     ],
     deps = [
-        ":convert_type",
+        "tfl_convert_type",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
@@ -844,7 +844,7 @@ cc_library(
         "flatbuffer_export_flags.h",
     ],
     deps = [
-        ":convert_type",
+        "tfl_convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":stateful_ops_utils",
         ":tensorflow_lite",
@@ -893,7 +893,7 @@ cc_library(
         "flatbuffer_import.h",
     ],
     deps = [
-        ":convert_type",
+        "tfl_convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -924,7 +924,7 @@ cc_library(
 )
 
 cc_library(
-    name = "convert_type",
+    name = "tfl_convert_type",
     srcs = [
         "utils/convert_type.cc",
     ],
