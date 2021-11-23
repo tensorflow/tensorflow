@@ -15,16 +15,18 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TESTING_TF_DRIVER_H_
 #define TENSORFLOW_LITE_TESTING_TF_DRIVER_H_
 
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/testing/split.h"
-#include "tensorflow/lite/testing/test_runner.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/lite/testing/split.h"
+#include "tensorflow/lite/testing/test_runner.h"
 
 namespace tflite {
 namespace testing {
@@ -39,6 +41,24 @@ class TfDriver : public TestRunner {
   ~TfDriver() override {}
 
   void LoadModel(const string& bin_file_path) override;
+  void LoadModel(const string& bin_file_path, const string&) override {
+    // Input output specifications are now provided by constructor.
+    // TODO(b/205171855): Support TfDriver to load from SavedModel instead of
+    // GraphDef.
+    LoadModel(bin_file_path);
+  }
+
+  void ReshapeTensor(const string& name, const string& csv_values) override;
+  void ResetTensor(const std::string& name) override;
+  string ReadOutput(const string& name) override;
+  void Invoke(const std::vector<std::pair<string, string>>& inputs) override;
+  bool CheckResults(
+      const std::vector<std::pair<string, string>>& expected_outputs,
+      const std::vector<std::pair<string, string>>& expected_output_shapes)
+      override {
+    return true;
+  }
+
   void SetInput(int id, const string& values_as_string) override;
   void Invoke() override;
   string ReadOutput(int id) override;
@@ -66,12 +86,14 @@ class TfDriver : public TestRunner {
   std::unique_ptr<tensorflow::Session> session_;
   std::vector<int> input_ids_;
   std::vector<string> input_names_;
+  absl::flat_hash_map<string, int> input_name_to_id_;
   std::vector<std::vector<int64_t>> input_shapes_;
   std::vector<tensorflow::DataType> input_types_;
   std::unordered_map<string, tensorflow::Tensor> input_tensors_;
 
   std::vector<int> output_ids_;
   std::vector<string> output_names_;
+  absl::flat_hash_map<string, int> output_name_to_id_;
   std::vector<::tensorflow::Tensor> output_tensors_;
 };
 

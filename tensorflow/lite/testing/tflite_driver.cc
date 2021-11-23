@@ -16,11 +16,17 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <cstdlib>
+#include <iterator>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/strings/escaping.h"
+#include "absl/strings/numbers.h"
 #include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
@@ -31,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
+#include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
@@ -439,7 +446,8 @@ void TfLiteDriver::AllocateTensors() {
   }
 }
 
-void TfLiteDriver::LoadModel(const string& bin_file_path) {
+void TfLiteDriver::LoadModel(const string& bin_file_path,
+                             const string& signature) {
   if (!IsValid()) return;
 
   model_ = FlatBufferModel::BuildFromFile(GetFullPath(bin_file_path).c_str());
@@ -475,18 +483,15 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   // The order of inputs and outputs must match the order in "*_tests.txt" and
   // "*.inputs" files.
   // TODO(b/192473002): Run the interpreter using signature instead of indexes.
-  auto* signature_runner =
-      interpreter_->GetSignatureRunner(kDefaultSignatureKey);
-  if (signature_runner) {
-    const auto& signature_inputs =
-        interpreter_->signature_inputs(kDefaultSignatureKey);
-    for (const char* name : signature_runner->input_names()) {
-      inputs_.push_back(signature_inputs.at(name));
+  signature_runner_ = interpreter_->GetSignatureRunner(signature.c_str());
+  if (signature_runner_) {
+    signature_inputs_ = interpreter_->signature_inputs(signature.c_str());
+    for (const char* name : signature_runner_->input_names()) {
+      inputs_.push_back(signature_inputs_.at(name));
     }
-    const auto& signature_outputs =
-        interpreter_->signature_outputs(kDefaultSignatureKey);
-    for (const char* name : signature_runner->output_names()) {
-      outputs_.push_back(signature_outputs.at(name));
+    signature_outputs_ = interpreter_->signature_outputs(signature.c_str());
+    for (const char* name : signature_runner_->output_names()) {
+      outputs_.push_back(signature_outputs_.at(name));
     }
   }
 
@@ -499,6 +504,55 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
     outputs_.insert(outputs_.end(), interpreter_->outputs().begin(),
                     interpreter_->outputs().end());
   }
+}
+
+void TfLiteDriver::LoadModel(const string& bin_file_path) {
+  LoadModel(bin_file_path, kDefaultSignatureKey);
+}
+
+void TfLiteDriver::ReshapeTensor(const string& name, const string& csv_values) {
+  if (!(IsValid() && signature_runner_)) return;
+  if (signature_runner_->ResizeInputTensor(
+          name.c_str(), testing::Split<int>(csv_values, ",")) != kTfLiteOk) {
+    Invalidate("Failed to resize input tensor " + name);
+    return;
+  }
+  must_allocate_tensors_ = true;
+}
+
+void TfLiteDriver::ResetTensor(const std::string& name) {
+  if (!(IsValid() && signature_runner_)) return;
+  auto* tensor = signature_runner_->input_tensor(name.c_str());
+  memset(tensor->data.raw, 0, tensor->bytes);
+}
+
+void TfLiteDriver::Invoke(
+    const std::vector<std::pair<string, string>>& inputs) {
+  if (!(IsValid() && signature_runner_)) return;
+  for (const auto& input : inputs) {
+    SetInput(signature_inputs_[input.first], input.second);
+  }
+  if (signature_runner_->Invoke() != kTfLiteOk) {
+    Invalidate("Failed to invoke interpreter");
+  }
+}
+
+string TfLiteDriver::ReadOutput(const string& name) {
+  if (!(IsValid() && signature_runner_)) return "";
+  return TensorValueToCsvString(signature_runner_->output_tensor(name.c_str()));
+}
+
+bool TfLiteDriver::CheckResults(
+    const std::vector<std::pair<string, string>>& expected_outputs,
+    const std::vector<std::pair<string, string>>& expected_output_shapes) {
+  if (!(IsValid() && signature_runner_)) return false;
+  for (const auto& output : expected_outputs) {
+    SetExpectation(signature_outputs_[output.first], output.second);
+  }
+  for (const auto& shape : expected_output_shapes) {
+    SetShapeExpectation(signature_outputs_[shape.first], shape.second);
+  }
+  return CheckResults();
 }
 
 void TfLiteDriver::ResetTensor(int id) {
@@ -746,7 +800,10 @@ void TfLiteDriver::ResetLSTMStateTensors() {
 }
 
 string TfLiteDriver::ReadOutput(int id) {
-  auto* tensor = interpreter_->tensor(id);
+  return TensorValueToCsvString(interpreter_->tensor(id));
+}
+
+string TfLiteDriver::TensorValueToCsvString(const TfLiteTensor* tensor) {
   int num_elements = 1;
 
   for (int i = 0; i < tensor->dims->size; ++i) {

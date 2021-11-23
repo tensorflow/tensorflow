@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "tensorflow/lite/c/common.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/testing/test_runner.h"
 
 namespace tflite {
@@ -55,6 +57,17 @@ class TfLiteDriver : public TestRunner {
   ~TfLiteDriver() override;
 
   void LoadModel(const string& bin_file_path) override;
+  void LoadModel(const string& bin_file_path, const string& signature) override;
+
+  void ReshapeTensor(const string& name, const string& csv_values) override;
+  void ResetTensor(const std::string& name) override;
+  string ReadOutput(const string& name) override;
+  void Invoke(const std::vector<std::pair<string, string>>& inputs) override;
+  bool CheckResults(
+      const std::vector<std::pair<string, string>>& expected_outputs,
+      const std::vector<std::pair<string, string>>& expected_output_shapes)
+      override;
+
   const std::vector<int>& GetInputs() override { return inputs_; }
   const std::vector<int>& GetOutputs() override { return outputs_; }
   void ReshapeTensor(int id, const string& csv_values) override;
@@ -86,17 +99,22 @@ class TfLiteDriver : public TestRunner {
   }
 
   void ResetLSTMStateTensors();
+  // Formats tensor value to string in csv format.
+  string TensorValueToCsvString(const TfLiteTensor* tensor);
 
   class DataExpectation;
   class ShapeExpectation;
 
   std::vector<int> inputs_;
   std::vector<int> outputs_;
+  std::map<string, uint32_t> signature_inputs_;
+  std::map<string, uint32_t> signature_outputs_;
   std::unique_ptr<OpResolver> resolver_;
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;
   std::map<int, std::unique_ptr<DataExpectation>> expected_output_;
   std::map<int, std::unique_ptr<ShapeExpectation>> expected_output_shape_;
+  SignatureRunner* signature_runner_ = nullptr;
   bool must_allocate_tensors_ = true;
   std::map<int, TfLiteTensor*> tensors_to_deallocate_;
   double relative_threshold_;
