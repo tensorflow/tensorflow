@@ -118,10 +118,8 @@ absl::Status ComputeTask::AddTask(ComputeTask* task) {
 }
 
 absl::Status ComputeTask::Compile(MetalDevice* device) {
-  operation_->AssembleCode(device->GetInfo());
-  const std::map<std::string, std::string> linkables = {
-      {operation_->dst_tensors_names_[0], operation_->elementwise_code_}};
-  RETURN_IF_ERROR(metal_args_.Init(linkables, use_arguments_buffer_, device,
+  RETURN_IF_ERROR(operation_->AssembleCode(device->GetInfo()));
+  RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
                                    &operation_->args_, &operation_->code_));
 
   operation_->args_.ReleaseCPURepresentation();

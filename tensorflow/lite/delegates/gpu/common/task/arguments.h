@@ -124,6 +124,10 @@ class Arguments {
     *result = std::move(object_refs_);
   }
 
+  absl::Status Compile(const GpuInfo& gpu_info,
+                       const std::map<std::string, std::string>& linkables,
+                       std::string* code);
+
   absl::Status ResolveSelectorsPass(
       const GpuInfo& gpu_info,
       const std::map<std::string, std::string>& linkables,

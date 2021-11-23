@@ -114,13 +114,8 @@ std::string AccessToMetalTextureAccess(AccessType access_type) {
 constexpr char MetalArguments::kArgsPrefix[];
 
 absl::Status MetalArguments::Init(
-    const std::map<std::string, std::string>& linkables,
     bool use_arguments_buffer, MetalDevice* device, Arguments* args,
     std::string* code) {
-  RETURN_IF_ERROR(args->AddObjectsScalarArgs(device->GetInfo()));
-  RETURN_IF_ERROR(
-      args->ResolveSelectorsPass(device->GetInfo(), linkables, code));
-  args->GetActiveArguments(*code);
   RETURN_IF_ERROR(AllocateObjects(*args, device->device()));
   RETURN_IF_ERROR(AddObjectArgs(device->GetInfo(), *args));
   object_refs_ = std::move(args->object_refs_);
