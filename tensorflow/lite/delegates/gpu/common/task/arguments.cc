@@ -286,15 +286,6 @@ void Arguments::SetStateValueForAllObjects(const std::string& key,
   }
 }
 
-absl::Status Arguments::Compile(
-    const GpuInfo& gpu_info,
-    const std::map<std::string, std::string>& linkables, std::string* code) {
-  RETURN_IF_ERROR(AddObjectsScalarArgs(gpu_info));
-  RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, linkables, code));
-  GetActiveArguments(*code);
-  return absl::OkStatus();
-}
-
 absl::Status Arguments::ResolveSelectorsPass(
     const GpuInfo& gpu_info,
     const std::map<std::string, std::string>& linkables,

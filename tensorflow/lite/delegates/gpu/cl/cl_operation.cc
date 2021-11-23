@@ -181,12 +181,13 @@ absl::Status ClOperation::UpdateParams() {
 }
 
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
-  RETURN_IF_ERROR(operation_->AssembleCode(creation_context.GetGpuInfo()));
+  operation_->AssembleCode(creation_context.GetGpuInfo());
   operation_->code_ =
       GetCommonOpenCLDefines(operation_->definition_.precision) +
       operation_->code_;
   RETURN_IF_ERROR(cl_args_.Init(
       creation_context.GetGpuInfo(),
+      {{operation_->dst_tensors_names_[0], operation_->elementwise_code_}},
       creation_context.context, &operation_->args_, &operation_->code_));
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       operation_->code_, "main_function", operation_->compiler_options_,

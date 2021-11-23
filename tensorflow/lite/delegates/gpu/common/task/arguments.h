@@ -77,6 +77,8 @@ class Arguments {
 
   void ReleaseCPURepresentation();
 
+  void GetActiveArguments(const std::string& code);
+
   void SetStateValueForAllObjects(const std::string& key,
                                   const std::string& value);
 
@@ -122,18 +124,6 @@ class Arguments {
     *result = std::move(object_refs_);
   }
 
-  absl::Status Compile(const GpuInfo& gpu_info,
-                       const std::map<std::string, std::string>& linkables,
-                       std::string* code);
-
- private:
-  friend flatbuffers::Offset<tflite::gpu::data::Arguments> Encode(
-      const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
-                             Arguments* args);
-
-  void GetActiveArguments(const std::string& code);
-
   absl::Status ResolveSelectorsPass(
       const GpuInfo& gpu_info,
       const std::map<std::string, std::string>& linkables,
@@ -151,6 +141,12 @@ class Arguments {
                           std::string* code) const;
   absl::Status AddObjectsScalarArgs(const GpuInfo& gpu_info);
   void ResolveArgsPass(std::string* code) const;
+
+ private:
+  friend flatbuffers::Offset<tflite::gpu::data::Arguments> Encode(
+      const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
+  friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
+                             Arguments* args);
 
   friend class cl::CLArguments;
   friend class metal::MetalArguments;

@@ -183,7 +183,7 @@ void GPUOperation::AddDstTensor(const std::string& tensor_name,
   args_.AddObjectRef(tensor_name, AccessType::WRITE, std::move(desc_new));
 }
 
-absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
+void GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
   if (elementwise_) {
     auto src_desc =
         absl::make_unique<TensorDescriptor>(definition_.src_tensors[0]);
@@ -204,9 +204,6 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
     elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
     code_ = GetElementWiseCode(definition_, check_src_channels_size_);
   }
-  RETURN_IF_ERROR(args_.Compile(
-      gpu_info, {{dst_tensors_names_[0], elementwise_code_}}, &code_));
-  return absl::OkStatus();
 }
 
 void GPUOperation::GetPossibleKernelWorkGroups(

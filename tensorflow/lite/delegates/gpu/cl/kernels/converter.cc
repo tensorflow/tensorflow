@@ -162,9 +162,7 @@ class TensorToTensorConverter : public OpenClConverterImpl {
     context_ = &environment->context();
     shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
                   input_def.dimensions.w, input_def.dimensions.c);
-    RETURN_IF_ERROR(
-        args.Compile(environment->device().GetInfo(), {}, &shader_src));
-    RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), nullptr,
+    RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), {}, nullptr,
                                   &args, &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "tensor_to_tensor", environment->context(),
@@ -257,9 +255,7 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
     context_ = &environment->context();
     shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
                   input_def.dimensions.w, input_def.dimensions.c);
-    RETURN_IF_ERROR(
-        args.Compile(environment->device().GetInfo(), {}, &shader_src));
-    RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), nullptr,
+    RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), {}, nullptr,
                                   &args, &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "tensor_to_bhwc", environment->context(),
@@ -354,9 +350,7 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
     context_ = &environment->context();
     shape_ = BHWC(output_def.dimensions.b, output_def.dimensions.h,
                   output_def.dimensions.w, output_def.dimensions.c);
-    RETURN_IF_ERROR(
-        args.Compile(environment->device().GetInfo(), {}, &shader_src));
-    RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), nullptr,
+    RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), {}, nullptr,
                                   &args, &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "bhwc_to_tensor", environment->context(),
