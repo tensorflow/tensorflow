@@ -61,7 +61,7 @@ enum DeploymentMode {
 }
 
 // Metadata related to tf.data service datasets.
-// Next tag: 3
+// Next tag: 4
 message DataServiceMetadata {
   oneof optional_element_spec {
     // Serialized element spec.
@@ -76,4 +76,7 @@ message DataServiceMetadata {
     SNAPPY = 2;
   }
   Compression compression = 2;
+
+  // Cardinality of the dataset.
+  int64 cardinality = 3;
 }
