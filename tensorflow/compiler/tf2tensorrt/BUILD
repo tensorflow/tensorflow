@@ -576,6 +576,7 @@ tf_cuda_library(
     srcs = [
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
+        "convert/ops/data_format_vec_permute.cc",
         "convert/ops/slice_ops.cc",
         "convert/trt_optimization_pass.cc",
     ],
