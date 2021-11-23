@@ -129,8 +129,17 @@ TF_CALL_int64(REGISTER_CPU_KERNEL);
 
 TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
-TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
+
+// Special case to execute int32 on the host with host output.
+REGISTER_KERNEL_BUILDER(Name("Range")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("start")
+                            .HostMemory("limit")
+                            .HostMemory("delta")
+                            .HostMemory("output")
+                            .TypeConstraint<int32_t>("Tidx"),
+                        RangeOp<CPUDevice, int32_t>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
