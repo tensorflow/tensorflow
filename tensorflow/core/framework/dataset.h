@@ -734,6 +734,11 @@ class IteratorBase {
   virtual Status Skip(IteratorContext* ctx, int num_to_skip,
                       bool* end_of_sequence, int* num_skipped) = 0;
 
+  virtual Status Skip(IteratorContext&& ctx, int num_to_skip,
+                      bool* end_of_sequence, int* num_skipped) {
+    return Skip(&ctx, num_to_skip, end_of_sequence, num_skipped);
+  }
+
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
   // iterator.
