@@ -424,6 +424,7 @@ absl::Status InferenceContext::InitFromGraphWithTransforms(
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
     id<MTLDevice> device_id) {
+  device_ = device_id;
   MetalDevice metal_device(device_id);
   GpuModel gpu_model;
   RETURN_IF_ERROR(
@@ -525,6 +526,22 @@ MetalSpatialTensor* InferenceContext::GetTensor(ValueId tensor_id) {
         [graph_ids_to_strong_shape_tensors_[tensor_id]];
   }
   return nullptr;
+}
+
+absl::Status InferenceContext::SetInputTensor(ValueId id,
+                                              const TensorFloat32& tensor) {
+  return GetTensor(id)->WriteData(device_, tensor);
+}
+
+absl::Status InferenceContext::GetOutputTensor(ValueId id,
+                                               TensorFloat32* result) {
+  const auto& gpu_tensor = *GetTensor(id);
+  const auto dst_shape = BHWC(gpu_tensor.Batch(), gpu_tensor.Height(),
+                              gpu_tensor.Width(), gpu_tensor.Channels());
+  result->id = id;
+  result->shape = dst_shape;
+  result->data.resize(dst_shape.DimensionsProduct());
+  return gpu_tensor.ReadData(device_, result);
 }
 
 void InferenceContext::BindTensorsToOperations() {

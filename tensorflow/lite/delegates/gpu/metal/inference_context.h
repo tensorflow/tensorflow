@@ -155,6 +155,10 @@ class InferenceContext {
   // this inference context. Do not include constant tensors.
   uint64_t GetIntermediateTensorsSize() const;
 
+  MetalSpatialTensor* GetTensor(ValueId tensor_id);
+  absl::Status SetInputTensor(ValueId id, const TensorFloat32& tensor);
+  absl::Status GetOutputTensor(ValueId id, TensorFloat32* result);
+
  private:
   enum class TensorMemoryType {
     kStrongShape,
@@ -174,7 +178,6 @@ class InferenceContext {
   absl::Status AllocateMemoryForStrongShapes(MetalDevice* device);
   void BindTensorsToOperations();
   absl::Status UpdateParams(const GpuInfo& gpu_info);
-  MetalSpatialTensor* GetTensor(ValueId tensor_id);
   void GetUsages(const std::function<bool(ValueId)>& functor,
                  std::map<ValueId, int2>* usages);
   TensorMemoryType GetTensorMemoryType(ValueId id);
@@ -202,6 +205,7 @@ class InferenceContext {
   std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 
   id<MTLIndirectCommandBuffer> icb_ = nullptr;
+  id<MTLDevice> device_ = nullptr;
 };
 
 // Runs specific transforms for the graph.
