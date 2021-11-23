@@ -58,7 +58,7 @@ class DelegateProviders {
  public:
   DelegateProviders() : delegate_list_util_(&params_) {
     delegate_list_util_.AddAllDelegateParams();
-    delegate_list_util_.AppendCmdlineFlags(&flags_);
+    delegate_list_util_.AppendCmdlineFlags(flags_);
 
     // Remove the "help" flag to avoid printing "--help=false"
     params_.RemoveParam("help");

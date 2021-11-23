@@ -143,7 +143,7 @@ class ProvidedDelegateList {
   // Append command-line parsable flags to 'flags' of all registered delegate
   // providers, and associate the flag values at runtime with the contained
   // 'params_'.
-  void AppendCmdlineFlags(std::vector<Flag>* flags) const;
+  void AppendCmdlineFlags(std::vector<Flag>& flags) const;
 
   // Removes command-line parsable flag 'name' from 'flags'
   void RemoveCmdlineFlag(std::vector<Flag>& flags,
