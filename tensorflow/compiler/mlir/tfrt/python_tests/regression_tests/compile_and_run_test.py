@@ -22,6 +22,7 @@ from mlir import ir
 import numpy as np
 
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -74,9 +75,10 @@ class CompileAndRunTest(test.TestCase):
     raise Exception(f'unknown scalar type: {mlir_type}')
 
   def test_compile_and_run(self):
-    mlirdir = resource_loader.get_data_files_path()
     filename = FLAGS.test_file_name
-    with open(os.path.join(mlirdir, filename), mode='r') as f:
+    if not os.path.isabs(filename):
+      filename = os.path.join(resource_loader.get_data_files_path(), filename)
+    with gfile.GFile(filename, mode='r') as f:
       mlir_function = f.read()
       arg_attrs = []
       with ir.Context() as ctx:
