@@ -104,7 +104,12 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
       loc, output_matrix.num_cols);
   auto k = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, k_val);
 
-  auto const_alpha = MakeScalingFactorConstant(rewriter, loc, mlir_compute_type,
+  // Scale type must match compute type, except for complex types, where
+  // it must match the element type
+  const Type mlir_scale_type =
+      element_type.isa<mlir::ComplexType>() ? element_type : mlir_compute_type;
+
+  auto const_alpha = MakeScalingFactorConstant(rewriter, loc, mlir_scale_type,
                                                alpha_real, alpha_imaginary);
 
   auto lda =
@@ -113,7 +118,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
       rewriter.create<tfrt::compiler::ConstantI32Op>(loc, rhs_matrix.num_rows);
 
   llvm::APFloat fp_zero = APFloat::getZero(alpha_imaginary.getSemantics());
-  auto const_beta = MakeScalingFactorConstant(rewriter, loc, mlir_compute_type,
+  auto const_beta = MakeScalingFactorConstant(rewriter, loc, mlir_scale_type,
                                               beta_real, fp_zero);
 
   auto ldc = rewriter.create<tfrt::compiler::ConstantI32Op>(
