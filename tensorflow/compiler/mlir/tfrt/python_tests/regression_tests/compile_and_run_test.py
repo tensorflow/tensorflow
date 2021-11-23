@@ -30,6 +30,8 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string(
     'test_file_name', None,
     'The filename of the file containing the MLIR IR that should be tested')
+flags.DEFINE_boolean('vectorize', None,
+                     'Whether vectorization should be enabled')
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
@@ -90,7 +92,7 @@ class CompileAndRunTest(test.TestCase):
           mlir_function,
           function_name,
           tf_cpurt.Specialization.ENABLED,
-          vectorize=False)
+          vectorize=FLAGS.vectorize)
       end = time.perf_counter()
       logging.info(f'compiled {filename} in {end-start:0.4f} seconds')
       if not arg_attrs:
@@ -123,4 +125,5 @@ class CompileAndRunTest(test.TestCase):
 
 if __name__ == '__main__':
   flags.mark_flag_as_required('test_file_name')
+  flags.mark_flag_as_required('vectorize')
   test.main()
