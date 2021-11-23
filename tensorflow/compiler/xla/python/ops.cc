@@ -100,7 +100,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("reduction_input_size_override") = -1);
   ops.def("ApproxTopKReductionOutputSize", &ApproxTopKReductionOutputSize,
           py::arg("input_size"), py::arg("rank"), py::arg("top_k"),
-          py::arg("recall_target"), py::arg("aggregate_to_topk") = true);
+          py::arg("recall_target"), py::arg("aggregate_to_topk") = true,
+          py::arg("input_size_override") = -1);
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));

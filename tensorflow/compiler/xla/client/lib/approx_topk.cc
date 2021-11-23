@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/approx_topk.h"
 
+#include <limits>
 #include <string>
 
-#include "absl/numeric/bits.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/bits.h"
 
 // Used by rank 2+ operands
 const uint64_t kTpuLaneTiling = 128;
@@ -171,20 +172,10 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
     }
     return Tuple(builder, operands);
   }
-  // Only override the input size when we really need to compute the ApproxTopK
-  // through the PartialReduce TPU Op.
-  if (reduction_input_size_override >= 0) {
-    if (n < reduction_input_size_override) {
-      return builder->ReportError(
-          InvalidArgument("reduction_input_size_override should be greater "
-                          "equals to opeands[reduction_dim], which is %d",
-                          n));
-    }
-    n = reduction_input_size_override;
-  }
 
   auto status_or_approx_output_size = ApproxTopKReductionOutputSize(
-      n, rank, top_k, recall_target, /*aggregate_to_topk=*/false);
+      n, rank, top_k, recall_target, /*aggregate_to_topk=*/false,
+      reduction_input_size_override);
   if (!status_or_approx_output_size.status().ok()) {
     return builder->ReportError(status_or_approx_output_size.status());
   }
@@ -238,9 +229,17 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   return approx_topk;
 }
 
+inline uint32_t log2_floor(uint64_t value) {
+  return value == 0 ? 0 : tensorflow::Log2Floor64(value);
+}
+
+inline uint32_t log2_ceil(uint64_t value) {
+  return value == 0 ? 0 : tensorflow::Log2Ceiling64(value);
+}
+
 StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     int64_t input_size, int64_t rank, int64_t top_k, float recall_target,
-    bool aggregate_to_topk) {
+    bool aggregate_to_topk, int64_t input_size_override) {
   // Fallback to variadic reduce when top_k == 1.
   // TODO(fchern): Approx-topk followed by variadic reduce might run faster
   // than running variadic reduce directly.
@@ -257,6 +256,21 @@ StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     return std::pair<int64_t, int64_t>(input_size, 0);
   }
 
+  if (recall_target <= 0. || recall_target > 1.0) {
+    return InvalidArgument("recall_target should range in (0,1]");
+  }
+
+  if (input_size_override >= 0) {
+    if (input_size > input_size_override) {
+      return InvalidArgument(
+          "reduction_input_size_override: %d should be greater "
+          "equals to operands[reduction_dim]: %d",
+          input_size_override, input_size);
+    }
+  }
+  uint64_t logical_input_size =
+      input_size_override >= 0 ? input_size_override : input_size;
+
   // Given number of data points N, K for top-k elements, and W for the size of
   // the reduce window, let M = Ceil(N / W) be the number of windows. The
   // expected number of top-k elements that doesn't collide in windows is
@@ -271,23 +285,24 @@ StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
   //          ~= EXP((1 - K) / M)    for large M
   //
   //   => M = (1 - K)/LOG(recall)
-  if (recall_target <= 0. || recall_target > 1.0) {
-    return InvalidArgument("recall_target should range in (0,1]");
-  }
   uint64_t m = std::min<uint64_t>(
       std::max(static_cast<uint64_t>((1.0 - top_k) / std::log(recall_target)),
                tpu_tiling),
       input_size);
-  uint32_t log2_reduction =
-      absl::bit_width(input_size / m) - 1;  // floor(n / m)
+  uint32_t log2_reduction = log2_floor(logical_input_size / m);
   if (log2_reduction == 0) {
     return std::pair<int64_t, int64_t>(input_size, 0);
   }
+
+  // Do not reduce too much when logical_input is too large.
+  log2_reduction =
+      std::min<uint32_t>(log2_reduction, log2_ceil(input_size / tpu_tiling));
 
   int64_t approx_output_size =
       CeilOfRatio<int64_t>(CeilOfRatio<int64_t>(input_size, tpu_tiling),
                            (1 << log2_reduction)) *
       tpu_tiling;
+
   return std::pair<int64_t, int64_t>(approx_output_size, log2_reduction);
 }
 

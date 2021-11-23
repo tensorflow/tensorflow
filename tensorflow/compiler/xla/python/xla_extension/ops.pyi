@@ -89,7 +89,8 @@ def ApproxTopKReductionOutputSize(
     rank: int,
     top_k: int,
     recall_target: float,
-    aggregate_to_topk: Optional[bool]) -> Tuple[int, int]: ...
+    aggregate_to_topk: Optional[bool] = ...,
+    input_size_override: Optional[int] = ...) -> Tuple[int, int]: ...
 def ReduceScatter(
     operand: XlaOp,
     computation: XlaComputation,
