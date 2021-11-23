@@ -1618,6 +1618,30 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
+    name = "cwise_op_gpu_floor_mod_test",
+    size = "small",
+    srcs = ["cwise_op_gpu_floor_mod_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":conv_ops",
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+
+tf_cuda_cc_test(
     name = "constant_op_test",
     size = "small",
     srcs = ["constant_op_test.cc"],
