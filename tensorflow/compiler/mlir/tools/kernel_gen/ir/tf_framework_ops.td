@@ -19,6 +19,7 @@ limitations under the License.
 #define TF_FRAMEWORK_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Bufferization/IR/AllocationOpInterface.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.td"
