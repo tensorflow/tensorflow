@@ -156,7 +156,7 @@ void PreventUnloadBuilderResources() {
   static TrtUniquePtrType<nvinfer1::IBuilder> hold_builder = nullptr;
   absl::call_once(
       once,
-      [](std::unique_ptr<nvinfer1::IBuilder>& builder) {
+      [](TrtUniquePtrType<nvinfer1::IBuilder>& builder) {
         if (!builder) {
           builder.reset(nvinfer1::createInferBuilder(*Logger::GetLogger()));
         }
