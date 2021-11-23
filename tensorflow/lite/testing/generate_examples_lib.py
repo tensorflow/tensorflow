@@ -190,23 +190,6 @@ from tensorflow.lite.testing.op_tests.zeros_like import make_zeros_like_tests
 
 from tensorflow.lite.testing.zip_test_utils import get_test_function
 
-# A map from regular expression to bug number. Any test failure with label
-# matching the expression will be considered due to the corresponding bug.
-KNOWN_BUGS = {
-    # TODO(b/192473002) investigate if it can be removed for MLIR converter.
-    # TOCO doesn't support scalars as input.
-    # Concat doesn't work with a single input tensor
-    r"concat.*num_tensors=1": "67378344",
-    # Softmax graphs are too complex.
-    r"softmax.*dim=0": "67749831",
-    # BatchToSpaceND only supports 4D tensors.
-    r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
-    # Div will use floordiv.
-    r"div.*int32": "72051395",
-    # Strided slice cannot handle new_axis_mask.
-    r"strided_slice.*spec=\[None": "137470173",
-}
-
 
 class MultiGenState(object):
   """State of multiple set generation process.
@@ -263,7 +246,7 @@ class Options(object):
     self.tflite_convert_function = None
     # A map from regular expression to bug number. Any test failure with label
     # matching the expression will be considered due to the corresponding bug.
-    self.known_bugs = KNOWN_BUGS
+    self.known_bugs = {}
     # Make tests by setting TF forward compatibility horizon to the future.
     self.make_forward_compat_test = False
     # No limitation on the number of tests.
