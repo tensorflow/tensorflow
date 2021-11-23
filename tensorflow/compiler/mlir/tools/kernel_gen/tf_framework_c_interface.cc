@@ -230,10 +230,10 @@ llvm::SmallVector<T, 8> SmallVectorFromCArray(int64_t num_elements,
 }  // namespace
 
 extern "C" void* _mlir_ciface_tf_jit_compile(
-    void* op_kernel_ctx, char* code, int64_t num_architectures,
-    char** architectures_ptr, int64_t num_tile_sizes, int64_t* tile_sizes_ptr,
-    int64_t num_unroll_factors, int64_t* unroll_factors_ptr,
-    int64_t max_supported_rank, bool enable_ftz, bool cpu_codegen) {
+    void* op_kernel_ctx, char* code, int64_t num_tile_sizes,
+    int64_t* tile_sizes_ptr, int64_t num_unroll_factors,
+    int64_t* unroll_factors_ptr, int64_t max_supported_rank, bool enable_ftz,
+    bool cpu_codegen) {
   // Get the resource manager.
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   tensorflow::ResourceMgr* rm = ctx->resource_manager();
