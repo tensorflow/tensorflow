@@ -510,7 +510,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
 
 StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& config,
-    absl::Span<se::DeviceMemoryBase> operand_buffers,
+    absl::Span<const se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer) {
   GpuConvParams params;
   params.config = config;
@@ -547,7 +547,7 @@ StatusOr<GpuConvParams> GetGpuConvParams(
 }
 
 Status RunGpuConv(const gpu::GpuConvConfig& config,
-                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  absl::Span<const se::DeviceMemoryBase> operand_buffers,
                   se::DeviceMemoryBase result_buffer,
                   se::DeviceMemoryBase scratch_memory, se::Stream* stream,
                   RunConvOptions options) {
