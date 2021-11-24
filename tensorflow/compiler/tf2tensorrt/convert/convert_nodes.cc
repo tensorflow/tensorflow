@@ -1411,6 +1411,19 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
 };
 #endif  // #if IS_TRT_VERSION_GE(7, 2, 3, 4)
 
+// Returns the value of TF_TRT_ABORT_CUDA_ENGINE_BUILD environment variable.
+// This variable can be used to abort CUDA engine construction, therefore it
+// provides a way to test and debug the native segment fallback of TF-TRT.
+bool AbortCudaEngineBuild() {
+  bool value;
+  Status status = ReadBoolFromEnvVar("TF_TRT_ABORT_CUDA_ENGINE_BUILD",
+                                     /*default_value=*/false, &value);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return value;
+}
+
 Status Converter::BuildCudaEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
     size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
@@ -1421,6 +1434,11 @@ Status Converter::BuildCudaEngine(
                                                        "BuildEngine");
       },
       tensorflow::profiler::TraceMeLevel::kInfo);
+
+  if (AbortCudaEngineBuild()) {
+    return errors::Aborted(
+        "Engine creation aborted by TF_TRT_ABORT_CUDA_ENGINE_BUILD variable");
+  }
 
   VLOG(1) << "Configuring TensorRT builder";
   trt_builder_->setMaxBatchSize(max_batch_size);
