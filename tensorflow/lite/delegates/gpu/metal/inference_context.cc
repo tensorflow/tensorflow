@@ -409,6 +409,10 @@ absl::Status GraphToGpuModel(
                                     &tensor_reserver, gpu_model));
   RETURN_IF_ERROR(Merge(gpu_model));
   gpu_model->tensors = std::move(tensor_reserver.reservations_);
+
+  for (auto& node : gpu_model->nodes) {
+    RETURN_IF_ERROR(node.gpu_operation->AssembleCode(gpu_info));
+  }
   return absl::OkStatus();
 }
 }  // namespace
