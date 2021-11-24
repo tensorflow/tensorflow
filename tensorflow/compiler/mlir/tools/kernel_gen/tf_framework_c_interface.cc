@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_framework_c_interface.h"
 
+#include <cstddef>
 #include <string>
 #include <utility>
 
@@ -286,7 +287,18 @@ extern "C" void _mlir_ciface_tf_jit_execute(void* op_kernel_ctx, void* callable,
                                             void* result, int64_t num_args,
                                             void* args_ptr) {
   // JIT compilation must have failed earlier if there is no callable ptr.
-  if (callable == nullptr) return;
+  // Return some empty memory descriptor to prevent a crash.
+  if (callable == nullptr) {
+    auto* desc = static_cast<::UnrankedMemRefType<void>*>(result);
+    desc->rank = 0;
+    auto* inner_desc = static_cast<StridedMemRefType<int8_t, 0>*>(
+        malloc(sizeof(StridedMemRefType<int8_t, 0>)));
+    inner_desc->basePtr = nullptr;
+    inner_desc->data = nullptr;
+    inner_desc->offset = 0;
+    desc->descriptor = inner_desc;
+    return;
+  }
 
   // Build the argument array according to `ExecutionEngine`'s calling
   // convention.
