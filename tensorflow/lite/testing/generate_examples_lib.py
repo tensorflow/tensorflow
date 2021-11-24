@@ -111,6 +111,7 @@ from tensorflow.lite.testing.op_tests.max_pool_with_argmax import make_max_pool_
 from tensorflow.lite.testing.op_tests.maximum import make_maximum_tests
 from tensorflow.lite.testing.op_tests.minimum import make_minimum_tests
 from tensorflow.lite.testing.op_tests.mirror_pad import make_mirror_pad_tests
+from tensorflow.lite.testing.op_tests.multinomial import make_multinomial_tests
 from tensorflow.lite.testing.op_tests.nearest_upsample import make_nearest_upsample_tests
 from tensorflow.lite.testing.op_tests.neg import make_neg_tests
 from tensorflow.lite.testing.op_tests.not_equal import make_not_equal_tests
