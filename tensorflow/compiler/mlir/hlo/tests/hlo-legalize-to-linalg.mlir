@@ -3740,7 +3740,6 @@ func @cstr_reshapable_op(%arg0: index, %arg1: tensor<2xi32>) -> !shape.witness {
   // CHECK-DAG: %[[N1:.*]] = arith.constant -1 : index
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
   // CHECK: %[[IT0:.*]] = arith.index_cast %[[TARGET_SHAPE]] : tensor<2xi32> to tensor<2xindex>
   // CHECK: %[[VALID:.*]]:3 = shape.reduce(%[[IT0]], %[[C1]], %[[C0]], %[[C0]]) : tensor<2xindex> -> (index, index, index) {
   // CHECK:   ^bb0(%[[IDX:.*]]: index, %[[VAL:.*]]: index, %[[PROD:.*]]: index, %[[DYN_DIMS:.*]]: index, %[[ILLEGAL_DIMS:.*]]: index): // no predecessors
@@ -3754,11 +3753,18 @@ func @cstr_reshapable_op(%arg0: index, %arg1: tensor<2xi32>) -> !shape.witness {
   // CHECK:   %[[V8:.*]] = arith.muli %[[V7]], %[[PROD]] : index
   // CHECK:   shape.yield %[[V8]], %[[V4]], %[[V6]] : index, index, index
   // CHECK: }
-  // CHECK: %[[REM:.*]] = arith.remsi %[[NUM_ELS]], %[[VALID]]#0 : index
+  // CHECK: %[[IS_ZERO_ELS:.*]] = arith.cmpi eq, %[[VALID]]#0, %[[C0]] : index
+  // CHECK: %[[DIV:.*]] = select %[[IS_ZERO_ELS]], %[[C1]], %[[VALID]]#0 : index
+  // CHECK: %[[REM:.*]] = arith.remsi %[[NUM_ELS]], %[[DIV]] : index
   // CHECK: %[[DIVISIBLE:.*]] = arith.cmpi eq, %[[C0]], %[[REM]] : index
-  // CHECK: %[[NOT_TOO_DYNAMIC:.*]] = arith.cmpi ult, %[[C2]], %[[VALID]]#1 : index
-  // CHECK: %[[ALL_VALID_DIMS:.*]] = arith.cmpi eq, %[[C0]], %[[VALID]]#0 : index
-  // CHECK: %[[PARTIAL_AND:.*]] = arith.andi %[[NOT_TOO_DYNAMIC]], %[[ALL_VALID_DIMS]] : i1
+  // CHECK: %[[NOT_TOO_DYNAMIC:.*]] = arith.cmpi ule,  %[[VALID]]#1, %[[C1]] : index
+  // CHECK: %[[ALL_VALID_DIMS:.*]] = arith.cmpi eq, %[[VALID]]#2, %[[C0]] : index
+  // CHECK: %[[ONE_DYNAMIC:.*]] = arith.cmpi eq, %[[VALID]]#1, %[[C1]] : index
+  // CHECK: %[[NUM_ELS_ZERO:.*]] = arith.cmpi eq, %[[NUM_ELS]], %[[C0]] : index
+  // CHECK: %[[IS_ALL_ZERO_ELS:.*]] = arith.cmpi eq, %[[IS_ZERO_ELS]], %[[NUM_ELS_ZERO]] : i1
+  // CHECK: %[[EQUAL_IF_EMPTY:.*]] = arith.ori %[[ONE_DYNAMIC]], %[[IS_ALL_ZERO_ELS]] : i1
+  // CHECK: %[[PARTIAL_AND2:.*]] = arith.andi %[[ALL_VALID_DIMS]], %[[EQUAL_IF_EMPTY]] : i1
+  // CHECK: %[[PARTIAL_AND:.*]] = arith.andi %[[NOT_TOO_DYNAMIC]], %[[PARTIAL_AND2]] : i1
   // CHECK: %[[ALL_CSTRS:.*]] = arith.andi %[[DIVISIBLE]], %[[PARTIAL_AND]] : i1
   // CHECK: %[[W:.*]] = shape.cstr_require %[[ALL_CSTRS]], "Required valid reshape shape input"
   %0 = "mhlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<2xi32>) -> !shape.witness

@@ -2983,7 +2983,6 @@ struct CstrReshapableConversion
     Value neg_one = rewriter.create<arith::ConstantIndexOp>(loc, -1);
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    Value two = rewriter.create<arith::ConstantIndexOp>(loc, 2);
     auto num_elements = adaptor.getOperands()[0];
     auto target_shape_type =
         adaptor.getOperands()[1].getType().cast<ShapedType>();
@@ -3020,18 +3019,36 @@ struct CstrReshapableConversion
           loc,
           llvm::makeArrayRef({total_elements, total_dynamic, total_invalid}));
     }
+    // Avoid division by zero.
+    Value is_zero_elements = rewriter.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::eq, reduction->getResult(0), zero);
+    Value divisor = rewriter.create<SelectOp>(loc, is_zero_elements, one,
+                                              reduction->getResult(0));
     Value is_divisible = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, zero,
-        rewriter.create<arith::RemSIOp>(loc, num_elements,
-                                        reduction->getResult(0)));
+        rewriter.create<arith::RemSIOp>(loc, num_elements, divisor));
+    // Must have 0 or 1 dynamic dimensions.
     Value acceptably_dynamic = rewriter.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::ult, two, reduction->getResult(1));
+        loc, arith::CmpIPredicate::ule, reduction->getResult(1), one);
+    // Must have no invalid dimensions.
     Value no_invalid = rewriter.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::eq, zero, reduction->getResult(0));
+        loc, arith::CmpIPredicate::eq, reduction->getResult(2), zero);
+    // If the old shape has size zero, the new shape must have size zero too.
+    // This can be a zero factor or a -1.
+    Value has_one_dynamic = rewriter.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::eq, reduction->getResult(1), one);
+    Value equal_if_empty = rewriter.create<arith::OrIOp>(
+        loc, has_one_dynamic,
+        rewriter.create<arith::CmpIOp>(
+            loc, arith::CmpIPredicate::eq, is_zero_elements,
+            rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq,
+                                           num_elements, zero)));
 
     Value all_passing = rewriter.create<arith::AndIOp>(
         loc, is_divisible,
-        rewriter.create<arith::AndIOp>(loc, acceptably_dynamic, no_invalid));
+        rewriter.create<arith::AndIOp>(
+            loc, acceptably_dynamic,
+            rewriter.create<arith::AndIOp>(loc, no_invalid, equal_if_empty)));
 
     rewriter.replaceOpWithNewOp<shape::CstrRequireOp>(
         op, all_passing, "Required valid reshape shape input");
