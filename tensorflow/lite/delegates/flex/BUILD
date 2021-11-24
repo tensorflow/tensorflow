@@ -10,15 +10,17 @@ load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
+default_visibility = [
+    "//tensorflow/compiler/mlir/lite:__subpackages__",
+    "//tensorflow/lite/android:__subpackages__",
+    "//tensorflow/lite/toco/tflite:__subpackages__",
+]
+
 #
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
 #
 package(
-    default_visibility = [
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/lite/android:__subpackages__",
-        "//tensorflow/lite/toco/tflite:__subpackages__",
-    ],
+    default_visibility = default_visibility,
     licenses = ["notice"],
 )
 
@@ -328,6 +330,7 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     features = tf_features_nolayering_check_if_android_or_ios(),
+    visibility = default_visibility + ["//third_party/fcp/client:__subpackages__"],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
