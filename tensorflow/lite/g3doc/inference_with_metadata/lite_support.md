@@ -123,14 +123,12 @@ TensorBuffer probabilityBuffer =
 Loading the model and running inference:
 
 ```java
-import org.tensorflow.lite.support.model.Model;
-
 // Initialise the model
 try{
     MappedByteBuffer tfliteModel
         = FileUtil.loadMappedFile(activity,
             "mobilenet_v1_1.0_224_quant.tflite");
-    Interpreter tflite = new Interpreter(tfliteModel)
+    Interpreter tflite = new Interpreter(tfliteModel);
 } catch (IOException e){
     Log.e("tfliteSupport", "Error reading model", e);
 }
