@@ -3,8 +3,8 @@
 Note: TensorFlow Lite Support Library currently only supports Android.
 
 Mobile application developers typically interact with typed objects such as
-bitmaps or primitives such as integers. However, the TensorFlow Lite Interpreter
-that runs the on-device machine learning model uses tensors in the form of
+bitmaps or primitives such as integers. However, the TensorFlow Lite interpreter
+API that runs the on-device machine learning model uses tensors in the form of
 ByteBuffer, which can be difficult to debug and manipulate. The
 [TensorFlow Lite Android Support Library](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/java)
 is designed to help process the input and output of TensorFlow Lite models, and
@@ -127,14 +127,16 @@ Loading the model and running inference:
 
 ```java
 import java.nio.MappedByteBuffer;
-import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.InterpreterFactory;
+import org.tensorflow.lite.InterpreterApi;
 
 // Initialise the model
 try{
     MappedByteBuffer tfliteModel
         = FileUtil.loadMappedFile(activity,
             "mobilenet_v1_1.0_224_quant.tflite");
-    Interpreter tflite = new Interpreter(tfliteModel);
+    InterpreterApi tflite = new InterpreterFactory().create(
+        tfliteModel, new InterpreterApi.Options());
 } catch (IOException e){
     Log.e("tfliteSupport", "Error reading model", e);
 }
