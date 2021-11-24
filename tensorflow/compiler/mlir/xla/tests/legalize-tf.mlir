@@ -6380,6 +6380,47 @@ func @xlasort_const() -> (tensor<2x3xi64>) {
 }
 
 //===----------------------------------------------------------------------===//
+// tf.XlaVariadicV2 legalization
+//===----------------------------------------------------------------------===//
+
+// -----
+// CHECK-LABEL: @xla_variadic_reduce_v2
+func @xla_variadic_reduce_v2(%arg0: tensor<2x3xcomplex<f64>>, %arg1: tensor<complex<f64>>) -> tensor<3xcomplex<f64>> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1", outputs = "_retval0"}} {
+  // CHECK: %[[REDUCE:.*]] = mhlo.reduce %arg0, %arg1 ( {
+  // CHECK-NEXT: ^{{.*}}(%[[ARG0:.*]]: tensor<complex<f64>>, %[[ARG1:.*]]: tensor<complex<f64>>)
+  // CHECK-NEXT:   %[[SUM:.*]] = call @sum_reducer(%[[ARG0]], %[[ARG1]]){{.*}}
+  // CHECK-NEXT:   "mhlo.return"(%[[SUM]]) : (tensor<complex<f64>>) -> ()
+  // CHECK-NEXT: }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2x3xcomplex<f64>>, tensor<complex<f64>>) -> tensor<3xcomplex<f64>>
+  // CHECK-NEXT: return %[[REDUCE]]
+  %0 = "tf.XlaVariadicReduceV2"(%arg0, %arg1) {_XlaHasReferenceVars = false, device = "/job:localhost/replica:0/task:0/device:XLA_GPU:0", dimensions_to_reduce = [0], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum_reducer} : (tensor<2x3xcomplex<f64>>, tensor<complex<f64>>) -> tensor<3xcomplex<f64>>
+  return %0 : tensor<3xcomplex<f64>>
+}
+
+func private @sum_reducer(%arg0: tensor<complex<f64>>, %arg1: tensor<complex<f64>>) -> tensor<complex<f64>> {
+  %0 = "tf.AddV2"(%arg1, %arg0) : (tensor<complex<f64>>, tensor<complex<f64>>) -> tensor<complex<f64>>
+  return %0 : tensor<complex<f64>>
+}
+
+// -----
+
+// CHECK-LABEL: @xla_variadic_reduce_v2_dynamic
+func @xla_variadic_reduce_v2_dynamic(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi32> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1", outputs = "_retval0"}} {
+  // CHECK: %[[REDUCE:.*]] = mhlo.reduce %arg0, %arg1 ( {
+  // CHECK-NEXT: ^{{.*}}(%[[ARG0:.*]]: tensor<i32>, %[[ARG1:.*]]: tensor<i32>)
+  // CHECK-NEXT:   %[[SUM:.*]] = call @sum_reducer2(%[[ARG0]], %[[ARG1]]){{.*}}
+  // CHECK-NEXT:   "mhlo.return"(%[[SUM]]) : (tensor<i32>) -> ()
+  // CHECK-NEXT: }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  // CHECK-NEXT: return %[[REDUCE]]
+  %0 = "tf.XlaVariadicReduceV2"(%arg0, %arg1) {_XlaHasReferenceVars = false, device = "/job:localhost/replica:0/task:0/device:XLA_GPU:0", dimensions_to_reduce = [0], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum_reducer2} : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+func private @sum_reducer2(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.AddV2"(%arg1, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+//===----------------------------------------------------------------------===//
 // tf.Print legalization
 //===----------------------------------------------------------------------===//
 // CHECK-LABEL: @simple_print

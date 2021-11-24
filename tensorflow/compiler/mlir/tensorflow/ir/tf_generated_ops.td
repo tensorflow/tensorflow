@@ -19846,6 +19846,8 @@ operands of different dtypes, and improved shape inference.
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_XlaVariadicSortOp : TF_Op<"XlaVariadicSort", [NoSideEffect]> {
