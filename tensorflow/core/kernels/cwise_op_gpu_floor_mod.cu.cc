@@ -37,53 +37,65 @@ namespace functor {
 // TODO(b/32239807) No GPU ops for mod yet.
 }  // namespace functor
 
+enum KernelStatus { Success = 0, ZeroDivisionError = 1 };
+
 template <typename T>
 __global__ void floor_mod_kernel(const T* input_ptr, const int64 total,
-                                 const int32 divisor, T* output_ptr_data) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  for (; i < total; i += blockDim.x * gridDim.x) {
-    output_ptr_data[i] = (uint64(input_ptr[i]) % divisor);
+                                 const T* divisor, T* output_ptr_data,
+                                 KernelStatus* status) {
+  if (0 == *divisor) {
+    *status = KernelStatus::ZeroDivisionError;
+    return;
+  }
+
+  GPU_1D_KERNEL_LOOP(i, total) {
+    int64_t d = input_ptr[i] / *divisor;
+    int64_t floordiv = d * *divisor == input_ptr[i]
+                           ? d
+                           : d - ((input_ptr[i] < 0) ^ (*divisor < 0));
+    output_ptr_data[i] = (input_ptr[i] - (floordiv * (*divisor)));
   }
 }
 
 template <typename T>
-struct FloorModOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, const T* input, int total, int32 divisor,
-           T* output_ptr_data);
-};
-
-template <typename T>
-void FloorModOpGPULaunch<T>::Run(const Eigen::GpuDevice& gpu_device,
-                                 const T* input_ptr, int total, int32 divisor,
-                                 T* output_ptr_data) {
-  auto config = GetGpuLaunchConfig(total, gpu_device);
-  // performance crossover is less than using maximum available shared
-  // memory on most processors possibly due to decreasing occupancy
-  // 4096 inputs is a lot, most code will take the smem path
-  TF_CHECK_OK(GpuLaunchKernel(floor_mod_kernel<T>, config.block_count,
-                              config.thread_per_block, 0, gpu_device.stream(),
-                              input_ptr, total, divisor, output_ptr_data));
+__global__ void matrix_floor_mod_kernel(const T* input_ptr, const int64 total,
+                                        const T* divisor, T* output_ptr_data,
+                                        KernelStatus* status) {
+  GPU_1D_KERNEL_LOOP(i, total) {
+    if (0 == divisor[i]) {
+      *status = KernelStatus::ZeroDivisionError;
+      return;
+    }
+    int64_t d = input_ptr[i] / divisor[i];
+    int64_t floordiv = d * divisor[i] == input_ptr[i]
+                           ? d
+                           : d - ((input_ptr[i] < 0) ^ (divisor[i] < 0));
+    output_ptr_data[i] = (input_ptr[i] - (floordiv * divisor[i]));
+  }
 }
 
-template <typename Device, typename T>
-class FloorModOpBase : public OpKernel {
- public:
-  explicit FloorModOpBase(OpKernelConstruction* c) : OpKernel(c) {
-    // OP_REQUIRES_OK(c, c->GetAttr("divisor", &divisor_));
-  }
-  T divisor_ = 0;
-};
-
 template <typename T>
-class FloorModOpGPU : public FloorModOpBase<GPUDevice, T> {
+class FloorModOpGPU : public OpKernel {
  public:
-  typedef FloorModOpBase<GPUDevice, T> Base;
-  explicit FloorModOpGPU(OpKernelConstruction* c) : Base(c) {}
+  explicit FloorModOpGPU(OpKernelConstruction* c) : OpKernel(c) {}
+  enum ModMode { SingleMod = 1, NormalMod = 2, Others = 3 };
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    const Tensor& divisor = context->input(1);
-    Base::divisor_ = (divisor.flat<T>()(0));
-    auto flat_input_size = input.flat<T>().dimension(0);
+    const Tensor& divisor_tensor = context->input(1);
+    ModMode mode = Others;
+    const T* divisor = nullptr;
+    if (divisor_tensor.flat<T>().size() == 1) {
+      mode = SingleMod;
+    } else if (divisor_tensor.shape() == input.shape()) {
+      mode = NormalMod;
+    } else {
+      context->SetStatus(errors::InvalidArgument(
+          "Meituan floor_mod currently only supports the divisor with a shape "
+          "of 1 or the same as the input."));
+      return;
+    }
+    divisor = divisor_tensor.flat<T>().data();
+    int64 flat_input_size = input.flat<T>().dimension(0);
     const TensorShape& input_shape = input.shape();
     TensorShape output_shape(input_shape);
 
@@ -92,18 +104,55 @@ class FloorModOpGPU : public FloorModOpBase<GPUDevice, T> {
     T* flat_output = &(output->flat<T>()(0));
 
     auto* flat_input = &(input.flat<T>()(0));
-    FloorModOpGPULaunch<T>().Run(context->eigen_device<GPUDevice>(),
-                                 input.flat<T>().data(), flat_input_size,
-                                 Base::divisor_, flat_output);
+    bool* error_flag = nullptr;
+    const Eigen::GpuDevice& d = context->eigen_gpu_device();
+    auto config = GetGpuLaunchConfig(flat_input_size, d);
+
+    KernelStatus* status = nullptr;
+    cudaMallocHost(&status, sizeof(KernelStatus));
+    cudaError_t err = cudaSuccess;
+#define CHECK_CUDA_ERROR(tag)                                                 \
+  if (err != cudaSuccess) {                                                   \
+    Status stat = Status(error::INTERNAL,                                     \
+                         (tag) + std::string(cudaGetErrorName(err)) + " - " + \
+                             std::string(cudaGetErrorString(err)));           \
+    OP_REQUIRES_OK(context, stat);                                            \
+  }
+
+    cudaStream_t stream = d.stream();
+    cudaEvent_t event;
+    err = cudaEventCreateWithFlags(&event, cudaEventDisableTiming);
+    CHECK_CUDA_ERROR("Create cuda event error .");
+
+    if (mode == SingleMod) {
+      TF_CHECK_OK(GpuLaunchKernel(floor_mod_kernel<T>, config.block_count,
+                                  config.thread_per_block, 0, d.stream(),
+                                  flat_input, flat_input_size, divisor,
+                                  flat_output, status));
+    } else if (mode == NormalMod) {
+      TF_CHECK_OK(GpuLaunchKernel(matrix_floor_mod_kernel<T>,
+                                  config.block_count, config.thread_per_block,
+                                  0, d.stream(), flat_input, flat_input_size,
+                                  divisor, flat_output, status));
+    }
+
+    err = cudaEventRecord(event, stream);
+    CHECK_CUDA_ERROR("Cuda event error .");
+    err = cudaEventSynchronize(event);
+    CHECK_CUDA_ERROR("Cuda synchronize error .");
+    if (*status == KernelStatus::ZeroDivisionError) {
+      context->SetStatus(errors::InvalidArgument("ZeroDivisionError"));
+      return;
+    }
+
     OP_REQUIRES(context, context->op_device_context()->stream()->ok(),
-                errors::Internal("Launch of gpu kernel for SplitVOp failed"));
+                errors::Internal("Launch of gpu kernel for FloorMod failed"));
   }
 };
 
 #define REGISTER_GPU(type)                                \
   REGISTER_KERNEL_BUILDER(Name("FloorMod")                \
                               .Device(DEVICE_GPU)         \
-                              .HostMemory("y")            \
                               .Priority(1)                \
                               .TypeConstraint<type>("T"), \
                           FloorModOpGPU<type>)

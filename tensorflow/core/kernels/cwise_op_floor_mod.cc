@@ -16,22 +16,34 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER3(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int32, int64,
-          uint64);
-REGISTER4(BinaryOp, CPU, "FloorMod", functor::floor_fmod, Eigen::half, bfloat16,
-          float, double);
+REGISTER2(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int32, int64);
+REGISTER2(BinaryOp, CPU, "FloorMod", functor::floor_fmod, float, double);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
+//REGISTER_KERNEL_BUILDER(Name("FloorMod")
+//                            .Device(DEVICE_GPU)
+//                            .HostMemory("x")
+//                            .HostMemory("y")
+//                            .HostMemory("z")
+//                            .TypeConstraint<int32>("T"),
+//                        BinaryOp<CPUDevice, functor::safe_floor_mod<int32>>);
+//
+//
+//REGISTER_KERNEL_BUILDER(Name("FloorMod")
+//                            .Device(DEVICE_GPU)
+//                            .HostMemory("x")
+//                            .HostMemory("y")
+//                            .HostMemory("z")
+//                            .TypeConstraint<int64>("T"),
+//                        BinaryOp<CPUDevice, functor::safe_floor_mod<int64>>);
+
+#ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("FloorMod")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_SYCL)
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::safe_floor_mod<int32>>);
-#endif
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
