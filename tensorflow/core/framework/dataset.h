@@ -983,11 +983,20 @@ class DatasetBase : public core::RefCounted {
   // Returns the estimated number of bytes used for tensors of this dataset.
   virtual int64_t TotalBytes() const { return 0; }
 
-  // Returns the cardinality of this dataset.
+  // Returns the cardinality of this dataset. This should be removed once
+  // all callers are migrated to use Cardinality(CardinalityOptions).
   int64_t Cardinality() const;
+
+  // Returns the cardinality of this dataset based on the options.
+  int64_t Cardinality(CardinalityOptions options) const;
 
   // Internal implementation of cardinality for a dataset.
   virtual int64_t CardinalityInternal() const { return kUnknownCardinality; }
+
+  // Internal implementation of cardinality for a dataset based on the options.
+  virtual int64_t CardinalityInternal(CardinalityOptions options) const {
+    return kUnknownCardinality;
+  }
 
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
