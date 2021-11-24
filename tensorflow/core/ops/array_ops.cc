@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/strided_slice_op.h"
@@ -3028,6 +3029,12 @@ REGISTER_OP("Dequantize")
         return errors::InvalidArgument("axis should be at least -1, got ",
                                        axis);
       }
+      auto input_dims = c->Rank(c->input(0));
+      if (axis > input_dims) {
+        return errors::InvalidArgument(
+            "Axis must be less than input dimension(", input_dims, "), got ",
+            axis);
+      }
       const int minmax_rank = (axis == -1) ? 0 : 1;
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle minmax;
@@ -3035,6 +3042,13 @@ REGISTER_OP("Dequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), minmax_rank, &minmax));
       if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          // Check int32 max bound for a corner case to prevent integer flow
+          // when input actually has kint32max rank and above bound check is not
+          // triggered.
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(
