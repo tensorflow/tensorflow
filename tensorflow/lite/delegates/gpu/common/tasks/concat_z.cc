@@ -62,36 +62,7 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
     for (int i = 0; i < channels.size(); ++i) {
       std::string t_name = "args." + tensor_names[i];
       const int src_depth = DivideRoundUp(channels[i], 4);
-      const bool x4_reads = src_depth % 4 == 0;
-      const bool x3_reads = src_depth % 3 == 0;
-      const bool x2_reads = src_depth % 2 == 0;
-      if (x4_reads) {
-        // We can read more at once inside of loop in case src_depth % 4 == 0
-        // it should be better for reading latency hiding
-        c += "  for (int i = 0; i < " + t_name + ".Slices(); i += 4) {\n";
-        c += "    FLT4 result0 = " + t_name + ".Read(" + coords + ", i);\n";
-        c += "    FLT4 result1 = " + t_name + ".Read(" + coords + ", i + 1);\n";
-        c += "    FLT4 result2 = " + t_name + ".Read(" + coords + ", i + 2);\n";
-        c += "    FLT4 result3 = " + t_name + ".Read(" + coords + ", i + 3);\n";
-        c += "    args.dst_tensor.Write(result0, " + coords + ", S);\n";
-        c += "    args.dst_tensor.Write(result1, " + coords + ", S + 1);\n";
-        c += "    args.dst_tensor.Write(result1, " + coords + ", S + 2);\n";
-        c += "    args.dst_tensor.Write(result1, " + coords + ", S + 3);\n";
-        c += "    S += 4;\n";
-        c += "  }\n";
-      } else if (x3_reads) {
-        // We can read more at once inside of loop in case src_depth % 3 == 0
-        // it should be better for reading latency hiding
-        c += "  for (int i = 0; i < " + t_name + ".Slices(); i += 3) {\n";
-        c += "    FLT4 result0 = " + t_name + ".Read(" + coords + ", i);\n";
-        c += "    FLT4 result1 = " + t_name + ".Read(" + coords + ", i + 1);\n";
-        c += "    FLT4 result2 = " + t_name + ".Read(" + coords + ", i + 2);\n";
-        c += "    args.dst_tensor.Write(result0, " + coords + ", S);\n";
-        c += "    args.dst_tensor.Write(result1, " + coords + ", S + 1);\n";
-        c += "    args.dst_tensor.Write(result1, " + coords + ", S + 2);\n";
-        c += "    S += 3;\n";
-        c += "  }\n";
-      } else if (x2_reads) {
+      if (src_depth % 2 == 0) {
         // We can read more at once inside of loop in case src_depth % 2 == 0
         // it should be better for reading latency hiding
         c += "  for (int i = 0; i < " + t_name + ".Slices(); i += 2) {\n";
