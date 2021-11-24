@@ -143,6 +143,10 @@ class GPUOperation {
   // for linking
   void AddUniquePostfix(const std::string& unique_postfix);
 
+  virtual absl::Status BindArguments(ArgumentsBinder* args) {
+    return absl::OkStatus();
+  }
+
   Arguments args_;
   std::string code_;
   int3 work_group_size_ = int3(8, 4, 1);
@@ -167,9 +171,6 @@ class GPUOperation {
   friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,
                              GPUOperation* op);
 
-  virtual absl::Status BindArguments(ArgumentsBinder* args) {
-    return absl::OkStatus();
-  }
   virtual int3 GetGridSize() const;
 
   // Defines operation calculation precision and format of src/dst tensors.

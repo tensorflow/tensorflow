@@ -181,7 +181,6 @@ absl::Status ClOperation::UpdateParams() {
 }
 
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
-  RETURN_IF_ERROR(operation_->AssembleCode(creation_context.GetGpuInfo()));
   operation_->code_ =
       GetCommonOpenCLDefines(operation_->definition_.precision) +
       operation_->code_;

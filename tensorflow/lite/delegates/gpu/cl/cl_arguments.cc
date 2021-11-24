@@ -165,7 +165,6 @@ absl::Status CLArguments::Init(const GpuInfo& gpu_info, Arguments* args,
                                CLContext* context) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
   RETURN_IF_ERROR(AddObjectArgs(gpu_info, *args));
-  RETURN_IF_ERROR(args->AddObjectsScalarArgs(gpu_info));
   object_refs_ = std::move(args->object_refs_);
   const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
@@ -204,18 +203,6 @@ absl::Status CLArguments::SetObjectsResources(const Arguments& args) {
     i++;
   }
   return absl::OkStatus();
-}
-
-void CLArguments::CopyScalarValues(Arguments* args) const {
-  for (const auto& fvalue : float_values_) {
-    args->float_values_[fvalue.first].value = fvalue.second.value;
-  }
-  for (const auto& ivalue : int_values_) {
-    args->int_values_[ivalue.first].value = ivalue.second.value;
-  }
-  for (const auto& hfvalue : half_values_) {
-    args->half_values_[hfvalue.first].value = hfvalue.second.value;
-  }
 }
 
 void CLArguments::CopyArguments(const Arguments& args, bool use_f32_for_halfs) {

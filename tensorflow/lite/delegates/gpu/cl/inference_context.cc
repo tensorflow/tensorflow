@@ -396,6 +396,46 @@ void CopyExternals(const GraphFloat32& graph,
   }
 }
 
+// Serialized model will lose polymorphic properties for GpuOperations.
+// Here we will retrieve some information needed for generic execution of
+// GpuOperations. Specifically, BindArguments must be executed.
+absl::Status ResolvePolymorphicArgs(InferenceContext::GpuModel* gpu_model) {
+  class DummySpatialTensor : public GpuSpatialTensor {
+   public:
+    DummySpatialTensor() = default;
+    explicit DummySpatialTensor(const BHWDC& shape) : shape_(shape) {}
+    ~DummySpatialTensor() override = default;
+
+    int Width() const override { return shape_.w; }
+    int Height() const override { return shape_.h; }
+    int Depth() const override { return shape_.d; }
+    int Channels() const override { return shape_.c; }
+    int Slices() const override { return DivideRoundUp(shape_.c, 4); }
+    int Batch() const override { return shape_.b; }
+
+   private:
+    BHWDC shape_;
+  };
+
+  for (auto& node : gpu_model->nodes) {
+    std::vector<DummySpatialTensor> src_tensors(node.inputs.size());
+    for (int i = 0; i < node.inputs.size(); ++i) {
+      const auto& tensor_desc = gpu_model->tensors[node.inputs[i]];
+      src_tensors[i] = DummySpatialTensor(tensor_desc.shape);
+      node.gpu_operation->SetSrc(&src_tensors[i], i);
+    }
+    std::vector<DummySpatialTensor> dst_tensors(node.outputs.size());
+    for (int i = 0; i < node.outputs.size(); ++i) {
+      const auto& tensor_desc = gpu_model->tensors[node.outputs[i]];
+      dst_tensors[i] = DummySpatialTensor(tensor_desc.shape);
+      node.gpu_operation->SetDst(&dst_tensors[i], i);
+    }
+    RETURN_IF_ERROR(
+        node.gpu_operation->BindArguments(&node.gpu_operation->args_));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status GraphToGpuModel(
     const InferenceContext::CreateInferenceInfo& create_info,
     const GraphFloat32& graph, const GpuInfo& gpu_info,
@@ -408,7 +448,12 @@ absl::Status GraphToGpuModel(
                                     &tensor_reserver, gpu_model));
   RETURN_IF_ERROR(Merge(gpu_model));
   gpu_model->tensors = std::move(tensor_reserver.reservations_);
-  return absl::OkStatus();
+
+  for (auto& node : gpu_model->nodes) {
+    RETURN_IF_ERROR(node.gpu_operation->AssembleCode(gpu_info));
+  }
+
+  return ResolvePolymorphicArgs(gpu_model);
 }
 
 }  // namespace
@@ -483,7 +528,6 @@ absl::Status InferenceContext::InitFromGraph(
   if (serialized_model) {
     for (auto& node : nodes_) {
       node.cl_operation.MoveObjectRefsFromCLToGeneric();
-      node.cl_operation.SyncScalarValues();
     }
     std::vector<int64_t> in_refs(gpu_model.input_ids_and_refs.size());
     std::vector<int64_t> out_refs(gpu_model.output_ids_and_refs.size());

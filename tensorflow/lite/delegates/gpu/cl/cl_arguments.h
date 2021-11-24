@@ -46,7 +46,6 @@ class CLArguments : public ArgumentsBinder {
   void MoveObjectRefsOut(Arguments* args) {
     args->object_refs_ = std::move(object_refs_);
   }
-  void CopyScalarValues(Arguments* args) const;
 
   // Move only
   CLArguments(CLArguments&& args) = default;

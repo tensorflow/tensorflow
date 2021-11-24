@@ -156,6 +156,35 @@ void Arguments::AddInt(const std::string& name, int value) {
   int_values_[name].value = value;
 }
 
+absl::Status Arguments::SetInt(const std::string& name, int value) {
+  auto it = int_values_.find(name);
+  if (it == int_values_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No int argument with name - ", name));
+  }
+  it->second.value = value;
+  return absl::OkStatus();
+}
+absl::Status Arguments::SetFloat(const std::string& name, float value) {
+  auto it = float_values_.find(name);
+  if (it == float_values_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No float argument with name - ", name));
+  }
+  it->second.value = value;
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::SetHalf(const std::string& name, half value) {
+  auto it = half_values_.find(name);
+  if (it == half_values_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No half argument with name - ", name));
+  }
+  it->second.value = value;
+  return absl::OkStatus();
+}
+
 void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
                              GPUObjectDescriptorPtr&& descriptor_ptr) {
   descriptor_ptr->SetAccess(access_type);
