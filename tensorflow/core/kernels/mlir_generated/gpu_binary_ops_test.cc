@@ -390,6 +390,28 @@ TEST_F(BinaryOpsTest, DivComplex128SpecialCases) {
 }
 #endif
 
+/// Test `tf.TruncatedDiv`
+
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv, /*test_name=*/Int8, int8_t, int8_t,
+    test::DefaultInput<int8_t>(), test::DefaultInputNonZero<int8_t>(),
+    baseline_div, test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv, /*test_name=*/Uint32, uint32_t, uint32_t,
+    test::DefaultInput<uint32_t>(), test::DefaultInputNonZero<uint32_t>(),
+    baseline_div, test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv, /*test_name=*/Uint64, uint64_t, uint64_t,
+    test::DefaultInput<uint64_t>(), test::DefaultInputNonZero<uint64_t>(),
+    baseline_div, test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
+
 /// Test `tf.DivNoNan`.
 
 template <typename T>

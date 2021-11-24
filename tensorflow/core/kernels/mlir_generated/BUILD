@@ -239,6 +239,7 @@ tf_kernel_library(
         "gpu_op_bitwise_or.cc",
         "gpu_op_bitwise_xor.cc",
         "gpu_op_complex.cc",
+        "gpu_op_truncate_div.cc",
         "gpu_op_div.cc",
         "gpu_op_div_no_nan.cc",
         "gpu_op_equal.cc",
@@ -279,6 +280,7 @@ tf_kernel_library(
         ":gpu_bitwise_xor_kernels",
         ":gpu_complex_kernels",
         ":gpu_div_kernels",
+        ":gpu_truncate_div_kernels",
         ":gpu_div_no_nan_kernels",
         ":gpu_equal_kernels",
         ":gpu_floor_div_kernels",
@@ -1076,6 +1078,18 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+)
+
+gpu_kernel_library(
+    name = "gpu_truncate_div_kernels",
+    jit_types = [
+        "i8",
+        "ui32",
+        "ui64",
+    ],
+    op = "truncate_div",
+    tile_size = "1024",
+    types = [],
 )
 
 gpu_kernel_library(
