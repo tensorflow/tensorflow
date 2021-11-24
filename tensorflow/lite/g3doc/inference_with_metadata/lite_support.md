@@ -57,6 +57,7 @@ required by the TensorFlow Lite interpreter, create a `TensorImage` to be used
 as input:
 
 ```java
+import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.support.image.ImageProcessor;
 import org.tensorflow.lite.support.image.TensorImage;
 import org.tensorflow.lite.support.image.ops.ResizeOp;
@@ -91,6 +92,7 @@ some basic audio data processing methods. It's mostly used together with
 and captures audio samples in a ring buffer.
 
 ```java
+import android.media.AudioRecord;
 import org.tensorflow.lite.support.audio.TensorAudio;
 
 // Create an `AudioRecord` instance.
@@ -112,6 +114,7 @@ Before running the model, we need to create the container objects that will
 store the result:
 
 ```java
+import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 
 // Create a container for the result and specify that this is a quantized model.
@@ -123,6 +126,9 @@ TensorBuffer probabilityBuffer =
 Loading the model and running inference:
 
 ```java
+import java.nio.MappedByteBuffer;
+import org.tensorflow.lite.Interpreter;
+
 // Initialise the model
 try{
     MappedByteBuffer tfliteModel
@@ -170,7 +176,9 @@ The following snippet demonstrates how to associate the probabilities with
 category labels:
 
 ```java
+import java.util.Map;
 import org.tensorflow.lite.support.common.TensorProcessor;
+import org.tensorflow.lite.support.common.ops.NormalizeOp;
 import org.tensorflow.lite.support.label.TensorLabel;
 
 // Post-processor which dequantize the result
@@ -203,9 +211,16 @@ Future versions will improve support for text-related applications.
 
 The design of the `ImageProcessor` allowed the image manipulation operations to
 be defined up front and optimised during the build process. The `ImageProcessor`
-currently supports three basic preprocessing operations:
+currently supports three basic preprocessing operations, as described in the
+three comments in the code snippet below:
 
 ```java
+import org.tensorflow.lite.support.common.ops.NormalizeOp;
+import org.tensorflow.lite.support.common.ops.QuantizeOp;
+import org.tensorflow.lite.support.image.ops.ResizeOp;
+import org.tensorflow.lite.support.image.ops.ResizeWithCropOrPadOp;
+import org.tensorflow.lite.support.image.ops.Rot90Op;
+
 int width = bitmap.getWidth();
 int height = bitmap.getHeight();
 
