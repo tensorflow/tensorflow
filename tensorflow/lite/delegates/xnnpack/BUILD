@@ -77,7 +77,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels/internal:optimized_base",
-        "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:types",
         "@FP16",
     ],
@@ -92,7 +91,6 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         "//tensorflow/lite/kernels/internal:cppmath",
-        "//tensorflow/lite/kernels/internal:types",
     ],
 )
 
@@ -469,7 +467,6 @@ cc_library(
     srcs = ["transpose_conv_tester.cc"],
     hdrs = ["transpose_conv_tester.h"],
     deps = [
-        ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",

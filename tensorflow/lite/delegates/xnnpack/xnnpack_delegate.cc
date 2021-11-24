@@ -3786,7 +3786,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       if (is_supported_int8_tensor) {
         const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
             input_tensor.quantization.params);
-        if (quant_params == nullptr) {
+        if (quant_params == nullptr || quant_params->scale->size != 1) {
           is_supported_int8_tensor = false;
         }
       }
@@ -3982,23 +3982,14 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                     input_tensor.quantization.params);
             // Such conditions have been checked when preparing to unpack INT8
             // tensors.
-            TFLITE_DCHECK(quant_params != nullptr);
+            TFLITE_DCHECK(quant_params != nullptr &&
+                          quant_params->scale->size == 1);
 
-            if (quant_params->scale->size == 1) {
-              // Per-tensor quantization
-              DequantizeInt8(reinterpret_cast<const int8_t*>(packed_data),
-                             reinterpret_cast<float*>(unpacked_data),
-                             GetTensorShape(&input_tensor),
-                             input_tensor.params.zero_point,
-                             input_tensor.params.scale);
-            } else {
-              // Per-channel quantization
-              PerChannelDequantizeInt8(
-                  reinterpret_cast<const int8_t*>(packed_data),
-                  reinterpret_cast<float*>(unpacked_data),
-                  GetTensorShape(&input_tensor), quant_params->zero_point->data,
-                  quant_params->scale->data, quant_params->quantized_dimension);
-            }
+            DequantizeInt8(reinterpret_cast<const int8_t*>(packed_data),
+                           reinterpret_cast<float*>(unpacked_data),
+                           GetTensorShape(&input_tensor),
+                           input_tensor.params.zero_point,
+                           input_tensor.params.scale);
             break;
           }
           default:
