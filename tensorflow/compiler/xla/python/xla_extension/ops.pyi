@@ -149,7 +149,7 @@ def ConvGeneralDilated(
     dimension_numbers: _ConvDimensionNumbers,
     feature_group_count: int = ...,
     batch_group_count: int = ...,
-    precision_config: PrecisionConfig_Precision = ...,
+    precision_config: Optional[PrecisionConfig_Precision] = ...,
     preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def ConvertElementType(
     operand: XlaOp,
@@ -192,13 +192,13 @@ def CustomCallWithAliasing(
 def Dot(
     lhs: XlaOp,
     rhs: XlaOp,
-    precision_config: PrecisionConfig_Precision = ...,
+    precision_config: Optional[PrecisionConfig_Precision] = ...,
     preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DotGeneral(
     lhs: XlaOp,
     rhs: XlaOp,
     dimensions_numbers: _DotDimensionNumbers,
-    precision_config: PrecisionConfig_Precision = ...,
+    precision_config: Optional[PrecisionConfig_Precision] = ...,
     preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DynamicReshape(
     operand: XlaOp,
