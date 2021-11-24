@@ -4432,6 +4432,7 @@ cc_library(
         ":hlo_dce",
         ":hlo_memory_scheduler",
         ":hlo_ordering",
+        ":hlo_query",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
