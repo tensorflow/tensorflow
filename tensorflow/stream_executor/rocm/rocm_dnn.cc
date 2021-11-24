@@ -3148,7 +3148,7 @@ port::Status MIOpenSupport::GetConvolveRunners(
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     ScratchAllocator* scratch_allocator,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners) {
   if (input_type != output_type) {

@@ -104,7 +104,8 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
 }
 
 StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
-    const GpuConvConfig& config, se::Stream* stream, bool use_cudnn_frontend) {
+    const GpuConvConfig& config, se::Stream* stream, bool use_cudnn_frontend,
+    bool use_fallback) {
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
                       GetDNNConvKindFromCudnnConvKind(config.kind));
 
@@ -137,7 +138,7 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
           /* side_input_scale = */ config.fusion->side_input_scale, stream,
           config.input_descriptor, config.filter_descriptor,
           GetBiasDescriptor(config), config.output_descriptor, config.conv_desc,
-          config.fusion->mode, &runners));
+          use_fallback, config.fusion->mode, &runners));
       for (auto& runner : runners) {
         TF_ASSIGN_OR_RETURN(
             auto runner_cache,
@@ -162,7 +163,7 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
           /* filter_data = */ DeviceMemoryBase(nullptr),
           config.output_descriptor,
           /* output_data = */ DeviceMemoryBase(nullptr), config.conv_desc,
-          nullptr, &runners));
+          use_fallback, nullptr, &runners));
       for (auto& runner : runners) {
         TF_ASSIGN_OR_RETURN(
             auto runner_cache,
@@ -200,7 +201,8 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
       params.config.input_descriptor, params.input_buf,
       params.config.filter_descriptor, params.filter_buf,
       params.config.output_descriptor, params.output_buf,
-      params.config.conv_desc, scratch_allocator, &runners));
+      params.config.conv_desc, /* use_fallback = */ false, scratch_allocator,
+      &runners));
 
   return runners;
 }
@@ -690,13 +692,14 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const bool cudnn_frontend_enabled =
       debug_options.xla_gpu_enable_cudnn_frontend();
 
-  TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> runners,
-                      GetAlgorithms(config, stream, cudnn_frontend_enabled));
-
   // Use the first algorithm that's supported as reference. There isn't a
   // particular reason to use it, as any algorithm suffices. It doesn't make
   // this algorithm considered correct, though.
   absl::optional<ReferenceResult> reference_result;
+
+  TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> runners,
+                      GetAlgorithms(config, stream, cudnn_frontend_enabled,
+                                    /* use_fallback = */ false));
 
   std::vector<AutotuneResult> profile_results;
   for (auto& runner_cache : runners) {
@@ -706,6 +709,27 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                          stream, &runner_cache, operand_buffers, result_buffer,
                          &reference_result, disabled_algos));
     profile_results.emplace_back(std::move(result));
+  }
+
+  // If any algorithm has worked, we'll skip the fallback algorithms, since
+  // they include some very slow algorithms.
+  if (!reference_result) {
+    LOG(WARNING) << "None of the algorithms provided by cuDNN heuristics "
+                    "worked; trying fallback algorithms.  Conv: "
+                 << canonical_hlo;
+
+    TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> fallback_runners,
+                        GetAlgorithms(config, stream, cudnn_frontend_enabled,
+                                      /* use_fallback = */ true));
+
+    for (auto& runner_cache : fallback_runners) {
+      TF_ASSIGN_OR_RETURN(
+          auto result, AutotuneOneConvRunner(
+                           config, instr, allocator, &input_output_allocator,
+                           stream, &runner_cache, operand_buffers,
+                           result_buffer, &reference_result, disabled_algos));
+      profile_results.emplace_back(std::move(result));
+    }
   }
 
   // Log the autotuning result.
