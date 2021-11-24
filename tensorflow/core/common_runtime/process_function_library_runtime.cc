@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
+#include "tensorflow/core/common_runtime/single_threaded_executor.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -670,6 +671,26 @@ Status ValidateMultiDeviceOptions(
   return Status::OK();
 }
 
+bool SafeForSyncExecution(
+    const std::unordered_map<string, std::unique_ptr<Graph>>& subgraphs) {
+  if (subgraphs.size() != 1) {
+    metrics::IncrementTestCounter("pflr_sync_safety", "partitioned");
+    return false;
+  }
+  // Old-style control flow can deadlock with the single-threaded executor.
+  const auto& nodes = subgraphs.begin()->second->nodes();
+  auto safe_op = [](const Node* node) {
+    return ValidateOpIsSafeForSyncExecution(*node).ok();
+  };
+  bool all_safe_ops = std::all_of(nodes.begin(), nodes.end(), safe_op);
+  if (!all_safe_ops) {
+    metrics::IncrementTestCounter("pflr_sync_safety", "unsafe_op");
+    return false;
+  }
+  metrics::IncrementTestCounter("pflr_sync_safety", "safe");
+  return true;
+}
+
 }  // anonymous namespace
 
 Status GetGraphAndArgRets(
@@ -985,24 +1006,15 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   };
   // Currently, only single-device graphs support synchronous execution.
-  bool safe_for_sync_execution = false;
-  if (num_subgraphs == 1) {
-    // Old-style control flow can deadlock with the single-threaded executor.
-    const auto& nodes = subgraphs.begin()->second->nodes();
-    auto unsafe = [](const Node* node) { return node->IsControlFlow(); };
-    safe_for_sync_execution = std::none_of(nodes.begin(), nodes.end(), unsafe);
-    metrics::IncrementTestCounter(
-        "pflr_sync_safety", safe_for_sync_execution ? "safe" : "unsafe_op");
-  } else {
-    metrics::IncrementTestCounter("pflr_sync_safety", "partitioned");
-  }
+  bool safe_for_sync_execution = SafeForSyncExecution(subgraphs);
+  data->enable_sync_execution =
+      options.allow_small_function_optimizations && safe_for_sync_execution;
   for (const auto& pair : subgraphs) {
     Status* status = &instantiate_status[i];
     string unique_name = name_generator.GetName();
     ComponentFunctionData* comp_data = &data->glue_[pair.first];
     runner([this, &pair, dev_set, comp_data, unique_name, data_lib_def,
-            &control_ret, &options, status, &counter, &data,
-            safe_for_sync_execution] {
+            &control_ret, &options, status, &counter, &data] {
       const string& target = pair.first;
 
       const string& device_type =
@@ -1035,8 +1047,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       opts.lib_def = data_lib_def;
       opts.create_kernels_eagerly = options.create_kernels_eagerly;
       opts.state_handle = options.state_handle;
-      opts.allow_small_function_optimizations =
-          options.allow_small_function_optimizations && safe_for_sync_execution;
+      opts.allow_small_function_optimizations = data->enable_sync_execution;
       auto attrs = AttrSlice(&shard.attr());
       VLOG(1) << "Start instantiating component function " << unique_name
               << " on device " << target;
@@ -1167,7 +1178,84 @@ Status ProcessFunctionLibraryRuntime::PrepareRunMultiDevice(
   return Status::OK();
 }
 
-void ProcessFunctionLibraryRuntime::RunMultiDevice(
+Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle outer_handle, std::vector<FunctionRet>* rets,
+    std::function<Status(const ComponentFunctionData& comp_data,
+                         InternalArgs* args)>
+        get_component_args) const {
+  const MultiDeviceFunctionData* data;
+  Status prepare_status = PrepareRunMultiDevice(opts, outer_handle, &data);
+  if (!prepare_status.ok()) {
+    return prepare_status;
+  }
+
+  FunctionLibraryRuntime::Options opts_copy = opts;
+  for (const auto& pair : data->glue_) {
+    const string& target = pair.first;
+    const ComponentFunctionData& comp_data = pair.second;
+    FunctionLibraryRuntime::Handle comp_handle = comp_data.handle;
+
+    opts_copy.args_alloc_attrs = comp_data.arg_alloc_attrs;
+    opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs;
+
+    InternalArgs comp_args;
+    Status args_status = get_component_args(comp_data, &comp_args);
+    if (!args_status.ok()) {
+      VLOG(2) << "Failed to get component function arguments: " << args_status;
+      return args_status;
+    }
+    rets->resize(data->num_outputs_);
+
+    VLOG(1) << "Running component function on device " << target << " from "
+            << data->function_name_ << " with handle " << comp_handle;
+    FunctionLibraryRuntime* flr = GetFLR(target);
+    if (flr != nullptr) {
+      opts_copy.remote_execution = false;
+      // When target device has private thread pool, use the target device
+      // runner
+      thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
+      opts_copy.runner = (pool == nullptr) ? opts.runner : flr->runner();
+      VLOG(4) << "    with " << opts_copy.DebugString();
+
+      std::vector<Tensor> comp_tensor_rets;
+      Status run_status =
+          flr->RunSync(opts_copy, comp_handle, GetLocalArgs(comp_args.args),
+                       &comp_tensor_rets);
+      if (!run_status.ok()) {
+        VLOG(2) << "Component function execution failed: " << run_status;
+        const string function_and_msg = strings::StrCat(
+            errors::FormatFunctionForError(data->function_name_), " ",
+            run_status.error_message());
+        return errors::CreateWithUpdatedMessage(run_status, function_and_msg);
+      } else {
+        VLOG(2) << "Component function execution succeeded.";
+        for (int i = 0; i < comp_tensor_rets.size(); ++i) {
+          (*rets)[comp_data.ret_indices[i]] = comp_tensor_rets[i];
+        }
+      }
+    } else {
+      // Fall back to DistributedFunctionLibraryRuntime for remote execution.
+      opts_copy.remote_execution = true;
+      VLOG(4) << "    with " << opts_copy.DebugString();
+
+      std::vector<std::unique_ptr<CleanUpItem>> cleanup_items;
+      Notification n;
+      Status s;
+      std::vector<FunctionRet> comp_rets;
+      RunInternal(opts_copy, comp_handle, comp_args.args, &comp_rets,
+                  &cleanup_items, [&n, &s](const Status& status) {
+                    s.Update(status);
+                    n.Notify();
+                  });
+      n.WaitForNotification();
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
+void ProcessFunctionLibraryRuntime::RunMultiDeviceAsync(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle outer_handle, std::vector<FunctionRet>* rets,
     std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
@@ -1563,8 +1651,8 @@ void ProcessFunctionLibraryRuntime::Run(
                                       InternalArgs* comp_args) -> Status {
       return GetComponentArgs(args, comp_data, comp_args);
     };
-    return RunMultiDevice(new_opts, handle, function_rets, cleanup_items,
-                          std::move(done), std::move(get_component_args));
+    return RunMultiDeviceAsync(new_opts, handle, function_rets, cleanup_items,
+                               std::move(done), std::move(get_component_args));
   }
   std::vector<FunctionArg> local_args;
   for (const auto& tensor : args) {
@@ -1574,6 +1662,7 @@ void ProcessFunctionLibraryRuntime::Run(
               std::move(done));
 }
 
+// This method handles the simple remote call case (not multi-device).
 void ProcessFunctionLibraryRuntime::RunInternal(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<FunctionArg> args,
@@ -1715,22 +1804,47 @@ void ProcessFunctionLibraryRuntime::Run(
 }
 
 Status ProcessFunctionLibraryRuntime::RunSync(
-    const FunctionLibraryRuntime::Options& opts,
+    const FunctionLibraryRuntime::Options& orig_opts,
     FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
     std::vector<Tensor>* rets) const {
-  Notification n;
-  Status s;
-  Run(opts, handle, args, rets, [&n, &s](const Status& status) {
-    s.Update(status);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  return s;
+  MultiDeviceFunctionData* multi_device_data = IsMultiDevice(handle);
+  if (multi_device_data && multi_device_data->enable_sync_execution) {
+    metrics::IncrementTestCounter("pflr_runsync", "sync");
+    FunctionLibraryRuntime::Options new_opts = orig_opts;
+    Rendezvous* created_rendezvous = nullptr;
+    if (!new_opts.rendezvous) {
+      TF_RETURN_IF_ERROR(CreateRendezvous(new_opts, &created_rendezvous));
+    }
+
+    std::vector<FunctionRet> function_rets;
+    auto get_component_args = [&args](const ComponentFunctionData& comp_data,
+                                      InternalArgs* comp_args) {
+      return GetComponentArgs(args, comp_data, comp_args);
+    };
+
+    Status status = RunMultiDeviceSync(new_opts, handle, &function_rets,
+                                       std::move(get_component_args));
+    CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
+    status.Update(FunctionRetsToTensors(&function_rets, rets));
+    return status;
+  } else {
+    // TODO(b/207484417): Either handle or avoid/delete this fallback path.
+    metrics::IncrementTestCounter("pflr_runsync", "async");
+    Notification n;
+    Status s;
+    Run(orig_opts, handle, args, rets, [&n, &s](const Status& status) {
+      s.Update(status);
+      n.Notify();
+    });
+    n.WaitForNotification();
+    return s;
+  }
 }
 
 Status ProcessFunctionLibraryRuntime::RunSync(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame) const {
+  // TODO(b/207485199): Implement this as synchronous code.
   Notification n;
   Status s;
   Run(opts, handle, frame, [&n, &s](const Status& status) {
@@ -1782,8 +1896,8 @@ void ProcessFunctionLibraryRuntime::Run(
                                     InternalArgs* comp_args) -> Status {
     return GetComponentArgs(args, comp_data, comp_args);
   };
-  return RunMultiDevice(new_opts, handle, rets, cleanup_items, std::move(done),
-                        std::move(get_component_args));
+  return RunMultiDeviceAsync(new_opts, handle, rets, cleanup_items,
+                             std::move(done), std::move(get_component_args));
 #endif  // !IS_MOBILE_PLATFORM
 }
 

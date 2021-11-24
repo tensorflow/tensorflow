@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 
+#include <functional>
 #include <unordered_map>
 
 // clang-format off
@@ -296,6 +297,9 @@ class ProcessFunctionLibraryRuntime {
     // Indicates whether this function has remote outputs.
     bool has_remote_outputs;
 
+    //  Indicates if running this function synchronously is both allowed + safe.
+    bool enable_sync_execution;
+
     // Maps the device name to the information about the component function
     // be run on this device.
     std::unordered_map<string, ComponentFunctionData> glue_;
@@ -404,7 +408,14 @@ class ProcessFunctionLibraryRuntime {
                                FunctionLibraryRuntime::Handle handle,
                                const MultiDeviceFunctionData** data) const;
 
-  void RunMultiDevice(
+  Status RunMultiDeviceSync(
+      const FunctionLibraryRuntime::Options& opts,
+      FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
+      std::function<Status(const ComponentFunctionData& comp_data,
+                           InternalArgs* args)>
+          get_component_args) const;
+
+  void RunMultiDeviceAsync(
       const FunctionLibraryRuntime::Options& opts,
       FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
       std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,

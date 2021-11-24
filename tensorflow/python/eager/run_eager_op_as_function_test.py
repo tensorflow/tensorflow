@@ -187,9 +187,13 @@ class RunEagerOpAsFunctionInternalsTest(test.TestCase):
 
     default_executor = test_util.TestDelta("flr_executor", "default")
     single_threaded = test_util.TestDelta("flr_executor", "single_threaded")
+    run_async = test_util.TestDelta("pflr_runsync", "async")
+    run_sync = test_util.TestDelta("pflr_runsync", "sync")
     array_ops.fill([2], constant_op.constant(7, dtype=dtypes.int64))
     assert default_executor.Get() == 0
     assert single_threaded.Get() > 0
+    assert run_async.Get() == 0
+    assert run_sync.Get() > 0
 
   @test_util.enable_eager_op_as_function
   def testPartitionedGraphUsesDefaultExecutor(self):
@@ -198,10 +202,14 @@ class RunEagerOpAsFunctionInternalsTest(test.TestCase):
 
     default_executor = test_util.TestDelta("flr_executor", "default")
     single_threaded = test_util.TestDelta("flr_executor", "single_threaded")
+    run_async = test_util.TestDelta("pflr_runsync", "async")
+    run_sync = test_util.TestDelta("pflr_runsync", "sync")
     partitioned = test_util.TestDelta("pflr_sync_safety", "partitioned")
     array_ops.fill([2], constant_op.constant(7, dtype=dtypes.int64))
     assert default_executor.Get() > 0
     assert single_threaded.Get() == 0
+    assert run_async.Get() > 0
+    assert run_sync.Get() == 0
     assert partitioned.Get() > 0
 
 if __name__ == "__main__":
