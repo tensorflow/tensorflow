@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for reading and writing variables."""
+import re
 
 import numpy as np
 
@@ -62,7 +63,8 @@ class VariableOpsTest(xla_test.XLATestCase):
         with ops.control_dependencies([x]):
           y = v.read_value()
         self.assertAllClose(
-            np.array([[2, 1 + 2j], [4, 5]]).astype(dtype), sess.run(y, {p: 1}))
+            np.array([[2, 1 + 2j], [4, 5]]).astype(dtype),
+            sess.run(y, {p: [[1, 1], [1, 1]]}))
 
   def testSparseRead0DIndices(self):
     for dtype in self.numeric_types:
@@ -130,6 +132,24 @@ class VariableOpsTest(xla_test.XLATestCase):
         self.assertEqual(s64.dtype, np.int64)
         self.assertAllEqual(s32, [2, 3])
         self.assertAllEqual(s64, [2, 3])
+
+  def testInvalidShape(self):
+    pattern = re.compile("shapes must be equal", re.IGNORECASE)
+    # test invalid shape on assign_add in XLA
+    with self.assertRaisesRegex(Exception, pattern):
+      with self.session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+        sess.run(variables.variables_initializer([v]))
+        x = v.assign_add(1)
+        sess.run(x)
+
+    # test invalid shape raised on assign_sub in XLA
+    with self.assertRaisesRegex(Exception, pattern):
+      with self.session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+        sess.run(variables.variables_initializer([v]))
+        x = v.assign_sub(1)
+        sess.run(x)
 
   def testReadWrite(self):
     """Tests initialization, reading, and writing a resource variable."""

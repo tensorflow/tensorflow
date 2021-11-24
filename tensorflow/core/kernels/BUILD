@@ -2899,6 +2899,7 @@ tf_kernel_library(
         ":dense_update_functor",
         ":gather_functor",
         ":gather_nd_op",
+        ":resource_variable_util",
         ":scatter_functor",
         ":training_op_helpers",
         ":variable_ops",
@@ -2909,6 +2910,15 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util:determinism_for_kernels",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "resource_variable_util",
+    srcs = ["resource_variable_util.cc"],
+    hdrs = ["resource_variable_util.h"],
+    deps = [
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -6248,6 +6258,7 @@ filegroup(
         "relu_op_functor.h",
         "reshape_util.h",
         "resource_variable_ops.h",
+        "resource_variable_util.h",
         "reverse_op.h",
         "roll_op.h",
         "save_restore_tensor.h",
@@ -6518,6 +6529,7 @@ filegroup(
         "relu_op.cc",
         "reshape_util.cc",
         "resource_variable_ops.cc",
+        "resource_variable_util.cc",
         "restore_op.cc",
         "reverse_op.cc",
         "roll_op.cc",
