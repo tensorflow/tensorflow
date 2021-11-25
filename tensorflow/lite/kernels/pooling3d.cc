@@ -225,5 +225,21 @@ TfLiteRegistration* Register_MAX_POOL_3D() {
 }
 
 }  // namespace builtin
+
+namespace custom {
+
+// The custom average pooling 3d op registered in custom_ops_register.h uses
+// Register_AVG_POOL_3D, keep it for backward compatibility. Remove it once we
+// get rid of the custom average pooling 3d op.
+TfLiteRegistration* Register_AVG_POOL_3D() {
+  static TfLiteRegistration r = {
+      tflite::ops::builtin::pooling_3d::Init,
+      tflite::ops::builtin::pooling_3d::Free,
+      tflite::ops::builtin::pooling_3d::GenericPrepare,
+      tflite::ops::builtin::pooling_3d::AverageEval};
+  return &r;
+}
+
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite
