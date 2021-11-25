@@ -482,7 +482,7 @@ StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
         // Create core runtime.
         auto expected_core_runtime = tfrt::CoreRuntime::Create(
             [](const tfrt::DecodedDiagnostic& diag) {
-              LOG(ERROR) << diag.message;
+              LOG(ERROR) << tfrt::StrCat(diag);
             },
             tfrt::CreateMallocAllocator(), std::move(work_queue),
             kDefaultHostDeviceName);
@@ -608,7 +608,7 @@ static Status ExecuteBef(const std::string& module_name,
 
   // Report error if any.
   if (auto* error = result->GetErrorIfPresent())
-    return tensorflow::errors::Internal(error->message);
+    return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
   return MaybeSyncAndProfile(run_options, start_micros,
                              block_host_until_done ? main_stream : nullptr);
