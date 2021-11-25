@@ -243,6 +243,22 @@ class ProcessFunctionLibraryRuntime {
 #endif  // IS_MOBILE_PLATFORM
   };
 
+  // Structure detailing the asynchronous assumptions of a component function,
+  // such as whether it can support synchronous execution and any information
+  // needed to execute in proper order to resolve inter-subgraph dependencies.
+  class AsyncAttributes {
+   public:
+    enum Summary { kSafeForSync = 0, kSendOnly, kRecvOnly, kAsyncRequired };
+
+    AsyncAttributes() : summary_(kSafeForSync) {}
+    explicit AsyncAttributes(const Graph* graph) : summary_(Summarize(graph)) {}
+    Summary summary() const { return summary_; }
+
+   private:
+    Summary summary_;
+    static Summary Summarize(const Graph* graph);
+  };
+
   // Structure to keep track of how a component function (a single-device
   // piece of a multi-device function) fits into the multi-device function.
   struct ComponentFunctionData {
@@ -262,6 +278,8 @@ class ProcessFunctionLibraryRuntime {
     // ret_alloc_attrs[i] are the allocator attributes of the i-th return value
     // of the component function.
     std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+    AsyncAttributes async_attributes;
   };
 
   // Data structure holding information for a single instantiated multi-device
@@ -403,6 +421,9 @@ class ProcessFunctionLibraryRuntime {
                                  const ComponentFunctionData& comp_data,
                                  InternalArgs* comp_args);
 #endif  // IS_MOBILE_PLATFORM
+
+  std::vector<string> GetOrderedSubgraphs(
+      const MultiDeviceFunctionData* data) const;
 
   Status PrepareRunMultiDevice(const FunctionLibraryRuntime::Options& opts,
                                FunctionLibraryRuntime::Handle handle,

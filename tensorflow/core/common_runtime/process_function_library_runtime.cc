@@ -671,27 +671,48 @@ Status ValidateMultiDeviceOptions(
   return Status::OK();
 }
 
-bool SafeForSyncExecution(
-    const std::unordered_map<string, std::unique_ptr<Graph>>& subgraphs) {
-  if (subgraphs.size() != 1) {
-    metrics::IncrementTestCounter("pflr_sync_safety", "partitioned");
-    return false;
-  }
-  // Old-style control flow can deadlock with the single-threaded executor.
-  const auto& nodes = subgraphs.begin()->second->nodes();
-  auto safe_op = [](const Node* node) {
-    return ValidateOpIsSafeForSyncExecution(*node).ok();
-  };
-  bool all_safe_ops = std::all_of(nodes.begin(), nodes.end(), safe_op);
-  if (!all_safe_ops) {
-    metrics::IncrementTestCounter("pflr_sync_safety", "unsafe_op");
-    return false;
-  }
-  metrics::IncrementTestCounter("pflr_sync_safety", "safe");
-  return true;
-}
-
 }  // anonymous namespace
+
+ProcessFunctionLibraryRuntime::AsyncAttributes::Summary
+ProcessFunctionLibraryRuntime::AsyncAttributes::Summarize(const Graph* graph) {
+  bool has_send_op = false;
+  bool has_recv_op = false;
+  bool has_unsafe_op = false;
+  for (const Node* node : graph->nodes()) {
+    if (node->IsSend() || node->IsHostSend()) {
+      has_send_op = true;
+    }
+    if (node->IsRecv() || node->IsHostRecv()) {
+      has_recv_op = true;
+    }
+    if (!ValidateOpIsSafeForSyncExecution(*node).ok()) {
+      has_unsafe_op = true;
+    }
+  }
+  // (1) Anything completely unsupported?
+  if (has_unsafe_op) {
+    metrics::IncrementTestCounter("subgraph_async_summary", "unsafe_op");
+    return AsyncAttributes::kAsyncRequired;
+  }
+  // (2) That only leaves send/recv.  If neither, then it's safe.
+  if (!has_send_op && !has_recv_op) {
+    metrics::IncrementTestCounter("subgraph_async_summary", "safe_for_sync");
+    return AsyncAttributes::kSafeForSync;
+  }
+  // (3) If each subgraph has only send or only recv, then it's possible to
+  // order them to run sequentially without deadlock.
+  if (has_send_op && !has_recv_op) {
+    metrics::IncrementTestCounter("subgraph_async_summary", "send_only");
+    return AsyncAttributes::kSendOnly;
+  }
+  if (has_recv_op && !has_send_op) {
+    metrics::IncrementTestCounter("subgraph_async_summary", "recv_only");
+    return AsyncAttributes::kRecvOnly;
+  }
+  // Otherwise, assume it's unsupported.
+  metrics::IncrementTestCounter("subgraph_async_summary", "other");
+  return AsyncAttributes::kAsyncRequired;
+}
 
 Status GetGraphAndArgRets(
     const string& function_name, AttrSlice attrs, const FunctionDef* fdef,
@@ -1005,10 +1026,23 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       fn();
     }
   };
-  // Currently, only single-device graphs support synchronous execution.
-  bool safe_for_sync_execution = SafeForSyncExecution(subgraphs);
-  data->enable_sync_execution =
-      options.allow_small_function_optimizations && safe_for_sync_execution;
+
+  // Before instantiating component functions, determine synchronous execution.
+  data->enable_sync_execution = false;
+  if (options.allow_small_function_optimizations) {
+    data->enable_sync_execution = true;
+    for (const auto& pair : subgraphs) {
+      ComponentFunctionData* comp_data = &data->glue_[pair.first];
+      const Graph* subgraph = pair.second.get();
+      comp_data->async_attributes = AsyncAttributes(subgraph);
+      if (comp_data->async_attributes.summary() ==
+          AsyncAttributes::kAsyncRequired) {
+        data->enable_sync_execution = false;
+      }
+    }
+  }
+
+  // Instantiate each component function (subgraph).
   for (const auto& pair : subgraphs) {
     Status* status = &instantiate_status[i];
     string unique_name = name_generator.GetName();
@@ -1178,6 +1212,28 @@ Status ProcessFunctionLibraryRuntime::PrepareRunMultiDevice(
   return Status::OK();
 }
 
+std::vector<string> ProcessFunctionLibraryRuntime::GetOrderedSubgraphs(
+    const MultiDeviceFunctionData* data) const {
+  std::vector<string> subgraph_keys;
+  subgraph_keys.reserve(data->glue_.size());
+  for (const auto& pair : data->glue_) {
+    subgraph_keys.push_back(pair.first);
+  }
+  auto send_first_ordering = [&](const string& a, const string& b) {
+    auto a_summary = data->glue_.at(a).async_attributes.summary();
+    auto b_summary = data->glue_.at(b).async_attributes.summary();
+    if (a_summary == b_summary) {
+      return false;
+    }
+    if (a_summary == AsyncAttributes::kSendOnly) {
+      return true;
+    }
+    return false;
+  };
+  std::sort(subgraph_keys.begin(), subgraph_keys.end(), send_first_ordering);
+  return subgraph_keys;
+}
+
 Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle outer_handle, std::vector<FunctionRet>* rets,
@@ -1191,9 +1247,26 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
   }
 
   FunctionLibraryRuntime::Options opts_copy = opts;
-  for (const auto& pair : data->glue_) {
-    const string& target = pair.first;
-    const ComponentFunctionData& comp_data = pair.second;
+
+  // Sort the subgraphs topologically before execution to avoid deadlock:
+  //
+  // Because subgraphs will not execute in parallel here, dependencies between
+  // subgraphs cannot be resolved automatically. In contrast, with multi-
+  // threaded execution, we launch all subgraphs at once, asynchronously, and
+  // allow any to block mid-execution while its dependencies are resolved.
+  //
+  // In this synchronous execution path, currently supported ops with inter-
+  // subgraph dependencies are send and receive.  As `_Send` and `_HostSend`
+  // are non-blocking, we run subgraphs with those first, and those with
+  // the blocking '_Recv' and '_HostRecv' ops will have their dependencies
+  // resolved before execution.
+  //
+  // We assume that the partitioning has a valid deadlock-free ordering and the
+  // safety of running synchronously has already been confirmed by this point.
+  std::vector<string> subgraph_keys = GetOrderedSubgraphs(data);
+
+  for (const string& target : subgraph_keys) {
+    const ComponentFunctionData& comp_data = data->glue_.at(target);
     FunctionLibraryRuntime::Handle comp_handle = comp_data.handle;
 
     opts_copy.args_alloc_attrs = comp_data.arg_alloc_attrs;
