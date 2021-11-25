@@ -33,9 +33,8 @@ namespace {
 bool isExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
                    mhlo::DynamicReshapeOp reshape) {
   auto output_shape =
-      shapeComponentAnalysis.dimensionsForShapeTensor(reshape.output_shape());
-  auto operand_shape =
-      shapeComponentAnalysis.dimensionsForShape(reshape.operand());
+      shapeComponentAnalysis.GetValueInfo(reshape.output_shape());
+  auto operand_shape = shapeComponentAnalysis.GetShapeInfo(reshape.operand());
   if (!output_shape || !operand_shape ||
       output_shape->size() <= operand_shape->size())
     return false;
@@ -61,8 +60,7 @@ struct ReshapeToExpandShape final
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
     if (!isExpandShape(shapeComponentAnalysis, op)) return failure();
-    auto output_shape =
-        shapeComponentAnalysis.dimensionsForShapeTensor(op.output_shape());
+    auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
     SmallVector<ReassociationExprs> reassociations(output_shape->size());
     auto it = reassociations.begin();
     int64_t runningIndex = 0;
@@ -92,7 +90,7 @@ struct RemoveComputeReshapeShape final
   LogicalResult matchAndRewrite(mhlo::ComputeReshapeShapeOp op,
                                 PatternRewriter &rewriter) const override {
     auto dynamic_shape =
-        shapeComponentAnalysis.dimensionsForShapeTensor(op.dynamic_shape());
+        shapeComponentAnalysis.GetValueInfo(op.dynamic_shape());
     if (!dynamic_shape) return failure();
 
     if (llvm::any_of(*dynamic_shape, [](const auto &dim) {
@@ -116,14 +114,13 @@ struct RemoveRedundantCstrReshapable final
                                 PatternRewriter &rewriter) const override {
     // Get shape analysis info for the number of elements.
     auto numElementsDims =
-        shapeComponentAnalysis.dimensionsForShapeTensor(op.num_elements());
+        shapeComponentAnalysis.GetValueInfo(op.num_elements());
     if (!numElementsDims) return failure();
     assert(numElementsDims->size() == 1 && "expect one value for a scalar");
     auto numElementsDim = numElementsDims->front();
 
     // Get shape analysis info for the dynamic shape.
-    auto dynShapeDims =
-        shapeComponentAnalysis.dimensionsForShapeTensor(op.dynamic_shape());
+    auto dynShapeDims = shapeComponentAnalysis.GetValueInfo(op.dynamic_shape());
     if (!dynShapeDims) return failure();
 
     // We can handle two cases:

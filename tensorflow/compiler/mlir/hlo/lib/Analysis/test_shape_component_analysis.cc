@@ -40,7 +40,7 @@ struct TestShapeComponentAnalysisPass
 
       ShapeComponentAnalysis shape_component;
       Value result = op->getResults().front();
-      auto dims = shape_component.dimensionsForShapeTensor(result);
+      auto dims = shape_component.GetValueInfo(result);
       result.print(llvm::outs());
       llvm::outs() << ":\n";
       if (dims) {
