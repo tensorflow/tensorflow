@@ -336,6 +336,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite:string_util",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -347,6 +348,7 @@ cc_library(
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:framework",
+            "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         ],
     }),
 )
@@ -358,8 +360,12 @@ tf_cc_test(
     deps = [
         ":util",
         "//tensorflow/core:framework",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/lite:string",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
