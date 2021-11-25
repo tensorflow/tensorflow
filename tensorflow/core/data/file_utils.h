@@ -12,24 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/utils.h"
+#ifndef TENSORFLOW_CORE_DATA_FILE_UTILS_H_
+#define TENSORFLOW_CORE_DATA_FILE_UTILS_H_
 
 #include <string>
 
-#include "tensorflow/core/framework/metrics.h"
-
 namespace tensorflow {
 namespace data {
+namespace file_utils {
 
-void AddLatencySample(int64_t microseconds) {
-  metrics::RecordTFDataGetNextDuration(microseconds);
-}
+// Returns a modified file name that can be used to do implementation specific
+// file name manipulation/optimization.
+std::string TranslateFileName(const std::string& fname);
 
-void IncrementThroughput(int64_t bytes) {
-  metrics::RecordTFDataBytesFetched(bytes);
-}
-
-std::string TranslateFileName(const std::string& fname) { return fname; }
-
+}  // namespace file_utils
 }  // namespace data
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_DATA_PORT_UTILS_H_
