@@ -549,18 +549,6 @@ LogicalResult ApplyPatternsWithShapeResolution(
     return failure();
   }
 
-  // Check that constant attributes types and op types match up. If the lowering
-  // needs to change a type (e.g. fp16 -> fp32) its possible the return type
-  // could be incorrect.
-  //
-  // This should be investigate for whether it is still necessary due to quant
-  // type stripping changing.
-  func.walk([&](tosa::ConstOp op) {
-    auto ety = op.value().getType().getElementType();
-    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
-    op.getResult().setType(new_ty);
-  });
-
   // Insert UnrealizedConversionCasts to guarantee ReturnOp agrees with
   // the FuncOp type.
   IRRewriter rewriter(func.getContext());
