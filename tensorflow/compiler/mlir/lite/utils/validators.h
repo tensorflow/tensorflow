@@ -60,6 +60,9 @@ bool TFIntListIs1XY1(const Attribute attr);
 bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
                       IntegerAttr *y, IntegerAttr *z);
 
+// Returns true if the attribute is an integer list of the form [1, X, Y, Z, 1].
+bool TFIntListIs1XYZ1(const Attribute attr);
+
 // Returns true if every element of the attribute is 1. All elements of `attr`
 // must be `IntegerAttr`.
 bool TFIntListIsAllOnes(const Attribute attr);

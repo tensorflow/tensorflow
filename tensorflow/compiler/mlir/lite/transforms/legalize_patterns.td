@@ -92,9 +92,13 @@ def ConvertTfConstToStdConst : Pat<
 // Unary ops patterns.
 //===----------------------------------------------------------------------===//
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
+def IsDataFormatNDHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NDHWC\"">;
 
 // Constraint that Attr has values [1, X, Y, 1]
 def IsIntList1XY1 : AttrConstraint<CPred<"TFIntListIs1XY1($_self)">>;
+
+// Constraint that Attr has values [1, X, Y, Z, 1]
+def IsIntList1XYZ1 : AttrConstraint<CPred<"TFIntListIs1XYZ1($_self)">>;
 
 // Constraint that values in list attribute are all ones.
 def IsAllOnes : AttrConstraint<CPred<"TFIntListIsAllOnes($_self)">>;
@@ -542,3 +546,34 @@ def LegalizeMultinomial : Pat<
   (TF_MultinomialOp $logits, $num_samples, $seed, $seed2),
   (TFL_MultinomialOp $logits, $num_samples, (convertIntAttrTo64Bit $seed),
    (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeAveragePool3D : Pat<(TF_AvgPool3DOp $input,
+              IsIntList1XYZ1:$ksize,
+              IsIntList1XYZ1:$strides,
+              $padding,
+              IsDataFormatNDHWC:$format),
+          (TFL_AveragePool3DOp $input,
+              /*filter_depth=*/ExtractI32At<1>:$ksize,
+              /*filter_height=*/ExtractI32At<2>:$ksize,
+              /*filter_width=*/ExtractI32At<3>:$ksize,
+              /*padding=*/$padding,
+              /*stride_d=*/ExtractI32At<1>:$strides,
+              /*stride_h=*/ExtractI32At<2>:$strides,
+              /*stride_w=*/ExtractI32At<3>:$strides,
+              /*fused_activation_function=*/TFL_AF_None)>;
+
+def LegalizeMaxPool3D : Pat<
+          (TF_MaxPool3DOp $input,
+              IsIntList1XYZ1:$ksize,
+              IsIntList1XYZ1:$strides,
+              $padding,
+              IsDataFormatNDHWC:$format),
+          (TFL_MaxPool3DOp $input,
+              /*padding=*/$padding,
+              /*stride_d=*/ExtractI32At<1>:$strides,
+              /*stride_w=*/ExtractI32At<3>:$strides,
+              /*stride_h=*/ExtractI32At<2>:$strides,
+              /*filter_depth=*/ExtractI32At<1>:$ksize,
+              /*filter_width=*/ExtractI32At<3>:$ksize,
+              /*filter_height=*/ExtractI32At<2>:$ksize,
+              /*fused_activation_function=*/TFL_AF_None)>;

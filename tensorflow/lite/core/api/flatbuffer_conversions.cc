@@ -844,6 +844,24 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_AVERAGE_POOL_3D:
+    case BuiltinOperator_MAX_POOL_3D: {
+      auto params = safe_allocator.Allocate<TfLitePool3DParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params = op->builtin_options_as_Pool3DOptions()) {
+        params->padding = ConvertPadding(schema_params->padding());
+        params->activation =
+            ConvertActivation(schema_params->fused_activation_function());
+        params->stride_depth = schema_params->stride_d();
+        params->stride_width = schema_params->stride_w();
+        params->stride_height = schema_params->stride_h();
+        params->filter_depth = schema_params->filter_depth();
+        params->filter_width = schema_params->filter_width();
+        params->filter_height = schema_params->filter_height();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.

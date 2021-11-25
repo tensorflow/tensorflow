@@ -383,6 +383,8 @@ enum BuiltinOperator : int32 {
   BUCKETIZE = 147,
   RANDOM_UNIFORM = 148,
   MULTINOMIAL = 149,
+  AVERAGE_POOL_3D = 150,
+  MAX_POOL_3D = 151,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -503,6 +505,7 @@ union BuiltinOptions {
   AssignVariableOptions,
   RandomOptions,
   BucketizeOptions,
+  Pool3DOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -1095,6 +1098,17 @@ table RandomOptions {
 
 table BucketizeOptions {
   boundaries: [float];  // The bucket boundaries.
+}
+
+table Pool3DOptions {
+  padding:Padding;
+  stride_d:int;
+  stride_w:int;
+  stride_h:int;
+  filter_depth:int;
+  filter_width:int;
+  filter_height:int;
+  fused_activation_function:ActivationFunctionType;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

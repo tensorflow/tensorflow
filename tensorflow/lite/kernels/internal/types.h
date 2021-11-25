@@ -1008,6 +1008,22 @@ struct LeakyReluParams {
   int32_t output_shift_identity;
 };
 
+struct Pool3DParams {
+  Padding3DValues padding_values;
+  int stride_depth;
+  int stride_height;
+  int stride_width;
+  int filter_depth;
+  int filter_height;
+  int filter_width;
+  // int8_t and int16_t activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
+};
+
 template <typename P>
 inline void SetActivationParams(float min, float max, P* params) {
   params->float_activation_min = min;

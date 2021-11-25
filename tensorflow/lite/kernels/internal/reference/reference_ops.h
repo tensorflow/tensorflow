@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/neg.h"
 #include "tensorflow/lite/kernels/internal/reference/pad.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
+#include "tensorflow/lite/kernels/internal/reference/pooling3d.h"
 #include "tensorflow/lite/kernels/internal/reference/prelu.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"

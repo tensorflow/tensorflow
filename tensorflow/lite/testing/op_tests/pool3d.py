@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Test configs for pool operators."""
+"""Test configs for pool 3d operators."""
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
-from tensorflow.lite.testing.zip_test_utils import ExtraConvertOptions
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
@@ -47,6 +46,18 @@ def make_pool3d_tests(pool_op):
                             [3, 16, 15, 14, 3]],
             "padding": ["SAME", "VALID"],
             "data_format": ["NDHWC"],
+            "fully_quantize": [False],
+            "quant_16x8": [False],
+        },
+        {
+            "ksize": [[1, 1, 1, 1, 1], [1, 2, 2, 2, 1], [1, 2, 3, 4, 1]],
+            "strides": [[1, 1, 1, 1, 1], [1, 2, 1, 2, 1], [1, 2, 2, 4, 1]],
+            "input_shape": [[1, 1, 1, 1, 1], [1, 16, 15, 14, 1],
+                            [3, 16, 15, 14, 3]],
+            "padding": ["SAME", "VALID"],
+            "data_format": ["NDHWC"],
+            "fully_quantize": [True],
+            "quant_16x8": [True, False],
         },
     ]
 
@@ -62,18 +73,16 @@ def make_pool3d_tests(pool_op):
       return [input_tensor], [out]
 
     def build_inputs(parameters, sess, inputs, outputs):
-      input_values = create_tensor_data(tf.float32, parameters["input_shape"])
+      input_values = create_tensor_data(tf.float32, parameters["input_shape"],
+                                        min_value=-1, max_value=1)
       return [input_values], sess.run(
           outputs, feed_dict=dict(zip(inputs, [input_values])))
 
-    extra_convert_options = ExtraConvertOptions()
-    extra_convert_options.allow_custom_ops = True
     make_zip_of_tests(
         options,
         test_parameters,
         build_graph,
         build_inputs,
-        extra_convert_options,
         expected_tf_failures=expected_tf_failures)
 
   return f
@@ -81,9 +90,9 @@ def make_pool3d_tests(pool_op):
 
 @register_make_test_function()
 def make_avg_pool3d_tests(options):
-  make_pool3d_tests(tf.nn.avg_pool3d)(options, expected_tf_failures=6)
+  make_pool3d_tests(tf.nn.avg_pool3d)(options, expected_tf_failures=18)
 
 
 @register_make_test_function()
 def make_max_pool3d_tests(options):
-  make_pool3d_tests(tf.nn.max_pool3d)(options, expected_tf_failures=6)
+  make_pool3d_tests(tf.nn.max_pool3d)(options, expected_tf_failures=18)

@@ -94,6 +94,13 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_AVERAGE_POOL_3D:
+    case BuiltinOperator_MAX_POOL_3D:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
+      break;
     case BuiltinOperator_BATCH_MATMUL: {
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};

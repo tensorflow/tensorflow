@@ -610,6 +610,7 @@ BUILTIN_KERNEL_SRCS = [
     "pack.cc",
     "pad.cc",
     "pooling.cc",
+    "pooling3d.cc",
     "pow.cc",
     "quantize.cc",
     "random_ops.cc",
@@ -1872,7 +1873,6 @@ cc_test(
     size = "small",
     srcs = ["pooling3d_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",

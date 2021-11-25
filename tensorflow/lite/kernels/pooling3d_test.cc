@@ -20,9 +20,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/kernels/custom_ops_register.h"
+
+#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -38,8 +39,8 @@ class BasePoolingOpModel : public SingleOpModel {
  public:
   BasePoolingOpModel(PoolType pool_type, TensorData input, int filter_d,
                      int filter_h, int filter_w, TensorData output,
-                     TfLitePadding padding = kTfLitePaddingValid,
-                     int stride_d = 2, int stride_h = 2, int stride_w = 2) {
+                     Padding padding = Padding_VALID, int stride_d = 2,
+                     int stride_h = 2, int stride_w = 2) {
     if (input.type == TensorType_FLOAT32) {
       // Clear quantization params.
       input.min = input.max = 0.f;
@@ -47,15 +48,17 @@ class BasePoolingOpModel : public SingleOpModel {
     }
     input_ = AddInput(input);
     output_ = AddOutput(output);
-
-    std::vector<uint8_t> custom_option = CreateCustomOptions(
-        stride_d, stride_h, stride_w, filter_d, filter_h, filter_w, padding);
     if (pool_type == kAverage) {
-      SetCustomOp("AveragePool3D", custom_option,
-                  ops::custom::Register_AVG_POOL_3D);
+      SetBuiltinOp(BuiltinOperator_AVERAGE_POOL_3D,
+                   BuiltinOptions_Pool3DOptions,
+                   CreatePool3DOptions(builder_, padding, stride_d, stride_w,
+                                       stride_h, filter_d, filter_w, filter_h)
+                       .Union());
     } else {
-      SetCustomOp("MaxPool3D", custom_option,
-                  ops::custom::Register_MAX_POOL_3D);
+      SetBuiltinOp(BuiltinOperator_MAX_POOL_3D, BuiltinOptions_Pool3DOptions,
+                   CreatePool3DOptions(builder_, padding, stride_d, stride_w,
+                                       stride_h, filter_d, filter_w, filter_h)
+                       .Union());
     }
     BuildInterpreter({GetShape(input_)});
   }
@@ -72,41 +75,6 @@ class BasePoolingOpModel : public SingleOpModel {
  protected:
   int input_;
   int output_;
-
- private:
-  std::vector<uint8_t> CreateCustomOptions(int stride_depth, int stride_height,
-                                           int stride_width, int filter_depth,
-                                           int filter_height, int filter_width,
-                                           TfLitePadding padding) {
-    auto flex_builder = std::make_unique<flexbuffers::Builder>();
-    size_t map_start = flex_builder->StartMap();
-    flex_builder->String("data_format", "NDHWC");
-    if (padding == kTfLitePaddingValid) {
-      flex_builder->String("padding", "VALID");
-    } else {
-      flex_builder->String("padding", "SAME");
-    }
-
-    auto start = flex_builder->StartVector("ksize");
-    flex_builder->Add(1);
-    flex_builder->Add(filter_depth);
-    flex_builder->Add(filter_height);
-    flex_builder->Add(filter_width);
-    flex_builder->Add(1);
-    flex_builder->EndVector(start, /*typed=*/true, /*fixed=*/false);
-
-    auto strides_start = flex_builder->StartVector("strides");
-    flex_builder->Add(1);
-    flex_builder->Add(stride_depth);
-    flex_builder->Add(stride_height);
-    flex_builder->Add(stride_width);
-    flex_builder->Add(1);
-    flex_builder->EndVector(strides_start, /*typed=*/true, /*fixed=*/false);
-
-    flex_builder->EndMap(map_start);
-    flex_builder->Finish();
-    return flex_builder->GetBuffer();
-  }
 };
 
 template <>
@@ -121,15 +89,15 @@ std::vector<float> BasePoolingOpModel<float>::GetOutput() {
 
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(AveragePoolingOpTest, InvalidDimSize) {
-  EXPECT_DEATH(BasePoolingOpModel<float> m(
-                   kAverage,
-                   /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
-                   /*filter_d=*/2,
-                   /*filter_h=*/2, /*filter_w=*/2,
-                   /*output=*/{TensorType_FLOAT32, {}},
-                   /*padding=*/kTfLitePaddingValid, /*stride_d=*/1,
-                   /*stride_h=*/1, /*stride_w=*/1),
-               "NumDimensions.input. != 5 .4 != 5.");
+  EXPECT_DEATH(
+      BasePoolingOpModel<float> m(kAverage,
+                                  /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
+                                  /*filter_d=*/2,
+                                  /*filter_h=*/2, /*filter_w=*/2,
+                                  /*output=*/{TensorType_FLOAT32, {}},
+                                  /*padding=*/Padding_VALID, /*stride_d=*/1,
+                                  /*stride_h=*/1, /*stride_w=*/1),
+      "NumDimensions.input. != 5 .4 != 5.");
 }
 
 TEST(AveragePoolingOpTest, ZeroStride) {
@@ -139,7 +107,7 @@ TEST(AveragePoolingOpTest, ZeroStride) {
                    /*filter_d=*/2,
                    /*filter_h=*/2, /*filter_w=*/2,
                    /*output=*/{TensorType_FLOAT32, {}},
-                   /*padding=*/kTfLitePaddingValid, /*stride_d=*/0,
+                   /*padding=*/Padding_VALID, /*stride_d=*/0,
                    /*stride_h=*/0, /*stride_w=*/0),
                "Cannot allocate tensors");
 }
@@ -185,8 +153,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingSameStride1) {
       /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
       /*filter_d=*/2,
       /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375},
-      kTfLitePaddingSame,
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375}, Padding_SAME,
       /*stride_d=*/1, /*stride_h=*/1,
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
@@ -202,8 +169,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingValidStride1) {
       /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
       /*filter_d=*/2,
       /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375},
-      kTfLitePaddingValid,
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375}, Padding_VALID,
       /*stride_d=*/1, /*stride_h=*/1,
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
@@ -241,8 +207,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingSameStride1) {
       /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
       /*filter_d=*/2,
       /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375},
-      kTfLitePaddingSame,
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375}, Padding_SAME,
       /*stride_d=*/1, /*stride_h=*/1,
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
@@ -257,8 +222,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingValidStride1) {
       /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
       /*filter_d=*/2,
       /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375},
-      kTfLitePaddingValid,
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375}, Padding_VALID,
       /*stride_d=*/1, /*stride_h=*/1,
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});

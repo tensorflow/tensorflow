@@ -401,10 +401,6 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
     builtin_op_resolver_->AddCustom("IRFFT2D",
                                     tflite::ops::custom::Register_IRFFT2D());
-    builtin_op_resolver_->AddCustom(
-        "AvgPool3D", tflite::ops::custom::Register_AVG_POOL_3D());
-    builtin_op_resolver_->AddCustom(
-        "MaxPool3D", tflite::ops::custom::Register_MAX_POOL_3D());
     builtin_op_resolver_->AddCustom("Roll",
                                     tflite::ops::custom::Register_ROLL());
     tflite::ops::custom::AddGradientOps(builtin_op_resolver_);

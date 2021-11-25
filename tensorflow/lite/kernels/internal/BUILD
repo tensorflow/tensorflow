@@ -507,6 +507,7 @@ cc_library(
         "reference/non_max_suppression.h",
         "reference/pad.h",
         "reference/pooling.h",
+        "reference/pooling3d.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",

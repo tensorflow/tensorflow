@@ -337,6 +337,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_RANDOM_STANDARD_NORMAL());
   AddBuiltin(BuiltinOperator_BUCKETIZE, Register_BUCKETIZE());
   AddBuiltin(BuiltinOperator_RANDOM_UNIFORM, Register_RANDOM_UNIFORM());
+  AddBuiltin(BuiltinOperator_AVERAGE_POOL_3D, Register_AVERAGE_POOL_3D());
+  AddBuiltin(BuiltinOperator_MAX_POOL_3D, Register_MAX_POOL_3D());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

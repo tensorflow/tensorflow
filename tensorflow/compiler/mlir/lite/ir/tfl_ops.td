@@ -5236,6 +5236,69 @@ or unnormalized log-probabilities provided for all classes.
   let customOption = "RandomOptions";
 }
 
+def TFL_AveragePool3DOp: TFL_Op<"average_pool_3d", [
+    TFL_OperandHasRank<0, 5>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+  let summary = "Average Pool 3D operator";
+
+  let description = [{
+    Performs average-pooling operation on 3D input.
+  }];
+
+  let arguments = (
+    ins TFL_TensorOf<[F32, QI8, QI16]>:$input,
+    I32Attr:$filter_depth,
+    I32Attr:$filter_height,
+    I32Attr:$filter_width,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_d,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w,
+    TFL_AFAttr:$fused_activation_function
+  );
+
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "Pool3DOptions";
+}
+
+def TFL_MaxPool3DOp : TFL_Op<"max_pool_3d", [
+    TFL_OperandHasRank<0, 5>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+  let summary = "Max Pool 3D operator";
+
+  let description = [{
+    Performs max-pooling operation on 3D input.
+  }];
+
+  let arguments = (
+    ins TFL_TensorOf<[F32, QI8, QI16]>:$input,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_d,
+    I32Attr:$stride_w,
+    I32Attr:$stride_h,
+    I32Attr:$filter_depth,
+    I32Attr:$filter_width,
+    I32Attr:$filter_height,
+    TFL_AFAttr:$fused_activation_function
+  );
+
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "Pool3DOptions";
+}
 
 #endif // TFL_OPS
 

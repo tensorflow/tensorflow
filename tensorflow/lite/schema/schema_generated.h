@@ -391,6 +391,9 @@ struct RandomOptionsT;
 struct BucketizeOptions;
 struct BucketizeOptionsT;
 
+struct Pool3DOptions;
+struct Pool3DOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -864,11 +867,13 @@ enum BuiltinOperator {
   BuiltinOperator_BUCKETIZE = 147,
   BuiltinOperator_RANDOM_UNIFORM = 148,
   BuiltinOperator_MULTINOMIAL = 149,
+  BuiltinOperator_AVERAGE_POOL_3D = 150,
+  BuiltinOperator_MAX_POOL_3D = 151,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_MULTINOMIAL
+  BuiltinOperator_MAX = BuiltinOperator_MAX_POOL_3D
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[150] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[152] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1019,13 +1024,15 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[150] {
     BuiltinOperator_RANDOM_STANDARD_NORMAL,
     BuiltinOperator_BUCKETIZE,
     BuiltinOperator_RANDOM_UNIFORM,
-    BuiltinOperator_MULTINOMIAL
+    BuiltinOperator_MULTINOMIAL,
+    BuiltinOperator_AVERAGE_POOL_3D,
+    BuiltinOperator_MAX_POOL_3D
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[151] = {
+  static const char * const names[153] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1176,13 +1183,15 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "BUCKETIZE",
     "RANDOM_UNIFORM",
     "MULTINOMIAL",
+    "AVERAGE_POOL_3D",
+    "MAX_POOL_3D",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_MULTINOMIAL)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_MAX_POOL_3D)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1304,11 +1313,12 @@ enum BuiltinOptions {
   BuiltinOptions_AssignVariableOptions = 113,
   BuiltinOptions_RandomOptions = 114,
   BuiltinOptions_BucketizeOptions = 115,
+  BuiltinOptions_Pool3DOptions = 116,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_BucketizeOptions
+  BuiltinOptions_MAX = BuiltinOptions_Pool3DOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[116] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[117] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1425,13 +1435,14 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[116] {
     BuiltinOptions_ReadVariableOptions,
     BuiltinOptions_AssignVariableOptions,
     BuiltinOptions_RandomOptions,
-    BuiltinOptions_BucketizeOptions
+    BuiltinOptions_BucketizeOptions,
+    BuiltinOptions_Pool3DOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[117] = {
+  static const char * const names[118] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1548,13 +1559,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "AssignVariableOptions",
     "RandomOptions",
     "BucketizeOptions",
+    "Pool3DOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_BucketizeOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_Pool3DOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -2021,6 +2033,10 @@ template<> struct BuiltinOptionsTraits<tflite::RandomOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::BucketizeOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_BucketizeOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::Pool3DOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_Pool3DOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2974,6 +2990,14 @@ struct BuiltinOptionsUnion {
   const tflite::BucketizeOptionsT *AsBucketizeOptions() const {
     return type == BuiltinOptions_BucketizeOptions ?
       reinterpret_cast<const tflite::BucketizeOptionsT *>(value) : nullptr;
+  }
+  tflite::Pool3DOptionsT *AsPool3DOptions() {
+    return type == BuiltinOptions_Pool3DOptions ?
+      reinterpret_cast<tflite::Pool3DOptionsT *>(value) : nullptr;
+  }
+  const tflite::Pool3DOptionsT *AsPool3DOptions() const {
+    return type == BuiltinOptions_Pool3DOptions ?
+      reinterpret_cast<const tflite::Pool3DOptionsT *>(value) : nullptr;
   }
 };
 
@@ -10520,6 +10544,135 @@ inline flatbuffers::Offset<BucketizeOptions> CreateBucketizeOptionsDirect(
 
 flatbuffers::Offset<BucketizeOptions> CreateBucketizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const BucketizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct Pool3DOptionsT : public flatbuffers::NativeTable {
+  typedef Pool3DOptions TableType;
+  tflite::Padding padding = tflite::Padding_SAME;
+  int32_t stride_d = 0;
+  int32_t stride_w = 0;
+  int32_t stride_h = 0;
+  int32_t filter_depth = 0;
+  int32_t filter_width = 0;
+  int32_t filter_height = 0;
+  tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE;
+};
+
+struct Pool3DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef Pool3DOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_PADDING = 4,
+    VT_STRIDE_D = 6,
+    VT_STRIDE_W = 8,
+    VT_STRIDE_H = 10,
+    VT_FILTER_DEPTH = 12,
+    VT_FILTER_WIDTH = 14,
+    VT_FILTER_HEIGHT = 16,
+    VT_FUSED_ACTIVATION_FUNCTION = 18
+  };
+  tflite::Padding padding() const {
+    return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
+  }
+  int32_t stride_d() const {
+    return GetField<int32_t>(VT_STRIDE_D, 0);
+  }
+  int32_t stride_w() const {
+    return GetField<int32_t>(VT_STRIDE_W, 0);
+  }
+  int32_t stride_h() const {
+    return GetField<int32_t>(VT_STRIDE_H, 0);
+  }
+  int32_t filter_depth() const {
+    return GetField<int32_t>(VT_FILTER_DEPTH, 0);
+  }
+  int32_t filter_width() const {
+    return GetField<int32_t>(VT_FILTER_WIDTH, 0);
+  }
+  int32_t filter_height() const {
+    return GetField<int32_t>(VT_FILTER_HEIGHT, 0);
+  }
+  tflite::ActivationFunctionType fused_activation_function() const {
+    return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_PADDING) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_D) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
+           VerifyField<int32_t>(verifier, VT_FILTER_DEPTH) &&
+           VerifyField<int32_t>(verifier, VT_FILTER_WIDTH) &&
+           VerifyField<int32_t>(verifier, VT_FILTER_HEIGHT) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           verifier.EndTable();
+  }
+  Pool3DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Pool3DOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Pool3DOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Pool3DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct Pool3DOptionsBuilder {
+  typedef Pool3DOptions Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_padding(tflite::Padding padding) {
+    fbb_.AddElement<int8_t>(Pool3DOptions::VT_PADDING, static_cast<int8_t>(padding), 0);
+  }
+  void add_stride_d(int32_t stride_d) {
+    fbb_.AddElement<int32_t>(Pool3DOptions::VT_STRIDE_D, stride_d, 0);
+  }
+  void add_stride_w(int32_t stride_w) {
+    fbb_.AddElement<int32_t>(Pool3DOptions::VT_STRIDE_W, stride_w, 0);
+  }
+  void add_stride_h(int32_t stride_h) {
+    fbb_.AddElement<int32_t>(Pool3DOptions::VT_STRIDE_H, stride_h, 0);
+  }
+  void add_filter_depth(int32_t filter_depth) {
+    fbb_.AddElement<int32_t>(Pool3DOptions::VT_FILTER_DEPTH, filter_depth, 0);
+  }
+  void add_filter_width(int32_t filter_width) {
+    fbb_.AddElement<int32_t>(Pool3DOptions::VT_FILTER_WIDTH, filter_width, 0);
+  }
+  void add_filter_height(int32_t filter_height) {
+    fbb_.AddElement<int32_t>(Pool3DOptions::VT_FILTER_HEIGHT, filter_height, 0);
+  }
+  void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(Pool3DOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  explicit Pool3DOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  Pool2DOptionsBuilder &operator=(const Pool2DOptionsBuilder &);
+  flatbuffers::Offset<Pool3DOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<Pool3DOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<Pool3DOptions> CreatePool3DOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::Padding padding = tflite::Padding_SAME,
+    int32_t stride_d = 0,
+    int32_t stride_w = 0,
+    int32_t stride_h = 0,
+    int32_t filter_depth = 0,
+    int32_t filter_width = 0,
+    int32_t filter_height = 0,
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
+  Pool3DOptionsBuilder builder_(_fbb);
+  builder_.add_filter_height(filter_height);
+  builder_.add_filter_width(filter_width);
+  builder_.add_filter_depth(filter_depth);
+  builder_.add_stride_h(stride_h);
+  builder_.add_stride_w(stride_w);
+  builder_.add_stride_d(stride_d);
+  builder_.add_fused_activation_function(fused_activation_function);
+  builder_.add_padding(padding);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<Pool3DOptions> CreatePool3DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Pool3DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code;
@@ -11015,6 +11168,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::BucketizeOptions *builtin_options_as_BucketizeOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_BucketizeOptions ? static_cast<const tflite::BucketizeOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::Pool3DOptions *builtin_options_as_Pool3DOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_Pool3DOptions ? static_cast<const tflite::Pool3DOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -11509,6 +11665,10 @@ template<> inline const tflite::RandomOptions *Operator::builtin_options_as<tfli
 
 template<> inline const tflite::BucketizeOptions *Operator::builtin_options_as<tflite::BucketizeOptions>() const {
   return builtin_options_as_BucketizeOptions();
+}
+
+template<> inline const tflite::Pool3DOptions *Operator::builtin_options_as<tflite::Pool3DOptions>() const {
+  return builtin_options_as_Pool3DOptions();
 }
 
 struct OperatorBuilder {
@@ -15571,6 +15731,53 @@ inline flatbuffers::Offset<BucketizeOptions> CreateBucketizeOptions(flatbuffers:
       _boundaries);
 }
 
+inline Pool3DOptionsT *Pool3DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<Pool3DOptionsT>(new Pool3DOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void Pool3DOptions::UnPackTo(Pool3DOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = padding(); _o->padding = _e; }
+  { auto _e = stride_d(); _o->stride_d = _e; }
+  { auto _e = stride_w(); _o->stride_w = _e; }
+  { auto _e = stride_h(); _o->stride_h = _e; }
+  { auto _e = filter_depth(); _o->filter_depth = _e; }
+  { auto _e = filter_width(); _o->filter_width = _e; }
+  { auto _e = filter_height(); _o->filter_height = _e; }
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+}
+
+inline flatbuffers::Offset<Pool3DOptions> Pool3DOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Pool3DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreatePool3DOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<Pool3DOptions> CreatePool3DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Pool3DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Pool3DOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _padding = _o->padding;
+  auto _stride_d = _o->stride_d;
+  auto _stride_w = _o->stride_w;
+  auto _stride_h = _o->stride_h;
+  auto _filter_depth = _o->filter_depth;
+  auto _filter_width = _o->filter_width;
+  auto _filter_height = _o->filter_height;
+  auto _fused_activation_function = _o->fused_activation_function;
+  return tflite::CreatePool3DOptions(
+      _fbb,
+      _padding,
+      _stride_d,
+      _stride_w,
+      _stride_h,
+      _filter_depth,
+      _filter_width,
+      _filter_height,
+      _fused_activation_function);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -16506,6 +16713,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::BucketizeOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_Pool3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Pool3DOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -16984,6 +17195,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::BucketizeOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_Pool3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Pool3DOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -17450,6 +17665,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::BucketizeOptionsT *>(value);
       return CreateBucketizeOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_Pool3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Pool3DOptionsT *>(value);
+      return CreatePool3DOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -17914,6 +18133,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_BucketizeOptions: {
       value = new tflite::BucketizeOptionsT(*reinterpret_cast<tflite::BucketizeOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_Pool3DOptions: {
+      value = new tflite::Pool3DOptionsT(*reinterpret_cast<tflite::Pool3DOptionsT *>(u.value));
       break;
     }
     default:
@@ -18495,6 +18718,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_BucketizeOptions: {
       auto ptr = reinterpret_cast<tflite::BucketizeOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_Pool3DOptions: {
+      auto ptr = reinterpret_cast<tflite::Pool3DOptionsT *>(value);
       delete ptr;
       break;
     }

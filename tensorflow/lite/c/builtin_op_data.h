@@ -514,6 +514,17 @@ typedef struct {
   const float* boundaries;
 } TfLiteBucketizeParams;
 
+typedef struct {
+  TfLitePadding padding;
+  int stride_depth;
+  int stride_width;
+  int stride_height;
+  int filter_depth;
+  int filter_width;
+  int filter_height;
+  TfLiteFusedActivation activation;
+} TfLitePool3DParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
