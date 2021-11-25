@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -154,8 +155,8 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
                                    out_tensors, end_of_sequence);
   if (collect_metrics_) {
     const uint64 end_time_us = ctx->env()->NowMicros();
-    metrics::RecordTFDataGetNextDuration(safe_sub(end_time_us, start_time_us));
-    metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
+    AddLatencySample(safe_sub(end_time_us, start_time_us));
+    IncrementThroughput(GetTotalBytes(*out_tensors));
     mutex_lock l(mu_);
     metrics::RecordTFDataIteratorLifetime(
         safe_sub(end_time_us, get_next_end_time_us_));

@@ -12,16 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/file_utils.h"
+#ifndef TENSORFLOW_CORE_DATA_UTILS_H_
+#define TENSORFLOW_CORE_DATA_UTILS_H_
 
 #include <string>
 
 namespace tensorflow {
 namespace data {
-namespace file_utils {
 
-std::string TranslateFileName(const std::string& fname) { return fname; }
+// Records latency of fetching data from tf.data iterator.
+void AddLatencySample(int64_t microseconds);
 
-}  // namespace file_utils
+// Records bytes produced by a tf.data iterator.
+void IncrementThroughput(int64_t bytes);
+
+// Returns a modified file name that can be used to do implementation specific
+// file name manipulation/optimization.
+std::string TranslateFileName(const std::string& fname);
+
 }  // namespace data
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_DATA_UTILS_H_
