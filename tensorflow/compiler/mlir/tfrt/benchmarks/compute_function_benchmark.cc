@@ -16,8 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark_mlir_function.h"
 
 namespace tensorflow {
+namespace {
 
-static const char* mlir_input = R"(
+static const char* const mlir_input13 = R"(
 func @compute(%arg0: tensor<?x18xf32>,
               %arg1: tensor<18xf32>,
               %arg2: tensor<18xf32>,
@@ -65,7 +66,7 @@ func @compute(%arg0: tensor<?x18xf32>,
   }
 )";
 
-static llvm::SmallVector<InputTensorSpec> Inputs() {
+static llvm::SmallVector<InputTensorSpec> Inputs13() {
   return {
       InputTensorSpec(DT_FLOAT, {1, 18}),     // %arg0
       InputTensorSpec(DT_FLOAT, {18}),        // %arg1
@@ -83,6 +84,97 @@ static llvm::SmallVector<InputTensorSpec> Inputs() {
   };
 }
 
-BM_Mlir(Compute, mlir_input, "compute", Inputs())->Arg(0);
+BM_Mlir(Compute13, mlir_input13, "compute", Inputs13())->Arg(0);
 
+static const char* const mlir_fresh0 = R"(
+  func @compute(%arg0: tensor<i64>) -> tensor<i64> {
+    %cst = "tf.Const"() {device = "/CPU:0", value = dense<8> : tensor<i64>}
+         : () -> tensor<i64>
+    %0 = "tf.AddV2"(%arg0, %cst) {device = "/CPU:0"}
+         : (tensor<i64>, tensor<i64>) -> tensor<i64>
+    %1 = "tf.AddV2"(%0, %cst) {device = "/CPU:0"}
+         : (tensor<i64>, tensor<i64>) -> tensor<i64>
+    %2 = "tf.Neg"(%1) {device = "/CPU:0"} : (tensor<i64>) -> tensor<i64>
+    %3 = "tf.FloorMod"(%2, %cst) {device = "/CPU:0"}
+         : (tensor<i64>, tensor<i64>) -> tensor<i64>
+    %4 = "tf.AddV2"(%1, %3) {device = "/CPU:0"}
+         : (tensor<i64>, tensor<i64>) -> tensor<i64>
+    %5 = "tf.Maximum"(%cst, %4) {device = "/CPU:0"}
+         : (tensor<i64>, tensor<i64>) -> tensor<i64>
+    return %5 : tensor<i64>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsFresh0() {
+  return {
+      InputTensorSpec(DT_INT64, {}),
+  };
+}
+
+BM_Mlir(Fresh0, mlir_fresh0, "compute", InputsFresh0())->Arg(0);
+
+static const char* const mlir_fresh1 = R"(
+  func @compute(%arg0: tensor<?x?x?xf32>,
+                %arg1: tensor<?x?x1xf32>,
+                %arg2: tensor<?x1x?xf32>) -> tensor<?x?x?xf32> {
+    %cst = "tf.Const"()
+         {device = "/CPU:0", value = dense<[0, 2, 1]> : tensor<3xi32>}
+         : () -> tensor<3xi32>
+    %0 = "tf.Sub"(%arg0, %arg1) {device = "/CPU:0"}
+         : (tensor<?x?x?xf32>, tensor<?x?x1xf32>) -> tensor<?x?x?xf32>
+    %1 = "tf.Mul"(%0, %arg2) {device = "/CPU:0"}
+         : (tensor<?x?x?xf32>, tensor<?x1x?xf32>) -> tensor<?x?x?xf32>
+    %2 = "tf.Transpose"(%1, %cst) {device = "/CPU:0"}
+         : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+    return %2 : tensor<?x?x?xf32>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsFresh1() {
+  return {
+      InputTensorSpec(DT_FLOAT, {100, 100, 100}),  // %arg0
+      InputTensorSpec(DT_FLOAT, {100, 100, 1}),    // %arg1
+      InputTensorSpec(DT_FLOAT, {100, 1, 100}),    // %arg2
+  };
+}
+
+BM_Mlir(Fresh1, mlir_fresh1, "compute", InputsFresh1())->Arg(0);
+
+static const char* const mlir_fresh2 = R"(
+  func @compute(%arg0: tensor<?x?xf32>,
+                %arg1: tensor<?x128xf32>,
+                %arg2: tensor<?x?xf32>,
+                %arg3: tensor<*xf32> {cpurt.constraint = "rank"})
+       -> tensor<?x128xf32> {
+    %cst = "tf.Const"()
+         {device = "/CPU:0", value = dense<1.000000e+00> : tensor<f32>}
+         : () -> tensor<f32>
+    %0 = "tf.Mul"(%arg0, %arg1) {device = "/CPU:0"}
+         : (tensor<?x?xf32>, tensor<?x128xf32>) -> tensor<?x128xf32>
+    %1 = "tf.Sub"(%cst, %arg0) {device = "/CPU:0"}
+         : (tensor<f32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+    %2 = "tf.BiasAdd"(%arg2, %arg3) {data_format = "NHWC", device = "/CPU:0"}
+         : (tensor<?x?xf32>, tensor<*xf32>) -> tensor<?x?xf32>
+    %3 = "tf.Tanh"(%2) {device = "/CPU:0"}
+         : (tensor<?x?xf32>) -> tensor<?x?xf32>
+    %4 = "tf.Mul"(%1, %3) {device = "/CPU:0"}
+         : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+    %5 = "tf.AddV2"(%0, %4) {device = "/CPU:0"}
+         : (tensor<?x128xf32>, tensor<?x?xf32>) -> tensor<?x128xf32>
+    return %5 : tensor<?x128xf32>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsFresh2() {
+  return {
+      InputTensorSpec(DT_FLOAT, {128, 128}),  // %arg0
+      InputTensorSpec(DT_FLOAT, {128, 128}),  // %arg1
+      InputTensorSpec(DT_FLOAT, {128, 128}),  // %arg2
+      InputTensorSpec(DT_FLOAT, {128}),       // %arg3
+  };
+}
+
+BM_Mlir(Fresh2, mlir_fresh2, "compute", InputsFresh2())->Arg(0);
+
+}  // namespace
 }  // namespace tensorflow

@@ -46,6 +46,9 @@ static llvm::SmallVector<Tensor> GetInputTensors(
       case DT_FLOAT:
         input_tensors.back().flat<float>().setRandom();
         break;
+      case DT_INT64:
+        input_tensors.back().flat<int64_t>().setRandom();
+        break;
       default:
         CHECK(false) << "Unsupported dtype: " << spec.dtype;
     }
@@ -87,13 +90,13 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
   llvm::Expected<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands, exec_ctx);
   if (auto err = executable.takeError())
-    LOG(FATAL) << "Failed to specialize executable";
+    LOG(FATAL) << "Failed to specialize executable: " << tfrt::StrCat(err);
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
 
   CHECK(!executable->IsError())
-      << "Failed to get executable: " << StrCat(executable->GetError());
+      << "Failed to get executable: " << tfrt::StrCat(executable->GetError());
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Placeholders for returned values.
