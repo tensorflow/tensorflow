@@ -2317,7 +2317,7 @@ def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather",
   }];
 }
 
-def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp {
+def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]> {
   let summary = "Dynamic Convolution operator";
   let description = [{
     The dynamic shape version of ConvOp. Computes a convolution with dynamic padding.

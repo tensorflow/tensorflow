@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.h"
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc"
+namespace mlir {
+namespace lmhlo {
+
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.cpp.inc"
+
+}  // namespace lmhlo
+}  // namespace mlir

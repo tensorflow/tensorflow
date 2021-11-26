@@ -15,7 +15,7 @@ package(
 exports_files([
     "include/mlir-hlo/Dialect/mhlo/IR/clo_ops.td",
     "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
-    "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
+    "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td",
 ])
 
 # Python extension sources.
@@ -221,16 +221,16 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-struct-attr-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc",
+            "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.h.inc",
         ),
         (
             ["-gen-struct-attr-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc",
+            "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.td",
-    deps = [":hlo_ops_td_files"],
+    td_file = "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.td",
+    deps = [":lhlo_ops_td_files"],
 )
 
 gentbl_cc_library(
@@ -240,16 +240,16 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-op-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc",
+            "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h.inc",
         ),
         (
             ["-gen-op-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc",
+            "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
-    deps = [":hlo_ops_td_files"],
+    td_file = "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td",
+    deps = [":lhlo_ops_td_files"],
 )
 
 gentbl_cc_library(
@@ -314,7 +314,7 @@ gentbl_filegroup(
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
+    td_file = "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
@@ -372,6 +372,7 @@ td_library(
     includes = ["include"],
     deps = [
         ":hlo_ops_td_files",
+        ":lhlo_ops_td_files",
         "@llvm-project//mlir:SideEffectTdFiles",
     ],
 )
@@ -446,32 +447,51 @@ cc_library(
     ],
 )
 
+td_library(
+    name = "lhlo_ops_td_files",
+    srcs = glob(["include/mlir-hlo/Dialect/lhlo/IR/*.td"]),
+    compatible_with = get_compatible_with_cloud(),
+    includes = ["include"],
+    deps = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:CopyOpInterfaceTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
+        "@llvm-project//mlir:MemRefOpsTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:ShapeOpsTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:ViewLikeInterfaceTdFiles",
+    ],
+)
+
 gentbl_cc_library(
     name = "lhlo_structured_interface_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-op-interface-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.h.inc",
+            "include/mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.h.inc",
         ),
         (
             ["-gen-op-interface-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.cpp.inc",
+            "include/mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.td",
-    deps = [":hlo_ops_td_files"],
+    td_file = "include/mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.td",
+    deps = [":lhlo_ops_td_files"],
 )
 
 cc_library(
     name = "lhlo_structured_interface",
     srcs = [
-        "lib/Dialect/mhlo/IR/lhlo_structured_interface.cc",
+        "lib/Dialect/lhlo/IR/lhlo_structured_interface.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.h.inc",
+        "include/mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.h",
+        "include/mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.h.inc",
     ],
     includes = ["include"],
     deps = [
@@ -581,12 +601,12 @@ cc_library(
 cc_library(
     name = "lhlo",
     srcs = [
-        "lib/Dialect/mhlo/IR/lhlo_ops.cc",
-        "lib/Dialect/mhlo/IR/lhlo_ops_structs.cc",
+        "lib/Dialect/lhlo/IR/lhlo_ops.cc",
+        "lib/Dialect/lhlo/IR/lhlo_ops_structs.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
+        "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h",
+        "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.h",
         "include/mlir-hlo/utils/lhlo_utils.h",
     ],
     includes = ["include"],
@@ -837,9 +857,7 @@ cc_library(
     srcs = ["lib/Dialect/mhlo/IR/init.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],
     deps = [
-        ":disc_ral",
         ":hlo",
-        ":lhlo",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1909,6 +1927,7 @@ cc_binary(
         ":all_passes",
         ":disc_ral",
         ":hlo_dialect_registration",
+        ":lhlo",
         ":lhlo_gpu",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
