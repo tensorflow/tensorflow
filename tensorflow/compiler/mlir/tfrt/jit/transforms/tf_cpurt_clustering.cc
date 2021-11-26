@@ -268,6 +268,7 @@ class CwiseBinaryOpClusteringPolicy : public DefaultClusteringPolicy {
         "tf.RealDiv",
         "tf.SquaredDifference",
         "tf.Sub",
+        "tf.TruncateDiv",
         "tf.Xdivy",
         "tf.Xlogy",
     };
