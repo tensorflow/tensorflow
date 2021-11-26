@@ -256,7 +256,7 @@ FusionLayoutAnalysis::FusionLayoutAnalysis(mlir::lmhlo::FusionOp fusion_op) {
 
   // Propagate layouts inside fusion region.
   for (mlir::Operation& op : fusion_op.region().front().without_terminator()) {
-    if (auto load = mlir::dyn_cast<mlir::memref::TensorLoadOp>(op)) {
+    if (auto load = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(op)) {
       add_layout(load, GetShape(load.memref()).layout());
     } else if (auto store = mlir::dyn_cast<mlir::memref::TensorStoreOp>(op)) {
       // Propagate the stored memref layout to the value if it does not have a
@@ -703,8 +703,8 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 
   auto output_buffers = fusion.getOutputBuffers();
   CHECK_EQ(1, output_buffers.size());
-  auto parameter =
-      mlir::dyn_cast<mlir::memref::TensorLoadOp>(dus.operand().getDefiningOp());
+  auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
+      dus.operand().getDefiningOp());
 
   if (!parameter) {
     return false;

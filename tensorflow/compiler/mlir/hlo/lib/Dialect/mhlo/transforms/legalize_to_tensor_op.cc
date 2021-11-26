@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering memref.tensor_load ops that are
+// This file implements logic for lowering bufferization.to_tensor ops that are
 // inserted during `mhlo-legalize-to-lmhlo`.
 
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -37,7 +38,7 @@ using shape::ShapeOfOp;
 using tensor::ExtractOp;
 
 // Converting:
-//   memref (operand) -> memref.tensor_load -> tensor.extract
+//   memref (operand) -> bufferization.to_tensor -> tensor.extract
 //     to
 //   memref (operand) -> memref.load
 struct ForwardExtractOp : public OpRewritePattern<ExtractOp> {
@@ -45,17 +46,18 @@ struct ForwardExtractOp : public OpRewritePattern<ExtractOp> {
 
   LogicalResult matchAndRewrite(ExtractOp extract,
                                 PatternRewriter& rewriter) const override {
-    auto tensor_load = extract.tensor().getDefiningOp<memref::TensorLoadOp>();
-    if (!tensor_load) return failure();
+    auto to_tensor =
+        extract.tensor().getDefiningOp<bufferization::ToTensorOp>();
+    if (!to_tensor) return failure();
 
     rewriter.replaceOpWithNewOp<memref::LoadOp>(
-        extract, extract.getType(), tensor_load.memref(), extract.indices());
+        extract, extract.getType(), to_tensor.memref(), extract.indices());
     return success();
   }
 };
 
 // Converting:
-//   memref (operand) -> memref.tensor_load -> shape.shape_of
+//   memref (operand) -> bufferization.to_tensor -> shape.shape_of
 //     to
 //   memref (operand) -> shape.shape_of
 struct ForwardShapeOfOp : public OpRewritePattern<ShapeOfOp> {
@@ -63,18 +65,19 @@ struct ForwardShapeOfOp : public OpRewritePattern<ShapeOfOp> {
 
   LogicalResult matchAndRewrite(ShapeOfOp shape_of,
                                 PatternRewriter& rewriter) const override {
-    auto tensor_load = shape_of.getArg().getDefiningOp<memref::TensorLoadOp>();
-    if (!tensor_load) return failure();
+    auto to_tensor =
+        shape_of.getArg().getDefiningOp<bufferization::ToTensorOp>();
+    if (!to_tensor) return failure();
 
     rewriter.replaceOpWithNewOp<ShapeOfOp>(shape_of, shape_of.getType(),
-                                           tensor_load.memref());
+                                           to_tensor.memref());
     return success();
   }
 };
 
-struct LegalizeTensorLoadOpPass
-    : public LegalizeTensorLoadOpPassBase<LegalizeTensorLoadOpPass> {
-  // Perform the lowering to remove memref.tensor_load ops inserted during
+struct LegalizeToTensorOpPass
+    : public LegalizeToTensorOpPassBase<LegalizeToTensorOpPass> {
+  // Perform the lowering to remove bufferization.to_tensor ops inserted during
   // `mhlo-legalize-to-lmhlo`.
   void runOnFunction() override {
     auto func = getFunction();
@@ -94,6 +97,6 @@ struct LegalizeTensorLoadOpPass
 }  // namespace mlir
 
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
-mlir::lmhlo::createLegalizeTensorLoadOpPass() {
-  return std::make_unique<LegalizeTensorLoadOpPass>();
+mlir::lmhlo::createLegalizeToTensorOpPass() {
+  return std::make_unique<LegalizeToTensorOpPass>();
 }

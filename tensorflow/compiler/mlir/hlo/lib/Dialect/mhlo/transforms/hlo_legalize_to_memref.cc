@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -305,7 +306,8 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
 struct HloLegalizeToMemrefPass
     : public HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<memref::MemRefDialect, tensor::TensorDialect>();
+    registry.insert<bufferization::BufferizationDialect, memref::MemRefDialect,
+                    tensor::TensorDialect>();
   }
 
  public:
@@ -321,7 +323,8 @@ struct HloLegalizeToMemrefPass
                                          &patterns);
 
     target.addIllegalOp<DynamicReshapeOp, DynamicBroadcastInDimOp>();
-    target.addLegalDialect<arith::ArithmeticDialect, BuiltinDialect,
+    target.addLegalDialect<arith::ArithmeticDialect,
+                           bufferization::BufferizationDialect, BuiltinDialect,
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect>();
 

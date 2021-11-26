@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
@@ -67,11 +68,11 @@ namespace {
 /// A helper type converter class that automatically populates the relevant
 /// materializations and type conversions for bufferization.
 
-static Value materializeTensorLoad(OpBuilder& builder, TensorType type,
-                                   ValueRange inputs, Location loc) {
+static Value materializeToTensor(OpBuilder& builder, TensorType type,
+                                 ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
   assert(inputs[0].getType().isa<BaseMemRefType>());
-  return builder.create<memref::TensorLoadOp>(loc, type, inputs[0]);
+  return builder.create<bufferization::ToTensorOp>(loc, type, inputs[0]);
 }
 
 // TODO(pifon): Remove as soon as https://reviews.llvm.org/D93126 is landed.
@@ -88,8 +89,8 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
     addConversion([](UnrankedTensorType type) -> Type {
       return UnrankedMemRefType::get(type.getElementType(), 0);
     });
-    addArgumentMaterialization(materializeTensorLoad);
-    addSourceMaterialization(materializeTensorLoad);
+    addArgumentMaterialization(materializeToTensor);
+    addSourceMaterialization(materializeToTensor);
     addTargetMaterialization([](OpBuilder& builder, BaseMemRefType type,
                                 ValueRange inputs, Location loc) -> Value {
       assert(inputs.size() == 1);
@@ -103,7 +104,7 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());
-      return builder.create<memref::BufferCastOp>(loc, type, inputs[0]);
+      return builder.create<bufferization::ToMemrefOp>(loc, type, inputs[0]);
     });
   }
 };
@@ -112,7 +113,8 @@ struct ComputeOpAndFuncBufferizePass
     : public ComputeOpAndFuncBufferizePassBase<ComputeOpAndFuncBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<lmhlo::LmhloDialect, memref::MemRefDialect>();
+    registry.insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
+                    memref::MemRefDialect>();
   }
 
   void runOnOperation() override {
@@ -192,9 +194,10 @@ struct TiledLoopBufferizePass
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<
-        arith::ArithmeticDialect, complex::ComplexDialect, lmhlo::LmhloDialect,
-        AffineDialect, vector::VectorDialect, memref::MemRefDialect,
-        StandardOpsDialect, tensor::TensorDialect, math::MathDialect>();
+        arith::ArithmeticDialect, bufferization::BufferizationDialect,
+        complex::ComplexDialect, lmhlo::LmhloDialect, AffineDialect,
+        vector::VectorDialect, memref::MemRefDialect, StandardOpsDialect,
+        tensor::TensorDialect, math::MathDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
@@ -237,19 +240,20 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<
-        arith::ArithmeticDialect, complex::ComplexDialect,
-        memref::MemRefDialect, StandardOpsDialect, scf::SCFDialect,
-        tensor::TensorDialect, tf_framework::TFFrameworkDialect, AffineDialect,
-        shape::ShapeDialect, lmhlo::LmhloDialect, linalg::LinalgDialect,
-        math::MathDialect, vector::VectorDialect>();
+        arith::ArithmeticDialect, bufferization::BufferizationDialect,
+        complex::ComplexDialect, memref::MemRefDialect, StandardOpsDialect,
+        scf::SCFDialect, tensor::TensorDialect,
+        tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
+        lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
+        vector::VectorDialect>();
     target.addLegalOp<FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
-                        tensor::FromElementsOp, tensor::CastOp, tensor::DimOp,
-                        chlo::MinimumBroadcastShapesOp, memref::TensorLoadOp,
-                        memref::BufferCastOp, linalg::TensorExpandShapeOp,
-                        linalg::TensorCollapseShapeOp>();
+    target.addIllegalOp<
+        tensor::GenerateOp, tensor::ExtractOp, tensor::FromElementsOp,
+        tensor::CastOp, tensor::DimOp, chlo::MinimumBroadcastShapesOp,
+        bufferization::ToTensorOp, bufferization::ToMemrefOp,
+        linalg::TensorExpandShapeOp, linalg::TensorCollapseShapeOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&

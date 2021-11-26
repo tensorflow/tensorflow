@@ -1363,7 +1363,7 @@ def FusionOp : LHLO_Op<"fusion", [
   let extraClassDeclaration = [{
     SmallVector<Value> getInputBuffers() {
       SmallVector<Value> buffers;
-      for (auto load : region().front().getOps<memref::TensorLoadOp>()) {
+      for (auto load : region().front().getOps<bufferization::ToTensorOp>()) {
         buffers.push_back(load.memref());
       }
       return buffers;
@@ -1379,7 +1379,7 @@ def FusionOp : LHLO_Op<"fusion", [
 
     SmallVector<Value> getFusionParameters() {
       SmallVector<Value> buffers;
-      for (auto load : region().front().getOps<memref::TensorLoadOp>()) {
+      for (auto load : region().front().getOps<bufferization::ToTensorOp>()) {
         buffers.push_back(load);
       }
       return buffers;
