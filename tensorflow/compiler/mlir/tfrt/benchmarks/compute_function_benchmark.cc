@@ -84,22 +84,31 @@ static llvm::SmallVector<InputTensorSpec> Inputs13() {
   };
 }
 
-BM_Mlir(Compute13, mlir_input13, "compute", Inputs13())->Arg(0);
+BM_Cpurt(Compute13, mlir_input13, "compute", Inputs13())->Arg(0);
 
 static const char* const mlir_fresh0 = R"(
   func @compute(%arg0: tensor<i64>) -> tensor<i64> {
-    %cst = "tf.Const"() {device = "/CPU:0", value = dense<8> : tensor<i64>}
+    %cst = "tf.Const"()
+         {value = dense<8> : tensor<i64>,
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : () -> tensor<i64>
-    %0 = "tf.AddV2"(%arg0, %cst) {device = "/CPU:0"}
+    %0 = "tf.AddV2"(%arg0, %cst)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<i64>, tensor<i64>) -> tensor<i64>
-    %1 = "tf.AddV2"(%0, %cst) {device = "/CPU:0"}
+    %1 = "tf.AddV2"(%0, %cst)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<i64>, tensor<i64>) -> tensor<i64>
-    %2 = "tf.Neg"(%1) {device = "/CPU:0"} : (tensor<i64>) -> tensor<i64>
-    %3 = "tf.FloorMod"(%2, %cst) {device = "/CPU:0"}
+    %2 = "tf.Neg"(%1)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<i64>) -> tensor<i64>
+    %3 = "tf.FloorMod"(%2, %cst)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<i64>, tensor<i64>) -> tensor<i64>
-    %4 = "tf.AddV2"(%1, %3) {device = "/CPU:0"}
+    %4 = "tf.AddV2"(%1, %3)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<i64>, tensor<i64>) -> tensor<i64>
-    %5 = "tf.Maximum"(%cst, %4) {device = "/CPU:0"}
+    %5 = "tf.Maximum"(%cst, %4)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<i64>, tensor<i64>) -> tensor<i64>
     return %5 : tensor<i64>
   }
@@ -111,20 +120,29 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh0() {
   };
 }
 
-BM_Mlir(Fresh0, mlir_fresh0, "compute", InputsFresh0())->Arg(0);
+BM_Cpurt(Fresh0, mlir_fresh0, "compute", InputsFresh0())
+    ->Arg(0)
+    ->Arg(4)
+    ->Arg(8);
+
+BM_Tfrt(Fresh0, mlir_fresh0, "compute", InputsFresh0())->Arg(0)->Arg(4)->Arg(8);
 
 static const char* const mlir_fresh1 = R"(
   func @compute(%arg0: tensor<?x?x?xf32>,
                 %arg1: tensor<?x?x1xf32>,
                 %arg2: tensor<?x1x?xf32>) -> tensor<?x?x?xf32> {
     %cst = "tf.Const"()
-         {device = "/CPU:0", value = dense<[0, 2, 1]> : tensor<3xi32>}
+         {value = dense<[0, 2, 1]> : tensor<3xi32>,
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : () -> tensor<3xi32>
-    %0 = "tf.Sub"(%arg0, %arg1) {device = "/CPU:0"}
+    %0 = "tf.Sub"(%arg0, %arg1)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?x?xf32>, tensor<?x?x1xf32>) -> tensor<?x?x?xf32>
-    %1 = "tf.Mul"(%0, %arg2) {device = "/CPU:0"}
+    %1 = "tf.Mul"(%0, %arg2)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?x?xf32>, tensor<?x1x?xf32>) -> tensor<?x?x?xf32>
-    %2 = "tf.Transpose"(%1, %cst) {device = "/CPU:0"}
+    %2 = "tf.Transpose"(%1, %cst)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
     return %2 : tensor<?x?x?xf32>
   }
@@ -138,7 +156,12 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh1() {
   };
 }
 
-BM_Mlir(Fresh1, mlir_fresh1, "compute", InputsFresh1())->Arg(0);
+BM_Cpurt(Fresh1, mlir_fresh1, "compute", InputsFresh1())
+    ->Arg(0)
+    ->Arg(4)
+    ->Arg(8);
+
+BM_Tfrt(Fresh1, mlir_fresh1, "compute", InputsFresh1())->Arg(0)->Arg(4)->Arg(8);
 
 static const char* const mlir_fresh2 = R"(
   func @compute(%arg0: tensor<?x?xf32>,
@@ -147,19 +170,27 @@ static const char* const mlir_fresh2 = R"(
                 %arg3: tensor<*xf32> {cpurt.constraint = "rank"})
        -> tensor<?x128xf32> {
     %cst = "tf.Const"()
-         {device = "/CPU:0", value = dense<1.000000e+00> : tensor<f32>}
+         {value = dense<1.000000e+00> : tensor<f32>,
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : () -> tensor<f32>
-    %0 = "tf.Mul"(%arg0, %arg1) {device = "/CPU:0"}
+    %0 = "tf.Mul"(%arg0, %arg1)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?xf32>, tensor<?x128xf32>) -> tensor<?x128xf32>
-    %1 = "tf.Sub"(%cst, %arg0) {device = "/CPU:0"}
+    %1 = "tf.Sub"(%cst, %arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<f32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-    %2 = "tf.BiasAdd"(%arg2, %arg3) {data_format = "NHWC", device = "/CPU:0"}
+    %2 = "tf.BiasAdd"(%arg2, %arg3)
+         {data_format = "NHWC",
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?xf32>, tensor<*xf32>) -> tensor<?x?xf32>
-    %3 = "tf.Tanh"(%2) {device = "/CPU:0"}
+    %3 = "tf.Tanh"(%2)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?xf32>) -> tensor<?x?xf32>
-    %4 = "tf.Mul"(%1, %3) {device = "/CPU:0"}
+    %4 = "tf.Mul"(%1, %3)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-    %5 = "tf.AddV2"(%0, %4) {device = "/CPU:0"}
+    %5 = "tf.AddV2"(%0, %4)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x128xf32>, tensor<?x?xf32>) -> tensor<?x128xf32>
     return %5 : tensor<?x128xf32>
   }
@@ -174,7 +205,12 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh2() {
   };
 }
 
-BM_Mlir(Fresh2, mlir_fresh2, "compute", InputsFresh2())->Arg(0);
+BM_Cpurt(Fresh2, mlir_fresh2, "compute", InputsFresh2())
+    ->Arg(0)
+    ->Arg(4)
+    ->Arg(8);
+
+BM_Tfrt(Fresh2, mlir_fresh2, "compute", InputsFresh2())->Arg(0)->Arg(4)->Arg(8);
 
 }  // namespace
 }  // namespace tensorflow

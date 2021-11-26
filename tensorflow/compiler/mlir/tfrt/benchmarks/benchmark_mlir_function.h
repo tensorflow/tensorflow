@@ -28,8 +28,16 @@ struct InputTensorSpec {
   llvm::SmallVector<ssize_t> dims;
 };
 
-// Benchmark arbitrary MLIR function using inputs of given type and shape.
-void RunMlirBenchmark(::testing::benchmark::State& state,
+// Benchmark arbitrary Tensorflow dialect MLIR function using inputs of given
+// type and shape by compiling it using TF CpuRt pipeline and the TFRT runtime.
+void RunCpurtBenchmark(::testing::benchmark::State& state,
+                       llvm::StringRef mlir_input,
+                       llvm::StringRef function_name,
+                       llvm::ArrayRef<InputTensorSpec> input_specs);
+
+// Benchmark arbitrary Tensorflow dialect MLIR function using inputs of given
+// type and shape by compiling it to BEF with fallback kernels.
+void RunTfrtBenchmark(::testing::benchmark::State& state,
                       llvm::StringRef mlir_input, llvm::StringRef function_name,
                       llvm::ArrayRef<InputTensorSpec> input_specs);
 
@@ -44,11 +52,17 @@ void RunEigenBenchmark(
 // TODO(ezhulenev): Benchmarking macro should generate unit tests to verify
 // that benchmarks at least do not crash with the specified inputs.
 
-#define BM_Mlir(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
-  static void BM_mlir_##NAME(::testing::benchmark::State& state) { \
-    RunMlirBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC);           \
+#define BM_Cpurt(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
+  static void BM_cpurt_##NAME(::testing::benchmark::State& state) { \
+    RunCpurtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC);           \
+  }                                                                 \
+  BENCHMARK(BM_cpurt_##NAME)->MeasureProcessCPUTime()
+
+#define BM_Tfrt(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
+  static void BM_tfrt_##NAME(::testing::benchmark::State& state) { \
+    RunTfrtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC);           \
   }                                                                \
-  BENCHMARK(BM_mlir_##NAME)->MeasureProcessCPUTime()
+  BENCHMARK(BM_tfrt_##NAME)->MeasureProcessCPUTime()
 
 #define BM_Eigen(NAME, FN, INPUT_SPEC)                              \
   static void BM_eigen_##NAME(::testing::benchmark::State& state) { \
