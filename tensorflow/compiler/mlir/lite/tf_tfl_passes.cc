@@ -136,13 +136,6 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
   standard_pipeline_options.enable_inliner = false;
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
   mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
-  // For TF Quantization, converts unsupported ops to Flex ops before other
-  // conversion passes.
-  if (!toco_flags.tf_quantization_mode().empty()) {
-    pass_manager->addNestedPass<mlir::FuncOp>(
-        mlir::TF::CreateFallbackToFlexOpsPass(
-            toco_flags.tf_quantization_mode()));
-  }
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TF::CreateDeviceIndexSelectorPass());
 
@@ -190,7 +183,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   // We need to fuse composite ops before LowerStaticTensorList pass.
   // The tensorflow list is not supported right now by that pass.
   // Enable fusing composite ops that can be lowered to built-in TFLite ops.
-  if (pass_config.emit_builtin_tflite_ops) {
+  if (pass_config.emit_builtin_tflite_ops &&
+      toco_flags.tf_quantization_mode().empty()) {
     pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
 
@@ -199,7 +193,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
 
-  if (pass_config.lower_tensor_list_ops) {
+  if (pass_config.lower_tensor_list_ops &&
+      toco_flags.tf_quantization_mode().empty()) {
     // TODO(haoliang): Add this pass by default.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass(
         /*allow_tensorlist_pass_through=*/toco_flags.force_select_tf_ops() ||
@@ -259,7 +254,13 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(
         mlir::tf_saved_model::CreateFreezeAssetsPass(saved_model_dir.str()));
   }
-
+  // For TF Quantization, convert unsupported ops to Flex ops before other
+  // conversion passes.
+  if (!toco_flags.tf_quantization_mode().empty()) {
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TF::CreateFallbackToFlexOpsPass(
+            toco_flags.tf_quantization_mode()));
+  }
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
