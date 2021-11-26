@@ -53,8 +53,11 @@ static llvm::SmallVector<InputTensorSpec> Inputs(ssize_t dim) {
   return {InputTensorSpec(DT_FLOAT, {dim, dim, dim})};
 }
 
-BM_Cpurt(Transpose, mlir_input, "compute", Inputs(256))->Arg(0)->Arg(4)->Arg(8);
-BM_Tfrt(Transpose, mlir_input, "compute", Inputs(256))->Arg(0)->Arg(4)->Arg(8);
-BM_Eigen(Transpose, Shuffle, Inputs(256))->Arg(0)->Arg(4)->Arg(8);
+#define BM(FN) BM_##FN->Arg(0)->Arg(4)->Arg(8);
+
+BM(Cpurt(Transpose, mlir_input, "compute", Inputs(256)));
+BM(CpurtVectorized(Transpose, mlir_input, "compute", Inputs(256)));
+BM(Tfrt(Transpose, mlir_input, "compute", Inputs(256)));
+BM(Eigen(Transpose, Shuffle, Inputs(256)));
 
 }  // namespace tensorflow

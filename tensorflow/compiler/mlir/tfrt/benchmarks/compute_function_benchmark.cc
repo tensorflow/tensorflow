@@ -120,12 +120,10 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh0() {
   };
 }
 
-BM_Cpurt(Fresh0, mlir_fresh0, "compute", InputsFresh0())
-    ->Arg(0)
-    ->Arg(4)
-    ->Arg(8);
+#define BM(FN) BM_##FN->Arg(0)->Arg(4)->Arg(8);
 
-BM_Tfrt(Fresh0, mlir_fresh0, "compute", InputsFresh0())->Arg(0)->Arg(4)->Arg(8);
+BM(Cpurt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
+BM(Tfrt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
 
 static const char* const mlir_fresh1 = R"(
   func @compute(%arg0: tensor<?x?x?xf32>,
@@ -156,12 +154,9 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh1() {
   };
 }
 
-BM_Cpurt(Fresh1, mlir_fresh1, "compute", InputsFresh1())
-    ->Arg(0)
-    ->Arg(4)
-    ->Arg(8);
-
-BM_Tfrt(Fresh1, mlir_fresh1, "compute", InputsFresh1())->Arg(0)->Arg(4)->Arg(8);
+BM(Cpurt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
+BM(CpurtVectorized(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
+BM(Tfrt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
 
 static const char* const mlir_fresh2 = R"(
   func @compute(%arg0: tensor<?x?xf32>,
@@ -205,12 +200,9 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh2() {
   };
 }
 
-BM_Cpurt(Fresh2, mlir_fresh2, "compute", InputsFresh2())
-    ->Arg(0)
-    ->Arg(4)
-    ->Arg(8);
-
-BM_Tfrt(Fresh2, mlir_fresh2, "compute", InputsFresh2())->Arg(0)->Arg(4)->Arg(8);
+BM(Cpurt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
+BM(CpurtVectorized(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
+BM(Tfrt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 
 }  // namespace
 }  // namespace tensorflow

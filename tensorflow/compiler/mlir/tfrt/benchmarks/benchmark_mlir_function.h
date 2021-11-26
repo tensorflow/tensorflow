@@ -33,7 +33,8 @@ struct InputTensorSpec {
 void RunCpurtBenchmark(::testing::benchmark::State& state,
                        llvm::StringRef mlir_input,
                        llvm::StringRef function_name,
-                       llvm::ArrayRef<InputTensorSpec> input_specs);
+                       llvm::ArrayRef<InputTensorSpec> input_specs,
+                       bool vectorize = false);
 
 // Benchmark arbitrary Tensorflow dialect MLIR function using inputs of given
 // type and shape by compiling it to BEF with fallback kernels.
@@ -57,6 +58,12 @@ void RunEigenBenchmark(
     RunCpurtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC);           \
   }                                                                 \
   BENCHMARK(BM_cpurt_##NAME)->MeasureProcessCPUTime()
+
+#define BM_CpurtVectorized(NAME, MLIR_INPUT, FN, INPUT_SPEC)         \
+  static void BM_cpurtv_##NAME(::testing::benchmark::State& state) { \
+    RunCpurtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC, true);      \
+  }                                                                  \
+  BENCHMARK(BM_cpurtv_##NAME)->MeasureProcessCPUTime()
 
 #define BM_Tfrt(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
   static void BM_tfrt_##NAME(::testing::benchmark::State& state) { \

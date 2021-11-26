@@ -91,7 +91,8 @@ static llvm::SmallVector<Tensor> GetInputTensors(
 void RunCpurtBenchmark(::testing::benchmark::State& state,
                        llvm::StringRef mlir_input,
                        llvm::StringRef function_name,
-                       llvm::ArrayRef<InputTensorSpec> input_specs) {
+                       llvm::ArrayRef<InputTensorSpec> input_specs,
+                       bool vectorize) {
   // Number of worker threads.
   int64_t num_threads = state.range(0);
 
@@ -101,6 +102,7 @@ void RunCpurtBenchmark(::testing::benchmark::State& state,
                       : CreateSingleThreadedHostContext();
 
   TfCpuRtPipelineOptions tf_cpurt_opts;
+  tf_cpurt_opts.vectorize = vectorize;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_cpurt_opts);
