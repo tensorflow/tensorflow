@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
@@ -133,6 +134,10 @@ struct ShapeVisitor {
         backwardBinOp(add);
       } else if (auto mul = value.getDefiningOp<mhlo::MulOp>()) {
         backwardBinOp(mul);
+      } else if (auto add = value.getDefiningOp<arith::AddIOp>()) {
+        backwardBinOp(add);
+      } else if (auto mul = value.getDefiningOp<arith::MulIOp>()) {
+        backwardBinOp(mul);
       } else if (auto concat = value.getDefiningOp<mhlo::ConcatenateOp>()) {
         backwardConcatenate(concat);
       } else if (auto reshape = value.getDefiningOp<mhlo::ReshapeOp>()) {
@@ -201,6 +206,10 @@ struct ShapeVisitor {
       } else if (auto add = value.getDefiningOp<mhlo::AddOp>()) {
         forwardBinOp(add, [](AffineExpr a, AffineExpr b) { return a + b; });
       } else if (auto mul = value.getDefiningOp<mhlo::MulOp>()) {
+        forwardBinOp(mul, [](AffineExpr a, AffineExpr b) { return a * b; });
+      } else if (auto add = value.getDefiningOp<arith::AddIOp>()) {
+        forwardBinOp(add, [](AffineExpr a, AffineExpr b) { return a + b; });
+      } else if (auto mul = value.getDefiningOp<arith::MulIOp>()) {
         forwardBinOp(mul, [](AffineExpr a, AffineExpr b) { return a * b; });
       } else if (auto concat = value.getDefiningOp<mhlo::ConcatenateOp>()) {
         forwardConcatenate(concat);
@@ -663,30 +672,38 @@ bool SymbolicExpr::isConstant(int64_t value) const {
 }
 
 bool SymbolicExpr::isKnownNotNegativeOne() const {
-  // If the symbol is coming from a shape it can't be a -1. Also allow chains of
-  // compute_reshape_shape.
+  // If the symbol is coming from a shape it can't be a -1. Also allow results
+  // of shape_of, compute_reshape_shape, and num_elements. This is correct, not
+  // complete.
   auto isGoodSymbol = [](const Symbol &symbol) {
-    return symbol.source.isShapeInfo() ||
-           symbol.source.value().getDefiningOp<mhlo::ComputeReshapeShapeOp>();
+    if (symbol.source.isShapeInfo()) return true;
+    Operation *op = symbol.source.value().getDefiningOp();
+    if (op == nullptr) return false;
+    return llvm::isa<shape::ShapeOfOp, mhlo::ComputeReshapeShapeOp,
+                     shape::NumElementsOp>(op);
   };
-  if (auto symbol = singleton())
-    if (isGoodSymbol(*symbol)) return true;
 
-  // For constants we know if it's -1 or not.
-  if (auto cexpr = expr.dyn_cast<AffineConstantExpr>())
-    return cexpr.getValue() != -1;
+  // For constants we know if it's -1 or not. Checking the sign is sufficient
+  // here and allows for reuse below. This is correct, not complete.
+  auto isGoodSymbolOrGoodConstantExpr = [&](AffineExpr expr) {
+    if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>())
+      return isGoodSymbol(symbols[symExpr.getPosition()]);
+    if (auto constExpr = expr.dyn_cast<AffineConstantExpr>())
+      return constExpr.getValue() >= 0;
+    return false;
+  };
 
-  // Multiplying symbols that are never negative gives a positive result.
+  if (isGoodSymbolOrGoodConstantExpr(expr)) return true;
+
+  // Multiplying non-negative symbols and non-negative constants will always
+  // give a positive result. This is correct, not complete.
   // TODO(kramerb): Could the analysis provide a generic interface for this?
   if (auto bexpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
-    auto lhs = bexpr.getLHS().dyn_cast<AffineSymbolExpr>();
-    auto rhs = bexpr.getRHS().dyn_cast<AffineSymbolExpr>();
-
-    if (bexpr.getKind() != AffineExprKind::Mul || !lhs || !rhs) return false;
-
-    if (!llvm::all_of(symbols, isGoodSymbol)) return false;
-    return true;
+    return bexpr.getKind() == AffineExprKind::Mul &&
+           isGoodSymbolOrGoodConstantExpr(bexpr.getLHS()) &&
+           isGoodSymbolOrGoodConstantExpr(bexpr.getRHS());
   }
+
   return false;
 }
 

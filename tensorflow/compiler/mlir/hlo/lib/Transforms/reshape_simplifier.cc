@@ -54,11 +54,10 @@ bool isExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
 // linalg.tensor_expand_shape.
 struct ReshapeToExpandShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
-  ReshapeToExpandShape(MLIRContext *ctx,
-                       ShapeComponentAnalysis &shapeComponentAnalysis)
-      : OpRewritePattern(ctx), shapeComponentAnalysis(shapeComponentAnalysis) {}
+  ReshapeToExpandShape(MLIRContext *ctx) : OpRewritePattern(ctx) {}
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
+    ShapeComponentAnalysis shapeComponentAnalysis;
     if (!isExpandShape(shapeComponentAnalysis, op)) return failure();
     auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
     SmallVector<ReassociationExprs> reassociations(output_shape->size());
@@ -74,21 +73,18 @@ struct ReshapeToExpandShape final
 
     rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
         op, op.getResult().getType(), op.operand(), reassociations);
-    shapeComponentAnalysis.reset();
     return success();
   }
-  ShapeComponentAnalysis &shapeComponentAnalysis;
 };
 
 // Remove compute_reshape_shape if we can prove that the dynamic shape does not
 // contain a `-1` dimension.
 struct RemoveComputeReshapeShape final
     : public OpRewritePattern<mhlo::ComputeReshapeShapeOp> {
-  RemoveComputeReshapeShape(MLIRContext *ctx,
-                            ShapeComponentAnalysis &shapeComponentAnalysis)
-      : OpRewritePattern(ctx), shapeComponentAnalysis(shapeComponentAnalysis) {}
+  RemoveComputeReshapeShape(MLIRContext *ctx) : OpRewritePattern(ctx) {}
   LogicalResult matchAndRewrite(mhlo::ComputeReshapeShapeOp op,
                                 PatternRewriter &rewriter) const override {
+    ShapeComponentAnalysis shapeComponentAnalysis;
     auto dynamic_shape =
         shapeComponentAnalysis.GetValueInfo(op.dynamic_shape());
     if (!dynamic_shape) return failure();
@@ -99,25 +95,22 @@ struct RemoveComputeReshapeShape final
       return failure();
     }
     rewriter.replaceOp(op, op.dynamic_shape());
-    shapeComponentAnalysis.reset();
     return success();
   }
-  ShapeComponentAnalysis &shapeComponentAnalysis;
 };
 
 struct RemoveRedundantCstrReshapable final
     : public OpRewritePattern<mhlo::CstrReshapableOp> {
-  RemoveRedundantCstrReshapable(MLIRContext *ctx,
-                                ShapeComponentAnalysis &shapeComponentAnalysis)
-      : OpRewritePattern(ctx), shapeComponentAnalysis(shapeComponentAnalysis) {}
+  RemoveRedundantCstrReshapable(MLIRContext *ctx) : OpRewritePattern(ctx) {}
   LogicalResult matchAndRewrite(mhlo::CstrReshapableOp op,
                                 PatternRewriter &rewriter) const override {
     // Get shape analysis info for the number of elements.
-    auto numElementsDims =
+    ShapeComponentAnalysis shapeComponentAnalysis;
+    auto numElementsInfo =
         shapeComponentAnalysis.GetValueInfo(op.num_elements());
-    if (!numElementsDims) return failure();
-    assert(numElementsDims->size() == 1 && "expect one value for a scalar");
-    auto numElementsDim = numElementsDims->front();
+    if (!numElementsInfo) return failure();
+    assert(numElementsInfo->size() == 1 && "expect one value for a scalar");
+    auto numElements = numElementsInfo->front();
 
     // Get shape analysis info for the dynamic shape.
     auto dynShapeDims = shapeComponentAnalysis.GetValueInfo(op.dynamic_shape());
@@ -141,8 +134,9 @@ struct RemoveRedundantCstrReshapable final
     // the factors based on the number of elements.
     SmallVector<AffineSymbolExpr> remainingSymbolicFactorsNumElems;
     int64_t concreteProductNumElems = 1;
-    if (!IsSimpleProduct(numElementsDim.expr, &concreteProductNumElems,
-                         &remainingSymbolicFactorsNumElems)) {
+    if (!IsSimpleProduct(numElements.expr, &concreteProductNumElems,
+                         &remainingSymbolicFactorsNumElems,
+                         /*ignore_negative=*/false)) {
       return failure();
     }
     assert(concreteProductNumElems >= 1 &&
@@ -156,17 +150,18 @@ struct RemoveRedundantCstrReshapable final
     //     not a subset of the factors based on the number of elements.
     int64_t concreteProductDynShape = 1;
     for (auto d : *dynShapeDims) {
-      if (auto constExpr = d.expr.dyn_cast<AffineConstantExpr>()) {
-        if (constExpr.getValue() != -1)
-          concreteProductDynShape *= constExpr.getValue();
-        continue;
+      SmallVector<AffineSymbolExpr> partialSymbolicFactorsDynShape;
+      if (!IsSimpleProduct(d.expr, &concreteProductDynShape,
+                           &partialSymbolicFactorsDynShape,
+                           /*ignore_negative=*/true)) {
+        return failure();
       }
-      if (auto symExpr = d.expr.dyn_cast<AffineSymbolExpr>()) {
+      for (const AffineSymbolExpr &symExpr : partialSymbolicFactorsDynShape) {
         auto symDynShape = d.symbols[symExpr.getPosition()];
         bool isFactorInBothProducts = false;
         for (int i = 0; i < remainingSymbolicFactorsNumElems.size(); ++i) {
           auto symNumElements =
-              numElementsDim
+              numElements
                   .symbols[remainingSymbolicFactorsNumElems[i].getPosition()];
           if (symDynShape == symNumElements) {
             remainingSymbolicFactorsNumElems[i] =
@@ -177,16 +172,14 @@ struct RemoveRedundantCstrReshapable final
           }
         }
         if (!isFactorInBothProducts) return failure();
-        continue;
       }
-      return failure();
     }
     assert(concreteProductDynShape >= 1 &&
            "concrete product must not aggregate negative or zero factors");
 
+    // A wildcard dimension can subsume the remaining symbolic factors and
+    // potentially also a concrete factor.
     if (unique_wildcard_dimension) {
-      // The wildcard dimension subsumes the remaining symbolic factors and
-      // potentially also a concrete factor.
       if (concreteProductNumElems % concreteProductDynShape != 0)
         return failure();
       rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
@@ -199,27 +192,28 @@ struct RemoveRedundantCstrReshapable final
     rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, isReshapable);
     return success();
   }
-  bool IsSimpleProduct(
-      AffineExpr expr, int64_t *concreteProduct,
-      SmallVectorImpl<AffineSymbolExpr> *symbolicFactors) const {
+  bool IsSimpleProduct(AffineExpr expr, int64_t *concreteProduct,
+                       SmallVectorImpl<AffineSymbolExpr> *symbolicFactors,
+                       bool ignore_minus_one) const {
     auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>();
     if (binExpr && binExpr.getKind() == AffineExprKind::Mul) {
-      return IsSimpleProduct(binExpr.getLHS(), concreteProduct,
-                             symbolicFactors) &&
-             IsSimpleProduct(binExpr.getRHS(), concreteProduct,
-                             symbolicFactors);
+      return IsSimpleProduct(binExpr.getLHS(), concreteProduct, symbolicFactors,
+                             ignore_minus_one) &&
+             IsSimpleProduct(binExpr.getRHS(), concreteProduct, symbolicFactors,
+                             ignore_minus_one);
     }
     if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
       symbolicFactors->push_back(symExpr);
       return true;
     }
     if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
-      *concreteProduct *= constExpr.getValue();
+      int64_t c = constExpr.getValue();
+      if (c == -1 && ignore_minus_one) return true;
+      *concreteProduct *= c;
       return true;
     }
     return false;
   }
-  ShapeComponentAnalysis &shapeComponentAnalysis;
 };
 
 class ReshapeSimplifierPass final
@@ -237,13 +231,14 @@ class ReshapeSimplifierPass final
 void ReshapeSimplifierPass::runOnFunction() {
   MLIRContext *ctx = &getContext();
   mlir::RewritePatternSet patterns(ctx);
-  ShapeComponentAnalysis shapeComponentAnalysis;
 
   // clang-format off
-  patterns.insert<ReshapeToExpandShape,
-                  RemoveComputeReshapeShape,
-                  RemoveRedundantCstrReshapable>(ctx, shapeComponentAnalysis);
+  patterns.insert<
+      ReshapeToExpandShape,
+      RemoveComputeReshapeShape,
+      RemoveRedundantCstrReshapable>(ctx);
   // clang-format on
+  shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
 
   if (failed(mlir::applyPatternsAndFoldGreedily(getFunction(),
                                                 std::move(patterns)))) {
