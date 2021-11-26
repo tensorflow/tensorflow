@@ -266,6 +266,8 @@ tf_kernel_library(
         "gpu_op_xlog1py.cc",
         "gpu_op_xlogy.cc",
         "gpu_op_zeta.cc",
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_floor_mod.cc",
     ]),
     copts = if_mlir_generated_experimental_kernels_enabled([
         "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
@@ -307,7 +309,7 @@ tf_kernel_library(
         ":gpu_xlogy_kernels",
         ":gpu_zeta_kernels",
         "//third_party/eigen3",
-    ]),
+    ]) + if_mlir_generated_experimental_kernels_enabled([":gpu_floor_mod_kernels"]),
 )
 
 tf_kernel_library(
@@ -1319,6 +1321,26 @@ gpu_kernel_library(
         "i64",
         "f64",
     ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_floor_mod_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "floor_mod",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
