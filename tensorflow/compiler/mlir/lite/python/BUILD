@@ -7,6 +7,7 @@ package(default_visibility = [":friends"])
 package_group(
     name = "friends",
     packages = [
+        "//learning/brain/mobile/lite/tools/analyzer/...",
         "//tensorflow/lite/toco/...",
     ],
 )

@@ -136,6 +136,11 @@ auto* tf_data_service_jobs_created_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/service/jobs_created", "Number of tf.data service jobs.",
     "processing_mode", "coordinated_read");
 
+auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
+    "/tensorflow/data/service/client_iterators",
+    "Number of tf.data service client iterators created.", "worker_uid",
+    "deployment_mode", "processing_mode", "is_coordinated_read");
+
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -220,6 +225,10 @@ auto* tpu_variable_distribution_time_usecs = monitoring::Counter<0>::New(
     "Time spent sending variables from primary task to other worker tasks "
     "at the start of a call to TPUExecute.  Timer starts at RunGraph "
     "invocation and ends when TPUExecute args are ready on the current task.");
+
+auto* test_counters =
+    monitoring::Counter<2>::New("/tensorflow/core/test_counters",
+                                "Counters used for testing.", "name", "label");
 
 }  // namespace
 
@@ -320,6 +329,23 @@ void RecordTFDataServiceJobsCreated(
       ->IncrementBy(1);
 }
 
+void RecordTFDataServiceClientIterators(
+    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read) {
+  const std::string deployment_mode_str =
+      tensorflow::data::DeploymentMode_Name(deployment_mode);
+  const std::string sharding_policy_str =
+      data::ProcessingModeDef::ShardingPolicy_Name(
+          processing_mode.sharding_policy());
+  const std::string coordinated_read_str =
+      is_coordinated_read ? "true" : "false";
+  tf_data_service_client_iterators_counter
+      ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
+                sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
 void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
@@ -399,55 +425,6 @@ void UpdateGraphPendingQueueLength(uint64 len) {
   graph_pending_queue_length_cell->Add(len);
 }
 
-void UpdateGraphOptimizationPassTime(const string& pass_name,
-                                     const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    GetGraphOptimizationCounter()
-        ->GetCell("GraphOptimizationPass", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
-void UpdateGrapplerPassTime(const string& pass_name,
-                            const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    GetGraphOptimizationCounter()
-        ->GetCell("Grappler", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
-void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
-                                         const uint64 running_time_usecs) {
-  // TODO(jpienaar): Name here is temporary, currently the frameworks are
-  // distinct and so useful to be able to differentiate (esp as I have not
-  // checked for name conflicts) but not desirable in end state. Unify these
-  // post cleanups.
-  if (running_time_usecs > 0) {
-    GetGraphOptimizationCounter()
-        ->GetCell("TfMlir", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
-void UpdateTFDataPassTime(const string& pass_name,
-                          const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    GetGraphOptimizationCounter()
-        ->GetCell("TFDataPass", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
-void UpdateGraphOptimizerPassTime(const string& pass_name,
-                                  const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    GetGraphOptimizationCounter()
-        ->GetCell("GraphOptimizerPass", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
 void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     static auto* build_graph_calls_cell = build_graph_calls->GetCell();
@@ -484,6 +461,34 @@ void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs) {
 
 void RecordUnusedOutput(const string& op_name) {
   graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
+}
+
+void IncrementTestCounter(const string& name, const string& label) {
+  test_counters->GetCell(name, label)->IncrementBy(1);
+}
+
+const monitoring::CounterCell* TestCounter(const string& name,
+                                           const string& label) {
+  return test_counters->GetCell(name, label);
+}
+
+TestDelta::TestDelta(const string& name, const string& label)
+    : cell_(TestCounter(name, label)) {
+  Reset();
+}
+
+void TestDelta::Reset() { last_value_ = cell_->value(); }
+
+int64 TestDelta::Get() { return cell_->value() - last_value_; }
+
+void UpdateTfMlirGraphOptimizationPassStateCounter(
+    const std::string& pass_state, const std::string& processing_state) {
+  static auto* metric = monitoring::Counter<2>::New(
+      "/tensorflow/core/tf_mlir_update_graph_optimization_pass_state_counter",
+      "Tracks changes in a graph's UpdateTfMlirGraphOptimizationPassState",
+      "PassState", "ProcessingState");
+
+  metric->GetCell(pass_state, processing_state)->IncrementBy(1);
 }
 
 }  // namespace metrics

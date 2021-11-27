@@ -229,6 +229,8 @@ cc_library(
         ":python_utils",
         ":traceback",
         ":types",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -251,6 +253,8 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@pybind11",
     ],
 )
@@ -471,6 +475,31 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir",
+    srcs = ["mlir.cc"],
+    hdrs = ["mlir.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":types",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CAPIIR",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
+        "@llvm-project//mlir:StandardOps",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "profiler",
     srcs = ["profiler.cc"],
     hdrs = ["profiler.h"],
@@ -552,8 +581,9 @@ pybind_extension(
     deps = [
         ":dlpack",
         ":jax_jit",
-        ":pmap_lib",
+        ":mlir",
         ":ops",
+        ":pmap_lib",
         ":profiler",
         ":py_client",
         ":pytree",

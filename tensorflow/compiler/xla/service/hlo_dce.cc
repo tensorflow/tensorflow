@@ -37,7 +37,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> HloDCE::RunOnComputation(
+/*static*/ StatusOr<bool> HloDCE::RunOnComputation(
     HloComputation* computation, bool remove_cross_partition_collective_ops) {
   bool changed = false;
   VLOG(3) << "Before dce:";

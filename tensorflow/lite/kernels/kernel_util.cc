@@ -444,7 +444,11 @@ const std::string GetShapeDebugString(const TfLiteIntArray* shape) {
       // tensorflow::shape_inference::InferenceContext::DebugString()
       str += "," + std::to_string(shape->data[d]);
   }
-  str += "]";
+  if (str.empty()) {
+    str = "[]";
+  } else {
+    str += "]";
+  }
   return str;
 }
 

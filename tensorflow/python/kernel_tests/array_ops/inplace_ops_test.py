@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for inplace_ops."""
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -104,7 +103,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       d0, d1, d2 = 100, 3, 5
       x = array_ops.zeros([d0, d1, d2])
       y = np.zeros([d0, d1, d2])
-      for _ in xrange(20):
+      for _ in range(20):
         idx = np.random.choice(d0, d0 // 10, replace=False)
         val = np.random.randint(10, size=(d0 // 10, d1, d2))
         op = np.random.randint(3)
@@ -124,7 +123,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       d0 = 100
       x = array_ops.zeros([d0])
       y = np.zeros([d0])
-      for _ in xrange(20):
+      for _ in range(20):
         idx = np.random.choice(d0, d0 // 10, replace=False)
         val = np.random.randint(10, size=(d0 // 10))
         op = np.random.randint(3)

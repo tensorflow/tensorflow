@@ -42,7 +42,9 @@ void AttachCostPerDevice(mlir::ModuleOp module,
   processed_device_specs.insert("CPU");
 
   module.walk([&](mlir::Operation* op) {
-    if (!mlir::TFL::tac::IsTFLDialectNonConstOp(op)) return;
+    if (!mlir::TFL::tac::IsNonConstOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op))
+      return;
 
     // Attach cost per target.
     // Unsupported op will have negative values.

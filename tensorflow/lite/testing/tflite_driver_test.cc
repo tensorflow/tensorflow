@@ -58,6 +58,35 @@ TEST(TfliteDriverTest, SimpleTest) {
   EXPECT_EQ(runner->ReadOutput(6), "0.011,0.022,0.033,0.044");
 }
 
+TEST(TfliteDriverTest, SimpleTestWithSignature) {
+  std::unique_ptr<TestRunner> runner(new TfLiteDriver);
+
+  runner->SetModelBaseDir("tensorflow/lite");
+  runner->LoadModel("testdata/multi_add_signature.bin", "serving_default");
+  ASSERT_TRUE(runner->IsValid());
+
+  for (const auto& i : {"a", "b", "c", "d"}) {
+    runner->ReshapeTensor(i, "1,2,2,1");
+  }
+  ASSERT_TRUE(runner->IsValid());
+
+  runner->AllocateTensors();
+
+  runner->ResetTensor("c");
+  runner->Invoke({{"a", "0.1,0.2,0.3,0.4"},
+                  {"b", "0.001,0.002,0.003,0.004"},
+                  {"d", "0.01,0.02,0.03,0.04"}});
+
+  ASSERT_TRUE(runner->IsValid());
+
+  ASSERT_EQ(runner->ReadOutput("x"), "0.101,0.202,0.303,0.404");
+  ASSERT_EQ(runner->ReadOutput("y"), "0.011,0.022,0.033,0.044");
+
+  ASSERT_TRUE(runner->CheckResults(
+      {{"x", "0.101,0.202,0.303,0.404"}, {"y", "0.011,0.022,0.033,0.044"}},
+      /*expected_output_shapes=*/{}));
+}
+
 TEST(TfliteDriverTest, SingleAddOpTest) {
   std::unique_ptr<TestRunner> runner(new TfLiteDriver(
       /*delegate_type=*/TfLiteDriver::DelegateType::kNone,

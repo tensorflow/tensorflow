@@ -75,7 +75,8 @@ extern const char* const kEigenMatMulC128SymbolName =
     "__xla_cpu_runtime_EigenMatMulC128";
 extern const char* const kEigenMatMulS32SymbolName =
     "__xla_cpu_runtime_EigenMatMulS32";
-extern const char* const kMKLConvF32SymbolName = "__xla_cpu_runtime_MKLConvF32";
+extern const char* const kMKLConv2DF32SymbolName =
+    "__xla_cpu_runtime_MKLConv2DF32";
 extern const char* const kMKLMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLMatMulF32";
 extern const char* const kMKLMatMulF64SymbolName =
@@ -84,10 +85,14 @@ extern const char* const kMKLSingleThreadedMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLSingleThreadedMatMulF32";
 extern const char* const kMKLSingleThreadedMatMulF64SymbolName =
     "__xla_cpu_runtime_MKLSingleThreadedMatMulF64";
-extern const char* const kEigenConvF16SymbolName =
-    "__xla_cpu_runtime_EigenConvF16";
-extern const char* const kEigenConvF32SymbolName =
-    "__xla_cpu_runtime_EigenConvF32";
+extern const char* const kEigenConv2DF16SymbolName =
+    "__xla_cpu_runtime_EigenConv2DF16";
+extern const char* const kEigenConv2DF32SymbolName =
+    "__xla_cpu_runtime_EigenConv2DF32";
+extern const char* const kEigenConv3DF16SymbolName =
+    "__xla_cpu_runtime_EigenConv3DF16";
+extern const char* const kEigenConv3DF32SymbolName =
+    "__xla_cpu_runtime_EigenConv3DF32";
 extern const char* const kEigenFftSymbolName = "__xla_cpu_runtime_EigenFft";
 extern const char* const kEigenSingleThreadedFftSymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedFft";
@@ -103,10 +108,14 @@ extern const char* const kEigenSingleThreadedMatMulC128SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulC128";
 extern const char* const kEigenSingleThreadedMatMulS32SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulS32";
-extern const char* const kEigenSingleThreadedConvF16SymbolName =
-    "__xla_cpu_runtime_EigenSingleThreadedConvF16";
-extern const char* const kEigenSingleThreadedConvF32SymbolName =
-    "__xla_cpu_runtime_EigenSingleThreadedConvF32";
+extern const char* const kEigenSingleThreadedConv2DF16SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConv2DF16";
+extern const char* const kEigenSingleThreadedConv2DF32SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConv2DF32";
+extern const char* const kEigenSingleThreadedConv3DF16SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConv3DF16";
+extern const char* const kEigenSingleThreadedConv3DF32SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConv3DF32";
 extern const char* const kAcquireInfeedBufferForDequeueSymbolName =
     "__xla_cpu_runtime_AcquireInfeedBufferForDequeue";
 extern const char* const kReleaseInfeedBufferAfterDequeueSymbolName =

@@ -56,7 +56,6 @@ transitive_hdrs(
         "//tensorflow/python/lib/core:py_func_lib",
         "//tensorflow/python/lib/core:py_seq_tensor",
         "//tensorflow/python/lib/core:py_util",
-        "//tensorflow/python/lib/io:py_record_reader_lib",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",

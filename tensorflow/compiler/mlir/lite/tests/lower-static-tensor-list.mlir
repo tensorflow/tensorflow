@@ -451,7 +451,7 @@ func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: ten
 // CHECK:  return [[RESULT]] : tensor<?x10xf32>
 }
 
-// CHECK-LABEL:  func @cond_true
+// CHECK-LABEL:  func private @cond_true
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<3x10xf32>, [[SHAPE:%.*]]: tensor<?xi32>, [[SIZE_DIFF:%.*]]: tensor<i32>, [[SIZE:%.*]]: tensor<i32>)
 // CHECK-NEXT:  [[NEG_ONE:%.*]] = arith.constant dense<-1> : tensor<1xi32>
 // CHECK-NEXT:  [[ZERO:%.*]] = arith.constant dense<0> : tensor<i32>
@@ -468,7 +468,7 @@ func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: ten
 // CHECK-NEXT:  return [[RESULT]] : tensor<?x10xf32>
 
 
-// CHECK-LABEL:  func @cond_false
+// CHECK-LABEL:  func private @cond_false
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<3x10xf32>, [[SHAPE:%.*]]: tensor<?xi32>, [[SIZE_DIFF:%.*]]: tensor<i32>, [[SIZE:%.*]]: tensor<i32>)
 // CHECK-DAG:  [[ZERO:%.*]] = arith.constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[ONE:%.*]] = arith.constant dense<1> : tensor<1xi32>

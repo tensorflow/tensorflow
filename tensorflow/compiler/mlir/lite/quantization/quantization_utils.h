@@ -182,8 +182,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
         quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
-      double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
-      double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      auto statValues = stats.getValues<APFloat>();
+      double rmin = FloatAttr::getValueAsDouble(statValues[0]);
+      double rmax = FloatAttr::getValueAsDouble(statValues[1]);
       // The default nudging implementation of mlir quant library might cause
       // clamping during inference if the calibration range isn't wide enough.
       // So here we adjust the range to include 0.0.
@@ -517,6 +518,12 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     if (!qtype || qtype.isSigned()) return failure();
 
     int num_bits = qtype.getStorageTypeIntegralWidth();
+    if (num_bits == 8) {
+      // If storage is 8-bit, trained num bits may be less than 8 so check here.
+      const double range = static_cast<double>(qtype.getStorageTypeMax() -
+                                               qtype.getStorageTypeMin());
+      num_bits = static_cast<int>(std::ceil(std::log2(range)));
+    }
     // This is a positive value, and will be applied on zero points and fixed
     // point ranges.
     int64_t offset =
@@ -627,7 +634,8 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor);
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, int quant_dim,
                               IntegerAttr num_bits, BoolAttr narrow_range,
-                              bool is_signed, bool legacy_float_scale = false);
+                              bool is_signed, bool legacy_float_scale = false,
+                              bool use_fake_quant_num_bits = false);
 
 // Casts the `target` type to a quantized type by using the quantization
 // parameters from the type in the `source` type attribute.
@@ -663,16 +671,17 @@ ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type);
 Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
                                       unsigned num_bits, bool is_signed,
                                       bool narrow_range,
-                                      bool legacy_float_scale = false);
+                                      bool legacy_float_scale = false,
+                                      bool use_fake_quant_num_bits = false);
 
 // Returns the per channel quantized type for an element attribute.
 // `quant_dim` defines the quantization axis. The channel min/max are adjusted
 // to be symmetric if `symmetric` flag is set to True. And `symmetric` can only
 // be set to true when it is signed and narrow_range.
-Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
-                                             bool symmetric, unsigned num_bits,
-                                             bool is_signed, bool narrow_range,
-                                             bool legacy_float_scale = false);
+Type GetUniformQuantizedPerAxisTypeForWeight(
+    ElementsAttr attr, int quant_dim, bool symmetric, unsigned num_bits,
+    bool is_signed, bool narrow_range, bool legacy_float_scale = false,
+    bool use_fake_quant_num_bits = false);
 
 // Returns the quantized type of a bias input, given the quantized types of
 // other operands which are multiply-accumulated (the bias is added to the
@@ -724,7 +733,8 @@ void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
 Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
                       ArrayRef<double> max, int quant_dim,
                       int storage_type_width, bool narrow_range, bool is_signed,
-                      bool legacy_float_scale = false);
+                      bool legacy_float_scale = false,
+                      bool use_fake_quant_num_bits = false);
 }  // namespace quant
 }  // namespace mlir
 

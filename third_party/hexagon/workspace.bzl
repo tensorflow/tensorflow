@@ -2,7 +2,7 @@
 
 load("//third_party:repo.bzl", "tf_http_archive")
 
-# Note: Use libhexagon_nn_skel version 1.20 Only with the current version.
+# Note: Use libhexagon_nn_skel version 1.20.0.1 Only with the current version.
 # This comment will be updated with compatible version.
 def repo():
     tf_http_archive(

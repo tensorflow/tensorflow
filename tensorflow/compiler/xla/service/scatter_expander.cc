@@ -326,10 +326,10 @@ static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
       {updated_operand, scatter_indices, updates}};
 }
 
-static int64_t ScatterTripCount(HloInstruction* scatter) {
+static int64_t ScatterTripCount(const HloInstruction* scatter) {
   // Compute the trip count for the while loop to be used for scatter. This
   // should be the number of indices we should scatter into the operand.
-  HloInstruction* scatter_indices = scatter->mutable_operand(1);
+  const HloInstruction* scatter_indices = scatter->operand(1);
   const Shape& scatter_indices_shape = scatter_indices->shape();
   const ScatterDimensionNumbers& dim_numbers =
       scatter->scatter_dimension_numbers();

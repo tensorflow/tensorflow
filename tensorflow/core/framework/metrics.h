@@ -112,6 +112,12 @@ void RecordTFDataServiceJobsCreated(
     const tensorflow::data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read);
 
+// Records tf.data service iterators created by clients.
+void RecordTFDataServiceClientIterators(
+    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read);
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
@@ -175,6 +181,15 @@ void RecordUnusedOutput(const string& op_name);
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
 void UpdateGraphBuildTime(const uint64 running_time_usecs);
 
+// Records the status of a graph passing through various states/stages of
+// TfMlirGraphOptimizationPass processing using
+// tf_metadata.tf_mlir_update_graph_optimization_pass_state_counter metric.
+// 'pass_state' identifies the state of the pass
+// (or "PassState" metric field) and 'processing_state' refers to the stage
+// in the process the graph is at (or "ProcessingState" metric field).
+void UpdateTfMlirGraphOptimizationPassStateCounter(
+    const std::string& pass_state, const std::string& processing_state);
+
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>
 class ScopedCounter final {
@@ -203,6 +218,32 @@ class ScopedCounter final {
   // Start the measurement with the existing set of labels.
   void Reset() { Init(); }
 
+  // Returns duration of the current interval in case the timer has started.
+  // Returns nullopt otherwise.
+  absl::optional<uint64> DurationMicroSec() const {
+    return started_ ? absl::optional<uint64>(
+                          accumulated_time_ +
+                          tensorflow::Env::Default()->NowMicros() - start_time_)
+                    : absl::nullopt;
+  }
+
+  // Temporarily stop the timer, but keep accumulated time.
+  void AccumulateAndStop() {
+    if (started_) {
+      accumulated_time_ = tensorflow::Env::Default()->NowMicros() - start_time_;
+      started_ = false;
+    }
+  }
+
+  // Start previously stopped timer.
+  void Start() {
+    if (started_) return;
+
+    // Keep previously accumulated time if any.
+    start_time_ = tensorflow::Env::Default()->NowMicros();
+    started_ = true;
+  }
+
   ~ScopedCounter() { ReportAndStop(); }
 
  private:
@@ -210,6 +251,7 @@ class ScopedCounter final {
   void ReportInternal(std::index_sequence<S...>) {
     uint64 time_interval =
         tensorflow::Env::Default()->NowMicros() - start_time_;
+    time_interval += accumulated_time_;
     if (time_interval > 0) {
       counter_->GetCell(labels_[S]...)->IncrementBy(time_interval);
     }
@@ -218,29 +260,20 @@ class ScopedCounter final {
   void Init() {
     start_time_ = tensorflow::Env::Default()->NowMicros();
     started_ = true;
+    accumulated_time_ = 0;
   }
 
   monitoring::Counter<NumLabels>* counter_;
   std::array<std::string, NumLabels> labels_;
   bool started_{false};
   uint64 start_time_;
+  uint64 accumulated_time_;
 };
 
 // Returns a counter used to capture timing metrics for graph optimization
 // passes.
 monitoring::Counter<2>* GetGraphOptimizationCounter();
 
-// Updates the metrics stored about graph optimizations.
-void UpdateGraphOptimizationPassTime(const string& pass_name,
-                                     const uint64 running_time_usecs);
-void UpdateGrapplerPassTime(const string& pass_name,
-                            const uint64 running_time_usecs);
-void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
-                                         const uint64 running_time_usecs);
-void UpdateTFDataPassTime(const string& pass_name,
-                          const uint64 running_time_usecs);
-void UpdateGraphOptimizerPassTime(const string& pass_name,
-                                  const uint64 running_time_usecs);
 
 // Updates metrics for time to distribute variables to all TPU hosts.
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
@@ -250,6 +283,25 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
 
 // Updates the metrics stored about time BFC allocator spents during delay.
 void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
+
+// Increments (by 1) a simple integer counter that is exposed for testing.
+void IncrementTestCounter(const string& name, const string& label);
+
+// Read-only access to a counter for testing.
+const monitoring::CounterCell* TestCounter(const string& name,
+                                           const string& label);
+
+// Read-only wrapper for a TestCounter to track increments between calls.
+class TestDelta {
+ public:
+  TestDelta(const string& name, const string& label);
+  void Reset();
+  int64 Get();
+
+ private:
+  const monitoring::CounterCell* cell_;
+  int64 last_value_;
+};
 
 }  // namespace metrics
 }  // namespace tensorflow

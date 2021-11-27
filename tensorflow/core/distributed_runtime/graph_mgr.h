@@ -76,9 +76,10 @@ class GraphMgr {
   // Registers a graph. Fills in "handle". The registered graph retains a
   // reference to cluster_flr to do cross process function calls.
   Status Register(const string& handle, const GraphDef& gdef,
-                  WorkerSession* session, const GraphOptions& graph_options,
+                  const GraphOptions& graph_options,
                   const DebugOptions& debug_options,
                   const ConfigProto& config_proto, int64_t collective_graph_key,
+                  WorkerSession* session,
                   DistributedFunctionLibraryRuntime* cluster_flr,
                   string* graph_handle);
 
@@ -86,16 +87,13 @@ class GraphMgr {
   //
   // If "out" is not nullptr, "out" specifies all keys the execution
   // should receive upon finish.
-  // TODO(hanyangtay): Clean up the function signature such that input-only
-  // parameters come first.
   typedef std::map<string, Tensor> NamedTensors;
   typedef std::function<void(const Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64_t step_id,
-                    WorkerSession* session, const ExecutorOpts& opts,
-                    StepStatsCollector* collector,
+                    const ExecutorOpts& opts, const NamedTensors& in,
+                    WorkerSession* session, StepStatsCollector* collector,
                     MutableRunGraphResponseWrapper* response,
                     CancellationManager* cancellation_manager,
-                    const NamedTensors& in,
                     CoordinationServiceAgent* coordination_service_agent,
                     StatusCallback done);
 
@@ -184,9 +182,10 @@ class GraphMgr {
                       CostGraphDef* cost_graph);
 
   Status InitItem(const string& handle, const GraphDef& gdef,
-                  WorkerSession* session, const GraphOptions& graph_options,
+                  const GraphOptions& graph_options,
                   const DebugOptions& debug_options,
                   const ConfigProto& config_proto, int64_t collective_graph_key,
+                  WorkerSession* session,
                   DistributedFunctionLibraryRuntime* cluster_flr, Item* item);
 
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,

@@ -482,7 +482,7 @@ StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
         // Create core runtime.
         auto expected_core_runtime = tfrt::CoreRuntime::Create(
             [](const tfrt::DecodedDiagnostic& diag) {
-              LOG(ERROR) << diag.message;
+              LOG(ERROR) << tfrt::StrCat(diag);
             },
             tfrt::CreateMallocAllocator(), std::move(work_queue),
             kDefaultHostDeviceName);
@@ -570,9 +570,6 @@ static Status ExecuteBef(const std::string& module_name,
   auto resource_ctx = std::make_unique<tfrt::ResourceContext>();
   tfrt::RequestContextBuilder request_context_builder(
       runtime_and_queue.core_runtime->GetHostContext(), resource_ctx.get());
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
-      &request_context_builder, &intra_op_threadpool));
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
     auto error = expected_req_ctx.takeError();
@@ -611,7 +608,7 @@ static Status ExecuteBef(const std::string& module_name,
 
   // Report error if any.
   if (auto* error = result->GetErrorIfPresent())
-    return tensorflow::errors::Internal(error->message);
+    return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
   return MaybeSyncAndProfile(run_options, start_micros,
                              block_host_until_done ? main_stream : nullptr);

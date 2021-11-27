@@ -156,9 +156,14 @@ class OpKernelRunnerTable {
   // not in the table. Note that the returned pointer will be invalidated if
   // Insert() is called.
   const OpKernelRunner* Get(int64_t index) const {
-    DCHECK_GT(runners_.size(), index);
+    // Out of bounds vector access will throw an exception and anyway will crash
+    // the binary, prefer a more readable error message.
+    CHECK_GT(runners_.size(), index)  // Crash OK
+        << "runner index is out of bounds: index=" << index
+        << " size=" << runners_.size();
     auto& result = runners_.at(index);
-    DCHECK(result.has_value());
+    CHECK(result.has_value())  // Crash OK
+        << "runner is not available: index=" << index;
     return &(*result);
   }
 

@@ -1137,7 +1137,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     [1.0, 3.0]
 
     Args:
-      *args: follows the same semantics as python's xrange.
+      *args: follows the same semantics as python's range.
         len(args) == 1 -> start = 0, stop = args[0], step = 1.
         len(args) == 2 -> start = args[0], stop = args[1], step = 1.
         len(args) == 3 -> start = args[0], stop = args[1], step = args[2].
@@ -5103,7 +5103,7 @@ class PaddedBatchDataset(UnaryDataset):
 
     # If padding_values is a single element and input_shapes is a structure,
     # "broadcast" padding_values to the same structure as input_shapes.
-    if nest.is_sequence(input_shapes) and not nest.is_sequence(padding_values):
+    if nest.is_nested(input_shapes) and not nest.is_nested(padding_values):
       padding_values = nest.map_structure(lambda _: padding_values,
                                           input_shapes)
 

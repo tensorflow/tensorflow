@@ -178,6 +178,7 @@ def GetShrunkInceptionMaxPoolShapes(shrink=30):
     yield n, i, f, o, s, p
 
 
+@test_util.with_eager_op_as_function
 class PoolingTest(test.TestCase, parameterized.TestCase):
 
   def _isMaxPool(self, func):
@@ -2391,6 +2392,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             explicit_paddings=[1, 1, 1, 1, 1, 1, 0, 0],
             data_format="NHWC"))
 
+  @test_util.disable_xla(
+      "b/205634417")  # XLA is not throwing shape errors for multiple *Grad ops.
   def testMaxPoolGradEagerShapeErrors(self):
     with context.eager_mode():
       orig_in = array_ops.ones((1, 1, 1, 1))

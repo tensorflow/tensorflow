@@ -253,8 +253,8 @@ Status XlaOpKernelContext::ConstantInputAsFloatScalar(
 static Status LiteralToPredVector(const xla::LiteralSlice& literal,
                                   std::vector<bool>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() != xla::PRED) {
@@ -354,8 +354,8 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
 static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                    std::vector<int64_t>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {
@@ -542,8 +542,8 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   }
   if (variable->type() != type) {
     return errors::InvalidArgument(
-        "Type mismatch for read of variable ", variable->name(), ". Expected ",
-        DataTypeString(type), "; got ", DataTypeString(variable->type()));
+        "Trying to read variable with wrong dtype. Expected ",
+        DataTypeString(type), " got ", DataTypeString(variable->type()));
   }
   if (shape) {
     *shape = variable->shape();
@@ -560,7 +560,7 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
       xla::Shape representation_shape,
       ctx->compiler()->options().shape_representation_fn(
           variable->shape(), variable->type(),
-          /*use_fast_memory=*/false, TpuLayoutPreference::kNoPreference));
+          /*use_fast_memory=*/false, XlaLayoutPreference::kNoPreference));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       TensorShapeToXLAShape(variable->type(), variable->shape(), &xla_shape));
@@ -704,7 +704,7 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
       xla::Shape representation_shape,
       ctx->compiler()->options().shape_representation_fn(
           shape, type,
-          /*use_fast_memory=*/false, TpuLayoutPreference::kNoPreference));
+          /*use_fast_memory=*/false, XlaLayoutPreference::kNoPreference));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
   if (!xla::ShapeUtil::Compatible(xla_shape, representation_shape)) {

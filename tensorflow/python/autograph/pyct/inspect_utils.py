@@ -31,7 +31,6 @@ from tensorflow.python.util import tf_inspect
 # This lock seems to help avoid linecache concurrency errors.
 _linecache_lock = threading.Lock()
 
-
 # These functions test negative for isinstance(*, types.BuiltinFunctionType)
 # and inspect.isbuiltin, and are generally not visible in globals().
 # TODO(mdan): Remove this.
@@ -49,9 +48,6 @@ SPECIAL_BUILTINS = {
     'zip': zip
 }
 
-if six.PY2:
-  SPECIAL_BUILTINS['xrange'] = xrange
-
 
 def islambda(f):
   if not tf_inspect.isfunction(f):
@@ -61,8 +57,7 @@ def islambda(f):
     return False
   # Some wrappers can rename the function, but changing the name of the
   # code object is harder.
-  return (
-      (f.__name__ == '<lambda>') or (f.__code__.co_name == '<lambda>'))
+  return ((f.__name__ == '<lambda>') or (f.__code__.co_name == '<lambda>'))
 
 
 def isnamedtuple(f):
@@ -103,14 +98,14 @@ def isconstructor(cls):
 
   Args:
     cls: Any
+
   Returns:
     Bool
   """
-  return (
-      inspect.isclass(cls)
-      and not (issubclass(cls.__class__, type)
-               and hasattr(cls.__class__, '__call__')
-               and cls.__class__.__call__ is not type.__call__))
+  return (inspect.isclass(cls) and
+          not (issubclass(cls.__class__, type) and
+               hasattr(cls.__class__, '__call__') and
+               cls.__class__.__call__ is not type.__call__))
 
 
 def _fix_linecache_record(obj):
@@ -158,6 +153,7 @@ def getnamespace(f):
 
   Args:
     f: User defined function.
+
   Returns:
     A dict mapping symbol names to values.
   """
@@ -187,10 +183,10 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
     namespace: Dict[str, Any], the namespace to search into.
     object_: Any, the value to search.
     max_depth: Optional[int], a limit to the recursion depth when searching
-        inside modules.
+      inside modules.
     visited: Optional[Set[int]], ID of modules to avoid visiting.
   Returns: Union[str, None], the fully-qualified name that resolves to the value
-      o, or None if it couldn't be found.
+    o, or None if it couldn't be found.
   """
   if visited is None:
     visited = set()
@@ -210,8 +206,7 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
 
   # If an object is not found, try to search its parent modules.
   parent = tf_inspect.getmodule(object_)
-  if (parent is not None and parent is not object_ and
-      parent is not namespace):
+  if (parent is not None and parent is not object_ and parent is not namespace):
     # No limit to recursion depth because of the guard above.
     parent_name = getqualifiedname(
         namespace, parent, max_depth=0, visited=visited)
@@ -263,7 +258,9 @@ def getdefiningclass(m, owner_class):
 
 
 def getmethodclass(m):
-  """Resolves a function's owner, e.g. a method's class.
+  """Resolves a function's owner, e.g.
+
+  a method's class.
 
   Note that this returns the object that the function was retrieved from, not
   necessarily the class where it was defined.
@@ -347,5 +344,6 @@ def getfutureimports(entity):
   """
   if not (tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity)):
     return tuple()
-  return tuple(sorted(name for name, value in entity.__globals__.items()
-                      if getattr(value, '__module__', None) == '__future__'))
+  return tuple(
+      sorted(name for name, value in entity.__globals__.items()
+             if getattr(value, '__module__', None) == '__future__'))

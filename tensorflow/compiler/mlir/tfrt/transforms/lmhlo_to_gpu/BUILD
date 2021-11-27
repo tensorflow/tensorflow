@@ -27,6 +27,7 @@ cc_library(
     hdrs = ["pattern_utils.h"],
     tags = ["gpu"],
     deps = [
+        "//tensorflow/stream_executor:dnn",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@tf_runtime//:basic_kernels_opdefs",
@@ -62,6 +63,7 @@ cc_library(
     srcs = [
         "ccl_pattern.cc",
         "cholesky_pattern.cc",
+        "convolution_pattern.cc",
         "custom_call_pattern.cc",
         "gemm_pattern.cc",
         "lmhlo_to_gpu.cc",
@@ -90,9 +92,11 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/service/gpu:xlir_opdefs",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",

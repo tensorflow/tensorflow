@@ -16,7 +16,7 @@
 #include <functional>
 #include <string>
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime

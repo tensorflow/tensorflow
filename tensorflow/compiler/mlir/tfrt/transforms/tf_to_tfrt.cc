@@ -562,7 +562,7 @@ class FallbackBatchFunctionOpConversion
 
     llvm::SmallVector<NamedAttribute, 12> attr_array;
     for (auto &key_and_value : op->getAttrs()) {
-      StringRef name = key_and_value.first;
+      StringRef name = key_and_value.getName();
       if (name == "_output_shapes" || name == "f") {
         continue;
       }
@@ -1780,9 +1780,9 @@ class TfToTfrtConversionPass
     });
 
     // Wait for the compilation completion before returning from init function.
-    if (compiled.size() == 1) {
-      chain_value = compiled[0];
-    } else if (compiled.size() > 1) {
+    if (!compiled.empty()) {
+      // Do not forget to wait for the fallback kernels initialization.
+      compiled.insert(compiled.begin(), chain_value);
       chain_value = builder.create<tfrt::compiler::MergeChainsOp>(
           func_op.getLoc(), chain_type, compiled);
     }
@@ -2117,9 +2117,24 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
 
   // We pass the MLIR module through the TF standard pipeline, which for
   // instances does shape inference, canonicalization, inlining, etc.
-  mlir::TF::StandardPipelineOptions tf_options;
-  tf_options.enable_inliner = true;
-  mlir::TF::CreateTFStandardPipeline(pm, tf_options);
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::tf_executor::CreateTFExecutorGraphPruningPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
+  // Here we assign devices so that later passes can utilize device information.
+  // We assume most of the device assignment has been done by the upstream
+  // pipeline, so we simply assign the default device to unassigned ops.
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
+  // Here we perform TFRT specific optimization before standard TF optimization,
+  // as TFRT-specific optimization may create more opportunities.
+  pm.addNestedPass<mlir::FuncOp>(tfrt_compiler::CreateOptimizeTfForTfrtPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::createSymbolDCEPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateTFOptimizePass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
   pm.addPass(mlir::TF::CreateConstantOpDeviceAssignmentPass());
 
@@ -2238,6 +2253,11 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
     // after CreateFuseTpuCompileAndExecutePass
     pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   }
+
+  // The optimization since the last device assignment may remove device
+  // information, so we assign default devices again.
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
 
   pm.addPass(CreateLowerTFSavedModelPass(options.hoist_invariant_ops));
 }

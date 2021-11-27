@@ -5,48 +5,15 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
-package_group(
-    name = "friends",
-    packages = [
-        "//platforms/darwinn/tools/mlir_fuzzer/...",
-        "//third_party/auroraml/...",
-        "//tensorflow/compiler/...",
-        "//tensorflow/core/runtime_fallback/test/...",
-        "//tensorflow/core/tfrt/saved_model/...",
-        "//tensorflow/core/tfrt/utils/...",
-        "//tensorflow/cc/...",
-        "//tensorflow/python/...",
-        "//tensorflow/tools/pip_package/...",
-        "//tensorflow/tools/...",
-    ] + if_google([
-        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
-        "//learning/brain/experimental/dtensor/...",
-        "//learning/brain/experimental/tfrt/...",
-        "//learning/brain/mlir/bridge/...",
-        # Allow visibility from the mlir language server.
-        "//learning/brain/mlir/mlir_lsp_server/...",
-        "//learning/brain/mobile/lite/tf_runtime/...",
-        "//learning/brain/tfrt/tpu_runner/...",
-        "//learning/brain/tfrt/tpu/compiler/...",
-        "//learning/pathways/data_parallel/serving/...",
-        "//learning/pathways/data_parallel/tf2xla/...",
-        "//learning/serving/contrib/tfrt/mlir/...",
-        "//platforms/darwinn/contrib/waymo/...",
-        "//platforms/xla/sparse_core/...",
-        "//waymo/ml/compiler/...",
-        "//research/language_modeling/sentence_explorer/ondevice/...",
-    ]),
-)
-
 exports_files([
-    "tf_generated_ops.td",
+    "ir/tf_generated_ops.td",
     "ir/tf_op_base.td",
     "ir/tf_op_interfaces.td",
     "ir/tf_ops.td",
@@ -407,6 +374,28 @@ cc_library(
 )
 
 cc_library(
+    name = "tfe_legalize_tfg",
+    srcs = [
+        "transforms/passes.h",
+        "transforms/passes_detail.h",
+        "transforms/tfg-to-tfe.cc",
+    ],
+    deps = [
+        ":tensorflow",
+        ":tf_device_pass_inc_gen",
+        ":tf_pass_inc_gen",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/ir:Dialect",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "tensorflow_attributes",
     hdrs = [
         "ir/tf_attributes.h",
@@ -454,7 +443,6 @@ cc_library(
         textual_hdrs = [
             "ir/tf_types.def",
             "ir/tf_all_ops.h.inc",
-            "ir/tf_ops_helpers.inc",
             "ir/tfrt_ops.h.inc",
             "ir/tf_remaining_ops.h.inc",
         ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
@@ -469,6 +457,11 @@ cc_library(
             ":tensorflow_structs",
             ":tensorflow_traits",
             ":tensorflow_types",
+            ":tf_ops_canonicalization_helper",
+            ":tf_ops_device_helper",
+            ":tf_ops_layout_helper",
+            ":tf_ops_tensor_helper",
+            ":tf_arith_ops_folder",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:ControlFlowInterfaces",
             "@llvm-project//mlir:DerivedAttributeOpInterface",
@@ -499,7 +492,6 @@ cc_library(
     ],
     textual_hdrs = [
         "ir/tf_all_ops.h.inc",
-        "ir/tf_ops_helpers.inc",
         "ir/tf_remaining_ops.h.inc",
         "ir/tfrt_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
@@ -545,7 +537,6 @@ cc_library(
     ],
     textual_hdrs = [
         "ir/tf_all_ops.h.inc",
-        "ir/tf_ops_helpers.inc",
         "ir/tfrt_ops.h.inc",
         "ir/tf_remaining_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
@@ -714,6 +705,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -1230,7 +1222,6 @@ cc_library(
     ],
     includes = ["include"],
     textual_hdrs = [
-        "ir/tf_ops_helpers.inc",
         "transforms/passes_detail.h",
         "transforms/savedmodel_passes_detail.h",
         "transforms/tf_device_passes_detail.h",
@@ -1260,8 +1251,10 @@ cc_library(
         ":tensorflow_types",
         ":tf_data_optimization",
         ":tf_legalize_hlo",
+        ":tf_ops_layout_helper",
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
+        ":tfe_legalize_tfg",
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",
@@ -1521,6 +1514,7 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":location_utils",
         ":mangling_util",
         ":tensorflow",
         ":tensorflow_attributes",
@@ -1539,6 +1533,15 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "location_utils",
+    srcs = ["utils/location_utils.cc"],
+    hdrs = ["utils/location_utils.h"],
+    deps = [
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1762,10 +1765,7 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
-    visibility = [
-        ":friends",
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -1997,6 +1997,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
     "//tensorflow/compiler/mlir/hlo:sink_constants_to_control_flow",
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+    "//tensorflow/compiler/mlir/xla:tf_xla_passes",
     "//tensorflow/compiler/mlir/xla:xla_passes",
     "//tensorflow/compiler/mlir/xla:type_to_shape",
     "//tensorflow/compiler/mlir/xla:adjust_layout",
@@ -2005,6 +2006,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:xla_helpers",
     "//tensorflow/compiler/tf2xla:xla_argument",
+    "//tensorflow/compiler/tf2xla:layout_util",
     "//tensorflow/compiler/xla:shape_util",
     "//tensorflow/compiler/xla:xla_data_proto_cc",
     "//tensorflow/compiler/xla/client:xla_computation",
@@ -2418,5 +2420,59 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "tf_arith_ops_folder",
+    srcs = ["ir/tf_arith_ops_folder.cc"],
+    hdrs = ["ir/tf_arith_ops_folder.h"],
+    deps = [
+        ":tensorflow_types",
+        "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tf_ops_canonicalization_helper",
+    hdrs = ["ir/tf_ops_canonicalization_helper.h"],
+    deps = [
+        ":attribute_utils",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tf_ops_device_helper",
+    srcs = ["ir/tf_ops_device_helper.cc"],
+    hdrs = ["ir/tf_ops_device_helper.h"],
+    deps = [
+        ":tensorflow_structs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+    ],
+)
+
+cc_library(
+    name = "tf_ops_layout_helper",
+    srcs = ["ir/tf_ops_layout_helper.cc"],
+    hdrs = ["ir/tf_ops_layout_helper.h"],
+    deps = [
+        ":tensorflow_op_interfaces",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tf_ops_tensor_helper",
+    srcs = ["ir/tf_ops_tensor_helper.cc"],
+    hdrs = ["ir/tf_ops_tensor_helper.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:IR",
     ],
 )

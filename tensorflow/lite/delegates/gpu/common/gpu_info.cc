@@ -117,6 +117,8 @@ MaliGpu GetMaliGpuVersion(const std::string& gpu_description) {
       {"g72", MaliGpu::kG72},   {"g76", MaliGpu::kG76},
       {"g57", MaliGpu::kG57},   {"g77", MaliGpu::kG77},
       {"g68", MaliGpu::kG68},   {"g78", MaliGpu::kG78},
+      {"g310", MaliGpu::kG310}, {"g510", MaliGpu::kG510},
+      {"g610", MaliGpu::kG610}, {"g710", MaliGpu::kG710},
   };
   for (const auto& v : kMapping) {
     if (gpu_description.find(v.first) != std::string::npos) {
@@ -338,9 +340,13 @@ AppleInfo::AppleInfo(const std::string& gpu_description) {
   }
 }
 
+bool AppleInfo::IsA7GenerationGpu() const { return gpu_type == AppleGpu::kA7; }
+bool AppleInfo::IsA8GenerationGpu() const {
+  return gpu_type == AppleGpu::kA8 || gpu_type == AppleGpu::kA8X;
+}
+
 bool AppleInfo::IsLocalMemoryPreferredOverGlobal() const {
-  return gpu_type == AppleGpu::kA7 || gpu_type == AppleGpu::kA8 ||
-         gpu_type == AppleGpu::kA8X;
+  return IsA7GenerationGpu() || IsA8GenerationGpu();
 }
 
 bool AppleInfo::IsBionic() const {
@@ -439,7 +445,14 @@ bool MaliInfo::IsValhallGen2() const {
   return gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
 }
 
-bool MaliInfo::IsValhall() const { return IsValhallGen1() || IsValhallGen2(); }
+bool MaliInfo::IsValhallGen3() const {
+  return gpu_version == MaliGpu::kG310 || gpu_version == MaliGpu::kG510 ||
+         gpu_version == MaliGpu::kG610 || gpu_version == MaliGpu::kG710;
+}
+
+bool MaliInfo::IsValhall() const {
+  return IsValhallGen1() || IsValhallGen2() || IsValhallGen3();
+}
 
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info) {
@@ -730,6 +743,9 @@ uint64_t GpuInfo::GetMaxImage2DWidth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image2d_max_width;
   }
+  if (IsApiMetal()) {
+    return metal_info.image2d_max_width;
+  }
   return 2048;
 }
 
@@ -742,6 +758,9 @@ uint64_t GpuInfo::GetMaxImage2DHeight() const {
   }
   if (IsApiOpenCl()) {
     return opencl_info.image2d_max_height;
+  }
+  if (IsApiMetal()) {
+    return metal_info.image2d_max_height;
   }
   return 2048;
 }
@@ -756,12 +775,18 @@ uint64_t GpuInfo::GetMaxImage2DArrayLayers() const {
   if (IsApiOpenCl()) {
     return opencl_info.image_array_max_layers;
   }
+  if (IsApiMetal()) {
+    return metal_info.image_array_max_layers;
+  }
   return 256;
 }
 
 uint64_t GpuInfo::GetMaxImage3DWidth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image3d_max_width;
+  }
+  if (IsApiMetal()) {
+    return metal_info.image3d_max_width;
   }
   return 256;
 }
@@ -770,12 +795,18 @@ uint64_t GpuInfo::GetMaxImage3DHeight() const {
   if (IsApiOpenCl()) {
     return opencl_info.image3d_max_height;
   }
+  if (IsApiMetal()) {
+    return metal_info.image3d_max_height;
+  }
   return 256;
 }
 
 uint64_t GpuInfo::GetMaxImage3DDepth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image3d_max_depth;
+  }
+  if (IsApiMetal()) {
+    return metal_info.image3d_max_depth;
   }
   return 256;
 }

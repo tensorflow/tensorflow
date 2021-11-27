@@ -17,7 +17,10 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/typed_allocator.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/delegates/flex/util.h"
+#include "tensorflow/lite/experimental/resource/resource_variable.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
@@ -100,19 +103,34 @@ StringTfLiteTensorBuffer::StringTfLiteTensorBuffer(const TfLiteTensor* tensor,
 
 tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
                                          tensorflow::Tensor* tf_tensor) {
-  // TODO(b/179094265): This is an experimental implementation, subject to
-  // change. This can be re-implemented with life cycle management mechanism
-  // like reference counting.
-  // In a different subgraph, it can load the TensorFlow tensor pointer of the
-  // given TensorFlow Lite tensor, which is stored in the `data` field. The
-  // memory management cycle of the shared TensorFlow's tensor will be managed
-  // by the buffer maps since the loaded tensors always will be kept in the
-  // buffer map.
-  //
-  // The life cycle of the pointer will be managed by the reference counting in
-  // the TensorFlow world and the pointer will be freed when all the buffer
-  // maps, who own it, are gone.
-  if (tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant) {
+  if (resource::IsBuiltinResource(tensor)) {
+    // If this is native TF Lite resource variable, then we create a TF resource
+    // tensor where the tensor handle encodes the identifier of the TF Lite
+    // resource.
+    // This approach assumes that there is only a single model being invoked
+    // via the Interpreter instance, so that the resource IDs won't have any
+    // collisions. If we plan to support concurrent execution in the future, we
+    // should make sure the resource ID being encoded is unique between
+    // different executions.
+    tensorflow::Tensor t(tensorflow::DT_RESOURCE, tensorflow::TensorShape({}));
+    tensorflow::ResourceHandle handle;
+    handle.set_name(TfLiteResourceIdentifier(tensor));
+    t.flat<tensorflow::ResourceHandle>()(0) = handle;
+    *tf_tensor = t;
+    return tensorflow::Status::OK();
+  } else if (IsResourceOrVariant(tensor)) {
+    // TODO(b/179094265): This is an experimental implementation, subject to
+    // change. This can be re-implemented with life cycle management mechanism
+    // like reference counting.
+    // In a different subgraph, it can load the TensorFlow tensor pointer of the
+    // given TensorFlow Lite tensor, which is stored in the `data` field. The
+    // memory management cycle of the shared TensorFlow's tensor will be managed
+    // by the buffer maps since the loaded tensors always will be kept in the
+    // buffer map.
+    //
+    // The life cycle of the pointer will be managed by the reference counting
+    // in the TensorFlow world and the pointer will be freed when all the buffer
+    // maps, who own it, are gone.
     const tensorflow::Tensor** tf_tensor_ptr =
         reinterpret_cast<const tensorflow::Tensor**>(tensor->data.raw);
     *tf_tensor = **tf_tensor_ptr;

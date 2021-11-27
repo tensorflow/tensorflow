@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -415,11 +415,10 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
 
     // Since the no. of predicates is equal to start_index_map.size() we
     // iterate over pairs of predicates and join them with arith::AndIOp.
-    unsigned num_equality_checks = start_index_map.size() / 2;
     // We store the final predicate formed by joining other predicates with
     // arith::AndIOp in result_predicate.
     Value result_predicate = nullptr;
-    for (unsigned i = 0; i < num_equality_checks; i += 2) {
+    for (unsigned i = 0; i < predicates.size() - 1; i += 2) {
       Value predicateA = predicates[i];
       Value predicateB = predicates[i + 1];
       Value and_predicate =

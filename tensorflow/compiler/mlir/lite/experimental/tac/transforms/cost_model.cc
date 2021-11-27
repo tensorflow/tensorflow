@@ -26,6 +26,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -93,8 +95,10 @@ void GetOpCostPass::runOnFunction() {
   auto func = getFunction();
   OpBuilder builder(func);
   func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op)) {
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op)) {
       auto hardware = GetTargetAnnotation(op);
+      if (!hardware) return;
       float cost = GetCostForOp(op, hardware.getValue());
       UpdateCost(op, cost, &builder);
     }

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/strided_slice_op.h"
@@ -776,7 +777,7 @@ REGISTER_OP("OnesLike")
     .Output("y: T")
     .Attr(
         "T: {bfloat16, half, float, double, int8, uint8, int16, uint16, int32, "
-        "int64, complex64, complex128, bool}")
+        "uint32, int64, uint64, complex64, complex128, bool}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 // --------------------------------------------------------------------------
@@ -1653,9 +1654,19 @@ REGISTER_OP("ReverseSequence")
         return errors::InvalidArgument(
             "batch_dim must be < input rank: ", batch_dim, " vs. ", input_rank);
       }
+
       if (seq_dim >= input_rank) {
         return errors::InvalidArgument(
             "seq_dim must be < input rank: ", seq_dim, " vs. ", input_rank);
+      }
+
+      // To prevent out of bound access when calling c->Dim(input, batch_dim),
+      // batch_dim range [-1 * input rank, input rank) is allowed. However,
+      // the op implementation has a stricter bound for batch_dim requiring >= 0
+      // value. Thus, perform strict check here.
+      if (batch_dim < 0) {
+        return errors::InvalidArgument("batch_dim must be >=0, got ",
+                                       batch_dim);
       }
 
       DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
@@ -3018,6 +3029,12 @@ REGISTER_OP("Dequantize")
         return errors::InvalidArgument("axis should be at least -1, got ",
                                        axis);
       }
+      auto input_dims = c->Rank(c->input(0));
+      if (axis > input_dims) {
+        return errors::InvalidArgument(
+            "Axis must be less than input dimension(", input_dims, "), got ",
+            axis);
+      }
       const int minmax_rank = (axis == -1) ? 0 : 1;
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle minmax;
@@ -3025,6 +3042,13 @@ REGISTER_OP("Dequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), minmax_rank, &minmax));
       if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          // Check int32 max bound for a corner case to prevent integer flow
+          // when input actually has kint32max rank and above bound check is not
+          // triggered.
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(

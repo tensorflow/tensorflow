@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -448,6 +449,8 @@ class ConsumeArgumentCallFrame : public CallFrameInterface {
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_ConsumeArgument_DefaultExecutor) {
   Init({test::function::XTimesTwo()});
+  auto default_executor = metrics::TestDelta("flr_executor", "default");
+  auto single_threaded = metrics::TestDelta("flr_executor", "single_threaded");
   FunctionLibraryRuntime::Handle handle;
   TF_CHECK_OK(flr0_->Instantiate(
       "XTimesTwo", test::function::Attrs({{"T", DT_FLOAT}}), &handle));
@@ -469,11 +472,15 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_ConsumeArgument_DefaultExecutor) {
   EXPECT_FALSE(x.IsInitialized());
 
   TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+  EXPECT_GT(default_executor.Get(), 0);
+  EXPECT_EQ(single_threaded.Get(), 0);
 }
 
 TEST_F(FunctionLibraryRuntimeTest,
        XTimesTwo_ConsumeArgument_SingleThreadedExecutor) {
   Init({test::function::XTimesTwo()});
+  auto default_executor = metrics::TestDelta("flr_executor", "default");
+  auto single_threaded = metrics::TestDelta("flr_executor", "single_threaded");
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   FunctionLibraryRuntime::Handle handle;
@@ -498,6 +505,8 @@ TEST_F(FunctionLibraryRuntimeTest,
   EXPECT_FALSE(x.IsInitialized());
 
   TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+  EXPECT_EQ(default_executor.Get(), 0);
+  EXPECT_GT(single_threaded.Get(), 0);
 }
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesN) {

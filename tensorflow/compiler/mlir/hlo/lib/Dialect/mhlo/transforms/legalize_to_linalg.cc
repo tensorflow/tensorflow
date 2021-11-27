@@ -20,9 +20,9 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringSet.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -65,7 +65,7 @@ SmallVector<NamedAttribute> PruneAttributeList(OpTy op) {
   elided_attrs.insert(op_attributes.begin(), op_attributes.end());
   SmallVector<NamedAttribute> preserved_attrs;
   for (auto attr : op->getAttrs()) {
-    if (elided_attrs.count(attr.first)) continue;
+    if (elided_attrs.count(attr.getName())) continue;
     preserved_attrs.push_back(attr);
   }
   return preserved_attrs;
@@ -148,7 +148,7 @@ Attribute GetInitValueAsConst(Value init) {
   if (!matchPattern(init, m_Constant(&attr))) return {};
   auto type = attr.getType().dyn_cast<ShapedType>();
   if (!type || type.getRank() != 0) return {};
-  return attr.getValue({});
+  return attr.getValues<Attribute>()[0];
 }
 
 /// Returns a permutation AffineMap that puts all reduction dimensions to the
@@ -1103,8 +1103,7 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
         adaptor.operand().getType().template cast<ShapedType>();
     ShapedType result_type = GetHloOpResultType<isLHLO>(reshape_op);
 
-    if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
-      return failure();
+    if (!result_type.hasStaticShape()) return failure();
 
     result_type = this->typeConverter->convertType(result_type)
                       .template cast<ShapedType>();
@@ -1124,8 +1123,9 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     // First scan all dimensions in the source shapes to see whether we have a
     // perfect case where consecutive dimensions in source are collapsed. For
     // such case we can just generate one single linalg.reshape.
-    bool is_collapsing_source = true;
-    while (curr_src_dim < src_shape.size() && curr_dst_dim < dst_shape.size()) {
+    bool is_collapsing_source = operand_type.hasStaticShape();
+    while (is_collapsing_source && curr_src_dim < src_shape.size() &&
+           curr_dst_dim < dst_shape.size()) {
       int64_t dst_size = dst_shape[curr_dst_dim];
       int64_t src_size = src_shape[curr_src_dim];
       while (src_size < dst_size && curr_src_dim < src_shape.size()) {
@@ -1167,8 +1167,7 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
         return exprs;
       };
       Location loc = reshape_op.getLoc();
-      int64_t total_elems = std::accumulate(src_shape.begin(), src_shape.end(),
-                                            1, std::multiplies<int64_t>());
+      int64_t total_elems = result_type.getNumElements();
       auto elem_type = operand_type.getElementType();
       SmallVector<ReassociationExprs, 4> collapsing_map = {
           // Use operand_type here because we need to collapse all operands
@@ -1188,9 +1187,12 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
         rewriter.replaceOpWithNewOp<linalg::CopyOp>(reshape_op, reshape_buffer,
                                                     adaptor.getOperands()[1]);
       } else {
-        auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
         Value collapsed_op = rewriter.create<linalg::TensorCollapseShapeOp>(
-            loc, collapsed_type, adaptor.getOperands()[0], collapsing_map);
+            loc, adaptor.operand(), collapsing_map);
+        // Cast to a known static type if the input has dynamic dimensions.
+        auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
+        collapsed_op =
+            rewriter.create<tensor::CastOp>(loc, collapsed_type, collapsed_op);
         rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
             reshape_op, result_type, collapsed_op, expanding_map);
       }
@@ -1383,8 +1385,8 @@ class ConstConverterBuffer : public OpConversionPattern<lmhlo::ConstOp> {
     Location loc = const_op.getLoc();
     auto value_attr = const_op.value().cast<DenseElementsAttr>();
     if (value_attr.getType().getRank() != 0) return failure();
-    Value std_scalar_const =
-        rewriter.create<mlir::arith::ConstantOp>(loc, value_attr.getValue({}));
+    Value std_scalar_const = rewriter.create<mlir::arith::ConstantOp>(
+        loc, value_attr.getValues<Attribute>()[0]);
     rewriter.create<mlir::AffineStoreOp>(loc, std_scalar_const,
                                          const_op.getOperand(), llvm::None);
     rewriter.eraseOp(const_op);
@@ -1565,9 +1567,9 @@ class SliceConverter : public OpConversionPattern<OpTy> {
 
     SmallVector<OpFoldResult, 3> offsets, sizes, strides;
     for (int i = 0, e = arg_type.getRank(); i < e; ++i) {
-      auto start = slice_op.start_indices().template getValue<int64_t>(i);
-      auto limit = slice_op.limit_indices().template getValue<int64_t>(i);
-      auto stride = slice_op.strides().template getValue<int64_t>(i);
+      auto start = slice_op.start_indices().template getValues<int64_t>()[i];
+      auto limit = slice_op.limit_indices().template getValues<int64_t>()[i];
+      auto stride = slice_op.strides().template getValues<int64_t>()[i];
       offsets.push_back(rewriter.getI64IntegerAttr(start));
       // Say that there are k elements in total, we have condition:
       //   start + (k - 1) * strides <= limit - 1
@@ -2236,7 +2238,7 @@ struct DepthwiseConvOpOnTensorsConversion
 
       auto reshaped_output_type = RankedTensorType::get(
           reshaped_output_dims, result_type.getElementType());
-      auto conv = rewriter.create<linalg::DepthwiseConv2DNhwcOp>(
+      auto conv = rewriter.create<linalg::DepthwiseConv2DNhwcHwcmOp>(
           op.getLoc(), reshaped_output_type, ValueRange{input, filter},
           ValueRange{zero_tensor}, window_strides, rhs_dilation,
           PruneAttributeList(op));
@@ -2277,7 +2279,7 @@ struct DepthwiseConvOpOnTensorsConversion
       Value reshaped_filter = rewriter.create<linalg::TensorCollapseShapeOp>(
           loc, filter_shape, filter, collapsed_dim_list);
 
-      rewriter.replaceOpWithNewOp<linalg::DepthwiseConv2DNhwOp>(
+      rewriter.replaceOpWithNewOp<linalg::DepthwiseConv2DNhwcHwcOp>(
           op, result_type, ValueRange{input, reshaped_filter},
           ValueRange{zero_tensor}, window_strides, rhs_dilation,
           PruneAttributeList(op));
@@ -2336,18 +2338,19 @@ struct ReduceWindowOpOnTensorsConversion
     int last_dim = rank - 1;
     SmallVector<int64_t, 2> fake_window_shapes;
     for (int i = 1; i < last_dim; ++i) {
-      fake_window_shapes.push_back(op.window_dimensions().getValue<int64_t>(i));
+      fake_window_shapes.push_back(
+          op.window_dimensions().getValues<int64_t>()[i]);
     }
 
     if (op.window_strides() &&
-        (op.window_strides().getValue().getValue<int64_t>(0) != 1 ||
-         op.window_strides().getValue().getValue<int64_t>(last_dim) != 1)) {
+        (op.window_strides().getValue().getValues<int64_t>()[0] != 1 ||
+         op.window_strides().getValue().getValues<int64_t>()[last_dim] != 1)) {
       return rewriter.notifyMatchFailure(
           op, "expected window_strides to be [1,x,y,(z),1]");
     }
     if (op.window_dimensions() &&
-        (op.window_dimensions().getValue<int64_t>(0) != 1 ||
-         op.window_dimensions().getValue<int64_t>(last_dim) != 1)) {
+        (op.window_dimensions().getValues<int64_t>()[0] != 1 ||
+         op.window_dimensions().getValues<int64_t>()[last_dim] != 1)) {
       return rewriter.notifyMatchFailure(
           op, "expected window_dimensions to be [1,x,y,(z),1]");
     }
@@ -2356,7 +2359,7 @@ struct ReduceWindowOpOnTensorsConversion
     SmallVector<int64_t> vec;
     if (op.window_stridesAttr()) {
       for (int i = 1; i < last_dim; ++i) {
-        vec.push_back(op.window_strides().getValue().getValue<int64_t>(i));
+        vec.push_back(op.window_strides().getValue().getValues<int64_t>()[i]);
       }
     } else {
       vec.assign(rank - 2, 1);
@@ -2367,7 +2370,7 @@ struct ReduceWindowOpOnTensorsConversion
     vec.clear();
     if (op.window_dilations()) {
       for (int i = 1; i < last_dim; ++i) {
-        vec.push_back(op.window_dilations().getValue().getValue<int64_t>(i));
+        vec.push_back(op.window_dilations().getValue().getValues<int64_t>()[i]);
       }
     } else {
       vec.assign(rank - 2, 1);
@@ -2403,9 +2406,9 @@ struct ReduceWindowOpOnTensorsConversion
         } else {
           auto i = en.index() - 1;
           auto stride =
-              strides.cast<DenseIntElementsAttr>().getValue<int64_t>(i);
+              strides.cast<DenseIntElementsAttr>().getValues<int64_t>()[i];
           auto dilation =
-              dilations.cast<DenseIntElementsAttr>().getValue<int64_t>(i);
+              dilations.cast<DenseIntElementsAttr>().getValues<int64_t>()[i];
           // let j = i * stride
           // output[i] = reduce( input[j, j + window_size * dilation) )
           Value offset = rewriter.create<arith::ConstantIndexOp>(
@@ -2980,7 +2983,6 @@ struct CstrReshapableConversion
     Value neg_one = rewriter.create<arith::ConstantIndexOp>(loc, -1);
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    Value two = rewriter.create<arith::ConstantIndexOp>(loc, 2);
     auto num_elements = adaptor.getOperands()[0];
     auto target_shape_type =
         adaptor.getOperands()[1].getType().cast<ShapedType>();
@@ -3017,18 +3019,36 @@ struct CstrReshapableConversion
           loc,
           llvm::makeArrayRef({total_elements, total_dynamic, total_invalid}));
     }
+    // Avoid division by zero.
+    Value is_zero_elements = rewriter.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::eq, reduction->getResult(0), zero);
+    Value divisor = rewriter.create<SelectOp>(loc, is_zero_elements, one,
+                                              reduction->getResult(0));
     Value is_divisible = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, zero,
-        rewriter.create<arith::RemSIOp>(loc, num_elements,
-                                        reduction->getResult(0)));
+        rewriter.create<arith::RemSIOp>(loc, num_elements, divisor));
+    // Must have 0 or 1 dynamic dimensions.
     Value acceptably_dynamic = rewriter.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::ult, two, reduction->getResult(1));
+        loc, arith::CmpIPredicate::ule, reduction->getResult(1), one);
+    // Must have no invalid dimensions.
     Value no_invalid = rewriter.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::eq, zero, reduction->getResult(0));
+        loc, arith::CmpIPredicate::eq, reduction->getResult(2), zero);
+    // If the old shape has size zero, the new shape must have size zero too.
+    // This can be a zero factor or a -1.
+    Value has_one_dynamic = rewriter.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::eq, reduction->getResult(1), one);
+    Value equal_if_empty = rewriter.create<arith::OrIOp>(
+        loc, has_one_dynamic,
+        rewriter.create<arith::CmpIOp>(
+            loc, arith::CmpIPredicate::eq, is_zero_elements,
+            rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq,
+                                           num_elements, zero)));
 
     Value all_passing = rewriter.create<arith::AndIOp>(
         loc, is_divisible,
-        rewriter.create<arith::AndIOp>(loc, acceptably_dynamic, no_invalid));
+        rewriter.create<arith::AndIOp>(
+            loc, acceptably_dynamic,
+            rewriter.create<arith::AndIOp>(loc, no_invalid, equal_if_empty)));
 
     rewriter.replaceOpWithNewOp<shape::CstrRequireOp>(
         op, all_passing, "Required valid reshape shape input");

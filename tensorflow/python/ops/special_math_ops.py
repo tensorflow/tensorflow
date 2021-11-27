@@ -24,9 +24,7 @@ import string
 
 import numpy as np
 import opt_einsum
-import six
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.python.framework import ops
@@ -805,7 +803,7 @@ def _einsum_v1(equation, *inputs, **kwargs):
           input_axis_labels[1] + '->' + output_axis_labels)
     temp = inputs[0]
     temp_axis_labels = input_axis_labels[0]
-    for i in xrange(len(inputs) - 1):
+    for i in range(len(inputs) - 1):
       axes_to_sum = (
           set(temp_axis_labels) &
           set(input_axis_labels[i + 1]) - set(output_axis_labels))
@@ -1239,9 +1237,8 @@ def _get_opt_einsum_contract_path(equation, shaped_inputs_tuple, optimize):
 
 # Cache the possibly expensive opt_einsum.contract_path call using lru_cache
 # from the Python3+ standard library.
-if not six.PY2:
-  _get_opt_einsum_contract_path = functools.lru_cache(maxsize=128)(
-      _get_opt_einsum_contract_path)
+_get_opt_einsum_contract_path = functools.lru_cache(maxsize=128)(
+    _get_opt_einsum_contract_path)
 
 
 def _einsum_v2_parse_and_resolve_equation(equation, input_shapes):

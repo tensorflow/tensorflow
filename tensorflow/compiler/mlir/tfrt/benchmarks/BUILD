@@ -43,13 +43,24 @@ cc_library(
         ":benchmark",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
+        "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
+        "//tensorflow/core:platform_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
+        "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
+        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_c_runner_utils",
+        "@tf_runtime//:befexecutor",
+        "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
+        "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
         "@tf_runtime//backends/cpu:cpurt",
@@ -165,9 +176,26 @@ cc_library(
     testonly = 1,
     srcs = ["reduction_benchmark.cc"],
     hdrs = ["reduction_benchmark.h"],
+    deps = [":benchmark"],
+)
+
+tf_cc_binary(
+    name = "softmax_benchmark",
+    testonly = 1,
+    srcs = [
+        "softmax_benchmark.cc",
+        "softmax_benchmark.h",
+    ],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
     deps = [
         ":benchmark",
-        "@llvm-project//llvm:Support",
+        "//tensorflow/core:framework_lite",
+        "//third_party/eigen3",
     ],
 )
 

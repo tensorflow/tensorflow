@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
+#include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -182,7 +183,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   // We need to fuse composite ops before LowerStaticTensorList pass.
   // The tensorflow list is not supported right now by that pass.
   // Enable fusing composite ops that can be lowered to built-in TFLite ops.
-  if (pass_config.emit_builtin_tflite_ops) {
+  if (pass_config.emit_builtin_tflite_ops &&
+      toco_flags.tf_quantization_mode().empty()) {
     pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
 
@@ -191,7 +193,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
 
-  if (pass_config.lower_tensor_list_ops) {
+  if (pass_config.lower_tensor_list_ops &&
+      toco_flags.tf_quantization_mode().empty()) {
     // TODO(haoliang): Add this pass by default.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass(
         /*allow_tensorlist_pass_through=*/toco_flags.force_select_tf_ops() ||
@@ -251,7 +254,13 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(
         mlir::tf_saved_model::CreateFreezeAssetsPass(saved_model_dir.str()));
   }
-
+  // For TF Quantization, convert unsupported ops to Flex ops before other
+  // conversion passes.
+  if (!toco_flags.tf_quantization_mode().empty()) {
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TF::CreateFallbackToFlexOpsPass(
+            toco_flags.tf_quantization_mode()));
+  }
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
@@ -291,10 +300,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
-    if (pass_config.enable_tflite_variables) {
-      pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
-      pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
-    }
+    pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
+    pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));

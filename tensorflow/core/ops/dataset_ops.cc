@@ -814,6 +814,15 @@ REGISTER_OP("AnonymousIteratorV2")
       return Status::OK();
     });
 
+REGISTER_OP("AnonymousIteratorV3")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("DeleteIterator")
     .Input("handle: resource")
     .Input("deleter: variant")

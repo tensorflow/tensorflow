@@ -230,29 +230,6 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertEqual(len(model.trainable_weights), 4)
 
   @keras_parameterized.run_all_keras_modes
-  def test_sequential_update_disabling(self):
-    val_a = np.random.random((10, 4))
-    val_out = np.random.random((10, 4))
-
-    model = keras.models.Sequential()
-    model.add(keras.layers.BatchNormalization(input_shape=(4,)))
-
-    model.trainable = False
-    model.compile('sgd', 'mse')
-
-    x1 = model.predict(val_a)
-    model.train_on_batch(val_a, val_out)
-    x2 = model.predict(val_a)
-    self.assertAllClose(x1, x2, atol=1e-7)
-
-    model.trainable = True
-    model.compile('sgd', 'mse')
-
-    model.train_on_batch(val_a, val_out)
-    x2 = model.predict(val_a)
-    assert np.abs(np.sum(x1 - x2)) > 1e-5
-
-  @keras_parameterized.run_all_keras_modes
   def test_sequential_deferred_build_serialization(self):
     num_hidden = 5
     input_dim = 3

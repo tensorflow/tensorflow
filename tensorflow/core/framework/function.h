@@ -761,6 +761,13 @@ class FunctionLibraryRuntime {
 
     // If true, the function library runtime cache the function instantiation.
     bool use_function_cache = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If True, allow optimizations which should be targeted at a limited
+    // set of small functions.  For example, running kernels synchronously can
+    // be faster under some conditions.
+    bool allow_small_function_optimizations = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,

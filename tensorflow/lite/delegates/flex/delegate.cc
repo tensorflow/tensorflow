@@ -48,6 +48,8 @@ TfLiteDelegateUniquePtr FlexDelegate::Create(
         ->CopyFromBufferHandle(context, buffer_handle, tensor);
   };
   flex_delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
+  reinterpret_cast<FlexDelegate*>(flex_delegate->data_)->base_delegate_ =
+      flex_delegate.get();
   return flex_delegate;
 }
 
@@ -63,7 +65,8 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
   }
 
   auto status = delegate_data_.Prepare(
-      session_options, reinterpret_cast<Subgraph*>(context->impl_));
+      session_options, reinterpret_cast<Subgraph*>(context->impl_),
+      base_delegate_);
   if (!status.ok()) {
     context->ReportError(context, "Failed to initialize TensorFlow context: %s",
                          status.error_message().c_str());
@@ -132,7 +135,7 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
   // The life cycle of the pointer will be managed by the reference counting in
   // the TensorFlow world and the pointer will be freed when all the buffer
   // maps, who own it, are gone.
-  if (output->type == kTfLiteResource || output->type == kTfLiteVariant) {
+  if (flex::IsResourceOrVariant(output)) {
     const size_t required_bytes = sizeof(tensorflow::Tensor**);
     const tensorflow::Tensor** tf_tensor_ptr =
         reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));

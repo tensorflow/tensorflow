@@ -160,6 +160,7 @@ cc_library(
         ":tensor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/core/api",
@@ -182,12 +183,12 @@ cc_test(
     deps = [
         ":data_type",
         ":model_builder",
-        ":operation_parser",
         ":shape",
         ":tensor",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -324,7 +325,10 @@ cc_test(
 cc_library(
     name = "status",
     hdrs = ["status.h"],
-    deps = ["@com_google_absl//absl/status"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/google:status_macros",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(

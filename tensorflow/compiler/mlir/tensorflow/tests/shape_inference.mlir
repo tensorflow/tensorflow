@@ -1360,4 +1360,32 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     "tf.AssignVariableOp"(%2, %3) : (tensor<!tf_type.resource<tensor<128xf32>>>, tensor<*xf32>) -> ()
     return %0, %2 : tensor<!tf_type.resource<tensor<192x2680xf32>>>, tensor<!tf_type.resource<tensor<128xf32>>>
   }
+
+  // CHECK-LABEL: infer_var_handle_op_from_assign
+  func @infer_var_handle_op_from_assigns() -> tensor<1xi8> {
+    %cst = arith.constant dense<1> : tensor<1xi8>
+    %0 = "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<*xi8>>>
+    // CHECK: "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<1xi8>>>
+    "tf.AssignVariableOp"(%0, %cst) : (tensor<!tf_type.resource<tensor<*xi8>>>, tensor<1xi8>) -> ()
+    return %cst : tensor<1xi8>
+  }
+
+  // CHECK-LABEL: infer_var_handle_op_from_read
+  func @infer_var_handle_op_from_read() -> tensor<1xi8> {
+    %cst = arith.constant dense<1> : tensor<1xi8>
+    %0 = "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<*xi8>>>
+    // CHECK: "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<1xi8>>>
+    %read = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<*xi8>>>) -> tensor<1xi8>
+    return %read : tensor<1xi8>
+  }
+
+  // CHECK-LABEL: do_not_infer_var_handle_op_when_custom_op_uses_it
+  func @do_not_infer_var_handle_op_when_custom_op_uses_it() -> tensor<1xi8> {
+    %cst = arith.constant dense<1> : tensor<1xi8>
+    %0 = "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<*xi8>>>
+    // CHECK: "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<*xi8>>>
+    %read = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<*xi8>>>) -> tensor<1xi8>
+    %1 = "tf.MyCustomOp"(%0) : (tensor<!tf_type.resource<tensor<*xi8>>>) -> tensor<4xi8>
+    return %read : tensor<1xi8>
+  }
 }

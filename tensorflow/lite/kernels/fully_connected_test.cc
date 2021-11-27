@@ -1243,7 +1243,8 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
                               const std::vector<T>& weights_data,
                               bool bias_tensor_optional = false,
                               int num_threads = 1,
-                              bool symmetric_quantize_weights = false)
+                              bool symmetric_quantize_weights = false,
+                              bool asymmetric_quantize_inputs = false)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
     for (size_t i = 0; i < input.shape.size(); ++i) {
@@ -1263,10 +1264,12 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
     }
 
     output_ = AddOutput({input.type});
-
     SetBuiltinOp(
         BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
-        CreateFullyConnectedOptions(builder_, ActivationFunctionType_RELU)
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_RELU,
+                                    FullyConnectedOptionsWeightsFormat_DEFAULT,
+                                    /*keep_num_dims=*/false,
+                                    asymmetric_quantize_inputs)
             .Union());
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
@@ -1301,6 +1304,33 @@ class SparseFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
     return *kKernelMapNoPie;
+  }
+};
+
+struct SparseTestParam {
+  std::string kernel_tag;
+  bool asymmetric_quantize_input;
+};
+
+class SparseHybridFullyConnectedOpTest
+    : public ::testing::TestWithParam<SparseTestParam> {
+ public:
+  static std::vector<string> GetKernelTags(
+      const std::map<string, TfLiteRegistration*>& kernel_map) {
+    std::vector<string> tags;
+    tags.reserve(kernel_map.size());
+    for (const auto& it : kernel_map) {
+      tags.push_back(it.first);
+    }
+    return tags;
+  }
+
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() {
+    return *kKernelMapNoPie;
+  }
+  TfLiteRegistration* GetRegistration() {
+    return GetKernelMap().at(GetParam().kernel_tag);
   }
 };
 
@@ -1518,7 +1548,7 @@ TEST_P(SparseFullyConnectedOpTest, Simple1x4TestMultiThreadedMoreBatches) {
   }
 }
 
-TEST_P(SparseFullyConnectedOpTest, SparseHybrid1x16Test) {
+TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16Test) {
   std::initializer_list<float> weight_data = {
       /* 1st row */
       1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
@@ -1552,7 +1582,8 @@ TEST_P(SparseFullyConnectedOpTest, SparseHybrid1x16Test) {
       /*units=*/4, /*batches=*/2,
       /*input=*/{TensorType_FLOAT32, {2, 48}}, weight, weight_data,
       /*bias_tensor_optional=*/false, /*num_threads)=*/1,
-      /*symmetric_quantize_weights=*/true);
+      /*symmetric_quantize_weights=*/true,
+      /*asymmetric_quantize_inputs=*/GetParam().asymmetric_quantize_input);
   m.SetBias({1, 2, 3, 4});
   m.SetInput({
       1.0,  -1.0, 1.0,  -1.0, 1.0,  -1.0, 1.0,  -1.0, 1.0,  -1.0,
@@ -1570,12 +1601,15 @@ TEST_P(SparseFullyConnectedOpTest, SparseHybrid1x16Test) {
   m.Invoke();
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4));
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear(
-                  {0, 7.4715, 85.8359, 0, 5.9655, 3.0520, 1.9480, 0}, 1e-3)));
+  std::vector<float> expected = {0,      7.4715, 85.8359, 0,
+                                 5.9655, 3.0520, 1.9480,  0};
+  if (GetParam().asymmetric_quantize_input) {
+    expected = {0, 7.4500, 85.5111, 0, 5.9750, 2.8856, 2.1144, 0};
+  }
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(expected, 1e-3)));
 }
 
-TEST_P(SparseFullyConnectedOpTest, SparseHybrid1x16TestMultiThreaded) {
+TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16TestMultiThreaded) {
   std::initializer_list<float> weight_data = {
       /* 1st row */
       1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
@@ -1610,7 +1644,8 @@ TEST_P(SparseFullyConnectedOpTest, SparseHybrid1x16TestMultiThreaded) {
         /*units=*/4, /*batches=*/4,
         /*input=*/{TensorType_FLOAT32, {4, 48}}, weight, weight_data,
         /*bias_tensor_optional=*/false, /*num_threads=*/num_threads,
-        /*symmetric_quantize_weights=*/true);
+        /*symmetric_quantize_weights=*/true,
+        /*asymmetric_quantize_inputs=*/GetParam().asymmetric_quantize_input);
     m.SetBias({1, 2, 3, 4});
     m.SetInput({
         1.0,  -1.0, 1.0,  -1.0, 1.0,  -1.0, 1.0,  -1.0, 1.0,  -1.0,
@@ -1638,11 +1673,17 @@ TEST_P(SparseFullyConnectedOpTest, SparseHybrid1x16TestMultiThreaded) {
     m.Invoke();
 
     EXPECT_THAT(m.GetOutputShape(), ElementsAre(4, 4));
+    std::vector<float> expected = {
+        0, 7.4715, 85.8359, 0, 5.9655, 3.0520, 1.9480, 0,
+        0, 7.4715, 85.8359, 0, 5.9655, 3.0520, 1.9480, 0};
+    if (GetParam().asymmetric_quantize_input) {
+      expected = {
+          0, 7.4500, 85.5111, 0, 5.9750, 2.8856, 2.1144, 0,
+          0, 7.4500, 85.5111, 0, 5.9750, 2.8856, 2.1144, 0,
+      };
+    }
     EXPECT_THAT(m.GetOutput(),
-                ElementsAreArray(ArrayFloatNear(
-                    {0, 7.4715, 85.8359, 0, 5.9655, 3.0520, 1.9480, 0, 0,
-                     7.4715, 85.8359, 0, 5.9655, 3.0520, 1.9480, 0},
-                    1e-3)));
+                ElementsAreArray(ArrayFloatNear(expected, 1e-3)));
   }
 }
 // TODO(b/148391360): Add tests for unsupported sparsity format.
@@ -1651,6 +1692,21 @@ TEST_P(SparseFullyConnectedOpTest, SparseHybrid1x16TestMultiThreaded) {
 INSTANTIATE_TEST_SUITE_P(
     SparseFullyConnectedOpTest, SparseFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+
+std::vector<SparseTestParam> GenerateSparseTestParam(
+    std::vector<std::string> kernel_tags) {
+  std::vector<SparseTestParam> test_params;
+  for (const std::string& kernel_tag : kernel_tags) {
+    test_params.push_back({kernel_tag, false});
+    test_params.push_back({kernel_tag, true});
+  }
+  return test_params;
+}
+
+INSTANTIATE_TEST_SUITE_P(SparseHybridFullyConnectedOpTest,
+                         SparseHybridFullyConnectedOpTest,
+                         ::testing::ValuesIn(GenerateSparseTestParam(
+                             SingleOpTest::GetKernelTags(*kKernelMapNoPie))));
 
 }  // namespace
 }  // namespace tflite

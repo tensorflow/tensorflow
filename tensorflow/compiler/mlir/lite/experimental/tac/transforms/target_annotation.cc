@@ -110,7 +110,8 @@ void TargetAnnotationPass::SetTargetAnnotation(
   }
   // default to CPU
   if (!device_is_set) {
-    if (IsTFLDialectNonConstOp(op)) {
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallableOpInterface>(op)) {
       SetAnnotation(op, kDevice, "CPU", builder);
       device_is_set = true;
     }
@@ -126,7 +127,9 @@ void TargetAnnotationPass::runOnFunction() {
 
   func.walk([&](Operation* op) {
     // We only care about TFL dialect.
-    if (IsTFLDialectNonConstOp(op) && IsTFLNonQuantDequantizeOp(op)) {
+    if (IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
+        !IsTerminatorOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op)) {
       SetTargetAnnotation(op, device_specs_flag_, &builder);
     }
   });

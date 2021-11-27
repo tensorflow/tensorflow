@@ -314,6 +314,20 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testFlatMapWithRepeat(self):
+    cluster = data_service_test_base.TestCluster(num_workers=3)
+    ds = dataset_ops.Dataset.range(5)
+
+    def flat_map_fn(_):
+      return dataset_ops.Dataset.from_tensor_slices(["a", "b", "c"]).repeat(10)
+
+    ds = ds.flat_map(flat_map_fn)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+
+    self.assertDatasetProduces(
+        ds, [b"a", b"b", b"c"] * 50, assert_items_equal=True)
+
 
 if __name__ == "__main__":
   test.main()

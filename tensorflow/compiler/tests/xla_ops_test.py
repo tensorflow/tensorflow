@@ -52,6 +52,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
       equality_fn(result, expected, rtol=1e-3)
 
   def testAdd(self):
+    if xla_test.test.is_built_with_rocm():
+      self.skipTest('Broken with rocm')
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
           xla.add,
@@ -384,7 +386,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.arange(12, dtype=np.int32).astype(dtype).reshape([3, 4]),),
           expected=np.array([0, 45, 120, 231], dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testVariadicReduceKahanSum(self):
     for dtype in set(self.numeric_types).intersection(
         set([np.float32, np.complex64])):
@@ -454,7 +455,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(xs,), expected=dtype(0),
           equality_fn=error_term_equality)
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testVariadicReduceV2SingleOp(self):
 
     @def_function.function
@@ -489,7 +489,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(values,),
           expected=np.array(27, dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testVariadicReduceV2DifferentTypes(self):
     # Two ops, with different dtypes
     @def_function.function

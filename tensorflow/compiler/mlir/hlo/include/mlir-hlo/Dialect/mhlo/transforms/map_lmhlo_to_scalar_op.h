@@ -20,8 +20,8 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/iterator_range.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -94,15 +94,15 @@ struct LhloToScalarOp<lmhlo::FloorOp> {
 };
 template <>
 struct LhloToScalarOp<lmhlo::MaxOp> {
-  using FOp = ::mlir::MaxFOp;
-  using IOp = ::mlir::MaxSIOp;
-  using UOp = ::mlir::MaxUIOp;
+  using FOp = ::mlir::arith::MaxFOp;
+  using IOp = ::mlir::arith::MaxSIOp;
+  using UOp = ::mlir::arith::MaxUIOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::MinOp> {
-  using FOp = ::mlir::MinFOp;
-  using IOp = ::mlir::MinSIOp;
-  using UOp = ::mlir::MinUIOp;
+  using FOp = ::mlir::arith::MinFOp;
+  using IOp = ::mlir::arith::MinSIOp;
+  using UOp = ::mlir::arith::MinUIOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::LogOp> {

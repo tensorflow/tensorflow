@@ -15,8 +15,10 @@
 // Simple cluster consisting of a single operation.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
-  // CHECK: func @_tfrt_fallback_init
-  // CHECK:   tf_cpurt.fallback.compile @kernel::@compute
+  // CHECK: func @_tfrt_fallback_init(%[[ARG:.*]]: !tfrt.chain)
+  // CHECK:   %[[COMPILED:.*]] = tf_cpurt.fallback.compile @kernel::@compute
+  // CHECK:   %[[CHAIN:.*]] = tfrt.merge.chains %[[ARG]], %[[COMPILED]]
+  // CHECK:   tfrt.return %[[CHAIN]]
 
   // CHECK: func @call
   func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)

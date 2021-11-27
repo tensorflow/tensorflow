@@ -153,6 +153,8 @@ table TensorDescriptor {
   layout:Layout;
   shape:BHWDC;
   data:[uint8];
+  use_buffer_for_write_only_2d_texture:bool;
+  use_buffer_for_write_only_image_buffer:bool;
 }
 
 table BufferDescriptorMapValue {

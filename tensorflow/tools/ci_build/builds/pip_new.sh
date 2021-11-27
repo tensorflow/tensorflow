@@ -223,6 +223,14 @@ check_python_pip_version() {
   fi
 }
 
+# Write an entry to the sponge key-value store for this job.
+write_to_sponge() {
+  # The location of the key-value CSV file sponge imports.
+  TF_SPONGE_CSV="${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
+  echo "$1","$2" >> "${TF_SPONGE_CSV}"
+}
+
+
 ###########################################################################
 # Setup: directories, local/global variables
 ###########################################################################
@@ -262,7 +270,7 @@ PIP_WHL_DIR=$(realpath "${PIP_WHL_DIR}") # Get absolute path
 WHL_PATH=""
 # Determine the major.minor versions of python being used (e.g., 3.7).
 # Useful for determining the directory of the local pip installation.
-PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -c1-3)
+PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -d. -f1-2)
 
 if [[ -z "${PY_MAJOR_MINOR_VER}" ]]; then
   die "ERROR: Unable to determine the major.minor version of Python."
@@ -654,8 +662,10 @@ fi
 
 WHL_DIR=$(dirname "${WHL_PATH}")
 
-# Print the size of the wheel file.
-echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
+# Print the size of the wheel file and log to sponge.
+WHL_SIZE=$(ls -l ${WHL_PATH} | awk '{print $5}')
+echo "Size of the PIP wheel file built: ${WHL_SIZE}"
+write_to_sponge TF_INFO_WHL_SIZE ${WHL_SIZE}
 
 # Build the other GPU package.
 if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq "1" ]]; then

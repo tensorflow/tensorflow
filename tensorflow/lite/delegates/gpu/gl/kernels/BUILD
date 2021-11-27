@@ -533,6 +533,35 @@ cc_test(
 )
 
 cc_library(
+    name = "resampler",
+    srcs = ["resampler.cc"],
+    hdrs = ["resampler.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_test(
+    name = "resampler_test",
+    srcs = ["resampler_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":resampler",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "reshape",
     srcs = ["reshape.cc"],
     hdrs = ["reshape.h"],
@@ -555,6 +584,35 @@ cc_test(
     ],
     deps = [
         ":reshape",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "resize",
+    srcs = ["resize.cc"],
+    hdrs = ["resize.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_test(
+    name = "resize_test",
+    srcs = ["resize_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":resize",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
@@ -745,35 +803,6 @@ cc_test(
     ],
 )
 
-cc_library(
-    name = "resize",
-    srcs = ["resize.cc"],
-    hdrs = ["resize.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/gl:node_shader",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-cc_test(
-    name = "resize_test",
-    srcs = ["resize_test.cc"],
-    linkstatic = True,
-    tags = tf_gpu_tests_tags() + [
-        "notap",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":resize",
-        ":test_util",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
 TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "add",
     "concat",
@@ -789,6 +818,7 @@ TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "quantize_and_dequantize",
     "relu",
     "mean",
+    "resampler",
     "reshape",
     "resize",
     "slice",

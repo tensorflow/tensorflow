@@ -693,7 +693,7 @@ StatusOr<HloInstruction*> PartitionGather(
           output_shape, operand.Replicate().hlo(), indices.Replicate().hlo(),
           gather->gather_dimension_numbers(), slice_sizes,
           gather->indices_are_sorted()));
-  new_gather->set_sharding(output_sharding);
+  new_gather->set_sharding(HloSharding::Replicate());
   return new_gather;
 }
 
@@ -908,12 +908,10 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
       PartitionGather(gather, operand, indices, gather->shape(),
                       gather->sharding(), absl::MakeConstSpan(batch_dims),
                       gather->gather_slice_sizes(), this));
-  if (pgather) {
-    SetPartitionedHlo(gather, [pgather] { return pgather; });
-    return Status::OK();
-  }
-
-  return DefaultAction(gather);
+  SetPartitionedHlo(
+      gather, PartitionedHlo(pgather, gather->shape(), MakePartitioningState())
+                  .Reshard(gather->sharding()));
+  return Status::OK();
 }
 
 }  // namespace spmd

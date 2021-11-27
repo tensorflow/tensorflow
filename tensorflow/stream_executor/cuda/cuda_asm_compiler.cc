@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <tuple>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
@@ -44,7 +46,10 @@ port::StatusOr<std::vector<uint8>> LinkGpuAsm(
       LOG(WARNING) << "Couldn't read CUDA driver version.";
       return false;
     }
-    return std::get<0>(*version_or_status) >= 465;
+    std::tuple<int, int, int> version = *version_or_status;
+    if (CUDA_VERSION < 11040) return version >= std::make_tuple(465, 19, 1);
+    if (CUDA_VERSION < 11050) return version >= std::make_tuple(470, 82, 1);
+    return version >= std::make_tuple(495, 29, 5);
   }();
 
   if (!linking_supported) {

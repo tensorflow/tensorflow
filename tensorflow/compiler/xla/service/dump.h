@@ -47,6 +47,8 @@ string FilenameFor(const HloModule& module, absl::string_view prefix,
 // If module doesn't have an xla_dump_to directory, does nothing.
 void DumpToFileInDir(const HloModule& module, absl::string_view file_prefix,
                      absl::string_view file_suffix, absl::string_view contents);
+void DumpToFileInDir(const DebugOptions& debug_options,
+                     absl::string_view filename, absl::string_view contents);
 
 // Like DumpToFileInDir, except if module doesn't have an xla_dump_to directory
 // specified, or if that directory is equal to "-", writes to stdout instead.

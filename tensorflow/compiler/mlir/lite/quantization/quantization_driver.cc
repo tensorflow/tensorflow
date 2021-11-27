@@ -1075,7 +1075,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
     std::vector<double> new_filter_scales = filter_params.getScales().vec();
     bool needs_adjustment = false;
     for (int i = 0; i < bias_params.getScales().size(); ++i) {
-      float abs_bias = std::abs(bias_values.getValue<float>(i));
+      float abs_bias = std::abs(bias_values.getValues<float>()[i]);
       if (abs_bias / new_bias_scales[i] > kBiasMax) {
         new_bias_scales[i] = static_cast<double>(abs_bias) / kBiasMax;
         new_filter_scales[i] = new_bias_scales[i] / input_scale;

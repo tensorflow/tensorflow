@@ -165,8 +165,7 @@ void populateCanonicalizationPatterns(FuncOp func,
   // bridge.
   func->walk([&](Operation *op) {
     if (op->getDialect() != tf) {
-      op->getAbstractOperation()->getCanonicalizationPatterns(patterns,
-                                                              context);
+      op->getRegisteredInfo()->getCanonicalizationPatterns(patterns, context);
     }
   });
   patterns.insert<UnrollSCFForOp, SimplifySCFIfOp>(context);

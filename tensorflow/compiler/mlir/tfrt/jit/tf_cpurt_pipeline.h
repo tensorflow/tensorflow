@@ -27,6 +27,10 @@ struct TfCpuRtPipelineOptions
   Option<bool> vectorize{*this, "vectorize",
                          llvm::cl::desc("Enable tiling for vectorization."),
                          llvm::cl::init(false)};
+  Option<bool> legalize_i1_tensors{
+      *this, "legalize-i1-tensors",
+      llvm::cl::desc("Convert i1 tensors to i8 tensors."),
+      llvm::cl::init(false)};
 };
 
 // Make TfCpuRtPipelineOptions hashable.

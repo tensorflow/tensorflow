@@ -240,6 +240,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:file_utils",
         "//tensorflow/core/data:name_utils",
     ],
 )
@@ -1217,6 +1218,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:file_utils",
         "//tensorflow/core/data:name_utils",
     ],
 )
@@ -1250,6 +1252,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:file_utils",
         "//tensorflow/core/data:name_utils",
     ],
 )
@@ -1361,6 +1364,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/data:captured_function.h",
         "//tensorflow/core/data:dataset_utils.h",
+        "//tensorflow/core/data:file_utils.h",
         "//tensorflow/core/data:name_utils.h",
         "//tensorflow/core/data:rewrite_utils.h",
         "//tensorflow/core/data:root_dataset.h",
@@ -1385,6 +1389,7 @@ filegroup(
         "//tensorflow/core/data:captured_function.cc",
         "//tensorflow/core/data:dataset_utils.cc",
         "//tensorflow/core/data:name_utils.cc",
+        "//tensorflow/core/data:file_utils.cc",
         "//tensorflow/core/data:rewrite_utils.cc",
         "//tensorflow/core/data:root_dataset.cc",
         "//tensorflow/core/data:serialization_utils.cc",

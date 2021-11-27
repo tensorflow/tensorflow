@@ -2174,4 +2174,159 @@ TEST(CAPI, ShareVariableAcrossContextsWorks) {
   worker_server2.release();
 }
 
+tensorflow::ServerDef CreateSingleHostServerDef(
+    const tensorflow::ServerDef& cluster_server_def, int task_index) {
+  tensorflow::ServerDef single_host_server_def;
+  single_host_server_def.set_job_name(cluster_server_def.job_name());
+  single_host_server_def.set_protocol(cluster_server_def.protocol());
+  single_host_server_def.set_task_index(0);
+  tensorflow::ClusterDef* cluster_def =
+      single_host_server_def.mutable_cluster();
+  tensorflow::JobDef* job_def = cluster_def->add_job();
+  job_def->set_name(cluster_server_def.job_name());
+
+  // Add a client.
+  single_host_server_def.mutable_cluster()
+      ->mutable_job(0)
+      ->mutable_tasks()
+      ->insert(
+          {0, tensorflow::strings::StrCat(
+                  "localhost:", tensorflow::testing::PickUnusedPortOrDie())});
+
+  // Copy over `host:port` at `task_index`
+  for (auto task : cluster_server_def.cluster().job(0).tasks()) {
+    if (task.first == task_index) {
+      single_host_server_def.mutable_cluster()
+          ->mutable_job(0)
+          ->mutable_tasks()
+          ->insert({task.first, task.second});
+    }
+  }
+
+  return single_host_server_def;
+}
+
+TEST(CAPI, SingleHostServerDefWorks) {
+  // Create a server def that represents a 2-process cluster.
+  // Example:
+  //
+  // cluster { job { name: "localhost"
+  //               tasks { key: 0 value: "localhost:14319" } <--client
+  //               tasks { key: 1 value: "localhost:15022" } <--worker1
+  //               tasks { key: 2 value: "localhost:15023" } <--worker2
+  // } }
+  // job_name: "localhost" protocol: "grpc"
+  //
+  tensorflow::ServerDef cluster_server_def = GetServerDef(3);
+  // These server defs have task index set to 0.
+  string serialized_cluster_server_def = cluster_server_def.SerializeAsString();
+
+  // Create two worker tasks, using single host server defs.
+  // A single host server def contains a client and the remote host.
+  // Example:
+  //
+  //  Worker2:
+  //  cluster { job { name: "localhost"
+  //                  tasks { key: 0 value: "localhost:15226" } <--client
+  //                  tasks { key: 2 value: "localhost:15023" } <--worker2
+  //  } }
+  //  job_name: "localhost" task_index: 2 protocol: "grpc"
+  //
+  //  Worker1:
+  //  cluster { job { name: "localhost"
+  //                 tasks { key: 0 value: "localhost:15024" } <--client
+  //                 tasks { key: 1 value: "localhost:15022" } <--worker1
+  //  } }
+  //  job_name: "localhost" task_index: 1 protocol: "grpc"
+  //
+
+  // Create `worker_2` using single host server def `worker_2_server_def`.
+  tensorflow::ServerDef worker_2_server_def =
+      CreateSingleHostServerDef(cluster_server_def, 2);
+  worker_2_server_def.set_task_index(2);
+
+  std::unique_ptr<tensorflow::GrpcServer> worker_server2;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(worker_2_server_def,
+                                             tensorflow::Env::Default(),
+                                             &worker_server2)
+                  .ok());
+  ASSERT_TRUE(worker_server2->Start().ok());
+
+  // Create context `local_ctx` using single host server def -
+  // `worker_2_server_def`.
+  worker_2_server_def.set_task_index(0);
+  TFE_Context* local_ctx =
+      CreateContext(worker_2_server_def.SerializeAsString(),
+                    /*isolate_session_state=*/false);
+
+  const char remote_device[] = "/job:localhost/replica:0/task:2/device:CPU:0";
+
+  // Create a variable `var` on `worker2` using `local_ctx`.
+  TFE_TensorHandle* handle_0 =
+      CreateVariable(local_ctx, 1.2, remote_device, /*variable_name=*/"var");
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextAsyncWait(local_ctx, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+  TFE_DeleteTensorHandle(handle_0);
+
+  // Create `worker1` using single host server def `worker_1_server_def`.
+  tensorflow::ServerDef worker_1_server_def =
+      CreateSingleHostServerDef(cluster_server_def, 1);
+  worker_1_server_def.set_task_index(1);
+
+  std::unique_ptr<tensorflow::GrpcServer> worker_server1;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(worker_1_server_def,
+                                             tensorflow::Env::Default(),
+                                             &worker_server1)
+                  .ok());
+  ASSERT_TRUE(worker_server1->Start().ok());
+
+  // Create a remote context, `remote_ctx`, using `cluster_server_def`.
+  TFE_Context* remote_ctx = CreateContext(serialized_cluster_server_def,
+                                          /*isolate_session_state=*/false);
+
+  // Read variable `var` using `remote_ctx`, created using `cluster_server_def`.
+  {
+    // Create a handle to `var`.
+    TFE_TensorHandle* var_handle =
+        CreateVarHandle(remote_ctx, remote_device, /*variable_name=*/"var");
+
+    TFE_TensorHandle* handle_1 = nullptr;
+    int num_retvals = 1;
+    TF_Status* status = TF_NewStatus();
+    TFE_Op* op = TFE_NewOp(remote_ctx, "ReadVariableOp", status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+    TFE_OpAddInput(op, var_handle, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_Execute(op, &handle_1, &num_retvals, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteOp(op);
+
+    ASSERT_EQ(1, num_retvals);
+    EXPECT_EQ(TF_FLOAT, TFE_TensorHandleDataType(handle_1));
+    EXPECT_EQ(0, TFE_TensorHandleNumDims(handle_1, status));
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+    // Read the value of tensor handle `handle_1`.
+    float value = 0.0f;
+    TF_Tensor* t = TFE_TensorHandleResolve(handle_1, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    ASSERT_EQ(sizeof(float), TF_TensorByteSize(t));
+    memcpy(&value, TF_TensorData(t), sizeof(float));
+    TF_DeleteTensor(t);
+    EXPECT_EQ(1.2f, value);
+    TFE_DeleteTensorHandle(handle_1);
+    TF_DeleteStatus(status);
+    TFE_DeleteTensorHandle(var_handle);
+  }
+
+  TFE_DeleteContext(local_ctx);
+  TFE_DeleteContext(remote_ctx);
+
+  worker_server1.release();
+  worker_server2.release();
+}
+
 }  // namespace

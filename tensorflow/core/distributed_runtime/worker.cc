@@ -83,9 +83,9 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
   }
   if (s.ok()) {
     s = session->graph_mgr()->Register(
-        request->session_handle(), request->graph_def(), session.get(),
+        request->session_handle(), request->graph_def(),
         request->graph_options(), request->debug_options(),
-        request->config_proto(), request->collective_graph_key(),
+        request->config_proto(), request->collective_graph_key(), session.get(),
         session->cluster_flr(), response->mutable_graph_handle());
   }
   done(s);
@@ -224,9 +224,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     return;
   }
   session->graph_mgr()->ExecuteAsync(
-      request->graph_handle(), step_id, session.get(), request->exec_opts(),
-      collector, response, cm, in,
-      env_->session_mgr->GetCoordinationServiceAgent(),
+      request->graph_handle(), step_id, request->exec_opts(), in, session.get(),
+      collector, response, cm, env_->session_mgr->GetCoordinationServiceAgent(),
       [this, step_id, response, session, cm, out, token, collector,
        device_profiler_session, opts, done](const Status& status) {
         Status s = status;
@@ -317,8 +316,8 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     cancellation_manager_.RegisterCallback(token,
                                            [cm]() { cm->StartCancel(); });
     session->graph_mgr()->ExecuteAsync(
-        graph_handle, step_id, session.get(), request->exec_opts(),
-        nullptr /* collector */, nullptr /* response */, cm, in,
+        graph_handle, step_id, request->exec_opts(), in, session.get(),
+        /*collector=*/nullptr, /*response=*/nullptr, cm,
         env_->session_mgr->GetCoordinationServiceAgent(),
         [this, token, step_id, session](Status s) {
           cancellation_manager_.DeregisterCallback(token);

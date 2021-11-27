@@ -95,8 +95,8 @@ mlir::LogicalResult GetDevicesFromOp(mlir::Operation* op,
 
   // Parse device names and metadata from dictionary attribute.
   for (auto& kv : dict_attr) {
-    const mlir::Identifier name = kv.first;
-    const mlir::Attribute attr = kv.second;
+    const mlir::StringAttr name = kv.getName();
+    const mlir::Attribute attr = kv.getValue();
 
     if (!DeviceNameUtils::ParseFullName(name.str(), &device))
       return op->emitOpError(
