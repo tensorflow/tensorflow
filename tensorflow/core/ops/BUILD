@@ -361,12 +361,12 @@ cc_library(
     name = "math_grad",
     srcs = [
         "math_grad.cc",
-        "random_grad.cc",
         "stateless_random_grad.cc",
     ],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     deps = [
         ":math_ops_op_lib",
+        ":random_grad_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
