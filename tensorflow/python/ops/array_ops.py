@@ -2085,7 +2085,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   See also `tf.unstack`.
 
-  If `num_or_size_splits` is an integer,  then `value` is split along the
+  If `num_or_size_splits` is an `int`,  then it splits `value` along the
   dimension `axis` into `num_or_size_splits` smaller tensors. This requires that
   `value.shape[axis]` is divisible by `num_or_size_splits`.
 
@@ -2114,25 +2114,27 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   Args:
     value: The `Tensor` to split.
-    num_or_size_splits: Either an integer indicating the number of splits along
-      `axis` or a 1-D integer `Tensor` or Python list containing the sizes of
-      each output tensor along `axis`. If a scalar, then it must evenly divide
-      `value.shape[axis]`; otherwise the sum of sizes along the split axis
-      must match that of the `value`.
-    axis: An integer or scalar `int32` `Tensor`. The dimension along which to
-      split. Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
-    num: Optional, used to specify the number of outputs when it cannot be
-      inferred from the shape of `size_splits`.
+    num_or_size_splits: Either an `int` indicating the number of splits
+      along `axis` or a 1-D integer `Tensor` or Python list containing the sizes
+      of each output tensor along `axis`. If an `int`, then it must evenly
+      divide `value.shape[axis]`; otherwise the sum of sizes along the split
+      axis must match that of the `value`.
+    axis: An `int` or scalar `int32` `Tensor`. The dimension along which
+      to split. Must be in the range `[-rank(value), rank(value))`. Defaults to
+      0.
+    num: Optional, an `int`, used to specify the number of outputs when it
+      cannot be inferred from the shape of `size_splits`.
     name: A name for the operation (optional).
 
   Returns:
-    if `num_or_size_splits` is a scalar returns a list of `num_or_size_splits`
-    `Tensor` objects; if `num_or_size_splits` is a 1-D Tensor returns
-    `num_or_size_splits.get_shape[0]` `Tensor` objects resulting from splitting
-    `value`.
+    if `num_or_size_splits` is an `int` returns a list of
+    `num_or_size_splits` `Tensor` objects; if `num_or_size_splits` is a 1-D
+    list or 1-D `Tensor` returns `num_or_size_splits.get_shape[0]`
+    `Tensor` objects resulting from splitting `value`.
 
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
+    ValueError: If `num_or_size_splits` is a scalar `Tensor`.
   """
   if isinstance(num_or_size_splits,
                 (numbers.Integral, tensor_shape.Dimension)):
@@ -2152,7 +2154,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
       num = size_splits_shape[0]
     if num is None:
       raise ValueError(
-          "Cannot infer argument `num` from shape {num_or_size_splits}")
+          f"Cannot infer argument `num` from shape {num_or_size_splits}")
 
   return gen_array_ops.split_v(
       value=value, size_splits=size_splits, axis=axis, num_split=num, name=name)
