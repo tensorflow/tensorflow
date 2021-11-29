@@ -414,6 +414,12 @@ Below is the list of currently supported quantized operators:
   (use `kTfLiteMmapRo` allocation type).
 * The numbers of padding elements must be non-negative.
 
+#### `RESIZE_BILINEAR`
+
+* The first input and the output must be 4D tensors in 8-bit quantized format.
+* The second input (the input with the new shape specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
+
 #### `SUB`
 
 * Inputs and outputs must be in 8-bit quantized format.
