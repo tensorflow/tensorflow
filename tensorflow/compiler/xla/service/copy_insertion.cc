@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
-#include <algorithm>
 #include <optional>
 #include <sstream>
 
@@ -25,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/any.h"
-#include "tensorflow/compiler/xla/service/compile_time_cap.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -1985,9 +1983,11 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
   int64_t num_existing_copies = GetNumExistingCopies(module);
   bool changed = true;
   int64_t num_iterations = -1;
+  constexpr int64_t region_analysis_allowance_cap = 30000;
   VLOG(6) << "Copy Insertion analyzing module with instructino count = "
           << module->instruction_count() << "\n";
-  BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
+  int64_t region_analysis_allowance =
+      std::max(region_analysis_allowance_cap, module->instruction_count() / 10);
   while (changed) {
     CHECK_LE(++num_iterations, num_existing_copies);
     changed = false;
@@ -2000,11 +2000,8 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
         // The region_analysis_cost_now is always set to
         // use_region_based_live_range_analysis_ if it is < 0, in which case the
         // analysis is always performed.
-        int64_t region_analysis_cost_now =
-            (use_region_based_live_range_analysis_ == 0)
-                ? 0
-                : std::min(allowance.analysis_allowance(),
-                           use_region_based_live_range_analysis_);
+        int64_t region_analysis_cost_now = std::min(
+            region_analysis_allowance, use_region_based_live_range_analysis_);
         if (instruction->opcode() == HloOpcode::kCopy) {
           if (copy_remover.TryElideCopy(instruction,
                                         &region_analysis_cost_now)) {
@@ -2014,12 +2011,14 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
                 instruction->mutable_operand(0)));
             VLOG(6) << "succeeded in eliminating copy.\n";
           }
-          if (allowance.ContinueAnalysis() && region_analysis_cost_now > 0) {
+          if (region_analysis_allowance > 0 && region_analysis_cost_now > 0) {
             VLOG(6) << "Copy Insertion analyzing module cost: "
                     << region_analysis_cost_now << "\n";
             VLOG(6) << "instruction:" << instruction->ToString() << "\n";
-            allowance.DeductCost(region_analysis_cost_now);
-            VLOG(6) << "allowance:" << allowance.analysis_allowance() << "\n";
+            region_analysis_allowance -= region_analysis_cost_now;
+            if (region_analysis_allowance < 0) {
+              region_analysis_allowance = 0;
+            }
           }
         }
       }

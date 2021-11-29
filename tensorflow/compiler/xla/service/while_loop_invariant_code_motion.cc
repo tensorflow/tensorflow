@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/xla/service/compile_time_cap.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
@@ -129,7 +128,7 @@ bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
 
 StatusOr<bool>
 WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
-    HloInstruction* while_instr, BoundNonLinearCompilerAnalysis* allowance) {
+    HloInstruction* while_instr) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
 
   if (!while_instr->shape().IsTuple()) {
@@ -206,11 +205,6 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   std::vector<HloInstruction*> replacement_instructions;
 
   for (auto* instruction : while_body->MakeInstructionPostOrder()) {
-    allowance->DeductCost(1);
-    if (!allowance->ContinueAnalysis()) {
-      return false;
-    }
-
     if (instruction->HasSideEffect() ||
         instruction->opcode() == HloOpcode::kParameter ||
         !instruction->control_predecessors().empty() ||
@@ -222,6 +216,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
         instruction->opcode() != HloOpcode::kReshape) {
       continue;
     }
+
     // Constants don't inflate, so size inflation check doesn't make sense for
     // constants.
     if (hoist_size_inflation_ratio_ &&
@@ -328,7 +323,6 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
                       return instr->opcode() == HloOpcode::kWhile;
                     });
   }
-  BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
 
   for (HloInstruction* while_instr : while_instrs) {
     // Right now we only hoist computations from the while body, but
@@ -343,12 +337,9 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
     // * We delete while loops that have a zero trip count, so this would have
     //   to be a while loop with a somewhat opaque condition expression.
 
-    if (!allowance.ContinueAnalysis()) {
-      break;
-    }
     TF_ASSIGN_OR_RETURN(
         bool result,
-        TryHoistingInvariantInstructionsFromWhileBody(while_instr, &allowance));
+        TryHoistingInvariantInstructionsFromWhileBody(while_instr));
     changed |= result;
   }
 
