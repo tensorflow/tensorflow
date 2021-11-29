@@ -1992,43 +1992,44 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
 
   std::function<llvm::BasicBlock*(
       absl::Span<const std::pair<int64_t, const HloInstruction*>> operands)>
-      emit_tree = [&](absl::Span<
-                      const std::pair<int64_t, const HloInstruction*>>
-                          operands) {
-        llvm::IRBuilder<>::InsertPointGuard guard(*b_);
-        size_t mid = operands.size() / 2;
-        const std::pair<int64_t, const HloInstruction*>& pivot = operands[mid];
-        llvm::BasicBlock* block = llvm_ir::CreateBasicBlock(
-            exit_block, absl::StrCat("concatenate.pivot.", pivot.first, "."),
-            b_);
-        b_->SetInsertPoint(block);
+      emit_tree =
+          [&](absl::Span<const std::pair<int64_t, const HloInstruction*>>
+                  operands) {
+            llvm::IRBuilder<>::InsertPointGuard guard(*b_);
+            size_t mid = operands.size() / 2;
+            const std::pair<int64_t, const HloInstruction*>& pivot =
+                operands[mid];
+            llvm::BasicBlock* block = llvm_ir::CreateBasicBlock(
+                exit_block,
+                absl::StrCat("concatenate.pivot.", pivot.first, "."), b_);
+            b_->SetInsertPoint(block);
 
-        // If there's only one element we're done. The range is contiguous so we
-        // can just jump to the block for it.
-        if (operands.size() == 1) {
-          const std::pair<int64_t, const HloInstruction*>& operand =
-              operands.back();
-          int64_t operand_id = to_unique_operand_id[operand.second];
+            // If there's only one element we're done. The range is contiguous
+            // so we can just jump to the block for it.
+            if (operands.size() == 1) {
+              const std::pair<int64_t, const HloInstruction*>& operand =
+                  operands.back();
+              int64_t operand_id = to_unique_operand_id[operand.second];
 
-          source_index_phis[operand_id]->addIncoming(
-              source_index.GetConstantWithIndexType(operand.first),
-              b_->GetInsertBlock());
-          b_->CreateBr(emit_operand_blocks[operand_id]);
-          return block;
-        }
+              source_index_phis[operand_id]->addIncoming(
+                  source_index.GetConstantWithIndexType(operand.first),
+                  b_->GetInsertBlock());
+              b_->CreateBr(emit_operand_blocks[operand_id]);
+              return block;
+            }
 
-        // Take the middle element and recurse.
-        llvm::Constant* pivot_const = llvm::ConstantInt::get(
-            source_index[concat_dim]->getType(), pivot.first);
-        llvm::Value* comp =
-            b_->CreateICmpULT(source_index[concat_dim], pivot_const);
+            // Take the middle element and recurse.
+            llvm::Constant* pivot_const = llvm::ConstantInt::get(
+                source_index[concat_dim]->getType(), pivot.first);
+            llvm::Value* comp =
+                b_->CreateICmpULT(source_index[concat_dim], pivot_const);
 
-        llvm::BasicBlock* left_block = emit_tree(operands.subspan(0, mid));
-        llvm::BasicBlock* right_block = emit_tree(operands.subspan(mid));
+            llvm::BasicBlock* left_block = emit_tree(operands.subspan(0, mid));
+            llvm::BasicBlock* right_block = emit_tree(operands.subspan(mid));
 
-        b_->CreateCondBr(comp, left_block, right_block);
-        return block;
-      };
+            b_->CreateCondBr(comp, left_block, right_block);
+            return block;
+          };
 
   Br(emit_tree(cases));
 
@@ -3003,6 +3004,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
     const HloInstruction* convolution,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& index) {
+  TF_RET_CHECK(convolution->batch_group_count() == 1);
   const HloInstruction* lhs = convolution->operand(0);
   const auto& input_generator = operand_to_generator.at(lhs);
   const HloInstruction* rhs = convolution->operand(1);
@@ -3042,13 +3044,20 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
                 absl::StrCat("k", i))
             ->GetIndVarValue();
   }
+  const int64_t input_group_size =
+      rhs->shape().dimensions(dnums.kernel_input_feature_dimension());
+  const int64_t feature_group_count = convolution->feature_group_count();
+  const int64_t output_group_size =
+      rhs->shape().dimensions(dnums.kernel_output_feature_dimension()) /
+      feature_group_count;
   llvm::Value* input_feature =
-      loops
-          .AddLoop(0, lhs->shape().dimensions(dnums.input_feature_dimension()),
-                   "iz")
-          ->GetIndVarValue();
+      loops.AddLoop(0, input_group_size, "iz")->GetIndVarValue();
 
   SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
+
+  llvm::Value* group_id = SDiv(output_feature, b_->getInt64(output_group_size));
+  llvm::Value* lhs_input_feature =
+      NSWAdd(input_feature, NSWMul(group_id, b_->getInt64(input_group_size)));
 
   // Calculate the spatial index in the input array, taking striding, dilation
   // and padding into account. An index in the padding will be out of the bounds
@@ -3115,7 +3124,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
   for (int i = 0; i < num_spatial_dims; ++i) {
     input_multi_index[dnums.input_spatial_dimensions(i)] = input_spatial[i];
   }
-  input_multi_index[dnums.input_feature_dimension()] = input_feature;
+  input_multi_index[dnums.input_feature_dimension()] = lhs_input_feature;
   input_multi_index[dnums.input_batch_dimension()] = batch;
 
   std::vector<llvm::Value*> kernel_multi_index(num_dims);

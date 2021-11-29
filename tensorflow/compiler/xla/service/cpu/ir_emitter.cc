@@ -967,12 +967,13 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       bool multi_threaded =
           hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
       bool use_mkl_dnn =
-          hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
+          hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn() &&
+          convolution->feature_group_count() == 1;
 
       auto valid_num_dims = [](absl::Span<const int64_t> xs) {
         return xs.size() >= 2 && xs.size() <= 3;
       };
-      TF_RET_CHECK(valid_num_dims(input_dims));
+      TF_RET_CHECK(valid_num_dims(input_dims)) << input_dims.size();
       TF_RET_CHECK(valid_num_dims(kernel_dims));
       TF_RET_CHECK(valid_num_dims(output_dims));
       TF_RET_CHECK(valid_num_dims(strides));
@@ -1041,13 +1042,13 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       for (int64_t d : window_dilation) {
         args.push_back(b_.getInt64(d));
       }
+      args.push_back(b_.getInt64(convolution->feature_group_count()));
       EmitCallToFunc(fn_name, args, b_.getVoidTy(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
 
       return Status::OK();
     }
   }
-
   // This is a completely un-optimized version of convolution just to
   // have an early version that works. E.g. the input index and
   // padding calculation is not hoisted out of the inner loop.

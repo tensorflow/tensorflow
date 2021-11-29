@@ -5883,6 +5883,10 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     return false;
   }
 
+  if (convolution->feature_group_count() != 1 ||
+      convolution->batch_group_count() != 1) {
+    return false;
+  }
   auto add_bitcast = [&](Shape shape, HloInstruction* operand) {
     std::vector<int64_t> dims(operand->shape().dimensions_size());
     std::iota(dims.begin(), dims.end(), 0);
