@@ -79,6 +79,7 @@ TF_TYPE_INFO = {
     tf.int32: (np.int32, "INT32"),
     tf.uint32: (np.uint32, "UINT32"),
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
+    tf.int8: (np.int8, "INT8"),
     tf.int16: (np.int16, "QUANTIZED_INT16"),
     tf.int64: (np.int64, "INT64"),
     tf.bool: (np.bool_, "BOOL"),
@@ -116,7 +117,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     real = (max_value - min_value) * np.random.random_sample(shape) + min_value
     imag = (max_value - min_value) * np.random.random_sample(shape) + min_value
     value = real + imag * 1j
-  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int64, tf.int16):
+  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)

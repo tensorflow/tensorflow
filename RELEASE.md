@@ -164,6 +164,7 @@ This release contains contributions from many people at Google, as well as:
 * `tf.lite`:
   * Add experimental API `experimental_from_jax` to support conversion from Jax models to TensorFlow Lite.
   * Support uint32 data type for cast op.
+  * Support int8 data type for cast op.
   * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
   * Add lite.experimental.authoring.compatible API
       *   A Python decorator to provide a way to check TFLite compatibility
