@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_INVARIANT_CODE_MOTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_INVARIANT_CODE_MOTION_H_
 
+#include "tensorflow/compiler/xla/service/compile_time_cap.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -70,7 +71,7 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
  private:
   bool NotWorthHoistingIndividually(const HloInstruction& instruction);
   StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
-      HloInstruction* while_instr);
+      HloInstruction* while_instr, BoundNonLinearCompilerAnalysis* allowance);
 
   bool hoist_constants_;
   bool hoist_reshapes_;
