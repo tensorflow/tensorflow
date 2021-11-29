@@ -117,7 +117,6 @@ third_party/clang_toolchain/download_clang.bzl
 third_party/codegen.BUILD
 third_party/common.bzl
 third_party/compute_library/BUILD
-third_party/compute_library/LICENSE
 third_party/coremltools.BUILD
 third_party/cub.BUILD
 third_party/curl.BUILD
