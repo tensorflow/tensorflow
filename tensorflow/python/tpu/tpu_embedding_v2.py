@@ -336,6 +336,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       self._hosts = get_list_of_hosts(self._strategy)
 
     self._built = False
+    # If batch size checking for every `enqueue` is pretty slow, this flag can
+    # be disabled in subclasses. It could happen in performance critical cases.
     self._verify_batch_size_on_enqueue = True
 
   def build(self, per_replica_batch_size: Optional[int] = None):
