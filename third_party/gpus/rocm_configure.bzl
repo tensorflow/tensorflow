@@ -341,6 +341,7 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
     ]
     if int(rocm_config.rocm_version_number) >= 40500:
         libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, 'hipsolver', rocm_config.rocm_toolkit_path + "/hipsolver")))
+        libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, 'hipblas', rocm_config.rocm_toolkit_path + "/hipblas")))
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def _exec_find_rocm_config(repository_ctx, script_path):
@@ -459,6 +460,7 @@ def _create_dummy_repository(repository_ctx):
         {
             "%{hip_lib}": _lib_name("hip"),
             "%{rocblas_lib}": _lib_name("rocblas"),
+            "%{hipblas_lib}": _lib_name("hipblas"),
             "%{miopen_lib}": _lib_name("miopen"),
             "%{rccl_lib}": _lib_name("rccl"),
             "%{hipfft_or_rocfft}": _lib_name("hipfft"),
@@ -612,6 +614,14 @@ def _create_local_rocm_repository(repository_ctx):
                 out_dir = "rocm/include/hipsolver",
             ),
         )
+        copy_rules.append(
+            make_copy_dir_rule(
+                repository_ctx,
+                name = "hipblas-include",
+                src_dir = rocm_toolkit_path + "/hipblas/include",
+                out_dir = "rocm/include/hipblas",
+            ),
+        )
     # explicitly copy (into the local_config_rocm repo) the $ROCM_PATH/hiprand/include and
     # $ROCM_PATH/rocrand/include dirs, only once the softlink to them in $ROCM_PATH/include
     # dir has been removed. This removal will happen in a near-future ROCm release.
@@ -711,6 +721,8 @@ def _create_local_rocm_repository(repository_ctx):
     if rocm_version_number >= 40500:
         repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
         repository_dict["%{rocm_headers}"] += ',\n":hipsolver-include"'
+        repository_dict["%{hipblas_lib}"] = rocm_libs["hipblas"].file_name
+        repository_dict["%{rocm_headers}"] += ',\n":hipblas-include"'
 
     repository_ctx.template(
         "rocm/BUILD",
