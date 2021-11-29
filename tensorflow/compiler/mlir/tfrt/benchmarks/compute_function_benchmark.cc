@@ -155,7 +155,7 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh1() {
 }
 
 BM(Cpurt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
-BM(CpurtVectorized(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
+BM(CpurtV(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
 BM(Tfrt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
 
 static const char* const mlir_fresh2 = R"(
@@ -201,7 +201,7 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh2() {
 }
 
 BM(Cpurt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
-BM(CpurtVectorized(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
+BM(CpurtV(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 BM(Tfrt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 
 }  // namespace

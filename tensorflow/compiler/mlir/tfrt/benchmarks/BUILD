@@ -168,7 +168,10 @@ tf_cc_binary(
     name = "transpose_op_benchmark",
     testonly = 1,
     srcs = ["transpose_op_benchmark.cc"],
-    deps = [":benchmark_mlir_function"],
+    deps = [
+        ":benchmark_mlir_function",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 cc_library(
