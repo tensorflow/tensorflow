@@ -44,6 +44,7 @@ filegroup(
     data = [
         "//tensorflow/compiler/mlir:tf-mlir-translate",
         "//tensorflow/compiler/mlir/xla:xla-opt",
+        "//tensorflow/compiler/mlir/xla:xla-opt-gpu",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
     ],
