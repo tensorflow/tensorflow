@@ -16,9 +16,12 @@
 # Major Features and Improvements
 
 *   `tf.lite`:
-    *   Where operation support is added for these data types
-        'int32/uint32/int8/uint8/int64'
-    *   Add builtin support for `Bucketize` op on CPU.
+    *   Added TFLite builtin op support for the following TF ops:
+        *  `tf.raw_ops.Bucketize` op on CPU.
+        *  `tf.where` op for data types `tf.int32`/`tf.uint32`/`tf.int8`/`tf.uint8`/`tf.int64`.
+        *  `tf.random.normal` op for output data type `tf.float32` on CPU.
+        *  `tf.random.uniform` op for output data type `tf.float32` on CPU.
+        *  `tf.random.categorical` op for output data type `tf.int64` on CPU.
 *   `tensorflow.experimental.tensorrt`:
 
     *   `conversion_params` is now deprecated inside `TrtGraphConverterV2` in
