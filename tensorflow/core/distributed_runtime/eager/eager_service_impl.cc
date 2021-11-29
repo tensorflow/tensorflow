@@ -262,6 +262,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 
   // Initialize remote tensor communication based on worker session.
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+  // Set the rendezvous as context-global instance for eager op-by-op execution.
+  r->SetRemoteEagerContextDefault();
 
   std::function<Rendezvous*(const int64_t)> rendezvous_creator =
       [worker_session, this](const int64_t step_id) {
