@@ -15,6 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_registry.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
+#include "tfrt/host_context/shared_context.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/rc_array.h"  // from @tf_runtime
@@ -70,8 +73,8 @@ using ::tfrt::Attribute;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
 using ::tfrt::DType;
-using ::tfrt::EnqueueWork;
 using ::tfrt::ExecutionContext;
+using ::tfrt::HostContext;
 using ::tfrt::IndirectAsyncValue;
 using ::tfrt::KernelRegistry;
 using ::tfrt::MakeConstructedAsyncValueRef;
@@ -82,6 +85,7 @@ using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RepeatedArguments;
 using ::tfrt::RequestContext;
+using ::tfrt::SharedContext;
 using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
 using ::tfrt::TaskFunction;
@@ -97,10 +101,42 @@ using ::tfrt::cpu::jit::ReturnAsyncStridedMemref;
 using ::tfrt::cpu::jit::ReturnStridedMemref;
 using ::tfrt::cpu::jit::ReturnValueConverter;
 
+using ::tensorflow::Env;
+using ::tensorflow::thread::ThreadPool;
+
 using ::tensorflow::profiler::TraceMe;
 using ::tensorflow::profiler::TraceMeEncode;
 using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
+
+// -------------------------------------------------------------------------- //
+// Dedicated thread pool for running compilation tasks.
+// -------------------------------------------------------------------------- //
+
+class CompilationThreadPool : public SharedContext {
+ public:
+  explicit CompilationThreadPool(HostContext* host)
+      : thread_pool_(Env::Default(), "tf-cpurt-compiler", /*num_threads=*/16) {}
+
+  static CompilationThreadPool& Get(const ExecutionContext& exec_ctx) {
+    return exec_ctx.host()->GetOrCreateSharedContext<CompilationThreadPool>();
+  }
+
+  template <typename Task>
+  void Schedule(Task&& task) {
+    // Because compilation tasks can capture move only types, and Tensorflow
+    // thread pool requires std::function tasks, we have to do manual memory
+    // management here.
+    auto ptr = std::make_unique<Task>(std::forward<Task>(task));
+    thread_pool_.Schedule([ptr = ptr.release()]() {
+      (*ptr)();
+      delete ptr;
+    });
+  }
+
+ private:
+  ThreadPool thread_pool_;
+};
 
 // -------------------------------------------------------------------------- //
 // JIT compiled kernels use Eigen ThreadPool managed by the kernel fallback as
@@ -250,8 +286,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // events happen too often, it is a much larger problem than the excessive
   // tracing.
 
-  // Custom runner for compiling specializations that enqueues compilation task
-  // into the host context work queue and adds tracing.
+  // Custom runner for compiling specializations that schedules compilation task
+  // into the dedicated thread pool and adds tracing.
   auto runner = [kernel, request_id](size_t num_specializations,
                                      ArrayRef<OperandConstraint> constraints,
                                      ArrayRef<MemrefDesc> operands,
@@ -276,17 +312,18 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                         AsTensorContent(operands[i]));
     }
 
-    // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
-    // theory can be unloaded before the completion of the compilation task.
-    // It can't happen right now, because we require specialized compilation to
-    // finish before returning the response, however for safety tracing
-    // attributes that require the kernel attribute should be constructed in the
-    // caller thread.
+    // Schedule specialization compilation task into the dedicated thread pool.
+    CompilationThreadPool& thread_pool = CompilationThreadPool::Get(exec_ctx);
 
-    // Run the actual compilation asynchronously without blocking the caller.
-    EnqueueWork(exec_ctx, [request_id, kernel, num_specializations,
-                           compile = std::move(compile),
-                           args = std::move(args)]() mutable {
+    thread_pool.Schedule([request_id, kernel, num_specializations,
+                          compile = std::move(compile),
+                          args = std::move(args)]() mutable {
+      // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
+      // theory can be unloaded before the completion of the compilation task.
+      // It can't happen right now, because we require specialized compilation
+      // to finish before returning the response, however for safety tracing
+      // attributes that require the `kernel` attribute should be constructed in
+      // the caller thread.
       absl::string_view name(kernel.root_symbol().data(),
                              kernel.root_symbol().size());
       TraceMe trace_me([&] {
@@ -314,9 +351,11 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     });
   };
 
-  // Compile kernel asynchronously in the host context thread pool.
-  EnqueueWork(exec_ctx, [kernel, request_id, runner, workers = *worker_threads,
-                         ptr = entry.ptr, tf_cpurt_opts = opts]() {
+  // Compile kernel asynchronously in the compilation thread pool.
+  CompilationThreadPool& thread_pool = CompilationThreadPool::Get(exec_ctx);
+
+  thread_pool.Schedule([kernel, request_id, runner, workers = *worker_threads,
+                        ptr = entry.ptr, tf_cpurt_opts = opts]() {
     TraceMe trace_me([&] {
       absl::string_view name(kernel.root_symbol().data(),
                              kernel.root_symbol().size());
@@ -441,7 +480,7 @@ struct DebugListener : public JitExecutable::Listener {
     std::string message;
     llvm::raw_string_ostream os(message);
     os << "Specialized operands:\n";
-    for (auto tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
+    for (auto& tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
       mlir::Type type = std::get<0>(tuple.value());
       mlir::Attribute attr = std::get<1>(tuple.value());
       os << "%arg" << tuple.index() << ": " << type << " " << attr << "\n";
