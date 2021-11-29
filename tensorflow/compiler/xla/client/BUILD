@@ -278,6 +278,7 @@ tf_cc_test(
     name = "xla_builder_test",
     srcs = ["xla_builder_test.cc"],
     deps = [
+        ":value_inference",
         ":xla_builder",
         ":xla_computation",
         "//tensorflow/compiler/xla:debug_options_flags",

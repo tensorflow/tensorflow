@@ -86,13 +86,13 @@ TF_TYPE_INFO = {
 }
 
 
-class ExtraTocoOptions(object):
-  """Additional toco options besides input, output, shape."""
+class ExtraConvertOptions(object):
+  """Additional options for conversion, besides input, output, shape."""
 
   def __init__(self):
     # Whether to ignore control dependency nodes.
     self.drop_control_dependency = False
-    # Allow custom ops in the toco conversion.
+    # Allow custom ops in the conversion.
     self.allow_custom_ops = False
     # Rnn states that are used to support rnn / lstm cells.
     self.rnn_states = None
@@ -292,7 +292,7 @@ def make_zip_of_tests(options,
                       test_parameters,
                       make_graph,
                       make_test_inputs,
-                      extra_toco_options=ExtraTocoOptions(),
+                      extra_convert_options=ExtraConvertOptions(),
                       use_frozen_graph=False,
                       expected_tf_failures=0):
   """Helper to make a zip file of a bunch of TensorFlow models.
@@ -300,8 +300,8 @@ def make_zip_of_tests(options,
   This does a cartesian product of the dictionary of test_parameters and
   calls make_graph() for each item in the cartesian product set.
   If the graph is built successfully, then make_test_inputs() is called to
-  build expected input/output value pairs. The model is then converted to tflite
-  with toco, and the examples are serialized with the tflite model into a zip
+  build expected input/output value pairs. The model is then converted to
+  tflite, and the examples are serialized with the tflite model into a zip
   file (2 files per item in the cartesian product set).
 
   Args:
@@ -312,8 +312,8 @@ def make_zip_of_tests(options,
       `[input1, input2, ...], [output1, output2, ...]`
     make_test_inputs: function taking `curr_params`, `session`, `input_tensors`,
       `output_tensors` and returns tuple `(input_values, output_values)`.
-    extra_toco_options: Additional toco options.
-    use_frozen_graph: Whether or not freeze graph before toco converter.
+    extra_convert_options: Additional convert options.
+    use_frozen_graph: Whether or not freeze graph before convertion.
     expected_tf_failures: Number of times tensorflow is expected to fail in
       executing the input graphs. In some cases it is OK for TensorFlow to fail
       because the one or more combination of parameters is invalid.
@@ -347,7 +347,7 @@ def make_zip_of_tests(options,
     archive = zipfile.PyZipFile(zip_path, "w")
   zip_manifest = []
   convert_report = []
-  toco_errors = 0
+  converter_errors = 0
 
   processed_labels = set()
 
@@ -364,8 +364,8 @@ def make_zip_of_tests(options,
             operator.mul, [len(values) for values in parameters.values()])
 
   if options.make_edgetpu_tests:
-    extra_toco_options.inference_input_type = tf.uint8
-    extra_toco_options.inference_output_type = tf.uint8
+    extra_convert_options.inference_input_type = tf.uint8
+    extra_convert_options.inference_output_type = tf.uint8
     # Only count parameters when fully_quantize is True.
     parameter_count = 0
     for parameters in test_parameters:
@@ -464,17 +464,20 @@ def make_zip_of_tests(options,
         Returns:
           (tflite_model_binary, report) where tflite_model_binary is the
           serialized flatbuffer as a string and report is a dictionary with
-          keys `toco_log` (log of toco conversion), `tf_log` (log of tf
-          conversion), `toco` (a string of success status of the conversion),
-          `tf` (a string success status of the conversion).
+          keys `tflite_converter_log` (log of conversion), `tf_log` (log of tf
+          conversion), `converter` (a string of success status of the
+          conversion), `tf` (a string success status of the conversion).
         """
 
         np.random.seed(RANDOM_SEED)
-        report = {"converter": report_lib.NOTRUN, "tf": report_lib.FAILED}
+        report = {
+            "tflite_converter": report_lib.NOTRUN,
+            "tf": report_lib.FAILED
+        }
 
         # Build graph
         report["tf_log"] = ""
-        report["converter_log"] = ""
+        report["tflite_converter_log"] = ""
         tf.reset_default_graph()
 
         with tf.Graph().as_default():
@@ -502,7 +505,7 @@ def make_zip_of_tests(options,
                   ValueError):
             report["tf_log"] += traceback.format_exc()
             return None, report
-          report["converter"] = report_lib.FAILED
+          report["tflite_converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
 
           # Sorts the lists to make the order of input/output the same as order
@@ -546,19 +549,19 @@ def make_zip_of_tests(options,
               outputs) if use_frozen_graph else sess.graph_def
 
         if "split_tflite_lstm_inputs" in param_dict_real:
-          extra_toco_options.split_tflite_lstm_inputs = param_dict_real[
+          extra_convert_options.split_tflite_lstm_inputs = param_dict_real[
               "split_tflite_lstm_inputs"]
-        tflite_model_binary, toco_log = options.tflite_convert_function(
+        tflite_model_binary, converter_log = options.tflite_convert_function(
             options,
             saved_model_dir,
             input_tensors,
             output_tensors,
-            extra_toco_options=extra_toco_options,
+            extra_convert_options=extra_convert_options,
             test_params=param_dict_real)
-        report["converter"] = (
+        report["tflite_converter"] = (
             report_lib.SUCCESS
             if tflite_model_binary is not None else report_lib.FAILED)
-        report["converter_log"] = toco_log
+        report["tflite_converter_log"] = converter_log
 
         if options.save_graphdefs:
           zipinfo = zipfile.ZipInfo(zip_path_label + ".pbtxt")
@@ -605,7 +608,7 @@ def make_zip_of_tests(options,
 
       _, report = build_example(label, param_dict, zip_path_label)
 
-      if report["converter"] == report_lib.FAILED:
+      if report["tflite_converter"] == report_lib.FAILED:
         ignore_error = False
         if not options.known_bugs_are_errors:
           for pattern, bug_number in options.known_bugs.items():
@@ -613,9 +616,9 @@ def make_zip_of_tests(options,
               print("Ignored converter error due to bug %s" % bug_number)
               ignore_error = True
         if not ignore_error:
-          toco_errors += 1
+          converter_errors += 1
           print("-----------------\nconverter error!\n%s\n-----------------\n" %
-                report["converter_log"])
+                report["tflite_converter_log"])
 
       convert_report.append((param_dict, report))
 
@@ -640,14 +643,14 @@ def make_zip_of_tests(options,
   total_conversions = len(convert_report)
   tf_success = sum(
       1 for x in convert_report if x[1]["tf"] == report_lib.SUCCESS)
-  toco_success = sum(
-      1 for x in convert_report if x[1]["converter"] == report_lib.SUCCESS)
+  converter_success = sum(1 for x in convert_report
+                          if x[1]["tflite_converter"] == report_lib.SUCCESS)
   percent = 0
   if tf_success > 0:
-    percent = float(toco_success) / float(tf_success) * 100.
+    percent = float(converter_success) / float(tf_success) * 100.
   tf.logging.info(("Archive %s Considered %d graphs, %d TF evaluated graphs "
-                   " and %d TOCO converted graphs (%.1f%%"), zip_path,
-                  total_conversions, tf_success, toco_success, percent)
+                   " and %d converted graphs (%.1f%%"), zip_path,
+                  total_conversions, tf_success, converter_success, percent)
 
   tf_failures = parameter_count - tf_success
 
@@ -662,6 +665,6 @@ def make_zip_of_tests(options,
                         "but that happened %d times") %
                        (expected_tf_failures, zip_path, tf_failures))
 
-  if not options.ignore_converter_errors and toco_errors > 0:
-    raise RuntimeError("Found %d errors while generating toco models" %
-                       toco_errors)
+  if not options.ignore_converter_errors and converter_errors > 0:
+    raise RuntimeError("Found %d errors while generating models" %
+                       converter_errors)

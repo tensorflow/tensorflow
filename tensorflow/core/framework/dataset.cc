@@ -731,6 +731,14 @@ int64_t DatasetBase::Cardinality() const {
   return cardinality_;
 }
 
+int64_t DatasetBase::Cardinality(CardinalityOptions options) const {
+  mutex_lock l(cardinality_mu_);
+  if (cardinality_ == kUnknownCardinality) {
+    cardinality_ = CardinalityInternal(options);
+  }
+  return cardinality_;
+}
+
 Status DatasetBase::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   return errors::Unimplemented("InputDatasets not implemented for ",

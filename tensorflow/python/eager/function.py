@@ -90,7 +90,7 @@ BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 # TODO(b/202429845): Remove this flag and related args:
-USE_FUNCTION_SUBTYPING = False
+USE_FUNCTION_SUBTYPING = True
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",

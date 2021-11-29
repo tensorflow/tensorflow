@@ -19,6 +19,7 @@ limitations under the License.
 #define TF_FRAMEWORK_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Bufferization/IR/AllocationOpInterface.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.td"
@@ -279,7 +280,6 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
   let arguments = (ins
     Optional<TFFramework_OpKernelContextType>:$ctx,
     StrAttr:$code,
-    StrArrayAttr:$architectures,
     I64ArrayAttr:$tileSizes,
     I64ArrayAttr:$unrollFactors,
     I64Attr:$maxSupportedRank,

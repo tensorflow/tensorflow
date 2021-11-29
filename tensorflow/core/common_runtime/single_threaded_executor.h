@@ -54,6 +54,10 @@ namespace tensorflow {
 Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
                                  const Graph& graph, Executor** executor);
 
+// Returns Status::OK() for ops which are compatible with synchronous execution,
+// and otherwise returns an error message appropriate for propagation if needed.
+Status ValidateOpIsSafeForSyncExecution(const Node& n);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_SINGLE_THREADED_EXECUTOR_H_

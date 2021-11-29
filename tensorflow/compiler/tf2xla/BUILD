@@ -344,6 +344,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
+        ":layout_util",
         ":host_compute_metadata_proto_cc",
         ":rearrange_function_argument",
         ":sharding_util",
@@ -590,6 +591,7 @@ cc_library(
     hdrs = [
         "layout_util.h",
     ],
+    visibility = [":friends"],
     deps = [
         ":common",
         ":xla_argument",

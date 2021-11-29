@@ -717,9 +717,6 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
   // Constants were handled in Prepare() already.
   for (auto tensor_index : op_data_->subgraph_inputs) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
-    if (tensor->type == kTfLiteResource && tensor->delegate == nullptr) {
-      tensor->delegate = node->delegate;
-    }
     if (!IsConstantTensor(tensor)) {
       // If this tensor is part of an earlier TF subgraph we should not add it
       // to the BufferMap again, because TF already knows about it and its

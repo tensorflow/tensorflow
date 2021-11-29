@@ -4707,7 +4707,6 @@ initializer in tf saved model dialect.
 }
 
 def TFL_CustomOp : Op<TFL_Dialect, "custom", [
-  NoSideEffect,
   NoQuantizableResult,
   DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = "Custom op";
@@ -5213,6 +5212,29 @@ The generated values will have mean 0 and standard deviation 1.
   let hasOptions = 1;
   let customOption = "RandomOptions";
 }
+
+def TFL_MultinomialOp : TFL_Op<"multinomial", [NoQuantizableResult]> {
+  let summary = "Draws samples from a categorical distribution.";
+
+  let description = [{
+The generated values will have a categorical distribution based on the `logits`
+or unnormalized log-probabilities provided for all classes.
+  }];
+
+  let arguments = (ins
+    TFL_FpTensor:$logits,
+    TFL_I32Tensor:$num_samples,
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TFL_TensorOf<[I64]>:$out);
+
+  let hasOptions = 1;
+  let customOption = "RandomOptions";
+}
+
 
 #endif // TFL_OPS
 

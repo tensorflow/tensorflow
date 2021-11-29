@@ -69,6 +69,7 @@ namespace {
 
 const char kAnonymousIterator[] = "AnonymousIterator";
 const char kAnonymousIteratorV2[] = "AnonymousIteratorV2";
+const char kAnonymousIteratorV3[] = "AnonymousIteratorV3";
 const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
@@ -576,7 +577,8 @@ AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
           // Only enable this for V2 (via Python's iter protocol),
           // AnonymousIteratorV1 requires IteratorToStringHandle, which is
           // undefined on Refcounting ResourceHandle.
-          context->def().op() == kAnonymousIteratorV2,
+          context->def().op() == kAnonymousIteratorV2 ||
+              context->def().op() == kAnonymousIteratorV3,
           // V1 does not return a deleter.
           /* return_deleter */
           context->def().op() == kAnonymousIteratorV2),
@@ -1142,6 +1144,12 @@ REGISTER_KERNEL_BUILDER(
     AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIteratorV2").Device(DEVICE_GPU).Priority(1),
+    AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIteratorV3").Device(DEVICE_CPU).Priority(2),
+    AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIteratorV3").Device(DEVICE_GPU).Priority(1),
     AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);

@@ -1027,6 +1027,23 @@ mlir::ArrayAttr GetPrecisionConfigAttr(StringAttr attr, Builder *builder) {
 }
 
 //===----------------------------------------------------------------------===//
+// XlaVariadicReduceV2 op utilities.
+//===----------------------------------------------------------------------===//
+static void BuildBodyWithCall(PatternRewriter &rewriter, const Location &loc,
+                              mlir::SymbolRefAttr func,
+                              mlir::FunctionType func_ty, Region *body) {
+  OpBuilder::InsertionGuard guard(rewriter);
+
+  Block *block = rewriter.createBlock(body);
+  block->addArguments(func_ty.getInputs());
+  mlir::SmallVector<mlir::NamedAttribute, 4> attrs;
+  attrs.emplace_back(rewriter.getIdentifier("callee"), func);
+  mlir::CallOp call_op = rewriter.create<mlir::CallOp>(
+      loc, func_ty.getResults(), block->getArguments(), attrs);
+  rewriter.create<mhlo::ReturnOp>(loc, call_op.getResults());
+}
+
+//===----------------------------------------------------------------------===//
 // Op converters.
 //===----------------------------------------------------------------------===//
 
@@ -7036,6 +7053,36 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
     return success();
   }
 };
+
+// Converts a TF.XlaVariadicReduceV2 op to an mhlo.Reduce op.
+class ConvertXlaVariadicReduceV2Op
+    : public OpRewritePattern<TF::XlaVariadicReduceV2Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaVariadicReduceV2Op op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    SmallVector<Value> inputs(op.inputs());
+    SmallVector<Value> init_values(op.init_values());
+    auto dims_to_reduce_attr = GetI64ElementsAttr(op.dimensions_to_reduce());
+    // Create the mhlo.reduce op.
+    auto reduce_op = rewriter.create<mhlo::ReduceOp>(loc, inputs, init_values,
+                                                     dims_to_reduce_attr);
+    mlir::SymbolRefAttr func = op.reducer();
+    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+        op->getParentOfType<mlir::ModuleOp>(), func));
+    auto func_ty = func_op.getType();
+    // Insert a call to the reducer in the region of the mhlo op.
+    BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_op.body());
+
+    rewriter.replaceOp(op, reduce_op.getResults());
+
+    return success();
+  }
+};
+
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
@@ -7122,6 +7169,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaReduceScatterOp,
     ConvertXlaSortOp,
+    ConvertXlaVariadicReduceV2Op,
     ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,

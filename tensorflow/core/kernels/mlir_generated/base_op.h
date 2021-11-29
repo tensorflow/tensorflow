@@ -92,7 +92,7 @@ class MLIROpKernel : public OpKernel {
       args.push_back(ConvertTensorToDescriptor(ctx->input(i), buffers[i]));
     }
 
-    auto result_desc = Invoke(ctx, args);
+    UnrankedMemRef result_desc = Invoke(ctx, args);
     if (!ctx->status().ok()) {
       free(result_desc.descriptor);
       return;

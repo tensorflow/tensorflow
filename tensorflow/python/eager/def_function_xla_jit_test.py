@@ -717,14 +717,14 @@ class DefFunctionTest(xla_test.XLATestCase):
       # (arg, res_var).
       @def_function.function(jit_compile=True)
       def update_var(shape, arg):
-        v.assign_add(array_ops.reshape(arg, shape))
+        v.assign_add(array_ops.broadcast_to(arg, shape))
 
       arg = random_ops.random_normal([1])
 
       gc.collect()
       initial_usage = context.context().get_memory_info(
           v.device)['current'] if on_gpu else 0
-      update_var(constant_op.constant([1, 1]), arg)
+      update_var(constant_op.constant([1024, 1024]), arg)
       gc.collect()
       final_usage = context.context().get_memory_info(
           v.device)['current'] if on_gpu else 0

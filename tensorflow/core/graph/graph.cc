@@ -577,6 +577,8 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
     if (!ctor_type.ok()) {
       *status = errors::InvalidArgument("type error: ",
                                         ctor_type.status().ToString());
+      VLOG(3) << "AddNode: type inference failed for " << node_def.name()
+              << ": " << status->ToString();
       return nullptr;
     }
     const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();

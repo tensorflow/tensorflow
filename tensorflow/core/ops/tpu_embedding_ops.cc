@@ -73,7 +73,12 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
         return errors::InvalidArgument("Malformed tpu_embedding_config.");
       }
       std::vector<TensorShapeProto> output_shapes;
-      TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
+      if (config.feature_descriptor_size() == 0) {
+        TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
+      } else {
+        TF_RETURN_IF_ERROR(
+            ComputeOutputTensorShapesFromFeature(config, &output_shapes));
+      }
       if (c->num_outputs() != output_shapes.size()) {
         return errors::InvalidArgument("num outputs != size of output shapes");
       }
@@ -197,6 +202,20 @@ REGISTER_OP("EnqueueTPUEmbeddingArbitraryTensorBatch")
     .Attr("T3: {float32,float64} = DT_FLOAT")
     .Attr("N: int >= 1")
     .Attr("device_ordinal: int = -1")
+    .Attr("combiners: list(string) = []")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("DynamicEnqueueTPUEmbeddingArbitraryTensorBatch")
+    .Input("sample_indices_or_row_lengths: N * T1")
+    .Input("embedding_indices: N * T2")
+    .Input("aggregation_weights: N * T3")
+    .Input("mode_override: string")
+    .Input("device_ordinal: int32")
+    .Attr("T1: {int32,int64} = DT_INT32")
+    .Attr("T2: {int32,int64} = DT_INT32")
+    .Attr("T3: {float32,float64} = DT_FLOAT")
+    .Attr("N: int >= 1")
     .Attr("combiners: list(string) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);

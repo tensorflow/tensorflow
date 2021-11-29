@@ -25,10 +25,22 @@ void ProvidedDelegateList::AddAllDelegateParams() const {
   }
 }
 
-void ProvidedDelegateList::AppendCmdlineFlags(std::vector<Flag>* flags) const {
+void ProvidedDelegateList::AppendCmdlineFlags(std::vector<Flag>& flags) const {
   for (const auto& provider : providers_) {
     auto delegate_flags = provider->CreateFlags(params_);
-    flags->insert(flags->end(), delegate_flags.begin(), delegate_flags.end());
+    flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
+  }
+}
+
+void ProvidedDelegateList::RemoveCmdlineFlag(std::vector<Flag>& flags,
+                                             const std::string& name) const {
+  decltype(flags.begin()) it;
+  for (it = flags.begin(); it < flags.end();) {
+    if (it->GetFlagName() == name) {
+      flags.erase(it);
+    } else {
+      ++it;
+    }
   }
 }
 

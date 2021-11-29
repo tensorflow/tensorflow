@@ -3321,6 +3321,53 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// XlaVariadicReduceV2Op
+//===----------------------------------------------------------------------===//
+//
+
+static LogicalResult Verify(XlaVariadicReduceV2Op op) {
+  const auto &inputs_ty = op.inputs().getType();
+  int n_inputs = inputs_ty.size();
+  if (n_inputs < 1) return op.emitOpError() << "No inputs";
+
+  const auto &init_values_ty = op.init_values().getType();
+  int n_init_values = init_values_ty.size();
+  if (n_init_values != n_inputs)
+    return op.emitOpError() << "Number of inputs (" << n_inputs
+                            << ") is different than number of init_values ("
+                            << n_init_values << ")";
+
+  if (inputs_ty[0].cast<ShapedType>().hasStaticShape()) {
+    for (int i = 0; i < n_inputs; ++i) {
+      if (inputs_ty[i].cast<ShapedType>().getShape() !=
+          inputs_ty[0].cast<ShapedType>().getShape())
+        return op.emitOpError() << "inputs[" << i << "] has shape ["
+                                << inputs_ty[i].cast<ShapedType>().getShape()
+                                << "] different than the shape of inputs[0]: "
+                                << inputs_ty[0].cast<ShapedType>().getShape();
+      if (init_values_ty[i].cast<ShapedType>().getRank() != 0)
+        return op.emitOpError()
+               << "init_values[" << i << "] must be a scalar but got ["
+               << init_values_ty[i].cast<ShapedType>().getShape() << "]";
+    }
+
+    if (op.dimensions_to_reduce().size() >
+        inputs_ty[0].cast<ShapedType>().getRank())
+      return op.emitOpError()
+             << "Invalid dimensions_to_reduce argument to XlaReduce";
+  }
+
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  auto function = dyn_cast_or_null<mlir::FuncOp>(
+      SymbolTable::lookupSymbolIn(module, op.reducer()));
+  if (!function) return op.emitOpError() << "No reducer";
+  if (!function.body().hasOneBlock())
+    return op.emitOpError() << "reducer has more than one block";
+
+  return success();
+}
+
 }  // namespace TF
 }  // namespace mlir
 

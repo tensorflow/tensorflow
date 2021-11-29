@@ -453,8 +453,13 @@ string FilenameFor(const HloModule& module, string_view prefix,
 
 void DumpToFileInDir(const HloModule& module, string_view file_prefix,
                      string_view file_suffix, string_view contents) {
-  DumpToFileInDirImpl(FilenameFor(module, file_prefix, file_suffix), contents,
-                      CanonicalDebugOptions(module.config().debug_options()));
+  DumpToFileInDir(module.config().debug_options(),
+                  FilenameFor(module, file_prefix, file_suffix), contents);
+}
+
+void DumpToFileInDir(const DebugOptions& debug_options,
+                     absl::string_view filename, absl::string_view contents) {
+  DumpToFileInDirImpl(filename, contents, CanonicalDebugOptions(debug_options));
 }
 
 void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,

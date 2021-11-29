@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -split-input-file \
-// RUN:  -canonicalize -lhlo-legalize-tensor-load-op %s -o - | FileCheck %s
+// RUN:  -canonicalize -lhlo-legalize-to-tensor-op %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @dynamic_reshape
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>, %[[SHAPE:.*]]: memref<3xindex>) -> memref<?x?x?xf32>

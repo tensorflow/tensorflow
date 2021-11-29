@@ -1593,6 +1593,33 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_tf_range_const(
         dtype=dtypes.int64, range_dtype=dtypes.int64, device=GPU)
 
+  def _benchmark_tf_range_return(self,
+                                 limit=100000,
+                                 dtype=dtypes.int32,
+                                 device=CPU,
+                                 num_iters=100000):
+
+    def func(lim):
+      return math_ops.range(lim, dtype=dtype)
+
+    compiled_func = def_function.function(func)
+
+    with context.device(device):
+      limit_t = constant_op.constant(limit, dtype=dtype)
+      compiled_func(limit_t)
+      self._run(lambda: compiled_func(limit_t), num_iters=num_iters)
+
+  def benchmark_tf_range_return_int32_CPU(self):
+    self._benchmark_tf_range_return()
+
+  def benchmark_tf_range_return_int64_CPU(self):
+    self._benchmark_tf_range_return(dtype=dtypes.int64)
+
+  def benchmark_tf_range_return_int32_GPU(self):
+    self._benchmark_tf_range_return(device=GPU)
+
+  def benchmark_tf_range_return_int64_GPU(self):
+    self._benchmark_tf_range_return(dtype=dtypes.int64, device=GPU)
 
 if __name__ == "__main__":
   test.main()

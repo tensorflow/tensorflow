@@ -260,6 +260,8 @@ cc_library(
         ":split",
         ":test_runner",
         "@com_google_absl//absl/strings",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
@@ -300,6 +302,7 @@ tf_cc_test(
     data = [
         "//tensorflow/lite:testdata/add_quantized_int8.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
+        "//tensorflow/lite:testdata/multi_add_signature.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -376,6 +379,7 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite:string_util",
     ] + select({

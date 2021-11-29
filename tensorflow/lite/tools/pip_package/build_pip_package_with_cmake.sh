@@ -76,6 +76,7 @@ case "${TENSORFLOW_TARGET}" in
       -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR=armv7 \
+      -DTFLITE_ENABLE_XNNPACK=OFF \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   rpi0)

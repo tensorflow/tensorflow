@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef LHLO_OPS_STRUCTS
 #define LHLO_OPS_STRUCTS
 
-include "mlir-hlo/Dialect/mhlo/IR/lhlo_dialect.td"
+include "mlir-hlo/Dialect/lhlo/IR/lhlo_dialect.td"
 
 // This structure defines information about how arguments to the LHLO custom
 // call operation relate to the arguments of the target function. In most cases

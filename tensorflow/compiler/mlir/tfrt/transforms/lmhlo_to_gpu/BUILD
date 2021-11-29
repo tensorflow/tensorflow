@@ -27,6 +27,7 @@ cc_library(
     hdrs = ["pattern_utils.h"],
     tags = ["gpu"],
     deps = [
+        "//tensorflow/stream_executor:dnn",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@tf_runtime//:basic_kernels_opdefs",

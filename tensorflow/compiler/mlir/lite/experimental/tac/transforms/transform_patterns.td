@@ -21,9 +21,9 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 // Basically x - y => x + y * -1
 def SubToAdd : Pat<(TFL_SubOp $lhs, $rhs, $act),
-  (TFL_AddOp $lhs, (TF_MulOp $rhs,
+  (TFL_AddOp $lhs, (TFL_MulOp $rhs,
                   (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>,
-                   "-1.0f">)), $act)>;
+                   "-1.0f">), TFL_AF_None), $act)>;
 
 // Squash tfl.dequantize and tfl.quantize pairs.
 // TODO(b/185915462): Compare the scale of input and output. This can also be

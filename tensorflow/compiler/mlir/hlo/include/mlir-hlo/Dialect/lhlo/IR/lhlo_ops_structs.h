@@ -13,12 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_STRUCTURED_INTERFACE_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_STRUCTURED_INTERFACE_H_
+// This file defines structures used in LMHLO dialect.
 
-#include "mlir/IR/OpDefinition.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_STRUCTS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_STRUCTS_H_
 
-/// Include the generated interface declarations.
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.h.inc"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Identifier.h"
+#include "mlir/IR/Types.h"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_STRUCTURED_INTERFACE_H_
+// Order matters, this .inc header is not self-contained, and relies on the
+// #includes above.
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.h.inc"
+
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_STRUCTS_H_

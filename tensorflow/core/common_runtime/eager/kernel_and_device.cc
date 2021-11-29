@@ -209,6 +209,9 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
 #endif  // !IS_MOBILE_PLATFORM
   options.graph_collector = graph_collector;
 
+  options.allow_small_function_optimizations =
+      allow_small_function_optimizations_;
+
   // In Eager mode we always inline all functions into the top-level
   // function body graph, to get a single executable graph, that could be
   // optimized across function boundaries (e.g. prune unused inputs and

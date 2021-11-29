@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -1380,6 +1381,18 @@ TEST_F(XlaBuilderTest, StableLookUpInstructionByHandle) {
   // Make sure first_op hasn't changed.
   HloInstructionProto* first_op_now = builder_friend.GetInstruction(le);
   EXPECT_EQ(first_op, first_op_now);
+}
+
+TEST_F(XlaBuilderTest, ComplexAbsConstant) {
+  XlaBuilder b(TestName());
+  XlaOp out =
+      Abs(ConstantR0<std::complex<float>>(&b, std::complex<float>{-1, -1}));
+  ValueInference value_inference(&b);
+  StatusOr<OptionalLiteral> analyzed =
+      value_inference.AnalyzeConstant(out, kUpperBound);
+  EXPECT_IS_OK(analyzed.status());
+  EXPECT_EQ(analyzed->GetValue().value().shape().element_type(),
+            PrimitiveType::F32);
 }
 
 }  // namespace

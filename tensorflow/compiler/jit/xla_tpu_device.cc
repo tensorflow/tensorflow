@@ -382,9 +382,9 @@ Status TpuNodeDeviceFactory::CreateDevices(
     // We set `use_global_compute_stream` to true for TPUs as TPUs can only
     // have one program running on each core at the same time.
     options.use_global_compute_stream = true;
-    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
-        UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
-    options.shape_determination_fns = {shape_representation_fns};
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+        UseNoPreferenceLayoutFn(), &TpuShapeRepresentation};
+    options.shape_determination_fns = {shape_determination_fns};
     options.padded_shape_fn = &TpuPaddedShapeFn;
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 

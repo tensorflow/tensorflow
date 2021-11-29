@@ -47,8 +47,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
@@ -226,7 +226,7 @@ bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
   int instruction_count = 0;
   for (mlir::Operation& instr : fusion.region().front()) {
     if (mlir::isa<mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                  mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp>(
+                  mlir::bufferization::ToTensorOp, mlir::memref::TensorStoreOp>(
             &instr)) {
       continue;
     }
@@ -245,7 +245,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
 
   for (mlir::Operation& instr : fusion.region().front()) {
     if (mlir::isa<mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                  mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp>(
+                  mlir::bufferization::ToTensorOp, mlir::memref::TensorStoreOp>(
             &instr)) {
       continue;
     }
@@ -991,10 +991,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto conv_result_slice, GetAllocationSlice(conv_result));
   TF_ASSIGN_OR_RETURN(auto scratch_slice, GetAllocationSlice(scratch_result));
 
-  if (IsBefThunkEnabled() &&
-      (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp>(op) ||
-       mlir::isa<mlir::lmhlo_gpu::ConvBackwardInputOp>(op) ||
-       mlir::isa<mlir::lmhlo_gpu::ConvBackwardFilterOp>(op))) {
+  if (IsBefThunkEnabled()) {
     operand_slices.push_back(conv_result_slice);
     operand_slices.push_back(scratch_slice);
     TF_ASSIGN_OR_RETURN(
@@ -1287,7 +1284,7 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
       fusion.getFusionResults()[0].getType().cast<mlir::ShapedType>().getRank();
   int num_big_inputs = 0;
   for (mlir::Operation& op : fusion.region().front()) {
-    if (auto load = mlir::dyn_cast<mlir::memref::TensorLoadOp>(op)) {
+    if (auto load = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(op)) {
       auto rank = load.getResult().getType().cast<mlir::ShapedType>().getRank();
       num_big_inputs += static_cast<int>(rank == out_rank);
       continue;
@@ -1770,10 +1767,10 @@ Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
 static Status ProcessFusionForConversion(mlir::Region* region,
                                          std::vector<Shape>* operand_shapes,
                                          std::vector<Shape>* output_shapes) {
-  std::vector<mlir::memref::TensorLoadOp> loads;
+  std::vector<mlir::bufferization::ToTensorOp> loads;
   std::vector<mlir::memref::TensorStoreOp> stores;
 
-  region->walk([&](mlir::memref::TensorLoadOp load) {
+  region->walk([&](mlir::bufferization::ToTensorOp load) {
     if (load.memref().getParentRegion() != region) {
       loads.push_back(load);
     }
@@ -1834,9 +1831,9 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
   std::tie(row_vectorized, num_big_inputs) = RowVectorizationEnabled(fusion);
   bool few_waves = [fusion, row_vectorized, num_big_inputs]() mutable {
     for (mlir::Operation& op : fusion.region().front()) {
-      if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
-                    mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                    mlir::mhlo::ConstOp>(op)) {
+      if (mlir::isa<mlir::bufferization::ToTensorOp,
+                    mlir::memref::TensorStoreOp, mlir::lmhlo::TerminatorOp,
+                    mlir::mhlo::ReturnOp, mlir::mhlo::ConstOp>(op)) {
         continue;
       }
       HloOpcode opcode = *MhloToHloOpcode(&op);
@@ -4635,7 +4632,7 @@ bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
   }
 
   HloOpcode opcode;
-  if (mlir::isa<mlir::memref::TensorLoadOp>(op)) {
+  if (mlir::isa<mlir::bufferization::ToTensorOp>(op)) {
     opcode = HloOpcode::kParameter;
   } else {
     opcode = *MhloToHloOpcode(op);
