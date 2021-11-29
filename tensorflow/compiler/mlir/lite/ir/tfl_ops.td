@@ -4707,7 +4707,6 @@ initializer in tf saved model dialect.
 }
 
 def TFL_CustomOp : Op<TFL_Dialect, "custom", [
-  NoSideEffect,
   NoQuantizableResult,
   DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = "Custom op";
