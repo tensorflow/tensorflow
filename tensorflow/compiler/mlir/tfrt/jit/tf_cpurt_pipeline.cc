@@ -161,14 +161,6 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Remove trivial copy operations.
   pm.addNestedPass<mlir::FuncOp>(CreateLinalgTrivialCopyRemovalPass());
 
-  // Specilize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat, and
-  // immediately canonicalize to clean up not taken branches.
-  pm.addNestedPass<mlir::FuncOp>(CreateLinalgMatmulSpecializationPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-
-  // Tile and vectorize linalg operation using Linalg Codegen Strategy.
-  pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForMatMulPass());
-
   if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(
         mlir::createConvertLinalgTiledLoopsToSCFPass());
