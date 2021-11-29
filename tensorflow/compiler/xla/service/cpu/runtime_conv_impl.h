@@ -23,8 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
-// 'tensorflow' namespace is used so that int64_t and other types don't require
-// qualification.
+// 'tensorflow' namespace is used so that types don't require qualification.
 namespace tensorflow {
 namespace xla {
 
@@ -52,17 +51,17 @@ void EigenConv2DImpl(
                    Eigen::Aligned>
       output(out, input_batch, output_x, output_y, kernel_filters);
 
-  Eigen::array<Eigen::IndexPair<int64_t>, 1> contract_dims;
-  contract_dims[0] = Eigen::IndexPair<int64_t>(1, 0);
+  Eigen::array<Eigen::IndexPair<Eigen::Index>, 1> contract_dims;
+  contract_dims[0] = Eigen::IndexPair<Eigen::Index>(1, 0);
 
-  Eigen::DSizes<int64_t, 5> input_reshaped_dims;
+  Eigen::DSizes<Eigen::Index, 5> input_reshaped_dims;
   input_reshaped_dims[0] = input_batch;
   input_reshaped_dims[1] = input_x;
   input_reshaped_dims[2] = input_y;
   input_reshaped_dims[3] = feature_group_count;
   input_reshaped_dims[4] = input_channels / feature_group_count;
 
-  Eigen::DSizes<int64_t, 5> output_reshaped_dims;
+  Eigen::DSizes<Eigen::Index, 5> output_reshaped_dims;
   output_reshaped_dims[0] = input_batch;
   output_reshaped_dims[1] = output_x;
   output_reshaped_dims[2] = output_y;
@@ -73,23 +72,23 @@ void EigenConv2DImpl(
   // - the first dimension (dims[0]): the patch values to be multiplied with the
   //   kernels
   // - the second dimension (dims[1]): everything else
-  Eigen::DSizes<int64_t, 2> pre_contract_dims;
+  Eigen::DSizes<Eigen::Index, 2> pre_contract_dims;
   pre_contract_dims[0] = output_y * output_x * input_batch;
   pre_contract_dims[1] = kernel_channels * kernel_y * kernel_x;
 
   // Molds the output of the contraction into the shape expected by the user:
-  Eigen::DSizes<int64_t, 4> post_contract_dims;
+  Eigen::DSizes<Eigen::Index, 4> post_contract_dims;
   post_contract_dims[0] = input_batch;
   post_contract_dims[1] = output_x;
   post_contract_dims[2] = output_y;
   post_contract_dims[3] = kernel_filters / feature_group_count;
 
-  Eigen::DSizes<int64_t, 3> kernel_dims;
+  Eigen::DSizes<Eigen::Index, 3> kernel_dims;
   kernel_dims[0] = kernel_channels * kernel_y * kernel_x;
   kernel_dims[1] = feature_group_count;
   kernel_dims[2] = kernel_filters / feature_group_count;
 
-  for (int64_t i = 0; i < feature_group_count; ++i) {
+  for (Eigen::Index i = 0; i < feature_group_count; ++i) {
     // The row and column dimensions must be flipped when passed to Eigen.
     output.reshape(output_reshaped_dims).chip(i, 3).device(device) =
         input.reshape(input_reshaped_dims)
@@ -134,7 +133,7 @@ void EigenConv3DImpl(
                    Eigen::Aligned>
       output(out, input_batch, output_x, output_y, output_z, kernel_filters);
 
-  Eigen::DSizes<int64_t, 6> input_reshaped_dims;
+  Eigen::DSizes<Eigen::Index, 6> input_reshaped_dims;
   input_reshaped_dims[0] = input_batch;
   input_reshaped_dims[1] = input_x;
   input_reshaped_dims[2] = input_y;
@@ -142,7 +141,7 @@ void EigenConv3DImpl(
   input_reshaped_dims[4] = feature_group_count;
   input_reshaped_dims[5] = input_channels / feature_group_count;
 
-  Eigen::DSizes<int64_t, 6> output_reshaped_dims;
+  Eigen::DSizes<Eigen::Index, 6> output_reshaped_dims;
   output_reshaped_dims[0] = input_batch;
   output_reshaped_dims[1] = output_x;
   output_reshaped_dims[2] = output_y;
@@ -150,31 +149,31 @@ void EigenConv3DImpl(
   output_reshaped_dims[4] = feature_group_count;
   output_reshaped_dims[5] = kernel_filters / feature_group_count;
 
-  Eigen::array<Eigen::IndexPair<int64_t>, 1> contract_dims;
-  contract_dims[0] = Eigen::IndexPair<int64_t>(1, 0);
+  Eigen::array<Eigen::IndexPair<Eigen::Index>, 1> contract_dims;
+  contract_dims[0] = Eigen::IndexPair<Eigen::Index>(1, 0);
 
   // Molds the output of the patch extraction code into a 2d tensor:
   // - the first dimension (dims[0]): the patch values to be multiplied with the
   //   kernels
   // - the second dimension (dims[1]): everything else
-  Eigen::DSizes<int64_t, 2> pre_contract_dims;
+  Eigen::DSizes<Eigen::Index, 2> pre_contract_dims;
   pre_contract_dims[0] = output_x * output_y * output_z * input_batch;
   pre_contract_dims[1] = kernel_channels * kernel_x * kernel_y * kernel_z;
 
   // Molds the output of the contraction into the shape expected by the user:
-  Eigen::DSizes<int64_t, 5> post_contract_dims;
+  Eigen::DSizes<Eigen::Index, 5> post_contract_dims;
   post_contract_dims[0] = input_batch;
   post_contract_dims[1] = output_x;
   post_contract_dims[2] = output_y;
   post_contract_dims[3] = output_z;
   post_contract_dims[4] = kernel_filters / feature_group_count;
 
-  Eigen::DSizes<int64_t, 3> kernel_dims;
+  Eigen::DSizes<Eigen::Index, 3> kernel_dims;
   kernel_dims[0] = kernel_channels * kernel_x * kernel_y * kernel_z;
   kernel_dims[1] = feature_group_count;
   kernel_dims[2] = kernel_filters / feature_group_count;
 
-  for (int64_t i = 0; i < feature_group_count; ++i) {
+  for (Eigen::Index i = 0; i < feature_group_count; ++i) {
     // The dimension order must be flipped when passed to Eigen.
     auto input_chip = input.reshape(input_reshaped_dims).chip(i, 4);
     auto patches =
