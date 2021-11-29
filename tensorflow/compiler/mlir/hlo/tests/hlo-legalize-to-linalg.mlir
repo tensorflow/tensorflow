@@ -2152,6 +2152,42 @@ func @variadic_reduce(%arg0: tensor<9x2xi32>, %arg1: tensor<9x2xi32>) -> (tensor
 
 // -----
 
+func @variadic_diff_type_reduce(%arg0: tensor<128x10xf32>, %arg1: tensor<128x10xi32>) -> (tensor<128xf32>, tensor<128xi32>) {
+  %cst0 = mhlo.constant dense<1.0> : tensor<f32>
+  %cst1 = mhlo.constant dense<1> : tensor<i32>
+  %res0, %res1 = "mhlo.reduce"(%arg0, %arg1, %cst0, %cst1) ( {
+  ^bb0(%arg7: tensor<f32>, %arg8: tensor<i32>, %arg9: tensor<f32>, %arg10: tensor<i32>):  // no predecessors
+    %0 = "mhlo.compare"(%arg7, %arg9) {comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %1 = "mhlo.select"(%0, %arg7, %arg9) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+    %2 = "mhlo.select"(%0, %arg8, %arg10) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<i32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<128x10xf32>, tensor<128x10xi32>, tensor<f32>, tensor<i32>) ->(tensor<128xf32>, tensor<128xi32>)
+  return %res0, %res1 : tensor<128xf32>, tensor<128xi32>
+}
+// CHECK-DAG:  #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG:  #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK:      func @variadic_diff_type_reduce
+// CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:        %[[CST0:.*]] = arith.constant 1.000000e+00 : f32
+// CHECK:        %[[INIT0:.*]] = linalg.init_tensor [128] : tensor<128xf32>
+// CHECK:        %[[FILL0:.*]] = linalg.fill(%[[CST0]], %[[INIT0]])
+// CHECK:        %[[CST1:.*]] = arith.constant 1 : i32
+// CHECK:        %[[INIT1:.*]] = linalg.init_tensor [128] : tensor<128xi32>
+// CHECK:        %[[FILL1:.*]] = linalg.fill(%[[CST1]], %[[INIT1]])
+// CHECK:        %[[RES:.+]]:2 = linalg.generic {
+// CHECK-SAME:     indexing_maps = [#[[MAP0]], #[[MAP0]], #[[MAP1]], #[[MAP1]]]
+// CHECK-SAME:     iterator_types = ["parallel", "reduction"]
+// CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<128x10xf32>, tensor<128x10xi32>)
+// CHECK-SAME:    outs(%[[FILL0]], %[[FILL1]] : tensor<128xf32>, tensor<128xi32>)
+// CHECK-NEXT:   ^bb0(%[[LHS0:.*]]: f32, %[[LHS1:.*]]: i32, %[[RHS0:.*]]: f32, %[[RHS1:.*]]: i32):
+// CHECK-NEXT:      %[[B0:.*]] = arith.cmpf oge, %[[LHS0]], %[[RHS0]] : f32
+// CHECK-NEXT:      %[[RES0:.*]] = select %[[B0]], %[[LHS0]], %[[RHS0]] : f32
+// CHECK-NEXT:      %[[RES1:.*]] = select %[[B0]], %[[LHS1]], %[[RHS1]] : i32
+// CHECK-NEXT:      linalg.yield %[[RES0]], %[[RES1]] : f32, i32
+
+// -----
+
 func @slice_whole_stride(%arg0: tensor<3x4xi32>) -> tensor<1x4xi32> {
   %0 = "mhlo.slice"(%arg0) {
     start_indices = dense<[1, 0]> : tensor<2xi64>,
