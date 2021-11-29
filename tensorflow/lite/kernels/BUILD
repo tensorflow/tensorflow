@@ -612,8 +612,7 @@ BUILTIN_KERNEL_SRCS = [
     "pooling.cc",
     "pow.cc",
     "quantize.cc",
-    "random_standard_normal.cc",
-    "random_uniform.cc",
+    "random_ops.cc",
     "range.cc",
     "rank.cc",
     "read_variable.cc",
@@ -1604,15 +1603,13 @@ cc_test(
 )
 
 cc_test(
-    name = "random_standard_normal_test",
+    name = "random_ops_test",
     size = "small",
-    srcs = ["random_standard_normal_test.cc"],
+    srcs = ["random_ops_test.cc"],
     deps = [
-        ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1627,18 +1624,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "random_uniform_test",
-    size = "small",
-    srcs = ["random_uniform_test.cc"],
-    deps = [
-        ":test_main",
-        ":test_util",
-        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2363,11 +2348,23 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "floor_mod_test_common",
+    testonly = 1,
+    hdrs = [
+        "floor_mod_test_common.h",
+    ],
+    deps = [
+        ":test_util",
+    ],
+)
+
 cc_test(
     name = "floor_mod_test",
     size = "small",
     srcs = ["floor_mod_test.cc"],
     deps = [
+        ":floor_mod_test_common",
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",

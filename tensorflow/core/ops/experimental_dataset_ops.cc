@@ -299,6 +299,7 @@ REGISTER_OP("ExperimentalDatasetCardinality")
 REGISTER_OP("DatasetFromGraph")
     .Input("graph_def: string")
     .Output("handle: variant")
+    .SetTypeConstructor(full_type::UnaryGeneric(TFT_DATASET))
     .SetShapeFn(shape_inference::ScalarShape);
 
 // TODO(b/124308596): Instead of conservatively marking this op as stateful,
@@ -1341,6 +1342,29 @@ REGISTER_OP("DataServiceDatasetV2")
     .SetTypeConstructor(full_type::Unary(TFT_DATASET, "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+// Adds `uncompress` and `uncompress_fn` attributes to support uncompression.
+REGISTER_OP("DataServiceDatasetV3")
+    .Input("dataset_id: int64")
+    .Input("processing_mode: string")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Input("job_name: string")
+    .Input("consumer_index: int64")
+    .Input("num_consumers: int64")
+    .Input("max_outstanding_requests: int64")
+    .Input("iteration_counter: resource")
+    .Output("handle: variant")
+    .Attr("task_refresh_interval_hint_ms: int = -1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("data_transfer_protocol: string = ''")
+    .Attr("target_workers: string = 'AUTO'")
+    .Attr("uncompress: bool = false")
+    .Attr("uncompress_fn: func")
+    .SetIsStateful()
+    .SetTypeConstructor(full_type::Unary(TFT_DATASET, "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("RegisterDataset")
     .Input("dataset: variant")
     .Input("address: string")
@@ -1348,6 +1372,7 @@ REGISTER_OP("RegisterDataset")
     .Output("dataset_id: int64")
     .Attr("external_state_policy: int")
     .Attr("element_spec: string = ''")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("InitializeTableFromDataset")

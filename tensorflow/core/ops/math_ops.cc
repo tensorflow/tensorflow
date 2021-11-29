@@ -226,6 +226,14 @@ REGISTER_OP("ComplexAbs")
           "complex64, complex128}")                                        \
       .SetShapeFn(shape_inference::UnchangedShape)
 
+#define UNARY_UNSIGNED()                                                   \
+  Input("x: T")                                                            \
+      .Output("y: T")                                                      \
+      .Attr(                                                               \
+          "T: {bfloat16, half, float, double, int8, int16, int32, int64, " \
+          "uint8, uint16, uint32, uint64, complex64, complex128}")         \
+      .SetShapeFn(shape_inference::UnchangedShape)
+
 #define UNARY_REAL()                              \
   Input("x: T")                                   \
       .Output("y: T")                             \
@@ -255,7 +263,7 @@ REGISTER_OP("Reciprocal").UNARY();
 
 REGISTER_OP("ReciprocalGrad").UNARY_GRADIENT_COMPLEX();
 
-REGISTER_OP("Square").UNARY();
+REGISTER_OP("Square").UNARY_UNSIGNED();
 
 REGISTER_OP("Sqrt").UNARY_COMPLEX();
 

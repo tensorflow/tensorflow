@@ -1,6 +1,4 @@
-// RUN: mlir-hlo-opt -test-print-shape-components -split-input-file %s -o /dev/null | FileCheck %s
-
-// Per op tests
+// RUN: mlir-hlo-opt --test-print-shape-components --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: Testing : assuming
 func @assuming(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2 : !shape.witness) -> tensor<2xi32> {
@@ -20,6 +18,24 @@ func @assuming(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2 : !shape.wi
 // CHECK-NEXT: (s0 + s1) * s2 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0]; s2 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0];
 // CHECK-NEXT: (s0 + s1) * s2 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]; s2 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1];
   return %6 : tensor<2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: Testing : num_elements
+func @num_elements(%arg0: tensor<?x8x?x64xf32>) -> index {
+  %0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
+// CHECK-NEXT: %0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>:
+// CHECK-NEXT:   s0 with s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[0];
+// CHECK-NEXT:   8
+// CHECK-NEXT:   s0 with s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[2];
+// CHECK-NEXT:   64
+  %1 = shape.num_elements %0 : tensor<4xindex> -> index
+// CHECK: %1 = shape.num_elements %0 : tensor<4xindex> -> index:
+// CHECK-NEXT:   (s0 * s1) * 512 with
+// CHECK-SAME:   s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[0];
+// CHECK-SAME:   s1 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[2];
+  return %1 : index
 }
 
 // -----

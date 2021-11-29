@@ -165,8 +165,8 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
   if (auto attrs = func_op->getAttrOfType<DictionaryAttr>("tfg.func_attrs")) {
     for (NamedAttribute attr : attrs) {
       OpDef_AttrDef *func_attr = signature->add_attr();
-      func_attr->set_name(attr.first.str());
-      DictionaryAttr dict_attr = attr.second.dyn_cast<DictionaryAttr>();
+      func_attr->set_name(attr.getName().str());
+      DictionaryAttr dict_attr = attr.getValue().dyn_cast<DictionaryAttr>();
       if (!dict_attr) return InvalidArgument("Expects dict attribute");
       if (StringAttr type = dict_attr.getAs<StringAttr>("type"))
         func_attr->set_type(type.getValue().str());

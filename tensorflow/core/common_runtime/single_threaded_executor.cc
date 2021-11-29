@@ -28,7 +28,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ValidateOp(const Node& n) {
+Status ValidateOpIsSafeForSyncExecution(const Node& n) {
   for (DataType dt : n.output_types()) {
     if (IsRefType(dt)) {
       return errors::Unimplemented(
@@ -44,18 +44,6 @@ Status ValidateOp(const Node& n) {
         n.name(),
         ".  Perhaps your graph contains old-style control flow primitives? "
         "Try using tf.compat.v1.enable_control_flow_v2().");
-  }
-  if (n.IsSend() || n.IsHostSend() || n.IsRecv() || n.IsHostRecv()) {
-    return errors::Unimplemented(
-        "Single-threaded executor does not support partitioned graphs.  "
-        "But saw send/recv node ",
-        n.name());
-  }
-  if (n.IsCollective()) {
-    return errors::Unimplemented(
-        "Single-threaded executor does not support collective ops.  But "
-        "saw collective node ",
-        n.name());
   }
   return Status::OK();
 }
@@ -104,7 +92,7 @@ class SingleThreadedExecutorImpl : public Executor {
 
     // Create the kernel and input-related structures for each node in `graph`.
     for (Node* n : ordered_nodes) {
-      TF_RETURN_IF_ERROR(ValidateOp(*n));
+      TF_RETURN_IF_ERROR(ValidateOpIsSafeForSyncExecution(*n));
       if (n->IsArg()) {
         int32_t arg_index;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &arg_index));

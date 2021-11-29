@@ -43,24 +43,199 @@ def ResourceDeviceInferencePass : Pass<"tf-resource-device-inference", "ModuleOp
   let summary = "Propagates the device attribute on resources from callers to "
            "callees.";
   let constructor = "TF::CreateResourceDeviceInferencePass()";
+  let description = [{
+    A pass that propagates device assignment of resources on a module. It
+    performs in-function propagation, as well as cross-function propagation from
+    callers to callees.
+
+    This pass changes the module by adding "tf.device" attribute to function
+    arguments and adding "device" attribute to TF ops.
+
+    For example, given the function
+
+    ```mlir
+      !tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
+
+      func @test(%arg0: !tf_res {tf.device = "/TPU:0"}) {
+        tf_executor.graph {
+          %control = tf_executor.island {
+            %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
+            tf_executor.yield
+          }
+          tf_executor.fetch %control : !tf_executor.control
+        }
+        return
+      }
+    ```
+
+    Observe how the op inside the island obtains a `/TPU:0` device assignment:
+
+    ```mlir
+      !tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
+
+      func @test(%arg0: !tf_res {tf.device = "/TPU:0"}) {
+        tf_executor.graph {
+          %control = tf_executor.island {
+            %0 = "tf.Identity"(%arg0) {device = "/TPU:0"} : (!tf_res) -> !tf_res
+            tf_executor.yield
+          }
+          tf_executor.fetch %control : !tf_executor.control
+        }
+        return
+      }
+    ```
+  }];
 }
 
 def StackOpsDecompositionPass : Pass<"tf-stack-ops-decomposition", "ModuleOp"> {
   let summary = "Decompose stack operations into local variable operations. Needs "
            "static shapes.";
   let constructor = "TF::CreateStackOpsDecompositionPass()";
+  let description = [{
+    A pass that converts stack operations to tensor operations and read/assign
+    ops on local variables. A later resource lifting pass can further remove the
+    local variables.
+
+    This pass requires that the full shape of the stack can be inferred: 1) the
+    maximum size needs to be a constant and 2) a push op can be found with a
+    known shape, and all push ops need to have the same shape.
+
+    A stack creation op "tf.StackV2" will be turned in to two zero-initialized
+    variables, for the buffer and current size. Each push will be turned into
+    ```mlir
+      %old_val = "tf.ReadVariableOp"(%buffer)
+      %old_size = "tf.ReadVariableOp"(%size)
+      %offsets = "tf.ConcatV2"(%old_size, %other_dims_0s, %const0)
+      %new_val = "tf.XlaDynamicUpdateSlice"(%old_val, %push_val, %offsets)
+      "tf.AssignVariableOp"(%buffer, %new_val)
+      %new_size = "tf.AddV2"(%old_size, %const1)
+      "tf.AssignVariableOp"(%size, %new_size)
+    ```
+
+    and each pop will be turned into
+
+    ```mlir
+      %old_val = "tf.ReadVariableOp"(%buffer)
+      %old_size = "tf.ReadVariableOp"(%size)
+      %new_size = "tf.Sub"(%old_size, %const1)
+      %offsets = "tf.ConcatV2"(%old_size, %other_dims_0s, %const0)
+      %slice = "tf.Slice"(%old_val, %offsets, %slice_size_const)
+      %pop_result = "tf.Reshape"(%slice, %elem_size_const)
+      "tf.AssignVariableOp"(%size, %new_size)
+    ```
+
+    The pass also works across control flow and functional calls.
+  }];
 }
 
 def TPUVariableRuntimeReformattingPass : Pass<"tf-tpu-variable-runtime-reformatting", "ModuleOp"> {
   let summary = "Adds device variable formatting op to allow compilation-guided "
            "variable formatting.";
-  let constructor = "TFTPU::CreateTPUVariableReformattingPass()";
+  let constructor = "TFTPU::CreateTPUVariableRuntimeReformattingPass()";
+  let description = [{
+    A pass that takes advantage of a loop to add ops that allow the execution to
+    avoid repeatedly formatting variables back and forth. The desired formatting
+    is determined by TPU program compilation, so this pass does not include how
+    to reformat the variables, but only inserts general TPUReshardVariablesOps in
+    proper places, and TPUReshardVariablesOps interpret the compilation.
+
+    The core idea of this optimization is to keep track of the formatting state
+    of variables, and when the next desired state does not change, it can avoid
+    reformatting. We associate a set of variables on a device with a formatting
+    state, and TPUReshardVariablesOps compares the current state with a desired
+    state (which can be the compilation result). If they mismatch,
+    TPUReshardVariablesOp reformats the variables to the desired state; if they
+    match, TPUReshardVariablesOp is a no-op.
+
+    A major use of this pass is weight-update sharding in data parallelism, so we
+    require there is a tf_device.replicate in the loop.
+
+    For example, suppose we have a training loop (for simplicity we write the
+    loop body inine):
+
+    ```mlir
+      %var0 = ...
+      %var1 = ...
+      tf.while (..., %var0, %var1) {
+        tf_device.replicate ([%var0, %var1] as %rvar) {
+          %compile:2 = "tf._TPUCompileMlir"()
+          tf.TPUExecuteAndUpdateVariablesOp(%rvar, compile#1)
+        }
+      }
+    ```
+
+    This pass will transform it into
+
+    ```mlir
+      %var0 = ...
+      %var1 = ...
+      %state_var0 = ...
+      %state_var1 = ...
+      tf.while (..., %var0, %var1, %state_var0, %state_var1) {
+        tf_device.replicate ([%var0, %var1] as %rvar,
+                             [%state_var0, %state_var1] as %rstate) {
+          %compile:2 = "tf._TPUCompileMlir"()
+          tf.TPUReshardVariablesOp(%rvar, %compile#1, %rstate)
+          tf.TPUExecuteAndUpdateVariablesOp(%rvar, compile#1)
+        }
+      }
+      %default_format = tf.constant()
+      tf_device.replicate ([%var0, %var1] as %rvar,
+                           [%state_var0, %state_var1] as %rstate) {
+        tf.TPUReshardVariablesOp(%rvar, %default_format, %rstate)
+      }
+    ```
+  }];
 }
 
 def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
   let summary = "Identifies and handles inputs/outputs of TPU computation that is "
            "sharded across logical cores.";
   let constructor = "TFTPU::CreateTPUShardingIdentificationPass()";
+  let description = [{
+    Bubbles up sharding configuration from `cluster_func` regions into
+    the attributes of `cluster_func`. This is done by parsing the
+    `XlaSharding` / `TPUPartitionedOutput` / `TPUPartitionedInput` ops inside
+    `cluster_func`.
+
+    For example, given the following `cluster_func` wrapping `func`:
+
+    ```mlir
+      func @test(%arg0: tensor<*xi32>) {
+        "tf_device.cluster_func"(%arg0) {
+            func = @func,
+            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
+        return
+      }
+
+      func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03",
+                                      sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+        %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+        return %1 : tensor<*xi32>
+      }
+    ```
+
+    Now, cluster_func recieves the following `*_sharding_configuration`
+    attributes, and `func` receives the mhlo.sharding attribute:
+
+    ```mlir
+      func @test(%arg0: tensor<*xi32>) {
+        %0 = "tf_device.cluster_func"(%arg0) {
+            func = @func,
+            input_sharding_configuration = ["\01\02\03"],
+            output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"],
+            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
+        return
+      }
+      func @func(%arg0: tensor<*xi32> {mhlo.sharding = "\01\02\03"}) ->
+                (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) {
+        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03", sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+        %1 = "tf.A"(%0) : (tensor<*xi32>) -> tensor<*xi32>
+        return %1 : tensor<*xi32>
+      }
+    ```
+  }];
 }
 
 def UnrollBatchMatMulPass : FunctionPass<"tf-unroll-batch-matmul"> {
@@ -72,12 +247,43 @@ def ClusterFormationPass : FunctionPass<"tf-device-cluster-formation"> {
   let summary = "Form clusters from instructions assigned to same device";
   let constructor = "TFDevice::CreateClusterFormationPass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+  let description = [{
+    Clusters operations with the same device assignment id. For each
+    cluster, creates a "tf_device.device_launch" op with a Region containing the
+    ops in each cluster and replaces the ops with the new launch op.
+
+    For example, given the following program:
+
+    ```mlir
+      %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+      %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+      %4 = "tf.C"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+      %5 = "tf.D"(%4) : (tensor<?xi32>) -> tensor<?xi32>
+    ```
+
+    After the pass, we will have:
+
+    ```mlir
+      %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+      %1 = "tf_device.launch"() ( {
+        %3 = "tf.B"(%0) : (tensor<?xi32>) -> tensor<?xi32>
+        %4 = "tf.C"(%0, %3) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+        tf_device.return %4 : tensor<?xi32>
+      }) {device = "tpu0"} : () -> tensor<?xi32>
+      %2 = "tf.D"(%1) : (tensor<?xi32>) -> tensor<?xi32>
+      return %2 : tensor<?xi32>
+    ```
+  }];
 }
 
 def MaterializePassthroughOp : FunctionPass<"tf-materialize-passthrough-op"> {
   let summary = "Materialize the MlirPassthroughOp by replacing it with the "
     "MLIR module attached as an attribute";
   let constructor = "TF::CreateMaterializePassthroughOpPass()";
+  let description = [{
+    A pass that replaces MlirPassthrough ops with the code they have in
+    their `mlir_module` string attribute.
+  }];
 }
 
 def TransformEinsumPass : FunctionPass<"tf-einsum"> {
@@ -89,6 +295,11 @@ def LegalizeHloToTfPass : FunctionPass<"tf-legalize-hlo"> {
   let summary = "Legalize from HLO to the TF dialect";
   let dependentDialects = ["TF::TensorFlowDialect"];
   let constructor = "TF::CreateLegalizeHloToTfPass()";
+}
+
+def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
+  let summary = "Legalize from TFG to the TFE dialect";
+  let constructor = "TF::CreateLegalizeTFGToTFEPass()";
 }
 
 def ReplicateToIslandPass : FunctionPass<"tf-replicate-to-island"> {
@@ -103,8 +314,25 @@ def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
 }
 
 def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
-  let summary = "Simple Shape Inference on TensorFlow Dialect";
-  // TODO(jpienaar): Write `description`.
+  let summary =
+    "Shape inference on TF dialect and ops implementing InferTypeOpInterface";
+
+  let description = [{
+    Fixed point shape refinement pass that utilizes the shape functions
+    registered on ops using the InferTypeOpInterface as well as by bridging to
+    the TensorFlow op registry's shape functions. This is an interprocedural
+    pass that propagates information across function calls/control flow
+    operations where possible (the GuaranteeAllFuncsOneUsePass is often run
+    before this pass to enable more propagation opportunities). It refines
+    both the outermost element type of tensors as well as the nested component
+    type (e.g., for tensor lists).
+
+    During shape refinement this pass may insert additional cast operations as
+    well as fold some constant shape computations to enable more exact shape
+    inference. Therefore it does do some mutation of the graph. Constant folding
+    required to produce more exact shapes is also performed but these values
+    are only kept in the context rather than the ops folded/IR mutated.
+  }];
 
   let constructor = "TF::CreateTFShapeInferencePass()";
 
@@ -286,6 +514,41 @@ def ExecutorIslandCoarseningPass : FunctionPass<"tf-executor-island-coarsening">
     The analysis identifies all IslandOps within the graph which could be merged together.
     The goal is to merge as many islands as possible.
     Once analysis is completed, the pass merges all IslandOps in a single scan.
+
+    For example given the following program with two disjunct islands:
+
+    ```mlir
+      func @test(%arg0 : tensor<i1>) -> tensor<f32> {
+        %0 = tf_executor.graph {
+          %1:2 = tf_executor.island {
+            %3 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
+            tf_executor.yield %3 : tensor<i1>
+          }
+          %2:2 = tf_executor.island(%1#1) {
+            %4 = "tf.opB"() : () -> tensor<f32>
+            tf_executor.yield %4 : tensor<f32>
+          }
+          tf_executor.fetch %2#0 : tensor<f32>
+        }
+        return %0 : tensor<f32>
+      }
+    ```
+
+    After running this pass, the two islands are merged:
+
+    ```mlir
+      func @test(%arg0: tensor<i1>) -> tensor<f32> {
+        %0 = tf_executor.graph {
+          %outputs, %control = tf_executor.island {
+            %1 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
+            %2 = "tf.opB"() : () -> tensor<f32>
+            tf_executor.yield %2 : tensor<f32>
+          }
+          tf_executor.fetch %outputs : tensor<f32>
+        }
+        return %0 : tensor<f32>
+      }
+    ```
   }];
   let constructor = "tf_executor::CreateTFExecutorIslandCoarseningPass()";
 }
@@ -293,12 +556,62 @@ def ExecutorIslandCoarseningPass : FunctionPass<"tf-executor-island-coarsening">
 def TpuV1BridgeExecutorIslandCoarseningPass : Pass<"tf-executor-tpu-v1-island-coarsening", "ModuleOp"> {
   let summary = "Merges TPU clusters IslandOps, intended for V1 compatibility mode";
   let constructor = "tf_executor::CreateTFExecutorTPUV1IslandCoarseningPass()";
+  let description = [{
+    This pass is a variant of ExecutorIslandCoarseningPass that is limited to
+    TPU-annotated operations and intended to preserve backward compatibility with
+    TFv1.
+  }];
 }
 
 def TPUBridgeExecutorIslandOutliningPass : Pass<"tf-executor-tpu-v1-island-outlining", "ModuleOp"> {
   let summary = "Outline TPU clusters from island into a nested module, so it can "
            "be processed like a V2 module, intended for V1 compatibility mode";
   let constructor = "tf_executor::CreateTFExecutorTPUV1IslandOutliningPass()";
+  let description = [{
+    Extract the islands containing a TPU cluster computation into an outlined
+    function in a nested module. This will allow to run the usual bridge on this
+    nested module which now exhibits a more friendly "V2-like" structure.
+    This is only intended for V1 compatibility mode where the bridge runs without
+    feed/fetches on session create/extend.
+
+    So given e.g.
+
+    ```mlir
+      func @test() -> tensor<i32> {
+        %0 = tf_executor.graph {
+          %output, %control = tf_executor.island {
+            ...
+            tf_executor.yield %result : tensor<i32>
+          }
+          tf_executor.fetch %output : tensor<i32>
+        }
+        return %0
+      }
+    ```
+
+    This pass will create an additional function containing the code in
+    tf_executor.island:
+
+    ```mlir
+      func nested @_tpu_v1_compat_outlined_func0() -> tensor<i32> {
+        ...
+      }
+    ```
+
+    and will then replace the island with the wrapped call:
+
+    ```mlir
+      func @test() -> tensor<i32> {
+        %0 = tf_executor.graph {
+          %outputs, %control = tf_executor.island wraps "tf.PartitionedCall"() {
+              f = @_tpu_v1_compat_outlined::@_tpu_v1_compat_outlined_func0
+          } : () -> tensor<i32>
+          tf_executor.fetch %outputs : tensor<i32>
+        }
+        return %0 : tensor<i32>
+      }
+    ```
+  }];
 }
 
 def ExecutorTPUV1IslandInliningPass : Pass<"tf-executor-tpu-v1-island-inlining", "ModuleOp"> {
@@ -1593,6 +1906,26 @@ def SimpleTFDeviceAssignmentPass : FunctionPass<"tf-simple-device-assignment"> {
     Option<"default_device_", "default-device", "std::string", /*default=*/"\"cpu\"",
            "The default device to assign.">
   ];
+  let description = [{
+    Assigns the default device to all ops that have an empty (or
+    nonexistent) device attribute.
+
+    For example, if we have the code
+
+    ```mlir
+      %0 = "tf.Const"() {value = dense<[[42.0]]> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+      %1 = "tf.Const"() {device = "", value = dense<[[42.0]]> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+      %2 = "tf.Const"() {device = "baz", value = dense<[[42.0]]> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+    ```
+
+    then running this pass with 'default-device=foobar', we get:
+
+    ```mlir
+      %0 = "tf.Const"() {device = "foobar" value = dense<[[42.0]]> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+      %1 = "tf.Const"() {device = "foobar", value = dense<[[42.0]]> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+      %2 = "tf.Const"() {device = "baz", value = dense<[[42.0]]> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+    ```
+  }];
 }
 
 def LayoutAssignmentPass : FunctionPass<"tf-layout-assignment"> {
@@ -1642,6 +1975,25 @@ def GuaranteeAllFuncsOneUsePass : Pass<"tf-guarantee-all-funcs-one-use", "Module
 def TPUColocateCompositeResourceOpsPass : FunctionPass<"tf-tpu-colocate-composite-resource-ops"> {
   let summary = "Colocate resource with composite device assignment to TPU device.";
   let constructor = "TFTPU::CreateTPUColocateCompositeResourceOps()";
+  let description = [{
+    Pass that co-locates resource ops that use composite device resources
+    (packed tensors) with the underlying physical TPU device.
+
+    So for example, if we have a function that does (inside a `tf_device.replicate`):
+
+    ```mlir
+      %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<4xf32>>>) -> tensor<4xf32>
+    ```
+
+    Then said `ReadVariableOp` is going to get replaced by:
+
+    ```mlir
+      %0 = "tf_device.launch"() ( {
+        %2 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<4xf32>>>) -> tensor<4xf32>
+        tf_device.return %2 : tensor<4xf32>
+      }) {...} : () -> tensor<4xf32>
+    ```
+  }];
 }
 
 def TPUDevicePropagationPass : FunctionPass<"tf-tpu-device-propagation"> {
@@ -1655,9 +2007,40 @@ def TPUIdentityPruningPass : Pass<"tf-tpu-identity-pruning", "ModuleOp"> {
 }
 
 def TPUDynamicLayoutPass : Pass<"tf-tpu-dynamic-layout-pass", "ModuleOp"> {
-  let summary = "Adds ops that allow TPU program inputs to have layouts determined "
-           "at JIT compile time.";
+  let summary = "Inserts TPU layout ops to determine layout at run time.";
   let constructor = "TFTPU::CreateTPUDynamicLayoutPass()";
+  let description = [{
+    A pass that allows TPU input layout to be determined after JIT compilation.
+    This is done by adding run-time ops that interpret compilation result and
+    copy the input to device with that layout.
+
+    Example: original program:
+
+    ```mlir
+      %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
+      %compile:2 = "tf._TPUCompileMlir"(...)
+      %execute = "tf.TPUExecute"(%input, ..., %compile#1) {device = "/TPU:0"}
+    ```
+
+    Without this pass, later TF graph partitioning passes will insert send/recv
+    between %input and %execute and data will be copied to device in a fixed
+    layout. With this pass, the program will be transformed into:
+
+    ```mlir
+      %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
+      %compile:2 = "tf._TPUCompileMlir"(...)
+      %get_layout = "tf.TPUGetLayoutOp"(%compile#1) {...}
+      %copy_to_device = "tf.TPUCopyWithLayout"(%input, %get_layout)
+          {device = "/TPU:0"}
+      %execute = "tf.TPUExecute"(%copy_to_device, ..., %compile#1)
+          {device = "/TPU:0"}
+    ```
+
+    This way, %compile will determine the layout, which will be respected by
+    %copy_to_device. There will not be send/recv ops added by later passes,
+    because tf.TPUCopyWithLayout accepts a host input and produces a device
+    output.
+  }];
 }
 
 def DeviceIndexSelectorPass : Pass<"tf-device-index-selector", "FuncOp"> {

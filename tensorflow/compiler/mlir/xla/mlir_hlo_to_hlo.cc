@@ -47,8 +47,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
@@ -181,6 +182,40 @@ static std::vector<std::pair<int64_t, int64_t>> Convert_source_target_pairs(
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     mlir::DenseIntElementsAttr groups) {
   return xla::ConvertReplicaGroups(groups).ValueOrDie();
+}
+
+// Converts types and corresponding layouts into xla shapes with layouts.
+static std::vector<xla::Shape> ConvertTypesToShapesWithLayout(
+    mlir::TypeRange value_types, mlir::ArrayAttr layouts) {
+  std::vector<xla::Shape> shapes_with_layout;
+  for (auto type_and_layout : llvm::zip(value_types, layouts)) {
+    mlir::Type type = std::get<0>(type_and_layout);
+    mlir::Attribute layout = std::get<1>(type_and_layout);
+    assert(!type.isa<mlir::TupleType>() &&
+           "Exporting layout for tuples is not implemented yet");
+    shapes_with_layout.emplace_back(xla::TypeToShape(type));
+    auto& shape = shapes_with_layout.back();
+    shape.mutable_layout()->clear_minor_to_major();
+    for (auto l : layout.cast<mlir::DenseIntElementsAttr>()) {
+      shape.mutable_layout()->mutable_minor_to_major()->push_back(
+          l.getSExtValue());
+    }
+  }
+  return shapes_with_layout;
+}
+
+// CustomCallOp result can be of tuple type to pack multiple results into one
+// value. If the custom call result is a tuple, then result layouts represent
+// the layout of each element of the tuple. Nested tuples are currently not
+// supported for export.
+static xla::Shape GetCustomCallResultShapeWithLayout(mlir::Type type,
+                                                     mlir::ArrayAttr layouts) {
+  auto tuple_type = type.dyn_cast<mlir::TupleType>();
+  if (!tuple_type) return ConvertTypesToShapesWithLayout({type}, layouts)[0];
+
+  std::vector<xla::Shape> shapes_with_layouts =
+      ConvertTypesToShapesWithLayout(tuple_type.getTypes(), layouts);
+  return xla::ShapeUtil::MakeTupleShape(shapes_with_layouts);
 }
 
 // Converts StringRef to xla Transpose enum.
@@ -405,9 +440,9 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
   if (!frontend_attributes_dict) return frontend_attributes;
 
   for (const auto& attr : frontend_attributes_dict)
-    if (auto value_str_attr = attr.second.dyn_cast<mlir::StringAttr>())
+    if (auto value_str_attr = attr.getValue().dyn_cast<mlir::StringAttr>())
       frontend_attributes.mutable_map()->insert(
-          {attr.first.str(), value_str_attr.getValue().str()});
+          {attr.getName().str(), value_str_attr.getValue().str()});
 
   return frontend_attributes;
 }
@@ -417,13 +452,20 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
 // location (converted). FileLineColLoc locations are populated by taking the
 // file name and line number, and populating `source_file` and `source_line`
 // respectively.
-static xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op) {
+static xla::OpMetadata CreateOpMetadataFromLocation(
+    mlir::Operation* op, mlir::MlirToHloConversionOptions options) {
   xla::OpMetadata metadata;
-  if (op->getLoc().isa<mlir::UnknownLoc>()) return metadata;
+  const mlir::Location& loc = op->getLoc();
+  if (loc.isa<mlir::UnknownLoc>()) return metadata;
 
-  std::string name = mlir::GetNameFromLoc(op->getLoc());
-  mlir::LegalizeNodeName(name);
+  std::string name = mlir::GetNameFromLoc(loc);
+  if (options.legalize_node_names) {
+    mlir::LegalizeNodeName(name);
+  }
   metadata.set_op_name(name);
+  std::string op_type = mlir::GetOpTypeFromLoc(loc);
+  mlir::LegalizeNodeName(op_type);
+  metadata.set_op_type(op_type);
 
   if (auto file_line_col_loc = op->getLoc().dyn_cast<mlir::FileLineColLoc>()) {
     metadata.set_source_file(file_line_col_loc.getFilename().str());
@@ -867,11 +909,28 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.api_version());
   if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
-  value_map[result] = xla::CustomCall(
+  if (!op.operand_layouts().hasValue() || !op.result_layouts().hasValue()) {
+    value_map[result] = xla::CustomCall(
+        ctx.builder, std::string(op.call_target_name()), args,
+        xla::TypeToShape(result.getType()), std::string(op.backend_config()),
+        op.has_side_effect(), /*output_operand_aliasing=*/{},
+        /*literal=*/nullptr,
+        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+        /*api_version=*/*xla_api_version);
+    return success();
+  }
+
+  auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
+      op.getOperandTypes(), op.operand_layouts().getValue());
+  xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
+      result.getType(), op.result_layouts().getValue());
+  value_map[result] = xla::CustomCallWithLayout(
       ctx.builder, std::string(op.call_target_name()), args,
-      xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-      op.has_side_effect(), /*output_operand_aliasing=*/{},
-      /*literal=*/nullptr, /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+      result_shape_with_layout, operand_shapes_with_layout,
+      std::string(op.backend_config()), op.has_side_effect(),
+      /*output_operand_aliasing=*/{},
+      /*literal=*/nullptr,
+      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
   return success();
 }
@@ -1578,7 +1637,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
     mlir::CallOp call_op, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
   auto& value_map = *value_lowering;
-  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op.callee());
+  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op.getCallee());
   if (failed(RunOnFunction(callee))) return failure();
   std::vector<xla::XlaOp> operands;
   for (auto operand : call_op.getOperands()) {
@@ -1683,7 +1742,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
     auto arg_shape_status = shape_representation_fn_(
         arg_tensor_shape, dtype,
         /*use_fast_memory=*/false,
-        tensorflow::TpuLayoutPreference::kNoPreference);
+        tensorflow::XlaLayoutPreference::kNoPreference);
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
              << arg_shape_status.status().error_message();

@@ -27,6 +27,7 @@ from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class ReshapeTest(test.TestCase):
 
   def _testReshape(self, x, y, use_gpu=False):

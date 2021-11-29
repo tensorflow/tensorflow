@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 
@@ -168,13 +170,13 @@ TEST_F(SessionMgrTest, CreateSessionWithMasterName) {
 
   // Allow multiple worker sessions to be created by the same master
   string sess_handle1 = "test_session_handle_1";
-  TF_EXPECT_OK(mgr_.CreateSession(sess_handle1, server_def,
-                                  cluster_device_attributes, true, master_name,
-                                  old_incarnation));
+  TF_EXPECT_OK(mgr_.CreateSession(
+      sess_handle1, server_def, cluster_device_attributes, true, master_name,
+      old_incarnation, /*coordination_service_config=*/{}));
   string sess_handle2 = "test_session_handle_2";
-  TF_EXPECT_OK(mgr_.CreateSession(sess_handle2, server_def,
-                                  cluster_device_attributes, true, master_name,
-                                  old_incarnation));
+  TF_EXPECT_OK(mgr_.CreateSession(
+      sess_handle2, server_def, cluster_device_attributes, true, master_name,
+      old_incarnation, /*coordination_service_config=*/{}));
 
   std::shared_ptr<WorkerSession> session;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession(sess_handle1, &session));
@@ -186,9 +188,9 @@ TEST_F(SessionMgrTest, CreateSessionWithMasterName) {
   // When the master creates a WorkerSession with new incarnation, the old
   // WorkerSessions should be garbage collected.
   string sess_handle3 = "test_session_handle_3";
-  TF_EXPECT_OK(mgr_.CreateSession(sess_handle3, server_def,
-                                  cluster_device_attributes, true, master_name,
-                                  new_incarnation));
+  TF_EXPECT_OK(mgr_.CreateSession(
+      sess_handle3, server_def, cluster_device_attributes, true, master_name,
+      new_incarnation, /*coordination_service_config=*/{}));
 
   EXPECT_NE(mgr_.WorkerSessionForSession(sess_handle1, &session),
             tensorflow::Status::OK())
@@ -220,10 +222,12 @@ TEST_F(SessionMgrTest, CreateSessionWithoutMasterName) {
   // WorkerSession will NOT be garbage collected for empty master names.
   string sess_handle1 = "test_session_handle_no_master_1";
   TF_EXPECT_OK(mgr_.CreateSession(sess_handle1, server_def,
-                                  cluster_device_attributes, true, "", 0));
+                                  cluster_device_attributes, true, "", 0,
+                                  /*coordination_service_config=*/{}));
   string sess_handle2 = "test_session_handle_no_master_2";
   TF_EXPECT_OK(mgr_.CreateSession(sess_handle2, server_def,
-                                  cluster_device_attributes, true, "", 0));
+                                  cluster_device_attributes, true, "", 0,
+                                  /*coordination_service_config=*/{}));
 
   std::shared_ptr<WorkerSession> session;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession(sess_handle1, &session));
@@ -252,6 +256,7 @@ TEST_F(SessionMgrTest, UnknownSessionHandle) {
   EXPECT_TRUE(errors::IsAborted(s));
   EXPECT_TRUE(
       absl::StrContains(s.error_message(), "Session handle is not found"));
+  EXPECT_TRUE(s.GetPayload(kWorkerPossiblyRestarted).has_value());
 }
 
 TEST_F(SessionMgrTest, WorkerNameFromServerDef) {

@@ -32,13 +32,12 @@ Status FunctionOptimizationPassRegistry::Run(
     bool* control_rets_updated) {
   if (!pass_) return Status::OK();
 
-  const uint64 pass_start_us = Env::Default()->NowMicros();
-  Status status = pass_->Run(device_set, config_proto, graph, flib_def,
-                             control_ret_node_names, control_rets_updated);
-  const uint64 pass_end_us = Env::Default()->NowMicros();
-  metrics::UpdateGraphOptimizationPassTime("FunctionOptimizationPassRegistry",
-                                           pass_end_us - pass_start_us);
-  return status;
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {"GraphOptimizationPass", "FunctionOptimizationPassRegistry"});
+
+  return pass_->Run(device_set, config_proto, graph, flib_def,
+                    control_ret_node_names, control_rets_updated);
 }
 
 // static

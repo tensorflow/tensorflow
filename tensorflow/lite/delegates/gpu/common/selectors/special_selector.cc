@@ -249,7 +249,7 @@ absl::Status GPUSubgraphFromGraph(
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
   if ((gpu_info.IsAdreno() || gpu_info.IsNvidia() || gpu_info.IsMali() ||
-       (gpu_info.IsApple() && gpu_info.apple_info.IsBionic())) &&
+       gpu_info.IsApple()) &&
       TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
                                   tensor_descriptors, consumed_nodes,
                                   gpu_subgraph)

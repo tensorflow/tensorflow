@@ -67,21 +67,60 @@ in latency on mobile devices, and Coral Edge TPUs inference
 [10x faster](https://coral.ai/docs/edgetpu/benchmarks/) than desktop CPUs.
 
 Task Library provides easy configuration and fall back options for you to set up
-and use delegates. The following accelerators are now supported in the Task C++
-API:
+and use delegates. The following accelerators are now supported in the Task API:
 
 *   Android
-    *   [GPU](https://www.tensorflow.org/lite/performance/gpu)
-    *   [NNAPI](https://www.tensorflow.org/lite/performance/nnapi)
-    *   [Hexagon](https://www.tensorflow.org/lite/performance/hexagon_delegate)
+    *   [GPU](https://www.tensorflow.org/lite/performance/gpu): Java / C++
+    *   [NNAPI](https://www.tensorflow.org/lite/performance/nnapi): Java / C++
+    *   [Hexagon](https://www.tensorflow.org/lite/performance/hexagon_delegate):
+        C++
 *   Linux / Mac
-    *   [Coral Edge TPU](https://coral.ai/)
+    *   [Coral Edge TPU](https://coral.ai/): C++
 
 [Core ML delegate](https://www.tensorflow.org/lite/performance/coreml_delegate)
 for iOS, and acceleration supports in Task Java / Swift / Web API are coming
 soon.
 
-### Example usage of GPU on Android
+### Example usage of GPU on Android in Java
+
+Step 1. Add the GPU delegate plugin library to your module's `build.gradle`
+file:
+
+```java
+dependencies {
+    // Import Task Library dependency for vision, text, or audio.
+
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
+}
+```
+
+Note: NNAPI comes with the Task Library targets for vision, text, and audio by
+default.
+
+Step 2. Configure GPU delegate in the task options through
+[BaseOptions](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/task/core/BaseOptions.Builder).
+For example, you can set up GPU in `ObjectDetecor` as follows:
+
+```java
+// Turn on GPU delegation.
+BaseOptions baseOptions = BaseOptions.builder().useGpu().build();
+// Configure other options in ObjectDetector
+ObjectDetectorOptions options =
+    ObjectDetectorOptions.builder()
+        .setBaseOptions(baseOptions)
+        .setMaxResults(1)
+        .build();
+
+// Create ObjectDetector from options.
+ObjectDetector objectDetector =
+    ObjectDetector.createFromFileAndOptions(context, modelFile, options);
+
+// Run inference
+List<Detection> results = objectDetector.detect(image);
+```
+
+### Example usage of GPU on Android in C++
 
 Step 1. Depend on the GPU delegate plugin in your bazel build target, such as:
 
@@ -128,7 +167,7 @@ std::vector<QaAnswer> results = answerer->Answer(context_of_question, question_t
 Explore more advanced accelerator settings
 [here](https://github.com/tensorflow/tensorflow/blob/1a8e885b864c818198a5b2c0cbbeca5a1e833bc8/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
 
-### Example usage of Coral Edge TPU
+### Example usage of Coral Edge TPU in C++
 
 Step 1. Depend on the Coral Edge TPU delegate plugin in your bazel build target,
 such as:

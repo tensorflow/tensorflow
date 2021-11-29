@@ -1004,8 +1004,9 @@ class XlaBuilder {
   tensorflow::SavedStackTrace first_error_backtrace_;
 
   // The instructions of this computation.
-  std::vector<HloInstructionProto> instructions_;
-
+  // Use a deque so pointers into this are stable, for example the return
+  // value of LookUpInstructionByHandle().
+  std::deque<HloInstructionProto> instructions_;
   // An cache for the HloInstructionProto shapes, to avoid recreating Shape
   // objects from protos and to support the GetShapePtr() API.
   std::vector<std::unique_ptr<Shape>> instruction_shapes_;

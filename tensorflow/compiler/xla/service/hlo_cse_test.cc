@@ -28,15 +28,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -76,41 +75,9 @@ TEST_F(HloCseTest, CombineTwoConstants) {
   EXPECT_TRUE(LiteralTestUtil::Near(expected, result, ErrorSpec(1e-4)));
 }
 
-TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
-  // Test that two identical constants with different layouts are commoned if
-  // the pass is not layout sensitive.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
-          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
-          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
-  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
-      constant1->shape(), HloOpcode::kAdd, constant1, constant2));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-
-  EXPECT_EQ(3, computation->instruction_count());
-  EXPECT_THAT(add, op::Add(constant1, constant2));
-
-  HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
-
-  EXPECT_EQ(2, computation->instruction_count());
-  auto first_operand = add->operand(0);
-  EXPECT_THAT(first_operand, ::testing::AnyOf(constant1, constant2));
-  EXPECT_THAT(add, op::Add(first_operand, first_operand));
-
-  auto result = ExecuteAndTransfer(module->Clone(), {});
-  auto expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-  EXPECT_TRUE(LiteralTestUtil::Near(expected, result, ErrorSpec(1e-4)));
-}
-
-TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
-  // Test that two identical constants with different layouts are *not* commoned
-  // if the pass is layout sensitive.
+TEST_F(HloCseTest, CombineTwoConstantsDifferentLayouts) {
+  // Test that two identical constants with different layouts are *not*
+  // combined.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(

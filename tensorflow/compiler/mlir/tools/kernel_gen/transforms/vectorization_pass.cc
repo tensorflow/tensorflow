@@ -30,7 +30,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -84,7 +84,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   if (!lower_bound_op) {
     return;
   }
-  auto lower_bound_value = lower_bound_op.value().dyn_cast<IntegerAttr>();
+  auto lower_bound_value = lower_bound_op.getValue().dyn_cast<IntegerAttr>();
   if (!lower_bound_value || lower_bound_value.getInt() != 0) {
     return;
   }
@@ -94,7 +94,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   if (!step_bound_op) {
     return;
   }
-  auto step_bound_value = step_bound_op.value().dyn_cast<IntegerAttr>();
+  auto step_bound_value = step_bound_op.getValue().dyn_cast<IntegerAttr>();
   if (!step_bound_value) {
     return;
   }
@@ -216,13 +216,13 @@ void SplitSCFForOp(scf::ForOp scf_for) {
         if (cmp.getOperand(0) == min_op.getResult() &&
             cmp.getOperand(1) == step_bound_op) {
           cmp.replaceAllUsesWith(b.create<arith::ConstantIntOp>(
-                                      is_true_cmp(cmp.predicate(), true), 1)
+                                      is_true_cmp(cmp.getPredicate(), true), 1)
                                      .getResult());
           cmp.erase();
         } else if (cmp.getOperand(0) == step_bound_op &&
                    cmp.getOperand(1) == min_op.getResult()) {
           cmp.replaceAllUsesWith(b.create<arith::ConstantIntOp>(
-                                      is_true_cmp(cmp.predicate(), false), 1)
+                                      is_true_cmp(cmp.getPredicate(), false), 1)
                                      .getResult());
         }
       }

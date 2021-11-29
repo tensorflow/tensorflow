@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -47,12 +48,12 @@ class SignlessOpConversion : public OpConversionPattern<T> {
         remove_sign_converter_(remove_sign_converter) {}
 
   LogicalResult matchAndRewrite(
-      T op, ArrayRef<Value> operands,
+      T op, typename T::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
     // Sign-convert operands and result type.
     SmallVector<Value> converted_operands;
-    for (auto operand : operands) {
+    for (auto operand : adaptor.getOperands()) {
       Type original = operand.getType();
       Type converted = remove_sign_converter_->convertType(original);
       if (converted == original) {
@@ -233,7 +234,11 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
         result_dim_size = b->create<arith::IndexCastOp>(loc, result_dim_size,
                                                         b->getIndexType());
       }
-      sizes.push_back(result_dim_size);
+      if (result_type.isDynamicDim(i)) {
+        sizes.push_back(result_dim_size);
+      } else {
+        sizes.push_back(b->getIndexAttr(result_type.getDimSize(i)));
+      }
 
       auto it = output_to_input_dim.find(i);
       // If the rank of the output is greater than the rank of the input, i.e.
@@ -257,13 +262,11 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
       strides.push_back(select);
     }
 
-    // Type-erased memref type with static rank, dynamic sizes and strides.
+    // Type-erased memref type with static rank and dynamic strides.
     SmallVector<int64_t, 2> dynamic_layout(result_rank,
                                            MemRefType::kDynamicStrideOrOffset);
-    SmallVector<int64_t, 2> dynamic_shape(result_rank,
-                                          MemRefType::kDynamicSize);
     auto type_erased_memref_type = MemRefType::get(
-        dynamic_shape, operand_type.getElementType(),
+        result_type.getShape(), operand_type.getElementType(),
         makeStridedLinearLayoutMap(dynamic_layout,
                                    /*offset=*/0, b->getContext()));
 
@@ -279,6 +282,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     auto loc = op.getLoc();
     SmallVector<Value, 4> dynamic_operands;
     for (int i = 0; i < result_type.getRank(); ++i) {
+      if (!result_type.isDynamicDim(i)) continue;
       auto index = b->createOrFold<arith::ConstantIndexOp>(loc, i);
       Value size =
           b->create<tensor::ExtractOp>(loc, op.output_dimensions(), index);
@@ -302,7 +306,8 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
 struct HloLegalizeToMemrefPass
     : public HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<memref::MemRefDialect, tensor::TensorDialect>();
+    registry.insert<bufferization::BufferizationDialect, memref::MemRefDialect,
+                    tensor::TensorDialect>();
   }
 
  public:
@@ -318,7 +323,8 @@ struct HloLegalizeToMemrefPass
                                          &patterns);
 
     target.addIllegalOp<DynamicReshapeOp, DynamicBroadcastInDimOp>();
-    target.addLegalDialect<arith::ArithmeticDialect, BuiltinDialect,
+    target.addLegalDialect<arith::ArithmeticDialect,
+                           bufferization::BufferizationDialect, BuiltinDialect,
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect>();
 

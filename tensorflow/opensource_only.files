@@ -8,6 +8,7 @@ tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/compiler/mlir/hlo/WORKSPACE
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h
 tensorflow/core/platform/default/build_config/BUILD
+tensorflow/core/platform/default/experimental_cc_shared_library.bzl
 tensorflow/core/tfrt/tpu/tpu_resources.h
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h
 tensorflow/go/BUILD
@@ -21,6 +22,7 @@ tensorflow/lite/core/shims/c/c_api.h
 tensorflow/lite/core/shims/c/c_api_experimental.h
 tensorflow/lite/core/shims/c/common.h
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h
+tensorflow/lite/core/shims/c/experimental/acceleration/configuration/nnapi_plugin.h
 tensorflow/lite/core/shims/c/shims_test_util.cc
 tensorflow/lite/core/shims/c/shims_test_util.h
 tensorflow/lite/core/shims/cc/create_op_resolver.h
@@ -115,7 +117,6 @@ third_party/clang_toolchain/download_clang.bzl
 third_party/codegen.BUILD
 third_party/common.bzl
 third_party/compute_library/BUILD
-third_party/compute_library/LICENSE
 third_party/coremltools.BUILD
 third_party/cub.BUILD
 third_party/curl.BUILD
@@ -191,10 +192,8 @@ third_party/gpus/rocm/rocm_config.h.tpl
 third_party/gpus/rocm_configure.bzl
 third_party/grpc/BUILD
 third_party/icu/udata.patch
-third_party/jsoncpp.BUILD
 third_party/libxsmm.BUILD
 third_party/linenoise.BUILD
-third_party/llvm/BUILD
 third_party/llvm_openmp/BUILD
 third_party/llvm_openmp/cmake_vars.bzl
 third_party/llvm_openmp/expand_cmake_vars.py

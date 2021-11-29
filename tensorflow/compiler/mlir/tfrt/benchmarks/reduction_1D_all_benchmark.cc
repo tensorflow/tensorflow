@@ -18,12 +18,15 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-BM_TFMlir1(AllReduce, f32, /* num_threads */ 0,
-           MlirSpec("tf.Sum", "f32", {kDynamic}, /*dims_to_reduce=*/{0}));
-BM_TFMlir1(AllReduce, f32, /* num_threads */ 8,
-           MlirSpec("tf.Sum", "f32", {kDynamic}, /*dims_to_reduce=*/{0}));
+BM_TFMlir1(AllReduceDynamic, f32, /* num_threads */ 0,
+           MlirSpec("tf.Sum", "f32", {kDynamicDim}, /*dims_to_reduce=*/{0}));
+BM_TFMlir1(AllReduceStatic, f32, /* num_threads */ 0,
+           MlirSpec("tf.Sum", "f32", {kStaticDim}, /*dims_to_reduce=*/{0}));
 BM_Eigen1(AllReduce, f32, /* num_threads */ 0);
-BM_Eigen1(AllReduce, f32, /* num_threads */ 8);
+
+// BM_TFMlir1(AllReduce, f32, /* num_threads */ 8,
+//           MlirSpec("tf.Sum", "f32", {kDynamicDim}, /*dims_to_reduce=*/{0}));
+// BM_Eigen1(AllReduce, f32, /* num_threads */ 8);
 
 }  // namespace
 }  // namespace tensorflow

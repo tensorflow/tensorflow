@@ -4,11 +4,11 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_cuda_or_rocm",
+    "if_google",
     "if_mobile",
     "if_not_windows",
     "if_oss",
     "tf_cc_binary",
-    "tf_cc_shared_object",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -67,6 +67,9 @@ load(
     "if_rocm",
 )
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
+
 # Description:
 # Op kernel implementations for TensorFlow.
 #
@@ -82,7 +85,13 @@ load(
 #
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
+    features = if_google(
+        [
+            "-layering_check",
+            "-parse_headers",
+        ],
+        ["-layering_check"],
+    ),
     licenses = ["notice"],
 )
 
@@ -1086,15 +1095,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "constant_op",
-    copts = if_mlir_generated_experimental_kernels_enabled([
-        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
-    ]) + if_mlir_generated_gpu_kernels_enabled(
+    copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     # *.cu.cc sources are compiled with gpu_copts instead of copts.
-    gpu_copts = if_mlir_generated_experimental_kernels_enabled([
-        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
-    ]) + if_mlir_generated_gpu_kernels_enabled(
+    gpu_copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     prefix = "constant_op",
@@ -2896,6 +2901,7 @@ tf_kernel_library(
         ":dense_update_functor",
         ":gather_functor",
         ":gather_nd_op",
+        ":resource_variable_util",
         ":scatter_functor",
         ":training_op_helpers",
         ":variable_ops",
@@ -2906,6 +2912,15 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util:determinism_for_kernels",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "resource_variable_util",
+    srcs = ["resource_variable_util.cc"],
+    hdrs = ["resource_variable_util.h"],
+    deps = [
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -5171,6 +5186,15 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "scatter_nd_util",
+    srcs = ["scatter_nd_util.cc"],
+    hdrs = ["scatter_nd_util.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
 tf_kernel_library(
     name = "scatter_nd_op",
     srcs = [
@@ -5196,6 +5220,7 @@ tf_kernel_library(
         "scatter_nd_op_gpu.cu.cc",
     ],
     deps = STATE_DEPS + [
+        ":scatter_nd_util",
         ":dense_update_functor",
         ":training_op_helpers",
         ":variable_ops",
@@ -6028,6 +6053,10 @@ filegroup(
         "eigen_spatial_convolutions.h",
         "eigen_spatial_convolutions-inl.h",
         "fifo_queue.h",
+        "initializable_lookup_table.cc",
+        "initializable_lookup_table.h",
+        "lookup_util.cc",
+        "lookup_util.h",
         "maxpooling_op.h",
         "ops_util.h",
         "padding_fifo_queue.h",
@@ -6141,6 +6170,8 @@ filegroup(
         "slice_op_cpu_impl_8.cc",
         "softmax_op.cc",
         "softmax_op_functor.h",
+        "sparse_concat_op.h",
+        "sparse_concat_op.cc",
         "split_lib.h",
         "split_lib_cpu.cc",
         "split_op.cc",
@@ -6205,12 +6236,10 @@ filegroup(
         "dilation_ops.h",
         "fake_quant_ops_functor.h",
         "fused_batch_norm_op.h",
-        "initializable_lookup_table.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
         "lookup_table_init_op.h",
         "lookup_table_op.h",
-        "lookup_util.h",
         "list_kernels.h",
         "l2loss_op.h",
         "map_kernels.h",
@@ -6231,12 +6260,14 @@ filegroup(
         "relu_op_functor.h",
         "reshape_util.h",
         "resource_variable_ops.h",
+        "resource_variable_util.h",
         "reverse_op.h",
         "roll_op.h",
         "save_restore_tensor.h",
         "scan_ops.h",
         "scatter_functor.h",
         "scatter_nd_op.h",
+        "scatter_nd_util.h",
         "segment_reduction_ops.h",
         "segment_reduction_ops_impl.h",
         "softplus_op.h",
@@ -6451,13 +6482,11 @@ filegroup(
         "functional_ops.cc",
         "in_topk_op.cc",
         "in_topk_op.h",
-        "initializable_lookup_table.cc",
         "list_kernels.cc",
         "logging_ops.cc",
         "logging_ops.h",
         "lookup_table_init_op.cc",
         "lookup_table_op.cc",
-        "lookup_util.cc",
         "lrn_op.cc",
         "l2loss_op.cc",
         "map_kernels.cc",
@@ -6502,6 +6531,7 @@ filegroup(
         "relu_op.cc",
         "reshape_util.cc",
         "resource_variable_ops.cc",
+        "resource_variable_util.cc",
         "restore_op.cc",
         "reverse_op.cc",
         "roll_op.cc",
@@ -6519,6 +6549,7 @@ filegroup(
         "scatter_nd_op_cpu_impl_5.cc",
         "scatter_nd_op_cpu_impl_6.cc",
         "scatter_nd_op_cpu_impl_7.cc",
+        "scatter_nd_util.cc",
         "segment_reduction_ops_impl_1.cc",
         "segment_reduction_ops_impl_2.cc",
         "segment_reduction_ops_impl_3.cc",
@@ -6735,6 +6766,8 @@ filegroup(
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
             "xsmm_*",
             "nextafter_op.cc",
+            "initializable_lookup_table.*",
+            "lookup_util.*",
         ] + ANDROID_TEXTUAL_HDRS,
     ) + [
         # Referenced by stateful_random_ops.cc but excluded with the *gpu*
@@ -7566,8 +7599,57 @@ cc_library(
 )
 
 # Shared object that links all the kernels TF needs.
-tf_cc_shared_object(
+tf_cc_shared_library(
     name = "libtfkernel_all_kernels.so",
+    static_deps = [
+        # copybara:comment_begin(oss only)
+        "@bazel_tools//:__subpackages__",
+        "@boringssl//:__subpackages__",
+        "@com_github_cares_cares//:__subpackages__",
+        "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
+        "@com_github_grpc_grpc//:__subpackages__",
+        "@com_google_absl//:__subpackages__",
+        "@com_google_googleapis//:__subpackages__",
+        "@com_google_protobuf//:__subpackages__",
+        "@com_googlesource_code_re2//:__subpackages__",
+        "@compute_library//:__subpackages__",
+        "@curl//:__subpackages__",
+        "@double_conversion//:__subpackages__",
+        "@eigen_archive//:__subpackages__",
+        "@farmhash_archive//:__subpackages__",
+        "@farmhash_gpu_archive//:__subpackages__",
+        "@fft2d//:__subpackages__",
+        "@gemmlowp//:__subpackages__",
+        "@gif//:__subpackages__",
+        "@highwayhash//:__subpackages__",
+        "@hwloc//:__subpackages__",
+        "@icu//:__subpackages__",
+        "@jsoncpp_git//:__subpackages__",
+        "@libjpeg_turbo//:__subpackages__",
+        "@libxsmm_archive//:__subpackages__",
+        "@llvm_openmp//:__subpackages__",
+        "@llvm-project//:__subpackages__",
+        "@llvm_terminfo//:__subpackages__",
+        "@llvm_zlib//:__subpackages__",
+        "@lmdb//:__subpackages__",
+        "@local_config_cuda//:__subpackages__",
+        "@local_config_git//:__subpackages__",
+        "@local_config_nccl//:__subpackages__",
+        "@local_config_rocm//:__subpackages__",
+        "@local_config_tensorrt//:__subpackages__",
+        "@local_execution_config_platform//:__subpackages__",
+        "@mkl_dnn_acl_compatible//:__subpackages__",
+        "@mkl_dnn_v1//:__subpackages__",
+        "@nsync//:__subpackages__",
+        "@org_sqlite//:__subpackages__",
+        "@platforms//:__subpackages__",
+        "@png//:__subpackages__",
+        "@snappy//:__subpackages__",
+        "//:__subpackages__",
+        "@upb//:__subpackages__",
+        "@zlib//:__subpackages__",
+        # copybara:comment_end
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_platform_strings",

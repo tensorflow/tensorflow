@@ -741,6 +741,7 @@ class BatchSelectOpTest(test.TestCase):
           array_ops.where(c, xt, yt)
 
 
+@test_util.with_eager_op_as_function
 class MinMaxOpTest(test.TestCase):
 
   def _compare(self, x, y, use_gpu):
@@ -762,6 +763,11 @@ class MinMaxOpTest(test.TestCase):
         self._compare(x.astype(t), y.astype(t), use_gpu=False)
         self._compare(x.astype(t), y.astype(t), use_gpu=True)
 
+  # When eager_op_as_function mode is enabled xla auto-clustering kicks in.
+  # By default xla enables fast min_max computations which do not propagate NaN.
+  # TODO(b/205140614): remove decorators once TF and XLA behaviour are the same.
+  @test_util.set_xla_env_flag(flag="--xla_cpu_enable_fast_min_max=false")
+  @test_util.set_xla_env_flag(flag="--xla_gpu_enable_fast_min_max=false")
   def testNaNPropagation(self):
     x = np.array([1., np.nan, 1., np.nan], dtype=np.float64)
     y = np.array([1., 1., np.nan, np.nan], dtype=np.float64)

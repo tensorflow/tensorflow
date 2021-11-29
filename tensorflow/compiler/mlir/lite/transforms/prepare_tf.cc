@@ -103,10 +103,12 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
   explicit PrepareTFPass(bool unfold_batch_matmul,
-                         bool allow_bf16_and_f16_type_legalization) {
+                         bool allow_bf16_and_f16_type_legalization,
+                         bool use_fake_quant_num_bits = false) {
     unfold_batch_matmul_ = unfold_batch_matmul;
     allow_bf16_and_f16_type_legalization_ =
         allow_bf16_and_f16_type_legalization;
+    use_fake_quant_num_bits_ = use_fake_quant_num_bits;
   }
 
   StringRef getArgument() const final {
@@ -135,6 +137,11 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
   Option<bool> allow_bf16_and_f16_type_legalization_{
       *this, "tfl-allow-bf16-and-f16-type-legalization",
       llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
+
+  Option<bool> use_fake_quant_num_bits_{
+      *this, "tfl-use-fake-quant-num-bits",
+      llvm::cl::desc("Use quantization calculated from fake quant attributes."),
+      llvm::cl::init(false)};
 };
 
 // Transient state for preserving data from match to rewrite
@@ -574,9 +581,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
     int index = 0;
     int new_index = 0;
     while (((ellipsis_mask >> index) & 1) == 0) {
-      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
-      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
-      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
+      padded_begin.push_back(begin_dense_elem_attr.getValues<int32_t>()[index]);
+      padded_end.push_back(end_dense_elem_attr.getValues<int32_t>()[index]);
+      padded_stride.push_back(
+          stride_dense_elem_attr.getValues<int32_t>()[index]);
       if ((begin_mask >> index) & 1) revised_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
@@ -605,9 +613,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     // After the ellipsis.
     for (; index < begin_shape[0];) {
-      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
-      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
-      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
+      padded_begin.push_back(begin_dense_elem_attr.getValues<int32_t>()[index]);
+      padded_end.push_back(end_dense_elem_attr.getValues<int32_t>()[index]);
+      padded_stride.push_back(
+          stride_dense_elem_attr.getValues<int32_t>()[index]);
 
       if ((begin_mask >> index) & 1) revised_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
@@ -1356,7 +1365,7 @@ void PrepareTFPass::runOnFunction() {
   // min/max operands of the tf.FakeQuant* are constants to be matched. The
   // following round of optimization will folding the unwrapped
   // tf.FakeQuant* ops with the weight constants.
-  if (failed(ConvertFakeQuantOps(func, ctx))) {
+  if (failed(ConvertFakeQuantOps(func, ctx, use_fake_quant_num_bits_))) {
     signalPassFailure();
     return;
   }
@@ -1365,10 +1374,7 @@ void PrepareTFPass::runOnFunction() {
   // will be applied.
   TFL::populateWithGenerated(phase_2_patterns);
   if (unfold_batch_matmul_) {
-    phase_2_patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
-                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(
-        ctx);
+    TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
   phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
                           ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
@@ -1382,9 +1388,11 @@ void PrepareTFPass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul, bool allow_bf16_type_legalization) {
+    bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization,
+    bool use_fake_quant_num_bits) {
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul,
-                                         allow_bf16_type_legalization);
+                                         allow_bf16_and_f16_type_legalization,
+                                         use_fake_quant_num_bits);
 }
 
 static PassRegistration<PrepareTFPass> pass;

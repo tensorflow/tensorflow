@@ -804,7 +804,7 @@ void QuantizationDriver::PreprocessConstantOps() {
         // different users.
         if (uses.size() > 1) {
           auto new_cst =
-              builder_.create<arith::ConstantOp>(cst.getLoc(), cst.value());
+              builder_.create<arith::ConstantOp>(cst.getLoc(), cst.getValue());
           user->setOperand(operand_num, new_cst);
         }
       }
@@ -987,7 +987,7 @@ bool QuantizationDriver::ShouldCheckBiasScale(
   auto affine_op = llvm::dyn_cast<AffineQuantizedOpInterface>(op);
   auto bias_op = op->getOperand(bias_index).getDefiningOp<arith::ConstantOp>();
   if (!affine_op || !bias_op || input_indices.size() != 2) return false;
-  if (!bias_op.value().isa<DenseFPElementsAttr>()) return false;
+  if (!bias_op.getValue().isa<DenseFPElementsAttr>()) return false;
   filter_index = affine_op.GetAffineOperandIndex();
   if (!op->getOperand(filter_index).getDefiningOp<arith::ConstantOp>()) {
     return false;
@@ -1029,7 +1029,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
   const double input_scale =
       input_state.params.cast<UniformQuantizedType>().getScale();
 
-  auto bias_values = bias_op.value().cast<DenseFPElementsAttr>();
+  auto bias_values = bias_op.getValue().cast<DenseFPElementsAttr>();
   // Restrict maximum absolute value of bias within INT_MAX / 2, to make some
   // room for accumulator.
   const int32_t kBiasMax = std::numeric_limits<int32_t>::max() / 2;
@@ -1075,7 +1075,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
     std::vector<double> new_filter_scales = filter_params.getScales().vec();
     bool needs_adjustment = false;
     for (int i = 0; i < bias_params.getScales().size(); ++i) {
-      float abs_bias = std::abs(bias_values.getValue<float>(i));
+      float abs_bias = std::abs(bias_values.getValues<float>()[i]);
       if (abs_bias / new_bias_scales[i] > kBiasMax) {
         new_bias_scales[i] = static_cast<double>(abs_bias) / kBiasMax;
         new_filter_scales[i] = new_bias_scales[i] / input_scale;

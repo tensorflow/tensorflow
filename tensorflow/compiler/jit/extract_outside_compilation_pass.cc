@@ -122,9 +122,7 @@ StatusOr<Node*> BuildRecvAtHostNode(
   recv_at_host_builder.Attr(kXlaHasHostTransferAttrName, true);
   recv_at_host_builder.Input(key_placeholder->name(), 0, DT_STRING);
   TF_RETURN_IF_ERROR(recv_at_host_builder.Finalize(&recv_at_host_def));
-  Status s;
-  Node* recv_at_host_node = g->AddNode(recv_at_host_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * recv_at_host_node, g->AddNode(recv_at_host_def));
   return recv_at_host_node;
 }
 
@@ -239,9 +237,8 @@ StatusOr<Node*> BuildSendFromHostNode(
   send_from_host_builder.Input(inputs);
   send_from_host_builder.Input(key_placeholder->name(), 0, DT_STRING);
   TF_RETURN_IF_ERROR(send_from_host_builder.Finalize(&send_from_host_def));
-  Status s;
-  Node* send_from_host_node = g->AddNode(send_from_host_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * send_from_host_node,
+                      g->AddNode(send_from_host_def));
   return send_from_host_node;
 }
 
@@ -519,9 +516,7 @@ StatusOr<Node*> AddOutsideCompilationInputArgToFunctionBody(
   NodeDef arg_def;
   TF_RETURN_IF_ERROR(arg_builder.Finalize(&arg_def));
 
-  Status s;
-  Node* arg_node = function_body.graph->AddNode(arg_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * arg_node, function_body.graph->AddNode(arg_def));
   return arg_node;
 }
 
@@ -536,9 +531,7 @@ Status AddMatchingRetvalNode(const FunctionBody& function_body,
   ret_builder.Input(arg_node->name(), 0, data_type);
   NodeDef ret_def;
   TF_RETURN_IF_ERROR(ret_builder.Finalize(&ret_def));
-  Status s;
-  Node* ret_node = function_body.graph->AddNode(ret_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * ret_node, function_body.graph->AddNode(ret_def));
   function_body.graph->AddEdge(arg_node, 0, ret_node, 0);
 
   return Status::OK();
@@ -989,9 +982,7 @@ Status ConstructHostGraph(
   sequencer_builder.Attr("_xla_host_transfer_sequencer", xla_cluster_name);
   NodeDef sequencer_def;
   TF_RETURN_IF_ERROR(sequencer_builder.Finalize(&sequencer_def));
-  Status s;
-  Node* sequencer = (*host_graph)->AddNode(sequencer_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * sequencer, (*host_graph)->AddNode(sequencer_def));
 
   // Create key placeholder in host graph.
   TF_ASSIGN_OR_RETURN(
@@ -1332,9 +1323,7 @@ TF_ATTRIBUTE_NOINLINE StatusOr<Node*> BuildSendIfPredNode(
   send_pred_builder.Input(pred_node->name(), 0, DT_BOOL);
   NodeDef send_pred_def;
   TF_RETURN_IF_ERROR(send_pred_builder.Finalize(&send_pred_def));
-  Status s;
-  Node* send_pred_node = g->AddNode(send_pred_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * send_pred_node, g->AddNode(send_pred_def));
   g->AddEdge(pred_node, 0, send_pred_node, 0);
   return send_pred_node;
 }
@@ -1417,9 +1406,7 @@ TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForIfNode(
   recv_pred_builder.Input(key_placeholder->name(), 0, DT_STRING);
   NodeDef recv_pred_def;
   TF_RETURN_IF_ERROR(recv_pred_builder.Finalize(&recv_pred_def));
-  Status s;
-  Node* recv_pred_node = host_graph.AddNode(recv_pred_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * recv_pred_node, host_graph.AddNode(recv_pred_def));
   host_graph.AddEdge(key_placeholder, 0, recv_pred_node, 0);
 
   // Step 3: rewrite `{then, else}_branch_host_func_name`, replace key
@@ -1450,8 +1437,7 @@ TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForIfNode(
   if_builder.Input(if_inputs);
   NodeDef if_def;
   TF_RETURN_IF_ERROR(if_builder.Finalize(&if_def));
-  Node* if_node = host_graph.AddNode(if_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * if_node, host_graph.AddNode(if_def));
   host_graph.AddEdge(recv_pred_node, 0, if_node, 0);
   host_graph.AddEdge(key_placeholder, 0, if_node, 1);
 
@@ -1516,9 +1502,8 @@ TF_ATTRIBUTE_NOINLINE Status AddSendLoopPredToLoopCond(
   send_loop_cond_builder.Input(loop_cond->name(), 0, DT_BOOL);
   NodeDef send_loop_cond_def;
   TF_RETURN_IF_ERROR(send_loop_cond_builder.Finalize(&send_loop_cond_def));
-  Status s;
-  Node* send_loop_cond_node = g->AddNode(send_loop_cond_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * send_loop_cond_node,
+                      g->AddNode(send_loop_cond_def));
   g->AddEdge(loop_cond, 0, send_loop_cond_node, 0);
 
   // Replace original function if loop_cond_func already has been re-written
@@ -1592,9 +1577,8 @@ Status RewriteHostWhileLoopCond(
   recv_pred_builder.Input(key_arg->name(), 0, DT_STRING);
   NodeDef recv_pred_def;
   TF_RETURN_IF_ERROR(recv_pred_builder.Finalize(&recv_pred_def));
-  Status s;
-  Node* recv_pred_node = cond_graph->AddNode(recv_pred_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * recv_pred_node,
+                      cond_graph->AddNode(recv_pred_def));
   cond_graph->AddEdge(key_arg, 0, recv_pred_node, 0);
   NodeDefBuilder ret_builder(
       absl::StrCat("recv_oc_while_cond_ret_", while_node_name), "_Retval");
@@ -1603,8 +1587,7 @@ Status RewriteHostWhileLoopCond(
   ret_builder.Input(recv_pred_node->name(), 0, DT_BOOL);
   NodeDef ret_def;
   TF_RETURN_IF_ERROR(ret_builder.Finalize(&ret_def));
-  Node* ret_node = cond_graph->AddNode(ret_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * ret_node, cond_graph->AddNode(ret_def));
   cond_graph->AddEdge(recv_pred_node, 0, ret_node, 0);
 
   // Reset device_ordinal to placeholder value.
@@ -1662,9 +1645,7 @@ Status RewriteHostWhileLoopBody(
   ret_builder.Input(key_arg->name(), 0, DT_STRING);
   NodeDef ret_def;
   TF_RETURN_IF_ERROR(ret_builder.Finalize(&ret_def));
-  Status s;
-  Node* ret_node = body_graph->AddNode(ret_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * ret_node, body_graph->AddNode(ret_def));
   body_graph->AddEdge(key_arg, 0, ret_node, 0);
 
   // Reset device_ordinal to placeholder value.
@@ -1731,9 +1712,7 @@ TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForWhileNode(
   while_builder.Input(while_inputs);
   NodeDef while_def;
   TF_RETURN_IF_ERROR(while_builder.Finalize(&while_def));
-  Status s;
-  Node* while_node = host_graph.AddNode(while_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * while_node, host_graph.AddNode(while_def));
   host_graph.AddEdge(key_placeholder, 0, while_node, 0);
 
   // Convert `host_graph` to function.
@@ -1781,9 +1760,7 @@ Status BuildHostGraphForFuncCallNode(
   call_builder.Attr(outside_compilation_attr_name, call_builder.node_name());
   NodeDef call_def;
   TF_RETURN_IF_ERROR(call_builder.Finalize(&call_def));
-  Status s;
-  Node* call_node = host_graph.AddNode(call_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * call_node, host_graph.AddNode(call_def));
   host_graph.AddEdge(key_placeholder, 0, call_node, 0);
 
   // Convert `host_graph` to function.
@@ -2174,9 +2151,7 @@ Status CopyOutsideCompilationConstNodes(
     NodeDef copy_def = n->def();
     copy_def.set_name(g->NewName(n->name()));
     copy_def.mutable_attr()->erase(outside_compilation_attr_name);
-    Status s;
-    Node* copy_node = g->AddNode(copy_def, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * copy_node, g->AddNode(copy_def));
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) {
         g->AddControlEdge(e->src(), copy_node);

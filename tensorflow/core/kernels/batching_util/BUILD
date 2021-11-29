@@ -372,6 +372,7 @@ tf_cc_test(
         ":batch_resource_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:cost_measurement_registry",
         "//tensorflow/core/common_runtime:no_op_cost_measurement",
         "@com_google_absl//absl/time",
     ],

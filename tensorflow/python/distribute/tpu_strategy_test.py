@@ -1153,17 +1153,10 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
     @def_function.function
     def create_iter():
       with ops.device("/device:TPU:0"):
-        return gen_dataset_ops.anonymous_iterator_v2(
+        return gen_dataset_ops.anonymous_iterator_v3(
             output_types=[dtypes.float32], output_shapes=[[]])
 
-    handle, deleter = create_iter()
-
-    @def_function.function
-    def delete_iter():
-      with ops.device("/device:TPU:0"):
-        gen_dataset_ops.delete_iterator(handle=handle, deleter=deleter)
-
-    delete_iter()
+    create_iter()
 
 
 @test_util.with_eager_op_as_function

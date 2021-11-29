@@ -734,7 +734,9 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:intrusive_ptr",
+        "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
@@ -1228,6 +1230,19 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "framework_resource_var_test",
+    size = "small",
+    srcs = ["resource_var_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

@@ -46,7 +46,7 @@ tf_py_test(
     name = "eig_op_test",
     size = "medium",
     srcs = ["eig_op_test.py"],
-    data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
+    data = ["//tensorflow/python/kernel_tests/linalg/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
     tags = [
         "no_windows",
@@ -725,7 +725,7 @@ cuda_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],
-    data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
+    data = ["//tensorflow/python/kernel_tests/linalg/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
     tags = [
         "no_windows",

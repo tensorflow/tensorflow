@@ -52,6 +52,7 @@ using ops::SegmentSum;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
+using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -1005,6 +1006,15 @@ TEST_F(NaryGradTest, CastGrad) {
   TF_ASSERT_OK((ComputeGradientError<double, float, double>(
       scope_, {x}, {shape}, {y}, {shape}, &max_error)));
   EXPECT_LT(max_error, 1e-3);
+}
+
+TEST_F(NaryGradTest, Select) {
+  TensorShape shape({1, 3});
+  auto cond = Const<bool>(scope_, {{false, true, true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto z = Where3(scope_, cond, x, y);
+  RunTest({x, y}, {shape, shape}, {z}, {shape});
 }
 
 }  // namespace

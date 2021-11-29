@@ -14,9 +14,11 @@
 # ==============================================================================
 """Helper functions to add documentation to type aliases."""
 
+from typing import Dict
+
 # Not useful for builtin `help()`. But these get passed to the
 # doc generator so that the description is still displayed on the site.
-_EXTRA_DOCS: {int: str} = {}
+_EXTRA_DOCS: Dict[int, str] = {}
 
 
 def document(obj, doc):

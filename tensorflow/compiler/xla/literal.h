@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -260,7 +261,7 @@ class LiteralBase {
   }
 
   // Compute a hash for this literal.
-  size_t Hash() const;
+  size_t Hash(int64_t byte_limit = std::numeric_limits<int64_t>::max()) const;
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.
@@ -1096,7 +1097,12 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
   const int64_t rank = this_shape.rank();
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
   TF_RET_CHECK(this_shape.element_type() ==
-               primitive_util::NativeToPrimitiveType<NativeT>());
+               primitive_util::NativeToPrimitiveType<NativeT>())
+      << "Failing to populate literal with element type "
+      << primitive_util::LowercasePrimitiveTypeName(this_shape.element_type())
+      << " using data of type "
+      << primitive_util::LowercasePrimitiveTypeName(
+             primitive_util::NativeToPrimitiveType<NativeT>());
   absl::Span<NativeT> literal_data = data<NativeT>();
   if (rank > 0) {
     StrideConfig stride_config(this_shape, this_shape,

@@ -379,11 +379,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     return trt_convert.TrtGraphConverterV2(
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_signature_key=input_saved_model_signature_key,
-        conversion_params=trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
-            max_workspace_size_bytes=max_workspace_size_bytes,
-            precision_mode=precision_mode,
-            maximum_cached_engines=maximum_cached_engines,
-            allow_build_at_runtime=allow_build_at_runtime))
+        max_workspace_size_bytes=max_workspace_size_bytes,
+        precision_mode=precision_mode,
+        maximum_cached_engines=maximum_cached_engines,
+        allow_build_at_runtime=allow_build_at_runtime)
 
   def _CheckTrtOps(self, concrete_func, check_fn=None, num_engines=1):
     graph_def = concrete_func.graph.as_graph_def()
@@ -518,8 +517,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     conv_params = trt_convert.TrtConversionParams(minimum_segment_size=2)
     converter = trt_convert.TrtGraphConverterV2(
         input_saved_model_dir=input_saved_model_dir,
-        conversion_params=conv_params,
-        use_dynamic_shape=True)
+        use_dynamic_shape=True,
+        **conv_params._asdict())
     converter.convert()
 
     # Build the graph with the input generator. This runs the TRTEngineOp native
@@ -991,6 +990,59 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllClose(
         np.asarray([5.0, 5.0, 5.0, 5.0]).reshape([4, 1, 1]), output)
 
+  @parameterized.named_parameters([
+      ("SaveGPUSpecificEngine", True),
+      ("WithoutSaveGPUSpecificEngine", False),
+  ])
+  @test_util.run_v2_only
+  def testTrtGraphConverter_SaveGPUSpecificEngine(self, save_engine_flag):
+    """Test case for trt_convert.TrtGraphConverter()."""
+
+    np_input1, np_input2 = self._RandomInput([4, 1, 1])
+
+    # Create a model and save it.
+    input_saved_model_dir = self.mkdtemp()
+    root = self._GetModelForV2()
+    save.save(root, input_saved_model_dir,
+              {_SAVED_MODEL_SIGNATURE_KEY: root.run})
+
+    # Run TRT conversion.
+    converter = self._CreateConverterV2(
+        input_saved_model_dir, precision_mode=trt_convert.TrtPrecisionMode.INT8)
+
+    # Run the converted function to populate the engine cache.
+    def CalibrationFn():
+      yield np_input1, np_input2
+
+    converter.convert(calibration_input_fn=CalibrationFn)
+
+    # Verify the converted GraphDef and ConcreteFunction.
+    self._CheckTrtOps(converter._converted_func)
+
+    trt_engine_name = self._GetUniqueTRTEngineOp(
+        converter._converted_graph_def).name
+
+    # Save the converted model with or without any TRT engine cache
+    # based on the value of save_engine_flag.
+    output_saved_model_dir = self.mkdtemp()
+
+    converter.save(
+        output_saved_model_dir, save_gpu_specific_engines=save_engine_flag)
+
+    expected_asset_file = os.path.join(
+        output_saved_model_dir,
+        "assets/trt-serialized-engine." + trt_engine_name)
+
+    self.assertTrue(os.path.exists(expected_asset_file))
+    if save_engine_flag:
+      # engine is saved so we expect engine data
+      self.assertTrue(os.path.getsize(expected_asset_file))
+    else:
+      # engine is not saved so files should be empty
+      self.assertFalse(os.path.getsize(expected_asset_file))
+
+    del converter
+    gc.collect()  # Force GC to destroy the TRT engine cache.
 
 if __name__ == "__main__" and is_tensorrt_enabled():
   test.main()

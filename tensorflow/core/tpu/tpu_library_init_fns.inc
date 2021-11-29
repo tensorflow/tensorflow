@@ -94,6 +94,9 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_GetOrdinal);
   TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_DequeueFromCoreSelector);
   TFTPU_SET_FN(ops_api_fn, TfTpu_GetTpuPartitionedCallParams);
+  
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ExecutePartitioner);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ConfigureMemory);
 
   return tensorflow::Status::OK();
 }

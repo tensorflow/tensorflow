@@ -22,11 +22,13 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+using tensorflow::IdentityShapeRepresentationFn;
 
 class XlaCpuDeviceFactory : public DeviceFactory {
  public:
@@ -87,6 +89,9 @@ Status XlaCpuDeviceFactory::CreateDevices(
   options.device_ordinal = 0;
   options.compilation_device_name = DEVICE_CPU_XLA_JIT;
   options.use_multiple_streams = false;
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
+      UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+  options.shape_determination_fns = {shape_representation_fns};
   auto device = absl::make_unique<XlaDevice>(session_options, options);
 
   // Setting GpuDeviceInfo because eager runtime relies on the device

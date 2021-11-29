@@ -1035,6 +1035,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "create_op_resolver_header",
+    hdrs = ["create_op_resolver.h"],
+    deps = [
+        ":mutable_op_resolver",
+        ":op_resolver",
+    ],
+)
+
 # Defines CreateOpResolver with all builtin ops.
 cc_library(
     name = "create_op_resolver_with_builtin_ops",

@@ -15,7 +15,6 @@
 """Tests for batch_norm related functionality in tensorflow.ops.nn."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -356,7 +355,7 @@ class SufficientStatisticsTest(test.TestCase):
       m_ss = np.sum(x, axis=axis, keepdims=keep_dims)
       v_ss = np.sum(x * x, axis=axis, keepdims=keep_dims)
     count = 1.0
-    for d in xrange(x.ndim):
+    for d in range(x.ndim):
       if d in set(axes):
         count *= x.shape[d]
     if not keep_dims:

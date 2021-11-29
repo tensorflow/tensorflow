@@ -15,7 +15,6 @@
 """Tests for Momentum."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -452,7 +451,7 @@ class MomentumOptimizerTest(test.TestCase):
       mom_opt = momentum_lib.MomentumOptimizer(learning_rate=0.1, momentum=0.1)
       mom_update = mom_opt.apply_gradients(zip([grads0], [var0]))
       self.evaluate(variables.global_variables_initializer())
-      for i in xrange(num_samples):
+      for i in range(num_samples):
         mom_update.run(feed_dict={grads0: db_grad[i]})
         self.assertAllClose(np.array(db_out[i]), self.evaluate(var0))
 

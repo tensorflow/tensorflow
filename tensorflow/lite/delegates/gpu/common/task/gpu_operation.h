@@ -120,7 +120,7 @@ class GPUOperation {
       TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
-  void AssembleCode(const GpuInfo& gpu_info);
+  absl::Status AssembleCode(const GpuInfo& gpu_info);
 
   virtual absl::Status PostCompileCheck(const GpuInfo& gpu_info,
                                         const KernelInfo& kernel_info) {
@@ -142,6 +142,10 @@ class GPUOperation {
 
   // for linking
   void AddUniquePostfix(const std::string& unique_postfix);
+
+  virtual absl::Status BindArguments(ArgumentsBinder* args) {
+    return absl::OkStatus();
+  }
 
   Arguments args_;
   std::string code_;
@@ -167,9 +171,6 @@ class GPUOperation {
   friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,
                              GPUOperation* op);
 
-  virtual absl::Status BindArguments(ArgumentsBinder* args) {
-    return absl::OkStatus();
-  }
   virtual int3 GetGridSize() const;
 
   // Defines operation calculation precision and format of src/dst tensors.

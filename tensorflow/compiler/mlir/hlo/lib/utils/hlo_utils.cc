@@ -153,7 +153,7 @@ std::string LmhloToMhloOpName(llvm::StringRef op_name,
 bool IsSequenceStartingWith0(Attribute attr) {
   DenseIntElementsAttr denseAttr = attr.dyn_cast<DenseIntElementsAttr>();
   for (int64_t i = 0, e = denseAttr.getNumElements(); i < e; ++i)
-    if (denseAttr.getValue<IntegerAttr>(i).getInt() != i) return false;
+    if (denseAttr.getValues<APInt>()[i].getSExtValue() != i) return false;
   return true;
 }
 

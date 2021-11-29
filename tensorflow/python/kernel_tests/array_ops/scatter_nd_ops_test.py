@@ -102,6 +102,7 @@ def _NumpyMax(ref, indices, updates):
   return _NumpyScatterNd(ref, indices, updates, np.maximum)
 
 
+@test_util.with_eager_op_as_function
 class StatefulScatterNdTest(test.TestCase):
 
   def _VariableRankTest(self,
@@ -271,6 +272,7 @@ class StatefulScatterNdTest(test.TestCase):
   #     session.run([update0, update1])
   #     self.assertAllEqual([False, True], self.evaluate(var))
 
+  @test_util.disable_xla("b/205330448")
   def testScatterOutOfRangeCpu(self):
     # TODO(simister): Re-enable once binary size increase due to
     # scatter_nd ops is under control.
@@ -483,6 +485,7 @@ class StatefulScatterNdDeterminismTest(StatefulScatterNdTest):
       self.assertAllEqual(val, val2)
 
 
+@test_util.with_eager_op_as_function
 class ScatterNdTest(test.TestCase, parameterized.TestCase):
   non_aliasing_add_test = False
 
@@ -793,6 +796,11 @@ class ScatterNdNonAliasingAddTest(ScatterNdTest):
     return array_ops.scatter_nd_non_aliasing_add(input_, indices, updates)
 
   def testString(self):
+    # Not supported yet.
+    pass
+
+  # TODO(testString): Enable this test when the above testString is enabled.
+  def testStringWithEagerOpAsFunctionEnabled(self):
     # Not supported yet.
     pass
 

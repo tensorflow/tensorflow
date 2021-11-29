@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -507,7 +508,7 @@ dnn::ProfileResult GetProfileResultFromConvSolution(
     miopenConvSolution_t solution) {
   dnn::ProfileResult profile_result;
   profile_result.set_algorithm(
-      {static_cast<AlgorithmDesc::Index>(solution.solution_id), false});
+      {solution.solution_id, false, solution.workspace_size});
   profile_result.set_elapsed_time_in_ms(solution.time);
   profile_result.set_scratch_size(solution.workspace_size);
   return profile_result;
@@ -515,25 +516,24 @@ dnn::ProfileResult GetProfileResultFromConvSolution(
 
 dnn::ProfileResult GetProfileResultFromConvAlgoPerf(
     dnn::ConvolutionKind kind, miopenConvAlgoPerf_t algorithm) {
-  dnn::ProfileResult profile_result;
+  int64_t algo_id;
   switch (kind) {
     case dnn::ConvolutionKind::FORWARD:
-      profile_result.set_algorithm(
-          {static_cast<AlgorithmDesc::Index>(algorithm.fwd_algo), false});
+      algo_id = algorithm.fwd_algo;
       break;
     case dnn::ConvolutionKind::BACKWARD_DATA:
-      profile_result.set_algorithm(
-          {static_cast<AlgorithmDesc::Index>(algorithm.bwd_data_algo), false});
+      algo_id = algorithm.bwd_data_algo;
       break;
     case dnn::ConvolutionKind::BACKWARD_FILTER:
-      profile_result.set_algorithm(
-          {static_cast<AlgorithmDesc::Index>(algorithm.bwd_weights_algo),
-           false});
+      algo_id = algorithm.bwd_weights_algo;
       break;
     default:
       LOG(FATAL) << "Unexpected convolution kind " << static_cast<int>(kind);
       break;
   }
+
+  dnn::ProfileResult profile_result;
+  profile_result.set_algorithm({algo_id, false, algorithm.memory});
   profile_result.set_elapsed_time_in_ms(algorithm.time);
   profile_result.set_scratch_size(algorithm.memory);
   return profile_result;
@@ -2946,6 +2946,166 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
   return port::Status::OK();
 }
 
+class RocmConvRunner : public dnn::ConvRunner {
+ public:
+  RocmConvRunner(GpuExecutor* parent, MIOpenAccess* miopen, int64_t algo_id,
+                 size_t workspace_size, dnn::ConvolutionKind kind,
+                 dnn::DataType input_type, bool use_immediate_mode,
+                 BatchDescriptor input_descriptor,
+                 BatchDescriptor output_descriptor,
+                 FilterDescriptor filter_descriptor,
+                 ConvolutionDescriptor conv_descriptor)
+      : parent_(parent),
+        miopen_(miopen),
+        algo_id_(algo_id),
+        workspace_size_(workspace_size),
+        kind_(kind),
+        use_immediate_mode_(use_immediate_mode),
+        input_desc_{input_descriptor, ToMIOpenDataType(input_type)},
+        output_desc_{output_descriptor, ToMIOpenDataType(input_type)},
+        filter_desc_{filter_descriptor, ToMIOpenDataType(input_type)},
+        conv_desc_{conv_descriptor, ToMIOpenDataType(input_type)} {}
+
+  std::string ToString() const override {
+    return dnn::AlgorithmDesc{algo_id_, false, workspace_size_}.ToString();
+  }
+
+  size_t GetWorkspaceSize() const override { return workspace_size_; }
+
+  port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const override {
+    return {{algo_id_, false, workspace_size_}};
+  }
+
+  port::Status operator()(Stream* stream, DeviceMemoryBase input_data,
+                          DeviceMemoryBase filter_data,
+                          DeviceMemoryBase output_data,
+                          DeviceMemoryBase scratch_memory,
+                          dnn::ProfileResult* profile_result) const override {
+    auto miopen = miopen_->GetHandle(parent_, stream);
+    // Alpha is the scaling factor for input.
+    float alpha = 1.0;
+    // Beta is the scaling factor for output.
+    float beta = 0.0;
+
+    const bool is_profiling = profile_result != nullptr;
+
+    std::unique_ptr<GpuTimer> timer;
+    if (is_profiling) {
+      timer.reset(new GpuTimer(parent_));
+      if (!timer->Init()) {
+        return port::Status(port::error::INTERNAL, "Failed to init timer");
+      }
+      // The start and stop of the timer should be as close to the MIOpen call
+      // as possible. It is still possible for other threads to issue workload
+      // on to this stream. So it could take multiple profiling measurements.
+      if (!timer->Start(AsGpuStream(stream))) {
+        timer->Destroy();
+        return port::Status(port::error::INTERNAL, "Failed to start timer");
+      }
+    }
+
+    miopenStatus_t status = miopenStatusSuccess;
+    switch (kind_) {
+      case dnn::ConvolutionKind::FORWARD: {
+        if (use_immediate_mode_) {
+          status = wrap::miopenConvolutionForwardImmediate(
+              miopen.handle(), filter_desc_.handle(), filter_data.opaque(),
+              input_desc_.handle(), input_data.opaque(), conv_desc_.handle(),
+              output_desc_.handle(), output_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size(),
+              static_cast<uint64_t>(algo_id_));
+        } else {
+          status = wrap::miopenConvolutionForward(
+              miopen.handle(), &alpha, input_desc_.handle(),
+              input_data.opaque(), filter_desc_.handle(), filter_data.opaque(),
+              conv_desc_.handle(),
+              static_cast<miopenConvFwdAlgorithm_t>(algo_id_), &beta,
+              output_desc_.handle(), output_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size());
+        }
+
+        break;
+      }
+      case dnn::ConvolutionKind::BACKWARD_DATA: {
+        if (use_immediate_mode_) {
+          status = wrap::miopenConvolutionBackwardDataImmediate(
+              miopen.handle(), output_desc_.handle(), output_data.opaque(),
+              filter_desc_.handle(), filter_data.opaque(), conv_desc_.handle(),
+              input_desc_.handle(), input_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size(),
+              static_cast<uint64_t>(algo_id_));
+        } else {
+          status = wrap::miopenConvolutionBackwardData(
+              miopen.handle(), &alpha, output_desc_.handle(),
+              output_data.opaque(), filter_desc_.handle(), filter_data.opaque(),
+              conv_desc_.handle(),
+              static_cast<miopenConvBwdDataAlgorithm_t>(algo_id_), &beta,
+              input_desc_.handle(), input_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size());
+        }
+        break;
+      }
+      case dnn::ConvolutionKind::BACKWARD_FILTER: {
+        if (use_immediate_mode_) {
+          status = wrap::miopenConvolutionBackwardWeightsImmediate(
+              miopen.handle(), output_desc_.handle(), output_data.opaque(),
+              input_desc_.handle(), input_data.opaque(), conv_desc_.handle(),
+              filter_desc_.handle(), filter_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size(),
+              static_cast<uint64_t>(algo_id_));
+        } else {
+          status = wrap::miopenConvolutionBackwardWeights(
+              miopen.handle(), &alpha, output_desc_.handle(),
+              output_data.opaque(), input_desc_.handle(), input_data.opaque(),
+              conv_desc_.handle(),
+              static_cast<miopenConvBwdWeightsAlgorithm_t>(algo_id_), &beta,
+              filter_desc_.handle(), filter_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size());
+        }
+        break;
+      }
+      default:
+        return port::InternalError(absl::StrCat("Unexpected convolution kind ",
+                                                static_cast<int>(kind_)));
+    }
+
+    if (is_profiling) {
+      if (!timer->Stop(AsGpuStream(stream))) {
+        timer->Destroy();
+        return port::Status(port::error::INTERNAL, "Failed to stop timer");
+      }
+      if (status == miopenStatusSuccess) {
+        dnn::AlgorithmDesc algotype(algo_id_, false);
+        profile_result->set_algorithm(algotype);
+        profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
+        profile_result->set_scratch_size(scratch_memory.size());
+      }
+      timer->Destroy();
+    }
+
+    if (status != miopenStatusSuccess) {
+      return port::InternalError(
+          absl::StrCat("Failed to enqueue convolution on stream: ",
+                       ::stream_executor::gpu::ToString(status)));
+    }
+
+    return port::Status::OK();
+  }
+
+ private:
+  GpuExecutor* parent_;
+  MIOpenAccess* miopen_;
+  int64_t algo_id_;
+  size_t workspace_size_;
+  dnn::ConvolutionKind kind_;
+  bool use_immediate_mode_;
+
+  ScopedTensorDescriptor input_desc_;
+  ScopedTensorDescriptor output_desc_;
+  ScopedFilterDescriptor filter_desc_;
+  ScopedConvolutionDescriptor conv_desc_;
+};
+
 port::Status MIOpenSupport::DoConvolve(
     dnn::ConvolutionKind kind, dnn::DataType element_type,
     dnn::DataType output_type, Stream* stream,
@@ -2956,122 +3116,14 @@ port::Status MIOpenSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-  ScopedTensorDescriptor input_nd{input_descriptor,
-                                  ToMIOpenDataType(element_type)};
-  ScopedTensorDescriptor output_nd{output_descriptor,
-                                   ToMIOpenDataType(element_type)};
-  ScopedFilterDescriptor filter{filter_descriptor,
-                                ToMIOpenDataType(element_type)};
-  ScopedConvolutionDescriptor conv{convolution_descriptor,
-                                   ToMIOpenDataType(element_type)};
+  SE_ASSIGN_OR_RETURN(
+      auto runner,
+      ConvolveRunnerFromDesc(algorithm_desc, kind, element_type, output_type,
+                             input_descriptor, filter_descriptor,
+                             output_descriptor, convolution_descriptor));
 
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  const bool is_profiling = output_profile_result != nullptr;
-
-  std::unique_ptr<GpuTimer> timer;
-  if (is_profiling) {
-    timer.reset(new GpuTimer(parent_));
-    if (!timer->Init()) {
-      return port::Status(port::error::INTERNAL, "Failed to init timer");
-    }
-    // The start and stop of the timer should be as close to the MIOpen call
-    // as possible. It is still possible for other threads to issue workload
-    // on to this stream. So it could take multiple profiling measurements.
-    if (!timer->Start(AsGpuStream(stream))) {
-      timer->Destroy();
-      return port::Status(port::error::INTERNAL, "Failed to start timer");
-    }
-  }
-
-  miopenStatus_t status = miopenStatusSuccess;
-  switch (kind) {
-    case dnn::ConvolutionKind::FORWARD: {
-      if (use_immediate_mode_) {
-        status = wrap::miopenConvolutionForwardImmediate(
-            miopen.handle(), filter.handle(), filter_data.opaque(),
-            input_nd.handle(), input_data.opaque(), conv.handle(),
-            output_nd.handle(), output_data.opaque(), scratch_memory.opaque(),
-            scratch_memory.size(),
-            static_cast<uint64_t>(algorithm_desc.algo_id()));
-      } else {
-        status = wrap::miopenConvolutionForward(
-            miopen.handle(), &alpha, input_nd.handle(), input_data.opaque(),
-            filter.handle(), filter_data.opaque(), conv.handle(),
-            static_cast<miopenConvFwdAlgorithm_t>(algorithm_desc.algo_id()),
-            &beta, output_nd.handle(), output_data.opaque(),
-            scratch_memory.opaque(), scratch_memory.size());
-      }
-
-      break;
-    }
-    case dnn::ConvolutionKind::BACKWARD_DATA: {
-      if (use_immediate_mode_) {
-        status = wrap::miopenConvolutionBackwardDataImmediate(
-            miopen.handle(), output_nd.handle(), output_data.opaque(),
-            filter.handle(), filter_data.opaque(), conv.handle(),
-            input_nd.handle(), input_data.opaque(), scratch_memory.opaque(),
-            scratch_memory.size(),
-            static_cast<uint64_t>(algorithm_desc.algo_id()));
-      } else {
-        status = wrap::miopenConvolutionBackwardData(
-            miopen.handle(), &alpha, output_nd.handle(), output_data.opaque(),
-            filter.handle(), filter_data.opaque(), conv.handle(),
-            static_cast<miopenConvBwdDataAlgorithm_t>(algorithm_desc.algo_id()),
-            &beta, input_nd.handle(), input_data.opaque(),
-            scratch_memory.opaque(), scratch_memory.size());
-      }
-      break;
-    }
-    case dnn::ConvolutionKind::BACKWARD_FILTER: {
-      if (use_immediate_mode_) {
-        status = wrap::miopenConvolutionBackwardWeightsImmediate(
-            miopen.handle(), output_nd.handle(), output_data.opaque(),
-            input_nd.handle(), input_data.opaque(), conv.handle(),
-            filter.handle(), filter_data.opaque(), scratch_memory.opaque(),
-            scratch_memory.size(),
-            static_cast<uint64_t>(algorithm_desc.algo_id()));
-      } else {
-        status = wrap::miopenConvolutionBackwardWeights(
-            miopen.handle(), &alpha, output_nd.handle(), output_data.opaque(),
-            input_nd.handle(), input_data.opaque(), conv.handle(),
-            static_cast<miopenConvBwdWeightsAlgorithm_t>(
-                algorithm_desc.algo_id()),
-            &beta, filter.handle(), filter_data.opaque(),
-            scratch_memory.opaque(), scratch_memory.size());
-      }
-      break;
-    }
-    default:
-      return port::InternalError(
-          absl::StrCat("Unexpected convolution kind ", static_cast<int>(kind)));
-  }
-
-  if (is_profiling) {
-    if (!timer->Stop(AsGpuStream(stream))) {
-      timer->Destroy();
-      return port::Status(port::error::INTERNAL, "Failed to stop timer");
-    }
-    if (status == miopenStatusSuccess) {
-      dnn::AlgorithmDesc algotype(algorithm_desc.algo_id(), false);
-      output_profile_result->set_algorithm(algotype);
-      output_profile_result->set_elapsed_time_in_ms(
-          timer->GetElapsedMilliseconds());
-      output_profile_result->set_scratch_size(scratch_memory.size());
-    }
-    timer->Destroy();
-  }
-
-  if (status != miopenStatusSuccess) {
-    return port::InternalError(absl::StrCat(
-        "Failed to euqueue convolution on stream: ", ToString(status)));
-  }
-
-  return port::Status::OK();
+  return (*runner)(stream, input_data, filter_data, output_data, scratch_memory,
+                   output_profile_result);
 }
 
 bool MIOpenSupport::GetConvolveAlgorithms(
@@ -3087,6 +3139,72 @@ bool MIOpenSupport::GetConvolveAlgorithms(
       // clang-format on
   });
   return true;
+}
+
+port::Status MIOpenSupport::GetConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemoryBase output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
+    ScratchAllocator* scratch_allocator,
+    std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners) {
+  if (input_type != output_type) {
+    return port::UnimplementedError(
+        absl::StrFormat("MIOpen backend does not support different input and "
+                        "output types: %d != %d",
+                        input_type, output_type));
+  }
+
+  std::vector<dnn::ProfileResult> profile_results;
+  if (!GetMIOpenConvolveAlgorithms(
+          kind, input_type, stream, input_descriptor, input_data,
+          filter_descriptor, filter_data, output_descriptor, output_data,
+          convolution_descriptor, scratch_allocator, &profile_results)) {
+    return port::Status(
+        port::error::UNKNOWN,
+        "GetConvolveRunners: GetMIOpenConvolveAlgorithms failed");
+  }
+
+  for (const auto& profile_result : profile_results) {
+    SE_ASSIGN_OR_RETURN(
+        auto runner,
+        ConvolveRunnerFromDesc(profile_result.algorithm(), kind, input_type,
+                               output_type, input_descriptor, filter_descriptor,
+                               output_descriptor, convolution_descriptor));
+    out_runners->push_back(std::move(runner));
+  }
+
+  return port::Status::OK();
+}
+
+port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+MIOpenSupport::ConvolveRunnerFromDesc(
+    const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType output_type,
+    const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor) {
+  if (input_type != output_type) {
+    return port::UnimplementedError(
+        absl::StrFormat("MIOpen backend does not support different input and "
+                        "output types: %d != %d",
+                        input_type, output_type));
+  }
+
+  auto workspace_size = algorithm_desc.workspace_size();
+  if (!workspace_size) {
+    return port::InvalidArgumentError(
+        "MIOpenSupport::ConvolveRunnerFromDesc requires "
+        "AlgorithmProto.workspace_size, but it was missing.");
+  }
+  return {std::make_unique<RocmConvRunner>(
+      parent_, miopen_.get(), algorithm_desc.algo_id(), *workspace_size, kind,
+      input_type, use_immediate_mode_, input_descriptor, output_descriptor,
+      filter_descriptor, convolution_descriptor)};
 }
 
 bool MIOpenSupport::GetMIOpenConvolveAlgorithms(

@@ -29,9 +29,11 @@ endif()
 
 file(GLOB RUY_SOURCES "${RUY_SOURCE_DIR}/ruy/*.*")
 list(FILTER RUY_SOURCES INCLUDE REGEX ".*\\.(c|cc|h)$")
-list(FILTER RUY_SOURCES EXCLUDE REGEX ".*(_test)\\.(c|cc|h)$")
+list(FILTER RUY_SOURCES EXCLUDE REGEX ".*(test)\\.(c|cc|h)$")
 list(FILTER RUY_SOURCES EXCLUDE REGEX ".*/(benchmark|example|test_.*)\.cc$")
 list(FILTER RUY_SOURCES EXCLUDE REGEX ".*/gtest_wrapper\\.h$")
+
+set_source_files_properties(${RUY_SOURCES}  PROPERTIES LANGUAGE CXX)
 
 add_library(ruy ${RUY_SOURCES})
 target_include_directories(ruy PUBLIC "${RUY_SOURCE_DIR}")

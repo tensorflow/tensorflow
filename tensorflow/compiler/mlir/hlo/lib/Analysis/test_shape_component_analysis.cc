@@ -33,17 +33,20 @@ struct TestShapeComponentAnalysisPass
     llvm::outs() << "Testing : " << getFunction().getName() << '\n';
     // Analyze anything that looks like a shape tensor.
     getFunction().walk([&](Operation* op) {
+      // Only print single results that could be shape values or their elements.
       if (op->getResultTypes().size() != 1 ||
           !getElementTypeOrSelf(op->getResultTypes().front()).isIntOrIndex())
         return;
+
       ShapeComponentAnalysis shape_component;
-      auto dims = shape_component.dimensionsForShapeTensor(op->getResult(0));
-      op->getResult(0).print(llvm::outs());
+      Value result = op->getResults().front();
+      auto dims = shape_component.GetValueInfo(result);
+      result.print(llvm::outs());
       llvm::outs() << ":\n";
       if (dims) {
-        for (const auto& dim : *dims) {
+        for (const auto& d : *dims) {
           llvm::outs().indent(2);
-          dim.dump(llvm::outs());
+          d.dump(llvm::outs());
         }
       }
     });

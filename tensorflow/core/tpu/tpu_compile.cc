@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
@@ -470,7 +471,7 @@ Status GetShardingInfo(
         auto xla_arg_shape,
         shape_representation_fn(arg_shapes[i], proto_arg.dtype(),
                                 /*use_fast_memory=*/false,
-                                TpuLayoutPreference::kNoPreference));
+                                XlaLayoutPreference::kNoPreference));
     TF_RETURN_IF_ERROR(
         RewriteLayoutWithShardedShape(arg_sharding, /*use_fast_memory=*/false,
                                       shape_representation_fn, &xla_arg_shape));

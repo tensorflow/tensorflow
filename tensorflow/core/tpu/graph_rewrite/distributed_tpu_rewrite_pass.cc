@@ -697,8 +697,7 @@ xla::StatusOr<Node*> CreatePadNode(const int padding, const int num_dims,
   TensorShape sizes_shape({num_dims, 2});
   sizes_shape.AsProto(sizes_tensor_proto.mutable_tensor_shape());
   AddNodeAttr("value", sizes_tensor_proto, &paddings_def);
-  Node* paddings_node = graph->AddNode(paddings_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * paddings_node, graph->AddNode(paddings_def));
 
   // Add Pad node.
   NodeDef pad_def;
@@ -710,9 +709,8 @@ xla::StatusOr<Node*> CreatePadNode(const int padding, const int num_dims,
   AddNodeAttr("Tpaddings", DT_INT32, &pad_def);
   pad_def.add_input(absl::StrCat(split_node->name(), ":", split_index));
   pad_def.add_input(absl::StrCat(paddings_node->name(), ":0"));
-  Node* pad_node = graph->AddNode(pad_def, &s);
+  TF_ASSIGN_OR_RETURN(Node * pad_node, graph->AddNode(pad_def));
   pad_node->set_assigned_device_name(split_node->assigned_device_name());
-  TF_RETURN_IF_ERROR(s);
   // Add edges for pad node.
   graph->AddEdge(split_node, split_index, pad_node, 0);
   graph->AddEdge(paddings_node, 0, pad_node, 1);
@@ -753,9 +751,7 @@ xla::StatusOr<Node*> CreateSplitNode(const int num_splits, const int dim,
   TensorShape shape({});
   shape.AsProto(tensor_proto.mutable_tensor_shape());
   AddNodeAttr("value", tensor_proto, &split_dim_def);
-  Status s;
-  Node* split_dim_node = graph->AddNode(split_dim_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * split_dim_node, graph->AddNode(split_dim_def));
   // Add a split node.
   NodeDef split_def;
   split_def.set_name(graph->NewName(absl::StrCat(name_prefix, "/split")));
@@ -765,8 +761,7 @@ xla::StatusOr<Node*> CreateSplitNode(const int num_splits, const int dim,
   AddNodeAttr("T", dtype, &split_def);
   split_def.add_input(absl::StrCat(split_dim_node->name(), ":0"));
   split_def.add_input(absl::StrCat(to_split_node->name(), ":", to_split_index));
-  Node* split_node = graph->AddNode(split_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * split_node, graph->AddNode(split_def));
 
   split_node->set_assigned_device_name(input_assigned_device);
 
@@ -957,9 +952,7 @@ StatusOr<Node*> CreateXlaSplitOp(absl::string_view node_name,
                 &xla_split_def);
   }
 
-  Status s;
-  Node* xla_split = graph->AddNode(xla_split_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * xla_split, graph->AddNode(xla_split_def));
   if (is_resource) {
     xla_split->set_requested_device(input.node->requested_device());
   }
@@ -1143,9 +1136,7 @@ xla::StatusOr<Node*> CreateConcatNode(int dim, int num_splits, DataType dtype,
   TensorShape shape({});
   shape.AsProto(tensor_proto.mutable_tensor_shape());
   AddNodeAttr("value", tensor_proto, &concat_dim_def);
-  Status s;
-  Node* concat_dim_node = graph->AddNode(concat_dim_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * concat_dim_node, graph->AddNode(concat_dim_def));
 
   // Add a Concat node.
   NodeDef concat_def;
@@ -1158,8 +1149,7 @@ xla::StatusOr<Node*> CreateConcatNode(int dim, int num_splits, DataType dtype,
   for (const auto& i : inputs) {
     concat_def.add_input(absl::StrCat(i.node->name(), ":", i.index));
   }
-  Node* concat_node = graph->AddNode(concat_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * concat_node, graph->AddNode(concat_def));
 
   graph->AddEdge(concat_dim_node, 0, concat_node, 0);
 
@@ -1195,8 +1185,7 @@ xla::StatusOr<Node*> CreateSliceNode(DataType dtype,
   TensorShape begin_shape({shape.dims()});
   begin_shape.AsProto(begin_tensor_proto.mutable_tensor_shape());
   AddNodeAttr("value", begin_tensor_proto, &begin_def);
-  Node* begin_node = graph->AddNode(begin_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * begin_node, graph->AddNode(begin_def));
 
   // Add size node.
   NodeDef size_def;
@@ -1213,8 +1202,7 @@ xla::StatusOr<Node*> CreateSliceNode(DataType dtype,
   TensorShape sizes_shape({shape.dims()});
   sizes_shape.AsProto(sizes_tensor_proto.mutable_tensor_shape());
   AddNodeAttr("value", sizes_tensor_proto, &size_def);
-  Node* size_node = graph->AddNode(size_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * size_node, graph->AddNode(size_def));
 
   // Add Slice node.
   NodeDef slice_def;
@@ -1227,8 +1215,7 @@ xla::StatusOr<Node*> CreateSliceNode(DataType dtype,
   slice_def.add_input(absl::StrCat(concat_node->name(), ":", concat_out_index));
   slice_def.add_input(absl::StrCat(begin_node->name(), ":0"));
   slice_def.add_input(absl::StrCat(size_node->name(), ":0"));
-  Node* slice_node = graph->AddNode(slice_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * slice_node, graph->AddNode(slice_def));
   // Add edges for slice node.
   graph->AddEdge(concat_node, concat_out_index, slice_node, 0);
   graph->AddEdge(begin_node, 0, slice_node, 1);
@@ -1319,9 +1306,7 @@ xla::StatusOr<Node*> CreateXlaConcatNode(
   }
   AddNodeAttr("paddings", paddings, &xla_concat_def);
 
-  Status s;
-  Node* xla_concat = graph->AddNode(xla_concat_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * xla_concat, graph->AddNode(xla_concat_def));
   for (int i = 0, e = orig_inputs.size(); i < e; ++i) {
     const NodeOut& input = orig_inputs[i];
     graph->AddEdge(input.node, input.index, xla_concat, i);
@@ -2585,9 +2570,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       AddNodeAttr("out_type", DT_INT64, &def);
       MergeDebugInfo(NodeDebugInfo(replicate_node.def()), &def);
 
-      Status status;
-      Node* shape_node = graph->AddNode(def, &status);
-      if (!status.ok()) return status;
+      TF_ASSIGN_OR_RETURN(Node * shape_node, graph->AddNode(def));
       dynamic_shape_nodes->push_back(shape_node);
 
       shape_node->set_assigned_device_name(src->assigned_device_name());
@@ -2777,9 +2760,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
   AddNodeAttr("metadata", metadata, &def);
   AddNodeAttr("Tguaranteed_constants", constant_arg_types, &def);
 
-  Status status;
-  *compile_node = graph->AddNode(def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(*compile_node, graph->AddNode(def));
 
   (*compile_node)->set_assigned_device_name(compile_device);
 
@@ -2791,8 +2772,8 @@ Status DistributedTPURewritePass::BuildCompileNode(
     graph->AddEdge(guaranteed_constant_nodes[i], 0, *compile_node,
                    dynamic_shape_nodes.size() + i);
   }
-  VLOG(1) << "BuildCompileNode(): " << status;
-  return status;
+  VLOG(1) << "BuildCompileNode()";
+  return Status::OK();
 }
 
 Status DistributedTPURewritePass::FindGuaranteedConstantInputs(
@@ -2874,12 +2855,11 @@ static Status BuildNoopNode(const Node& source, StringPiece name,
   NodeDef def;
   TF_RETURN_IF_ERROR(builder.Finalize(&def));
 
-  Status status;
-  *node = graph->AddNode(def, &status);
+  TF_ASSIGN_OR_RETURN(*node, graph->AddNode(def));
   if (!device.empty()) {
     (*node)->set_assigned_device_name(device);
   }
-  return status;
+  return Status::OK();
 }
 
 Status DistributedTPURewritePass::ConnectHostComputeNodes(
@@ -2934,10 +2914,8 @@ Status DistributedTPURewritePass::BuildVariableReads(
     NodeDef def;
     TF_RETURN_IF_ERROR(builder.Finalize(&def));
 
-    Status status;
-    Node* read_node;
-    (*variable_reads)[i] = read_node = graph->AddNode(def, &status);
-    if (!status.ok()) return status;
+    TF_ASSIGN_OR_RETURN(Node * read_node, graph->AddNode(def));
+    (*variable_reads)[i] = read_node;
 
     read_node->set_requested_device(variables[i].node->requested_device());
     read_node->set_assigned_device_name(
@@ -3078,8 +3056,8 @@ xla::StatusOr<Node*> CreateTpuExecuteDummyArg(const TensorShape& var_shape,
   TensorShape shape_shape({var_shape.dims()});
   shape_shape.AsProto(tensorshape_proto.mutable_tensor_shape());
   AddNodeAttr("value", tensorshape_proto, &shape_tensor_def);
-  Node* shape_as_tensor_node = graph->AddNode(shape_tensor_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * shape_as_tensor_node,
+                      graph->AddNode(shape_tensor_def));
 
   // Const - initializer value
   NodeDef init_val_def;
@@ -3105,8 +3083,7 @@ xla::StatusOr<Node*> CreateTpuExecuteDummyArg(const TensorShape& var_shape,
   scalar_shape.AsProto(tensor_proto.mutable_tensor_shape());
   AddNodeAttr("value", tensor_proto, &init_val_def);
   AddNodeAttr("dtype", dtype, &init_val_def);
-  Node* init_val_node = graph->AddNode(init_val_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * init_val_node, graph->AddNode(init_val_def));
 
   // Fill node
   NodeDef fill_def;
@@ -3116,8 +3093,7 @@ xla::StatusOr<Node*> CreateTpuExecuteDummyArg(const TensorShape& var_shape,
       graph->NewName(strings::StrCat(name_prefix, "/Initializer/zeros")));
   AddNodeAttr("T", dtype, &fill_def);
   AddNodeAttr("index_type", DT_INT32, &fill_def);
-  Node* fill_node = graph->AddNode(fill_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * fill_node, graph->AddNode(fill_def));
   graph->AddEdge(shape_as_tensor_node, 0, fill_node, 0);
   graph->AddEdge(init_val_node, 0, fill_node, 1);
 
@@ -3245,9 +3221,7 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
   AddNodeAttr("T", dtypes, &ndef);
   // TF meta-optimizer should skip this node for constant folding.
   AddNodeAttr("_tpu_avoid_constant_fold", "not_used", &ndef);
-  Status s;
-  Node* id_node = graph->AddNode(ndef, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * id_node, graph->AddNode(ndef));
   id_node->set_assigned_device_name(host_cpu_device);
 
   for (int64_t i = 0; i < variable_reads.size(); ++i) {
@@ -3473,9 +3447,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
         strings::StrCat(compile_node->name(), "/", "tpu_release_multilock")));
     lock_def.set_op("ConsumeTpuMultilock");
     MergeDebugInfo(NodeDebugInfo(replicate_node.def()), &lock_def);
-    Status status;
-    Node* multilock_release = graph->AddNode(lock_def, &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(Node * multilock_release, graph->AddNode(lock_def));
     multilock_release->set_assigned_device_name(
         compile_node->assigned_device_name());
     TF_RET_CHECK(multilock_acquire != nullptr);
@@ -3541,13 +3513,20 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
     AddNodeAttr("Targs", core_arg_types, &def);
     AddNodeAttr("Tresults", core_retval_types, &def);
 
+    // If the producer name was set during inference, propagate the information
+    // to the TPUExecute op so it can be accessed during metric collection.
+    std::string producer_name;
+    Status status =
+        GetNodeAttr(replicate_node.attrs(), "_producer_name", &producer_name);
+    if (status.ok()) {
+      AddNodeAttr("_producer_name", producer_name, &def);
+    }
+
     for (int64_t replica = 0; replica < params_info.NumReplicas(); ++replica) {
       def.set_name(strings::StrCat(replicate_node.name(), "/_execute_", replica,
                                    "_", core));
 
-      Status status;
-      Node* node = graph->AddNode(def, &status);
-      if (!status.ok()) return status;
+      TF_ASSIGN_OR_RETURN(Node * node, graph->AddNode(def));
       execute_nodes[replica].push_back(node);
 
       node->set_assigned_device_name(tpu_device_names[replica][core]);
@@ -3986,10 +3965,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
     // LoopCond nodes in one frame.
     TF_RETURN_IF_ERROR(
         AddPrefixAndSuffixToNode("" /* prefix */, suffix, &image_def));
-    Status status;
-    Node* image = graph->AddNode(image_def, &status);
+    TF_ASSIGN_OR_RETURN(Node * image, graph->AddNode(image_def));
     image->AddAttr(kXlaReplicaIdAttrName, replica_index);
-    TF_RETURN_IF_ERROR(status);
     if (HasNodeAttr(image->def(), kXlaHasHostTransferAttrName)) {
       TF_RETURN_IF_ERROR(
           SetNodeDeviceForTPUCommunication(tpu_device, DEVICE_CPU, image));
@@ -4670,11 +4647,9 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
   // have been to have each execute op check and return an error.
   def.set_op("TPUCompileSucceededAssert");
   MergeDebugInfo(NodeDebugInfo(replicate_node->def()), &def);
-  Status status;
-  Node* compile_succeeded = graph->AddNode(def, &status);
+  TF_ASSIGN_OR_RETURN(Node * compile_succeeded, graph->AddNode(def));
   compile_succeeded->set_assigned_device_name(
       compile_node->assigned_device_name());
-  TF_RETURN_IF_ERROR(status);
   graph->AddEdge(compile_node, 0, compile_succeeded, 0);
 
   Node* last_node_before_sequencer = compile_succeeded;
@@ -4715,9 +4690,7 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
     lock_def.set_op("TpuMultilock");
     AddNodeAttr("lock_list", devices_to_lock, &lock_def);
     MergeDebugInfo(NodeDebugInfo(replicate_node->def()), &lock_def);
-    Status status;
-    *multilock_acquire = graph->AddNode(lock_def, &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(*multilock_acquire, graph->AddNode(lock_def));
     (*multilock_acquire)
         ->set_assigned_device_name(compile_node->assigned_device_name());
     graph->AddControlEdge(compile_succeeded, *multilock_acquire);

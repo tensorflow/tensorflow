@@ -20,12 +20,12 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 #if BEF_THUNKS
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_tfrt_gpu.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
@@ -242,6 +242,13 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
     return Thunk::Kind::kTriangularSolve;
   }
+  if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvBackwardInputOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvBackwardFilterOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvForwardFusedOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvForwardFusedSideInputOp>(op)) {
+    return Thunk::Kind::kConvolution;
+  }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
 }
@@ -267,7 +274,7 @@ static StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
         // Create core runtime.
         auto expected_core_runtime = tfrt::CoreRuntime::Create(
             [](const tfrt::DecodedDiagnostic& diag) {
-              LOG(ERROR) << diag.message;
+              LOG(ERROR) << tfrt::StrCat(diag);
             },
             tfrt::CreateMallocAllocator(), std::move(work_queue),
             kDefaultHostDeviceName);
@@ -468,11 +475,13 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
 }
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
-CreateDefaultExecutionContext() {
+CreateDefaultExecutionContext(
+    tfrt::ResourceContext* resource_context = nullptr) {
   return CreateExecutionContext(
       [](tfrt::RequestContextBuilder& request_context_builder) {
         return Status::OK();
-      });
+      },
+      resource_context);
 }
 
 #if XLA_ENABLE_XCCL
@@ -621,7 +630,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 #endif  // XLA_ENABLE_XCCL
   if (!exec_ctx) {
-    if (kind() == Thunk::kKernel) {
+    if (kind() == Thunk::kKernel || kind() == Thunk::kConvolution) {
       tensorflow::mutex_lock lock(mutex_);
       using AsyncStreamRef = tfrt::AsyncValueRef<tfrt::gpu::GpuStream>;
       CUcontext context = static_cast<AsyncStreamRef>(stream)->context()->get();
@@ -630,8 +639,13 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
         it = resource_contexts_.emplace_hint(it, context,
                                              new tfrt::ResourceContext());
       }
-      TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
-                                        gpu_module_data_, it->second.get()));
+      if (kind() == Thunk::kKernel) {
+        TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
+                                          gpu_module_data_, it->second.get()));
+      } else {  // kind() == Thunk::kConvolution
+        TF_ASSIGN_OR_RETURN(exec_ctx,
+                            CreateDefaultExecutionContext(it->second.get()));
+      }
     } else {
       TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
     }
@@ -676,7 +690,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Report error if any.
   if (auto* error = result->GetErrorIfPresent())
-    return tensorflow::errors::Internal(error->message);
+    return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
   return Status::OK();
 }

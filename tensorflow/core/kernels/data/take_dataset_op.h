@@ -42,6 +42,9 @@ class TakeDataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
 
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override;
+
   Status CheckExternalState() const override;
 
  protected:

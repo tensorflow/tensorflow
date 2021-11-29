@@ -90,6 +90,9 @@ class FlexDelegate : public SimpleDelegateInterface {
                                     TfLiteTensor* output);
 
   flex::DelegateData delegate_data_;
+
+  // Pointer to the base TfLiteDelegate which is created from the Create call.
+  TfLiteDelegate* base_delegate_ = nullptr;
 };
 
 }  // namespace tflite

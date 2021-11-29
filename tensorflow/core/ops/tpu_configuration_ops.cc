@@ -170,6 +170,9 @@ REGISTER_OP("_InitializeHostForDistributedTPU")
     .Input("input: string")
     .Output("tpu_ids: int32")
     .Attr("enable_whole_mesh_compilations: bool = false")
+    // Available values: 0 (unset), 1 (enabled) or 2 (disabled).
+    // This attribute is ignored in non-TFRT TPU runtime.
+    .Attr("tpu_cancellation_closes_chips: int = 0")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
@@ -226,5 +229,7 @@ REGISTER_OP("ConfigureTPUEmbedding")
 
 REGISTER_OP("IsTPUEmbeddingInitialized")
     .Output("is_tpu_embedding_initialized: bool")
+    .Attr("config: string = ''")
+    .SetDoNotOptimize()
     .SetShapeFn(shape_inference::ScalarShape);
 }  // end namespace tensorflow

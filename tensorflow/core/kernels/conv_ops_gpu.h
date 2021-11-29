@@ -132,7 +132,7 @@ AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
                           const se::dnn::OpRunner<Sig>* no_scratch_fallback) {
   const se::dnn::OpRunner<Sig>* selected_runner = primary;
 
-  TF_ASSIGN_OR_RETURN(auto workspace_size, selected_runner->GetWorkspaceSize());
+  auto workspace_size = selected_runner->GetWorkspaceSize();
 
   se::DeviceMemoryBase scratch_memory;
   if (workspace_size > 0) {
@@ -140,9 +140,7 @@ AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
     if (scratch_or.ok()) {
       scratch_memory = scratch_or.ValueOrDie();
     } else if ((selected_runner = no_scratch_fallback)) {
-      TF_ASSIGN_OR_RETURN(auto no_scratch_workspace_size,
-                          selected_runner->GetWorkspaceSize());
-      if (no_scratch_workspace_size > 0) {
+      if (selected_runner->GetWorkspaceSize() > 0) {
         return errors::Internal(
             "No-scratch fallback runner requires nonzero scratch space");
       }

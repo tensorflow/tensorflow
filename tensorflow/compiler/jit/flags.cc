@@ -34,6 +34,8 @@ XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
 IntroduceFloatingPointJitterPassFlags* jitter_flags;
 MlirCommonFlags* mlir_flags;
+CpuRtFlags* cpurt_flags;
+std::vector<Flag>* cpurt_flag_list;
 
 std::vector<Flag>* flag_list;
 absl::once_flag flags_init;
@@ -131,6 +133,15 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            "Disable resource variables related safety checks when clustering "
            "(this is unsound).")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
+}
+
+void AllocateAndParseCpurtFlags() {
+  cpurt_flags = new CpuRtFlags;
+  cpurt_flags->vectorize = false;
+  cpurt_flag_list = new std::vector<Flag>({
+      Flag("vectorize", &cpurt_flags->vectorize, ""),
+  });
+  xla::ParseFlagsFromEnvAndDieIfUnknown("TF_CPURT_FLAGS", *cpurt_flag_list);
 }
 
 void AllocateAndParseFlags() {
@@ -273,6 +284,21 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
+
+  AllocateAndParseCpurtFlags();
+}
+
+void ResetFlags() {
+  delete build_ops_flags;
+  delete mark_for_compilation_flags;
+  delete device_flags;
+  delete ops_flags;
+  delete jitter_flags;
+  delete mlir_flags;
+  delete flag_list;
+  delete cpurt_flags;
+  delete cpurt_flag_list;
+  AllocateAndParseFlags();
 }
 
 }  // namespace
@@ -313,15 +339,11 @@ MlirCommonFlags* GetMlirCommonFlags() {
   return mlir_flags;
 }
 
-void ResetMlirCommonFlags() {
-  delete build_ops_flags;
-  delete mark_for_compilation_flags;
-  delete device_flags;
-  delete ops_flags;
-  delete jitter_flags;
-  delete mlir_flags;
-  delete flag_list;
-  AllocateAndParseFlags();
+void ResetMlirCommonFlags() { ResetFlags(); }
+
+const CpuRtFlags& GetCpuRtFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return *cpurt_flags;
 }
 
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(

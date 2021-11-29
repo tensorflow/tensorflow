@@ -76,7 +76,7 @@ class EigTest(test.TestCase):
     # zero.
     matrix = np.genfromtxt(
         test.test_src_dir_path(
-            "python/kernel_tests/testdata/"
+            "python/kernel_tests/linalg/testdata/"
             "self_adjoint_eig_fail_if_denorms_flushed.txt")).astype(np.float32)
     self.assertEqual(matrix.shape, (32, 32))
     matrix_tensor = constant_op.constant(matrix)

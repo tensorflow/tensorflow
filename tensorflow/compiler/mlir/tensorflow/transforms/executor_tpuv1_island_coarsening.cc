@@ -340,7 +340,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
     assert(!funcs_for_cluster->second.empty());
     if (funcs_for_cluster->second.size() == 1) return false;
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>();
+      auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
       if (!symbol_ref) continue;
       FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
       if (!callee) continue;

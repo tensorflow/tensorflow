@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
@@ -131,6 +132,9 @@ Status XlaGpuDeviceFactory::CreateDevices(
     options.compilation_device_name = DEVICE_GPU_XLA_JIT;
     options.use_multiple_streams = true;
     options.allowed_devices = gpu_ids;
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
+        UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+    options.shape_determination_fns = {shape_representation_fns};
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 
     Status status = device->UseGpuDeviceInfo();

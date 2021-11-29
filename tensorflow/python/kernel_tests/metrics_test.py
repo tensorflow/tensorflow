@@ -18,7 +18,6 @@ import functools
 import math
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
@@ -639,7 +638,7 @@ class AccuracyTest(test.TestCase):
       accuracy, update_op = metrics.accuracy(labels, predictions)
 
       self.evaluate(variables.local_variables_initializer())
-      for _ in xrange(3):
+      for _ in range(3):
         self.evaluate(update_op)
       self.assertEqual(0.5, self.evaluate(update_op))
       self.assertEqual(0.5, self.evaluate(accuracy))
@@ -739,7 +738,7 @@ class AccuracyTest(test.TestCase):
       accuracy, update_op = metrics.accuracy(labels, predictions, weights)
 
       self.evaluate(variables.local_variables_initializer())
-      for _ in xrange(3):
+      for _ in range(3):
         self.evaluate(update_op)
       self.assertEqual(1.0, self.evaluate(update_op))
       self.assertEqual(1.0, self.evaluate(accuracy))
@@ -2174,7 +2173,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
     precision_ex1 = (0.0 / 1, 1.0 / 2, 1.0 / 3, 2.0 / 4)
     avg_precision_ex1 = (0.0 / 1, precision_ex1[1] / 2, precision_ex1[1] / 3,
                          (precision_ex1[1] + precision_ex1[3]) / 4)
-    for i in xrange(4):
+    for i in range(4):
       k = i + 1
       self._test_precision_at_k(
           predictions, labels, k, expected=precision_ex1[i])
@@ -2192,7 +2191,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
     precision_ex2 = (0.0 / 1, 0.0 / 2, 1.0 / 3, 2.0 / 4)
     avg_precision_ex2 = (0.0 / 1, 0.0 / 2, precision_ex2[2] / 3,
                          (precision_ex2[2] + precision_ex2[3]) / 4)
-    for i in xrange(4):
+    for i in range(4):
       k = i + 1
       self._test_precision_at_k(
           predictions, labels, k, expected=precision_ex2[i])
@@ -2211,7 +2210,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
         (ex1 + ex2) / 2
         for ex1, ex2 in zip(avg_precision_ex1, avg_precision_ex2)
     ]
-    for i in xrange(4):
+    for i in range(4):
       k = i + 1
       predictions_idx = (predictions_idx_ex1[:k], predictions_idx_ex2[:k])
       self._test_precision_at_k(
@@ -2228,7 +2227,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
         (weights[0] * ex1 + weights[1] * ex2) / (weights[0] + weights[1])
         for ex1, ex2 in zip(avg_precision_ex1, avg_precision_ex2)
     ]
-    for i in xrange(4):
+    for i in range(4):
       k = i + 1
       self._test_average_precision_at_k(
           predictions,
@@ -2248,7 +2247,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
     precision_ex1 = (0.0 / 1, 1.0 / 2, 1.0 / 3, 2.0 / 4)
     avg_precision_ex1 = (0.0 / 1, precision_ex1[1] / 2, precision_ex1[1] / 3,
                          (precision_ex1[1] + precision_ex1[3]) / 4)
-    for i in xrange(4):
+    for i in range(4):
       k = i + 1
       self._test_precision_at_k(
           predictions, labels, k, expected=precision_ex1[i])
@@ -2273,7 +2272,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
         (1.0 / 1, 1.0 / 1, 1.0 / 1, 1.0 / 1))
     mean_avg_precision_ex1 = np.mean(avg_precision_ex1, axis=0)
     for labels in (sparse_labels, dense_labels):
-      for i in xrange(4):
+      for i in range(4):
         k = i + 1
         self._test_precision_at_k(
             predictions, labels, k, expected=mean_precision_ex1[i])
@@ -2879,7 +2878,7 @@ class MultiLabel3dRecallAtKTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_3d_ignore_all(self):
-    for class_id in xrange(10):
+    for class_id in range(10):
       self._test_recall_at_k(
           self._predictions, self._labels, k=5, expected=NAN, class_id=class_id,
           weights=[[0], [0]])

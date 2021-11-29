@@ -93,6 +93,7 @@ cc_library(
     ],
     copts = tf_copts(),
     deps = [
+        ":trt_parameters",
         ":trt_resources",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:direct_session",
@@ -281,6 +282,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:resource_variable_ops",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -357,6 +359,7 @@ tf_cuda_library(
         ":trt_logging",
         ":utils",
         ":trt_allocator",
+        ":trt_parameters",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
@@ -397,6 +400,21 @@ tf_custom_op_py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resources",
     ],
+)
+
+tf_cuda_library(
+    name = "trt_parameters",
+    srcs = ["convert/trt_parameters.cc"],
+    hdrs = [
+        "convert/trt_parameters.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":utils",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_cuda_library(
@@ -517,6 +535,7 @@ tf_cuda_library(
         "convert/op_converter.h",
     ],
     deps = [
+        ":trt_parameters",
         ":trt_weights",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -572,6 +591,7 @@ tf_cuda_library(
         ":logger_registry",
         ":segment",
         ":trt_allocator",
+        ":trt_parameters",
         ":trt_plugins",
         ":trt_logging",
         ":trt_resources",
@@ -645,6 +665,7 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = [
         "convert/convert_nodes_test.cc",
+        "convert/op_converter_test.cc",
     ],
     tags = [
         "no_cuda_on_cpu_tap",
@@ -717,6 +738,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",

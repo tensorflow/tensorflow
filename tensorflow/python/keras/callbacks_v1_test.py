@@ -82,8 +82,6 @@ class TestTensorBoardV1(test.TestCase, parameterized.TestCase):
       model.add(
           layers.Dense(
               NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      # non_trainable_weights: moving_variance, moving_mean
-      model.add(layers.BatchNormalization())
       model.add(layers.Dense(NUM_CLASSES, activation='softmax'))
       model.compile(
           loss='categorical_crossentropy',
@@ -276,8 +274,6 @@ class TestTensorBoardV1(test.TestCase, parameterized.TestCase):
       model.add(
           layers.Dense(
               NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      # non_trainable_weights: moving_variance, moving_mean
-      model.add(layers.BatchNormalization())
       model.add(layers.Dense(NUM_CLASSES, activation='softmax'))
       model.compile(
           loss='categorical_crossentropy',

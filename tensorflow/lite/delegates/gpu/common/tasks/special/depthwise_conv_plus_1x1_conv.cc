@@ -277,8 +277,13 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
       return good_dw && good_conv && recommended_dw && recommended_conv;
     }
   } else if (gpu_info.IsMali()) {
-    if (gpu_info.mali_info.IsValhallGen2() &&
-        definition.precision == CalculationsPrecision::F16 &&
+    if (!gpu_info.mali_info.IsValhall()) {
+      return false;
+    }
+    if (gpu_info.mali_info.IsValhallGen1()) {
+      return false;
+    }
+    if (definition.precision == CalculationsPrecision::F16 &&
         definition.src_tensors[0].SupportsZeroClamp(Axis::WIDTH) &&
         definition.src_tensors[0].SupportsZeroClamp(Axis::HEIGHT)) {
       bool recommended_dw = dw_shape.i <= 16 &&

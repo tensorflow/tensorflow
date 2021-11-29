@@ -325,6 +325,13 @@ Below is the list of currently supported floating-point operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `TRANSPOSE_CONV`
+
+* Input, filter, bias (if present) and output tensors must be in 32-bit
+  floating-point format.
+* Output size, filter and bias (if present) must be static (use
+  `kTfLiteMmapRo` allocation type).
+
 ### Quantized Operators
 
 By default, quantized inference in XNNPACK delegate is disabled, and XNNPACK is
@@ -407,11 +414,24 @@ Below is the list of currently supported quantized operators:
   (use `kTfLiteMmapRo` allocation type).
 * The numbers of padding elements must be non-negative.
 
+#### `RESIZE_BILINEAR`
+
+* The first input and the output must be 4D tensors in 8-bit quantized format.
+* The second input (the input with the new shape specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
+
 #### `SUB`
 
 * Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `TRANSPOSE_CONV`
+
+* Input, filter, and output tensors must be in 8-bit quantized format (bias, if
+  present, must be in 32-bit quantized format).
+* Output size, filter and bias (if present) must be static (use
+  `kTfLiteMmapRo` allocation type).
 
 ### Sparse Inference
 

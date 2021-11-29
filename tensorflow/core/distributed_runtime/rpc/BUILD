@@ -45,6 +45,8 @@ cc_library(
     hdrs = ["grpc_util.h"],
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
+        "//tensorflow/core/distributed_runtime:error_payloads",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core:lib",
         # Required to be able to overload TensorResponse parsing.
         "//tensorflow/core/distributed_runtime:tensor_coding",
@@ -171,7 +173,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache_partial",
         "//tensorflow/core/distributed_runtime:worker_interface",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_client",
-        "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_client_impl",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "//tensorflow/core/util:env_var",
     ],
@@ -522,6 +523,8 @@ tf_cc_test(
     ],
     deps = [
         ":grpc_util",
+        "//tensorflow/core/distributed_runtime:error_payloads",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:worker_proto_cc",

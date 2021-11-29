@@ -55,60 +55,50 @@ bool HasReplicatedSharding(const HloSharding& sharding) {
   return sharding.IsReplicated();
 }
 
-HloInstruction* CreateConstant(const Shape& shape, Literal value,
-                               SpmdBuilder* b) {
+static HloInstruction* CreateConstantBase(
+    const Shape& shape, Literal value, SpmdBuilder* b,
+    Literal (*literal_creator)(Literal, PrimitiveType)) {
   if (shape.IsTuple()) {
     std::vector<HloInstruction*> elements;
     for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      elements.push_back(CreateConstant(
-          ShapeUtil::GetTupleElementShape(shape, i), value.Clone(), b));
+      elements.push_back(
+          CreateConstantBase(ShapeUtil::GetTupleElementShape(shape, i),
+                             value.Clone(), b, literal_creator));
     }
     return b->AddInstruction(HloInstruction::CreateTuple(elements));
   }
 
-  CHECK(
-      ShapeUtil::IsScalarWithElementType(value.shape(), shape.element_type()));
-  auto c = b->AddInstruction(HloInstruction::CreateConstant(std::move(value)));
+  if (shape.IsToken()) {
+    return b->AddInstruction(HloInstruction::CreateToken());
+  }
+  auto c = b->AddInstruction(HloInstruction::CreateConstant(
+      literal_creator(std::move(value), shape.element_type())));
+  if (shape.rank() == 0) {
+    return c;
+  }
   return b->AddInstruction(HloInstruction::CreateBroadcast(shape, c, {}));
 }
 
-HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
-  if (shape.IsTuple()) {
-    std::vector<HloInstruction*> elements;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      elements.push_back(
-          CreateZero(ShapeUtil::GetTupleElementShape(shape, i), b));
-    }
-    return b->AddInstruction(HloInstruction::CreateTuple(elements));
-  }
-
-  if (shape.IsToken()) {
-    return b->AddInstruction(HloInstruction::CreateToken());
-  }
-  auto zero = b->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
-  if (shape.rank() == 0) {
-    return zero;
-  }
-  return b->AddInstruction(HloInstruction::CreateBroadcast(shape, zero, {}));
+HloInstruction* CreateConstant(const Shape& shape, Literal value,
+                               SpmdBuilder* b) {
+  auto identity = [](Literal value, PrimitiveType primitive_type) {
+    CHECK(ShapeUtil::IsScalarWithElementType(value.shape(), primitive_type));
+    return value;
+  };
+  return CreateConstantBase(shape, std::move(value), b, identity);
 }
 
+HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
+  auto zero = [](Literal /*unused*/, PrimitiveType primitive_type) {
+    return LiteralUtil::Zero(primitive_type);
+  };
+  return CreateConstantBase(shape, /*unused*/ Literal(), b, zero);
+}
 HloInstruction* CreateOne(const Shape& shape, SpmdBuilder* b) {
-  if (shape.IsTuple()) {
-    std::vector<HloInstruction*> elements;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      elements.push_back(
-          CreateOne(ShapeUtil::GetTupleElementShape(shape, i), b));
-    }
-    return b->AddInstruction(HloInstruction::CreateTuple(elements));
-  }
-
-  if (shape.IsToken()) {
-    return b->AddInstruction(HloInstruction::CreateToken());
-  }
-  auto one = b->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::One(shape.element_type())));
-  return b->AddInstruction(HloInstruction::CreateBroadcast(shape, one, {}));
+  auto one = [](Literal /*unused*/, PrimitiveType primitive_type) {
+    return LiteralUtil::One(primitive_type);
+  };
+  return CreateConstantBase(shape, /*unused*/ Literal(), b, one);
 }
 
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {

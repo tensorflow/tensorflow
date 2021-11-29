@@ -180,8 +180,6 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
 
-  TF_RETURN_IF_ERROR(tpu_program_group->LogCompilationStats(key, duration));
-
   return compile_status;
 }
 

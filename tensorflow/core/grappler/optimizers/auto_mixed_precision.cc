@@ -309,6 +309,9 @@ class NodeTypeAttrMap {
 
   TypeAttrId GetInputTypeAttr(const NodeDef& node, int port) const {
     DCHECK(is_initialized()) << "NodeTypeAttrMap is not initialized";
+    const auto iter = io2type_.find(&node);
+    DCHECK(iter != io2type_.end())
+        << "Node " << node.name() << " doesn't exist in a graph";
     auto type_vec = io2type_.at(&node).first;
     CHECK_GE(port, 0);                // Crash Ok
     CHECK_LT(port, type_vec.size());  // Crash Ok
@@ -1045,6 +1048,8 @@ class AutoMixedPrecisionImpl {
   void AddClearAndInferToAllowIfBetweenAllow(
       const absl::flat_hash_set<int>& deny_set,
       absl::flat_hash_set<int>* allow_set) const;
+  void AddInferToAllowIfFollowAllow(const absl::flat_hash_set<int>& deny_set,
+                                    absl::flat_hash_set<int>* allow_set) const;
   void PropagateAllowThroughClear(const absl::flat_hash_set<int>& deny_set,
                                   absl::flat_hash_set<int>* allow_set) const;
   Status ForceColorMatchOnRecurrentEdges(
@@ -1056,8 +1061,8 @@ class AutoMixedPrecisionImpl {
                         const string& device) const;
   StatusOr<NodeDef*> InsertCastNodeAtFanout(
       const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
-      const CastType& cast_type, NodeDef* node,
-      MutableGraphView::OutputPort& src);
+      const CastType& cast_type, MutableGraphView::OutputPort& src);
+
   StatusOr<DataType> GetCastToType(const NodeDef* node) const;
   void CollectOutputPorts(
       const TypeAttrId& type_attr, NodeDef* node,
@@ -1399,7 +1404,9 @@ Status AutoMixedPrecisionImpl::Optimize() {
   //    and clearlist ops), find those that are between (i.e., both upstream
   //    and downstream of) allow nodes, and add them to the allow_set.
   //    This is done to avoid unnecessary casts between allowlist ops.
-  // 4) For all remaining clearlist nodes, add them to the allow_set if they are
+  // 4) For the remaining inferlist nodes, add them to the allow_set if they
+  //    are immediate downstream of allow_set node.
+  // 5) For all remaining clearlist nodes, add them to the allow_set if they are
   //    connected to a node in the allow_set via other clearlist nodes.
   //    This is done to increase the number of ops in the allow_set without
   //    affecting numerical stability.
@@ -1429,16 +1436,21 @@ Status AutoMixedPrecisionImpl::Optimize() {
   AddClearAndInferToAllowIfBetweenAllow(deny_set, &allow_set);
   VLOG(2) << "Finished pass 3";
 
-  VLOG(2) << "Beginning pass 4 to propagate allow from allow nodes through "
-             "clearlist ops";
-  PropagateAllowThroughClear(deny_set, &allow_set);
+  VLOG(2) << "Beginning pass 4 to add infer list ops to allow if they "
+             "directly follow allow nodes";
+  AddInferToAllowIfFollowAllow(deny_set, &allow_set);
   VLOG(2) << "Finished pass 4";
 
-  VLOG(2) << "Beginning pass 5 to remove some nodes which could not be changed "
+  VLOG(2) << "Beginning pass 5 to propagate allow from allow nodes through "
+             "clearlist ops";
+  PropagateAllowThroughClear(deny_set, &allow_set);
+  VLOG(2) << "Finished pass 5";
+
+  VLOG(2) << "Beginning pass 6 to remove some nodes which could not be changed "
              "to F16"
              "from allow set";
   RemoveAllowsetWithFp32(&allow_set);
-  VLOG(2) << "Finished pass 5";
+  VLOG(2) << "Finished pass 6";
 
   VLOG(2) << "Forcing color match between data structure ops";
   for (const auto& cluster : tensor_list_clusters) {
@@ -1758,6 +1770,42 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
   }
 }
 
+// Set infer node to allow if its immediate upstream node is in allow set
+void AutoMixedPrecisionImpl::AddInferToAllowIfFollowAllow(
+    const absl::flat_hash_set<int>& deny_set,
+    absl::flat_hash_set<int>* allow_set) const {
+  // Currently only target for MKL
+  if (mode_ != AutoMixedPrecisionMode::MKL) {
+    return;
+  }
+  for (int item_idx = 0; item_idx < graph_type_view_.num_nodes(); ++item_idx) {
+    const NodeTypeId& item = *graph_type_view_.GetNode(item_idx);
+    if (!ShouldProcess(*item.node) || deny_set.count(item_idx) ||
+        allow_set->count(item_idx) || !f16_inferlist_.count(item.node->op()) ||
+        !IsFloat32(item) || !SupportsF16DataType(item)) {
+      continue;
+    }
+
+    bool has_allow_fanin = false;
+    for (const int fanin : graph_type_view_.GetFanin(item_idx)) {
+      if (deny_set.count(fanin)) {
+        has_allow_fanin = false;
+        break;
+      }
+      if (allow_set->count(fanin)) {
+        has_allow_fanin = true;
+      }
+    }
+    if (has_allow_fanin) {
+      bool inserted = allow_set->insert(item_idx).second;
+      if (VLOG_IS_ON(2) && inserted) {
+        VLOG(2) << "Painting type " << item.type_attr.DebugString() << " of "
+                << item.node->op() << " node " << item.node->name() << " ALLOW";
+      }
+    }
+  }
+}
+
 // If ops have one or more type_attr, But this type_attr could not be converted
 // to F16. Such as FusedBatchNormV2/FusedBatchNormV3, its type_attr 'U' only
 // support float. So we will remove this node from allow_set.
@@ -1950,8 +1998,7 @@ void AutoMixedPrecisionImpl::MakeCastsAllowIfAllOutputsAllow(
 //   AUTO: cast to a data type that matches the fanout data type
 StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
     const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
-    const CastType& cast_type, NodeDef* node,
-    MutableGraphView::OutputPort& src) {
+    const CastType& cast_type, MutableGraphView::OutputPort& src) {
   NodeDef* added_cast_node = nullptr;
   // Note: This is copied so that edges can be modified inside the loop.
   auto fanout = graph_view_.GetFanout(src);
@@ -1997,8 +2044,8 @@ StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
               << src.port_id;
       added_cast_node = graph_view_.AddNode(
           BuildCastNode(src, dst, to_f16, src.node->device()));
-      if (to_f16 && !IsConstant(*node) && !IsVariable(*node) &&
-          !NodeImplicitlyReadsNonResourceVariable(*node)) {
+      if (to_f16 && !IsConstant(*src.node) && !IsVariable(*src.node) &&
+          !NodeImplicitlyReadsNonResourceVariable(*src.node)) {
         ++num_nonvar_casts_to_f16_;
       }
     }
@@ -2036,7 +2083,7 @@ void AutoMixedPrecisionImpl::CollectOutputPorts(
 Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
     const absl::flat_hash_set<int>& allow_set) {
   int num_nodes_changed = 0;
-  int num_nodes_preop = graph_->node_size();
+  const int num_nodes_preop = graph_->node_size();
 
   bool emulate_f16 = false;
   if (mode_ == AutoMixedPrecisionMode::CPU) {
@@ -2070,26 +2117,25 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
           // For emulated fp16 op, we do not change the op type but instead
           // insert fp32 Cast at the fanin and fp16 Cast at the fanout
           for (int port_id : node_type_map_.GetInputPorts(*node, type_attr)) {
+            VLOG(2) << "Cast to F32 at fanin of node " << node->name() << ":"
+                    << port_id;
             MutableGraphView::InputPort dst(node, port_id);
             MutableGraphView::OutputPort src = graph_view_.GetRegularFanin(dst);
-            TF_ASSIGN_OR_RETURN(DataType cast_to_type, GetCastToType(src.node));
-            if (cast_to_type == DT_HALF) {
-              // This check is to guarantee that when a fp16 Cast op is followed
-              // by multiple emulated fp16 ops in the fanout, only a common f32
-              // cast is needed.
-              TF_RETURN_IF_ERROR(
-                  InsertCastNodeAtFanout(allow_set, /*src_is_allow=*/true,
-                                         CastType::FP32, node, src)
-                      .status());
-            }
+            NodeDef* added_cast_node = graph_view_.AddNode(
+                BuildCastNode(src, dst, /*to_f16=*/false, src.node->device()));
+            VLOG(1) << "Inserting cast to DT_FLOAT at " << src.node->op() << " "
+                    << src.node->name() << ":" << src.port_id;
+            TF_RETURN_IF_ERROR(graph_view_.UpdateRegularFaninByPort(
+                dst.node->name(), dst.port_id, {added_cast_node->name(), 0}));
           }
           // Cast to fp16 at outputs
           for (int port_id : node_type_map_.GetOutputPorts(*node, type_attr)) {
             MutableGraphView::OutputPort src(node, port_id);
-            TF_ASSIGN_OR_RETURN(
-                NodeDef * added_cast_node,
-                InsertCastNodeAtFanout(allow_set, src_is_allow, CastType::FP16,
-                                       node, src));
+            VLOG(2) << "Cast to F16 at fanout of node " << node->name() << ":"
+                    << port_id;
+            TF_ASSIGN_OR_RETURN(NodeDef * added_cast_node,
+                                InsertCastNodeAtFanout(allow_set, src_is_allow,
+                                                       CastType::FP16, src));
             if (added_cast_node != nullptr) {
               output_ports.emplace_back(added_cast_node, /*port_id=*/0);
             }
@@ -2108,12 +2154,13 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
         CollectOutputPorts(type_attr, node, output_ports);
       }
 
-      // Insert cast nodes at the outputs based on the required data type at
-      // fanouts.
+      // If the fanouts require a different data type from the output of the
+      // current node, insert a Cast op.
       for (auto output_port : output_ports) {
+        VLOG(2) << "Cast to required data type at fanout of node "
+                << output_port.node->name() << ":" << output_port.port_id;
         TF_RETURN_IF_ERROR(InsertCastNodeAtFanout(allow_set, src_is_allow,
-                                                  CastType::AUTO, node,
-                                                  output_port)
+                                                  CastType::AUTO, output_port)
                                .status());
       }
     }

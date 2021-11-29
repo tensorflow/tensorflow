@@ -250,12 +250,27 @@ class GpuSolver {
                       Scalar** A, int lda, int* dev_pivots, Scalar** B,
                       const int ldb, int* lapack_info, const int batch_count);
 
-  // Cholesky factorization
   // Computes the Cholesky factorization A = L * L^H for a single matrix.
   template <typename Scalar>
   Status Potrf(rocblas_fill uplo, int n, Scalar* dev_A, int lda,
                int* dev_lapack_info);
+  // Computes matrix inverses for a batch of small matrices. Uses the outputs
+  // from GetrfBatched.
+  template <typename Scalar>
+  Status GetriBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
+                      const int* dev_pivots,
+                      const Scalar* const host_a_inverse_dev_ptrs[], int ldainv,
+                      DeviceLapackInfo* dev_lapack_info, int batch_size);
 
+  // Computes matrix inverses for a batch of small matrices with size n < 32.
+  // Returns Status::OK() if the kernel was launched successfully. See:
+  template <typename Scalar>
+  Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
+                       const Scalar* const host_a_inverse_dev_ptrs[],
+                       int ldainv, DeviceLapackInfo* dev_lapack_info,
+                       int batch_size);
+
+  // Cholesky factorization
   // Computes the Cholesky factorization A = L * L^H for a batch of small
   // matrices.
   template <typename Scalar>
@@ -445,7 +460,7 @@ class GpuSolver {
   cudaStream_t cuda_stream_;
   cusolverDnHandle_t cusolver_dn_handle_;
   cublasHandle_t cublas_handle_;
-#else  // TENSORLFOW_USE_ROCM
+#else  // TENSORFLOW_USE_ROCM
   hipStream_t hip_stream_;
   rocblas_handle rocm_blas_handle_;
 #endif

@@ -95,10 +95,8 @@ Status XlaResource::SetTypeAndShape(DataType type, const TensorShape& shape) {
   }
   if (initialized() && type_ != type) {
     return errors::InvalidArgument(
-        "Type of resource ", name_,
-        " cannot be changed after initialization: "
-        "old type was ",
-        DataTypeString(type_), ", new type is ", DataTypeString(type),
+        "Trying to assign variable with wrong dtype. Expected ",
+        DataTypeString(type_), " got ", DataTypeString(type),
         DefinitionLocationMsg(definition_stack_trace_));
   }
   if (initialized() && shape_ != shape) {

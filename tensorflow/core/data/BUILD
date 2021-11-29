@@ -24,6 +24,8 @@ exports_files([
     "captured_function.h",
     "dataset_utils.cc",
     "dataset_utils.h",
+    "file_utils.cc",
+    "file_utils.h",
     "name_utils.cc",
     "name_utils.h",
     "rewrite_utils.cc",
@@ -428,6 +430,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "finalization_utils",
+    srcs = ["finalization_utils.cc"],
+    hdrs = ["finalization_utils.h"],
+    deps = [
+        ":root_dataset",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:refcount",
+    ],
+)
+
 tf_cc_test(
     name = "unbounded_thread_pool_test",
     size = "small",
@@ -438,4 +452,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+)
+
+cc_library(
+    name = "file_utils",
+    srcs = ["file_utils.cc"],
+    hdrs = ["file_utils.h"],
 )
