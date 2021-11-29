@@ -22,6 +22,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
+class DummyClass:
+  """Helps test Weakref deletion."""
+  pass
+
+
 class MockSubtypeOf2(function_trace_type.GenericType):
 
   def is_subtype_of(self, other):
@@ -42,14 +47,14 @@ class FunctionCacheTest(test.TestCase):
   def testConcreteFunctionDictRetainsInsertedKeys(self):
     cache = function_cache.FunctionCache()
 
-    key_1 = function_cache.make_cache_key(1)
+    key_1, deletion_observer_1 = function_cache.make_cache_key(1)
     self.assertIsNone(cache.lookup(key_1, False))
 
-    key_2 = function_cache.make_cache_key(2)
-    key_3 = function_cache.make_cache_key(3)
+    key_2, deletion_observer_2 = function_cache.make_cache_key(2)
+    key_3, _ = function_cache.make_cache_key(3)
 
-    cache.add(key_1, "test_1")
-    cache.add(key_2, "test_2")
+    cache.add(key_1, deletion_observer_1, "test_1")
+    cache.add(key_2, deletion_observer_2, "test_2")
 
     self.assertEqual(cache.lookup(key_1, False), "test_1")
     self.assertEqual(cache.lookup(key_2, False), "test_2")
@@ -58,12 +63,12 @@ class FunctionCacheTest(test.TestCase):
   def testClearRemovesAllConcreteFunctions(self):
     cache = function_cache.FunctionCache()
 
-    key_1 = function_cache.make_cache_key(1)
-    key_2 = function_cache.make_cache_key(2)
-    key_3 = function_cache.make_cache_key(3)
+    key_1, deletion_observer_1 = function_cache.make_cache_key(1)
+    key_2, deletion_observer_2 = function_cache.make_cache_key(2)
+    key_3, _ = function_cache.make_cache_key(3)
 
-    cache.add(key_1, "test_1")
-    cache.add(key_2, "test_2")
+    cache.add(key_1, deletion_observer_1, "test_1")
+    cache.add(key_2, deletion_observer_2, "test_2")
 
     self.assertEqual(cache.lookup(key_1, False), "test_1")
     self.assertEqual(cache.lookup(key_2, False), "test_2")
@@ -77,17 +82,18 @@ class FunctionCacheTest(test.TestCase):
 
   def testDeleteRemovesConcreteFunctions(self):
     cache = function_cache.FunctionCache()
-    key_1 = function_cache.make_cache_key(1)
-    cache.add(key_1, "test_1")
+    key_1, deletion_observer_1 = function_cache.make_cache_key(1)
+    cache.add(key_1, deletion_observer_1, "test_1")
     self.assertEqual(cache.lookup(key_1, False), "test_1")
     cache.delete(key_1)
     self.assertIsNone(cache.lookup(key_1, False))
 
-    key_2 = MockSubtypeOf2(3)
-    cache.add(key_2, "test_2")
+    key_2 = function_cache.FunctionCacheKey(MockSubtypeOf2(2), None)
+    cache.add(key_2, function_trace_type.WeakrefDeletionObserver(),
+              "test_2")
     self.assertEqual(cache.lookup(key_2, False), "test_2")
 
-    key_3 = MockSubtypeOf2(2)
+    key_3 = function_cache.FunctionCacheKey(MockSubtypeOf2(3), None)
     self.assertEqual(cache.lookup(key_3, True), "test_2")
 
     cache.delete(key_2)
@@ -141,6 +147,46 @@ class FunctionCacheTest(test.TestCase):
         function_cache.FunctionCacheKey(MockSupertypes2With3(3), ctx))
     self.assertIsNone(key_a.most_specific_common_subtype([key_b]))
 
+  def testWeakRefDeletionAlsoDeletesConcreteFunction(self):
+    dummy_object = DummyClass()
+    key, deletion_observer = function_cache.make_cache_key(dummy_object)
+
+    cache = function_cache.FunctionCache()
+    cache.add(key, deletion_observer, "testing")
+    self.assertEqual(cache.lookup(key, False), "testing")
+
+    del dummy_object
+    self.assertIsNone(cache.lookup(key, False))
+
+  def testMultipleObjectsWeakRefDeletion(self):
+    dummy_object_1 = DummyClass()
+    dummy_object_2 = DummyClass()
+    key, deletion_observer = function_cache.make_cache_key(
+        (dummy_object_1, dummy_object_2))
+
+    cache = function_cache.FunctionCache()
+    cache.add(key, deletion_observer, "testing")
+    self.assertEqual(cache.lookup(key, False), "testing")
+
+    del dummy_object_1
+    self.assertIsNone(cache.lookup(key, False))
+
+    del dummy_object_2
+    self.assertIsNone(cache.lookup(key, False))
+
+  def testObjectDeletedDuringFunctionCallDoesntAddConcreteFunction(self):
+
+    def second(o):
+      return function_cache.make_cache_key(o)
+
+    def first():
+      return second(DummyClass())
+
+    key, deletion_observer = first()
+    cache = function_cache.FunctionCache()
+    cache.add(key, deletion_observer, "testing")
+    self.assertIsNone(cache.lookup(key, False))
+
 
 class FunctionCacheBenchmark(test.Benchmark):
 
@@ -160,7 +206,7 @@ class FunctionCacheBenchmark(test.Benchmark):
       keys.append(function_cache.make_cache_key(args))
 
     for key in keys[:-1]:
-      cache.add(key, "testing")
+      cache.add(*key, "testing")
 
     iterations = 10000
     subtyping_time = timeit.timeit(
@@ -199,7 +245,7 @@ class FunctionCacheBenchmark(test.Benchmark):
       keys.append(function_cache.make_cache_key(args))
 
     for key in keys:
-      cache.add(key, "testing")
+      cache.add(*key, "testing")
 
     iterations = 10000
     subtyping_time = timeit.timeit(
@@ -231,20 +277,23 @@ class FunctionCacheBenchmark(test.Benchmark):
     num_total_checks = 50
 
     keys = []
-    for i in range(num_total_checks-1):
+    for i in range(num_total_checks - 1):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
       keys.append(function_cache.make_cache_key(args))
 
     for key in keys:
-      cache.add(key, "testing")
-    cache.add(MockSubtypeOf2(3), "testing")
-    cache.lookup(MockSubtypeOf2(2), True)
+      cache.add(*key, "testing")
+    cache.add(
+        function_cache.FunctionCacheKey(MockSubtypeOf2(2), None),
+        function_trace_type.WeakrefDeletionObserver(), "testing")
+    cache.lookup(function_cache.FunctionCacheKey(MockSubtypeOf2(3), None), True)
 
     iterations = 10000
+    lookup_key = function_cache.FunctionCacheKey(MockSubtypeOf2(2), None)
     subtyping_time = timeit.timeit(
-        lambda: cache.lookup(MockSubtypeOf2(2), True), number=iterations)
+        lambda: cache.lookup(lookup_key, True), number=iterations)
 
     self.report_benchmark(
         name="cache_hit_50th_key_known_subtype",
@@ -264,7 +313,7 @@ class FunctionCacheBenchmark(test.Benchmark):
     num_total_checks = 50
 
     keys = []
-    for i in range(num_total_checks-1):
+    for i in range(num_total_checks - 1):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
@@ -273,15 +322,19 @@ class FunctionCacheBenchmark(test.Benchmark):
     def setup():
       cache.clear()
       for key in keys:
-        cache.add(key, "testing")
-      cache.add(MockSubtypeOf2(3), "testing")
+        cache.add(*key, "testing")
+      cache.add(
+          function_cache.FunctionCacheKey(MockSubtypeOf2(3), None),
+          function_trace_type.WeakrefDeletionObserver(), "testing")
 
     iterations = 10000
-    subtyping_time = sum(timeit.repeat(
-        stmt=lambda: cache.lookup(MockSubtypeOf2(2), True),
-        setup=setup,
-        repeat=iterations,
-        number=1))
+    lookup_key = function_cache.FunctionCacheKey(MockSubtypeOf2(2), None)
+    subtyping_time = sum(
+        timeit.repeat(
+            stmt=lambda: cache.lookup(lookup_key, True),
+            setup=setup,
+            repeat=iterations,
+            number=1))
 
     self.report_benchmark(
         name="cache_hit_50th_key_unknown_subtype",
@@ -291,6 +344,7 @@ class FunctionCacheBenchmark(test.Benchmark):
             "name": "cache_hit_50th_key_unknown_subtype_avg_ms",
             "value": subtyping_time / iterations * 1000
         }])
+
 
 if __name__ == "__main__":
   test.main()
