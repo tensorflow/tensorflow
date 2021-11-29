@@ -762,6 +762,126 @@ def tf_cc_shared_object(
             visibility = visibility,
         )
 
+# copybara:comment_begin(oss only)
+def tf_cc_shared_library(
+        name,
+        srcs = [],
+        static_deps = [],
+        deps = [],
+        data = [],
+        copts = [],
+        linkopts = lrt_if_needed(),
+        additional_linker_inputs = [],
+        linkstatic = True,
+        framework_so = tf_binary_additional_srcs(),
+        soversion = None,
+        per_os_targets = False,  # TODO(rostam): Should be deprecated.
+        win_def_file = None,
+        visibility = None):
+    """Configures the shared object file for TensorFlow."""
+    if soversion != None:
+        suffix = "." + str(soversion).split(".")[0]
+        longsuffix = "." + str(soversion)
+    else:
+        suffix = ""
+        longsuffix = ""
+
+    if per_os_targets:
+        names = [
+            (
+                pattern % (name, ""),
+                pattern % (name, suffix),
+                pattern % (name, longsuffix),
+            )
+            for pattern in SHARED_LIBRARY_NAME_PATTERNS
+        ]
+    else:
+        names = [(
+            name,
+            name + suffix,
+            name + longsuffix,
+        )]
+
+    for name_os, name_os_major, name_os_full in names:
+        # Windows DLLs cannot be versioned.
+        if name_os.endswith(".dll"):
+            name_os_major = name_os
+            name_os_full = name_os
+
+        if name_os != name_os_major:
+            native.genrule(
+                name = name_os + "_sym",
+                outs = [name_os],
+                srcs = [name_os_major],
+                output_to_bindir = 1,
+                cmd = "ln -sf $$(basename $<) $@",
+            )
+            native.genrule(
+                name = name_os_major + "_sym",
+                outs = [name_os_major],
+                srcs = [name_os_full],
+                output_to_bindir = 1,
+                cmd = "ln -sf $$(basename $<) $@",
+            )
+
+        soname = name_os_major.split("/")[-1]
+
+        data_extra = []
+        if framework_so != []:
+            data_extra = tf_binary_additional_data_deps()
+
+        cc_library_name = name_os_full + "_cclib"
+        cc_library(
+            name = cc_library_name,
+            srcs = srcs + framework_so,
+            deps = deps,
+            copts = copts,
+            linkstatic = linkstatic,
+            win_def_file = win_def_file,
+        )
+
+        cc_shared_library_name = name + "_ccsharedlib"
+        cc_shared_library(
+            name = cc_shared_library_name,
+            roots = [cc_library_name],
+            static_deps = static_deps,
+            data = data + data_extra,
+            shared_lib_name = name_os_full,
+            user_link_flags = linkopts + _rpath_user_link_flags(name_os_full) + select({
+                clean_dep("//tensorflow:ios"): [
+                    "-Wl,-install_name,@rpath/" + soname,
+                ],
+                clean_dep("//tensorflow:macos"): [
+                    "-Wl,-install_name,@rpath/" + soname,
+                ],
+                clean_dep("//tensorflow:windows"): [],
+                "//conditions:default": [
+                    "-Wl,-soname," + soname,
+                ],
+            }),
+            additional_linker_inputs = additional_linker_inputs,
+            visibility = visibility,
+        )
+        native.alias(
+            name = name_os_full,
+            actual = cc_shared_library_name,
+            visibility = visibility,
+        )
+
+    flat_names = [item for sublist in names for item in sublist]
+    if name not in flat_names:
+        native.filegroup(
+            name = name,
+            srcs = select({
+                clean_dep("//tensorflow:windows"): [":%s.dll" % (name)],
+                clean_dep("//tensorflow:macos"): [":lib%s%s.dylib" % (name, longsuffix)],
+                "//conditions:default": [":lib%s.so%s" % (name, longsuffix)],
+            }),
+            visibility = visibility,
+        )
+
+# copybara:comment_end
+
 # Links in the framework shared object
 # (//third_party/tensorflow:libtensorflow_framework.so) when not building
 # statically. Also adds linker options (rpaths) so that the framework shared
