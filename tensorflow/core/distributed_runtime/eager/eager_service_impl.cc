@@ -389,9 +389,9 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
 
-  TF_RETURN_IF_ERROR(env_->session_mgr->UpdateSession(
-      session_name, request->server_def(), request->cluster_device_attributes(),
-      true));
+  TF_RETURN_IF_ERROR(
+      env_->session_mgr->UpdateSession(session_name, request->server_def(),
+                                       request->cluster_device_attributes()));
 
   std::shared_ptr<WorkerSession> worker_session;
   TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(
