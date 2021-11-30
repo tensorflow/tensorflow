@@ -48,6 +48,16 @@ class WhileOutlinePass
  public:
   explicit WhileOutlinePass() {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-while-loop-outline";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Hoist while op regions into functions";
+  }
+
  private:
   void runOnOperation() override;
 
@@ -83,9 +93,10 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
   // F32 and BF16 types are allowed.
   if (elemType.isBF16() || elemType.isF32()) return true;
 
-  // I1, I16, I32, I64 types are allowed.
-  if (elemType.isInteger(1) || elemType.isInteger(16) ||
-      elemType.isInteger(32) || elemType.isInteger(64))
+  // I1, I8 I16, I32, I64 types are allowed.
+  if (elemType.isInteger(1) || elemType.isInteger(8) ||
+      elemType.isInteger(16) || elemType.isInteger(32) ||
+      elemType.isInteger(64))
     return true;
 
   // Complex<F<32>> is allowed.
@@ -286,8 +297,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass() {
   return std::make_unique<WhileOutlinePass>();
 }
 
-static PassRegistration<WhileOutlinePass> pass(
-    "tfl-while-loop-outline", "Hoist while op regions into functions");
+static PassRegistration<WhileOutlinePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

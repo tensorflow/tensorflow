@@ -48,13 +48,13 @@ class StringUpperOp : public OpKernel {
     const auto input = input_tensor->flat<tstring>();
     auto output = output_tensor->flat<tstring>();
     if (encoding_.empty()) {
-      for (int64 i = 0; i < input.size(); ++i) {
+      for (int64_t i = 0; i < input.size(); ++i) {
         StringPiece entry(input(i));
         output(i) = absl::AsciiStrToUpper(entry);
       }
     } else {
       // The validation of utf-8 has already been done in GetAttr above.
-      for (int64 i = 0; i < input.size(); ++i) {
+      for (int64_t i = 0; i < input.size(); ++i) {
         icu::UnicodeString us(input(i).c_str(), "UTF-8");
         us.toUpper();
         us.toUTF8String(output(i));

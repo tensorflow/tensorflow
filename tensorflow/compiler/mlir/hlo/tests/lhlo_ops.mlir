@@ -32,6 +32,19 @@ func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf16>) {
 
 // -----
 
+// CHECK-LABEL: func @reduce_scatter
+func @reduce_scatter(%data: memref<4x16xf32>, %result:memref<4x4xf32>) {
+  "lmhlo.reduce_scatter"(%data, %result) ( {
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (memref<4x16xf32>, memref<4x4xf32>) -> ()
+  return
+}
+// -----
+
 // CHECK-LABEL: func @mixed_types_allgather
 func @mixed_types_allgather(%a0: memref<1x1xf32>, %a1:memref<1x1xi32>) {
   "lmhlo.all_gather"(%a0, %a1, %a0, %a1) {all_gather_dimension = 0 : i64,
@@ -167,170 +180,6 @@ func @convert_memref(%in: memref<10xf32>, %out: memref<9xi32>) -> () {
   // expected-error@+1{{requires the same shape for all operands}}
   "lmhlo.convert"(%in, %out) : (memref<10xf32>, memref<9xi32>) -> ()
   return
-}
-
-// -----
-
-// CHECK-LABEL: func @convolution
-// CHECK: lmhlo.convolution
-// CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  "lmhlo.convolution"(%arg0, %arg1, %arg2) {batch_group_count = 1 : i64,
-    dimension_numbers = {input_batch_dimension = 0 : i64,
-                         input_feature_dimension = 3 : i64,
-                         input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
-                         kernel_input_feature_dimension = 2 : i64,
-                         kernel_output_feature_dimension = 3 : i64,
-                         kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
-                         output_batch_dimension = 0 : i64,
-                         output_feature_dimension = 3 : i64,
-                         output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>},
-    feature_group_count = 1 : i64,
-    padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
-    rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
-    window_strides = dense<[2, 1]> : tensor<2xi64>}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()
-  return
-}
-
-// -----
-
-// CHECK-LABEL: func @convolution
-// CHECK: lmhlo.convolution
-// CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
-// CHECK-SAME{LITERAL}: window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
-     window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-}
-
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+2{{Unexpected dimension c, expecting b, f}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [c, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
-       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
-       rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
-       window_strides = dense<[2, 1]> : tensor<2xi64>}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-  return
-}
-
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+2{{Unexpected dimension b, expecting i, o}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1, f]x[0, 1, b, o]->[b, 0, 1, f]
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
-       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
-       rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
-       window_strides = dense<[2, 1]> : tensor<2xi64>}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-  return
-}
-
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+2{{Unexpected dimension i, expecting o}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1, f]x[0, 1, i, i]->[b, 0, 1, f]
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
-       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
-       rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
-       window_strides = dense<[2, 1]> : tensor<2xi64>}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-  return
-}
-
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+2{{Expected dimensions f not specified}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1]x[0, 1, i, o]->[b, 0, 1, f]
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
-       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
-       rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
-       window_strides = dense<[2, 1]> : tensor<2xi64>}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-  return
-}
-
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+2{{Unexpected keyword b}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1, f]x[0, 1, i, o, b]->[b, 0, 1, f]
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
-       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
-       rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
-       window_strides = dense<[2, 1]> : tensor<2xi64>}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-  return
-}
-
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+2{{expected '['}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = {b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
-       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
-       rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
-       window_strides = dense<[2, 1]> : tensor<2xi64>}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-  return
-}
-
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+3{{Expected array with2 elements, got 3 elements instead}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
-     window = {stride = [2, 1], pad = [[0, 1, 2], [0, 1]], rhs_dilate = [1, 2]}
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-}
-
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+3{{Unexpected keyword stide}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
-     window = {stide = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-}
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+3{{expected integer value}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
-     window = {stride = [2, b], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
-}
-// -----
-
-func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+3{{Unexpected keyword stride}}
-  lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
-     window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2], stride=[2,1]}
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
-  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
 }
 
 // -----
@@ -630,10 +479,10 @@ func @reduce_memref(%input: memref<10xf32>, %init: memref<f32>, %out: memref<1xf
 // CHECK-LABEL: func @fusion_memref
 func @fusion_memref(%input1: memref<10xf32>, %input2: memref<10xf32>, %input3: memref<10xf32>, %out: memref<10xf32>) -> () {
   "lmhlo.fusion"() ( {
-    %0 = memref.tensor_load %input1 : memref<10xf32>
-    %1 = memref.tensor_load %input2 : memref<10xf32>
+    %0 = bufferization.to_tensor %input1 : memref<10xf32>
+    %1 = bufferization.to_tensor %input2 : memref<10xf32>
     %2 = "mhlo.add"(%0, %1) {name = "add"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-    %3 = memref.tensor_load %input3 : memref<10xf32>
+    %3 = bufferization.to_tensor %input3 : memref<10xf32>
     %4 = "mhlo.multiply"(%2, %3) {name = "multiply"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
     memref.tensor_store %4, %out : memref<10xf32>
     "lmhlo.terminator"() : () -> ()
@@ -1109,12 +958,12 @@ func @scatter_memrefs(%input: memref<200x100x300xf32>, %indices: memref<10x2xi32
     %add = mhlo.add %lhs, %rhs : tensor<f32>
     "mhlo.return"(%add) : (tensor<f32>) -> ()
   }) {
-    scatter_dimension_numbers = {
-      update_window_dims = dense<[1]> : tensor<1xi64>,
-      inserted_window_dims = dense<[0, 1]> : tensor<2xi64>,
-      scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
-      index_vector_dim = 1 : i64
-    },
+    scatter_dimension_numbers = #mhlo.scatter<
+      inserted_window_dims = [0, 1],
+      index_vector_dim = 1,
+      update_window_dims = [1],
+      scatter_dims_to_operand_dims = [0, 1],
+    >,
     indices_are_sorted = true,
     unique_indices = true
   } : (memref<200x100x300xf32>, memref<10x2xi32>, memref<10x300xf32>, memref<200x100x300xf32>) -> ()

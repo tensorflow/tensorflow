@@ -185,6 +185,10 @@ There are two ways to run TensorFlow unit tests.
     Once you have the packages installed, you can run a specific unit test in
     bazel by doing as follows:
 
+    ```bash
+    export flags="--config=opt -k"
+    ```
+
     If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
     the `cuda` option flag
 
@@ -206,6 +210,23 @@ There are two ways to run TensorFlow unit tests.
     bazel test ${flags} tensorflow/python/kernel_tests:softmax_op_test
     ```
 
+    For a single/parametrized test e.g. `test_capture_variables` in
+    `tensorflow/python/saved_model/load_test.py`:
+
+    (Requires `python>=3.7`)
+
+    ```bash
+    bazel test ${flags} //tensorflow/python/saved_model:load_test --test_filter=*LoadTest.test_capture_variables*
+    ```
+
+    **Note:** You can add `--test_sharding_strategy=disabled` to the `flags` to
+    disable the sharding so that all the test outputs are in one file. However,
+    it may slow down the tests for not running in parallel and may cause the
+    test to timeout but it could be useful when you need to execute a single
+    test or more in general your filtered/selected tests have a very low
+    execution time and the sharding
+    [could create an overhead on the test esecution](https://github.com/bazelbuild/bazel/issues/2113#issuecomment-264054799).
+
 2.  Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 
     ```bash
@@ -216,3 +237,66 @@ There are two ways to run TensorFlow unit tests.
     See
     [TensorFlow Builds](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build)
     for details.
+
+#### Running doctest for testable docstring
+
+There are two ways to test the code in the docstring locally:
+
+1.  If you are only changing the docstring of a class/function/method, then you
+    can test it by passing that file's path to
+    [tf_doctest.py](https://www.tensorflow.org/code/tensorflow/tools/docs/tf_doctest.py).
+    For example:
+
+    ```bash
+    python tf_doctest.py --file=<file_path>
+    ```
+
+    This will run it using your installed version of TensorFlow. To be sure
+    you're running the same code that you're testing:
+
+    *   Use an up to date [tf-nightly](https://pypi.org/project/tf-nightly/)
+        `pip install -U tf-nightly`
+    *   Rebase your pull request onto a recent pull from
+        [TensorFlow's](https://github.com/tensorflow/tensorflow) master branch.
+
+2.  If you are changing the code and the docstring of a class/function/method,
+    then you will need to
+    [build TensorFlow from source](https://www.tensorflow.org/install/source).
+    Once you are setup to build from source, you can run the tests:
+
+    ```bash
+    bazel run //tensorflow/tools/docs:tf_doctest
+    ```
+
+    or
+
+    ```bash
+    bazel run //tensorflow/tools/docs:tf_doctest -- --module=ops.array_ops
+    ```
+
+    The `--module` is relative to `tensorflow.python`.
+
+#### Debug builds
+
+When [building Tensorflow](https://www.tensorflow.org/install/source), passing
+`--config=dbg` to Bazel will build with debugging information and without
+optimizations, allowing you to use GDB or other debuggers to debug C++ code. For
+example, you can build the pip package with debugging information by running:
+
+```bash
+bazel build --config=dbg //tensorflow/tools/pip_package:build_pip_package
+```
+
+TensorFlow kernels and TensorFlow's dependencies are still not built with
+debugging information with `--config=dbg`, as issues occur on Linux if
+there is too much debug info (see [this GitHub
+issue](https://github.com/tensorflow/tensorflow/issues/48919) for context). If
+you want to debug a kernel, you can compile specific files with `-g` using the
+`--per_file_copt` bazel option. For example, if you want to debug the Identity
+op, which are in files starting with `identity_op`, you can run
+
+```bash
+bazel build --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g //tensorflow/tools/pip_package:build_pip_package
+```
+
+Note that the `--config=dbg` option is not officially supported.

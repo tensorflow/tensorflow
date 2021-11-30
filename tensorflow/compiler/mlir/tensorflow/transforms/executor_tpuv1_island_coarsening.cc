@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/platform/logging.h"
 
 #define DEBUG_TYPE "tf-executor-tpu-v1-island-coarsening"
@@ -61,8 +62,8 @@ constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
 // TPU-annotated operations and intended to preserve backward compatibility with
 // TFv1.
 struct TpuV1BridgeExecutorIslandCoarsening
-    : public PassWrapper<TpuV1BridgeExecutorIslandCoarsening,
-                         OperationPass<ModuleOp>> {
+    : public TF::TpuV1BridgeExecutorIslandCoarseningPassBase<
+          TpuV1BridgeExecutorIslandCoarsening> {
   void runOnOperation() override;
 };
 
@@ -277,6 +278,43 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
                            first_op_after);
 }
 
+// Returns all functions that can be reached from TPUPartitionedCall ops.
+SmallPtrSet<Operation*, 16> FindTPUPartitionedCallReachableFunctions(
+    ModuleOp module) {
+  SymbolTableCollection table;
+  SymbolUserMap symbol_map(table, module);
+  llvm::DenseMap<FuncOp, llvm::DenseSet<FuncOp>> caller_callee_map;
+  // Creates work queue for determining reachability below.
+  std::queue<FuncOp> function_worklist;
+
+  for (auto func : module.getOps<FuncOp>()) {
+    for (auto user : symbol_map.getUsers(func)) {
+      // Populates work queue with func ops called from TPUPartionedCall.
+      if (llvm::isa<TF::TPUPartitionedCallOp>(user)) {
+        function_worklist.push(func);
+      }
+      // Populates caller to called func map.
+      if (FuncOp caller = user->getParentOfType<FuncOp>()) {
+        caller_callee_map[caller].insert(func);
+      }
+    }
+  }
+
+  // Determines reached ops starting from TPUPartionedCall ops
+  // and iteratively descending through called ops.
+  SmallPtrSet<Operation*, 16> reachable_functions;
+  while (!function_worklist.empty()) {
+    FuncOp caller = function_worklist.front();
+    function_worklist.pop();
+    if (reachable_functions.insert(caller).second) {
+      for (auto callee : caller_callee_map[caller]) {
+        function_worklist.push(callee);
+      }
+    }
+  }
+  return reachable_functions;
+}
+
 void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   SymbolTable symbol_table(getOperation());
 
@@ -302,7 +340,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
     assert(!funcs_for_cluster->second.empty());
     if (funcs_for_cluster->second.size() == 1) return false;
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>();
+      auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
       if (!symbol_ref) continue;
       FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
       if (!callee) continue;
@@ -311,7 +349,14 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
     return false;
   };
 
+  // Populates skip set with functions reachable from TPUPartionedCall ops.
+  const auto functions_to_skip =
+      FindTPUPartitionedCallReachableFunctions(getOperation());
   for (FuncOp func_op : getOperation().getOps<FuncOp>()) {
+    if (functions_to_skip.contains(func_op)) {
+      continue;
+    }
+
     func_op.walk([&](GraphOp graph) {
       Block& graph_body = graph.GetBody();
 
@@ -346,10 +391,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandCoarseningPass() {
   return std::make_unique<TpuV1BridgeExecutorIslandCoarsening>();
 }
-
-static PassRegistration<TpuV1BridgeExecutorIslandCoarsening> tpu_pass(
-    "tf-executor-tpu-v1-island-coarsening",
-    "Merges TPU clusters IslandOps, intended for V1 compatibility mode");
 
 }  // namespace tf_executor
 }  // namespace mlir

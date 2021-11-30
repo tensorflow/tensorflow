@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the private `_AutoShardDataset` transformation."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
@@ -25,7 +21,6 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.experimental.ops import testing
@@ -34,6 +29,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -294,14 +290,14 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(sharding_policy=[
-              distribute_options.AutoShardPolicy.DATA,
-              distribute_options.AutoShardPolicy.AUTO
+              options_lib.AutoShardPolicy.DATA,
+              options_lib.AutoShardPolicy.AUTO
           ])))
   def testShardByDataBeforePrefetch(self, sharding_policy):
     dataset = dataset_ops.Dataset.range(4)
     dataset = dataset.apply(testing.assert_next(["Shard", "Prefetch"]))
     dataset = dataset.prefetch(1)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = sharding_policy
     dataset = dataset.with_options(options)
     dataset = distribute._AutoShardDataset(dataset, 2, 0)
@@ -311,8 +307,8 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
       combinations.times(
           test_base.default_test_combinations(),
           combinations.times(combinations.combine(
-              sharding_policy=[distribute_options.AutoShardPolicy.DATA,
-                               distribute_options.AutoShardPolicy.FILE]),
+              sharding_policy=[options_lib.AutoShardPolicy.DATA,
+                               options_lib.AutoShardPolicy.FILE]),
                              combinations.combine(shuffle=[True, False]))))
   def testReplicateAndShardProduceDisjointData(self, shuffle, sharding_policy):
     dataset = dataset_ops.Dataset.list_files(self._filenames,
@@ -321,9 +317,9 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
 
     graph_def = dataset._as_serialized_graph(
         strip_device_assignment=True,
-        external_state_policy=distribute_options.ExternalStatePolicy.WARN)
+        external_state_policy=options_lib.ExternalStatePolicy.WARN)
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = sharding_policy
 
     ds1 = distribute._RemoteDataset(graph_def, "/device:CPU:0",
@@ -344,9 +340,9 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testWorkersGreaterThanNumFilesWithDataSharding(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = (
-        distribute_options.AutoShardPolicy.DATA)
+        options_lib.AutoShardPolicy.DATA)
 
     dataset = core_readers._TFRecordDataset(self._filenames)
     dataset = dataset.with_options(options)
@@ -363,9 +359,9 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testAutoshardPolicyOff(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = (
-        distribute_options.AutoShardPolicy.OFF)
+        options_lib.AutoShardPolicy.OFF)
 
     dataset = core_readers._TFRecordDataset(self._filenames)
     dataset = dataset.with_options(options)
@@ -381,9 +377,9 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testFileShardingWithoutReaderDatasetOp(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = (
-        distribute_options.AutoShardPolicy.FILE)
+        options_lib.AutoShardPolicy.FILE)
 
     dataset = dataset_ops.Dataset.range(1024)
     dataset = dataset.with_options(options)
@@ -536,9 +532,9 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testHintShardingValidPattern(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = (
-        distribute_options.AutoShardPolicy.HINT)
+        options_lib.AutoShardPolicy.HINT)
 
     dataset = dataset_ops.Dataset.range(100).shard(distribute.SHARD_HINT, 0)
     dataset = dataset.with_options(options)
@@ -548,15 +544,31 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testHintShardingInvalidPattern(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = (
-        distribute_options.AutoShardPolicy.HINT)
+        options_lib.AutoShardPolicy.HINT)
 
     dataset = dataset_ops.Dataset.range(100).shard(1, 0)
     dataset = dataset.with_options(options)
     dataset = distribute._AutoShardDataset(dataset, 10, 0)
 
     self.assertDatasetProduces(dataset, list(range(100)))
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              auto_shard_policy=list(options_lib.AutoShardPolicy))))
+  def testEnumerateAutoShardPolicies(self, auto_shard_policy):
+    """Verifies tf.data handles every auto-shard policy with no errors."""
+    dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    options = options_lib.Options()
+    options.experimental_distribute.auto_shard_policy = auto_shard_policy
+    dataset = dataset.with_options(options)
+    dataset = distribute._AutoShardDataset(dataset, 5, 3)
+    self.getDatasetOutput(dataset, requires_initialization=True)
 
 
 class AutoShardWithRebatchDatasetTest(tf_record_test_base.TFRecordTestBase,
@@ -601,8 +613,8 @@ class AutoShardWithRebatchDatasetTest(tf_record_test_base.TFRecordTestBase,
           test_base.default_test_combinations(),
           combinations.times(
               combinations.combine(sharding_policy=[
-                  distribute_options.AutoShardPolicy.DATA,
-                  distribute_options.AutoShardPolicy.AUTO
+                  options_lib.AutoShardPolicy.DATA,
+                  options_lib.AutoShardPolicy.AUTO
               ]), combinations.combine(with_prefetch=[True, False]))))
   def testUseLegacyRebatchWithDataSharding(self, sharding_policy,
                                            with_prefetch):
@@ -610,7 +622,7 @@ class AutoShardWithRebatchDatasetTest(tf_record_test_base.TFRecordTestBase,
     # 1 replica.
     dataset = dataset_ops.Dataset.range(8)
     dataset = dataset.batch(4)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = sharding_policy
     dataset = dataset.with_options(options)
     # We expect the auto-shard rewrite to rewrite RebatchDatasetV2 to
@@ -654,8 +666,10 @@ class AutoShardDatasetCheckpointTest(tf_record_test_base.TFRecordTestBase,
     self._num_records = 10
     self._filenames = self._createFiles()
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
 
     def build_dataset():
       dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
@@ -664,7 +678,7 @@ class AutoShardDatasetCheckpointTest(tf_record_test_base.TFRecordTestBase,
       dataset = distribute._AutoShardDataset(dataset, 5, 3)
       return dataset
 
-    self.run_core_tests(build_dataset, 20)
+    verify_fn(self, build_dataset, num_outputs=20)
 
 
 if __name__ == "__main__":

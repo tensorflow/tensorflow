@@ -25,7 +25,7 @@ namespace xla {
 // operator is implemented by a GEMM kernel that can transpose its inputs.
 class TransposeFolding : public HloModulePass {
  public:
-  using OperandIndices = std::vector<int64>;
+  using OperandIndices = std::vector<int64_t>;
 
   // Returns the set of foldable operands for a given HLO and some candidate
   // operands.

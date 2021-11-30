@@ -14,12 +14,7 @@
 # ======================================
 """Defines the `Topology` class, that describes a TPU fabric topology."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf.tpu import topology_pb2
 from tensorflow.python.util.tf_export import tf_export
@@ -83,17 +78,18 @@ class Topology(object):
       self._device_coordinates = np.asarray(device_coordinates, np.int32)
       if len(self._mesh_shape) != 4 or any(self._mesh_shape < 1):
         raise ValueError("`mesh_shape` must be a sequence of 4 positive "
-                         "entries; got {}".format(self._mesh_shape))
+                         f"entries; got `mesh_shape={self._mesh_shape}`")
 
       if (len(self._device_coordinates.shape) != 3 or
           self._device_coordinates.shape[2] != len(self._mesh_shape)):
-        raise ValueError("`device_coordinates` must be a rank 3 int32 array "
-                         "with minor dimension equal to the mesh shape rank"
-                         "got {} {} {} mesh_shape={},len {}".format(
-                             self._device_coordinates.shape,
-                             len(self._device_coordinates.shape),
-                             self._device_coordinates.shape[2],
-                             self._mesh_shape, len(self._mesh_shape)))
+        raise ValueError(
+            "`device_coordinates` must be a rank 3 int32 array "
+            "with minor dimension equal to the `mesh_shape` rank"
+            "got device_coordinates={} len(device_coordinates)={} device_coordinates.shape[2]={} mesh_shape={}, len(mesh_shape)={}"
+            .format(self._device_coordinates.shape,
+                    len(self._device_coordinates.shape),
+                    self._device_coordinates.shape[2], self._mesh_shape,
+                    len(self._mesh_shape)))
 
     self._topology_tasks, self._topology_devices = self._invert_topology()
 
@@ -130,7 +126,9 @@ class Topology(object):
 
     coords = np.array(proto.device_coordinates, dtype=np.int32)
     if any(coords < 0):
-      raise ValueError("`device_coordinates` must be >= 0")
+      raise ValueError(
+          "All values in `device_coordinates` must be >= 0, got {}"
+          .format(coords))
     coords = coords.reshape((proto.num_tasks, proto.num_tpu_devices_per_task,
                              len(proto.mesh_shape)))
     self._device_coordinates = coords
@@ -139,8 +137,8 @@ class Topology(object):
     """Inverts a [task,device,axis] topology to [x,y,z] -> task/device maps."""
     tasks = np.full(list(self.mesh_shape), -1, dtype=np.int32)
     devices = np.full(list(self.mesh_shape), -1, dtype=np.int32)
-    for task in xrange(self.device_coordinates.shape[0]):
-      for device in xrange(self.device_coordinates.shape[1]):
+    for task in range(self.device_coordinates.shape[0]):
+      for device in range(self.device_coordinates.shape[1]):
         x, y, z, core = self.device_coordinates[task, device, :]
         tasks[x, y, z, core] = task
         devices[x, y, z, core] = device

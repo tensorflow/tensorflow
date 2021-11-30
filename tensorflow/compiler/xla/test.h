@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-#include "testing/base/public/gmock.h"
+#include <gmock/gmock.h>
 #else
 #include <gmock/gmock-generated-matchers.h>
 #include <gmock/gmock-matchers.h>

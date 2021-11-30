@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/profiling/memory_info.h"
+#include "tensorflow/lite/profiling/memory_usage_monitor.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
@@ -46,14 +47,16 @@ class BenchmarkResults {
                    tensorflow::Stat<int64_t> warmup_time_us,
                    tensorflow::Stat<int64_t> inference_time_us,
                    const profiling::memory::MemoryUsage& init_mem_usage,
-                   const profiling::memory::MemoryUsage& overall_mem_usage)
+                   const profiling::memory::MemoryUsage& overall_mem_usage,
+                   float peak_mem_mb)
       : model_size_mb_(model_size_mb),
         startup_latency_us_(startup_latency_us),
         input_bytes_(input_bytes),
         warmup_time_us_(warmup_time_us),
         inference_time_us_(inference_time_us),
         init_mem_usage_(init_mem_usage),
-        overall_mem_usage_(overall_mem_usage) {}
+        overall_mem_usage_(overall_mem_usage),
+        peak_mem_mb_(peak_mem_mb) {}
 
   const double model_size_mb() const { return model_size_mb_; }
   tensorflow::Stat<int64_t> inference_time_us() const {
@@ -74,6 +77,7 @@ class BenchmarkResults {
   const profiling::memory::MemoryUsage& overall_mem_usage() const {
     return overall_mem_usage_;
   }
+  float peak_mem_mb() const { return peak_mem_mb_; }
 
  private:
   double model_size_mb_ = 0.0;
@@ -83,6 +87,11 @@ class BenchmarkResults {
   tensorflow::Stat<int64_t> inference_time_us_;
   profiling::memory::MemoryUsage init_mem_usage_;
   profiling::memory::MemoryUsage overall_mem_usage_;
+  // An invalid value could happen when we don't monitor memory footprint for
+  // the inference, or the memory usage info isn't available on the benchmarking
+  // platform.
+  float peak_mem_mb_ =
+      profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB;
 };
 
 class BenchmarkListener {
@@ -179,7 +188,7 @@ class BenchmarkModel {
       : params_(std::move(params)) {}
   virtual ~BenchmarkModel() {}
   virtual TfLiteStatus Init() = 0;
-  TfLiteStatus Run(int argc, char** argv);
+  virtual TfLiteStatus Run(int argc, char** argv);
   virtual TfLiteStatus Run();
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
@@ -215,6 +224,11 @@ class BenchmarkModel {
 
   virtual TfLiteStatus ResetInputsAndOutputs();
   virtual TfLiteStatus RunImpl() = 0;
+
+  // Create a MemoryUsageMonitor to report peak memory footprint if specified.
+  virtual std::unique_ptr<profiling::memory::MemoryUsageMonitor>
+  MayCreateMemoryUsageMonitor() const;
+
   BenchmarkParams params_;
   BenchmarkListeners listeners_;
 };

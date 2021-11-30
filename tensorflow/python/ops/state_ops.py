@@ -18,10 +18,6 @@
 See the [Variables](https://www.tensorflow.org/guide/variables) guide.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -155,8 +151,49 @@ def assign_sub(ref, value, use_locking=None, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    Same as "ref".  Returned as a convenience for operations that want
+    Same as `ref`.  Returned as a convenience for operations that want
     to use the new value after the variable has been updated.
+
+  @compatibility(TF2)
+  `tf.compat.v1.assign_sub` is mostly compatible with eager
+  execution and `tf.function`.
+
+  To switch to the native TF2 style, one could use method 'assign_sub' of
+  `tf.Variable`:
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `ref`                 | `self`          | In `assign_sub()` method   |
+  | `value`               | `value`         | In `assign_sub()` method   |
+  | `use_locking`         | `use_locking`   | In `assign_sub()` method   |
+  | `name`                | `name`          | In `assign_sub()` method   |
+  | -                     | `read_value`    | Set to True to replicate   |
+  :                       :                 : behavior (True is default) :
+
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> with tf.Graph().as_default():
+  ...   with tf.compat.v1.Session() as sess:
+  ...     a = tf.compat.v1.Variable(1, dtype=tf.int64)
+  ...     sess.run(a.initializer)
+  ...     update_op = tf.compat.v1.assign_sub(a, 1)
+  ...     res_a = sess.run(update_op)
+  ...     res_a
+  0
+
+  After:
+
+  >>> b = tf.Variable(1, dtype=tf.int64)
+  >>> res_b = b.assign_sub(1)
+  >>> res_b.numpy()
+  0
+
+  @end_compatibility
   """
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign_sub(
@@ -168,7 +205,7 @@ def assign_sub(ref, value, use_locking=None, name=None):
 def assign_add(ref, value, use_locking=None, name=None):
   """Update `ref` by adding `value` to it.
 
-  This operation outputs "ref" after the update is done.
+  This operation outputs `ref` after the update is done.
   This makes it easier to chain operations that need to use the reset value.
   Unlike `tf.math.add`, this op does not broadcast. `ref` and `value` must have
   the same shape.
@@ -186,8 +223,49 @@ def assign_add(ref, value, use_locking=None, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    Same as "ref".  Returned as a convenience for operations that want
+    Same as `ref`.  Returned as a convenience for operations that want
     to use the new value after the variable has been updated.
+
+  @compatibility(TF2)
+  `tf.compat.v1.assign_add` is mostly compatible with eager
+  execution and `tf.function`.
+
+  To switch to the native TF2 style, one could use method 'assign_add' of
+  `tf.Variable`:
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `ref`                 | `self`          | In `assign_add()` method   |
+  | `value`               | `value`         | In `assign_add()` method   |
+  | `use_locking`         | `use_locking`   | In `assign_add()` method   |
+  | `name`                | `name`          | In `assign_add()` method   |
+  | -                     | `read_value`    | Set to True to replicate   |
+  :                       :                 : behavior (True is default) :
+
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> with tf.Graph().as_default():
+  ...   with tf.compat.v1.Session() as sess:
+  ...     a = tf.compat.v1.Variable(0, dtype=tf.int64)
+  ...     sess.run(a.initializer)
+  ...     update_op = tf.compat.v1.assign_add(a, 1)
+  ...     res_a = sess.run(update_op)
+  ...     res_a
+  1
+
+  After:
+
+  >>> b = tf.Variable(0, dtype=tf.int64)
+  >>> res_b = b.assign_add(1)
+  >>> res_b.numpy()
+  1
+
+  @end_compatibility
   """
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign_add(
@@ -220,6 +298,55 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
   Returns:
     A `Tensor` that will hold the new value of `ref` after
       the assignment has completed.
+
+  @compatibility(TF2)
+  `tf.compat.v1.assign` is mostly compatible with eager
+  execution and `tf.function`. However, argument 'validate_shape' will be
+  ignored. To avoid shape validation, set 'shape' to tf.TensorShape(None) when
+  constructing the variable:
+
+  >>> import tensorflow as tf
+  >>> a = tf.Variable([1], shape=tf.TensorShape(None))
+  >>> tf.compat.v1.assign(a, [2,3])
+
+  To switch to the native TF2 style, one could use method 'assign' of
+  `tf.Variable`:
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `ref`                 | `self`          | In `assign()` method       |
+  | `value`               | `value`         | In `assign()` method       |
+  | `validate_shape`      | Not supported   | Specify `shape` in the     |
+  :                       :                 : constructor to replicate   :
+  :                       :                 : behavior                   :
+  | `use_locking`         | `use_locking`   | In `assign()` method       |
+  | `name`                | `name`          | In `assign()` method       |
+  | -                     | `read_value`    | Set to True to replicate   |
+  :                       :                 : behavior (True is default) :
+  @end_compatibility
+
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> with tf.Graph().as_default():
+  ...   with tf.compat.v1.Session() as sess:
+  ...     a = tf.compat.v1.Variable(0, dtype=tf.int64)
+  ...     sess.run(a.initializer)
+  ...     update_op = tf.compat.v1.assign(a, 2)
+  ...     res_a = sess.run(update_op)
+  ...     res_a
+  2
+
+  After:
+
+  >>> b = tf.Variable(0, dtype=tf.int64)
+  >>> res_b = b.assign(2)
+  >>> res_b.numpy()
+  2
   """
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign(

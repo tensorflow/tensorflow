@@ -36,7 +36,7 @@ namespace profiler {
 
 namespace {
 
-bool IsHostEvent(const CuptiTracerEvent& event, int64* line_id) {
+bool IsHostEvent(const CuptiTracerEvent& event, int64_t* line_id) {
   // DriverCallback(i.e. kernel launching) events are host events.
   if (event.source == CuptiTracerEventSource::DriverCallback) {
     *line_id = event.thread_id;
@@ -89,12 +89,6 @@ struct OccupancyStats {
   double occupancy_pct = 0.0;
   int min_grid_size = 0;
   int suggested_block_size = 0;
-};
-
-struct CorrelationInfo {
-  CorrelationInfo(uint32 t, uint32 e) : thread_id(t), enqueue_time_ns(e) {}
-  uint32 thread_id;
-  uint64 enqueue_time_ns;
 };
 
 class PerDeviceCollector {
@@ -158,11 +152,6 @@ class PerDeviceCollector {
                               GetStatTypeStr(StatType::kCorrelationId)),
                           event.correlation_id);
     }
-    if (!event.annotation.empty()) {
-      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                              GetStatTypeStr(StatType::kKernelAnnotation)),
-                          *plane->GetOrCreateStatMetadata(event.annotation));
-    }
     if (!event.nvtx_range.empty()) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kNVTXRange)),
@@ -213,48 +202,47 @@ class PerDeviceCollector {
                event.type == CuptiTracerEventType::MemcpyD2D ||
                event.type == CuptiTracerEventType::MemcpyP2P ||
                event.type == CuptiTracerEventType::MemcpyOther) {
-      VLOG(7) << "Add Memcpy stat.";
       const auto& memcpy_info = event.memcpy_info;
-      std::string memcpy_details = absl::StrCat(
+      std::string value = absl::StrCat(
           "kind_src:", GetMemoryKindName(event.memcpy_info.src_mem_kind),
           " kind_dst:", GetMemoryKindName(event.memcpy_info.dst_mem_kind),
           " size:", memcpy_info.num_bytes, " dest:", memcpy_info.destination,
           " async:", memcpy_info.async);
-      xevent.AddStatValue(
-          *plane->GetOrCreateStatMetadata(
-              GetStatTypeStr(StatType::kMemcpyDetails)),
-          *plane->GetOrCreateStatMetadata(std::move(memcpy_details)));
+      VLOG(7) << "Add Memcpy stat. " << value;
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kMemcpyDetails)),
+                          *plane->GetOrCreateStatMetadata(std::move(value)));
     } else if (event.type == CuptiTracerEventType::MemoryAlloc) {
-      VLOG(7) << "Add MemAlloc stat";
       std::string value =
           absl::StrCat("kind:", GetMemoryKindName(event.memalloc_info.mem_kind),
                        " num_bytes:", event.memalloc_info.num_bytes);
+      VLOG(7) << "Add MemAlloc stat. " << value;
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kMemallocDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
     } else if (event.type == CuptiTracerEventType::MemoryFree) {
-      VLOG(7) << "Add MemFree stat";
       std::string value =
           absl::StrCat("kind:", GetMemoryKindName(event.memfree_info.mem_kind),
                        " num_bytes:", event.memfree_info.num_bytes);
+      VLOG(7) << "Add MemFree stat. " << value;
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kMemFreeDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
     } else if (event.type == CuptiTracerEventType::Memset) {
-      VLOG(7) << "Add Memset stat";
-      auto value =
+      std::string value =
           absl::StrCat("kind:", GetMemoryKindName(event.memset_info.mem_kind),
                        " num_bytes:", event.memset_info.num_bytes,
                        " async:", event.memset_info.async);
+      VLOG(7) << "Add Memset stat. " << value;
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kMemsetDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
     } else if (event.type == CuptiTracerEventType::MemoryResidency) {
-      VLOG(7) << "Add MemoryResidency stat";
       std::string value = absl::StrCat(
           "kind:", GetMemoryKindName(event.memory_residency_info.mem_kind),
-          " num_bytes:", event.memory_residency_info.num_bytes,
-          " addr:", event.memory_residency_info.address);
+          " num_bytes:", event.memory_residency_info.num_bytes, " addr:0x",
+          absl::Hex(event.memory_residency_info.address, absl::kZeroPad16));
+      VLOG(7) << "Add MemoryResidency stat. " << value;
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
                               StatType::kMemoryResidencyDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
@@ -292,7 +280,8 @@ class PerDeviceCollector {
   }
 
   std::string GetDeviceXLineName(
-      int64 stream_id, absl::flat_hash_set<CuptiTracerEventType>& event_types) {
+      int64_t stream_id,
+      absl::flat_hash_set<CuptiTracerEventType>& event_types) {
     std::string line_name = absl::StrCat("Stream #", stream_id);
     event_types.erase(CuptiTracerEventType::Unsupported);
     if (event_types.empty()) return line_name;
@@ -310,152 +299,17 @@ class PerDeviceCollector {
 
   void AddEvent(CuptiTracerEvent&& event) {
     mutex_lock l(m_);
-    if (event.source == CuptiTracerEventSource::DriverCallback) {
-      // Cupti api callback events were used to populate launch times etc.
-      if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
-        correlation_info_.insert(
-            {event.correlation_id,
-             CorrelationInfo(event.thread_id, event.start_time_ns)});
-      }
-      events_.emplace_back(std::move(event));
-    } else {
-      // Cupti activity events measure device times etc.
-      events_.emplace_back(std::move(event));
-    }
-  }
-
-  void Flush(int32 device_ordinal, uint64 start_walltime_ns,
-             uint64 start_gpu_ns, StepStats* step_stats) {
-    mutex_lock l(m_);
-    absl::flat_hash_map<std::pair<int64 /*stream_id*/, CuptiTracerEventType>,
-                        DeviceStepStats*>
-        stream_dev_stats_map;
-    DeviceStepStats* unknown_stream_dev_stats = nullptr;
-    DeviceStepStats* all_streams_dev_stats = nullptr;
-    DeviceStepStats* memcpy_dev_stats = nullptr;
-    DeviceStepStats* sync_dev_stats = nullptr;
-    for (const CuptiTracerEvent& event : events_) {
-      NodeExecStats* ns = new NodeExecStats;
-      ns->set_all_start_micros(
-          (start_walltime_ns + (event.start_time_ns - start_gpu_ns)) / 1000);
-      ns->set_op_start_rel_micros(0);
-      auto elapsed_ns = event.end_time_ns - event.start_time_ns;
-      ns->set_op_end_rel_micros(elapsed_ns / 1000);
-      ns->set_all_end_rel_micros(elapsed_ns / 1000);
-
-      if (event.source == CuptiTracerEventSource::DriverCallback) {
-        // Legacy code ignore all other launch events except
-        // cuStreamSynchronize.
-        if (event.name == "cuStreamSynchronize") {
-          ns->set_node_name(event.name);
-          ns->set_timeline_label(absl::StrCat("ThreadId ", event.thread_id));
-          ns->set_thread_id(event.thread_id);
-          if (sync_dev_stats == nullptr) {
-            sync_dev_stats = step_stats->add_dev_stats();
-            sync_dev_stats->set_device(
-                absl::StrCat("/device:GPU:", device_ordinal, "/sync"));
-          }
-          sync_dev_stats->add_node_stats()->Swap(ns);
-        }
-      } else {  // CuptiTracerEventSource::Activity
-        // Get launch information if available.
-        if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
-          auto it = correlation_info_.find(event.correlation_id);
-          if (it != correlation_info_.end()) {
-            ns->set_scheduled_micros(it->second.enqueue_time_ns / 1000);
-            ns->set_thread_id(it->second.thread_id);
-          }
-        }
-
-        auto annotation_stack = ParseAnnotationStack(event.annotation);
-        std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
-        std::string activity_name =
-            !annotation_stack.empty()
-                ? std::string(annotation_stack.back().name)
-                : kernel_name;
-        ns->set_node_name(activity_name);
-        switch (event.type) {
-          case CuptiTracerEventType::Kernel: {
-            ns->set_timeline_label(absl::StrCat(
-                kernel_name, " regs:", event.kernel_info.registers_per_thread,
-                " shm:", event.kernel_info.static_shared_memory_usage,
-                " grid: ", event.kernel_info.grid_x, ",",
-                event.kernel_info.grid_y, ",", event.kernel_info.grid_z,
-                " block:", event.kernel_info.block_x, ",",
-                event.kernel_info.block_y, ",", event.kernel_info.block_z, "@@",
-                event.annotation));
-            DeviceStepStats*& stream_dev_stats =
-                stream_dev_stats_map[std::make_pair(event.stream_id,
-                                                    event.type)];
-            if (stream_dev_stats == nullptr) {
-              stream_dev_stats = step_stats->add_dev_stats();
-              stream_dev_stats->set_device(absl::StrCat(
-                  "/device:GPU:", device_ordinal, "/stream:", event.stream_id));
-            }
-            *stream_dev_stats->add_node_stats() = *ns;
-            if (all_streams_dev_stats == nullptr) {
-              all_streams_dev_stats = step_stats->add_dev_stats();
-              all_streams_dev_stats->set_device(
-                  absl::StrCat("/device:GPU:", device_ordinal, "/stream:all"));
-            }
-            all_streams_dev_stats->add_node_stats()->Swap(ns);
-            break;
-          }
-          case CuptiTracerEventType::MemcpyH2D:
-          case CuptiTracerEventType::MemcpyD2H:
-          case CuptiTracerEventType::MemcpyD2D:
-          case CuptiTracerEventType::MemcpyP2P: {
-            std::string details = absl::StrCat(
-                activity_name, " bytes:", event.memcpy_info.num_bytes);
-            if (event.memcpy_info.async) {
-              absl::StrAppend(&details, " async");
-            }
-            if (event.memcpy_info.destination != event.device_id) {
-              absl::StrAppend(&details,
-                              " to device:", event.memcpy_info.destination);
-            }
-            ns->set_timeline_label(std::move(details));
-            DeviceStepStats*& stream_dev_stats =
-                stream_dev_stats_map[std::make_pair(event.stream_id,
-                                                    event.type)];
-            if (stream_dev_stats == nullptr) {
-              stream_dev_stats = step_stats->add_dev_stats();
-              stream_dev_stats->set_device(absl::StrCat(
-                  "/device:GPU:", device_ordinal, "/stream:", event.stream_id,
-                  "<", GetTraceEventTypeName(event.type), ">"));
-            }
-            *stream_dev_stats->add_node_stats() = *ns;
-            if (memcpy_dev_stats == nullptr) {
-              memcpy_dev_stats = step_stats->add_dev_stats();
-              memcpy_dev_stats->set_device(
-                  absl::StrCat("/device:GPU:", device_ordinal, "/memcpy"));
-            }
-            memcpy_dev_stats->add_node_stats()->Swap(ns);
-            break;
-          }
-          default:
-            ns->set_timeline_label(activity_name);
-            if (unknown_stream_dev_stats == nullptr) {
-              unknown_stream_dev_stats = step_stats->add_dev_stats();
-              unknown_stream_dev_stats->set_device(
-                  absl::StrCat("/device:GPU:", device_ordinal, "/stream:"));
-            }
-            unknown_stream_dev_stats->add_node_stats()->Swap(ns);
-            break;
-        }
-      }
-    }
-    events_.clear();
+    events_.emplace_back(std::move(event));
   }
 
   size_t Flush(uint64 start_gpu_ns, uint64 end_gpu_ns,
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
     mutex_lock l(m_);
     // Tracking event types per line.
-    absl::flat_hash_map<int64, absl::flat_hash_set<CuptiTracerEventType>>
+    absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
     for (auto& event : events_) {
-      int64 line_id = CuptiTracerEvent::kInvalidThreadId;
+      int64_t line_id = CuptiTracerEvent::kInvalidThreadId;
       bool is_host_event = IsHostEvent(event, &line_id);
       if (line_id == CuptiTracerEvent::kInvalidThreadId ||
           line_id == CuptiTracerEvent::kInvalidStreamId) {
@@ -485,8 +339,12 @@ class PerDeviceCollector {
     return num_events;
   }
 
-  void GetDeviceCapabilities(int32 device_ordinal,
+  void GetDeviceCapabilities(int32_t device_ordinal,
                              XPlaneBuilder* device_plane) {
+    device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(StatType::kDevVendor)),
+                               kDeviceVendorNvidia);
+
     CUdevice device;
     if (cuDeviceGet(&device, device_ordinal) != CUDA_SUCCESS) return;
 
@@ -587,8 +445,6 @@ class PerDeviceCollector {
  private:
   mutex m_;
   std::vector<CuptiTracerEvent> events_ TF_GUARDED_BY(m_);
-  absl::flat_hash_map<uint32, CorrelationInfo> correlation_info_
-      TF_GUARDED_BY(m_);
   cudaOccDeviceProp device_properties_;
   absl::flat_hash_map<DeviceOccupancyParams, OccupancyStats> occupancy_cache_;
 };
@@ -625,7 +481,7 @@ AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32 device_id,
 }
 
 // CuptiTraceCollectorImpl store the CuptiTracerEvents from CuptiTracer and
-// eventually convert and filter them to StepStats or XSpace.
+// eventually convert and filter them to XSpace.
 class CuptiTraceCollectorImpl : public CuptiTraceCollector {
  public:
   CuptiTraceCollectorImpl(const CuptiTracerCollectorOptions& option,
@@ -660,15 +516,6 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     dropped_events_[reason] += num_events;
   }
   void Flush() override {}
-  void Export(StepStats* step_stats) override {
-    LOG(INFO) << " GpuTracer has collected " << num_callback_events_
-              << " callback api events and " << num_activity_events_
-              << " activity events. " << ReportDroppedEvents();
-    for (int i = 0; i < num_gpus_; ++i) {
-      per_device_collector_[i].Flush(i, start_walltime_ns_, start_gpu_ns_,
-                                     step_stats);
-    }
-  }
   // Returns true if some GPU events are captured.
   bool Export(XSpace* space, uint64 end_gpu_ns) override {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
@@ -750,7 +597,7 @@ std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
 }
 
 // The strings are parser friendly and have no whitespaces in them.
-absl::string_view GetMemoryKindName(int8 memory_kind) {
+absl::string_view GetMemoryKindName(int8_t memory_kind) {
   switch (memory_kind) {
     case CUPTI_ACTIVITY_MEMORY_KIND_ARRAY:
       return "array";

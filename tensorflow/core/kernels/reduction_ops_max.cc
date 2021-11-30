@@ -29,7 +29,7 @@ namespace tensorflow {
       Name("Max")                                                           \
           .Device(DEVICE_CPU)                                               \
           .TypeConstraint<type>("T")                                        \
-          .TypeConstraint<int64>("Tidx"),                                   \
+          .TypeConstraint<int64_t>("Tidx"),                                 \
       ReductionOp<CPUDevice, type, int64,                                   \
                   Eigen::internal::MaxReducer<type, Eigen::PropagateNaN>>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
@@ -50,7 +50,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       Name("Max")                                                           \
           .Device(DEVICE_GPU)                                               \
           .TypeConstraint<type>("T")                                        \
-          .TypeConstraint<int64>("Tidx")                                    \
+          .TypeConstraint<int64_t>("Tidx")                                  \
           .HostMemory("reduction_indices"),                                 \
       ReductionOp<GPUDevice, type, int64,                                   \
                   Eigen::internal::MaxReducer<type, Eigen::PropagateNaN>>);
@@ -58,7 +58,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 REGISTER_GPU_KERNELS(Eigen::half);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
-REGISTER_GPU_KERNELS(int64);
+REGISTER_GPU_KERNELS(int64_t);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -79,7 +79,7 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("input")
         .HostMemory("output")
         .TypeConstraint<int32>("T")
-        .TypeConstraint<int64>("Tidx"),
+        .TypeConstraint<int64_t>("Tidx"),
     ReductionOp<CPUDevice, int32, int64, Eigen::internal::MaxReducer<int32>>);
 
 #undef REGISTER_GPU_KERNELS

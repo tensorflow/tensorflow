@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Gradients for operators defined in math_ops.py."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.client import pywrap_tf_session as c_api
@@ -1594,13 +1590,13 @@ def _MaximumMinimumGrad(op, grad, selector_op):
 
 @ops.RegisterGradient("Maximum")
 def _MaximumGrad(op, grad):
-  """Returns grad*(x > y, x <= y) with type of grad."""
+  """Returns grad*(x >= y, x < y) with type of grad."""
   return _MaximumMinimumGrad(op, grad, math_ops.greater_equal)
 
 
 @ops.RegisterGradient("Minimum")
 def _MinimumGrad(op, grad):
-  """Returns grad*(x < y, x >= y) with type of grad."""
+  """Returns grad*(x <= y, x > y) with type of grad."""
   return _MaximumMinimumGrad(op, grad, math_ops.less_equal)
 
 

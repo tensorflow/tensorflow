@@ -23,7 +23,7 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const float* input_data,
                         const RuntimeShape& output_shape, float* output_data) {
@@ -66,6 +66,7 @@ inline void AveragePool(const PoolParams& params,
               filter_count++;
             }
           }
+          if (filter_count == 0) return false;
           const float average = total / filter_count;
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
               ActivationFunctionWithMinMax(average, params.float_activation_min,
@@ -74,9 +75,10 @@ inline void AveragePool(const PoolParams& params,
       }
     }
   }
+  return true;
 }
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const uint8_t* input_data,
                         const RuntimeShape& output_shape,
@@ -122,6 +124,7 @@ inline void AveragePool(const PoolParams& params,
               filter_count++;
             }
           }
+          if (filter_count == 0) return false;
           acc = (acc + filter_count / 2) / filter_count;
           acc = std::max(acc, params.quantized_activation_min);
           acc = std::min(acc, params.quantized_activation_max);
@@ -131,6 +134,7 @@ inline void AveragePool(const PoolParams& params,
       }
     }
   }
+  return true;
 }
 
 inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,

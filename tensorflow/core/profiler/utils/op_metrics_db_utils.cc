@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -81,24 +82,33 @@ OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
   return op_metrics;
 }
 
-double IdleTimeRatio(const OpMetricsDb& metrics_db) {
-  return 1.0 -
-         SafeDivide(metrics_db.total_op_time_ps(), metrics_db.total_time_ps());
+double IdleTimeRatio(const OpMetricsDb& db) {
+  return 1.0 - SafeDivide(db.total_op_time_ps(), db.total_time_ps());
 }
 
-uint64 IdleTimePs(const OpMetricsDb& metrics_db) {
-  if (metrics_db.total_time_ps() <= metrics_db.total_op_time_ps()) return 0;
-  return metrics_db.total_time_ps() - metrics_db.total_op_time_ps();
+uint64 IdleTimePs(const OpMetricsDb& db) {
+  DCHECK_GE(db.total_time_ps(), db.total_op_time_ps());
+  return db.total_time_ps() - db.total_op_time_ps();
 }
 
-void AddIdleOp(OpMetricsDb* db) {
-  uint64 idle_time_ps = IdleTimePs(*db);
-  OpMetrics* metrics = db->add_metrics_db();
+void AddIdleOp(OpMetricsDb& db) {
+  uint64 idle_time_ps = IdleTimePs(db);
+  OpMetrics* metrics = db.add_metrics_db();
   metrics->set_name(std::string(kIdle));
   metrics->set_category(std::string(kIdle));
   metrics->set_occurrences(0);
   metrics->set_time_ps(idle_time_ps);
   metrics->set_self_time_ps(idle_time_ps);
+}
+
+absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db) {
+  if (db.total_host_infeed_enq_start_timestamp_ps_diff() > 0) {
+    // We use total_host_infeed_enq_start_timestamp_ps_diff to approximate the
+    // total host time.
+    return SafeDivide(db.total_host_infeed_enq_duration_ps(),
+                      db.total_host_infeed_enq_start_timestamp_ps_diff());
+  }
+  return absl::nullopt;
 }
 
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
@@ -129,5 +139,6 @@ OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
 
   return tf_op_metrics_db;
 }
+
 }  // namespace profiler
 }  // namespace tensorflow

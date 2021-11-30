@@ -50,7 +50,7 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-int64 GetRemoteDeviceIncarnation(Device* device) {
+int64_t GetRemoteDeviceIncarnation(Device* device) {
   if (device == nullptr || device->IsLocal()) return 0;
   return device->attributes().incarnation();
 }
@@ -89,13 +89,13 @@ Status TensorHandle::PackedTensorHandleData::NumDims(int* num_dims) const {
 }
 
 Status TensorHandle::PackedTensorHandleData::Dim(int dim_index,
-                                                 int64* dim) const {
+                                                 int64_t* dim) const {
   *dim = shape_.dim_size(dim_index);
   return Status::OK();
 }
 
 Status TensorHandle::PackedTensorHandleData::NumElements(
-    int64* num_elements) const {
+    int64_t* num_elements) const {
   *num_elements = shape_.num_elements();
   return Status::OK();
 }
@@ -337,7 +337,7 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
     return errors::InvalidArgument("Handles should not be empty.");
   }
 
-  // Get the dtype and shape from the fisrt handle since all handles have the
+  // Get the dtype and shape from the first handle since all handles have the
   // same dtype and shape.
   tensorflow::DataType dtype = handles.at(0)->dtype;
   tensorflow::TensorShape shape;
@@ -366,14 +366,14 @@ TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
 
 #if !defined(IS_MOBILE_PLATFORM)
 TensorHandle* TensorHandle::CreateUnshapedRemoteHandle(
-    int64 op_id, int32 output_num, const string& remote_task,
+    int64_t op_id, int32_t output_num, const string& remote_task,
     tensorflow::DataType dtype, Device* d, EagerContext* ctx,
     const bool unknown_device) {
   return new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx,
                           unknown_device);
 }
 
-TensorHandle::TensorHandle(int64 op_id, int32 output_num,
+TensorHandle::TensorHandle(int64_t op_id, int32_t output_num,
                            const string& remote_task,
                            tensorflow::DataType dtype, Device* d,
                            EagerContext* ctx, const bool unknown_device)
@@ -393,12 +393,12 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
 }
 
 TensorHandle* TensorHandle::CreateLazyRemoteHandle(
-    int64 op_id, int32 output_num, tensorflow::DataType dtype, Device* d,
+    int64_t op_id, int32_t output_num, tensorflow::DataType dtype, Device* d,
     const bool is_ready, EagerContext* ctx) {
   return new TensorHandle(op_id, output_num, dtype, d, is_ready, ctx);
 }
 
-TensorHandle::TensorHandle(int64 op_id, int32 output_num,
+TensorHandle::TensorHandle(int64_t op_id, int32_t output_num,
                            tensorflow::DataType dtype, Device* d,
                            const bool is_ready, EagerContext* ctx)
     : ImmediateExecutionTensorHandle(kEager),
@@ -550,7 +550,7 @@ Status TensorHandle::InferenceShape(
     int num_dims;
     TF_RETURN_IF_ERROR(NumDims(&num_dims));
     for (int i = 0; i < num_dims; i++) {
-      int64 dims;
+      int64_t dims;
       TF_RETURN_IF_ERROR(Dim(i, &dims));
       dims_handle.push_back(inference_context->MakeDim(dims));
     }
@@ -575,7 +575,7 @@ void TensorHandle::SetInferenceShape(
     shape_inference::InferenceContext* const inference_context,
     const shape_inference::ShapeHandle& shape_handle) {
   auto num_dims = inference_context->Rank(shape_handle);
-  std::vector<int64> dims;
+  std::vector<int64_t> dims;
   if (num_dims == shape_inference::InferenceContext::kUnknownRank) {
     inference_shape_ = PartialTensorShape();
     return;
@@ -635,7 +635,7 @@ Status TensorHandle::NumDims(int* num_dims) const {
   }
 }
 
-Status TensorHandle::Dim(int dim_index, int64* dim) const {
+Status TensorHandle::Dim(int dim_index, int64_t* dim) const {
   DCHECK(dim != nullptr);
   if (!IsReady() && !inference_shape_.unknown_rank() &&
       inference_shape_.dim_size(dim_index) != -1) {
@@ -648,7 +648,7 @@ Status TensorHandle::Dim(int dim_index, int64* dim) const {
   }
 }
 
-Status TensorHandle::NumElements(int64* num_elements) const {
+Status TensorHandle::NumElements(int64_t* num_elements) const {
   DCHECK(num_elements != nullptr);
   if (!IsReady() && inference_shape_.IsFullyDefined()) {
     *num_elements = inference_shape_.num_elements();
@@ -707,7 +707,7 @@ Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
 
 #if !defined(IS_MOBILE_PLATFORM)
 Status TensorHandle::RemoteAddress(const Device* d, const bool wait_until_ready,
-                                   int64* op_id, int32* output_num) const {
+                                   int64_t* op_id, int32* output_num) const {
   DVLOG(3) << "RemoteAddress on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
@@ -766,7 +766,7 @@ bool TensorHandle::HasResourceShapeMirror(const Device* d,
   return false;
 }
 
-Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64 op_id,
+Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64_t op_id,
                                              int output_num,
                                              const string& remote_task,
                                              EagerContext* ctx) {
@@ -791,7 +791,7 @@ Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64 op_id,
   return Status::OK();
 }
 
-Status TensorHandle::AddResourceShapeMirror(const Device* d, int64 op_id,
+Status TensorHandle::AddResourceShapeMirror(const Device* d, int64_t op_id,
                                             int output_num, EagerContext* ctx) {
   DVLOG(3) << "AddResourceShapeMirror on TensorHandle: " << this;
 
@@ -1045,23 +1045,6 @@ Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx) {
     return nullptr;
   }
   return device;
-}
-
-string TensorHandle::DebugString() const {
-  DVLOG(4) << "Calling TensorHandle::DebugString() on " << this;
-
-  string out;
-  string device_debug = SafeDeviceDebugString(device_);
-  strings::StrAppend(&out, "Device: ", device_debug);
-  bool is_cpu = device_ != nullptr;
-  // Consider supporting non-CPU tensors and CPU tensors with a device_ set to
-  // non-NULL if needed.
-  strings::StrAppend(
-      &out, ", Tensor: ",
-      is_cpu ? absl::visit([](auto& data) { return data.DebugString(); }, data_)
-             : "?",
-      "\n");
-  return out;
 }
 
 const char* TensorHandle::DeviceName(Status* status) const {

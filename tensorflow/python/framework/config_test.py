@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests that the system configuration methods work properly."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -46,15 +42,18 @@ def reset_eager(fn):
       return fn(*args, **kwargs)
     finally:
       # Reset the context.
-      context._context = None
+      context._reset_mlir_flags()
+      context._reset_context()
       ops.enable_eager_execution_internal()
       assert context._context is not None
 
   return wrapper
 
 
+@test_util.with_eager_op_as_function
 class ConfigTest(test.TestCase, parameterized.TestCase):
 
+  @test_util.disable_eager_op_as_function('b/204320409')
   @test_util.run_gpu_only
   @reset_eager
   def testDevicePolicy(self):
@@ -70,7 +69,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     context.ensure_initialized()
 
     def copy_tensor(dtype=dtypes.int32):
-      cpu_tensor = constant_op.constant(1, dtype=dtype)
+      with ops.device('CPU:0'):
+        cpu_tensor = constant_op.constant(1, dtype=dtype)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
 
@@ -226,6 +226,14 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         context.context().config.experimental.mlir_bridge_rollout,
         config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_DISABLED)
+
+  @reset_eager
+  def testResetMlirFlags(self):
+    # Default value of enable_mlir_bridge is false.
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+    self.assertEqual(
+        context.context().config.experimental.mlir_bridge_rollout,
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_UNSPECIFIED)
 
   @reset_eager
   def testEnableMlirGraphOptimization(self):
@@ -399,7 +407,10 @@ class DeviceTest(test.TestCase):
     with ops.device('/device:CPU:2'):
       c = constant_op.constant(1.0)
       self.evaluate(c)
-    self.assertIn('CPU:0', c.device)
+    if test_util.is_gpu_available():
+      self.assertIn('GPU:0', c.device)
+    else:
+      self.assertIn('CPU:0', c.device)
 
     # Ensure we can place ops on each of the device names
     for vcpu in vcpus:
@@ -606,6 +617,10 @@ class DeviceTest(test.TestCase):
 
   @reset_eager
   def testGetMemoryInfoCPU(self):
+    if test_util.IsMklEnabled():
+      # TODO(gzmkl) work with Google team to address design issue in allocator.h
+      self.skipTest('MklCPUAllocator does not throw exception. So skip test.')
+
     with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
       config.get_memory_info('CPU:0')
     with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
@@ -644,23 +659,29 @@ class DeviceTest(test.TestCase):
     self.assertGreaterEqual(peak3, peak2)
     self.assertGreaterEqual(peak3, config.get_memory_info(device)['current'])
 
-  @test_util.run_gpu_only
+  @test_util.run_gpu_or_tpu
   @reset_eager
-  def testResetMemoryStats(self):
-    x = array_ops.zeros((1000, 1000), dtype=dtypes.float32)
-    config.reset_memory_stats('GPU:0')
-    info1 = config.get_memory_info('GPU:0')
+  def testResetMemoryStats(self, device_type):
+    device = f'{device_type}:0'
+    with ops.device(device):
+      x = array_ops.zeros((1000, 1000), dtype=dtypes.float32)
+    config.reset_memory_stats(device)
+    info1 = config.get_memory_info(device)
     self.assertGreaterEqual(info1['peak'], 4 * 1000 * 1000)
     self.assertGreaterEqual(info1['peak'], info1['current'])
     self.assertGreater(info1['current'], 0)
 
     del x  # With CPython, causes tensor memory to be immediately freed
-    config.reset_memory_stats('GPU:0')
-    info2 = config.get_memory_info('GPU:0')
+    config.reset_memory_stats(device)
+    info2 = config.get_memory_info(device)
     self.assertLess(info2['peak'], info1['peak'])
 
   @reset_eager
   def testResetMemoryStatsCPU(self):
+    if test_util.IsMklEnabled():
+      # TODO(gzmkl) work with Google team to address design issue in allocator.h
+      self.skipTest('MklCPUAllocator does not throw exception. So skip test.')
+
     with self.assertRaisesRegex(ValueError, 'Cannot reset memory stats'):
       config.reset_memory_stats('CPU:0')
 
@@ -837,21 +858,42 @@ class DeviceTest(test.TestCase):
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
 
+  def testDeterminism(self):
+    # This does not test any ops are deterministic, because that is tested by
+    # many kernel tests.
+    try:
+      config.disable_op_determinism()
+      self.assertFalse(config.is_op_determinism_enabled())
+      config.enable_op_determinism()
+      self.assertTrue(config.is_op_determinism_enabled())
+    finally:
+      config.disable_op_determinism()
+
 
 class TensorFloat32Test(test.TestCase):
-
-  def setUp(self):
-    super(TensorFloat32Test, self).setUp()
-    if not test_util.is_gpu_available(
-        cuda_only=True, min_cuda_compute_capability=(8, 0)):
-      self.skipTest('TensorFloat-32 requires an NVIDIA GPU with compute '
-                    'capability of at least 8.0')
 
   def tearDown(self):
     super(TensorFloat32Test, self).tearDown()
     config.enable_tensor_float_32_execution(True)
 
+  def test_tensor_float_32_global_variable(self):
+    self.assertTrue(config.tensor_float_32_execution_enabled())
+    self.assertTrue(test_ops.is_tensor_float32_enabled())
+    config.enable_tensor_float_32_execution(False)
+    self.assertFalse(config.tensor_float_32_execution_enabled())
+    self.assertFalse(test_ops.is_tensor_float32_enabled())
+    config.enable_tensor_float_32_execution(True)
+    self.assertTrue(config.tensor_float_32_execution_enabled())
+    self.assertTrue(test_ops.is_tensor_float32_enabled())
+
+  def _skip_if_tensor_float_32_unsupported(self):
+    if not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest('TensorFloat-32 requires an NVIDIA GPU with compute '
+                    'capability of at least 8.0')
+
   def test_tensor_float_32_enabled(self):
+    self._skip_if_tensor_float_32_unsupported()
     self.assertTrue(config.tensor_float_32_execution_enabled())
 
     x = array_ops.fill((8, 8), 1 + 2**-20)
@@ -863,6 +905,7 @@ class TensorFloat32Test(test.TestCase):
     self.assertAllEqual(out, expected)
 
   def test_tensor_float_32_disabled(self):
+    self._skip_if_tensor_float_32_unsupported()
     self.assertTrue(config.tensor_float_32_execution_enabled())
     config.enable_tensor_float_32_execution(False)
     self.assertFalse(config.tensor_float_32_execution_enabled())

@@ -1373,11 +1373,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
-#ifdef TFLITE_WITH_RUY_GEMV
-  const bool use_cpu_backend_gemm = true;
-#else
-  const bool use_cpu_backend_gemm = UseCpuBackendGemm(m_rows, m_cols, n_batch);
-#endif
+  const bool use_cpu_backend_gemm = (context && context->use_caching()) ||
+                                    UseCpuBackendGemm(m_rows, m_cols, n_batch);
   if (input_offset == nullptr) {
     if (use_cpu_backend_gemm && context) {
       NeonMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
@@ -1521,9 +1518,10 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
       sum_sq += val * val;
     }
 
+    // Divide by `n_input` first to avoid overflow but only works for POT
+    // `n_input`.
     int32_t mean =
         static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
-    // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
     int64_t variance =
         sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
     int32_t variance2 = static_cast<int32>(variance / 1048576);

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_PERMUTE_THUNK_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
@@ -35,18 +35,18 @@ struct NcclCollectivePermuteConfig : public NcclCollectiveConfig {
   // node. For each node, remember who it receives data from (source) and who
   // it send data to (target). Either are optional.
   struct SourceTargetMapEntry {
-    absl::optional<int64> source;
-    absl::optional<int64> target;
+    absl::optional<int64_t> source;
+    absl::optional<int64_t> target;
   };
 
-  absl::flat_hash_map<int64, SourceTargetMapEntry> id_to_source_target;
+  absl::flat_hash_map<int64_t, SourceTargetMapEntry> id_to_source_target;
 
   // Returns the source and target ID corresponding to the given ID (these IDs
   // are replica_ids for cross replica permute or partition_ids for cross
   // partition permute). The source ID is the id which will send data to this
   // ID and the target ID is the id to which this ID will send its data. Either
   // can be optional.
-  SourceTargetMapEntry GetSourceTarget(int64 id) const {
+  SourceTargetMapEntry GetSourceTarget(int64_t id) const {
     auto it = id_to_source_target.find(id);
     if (it != id_to_source_target.end()) return it->second;
     return SourceTargetMapEntry{};
@@ -56,9 +56,13 @@ struct NcclCollectivePermuteConfig : public NcclCollectiveConfig {
 // Thunk that performs a NCCL-based collective permute.
 class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
  public:
+  static NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
+      mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
+      int64_t partition_count);
+
   NcclCollectivePermuteThunk(ThunkInfo thunk_info,
                              mlir::lmhlo::CollectivePermuteOp op,
-                             int64 replica_count, int64 partition_count,
+                             int64_t replica_count, int64_t partition_count,
                              const Buffer& buffer);
 
   // Returns whether the given instruction can be lowered to a nccl collective
@@ -67,7 +71,7 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
 
   static const char* GetName() { return "CollectivePermute"; }
   static bool IsDegenerate(mlir::lmhlo::CollectivePermuteOp op,
-                           int64 replica_count, int64 partition_count);
+                           int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo::CollectivePermuteOp op) {
     return GetCollectiveOpGroupMode(op.channel_id().hasValue(), absl::nullopt)
@@ -81,10 +85,6 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
   const NcclCollectiveConfig& config() const override { return config_; }
 
  private:
-  static NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
-      mlir::lmhlo::CollectivePermuteOp op, int64 replica_count,
-      int64 partition_count);
-
   const NcclCollectivePermuteConfig config_;
   const Buffer buffer_;
 };

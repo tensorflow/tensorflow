@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -28,7 +29,7 @@ namespace {
 // Rewrites RecvTPUEmbeddingActivationsOp and SendTPUEmbeddingGradients ops to
 // internal variants by introducing _RecvTPUEmbeddingDeduplicationData op.
 struct RewriteTPUEmbeddingOps
-    : public PassWrapper<RewriteTPUEmbeddingOps, FunctionPass> {
+    : public RewriteTPUEmbeddingOpsPassBase<RewriteTPUEmbeddingOps> {
   void runOnFunction() override;
 };
 
@@ -115,11 +116,6 @@ void RewriteTPUEmbeddingOps::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass() {
   return std::make_unique<RewriteTPUEmbeddingOps>();
 }
-
-static PassRegistration<RewriteTPUEmbeddingOps> pass(
-    "tf-rewrite-tpu-embedding-ops",
-    "Rewrites TPU embedding send/recv ops by adding TPU embedding "
-    "deduplication data");
 
 }  // namespace TF
 }  // namespace mlir

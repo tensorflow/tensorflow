@@ -73,8 +73,6 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   compiler_options.flib_def = &graph->flib_def();
   compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;
-  compiler_options.custom_fake_quant_op_calls =
-      config.conversion_options().custom_fake_quant_op_calls();
 
   XlaCompiler compiler(compiler_options);
 
@@ -115,7 +113,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
     for (const XlaCompiler::ResourceUpdate& update : result.resource_updates) {
       updated_inputs[update.input_index] = true;
     }
-    int64 input_index = xla_args.size() - config.variable_size();
+    int64_t input_index = xla_args.size() - config.variable_size();
     for (const tf2xla::Variable& variable : config.variable()) {
       if (variable.readonly() == updated_inputs[input_index]) {
         return errors::InvalidArgument(

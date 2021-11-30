@@ -200,11 +200,12 @@ void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
 // output_size: output vector size.
 // reduction_size: number of consecutive elements from input vector which are
 // added to get one element of output.
-template <typename IN, typename OUT>
-void PortableReductionSumVector(const IN* input_vector, OUT* output_vector,
-                                int output_size, int reduction_size) {
+template <typename INPUT, typename OUTPUT>
+void PortableReductionSumVector(const INPUT* input_vector,
+                                OUTPUT* output_vector, int output_size,
+                                int reduction_size) {
   for (int o = 0; o < output_size; o++) {
-    OUT result = 0;
+    OUTPUT result = 0;
     for (int r = 0; r < reduction_size; r++) {
       result += input_vector[r];
     }

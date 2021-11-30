@@ -57,7 +57,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
   const string arg0 = "Func/y/input/_0";
   const string ret0 = "Func/y/output/_1";
 
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   GraphDef expected = test::function::GDef(
       {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
        NDef(arg0, "Identity", {"x"}, {{"T", DT_FLOAT}}),
@@ -253,7 +253,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithoutInput) {
 
   FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   FunctionDef func = FunctionDefHelper::Define(
       // Name
       "GenerateTwo",
@@ -833,7 +833,6 @@ TEST_F(FunctionOptimizerTest,
 
   GraphDef optimized_graph;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
-  LOG(ERROR) << "IG: " << optimized_graph.DebugString();
 
   const string input_c_x = "Func/c/input/_0";
   const string input_c_y = "Func/c/input/_1";

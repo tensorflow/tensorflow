@@ -41,6 +41,12 @@ class RemoteRendezvous : public Rendezvous {
   // Fully construct the RemoteRendezvous.
   virtual Status Initialize(WorkerSession* session) = 0;
 
+  // In remote eager, set current instance as context default rendezvous which
+  // will be used for eager op-by-op execution.
+  virtual void SetRemoteEagerContextDefault() = 0;
+  // In remote eager, get if current instance is context default rendezvous.
+  virtual bool IsRemoteEagerContextDefault() = 0;
+
  protected:
   bool is_cross_process() override { return true; }
 };
@@ -74,25 +80,28 @@ class RendezvousMgrInterface {
   //
   // Note: the caller must guarantee to eventually call Initialize on the
   // returned RemoteRendezvous
-  virtual RemoteRendezvous* Find(int64 step_id) = 0;
+  virtual RemoteRendezvous* Find(int64_t step_id) = 0;
 
   // Finds the local rendezvous instance for the "step_id".  Runs
   // "done" when the tensor for "key" is produced or an error occurs.
   //
   // This method is used by the rpc handler of RecvTensor.
-  virtual void RecvLocalAsync(int64 step_id,
+  virtual void RecvLocalAsync(int64_t step_id,
                               const Rendezvous::ParsedKey& parsed,
                               Rendezvous::DoneCallback done) = 0;
 
   // Synchronous wrapper for RecvLocalAsync.
-  virtual Status RecvLocal(int64 step_id, const Rendezvous::ParsedKey& parsed,
+  virtual Status RecvLocal(int64_t step_id, const Rendezvous::ParsedKey& parsed,
                            Tensor* val, bool* is_dead) = 0;
 
   // Removes rendezvous for "step_id".
   //
   // TODO(zhifengc): Have a background thread in worker that
   // periodically calls CleanupAll().
-  virtual void Cleanup(int64 step_id) = 0;
+  virtual void Cleanup(int64_t step_id) = 0;
+
+  // Remove all rendezvous instances owned by the rendezvous_mgr.
+  virtual void CleanupAll() = 0;
 };
 
 }  // end namespace tensorflow

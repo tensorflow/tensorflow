@@ -24,9 +24,9 @@ constexpr char kNodeName[] = "auto_shard_dataset";
 class AutoShardDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  AutoShardDatasetParams(T input_dataset_params, int64 num_workers, int64 index,
-                         int auto_shard_policy, int64 num_replicas,
-                         DataTypeVector output_dtypes,
+  AutoShardDatasetParams(T input_dataset_params, int64_t num_workers,
+                         int64_t index, int auto_shard_policy,
+                         int64_t num_replicas, DataTypeVector output_dtypes,
                          std::vector<PartialTensorShape> output_shapes,
                          string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
@@ -42,7 +42,7 @@ class AutoShardDatasetParams : public DatasetParams {
   }
 
   std::vector<Tensor> GetInputTensors() const override {
-    return CreateTensors<int64>(TensorShape({}), {{num_workers_}, {index_}});
+    return CreateTensors<int64_t>(TensorShape({}), {{num_workers_}, {index_}});
   }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
@@ -69,9 +69,9 @@ class AutoShardDatasetParams : public DatasetParams {
   }
 
  private:
-  int64 num_workers_;
-  int64 num_replicas_;
-  int64 index_;
+  int64_t num_workers_;
+  int64_t num_replicas_;
+  int64_t index_;
   int auto_shard_policy_;
 };
 
@@ -168,11 +168,11 @@ AutoShardDatasetParams AutoShardDatasetParams7() {
 std::vector<GetNextTestCase<AutoShardDatasetParams>> GetNextTestCases() {
   return {
       {/*dataset_params=*/AutoShardDatasetParams1(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{2}, {7}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{2}, {7}})},
       {/*dataset_params=*/AutoShardDatasetParams2(),
        /*expected_outputs=*/{}},
       {/*dataset_params=*/AutoShardDatasetParams3(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{3}, {7}})}};
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{3}, {7}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(AutoShardDatasetOpTest, AutoShardDatasetParams,

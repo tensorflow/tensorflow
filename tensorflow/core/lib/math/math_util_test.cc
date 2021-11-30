@@ -86,9 +86,9 @@ void TestCeilOfRatioUnsigned(uint64 kMax) {
 }
 
 template <typename SignedInteger>
-void TestCeilOfRatioSigned(int64 kMin, int64 kMax) {
+void TestCeilOfRatioSigned(int64_t kMin, int64_t kMax) {
   const int kNumTests = 30;
-  const int64 kTestData[kNumTests][kNumTestArguments] = {
+  const int64_t kTestData[kNumTests][kNumTestArguments] = {
       // Numerator  | Denominator | Expected floor of ratio | Expected ceil of
       // ratio |
       // When numerator = 0, the result is always zero
@@ -130,7 +130,7 @@ void TestCeilOfRatioSigned(int64 kMin, int64 kMax) {
       {kMax, kMin, -1, 0},
       {kMax, kMax, 1, 1},
   };
-  TestCeilOfRatio<SignedInteger, int64>(kTestData, kNumTests);
+  TestCeilOfRatio<SignedInteger, int64_t>(kTestData, kNumTests);
 }
 
 // ------------------------------------------------------------------------ //
@@ -166,11 +166,11 @@ static Integer CeilOrFloorOfRatioArithmetic(Integer numerator,
   }
 }
 
-void TestThatCeilOfRatioDenomMinusOneIsIncorrect(int64 numerator,
-                                                 int64 denominator,
-                                                 int64 expected_error) {
-  const int64 correct_result = MathUtil::CeilOfRatio(numerator, denominator);
-  const int64 result_by_denom_minus_one =
+void TestThatCeilOfRatioDenomMinusOneIsIncorrect(int64_t numerator,
+                                                 int64_t denominator,
+                                                 int64_t expected_error) {
+  const int64_t correct_result = MathUtil::CeilOfRatio(numerator, denominator);
+  const int64_t result_by_denom_minus_one =
       CeilOfRatioDenomMinusOne(numerator, denominator);
   EXPECT_EQ(result_by_denom_minus_one + expected_error, correct_result)
       << "numerator = " << numerator << " denominator = " << denominator
@@ -194,7 +194,7 @@ TEST(MathUtil, CeilOfRatio) {
   TestCeilOfRatioSigned<int8>(kint8min, kint8max);
   TestCeilOfRatioSigned<int16>(kint16min, kint16max);
   TestCeilOfRatioSigned<int32>(kint32min, kint32max);
-  TestCeilOfRatioSigned<int64>(kint64min, kint64max);
+  TestCeilOfRatioSigned<int64_t>(kint64min, kint64max);
 #if 0
   TestThatCeilOfRatioDenomMinusOneIsIncorrect();
 #endif
@@ -261,11 +261,11 @@ TEST(MathUtil, IPow) {
   TestOneIPowN<double>();
   TestOneIPowN<float>();
   TestOneIPowN<int>();
-  TestOneIPowN<int64>();
+  TestOneIPowN<int64_t>();
   TestTwoIPowN<double>();
   TestTwoIPowN<float>();
   TestTwoIPowN<int>();
-  TestTwoIPowN<int64>();
+  TestTwoIPowN<int64_t>();
 
   EXPECT_EQ(MathUtil::IPow(3, 0), 1);
   EXPECT_EQ(MathUtil::IPow(3, 1), 3);

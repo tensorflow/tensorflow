@@ -34,7 +34,7 @@ namespace tensorflow {
 namespace sdca {
 
 using UnalignedFloatVector = TTypes<const float>::UnalignedConstVec;
-using UnalignedInt64Vector = TTypes<const int64>::UnalignedConstVec;
+using UnalignedInt64Vector = TTypes<const int64_t>::UnalignedConstVec;
 
 void FeatureWeightsDenseStorage::UpdateDenseDeltaWeights(
     const Eigen::ThreadPoolDevice& device,
@@ -65,7 +65,7 @@ void FeatureWeightsSparseStorage::UpdateSparseDeltaWeights(
     const Eigen::ThreadPoolDevice& device,
     const Example::SparseFeatures& sparse_features,
     const std::vector<double>& normalized_bounded_dual_delta) {
-  for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
+  for (int64_t k = 0; k < sparse_features.indices->size(); ++k) {
     const double feature_value =
         sparse_features.values == nullptr ? 1.0 : (*sparse_features.values)(k);
     auto it = indices_to_id_.find((*sparse_features.indices)(k));
@@ -133,7 +133,7 @@ Status ModelWeights::Initialize(OpKernelContext* const context) {
     auto deltas = delta_t->shaped<float, 2>({1, delta_t->NumElements()});
     deltas.setZero();
     sparse_weights_.emplace_back(FeatureWeightsSparseStorage{
-        sparse_indices_inputs[i].flat<int64>(),
+        sparse_indices_inputs[i].flat<int64_t>(),
         sparse_weights_inputs[i].shaped<float, 2>(
             {1, sparse_weights_inputs[i].NumElements()}),
         deltas});
@@ -180,8 +180,8 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
     const FeatureWeightsSparseStorage& sparse_weights =
         model_weights.sparse_weights()[j];
 
-    for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
-      const int64 feature_index = (*sparse_features.indices)(k);
+    for (int64_t k = 0; k < sparse_features.indices->size(); ++k) {
+      const int64_t feature_index = (*sparse_features.indices)(k);
       const double feature_value = sparse_features.values == nullptr
                                        ? 1.0
                                        : (*sparse_features.values)(k);
@@ -380,6 +380,11 @@ Status Examples::Initialize(OpKernelContext* const context,
   const Tensor* example_labels_t;
   TF_RETURN_IF_ERROR(context->input("example_labels", &example_labels_t));
   auto example_labels = example_labels_t->flat<float>();
+  if (example_labels.size() != num_examples) {
+    return errors::InvalidArgument("Expected ", num_examples,
+                                   " example labels but got ",
+                                   example_labels.size());
+  }
 
   OpInputList dense_features_inputs;
   TF_RETURN_IF_ERROR(
@@ -421,14 +426,14 @@ Status Examples::CreateSparseFeatureRepresentation(
     std::vector<Example>* const examples) {
   mutex mu;
   Status result;  // Guarded by mu
-  auto parse_partition = [&](const int64 begin, const int64 end) {
+  auto parse_partition = [&](const int64_t begin, const int64_t end) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
     for (int i = static_cast<int>(begin); i < end; ++i) {
       auto example_indices =
-          sparse_example_indices_inputs[i].template flat<int64>();
+          sparse_example_indices_inputs[i].template flat<int64_t>();
       auto feature_indices =
-          sparse_feature_indices_inputs[i].template flat<int64>();
+          sparse_feature_indices_inputs[i].template flat<int64_t>();
       if (example_indices.size() != feature_indices.size()) {
         mutex_lock l(mu);
         result = errors::InvalidArgument(
@@ -463,8 +468,8 @@ Status Examples::CreateSparseFeatureRepresentation(
           if (end_id - start_id > 0) {
             // TODO(sibyl-Aix6ihai): Write this efficiently using vectorized
             // operations from eigen.
-            for (int64 k = 0; k < sparse_features->indices->size(); ++k) {
-              const int64 feature_index = (*sparse_features->indices)(k);
+            for (int64_t k = 0; k < sparse_features->indices->size(); ++k) {
+              const int64_t feature_index = (*sparse_features->indices)(k);
               if (!weights.SparseIndexValid(i, feature_index)) {
                 mutex_lock l(mu);
                 result = errors::InvalidArgument(
@@ -493,7 +498,7 @@ Status Examples::CreateSparseFeatureRepresentation(
   // num_examples here, as empirically Shard() creates the right amount of
   // threads based on the problem size.
   // TODO(sibyl-Aix6ihai): Tune this as a function of dataset size.
-  const int64 kCostPerUnit = num_examples;
+  const int64_t kCostPerUnit = num_examples;
   Shard(worker_threads.num_threads, worker_threads.workers, num_sparse_features,
         kCostPerUnit, parse_partition);
   return result;
@@ -506,7 +511,7 @@ Status Examples::CreateDenseFeatureRepresentation(
     std::vector<Example>* const examples) {
   mutex mu;
   Status result;  // Guarded by mu
-  auto parse_partition = [&](const int64 begin, const int64 end) {
+  auto parse_partition = [&](const int64_t begin, const int64_t end) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
     for (int i = static_cast<int>(begin); i < end; ++i) {
@@ -525,7 +530,7 @@ Status Examples::CreateDenseFeatureRepresentation(
     }
   };
   // TODO(sibyl-Aix6ihai): Tune this as a function of dataset size.
-  const int64 kCostPerUnit = num_examples;
+  const int64_t kCostPerUnit = num_examples;
   Shard(worker_threads.num_threads, worker_threads.workers, num_dense_features,
         kCostPerUnit, parse_partition);
   return result;
@@ -538,10 +543,10 @@ Status Examples::ComputeSquaredNormPerExample(
   mutex mu;
   Status result;  // Guarded by mu
   // Compute norm of examples.
-  auto compute_example_norm = [&](const int64 begin, const int64 end) {
+  auto compute_example_norm = [&](const int64_t begin, const int64_t end) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
-    gtl::FlatSet<int64> previous_indices;
+    gtl::FlatSet<int64_t> previous_indices;
     for (int example_id = static_cast<int>(begin); example_id < end;
          ++example_id) {
       double squared_norm = 0;
@@ -550,8 +555,8 @@ Status Examples::ComputeSquaredNormPerExample(
         const Example::SparseFeatures& sparse_features =
             example->sparse_features_[j];
         previous_indices.clear();
-        for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
-          const int64 feature_index = (*sparse_features.indices)(k);
+        for (int64_t k = 0; k < sparse_features.indices->size(); ++k) {
+          const int64_t feature_index = (*sparse_features.indices)(k);
           if (previous_indices.insert(feature_index).second == false) {
             mutex_lock l(mu);
             result =
@@ -573,7 +578,7 @@ Status Examples::ComputeSquaredNormPerExample(
     }
   };
   // TODO(sibyl-Aix6ihai): Compute the cost optimally.
-  const int64 kCostPerUnit = num_dense_features + num_sparse_features;
+  const int64_t kCostPerUnit = num_dense_features + num_sparse_features;
   Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
         kCostPerUnit, compute_example_norm);
   return result;

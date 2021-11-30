@@ -237,50 +237,54 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
                                    libxsmm_dnn_compute_kind kind,
                                    InputPtr input, FilterPtr filter,
                                    OutputPtr output) {
-#if defined(LIBXSMM_DETAILED_TIMING)
-  libxsmm_timer_tickint l_tick1;
-  libxsmm_timer_tickint l_tick2;
-  libxsmm_timer_tickint l_tick3;
-  libxsmm_timer_tickint l_tick4;
-  libxsmm_timer_tickint l_tick5;
-  libxsmm_timer_tickint l_tick6;
-  libxsmm_timer_tickint l_tick7;
-  libxsmm_timer_tickint l_tick8;
-  libxsmm_timer_tickint l_tick9;
-  libxsmm_timer_tickint l_tick10;
-  l_tick1 = libxsmm_timer_tick();
-#endif
-#if defined(LIBXSMM_LOCAL_ALLOC)
-  // setup scoped allocator, which adopts the allocator of the current context
-  const libxsmm_tf_scratch_allocator tf_allocator(*ctx);
-#endif
-  const libxsmm_dnn_registry_key regkey(desc);
-  const libxsmm_dnn_registry_value regentry = libxsmm_dnn_registry.find(regkey);
-  libxsmm_dnn_tensor *libxsmm_input, *libxsmm_output, *libxsmm_filter;
-  libxsmm_dnn_err_t status;
+  // TODO(penporn): Fix calls to deprecated LIBXSMM API or delete this kernel.
+  // Fall back to non-libxsmm code for now.
+  return false;
+  /*
+  #if defined(LIBXSMM_DETAILED_TIMING)
+    libxsmm_timer_tickint l_tick1;
+    libxsmm_timer_tickint l_tick2;
+    libxsmm_timer_tickint l_tick3;
+    libxsmm_timer_tickint l_tick4;
+    libxsmm_timer_tickint l_tick5;
+    libxsmm_timer_tickint l_tick6;
+    libxsmm_timer_tickint l_tick7;
+    libxsmm_timer_tickint l_tick8;
+    libxsmm_timer_tickint l_tick9;
+    libxsmm_timer_tickint l_tick10;
+    l_tick1 = libxsmm_timer_tick();
+  #endif
+  #if defined(LIBXSMM_LOCAL_ALLOC)
+    // setup scoped allocator, which adopts the allocator of the current context
+    const libxsmm_tf_scratch_allocator tf_allocator(*ctx);
+  #endif
+    const libxsmm_dnn_registry_key regkey(desc);
+    const libxsmm_dnn_registry_value regentry =
+  libxsmm_dnn_registry.find(regkey); libxsmm_dnn_tensor *libxsmm_input,
+  *libxsmm_output, *libxsmm_filter; libxsmm_dnn_err_t status;
 
-  status = libxsmm_dnn_get_codegen_success(regentry.handle, kind);
-  if (status == LIBXSMM_DNN_WARN_FALLBACK) {
-    return false;  // Use non-libxsmm code
-  }
-  CHECK_LIBXSMM_DNN(status, "code generation");
+    status = libxsmm_dnn_get_codegen_success(regentry.handle, kind);
+    if (status == LIBXSMM_DNN_WARN_FALLBACK) {
+      return false;  // Use non-libxsmm code
+    }
+    CHECK_LIBXSMM_DNN(status, "code generation");
 
-#if defined(LIBXSMM_DETAILED_TIMING)
-  l_tick2 = libxsmm_timer_tick();
-#endif
+  #if defined(LIBXSMM_DETAILED_TIMING)
+    l_tick2 = libxsmm_timer_tick();
+  #endif
 
-  const int ifmblock = regentry.handle->ifmblock;
-  const int ofmblock = regentry.handle->ofmblock;
+    const int ifmblock = regentry.handle->ifmblock;
+    const int ofmblock = regentry.handle->ofmblock;
 
-  const int blocksifm =
-      (desc.C % ifmblock == 0 ? desc.C / ifmblock : desc.C / ifmblock + 1);
-  const int blocksofm =
-      (desc.K % ofmblock == 0 ? desc.K / ofmblock : desc.K / ofmblock + 1);
+    const int blocksifm =
+        (desc.C % ifmblock == 0 ? desc.C / ifmblock : desc.C / ifmblock + 1);
+    const int blocksofm =
+        (desc.K % ofmblock == 0 ? desc.K / ofmblock : desc.K / ofmblock + 1);
 
-  const size_t filter_size =
-      blocksofm * blocksifm * desc.R * desc.S * ifmblock * ofmblock;
-  float* const native_filter = (float*)libxsmm_aligned_scratch(
-      filter_size * sizeof(float), 2097152 /*alignment*/);
+    const size_t filter_size =
+        blocksofm * blocksifm * desc.R * desc.S * ifmblock * ofmblock;
+    float* const native_filter = (float*)libxsmm_aligned_scratch(
+        filter_size * sizeof(float), 2097152 /*alignment*//*);
 
   const DeviceBase::CpuWorkerThreads* const worker_threads =
       ctx->device()->tensorflow_cpu_worker_threads();
@@ -391,7 +395,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
                                               LIBXSMM_DNN_GRADIENT_OUTPUT),
                       "bind output weight update");
   } else {
-    assert(0 /*should not happen*/);
+    assert(0 /*should not happen*//*);
   }
 
 #if defined(LIBXSMM_DETAILED_TIMING)
@@ -402,7 +406,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
       regentry.handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, &status);
   CHECK_LIBXSMM_DNN(status, "get scratch size");
   void* const scratch =
-      libxsmm_aligned_scratch(scratch_size, 2097152 /*alignment*/);
+      libxsmm_aligned_scratch(scratch_size, 2097152 /*alignment*//*);
   CHECK_LIBXSMM(0 != scratch, "scratch memory allocation");
   CHECK_LIBXSMM_DNN(libxsmm_dnn_bind_scratch(
                         regentry.handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, scratch),
@@ -452,7 +456,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   l_tick8 = libxsmm_timer_tick();
 #endif
 
-  /* clean up */
+  /* clean up */ /*
   CHECK_LIBXSMM_DNN(libxsmm_dnn_release_scratch(regentry.handle,
                                                 LIBXSMM_DNN_COMPUTE_KIND_ALL),
                     "release scratch");
@@ -487,7 +491,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
                                                  LIBXSMM_DNN_GRADIENT_FILTER),
                       "release filter");
   } else {
-    /* shouldn't happen */
+    /* shouldn't happen */ /*
   }
   CHECK_LIBXSMM_DNN(libxsmm_dnn_destroy_tensor(libxsmm_input), "destroy input");
   CHECK_LIBXSMM_DNN(libxsmm_dnn_destroy_tensor(libxsmm_output),
@@ -521,6 +525,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
 #endif
 
   return true;  // Succeeded
+  */
 }
 
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS

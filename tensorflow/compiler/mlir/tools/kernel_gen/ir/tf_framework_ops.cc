@@ -17,9 +17,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.cc.inc"
+
+// Generated dialect definitions.
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_dialect.cc.inc"
 
 namespace mlir {
 namespace kernel_gen {
@@ -30,7 +35,7 @@ void TFFrameworkDialect::initialize() {
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"
       >();
-  addTypes<OpKernelContextType>();
+  addTypes<JITCallableType, OpKernelContextType>();
 }
 
 /// Parse a type registered to this dialect.
@@ -40,6 +45,9 @@ Type TFFrameworkDialect::parseType(DialectAsmParser &parser) const {
 
   if (keyword == "op_kernel_context") {
     return OpKernelContextType::get(getContext());
+  }
+  if (keyword == "jit_callable") {
+    return JITCallableType::get(getContext());
   }
 
   parser.emitError(parser.getNameLoc(), "unknown TF Framework type: ")
@@ -51,6 +59,10 @@ Type TFFrameworkDialect::parseType(DialectAsmParser &parser) const {
 void TFFrameworkDialect::printType(Type type, DialectAsmPrinter &os) const {
   if (type.isa<OpKernelContextType>()) {
     os << "op_kernel_context";
+    return;
+  }
+  if (type.isa<JITCallableType>()) {
+    os << "jit_callable";
     return;
   }
   llvm_unreachable("unexpected TF Framework type kind");
@@ -76,6 +88,19 @@ LogicalResult Verify<TFAllocOp>(TFAllocOp op) {
            << " does not match dynamic dimensions count in the result type"
            << op.getType();
   return success();
+}
+
+Optional<Operation *> TFAllocOp::buildDealloc(OpBuilder &builder, Value alloc) {
+  auto funcop = alloc.getParentRegion()->getParentOfType<FuncOp>();
+  return builder
+      .create<TFDeallocOp>(alloc.getLoc(), funcop.getArgument(0), alloc)
+      .getOperation();
+}
+
+Optional<Value> TFAllocOp::buildClone(OpBuilder &builder, Value alloc) {
+  // TODO(herhut): We should have our own clone op if one of these survives.
+  return builder.create<mlir::bufferization::CloneOp>(alloc.getLoc(), alloc)
+      .getResult();
 }
 
 ::tensorflow::error::Code ConvertAttrToEnumValue(ErrorCode error_code) {

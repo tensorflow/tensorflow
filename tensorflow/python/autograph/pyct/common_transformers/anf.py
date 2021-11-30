@@ -22,10 +22,6 @@ The specific converters used here are based on Python AST semantics as
 documented at https://greentreesnakes.readthedocs.io/en/latest/.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 import gast

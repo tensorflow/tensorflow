@@ -125,6 +125,10 @@ TF_CAPI_EXPORT extern void TF_DeleteBuffer(TF_Buffer*);
 
 TF_CAPI_EXPORT extern TF_Buffer TF_GetBuffer(TF_Buffer* buffer);
 
+// Parsing a serialized TensorProto into a TF_Tensor.
+TF_CAPI_EXPORT extern void TF_TensorFromProto(const TF_Buffer* from,
+                                              TF_Tensor* to, TF_Status* status);
+
 // --------------------------------------------------------------------------
 // Used to return strings across the C API. The caller does not take ownership
 // of the underlying data pointer and is not responsible for freeing it.
@@ -254,6 +258,15 @@ TF_CAPI_EXPORT extern void TF_GraphGetTensorShape(TF_Graph* graph,
                                                   TF_Output output,
                                                   int64_t* dims, int num_dims,
                                                   TF_Status* status);
+
+// Creates a new operation - see `TF_NewOperation` for more details.
+//
+// The lock for `graph` must be held when calling this function.
+//
+// Unless implementing advanced behavior, like custom gradient functions, you
+// most likely need to call `TF_NewOperation` instead.
+TF_CAPI_EXPORT extern TF_OperationDescription* TF_NewOperationLocked(
+    TF_Graph* graph, const char* op_type, const char* oper_name);
 
 // Operation will only be added to *graph when TF_FinishOperation() is
 // called (assuming TF_FinishOperation() does not return an error).
@@ -405,6 +418,15 @@ TF_CAPI_EXPORT extern void TF_SetAttrValueProto(TF_OperationDescription* desc,
                                                 const void* proto,
                                                 size_t proto_len,
                                                 TF_Status* status);
+
+// Adds this operation to the graph - see `TF_FinishOperation` for more details.
+//
+// The lock for `graph` must be held when calling this function.
+//
+// Unless implementing advanced behavior, like custom gradient functions, you
+// most likely need to call `TF_FinishOperation` instead.
+TF_CAPI_EXPORT extern TF_Operation* TF_FinishOperationLocked(
+    TF_OperationDescription* desc, TF_Status* status);
 
 // If this function succeeds:
 //   * *status is set to an OK value,
@@ -682,6 +704,20 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrTensorList(TF_Operation* oper,
 TF_CAPI_EXPORT extern void TF_OperationGetAttrValueProto(
     TF_Operation* oper, const char* attr_name, TF_Buffer* output_attr_value,
     TF_Status* status);
+
+// Get the number of attributes the operation has.
+TF_CAPI_EXPORT extern int TF_OperationGetNumAttrs(TF_Operation* oper);
+
+// Get the length of the name of the ith attribute, or -1 if there is not an
+// ith attribute.
+TF_CAPI_EXPORT extern int TF_OperationGetAttrNameLength(TF_Operation* oper,
+                                                        int i);
+
+// Get the name of the ith attribute.  output should have the size of
+// TF_OperationGetAttrNameLength(oper, i).
+TF_CAPI_EXPORT extern void TF_OperationGetAttrName(TF_Operation* oper, int i,
+                                                   char* output,
+                                                   TF_Status* status);
 
 // Returns the operation in the graph with `oper_name`. Returns nullptr if
 // no operation found.

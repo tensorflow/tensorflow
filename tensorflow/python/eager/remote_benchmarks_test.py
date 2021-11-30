@@ -22,14 +22,9 @@ To run GPU benchmarks:
     --benchmarks=.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import time
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -50,7 +45,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
     start = time.time()
-    for _ in xrange(num_iters):
+    for _ in range(num_iters):
       func()
     if execution_mode == context.ASYNC:
       ctx.executor.wait()

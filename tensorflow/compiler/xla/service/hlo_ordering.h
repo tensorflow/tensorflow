@@ -45,14 +45,17 @@ class HloOrdering {
   enum class ExecutionConstraint {
     // Indicate a and b are the same instruction;
     kIsSame,
-    // Indicate a runs before b;
-    kRunBefore,
+    // Indicate a runs before b starts;
+    kRunBeforeStart,
+    // Indicate a runs before b ends but after b starts, e.g., when b is a
+    // conditional or while loop;
+    kRunBeforeEnd,
     // Only one of a or b runs each time their common ancestor is evaluated,
     // and a is in an earlier branch than b.
     kRunExclusiveBefore,
     // Only one of a or b runs each time, and a is in a later branch than b.
     kRunExclusiveAfter,
-    // Indicate a runs after b
+    // Indicate a runs after b ends.
     kRunAfter,
     // An order cannot be detrermined as a and b do not have a common ancestor.
     kUnordered,
@@ -70,10 +73,15 @@ class HloOrdering {
   bool IsDefinedBefore(const HloValue& a, const HloValue& b) const;
 
   // Returns whether the given use is before the given value definition under
-  // the given ordering.
-  bool UsesBeforeValueDefinition(absl::Span<const HloUse* const> uses,
-                                 const HloValue& value,
-                                 const HloDataflowAnalysis& dataflow) const;
+  // the given ordering. Set use_is_always_before_def_in_same_instr to false if
+  // you want the analysis to always consider a use at an instruction's operand
+  // to be strictly before that instructions definition. The configuration needs
+  // to be false when result will be used to remove unnecessary copy
+  // instructions, due to additional buffer sharing constraints.
+  bool UsesBeforeValueDefinition(
+      absl::Span<const HloUse* const> uses, const HloValue& value,
+      const HloDataflowAnalysis& dataflow,
+      bool use_is_always_before_def_in_same_instr = false) const;
   // Returns whether the given values interfere. Two values interfere if they
   // may both be simultaneously live.
   bool MayInterfere(const HloValue& a, const HloValue& b,
@@ -81,8 +89,9 @@ class HloOrdering {
 
   // Returns true if the live range of the given value 'a' is strictly before
   // the live range of value 'b' using the given HLO ordering.
-  bool LiveRangeStrictlyBefore(const HloValue& a, const HloValue& b,
-                               const HloDataflowAnalysis& dataflow) const;
+  bool LiveRangeStrictlyBefore(
+      const HloValue& a, const HloValue& b, const HloDataflowAnalysis& dataflow,
+      bool use_is_always_before_def_in_same_instr = false) const;
 
   // Returns the sequential instruction order for the given computation, or
   // nullptr if the computation does not have a sequential ordering.

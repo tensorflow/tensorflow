@@ -32,7 +32,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
-#include "tensorflow/compiler/xla/python/absl_casters.h"
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -586,12 +586,16 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
 /*static*/ std::unique_ptr<PyTreeDef> PyTreeDef::Tuple(
     const std::vector<PyTreeDef>& defs) {
   auto out = absl::make_unique<PyTreeDef>();
+  int num_leaves = 0;
   for (const PyTreeDef& def : defs) {
     absl::c_copy(def.traversal_, std::back_inserter(out->traversal_));
+    num_leaves += def.num_leaves();
   }
   Node node;
   node.kind = PyTreeKind::kTuple;
   node.arity = defs.size();
+  node.num_leaves = num_leaves;
+  node.num_nodes = out->traversal_.size() + 1;
   out->traversal_.push_back(node);
   return out;
 }
@@ -650,7 +654,8 @@ std::string PyTreeDef::ToString() const {
         if (py::len(node.node_data) != node.arity) {
           throw std::logic_error("Number of keys and entries does not match.");
         }
-        std::string separator = "{";
+        representation = "{";
+        std::string separator;
         auto child_iter = agenda.end() - node.arity;
         for (const py::handle& key : node.node_data) {
           absl::StrAppendFormat(&representation, "%s%s: %s", separator,

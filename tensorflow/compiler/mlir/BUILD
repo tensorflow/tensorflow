@@ -10,10 +10,7 @@ load(
 )
 
 package(
-    default_visibility = [
-        "//tensorflow/compiler/tf2xla:__subpackages__",
-        "@llvm-project//mlir:friends",
-    ],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
@@ -72,6 +69,7 @@ cc_library(
 
 cc_library(
     name = "tf_mlir_opt_main",
+    testonly = True,
     srcs = ["tf_mlir_opt_main.cc"],
     deps = [
         ":init_mlir",
@@ -79,8 +77,18 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
+        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/tosa:tf_passes",
+        "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
+        "//tensorflow/compiler/mlir/tosa:tfl_passes",
+        "//tensorflow/compiler/mlir/xla:tf_xla_passes",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -105,10 +113,11 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
+        "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
-        "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_to_quant",
+        "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_pass",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
@@ -122,6 +131,7 @@ cc_library(
     name = "init_mlir",
     srcs = ["init_mlir.cc"],
     hdrs = ["init_mlir.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
@@ -140,9 +150,11 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
@@ -164,18 +176,48 @@ cc_library(
 
 tf_cc_binary(
     name = "tf-opt",
+    testonly = True,
     deps = [
         ":passes",
         ":tf_mlir_opt_main",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
-        "//tensorflow/compiler/mlir/xla:all_xla_passes_for_testing",
+        "//tensorflow/compiler/mlir/xla:tf_xla_passes",
+        "//tensorflow/compiler/mlir/xla:xla_passes",
+    ],
+)
+
+tf_cc_binary(
+    name = "tf-reduce",
+    testonly = True,
+    srcs = ["tf_mlir_reduce_main.cc"],
+    deps = [
+        ":init_mlir",
+        ":passes",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_reduce_patterns_inc_gen",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/xla:tf_xla_passes",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/xla:xla_passes",
+        "//tensorflow/core:lib",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirReduceLib",
+        "@llvm-project//mlir:Reducer",
     ],
 )
 
 tf_cc_binary(
     name = "tf-mlir-translate",
+    testonly = True,
     srcs = ["tf_mlir_translate_main.cc"],
     deps = [
         ":init_mlir",
@@ -186,6 +228,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:translate_registration",
         "//tensorflow/compiler/mlir/tensorflow:translate_tf_dialect_op",
+        "//tensorflow/compiler/mlir/xla:translate_cl_registration",
         "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -229,6 +272,7 @@ tf_cc_test(
 filegroup(
     name = "litfiles",
     srcs = glob(["runlit*py"]),
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 exports_files(["run_lit.sh"])

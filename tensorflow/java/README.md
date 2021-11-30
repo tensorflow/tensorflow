@@ -83,31 +83,6 @@ omitted here, but find inspiration in the script used for building the release
 archive:
 [`tensorflow/tools/ci_build/windows/libtensorflow_cpu.sh`](https://www.tensorflow.org/code/tensorflow/tools/ci_build/windows/libtensorflow_cpu.sh).
 
-### Maven
-
-Details of the release process for Maven Central are in
-[`maven/README.md`](https://www.tensorflow.org/code/tensorflow/java/maven/README.md).
-However, for development, you can push the library built from source to a local
-Maven repository with:
-
-```sh
-bazel build -c opt //tensorflow/java:pom
-mvn install:install-file \
-  -Dfile=../../bazel-bin/tensorflow/java/libtensorflow.jar \
-  -DpomFile=../../bazel-bin/tensorflow/java/pom.xml
-```
-
-And then refer to this library in a project's `pom.xml` with: (replacing
-VERSION with the appropriate version of TensorFlow):
-
-```xml
-<dependency>
-  <groupId>org.tensorflow</groupId>
-  <artifactId>libtensorflow</artifactId>
-  <version>VERSION</version>
-</dependency>
-```
-
 ### Bazel
 
 If your project uses bazel for builds, add a dependency on

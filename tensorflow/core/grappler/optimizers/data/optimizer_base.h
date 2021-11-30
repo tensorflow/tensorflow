@@ -26,7 +26,7 @@ class TFDataOptimizerBase : public CustomGraphOptimizer {
  public:
   struct OptimizationStats {
     // Identifies the number of independent graph changes for an optimization.
-    int64 num_changes = 0;
+    int64_t num_changes = 0;
   };
 
   TFDataOptimizerBase() = default;

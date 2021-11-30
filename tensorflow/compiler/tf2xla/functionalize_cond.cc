@@ -223,7 +223,7 @@ string DebugString(const CondArgNodes& nodes) {
 }
 
 StateMap::CondId StateMap::LookupCondId(const Node* node) const {
-  const int64 map_size = node_to_condid_map_.size();
+  const int64_t map_size = node_to_condid_map_.size();
   if (node->id() < map_size) return node_to_condid_map_[node->id()];
   return added_node_condid_mapping_.at(node->id());
 }
@@ -234,7 +234,7 @@ StateMap::CondId StateMap::GetCondId(const StateMap::CondState& state) {
 }
 
 void StateMap::ResetCondId(const Node* node, StateMap::CondId id) {
-  const int64 map_size = node_to_condid_map_.size();
+  const int64_t map_size = node_to_condid_map_.size();
   if (node->id() < map_size)
     node_to_condid_map_[node->id()] = id;
   else
@@ -242,7 +242,7 @@ void StateMap::ResetCondId(const Node* node, StateMap::CondId id) {
 }
 
 StateMap::AncestorId StateMap::LookupAncestorId(const Node* node) const {
-  const int64 map_size = node_to_ancestorid_map_.size();
+  const int64_t map_size = node_to_ancestorid_map_.size();
   if (node->id() < map_size) return node_to_ancestorid_map_[node->id()];
   return added_node_ancestorid_mapping_.at(node->id());
 }
@@ -254,7 +254,7 @@ StateMap::AncestorId StateMap::GetAncestorId(
 }
 
 void StateMap::ResetAncestorId(const Node* node, StateMap::AncestorId id) {
-  const int64 map_size = node_to_ancestorid_map_.size();
+  const int64_t map_size = node_to_ancestorid_map_.size();
   if (node->id() < map_size)
     node_to_ancestorid_map_[node->id()] = id;
   else
@@ -975,9 +975,7 @@ Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
 StatusOr<Node*> FunctionalizeCond::AddIfNode(const NodeDef& def,
                                              const Node* replacee,
                                              const OutputTensor& predicate) {
-  Status status;
-  Node* ret = graph_->AddNode(def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * ret, graph_->AddNode(def));
   VLOG(1) << "Adding If for " << replacee->name();
   StateMap::CondId id = state_map_.LookupCondId(replacee);
   if (id) {

@@ -34,7 +34,7 @@ namespace tensorflow {
 namespace {
 
 class ConstantTest : public ::testing::TestWithParam<
-                         std::tuple<DataType, std::vector<int64>, bool>> {
+                         std::tuple<DataType, std::vector<int64_t>, bool>> {
  public:
   ConstantTest()
       : device_mgr_(testing::CreateTestingDeviceMgr()),

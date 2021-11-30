@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -32,6 +31,10 @@ limitations under the License.
 namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
+
+// Attempts to match instruction to one of the possible cases for ReductionKind.
+absl::optional<ReductionKind> MatchReductionInstruction(
+    const HloInstruction* hlo);
 
 // Attempts to match computation to one of the possible cases in ReductionKind.
 absl::optional<ReductionKind> MatchReductionComputation(
@@ -117,6 +120,10 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
 
+// Returns true if the two replica group are orthogonal.
+bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
+                             absl::Span<const ReplicaGroup> second);
+
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
 // The rules are as follows.
@@ -149,7 +156,7 @@ struct RendezvousKey {
   explicit RendezvousKey(const RunId& run_id,
                          std::vector<GlobalDeviceId> global_devices,
                          int num_local_participants,
-                         CollectiveOpKind collective_op_kind, int64 op_id)
+                         CollectiveOpKind collective_op_kind, int64_t op_id)
       : run_id(run_id),
         global_devices(std::move(global_devices)),
         num_local_participants(num_local_participants),
@@ -193,7 +200,7 @@ struct RendezvousKey {
   std::vector<GlobalDeviceId> global_devices;
   int num_local_participants;
   CollectiveOpKind collective_op_kind;
-  int64 op_id;
+  int64_t op_id;
 };
 
 template <typename DescFn>
@@ -216,17 +223,12 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
 
 // Participant data for each rendezvous.
 struct ParticipantData {
-  ParticipantData(const RendezvousKey& rendezvous_key, int64 device_ordinal,
-                  se::Stream* stream)
-      : rendezvous_key(rendezvous_key),
-        device_ordinal(device_ordinal),
-        stream(stream) {}
+  explicit ParticipantData(const RendezvousKey& rendezvous_key)
+      : rendezvous_key(rendezvous_key) {}
 
   virtual ~ParticipantData() {}
 
   RendezvousKey rendezvous_key;
-  int64 device_ordinal;
-  se::Stream* stream;
 
   virtual std::string ToString() const = 0;
 };
@@ -234,27 +236,30 @@ struct ParticipantData {
 // Encapsulates parameters to Rendezvous::SubmitParticipant.
 struct AllReduceParticipantData : ParticipantData {
   AllReduceParticipantData(const RendezvousKey& rendezvous_key_p,
-                           int64 device_ordinal_p, se::Stream* stream_p)
-      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
+                           int64_t device_ordinal_p, se::Stream* stream_p)
+      : ParticipantData(rendezvous_key_p),
+        device_ordinal(device_ordinal_p),
+        stream(stream_p) {}
 
   // TODO(b/125951860): We should vet that we're buffer allocating such that
   // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
   // on how well the NCCL in-place implementation performs vs the out-of-place
   // implementation).
   struct Buffer {
-    int64 element_count;
+    int64_t element_count;
     se::DeviceMemoryBase source_data;
     se::DeviceMemoryBase destination_data;
     PrimitiveType primitive_type;
   };
+  int64_t device_ordinal;
+  se::Stream* stream;
   std::vector<Buffer> buffers;
-  const gpu::NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
   ReductionKind reduction_kind;
 
   // For each local all-reduce participant a (global ID, local device ordinal)
   // pair for the participant. Participants are in no particular order.
-  std::vector<std::pair<GlobalDeviceId, int64>> local_devices;
+  std::vector<std::pair<GlobalDeviceId, int64_t>> local_devices;
 
   string ToString() const override {
     std::vector<std::string> buffer_strs;
@@ -366,9 +371,9 @@ class Rendezvous {
     all_participants_present_.DecrementCount();
     WaitAndLogIfStuck(&all_participants_present_, [&] {
       return absl::StrFormat(
-          "participant for device ordinal %d, stream %p waiting for all "
-          "participants to arrive at rendezvous %s",
-          participant.device_ordinal, participant.stream, key_.ToString());
+          "participant %s waiting for all participants to arrive at rendezvous "
+          "%s",
+          participant.ToString(), key_.ToString());
     });
 
     TF_ASSIGN_OR_RETURN(O output, RunCollectiveOp(participant));

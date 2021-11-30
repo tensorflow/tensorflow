@@ -166,7 +166,7 @@ class DestroyTemporaryVariableOp : public OpKernel {
                      rm, unique_name));
     if (context->track_allocations()) {
       context->record_persistent_memory_allocation(
-          -static_cast<int64>(tmpvar.AllocatedBytes()));
+          -static_cast<int64_t>(tmpvar.AllocatedBytes()));
     }
   }
 

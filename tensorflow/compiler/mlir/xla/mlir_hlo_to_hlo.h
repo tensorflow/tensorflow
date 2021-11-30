@@ -40,6 +40,9 @@ struct MlirToHloConversionOptions {
   // backend config for the bitcast. This is required for XLA:GPU backend to
   // use elemental IR emitters for fused bitcasts without propagating layouts.
   bool propagate_bitcast_layouts_to_backend_config = false;
+
+  // Legalize names to be compatible with TensorFlow.
+  bool legalize_node_names = true;
 };
 
 // Converts a MLIR module in HLO dialect into a HloModuleProto. If
@@ -76,9 +79,6 @@ Status ConvertRegionToComputation(mlir::Region* region,
 llvm::Optional<::xla::XlaOp> CreateXlaOperator(
     mlir::Operation* op,
     llvm::DenseMap<mlir::Value, ::xla::XlaOp>* value_lowering);
-
-mlir::DenseIntElementsAttr GetLayoutFromMlirHlo(
-    mlir::Operation* op, llvm::StringRef attr_name = "minor_to_major");
 
 }  // namespace mlir
 

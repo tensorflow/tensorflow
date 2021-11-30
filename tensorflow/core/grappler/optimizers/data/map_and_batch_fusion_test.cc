@@ -29,9 +29,9 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchNodesIntoOne) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
-  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);
-  NodeDef *step_node = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *start_node = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
   std::vector<string> range_inputs(3);
   range_inputs[0] = start_node->name();
@@ -59,7 +59,8 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchNodesIntoOne) {
         graph_utils::AddNode("", "MapDataset", map_inputs, map_attrs, &graph);
   }
 
-  NodeDef *batch_size_node = graph_utils::AddScalarConstNode<int64>(5, &graph);
+  NodeDef *batch_size_node =
+      graph_utils::AddScalarConstNode<int64_t>(5, &graph);
   NodeDef *batch_node;
   {
     std::vector<string> batch_inputs(2);
@@ -111,9 +112,9 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchNodesIntoOne) {
 TEST(MapAndBatchFusionTest, FuseMapAndBatchV2NodesIntoOne) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
-  NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
-  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);
-  NodeDef *step_node = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *start_node = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
   std::vector<string> range_inputs(3);
   range_inputs[0] = start_node->name();
@@ -141,7 +142,8 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchV2NodesIntoOne) {
         graph_utils::AddNode("", "MapDataset", map_inputs, map_attrs, &graph);
   }
 
-  NodeDef *batch_size_node = graph_utils::AddScalarConstNode<int64>(5, &graph);
+  NodeDef *batch_size_node =
+      graph_utils::AddScalarConstNode<int64_t>(5, &graph);
   NodeDef *drop_remainder_node =
       graph_utils::AddScalarConstNode<bool>(true, &graph);
   NodeDef *batch_node;
@@ -194,9 +196,9 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchV2NodesIntoOne) {
 TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
-  NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
-  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);
-  NodeDef *step_node = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *start_node = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
   std::vector<string> range_inputs(3);
   range_inputs[0] = start_node->name();
@@ -227,7 +229,8 @@ TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
                                     map_attrs, &graph);
   }
 
-  NodeDef *batch_size_node = graph_utils::AddScalarConstNode<int64>(5, &graph);
+  NodeDef *batch_size_node =
+      graph_utils::AddScalarConstNode<int64_t>(5, &graph);
   NodeDef *batch_node;
   {
     std::vector<string> batch_inputs(2);
@@ -279,9 +282,9 @@ TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
 TEST(MapAndBatchFusionTest, FuseParallelMapV2AndBatchNodesIntoOne) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
-  NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
-  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);
-  NodeDef *step_node = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *start_node = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
   std::vector<string> range_inputs(3);
   range_inputs[0] = start_node->name();
@@ -293,7 +296,7 @@ TEST(MapAndBatchFusionTest, FuseParallelMapV2AndBatchNodesIntoOne) {
   NodeDef *captured_input_node =
       graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
   NodeDef *num_parallel_calls_node =
-      graph_utils::AddScalarConstNode<int64>(2, &graph);
+      graph_utils::AddScalarConstNode<int64_t>(2, &graph);
 
   NodeDef *map_node;
   {
@@ -312,7 +315,8 @@ TEST(MapAndBatchFusionTest, FuseParallelMapV2AndBatchNodesIntoOne) {
                                     map_attrs, &graph);
   }
 
-  NodeDef *batch_size_node = graph_utils::AddScalarConstNode<int64>(5, &graph);
+  NodeDef *batch_size_node =
+      graph_utils::AddScalarConstNode<int64_t>(5, &graph);
   NodeDef *batch_node;
   {
     std::vector<string> batch_inputs(2);
@@ -365,9 +369,9 @@ TEST(MapAndBatchFusionTest, NoChange) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
-  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);
-  NodeDef *step_node = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *start_node = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
   std::vector<string> range_inputs(3);
   range_inputs[0] = start_node->name();
@@ -377,7 +381,8 @@ TEST(MapAndBatchFusionTest, NoChange) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
 
-  NodeDef *batch_size_node = graph_utils::AddScalarConstNode<int64>(5, &graph);
+  NodeDef *batch_size_node =
+      graph_utils::AddScalarConstNode<int64_t>(5, &graph);
   std::vector<string> batch_inputs(2);
   batch_inputs[0] = range_node->name();
   batch_inputs[1] = batch_size_node->name();

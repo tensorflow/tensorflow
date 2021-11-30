@@ -40,6 +40,8 @@ upper_tabs:
       - title: "Train a mobile object detector"
         path: https://blog.tensorflow.org/2018/07/training-and-serving-realtime-mobile-object-detector-cloud-tpus.html
         status: external
+      - title: "Classify custom body poses"
+        path: /lite/tutorials/pose_classification
 
       - heading: "Text"
       - title: "Text classification with Model Maker"
@@ -59,7 +61,7 @@ upper_tabs:
         path: https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0
         status: external
       - title: "Person detection"
-        path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection
+        path: https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/person_detection
         status: external
 
     - name: "Guide"
@@ -94,6 +96,12 @@ upper_tabs:
         path: /lite/guide/hosted_models
       - title: "API updates"
         path: /lite/convert/api_updates
+      - title: "Model Analyzer"
+        path: /lite/guide/model_analyzer
+        status: experimental
+      - title: "Authoring tool"
+        path: /lite/guide/authoring
+        status: experimental
 
       - heading: "Create a model"
       - title: "TensorFlow Lite Model Maker"
@@ -103,6 +111,9 @@ upper_tabs:
       - heading: "Run Inference"
       - title: "Overview"
         path: /lite/guide/inference
+      - title: "Signatures"
+        path: /lite/guide/signatures
+        status: experimental
       - title: "Operator compatibility"
         path: /lite/guide/ops_compatibility
       - title: "Select operators"
@@ -116,6 +127,9 @@ upper_tabs:
         status: experimental
       - title: "Select operators Allowlist"
         path: /lite/guide/op_select_allowlist
+      - title: "TensorFlow Text ops"
+        path: /text/guide/text_tf_lite
+        status: external
 
       - heading: "Run Inference with metadata"
       - title: "Overview"
@@ -181,6 +195,9 @@ upper_tabs:
         status: experimental
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
+      - title: "Inspecting quantization errors"
+        path: /lite/performance/quantization_debugger
+        status: nightly
 
       - heading: "Build TensorFlow Lite"
       - title: "Build for Android"
@@ -196,7 +213,6 @@ upper_tabs:
           path: /lite/guide/build_cmake_arm
       - title: "Build Python Wheel"
         path: /lite/guide/build_cmake_pip
-        status: experimental
       - title: "Reduce binary size"
         path: /lite/guide/reduce_binary_size
         status: experimental
@@ -228,6 +244,8 @@ upper_tabs:
         path: /lite/examples/style_transfer/overview
       - title: "Super resolution"
         path: /lite/examples/super_resolution/overview
+      - title: "Optical character recognition"
+        path: /lite/examples/optical_character_recognition/overview
       - heading: "Text"
       - title: "BERT Question Answer"
         path: /lite/examples/bert_qa/overview
@@ -239,25 +257,43 @@ upper_tabs:
       - title: "Audio classification"
         path: /lite/examples/audio_classification/overview
       - heading: "Others"
+      - title: "Jax Model Conversion"
+        path: /lite/examples/jax_conversion/overview
+        status: nightly
+      - title: "On-device training"
+        path: /lite/examples/on_device_training/overview
       - title: "Recommendation"
         path: /lite/examples/recommendation/overview
+      - title: "Reinforcement learning"
+        path: /lite/examples/reinforcement_learning/overview
 
     - name: "API"
       skip_translation: true
       contents:
       - title: "API Reference"
         path: /lite/api_docs/
-      - heading: "Python"
-      - include: /lite/api_docs/python/tf/lite/_toc.yaml
-      - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
-      - heading: "Android (Java)"
-      - include: /lite/api_docs/java/_toc.yaml
-      - heading: "Swift"
-      - include: /lite/api_docs/swift/_toc.yaml
-      - heading: "C++"
-      - title: "Overview"
-        path: /lite/api_docs/cc/
-      - include: /lite/api_docs/cc/_doxygen.yaml
+      - title: "Python"
+        style: accordion
+        section:
+        - include: /lite/api_docs/python/tf/lite/_toc.yaml
+        - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
+      - title: "Android (Java)"
+        platform: android
+        style: accordion
+        section:
+        - include: /lite/api_docs/java/_toc.yaml
+      - title: "Swift"
+        platform: ios
+        style: accordion
+        section:
+        - include: /lite/api_docs/swift/_toc.yaml
+      - title: "C++"
+        platform: cpp
+        style: accordion
+        section:
+        - title: "Overview"
+          path: /lite/api_docs/cc/
+        - include: /lite/api_docs/cc/_doxygen.yaml
 
 - include: /api_docs/_upper_tabs_api.yaml
 - include: /resources/_upper_tabs_resources.yaml

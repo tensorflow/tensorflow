@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for core."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 import pickle
@@ -75,6 +71,7 @@ def configure_virtual_cpus():
   ])
 
 
+@test_util.with_eager_op_as_function
 class TFETest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -304,8 +301,12 @@ class TFETest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         bool(tf_a == tf_d)
       self.assertAllEqual(tf_a == tf_d, [[True, False], [True, False]])
-      self.assertFalse(bool(tf_a == tf_e))
-      self.assertTrue(bool(tf_a != tf_e))
+
+      # TODO(b/207402791): re-enable once incompatible shapes supported by XLA.
+      if not test_util.is_xla_enabled():
+        self.assertFalse(bool(tf_a == tf_e))
+        self.assertTrue(bool(tf_a != tf_e))
+
       self.assertNotAllEqual(tf_a, tf_e)
 
       with self.assertRaises(ValueError):
@@ -583,6 +584,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   @test_util.disable_tfrt('PyFunc is not supported in TFRT.')
   def testPyFunctionAsync(self):
+    self.skipTest('flaky; b/194307407')
 
     def simple_fn(v):
       one = constant_op.constant(1.)
@@ -867,6 +869,7 @@ class TFETest(test_util.TensorFlowTestCase):
           attrs=('T', dtypes.float32.as_datatype_enum, 'squeeze_dims',
                  ['0', '2']))
 
+  @test_util.disable_eager_op_as_function('b/206994108')
   def testExecuteListTypeListShapeAttr(self):
     execute(
         b'Barrier',
@@ -1063,6 +1066,7 @@ class TFETest(test_util.TensorFlowTestCase):
         empty_handle.shape.as_list())
 
 
+@test_util.with_eager_op_as_function
 class SendRecvTest(test_util.TensorFlowTestCase):
 
   cpu_device = '/job:localhost/replica:0/task:0/device:CPU:0'
@@ -1097,8 +1101,9 @@ class SendRecvTest(test_util.TensorFlowTestCase):
 
   @test_util.disable_tfrt('Send/Receive not supported in TFRT yet.')
   def testBasic(self):
-    t0 = constant_op.constant(1.0)
-    t1 = constant_op.constant(2.0)
+    with ops.device(self.cpu_device):
+      t0 = constant_op.constant(1.0)
+      t1 = constant_op.constant(2.0)
     self._send(t0, 't0', self.cpu_device)
     self._send(t1, 't1', self.cpu_device)
     self.assertAllEqual(

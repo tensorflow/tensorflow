@@ -35,8 +35,8 @@ Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
   // The default is already unknown
   if (!context->RankKnown(handle)) return Status::OK();
 
-  std::vector<int64> dims(context->Rank(handle));
-  for (int32 i = 0, end = dims.size(); i < end; ++i) {
+  std::vector<int64_t> dims(context->Rank(handle));
+  for (int32_t i = 0, end = dims.size(); i < end; ++i) {
     dims[i] = context->Value(context->Dim(handle, i));
   }
   return PartialTensorShape::MakePartialShape(dims.data(), dims.size(), shape);
@@ -141,10 +141,7 @@ Status PropagateShapes(Graph* graph,
             }
           }
 
-          Status s;
-          Node* const_node = graph->AddNode(const_def, &s);
-          TF_RETURN_IF_ERROR(s);
-
+          TF_ASSIGN_OR_RETURN(Node * const_node, graph->AddNode(const_def));
           graph->AddControlEdge(var_node, const_node);
           std::vector<const Edge*> out_edges(n->out_edges().begin(),
                                              n->out_edges().end());

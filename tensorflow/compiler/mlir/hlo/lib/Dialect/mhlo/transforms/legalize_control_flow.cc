@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // TF:llvm-project
@@ -37,7 +38,7 @@ namespace mlir {
 namespace mhlo {
 namespace {
 struct LegalizeControlFlowPass
-    : public mlir::PassWrapper<LegalizeControlFlowPass, FunctionPass> {
+    : public LegalizeControlFlowPassBase<LegalizeControlFlowPass> {
   // Perform the lowering to MLIR control flow.
   void runOnFunction() override;
 };
@@ -106,6 +107,9 @@ LogicalResult LowerIfOp(mlir::mhlo::IfOp if_op) {
 }
 
 LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
+  // TODO(jpienaar): Support multi-operand while op.
+  if (while_op.arg().size() != 1) return failure();
+
   // Converts a MHLO while loop into control flow. This generates a set of MLIR
   // blocks and branches, along with inlining the regions provided by the MHLO
   // while loop. The structure should be similar to below:
@@ -140,7 +144,8 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   //     <prior operations>
   //     br ^cond(%arg0) // Jumps to the condition statement.
   builder.setInsertionPointToEnd(orig_block);
-  builder.create<mlir::BranchOp>(loc, cond_block, while_op.getOperand());
+  // TODO(jpienaar): Support multi-operand while op.
+  builder.create<mlir::BranchOp>(loc, cond_block, while_op.arg()[0]);
 
   // Updates the inlined condition blocks by replacing the return op with an
   // tensor.extract and conditional branch. This changes the block below:
@@ -199,8 +204,9 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   }
 
   // Erase the original while loop.
-  tail_block->addArgument(while_op.getType());
-  while_op.getResult().replaceAllUsesWith(tail_block->getArgument(0));
+  // TODO(jpienaar): Support multi-operand while op.
+  tail_block->addArgument(while_op.arg().getType()[0]);
+  while_op.getResult(0).replaceAllUsesWith(tail_block->getArgument(0));
   op_inst->erase();
 
   return success();

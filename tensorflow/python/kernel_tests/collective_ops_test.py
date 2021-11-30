@@ -14,14 +14,9 @@
 # ==============================================================================
 """Tests for V2 Collective Operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import threading
 import time
-
 from absl.testing import parameterized
 
 from tensorflow.python.compat import v2_compat
@@ -84,8 +79,9 @@ class CollectiveOpsV2(object):
     group_key = array_ops.identity(group_key)
     instance_key = array_ops.identity(instance_key)
     shape = array_ops.identity(shape)
-    return _collective_ops.broadcast_recv_v2(
-        shape, dtype, group_size, group_key, instance_key, *args, **kwargs)
+    return _collective_ops.broadcast_recv_v2(shape, dtype, group_size,
+                                             group_key, instance_key, *args,
+                                             **kwargs)
 
 
 device_combination = (
@@ -93,18 +89,12 @@ device_combination = (
     combinations.combine(
         device='GPU', communication=['RING', 'NCCL'], required_gpus=2))
 
-
-collective_op_combinations = combinations.times(
-    combinations.combine(
-        collective_op=[
-            combinations.NamedObject('all_reduce', CollectiveOpsV1.all_reduce),
-            combinations.NamedObject('all_reduce_v2',
-                                     CollectiveOpsV2.all_reduce),
-            combinations.NamedObject('all_gather', CollectiveOpsV1.all_gather),
-            combinations.NamedObject('all_gather_v2',
-                                     CollectiveOpsV2.all_gather),
-        ],
-        mode='eager'), device_combination)
+collective_op_combinations = combinations.combine(collective_op=[
+    combinations.NamedObject('all_reduce', CollectiveOpsV1.all_reduce),
+    combinations.NamedObject('all_reduce_v2', CollectiveOpsV2.all_reduce),
+    combinations.NamedObject('all_gather', CollectiveOpsV1.all_gather),
+    combinations.NamedObject('all_gather_v2', CollectiveOpsV2.all_gather)
+])
 
 
 @combinations.generate(
@@ -387,9 +377,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.times(
         combinations.combine(
-            collective_ops=[
-                combinations.NamedObject('v2', CollectiveOpsV2)
-            ],
+            collective_ops=[combinations.NamedObject('v2', CollectiveOpsV2)],
             mode='eager',
             max_subdivs_per_device=[-1, 0, 16]), device_combination))
 class AllReduceWithSubdivisionsTest(test.TestCase, parameterized.TestCase):
@@ -488,7 +476,8 @@ class XlaTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(results, [[2.], [2.]])
 
 
-@combinations.generate(collective_op_combinations)
+@combinations.generate(
+    combinations.times(collective_op_combinations, device_combination))
 class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -909,7 +898,8 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(finishes, 2)
 
 
-@combinations.generate(collective_op_combinations)
+@combinations.generate(
+    combinations.times(collective_op_combinations, device_combination))
 class TimeoutTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -1034,6 +1024,39 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
             communication_hint=communication)
 
 
+class CommunicationHintTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  @combinations.generate(
+      combinations.times(collective_op_combinations,
+                         combinations.combine(required_gpus=[0, 1])))
+  def testNCCLFallbackOnCPU(self, collective_op):
+    # communication_hint=NCCL should work for CPU by falling back to RING. The
+    # test doesn't actually require GPU, only GPU builds. We specify
+    # required_gpus=1 so that it's tested with GPU builds.
+    dev0 = '/device:CPU:0'
+    dev1 = '/device:CPU:1'
+    group_key = 20
+    instance_key = 30
+    input_data = constant_op.constant([1., 2., 3., 4.])
+
+    @def_function.function
+    def run():
+      for device in [dev0, dev1]:
+        with ops.device(device):
+          collective_op(
+              input_data,
+              group_size=2,
+              group_key=group_key,
+              instance_key=instance_key,
+              communication_hint='NCCL')
+
+    run()
+
+
 @combinations.generate(
     combinations.times(
         combinations.combine(
@@ -1120,6 +1143,279 @@ class OrderingTest(test.TestCase, parameterized.TestCase):
       # Verify it's not the second collective by looking at the inputs.
       self.assertTrue(any(v.dtype == dtypes.resource for v in first.inputs))
       self.assertEmpty(first.control_inputs)
+
+
+class InputPipelineTest(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    _setup_context()
+
+  def testMap(self):
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+
+    def create_dataset_and_fetch_one(t):
+      dataset = dataset_ops.Dataset.from_tensor_slices([t])
+
+      def reduce_fn(t):
+        return CollectiveOpsV2.all_reduce(
+            t,
+            group_size=group_size,
+            group_key=group_key,
+            instance_key=instance_key)
+
+      dataset = dataset.map(reduce_fn)
+      return next(iter(dataset))
+
+    @def_function.function
+    def f():
+      with ops.device('CPU:0'):
+        value0 = create_dataset_and_fetch_one([1.])
+      with ops.device('CPU:1'):
+        value1 = create_dataset_and_fetch_one([2.])
+      return value0, value1
+
+    self.assertAllEqual(self.evaluate(f()), [[3.], [3.]])
+
+
+@combinations.generate(
+    combinations.times(
+        combinations.combine(collective_op=[
+            combinations.NamedObject('all_reduce_v2',
+                                     CollectiveOpsV2.all_reduce),
+            combinations.NamedObject('all_gather_v2',
+                                     CollectiveOpsV2.all_gather)
+        ]), device_combination))
+class InvalidInputTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  def testInvalidGroupKey(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    group_size = 2
+    group_key = [100]
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
+
+  def testInvalidGroupSize(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    group_size = -2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
+
+  def testInvalidInstanceKey(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    group_size = 2
+    group_key = 100
+    instance_key = [100]
+    in_tensor = constant_op.constant([1.])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
+
+
+class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    _setup_context()
+
+  def testGroupInitialization(self):
+    group_size = 2
+    group_key = 100
+
+    @def_function.function
+    def f():
+      with ops.device('CPU:0'):
+        _collective_ops.initialize_communicator(
+            group_key=group_key, rank=0, group_size=group_size)
+      with ops.device('CPU:1'):
+        _collective_ops.initialize_communicator(
+            group_key=group_key, rank=1, group_size=group_size)
+
+      # TODO(b/193864859): Add validation with reduction op.
+
+    self.evaluate(f())
+
+  @combinations.generate(device_combination)
+  def testAllReduceV3(self, device, communication):
+    group_size = 2
+    group_key = 101
+
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+
+    @def_function.function
+    def run_all_reduce_2devices():
+      collectives = []
+      with ops.device(dev0):
+        group_handle0 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=0,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_reduce_v3(
+                group_handle0, [1.0], reduction='Add'))
+      with ops.device(dev1):
+        group_handle1 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=1,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_reduce_v3(
+                group_handle1, [2.0], reduction='Add'))
+      return collectives
+
+    for result in run_all_reduce_2devices():
+      self.assertAllClose(result, [3.], rtol=1e-5, atol=1e-5)
+
+  @combinations.generate(device_combination)
+  def testAllToAllV3(self, device, communication):
+    group_size = 2
+    group_key = 104
+
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+
+    @def_function.function
+    def run_all_to_all_2devices():
+      collectives = []
+      with ops.device(dev0):
+        group_handle0 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=0,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle0, [1.0, 3.0]))
+      with ops.device(dev1):
+        group_handle1 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=1,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle1, [2.0, 4.0]))
+      return collectives
+
+    result = run_all_to_all_2devices()
+    self.assertAllClose(result[0], [1.0, 2.0], rtol=1e-5, atol=1e-5)
+    self.assertAllClose(result[1], [3.0, 4.0], rtol=1e-5, atol=1e-5)
+
+  @combinations.generate(device_combination)
+  def testAllToAllV3DifferentUserRank(self, device, communication):
+    group_size = 2
+    group_key = 105
+
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+
+    @def_function.function
+    def run_all_to_all_2devices():
+      collectives = []
+      with ops.device(dev0):
+        group_handle0 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=1,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle0, [1.0, 3.0]))
+      with ops.device(dev1):
+        group_handle1 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=0,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle1, [2.0, 4.0]))
+      return collectives
+
+    result = run_all_to_all_2devices()
+    self.assertAllClose(result[0], [2.0, 1.0], rtol=1e-5, atol=1e-5)
+    self.assertAllClose(result[1], [4.0, 3.0], rtol=1e-5, atol=1e-5)
+
+  @combinations.generate(device_combination)
+  def testAllToAllV3DifferentUserRankWithTensorInput(self, device,
+                                                     communication):
+    group_size = 3
+    group_key = 106
+
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+    dev2 = '/device:%s:2' % device
+
+    @def_function.function
+    def run_all_to_all_3devices():
+      collectives = []
+      with ops.device(dev0):
+        group_handle0 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=1,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle0,
+                                          constant_op.constant([1.0, 2.0,
+                                                                3.0])))
+      with ops.device(dev1):
+        group_handle1 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=0,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle1,
+                                          constant_op.constant([4.0, 5.0,
+                                                                6.0])))
+      with ops.device(dev2):
+        group_handle2 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=2,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle2,
+                                          constant_op.constant([7.0, 8.0,
+                                                                9.0])))
+
+      return collectives
+
+    result = run_all_to_all_3devices()
+    self.assertAllClose(result[0], [4.0, 1.0, 7.0], rtol=1e-5, atol=1e-5)
+    self.assertAllClose(result[1], [5.0, 2.0, 8.0], rtol=1e-5, atol=1e-5)
+    self.assertAllClose(result[2], [6.0, 3.0, 9.0], rtol=1e-5, atol=1e-5)
 
 
 def _setup_context():

@@ -869,8 +869,9 @@ TEST_F(HloVerifierTestAllowMixedPrecision, ReduceOperandComputationMismatch) {
   ASSERT_TRUE(status.ok());
 }
 
-string ReplicaGroupsStr(std::vector<std::vector<int64>> replica_groups) {
+string ReplicaGroupsStr(std::vector<std::vector<int64_t>> replica_groups) {
   std::vector<string> replica_group_strs;
+  replica_group_strs.reserve(replica_groups.size());
   for (const auto& g : replica_groups) {
     replica_group_strs.push_back(
         absl::StrFormat("{%s}", absl::StrJoin(g, ",")));
@@ -878,8 +879,8 @@ string ReplicaGroupsStr(std::vector<std::vector<int64>> replica_groups) {
   return absl::StrFormat("{%s}", absl::StrJoin(replica_group_strs, ", "));
 }
 
-int64 ReplicaCount(const std::vector<std::vector<int64>>& replica_groups) {
-  int64 replica_count = 0;
+int64_t ReplicaCount(const std::vector<std::vector<int64_t>>& replica_groups) {
+  int64_t replica_count = 0;
   for (auto group : replica_groups) {
     replica_count += group.size();
   }
@@ -887,9 +888,10 @@ int64 ReplicaCount(const std::vector<std::vector<int64>>& replica_groups) {
 }
 
 StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
-    std::vector<std::vector<int64>> replica_groups,
-    absl::optional<int64> replica_count, absl::optional<int64> num_partitions,
-    absl::string_view other_attributes, absl::string_view template_str) {
+    std::vector<std::vector<int64_t>> replica_groups,
+    absl::optional<int64_t> replica_count,
+    absl::optional<int64_t> num_partitions, absl::string_view other_attributes,
+    absl::string_view template_str) {
   HloModuleConfig config;
   config.set_replica_count(
       replica_count.value_or(ReplicaCount(replica_groups)));
@@ -905,9 +907,9 @@ StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
 }
 
 StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
-    std::vector<std::vector<int64>> replica_groups,
-    absl::optional<int64> replica_count = absl::nullopt,
-    absl::optional<int64> num_partitions = absl::nullopt,
+    std::vector<std::vector<int64_t>> replica_groups,
+    absl::optional<int64_t> replica_count = absl::nullopt,
+    absl::optional<int64_t> num_partitions = absl::nullopt,
     absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test
@@ -1018,7 +1020,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDone) {
   }
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
-    start = (f32[2,3], f32[2,3]) all-reduce-start(p0), to_apply=add
+    start = f32[2,3] all-reduce-start(p0), to_apply=add
     ROOT done = f32[2,3] all-reduce-done(start)
   }
   )";
@@ -1039,7 +1041,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDoneWrongType) {
   }
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
-    start = f32[2,3] all-reduce-start(p0), to_apply=add
+    start = (f32[2,3], f32[2,3]) all-reduce-start(p0), to_apply=add
     ROOT done = f32[2,3] all-reduce-done(start)
   }
   )";
@@ -1049,7 +1051,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDoneWrongType) {
   auto status = verifier().Run(module.get()).status();
   EXPECT_THAT(status.error_message(),
               HasSubstr("Expected instruction to have shape equal to "
-                        "(f32[2,3], f32[2,3])"));
+                        "f32[2,3]"));
 }
 
 TEST_F(HloVerifierTest, AllReduceStartAndMultipleDone) {
@@ -1098,9 +1100,9 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
 }
 
 StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
-    std::vector<std::vector<int64>> replica_groups,
-    absl::optional<int64> replica_count = absl::nullopt,
-    absl::optional<int64> num_partitions = absl::nullopt,
+    std::vector<std::vector<int64_t>> replica_groups,
+    absl::optional<int64_t> replica_count = absl::nullopt,
+    absl::optional<int64_t> num_partitions = absl::nullopt,
     absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test
@@ -1211,6 +1213,138 @@ TEST_F(HloVerifierTest, CollectivePermuteSameTargetTwice) {
                           ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
               HasSubstr("Target 2 appears more than once"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteSameSourceTooManyTimes) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    replica_id = u32[] replica-id()
+    broadcast.0 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] replica_id), dimensions={}
+    constant.1 = u32[] constant(1000)
+    broadcast.1 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+    constant.2 = s32[] constant(0)
+    constant.3 = s32[] constant(1)
+    tuple.2 = (s32[],s32[],s32[]) tuple(constant.2, constant.2, constant.2)
+    tuple.3 = (s32[],s32[],s32[]) tuple(constant.3, constant.2, constant.2)
+    tuple.4 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.3)
+    ROOT collective-permute = u32[2,8,128]{2,1,0:T(2,128)} collective-permute(u32[2,8,128] broadcast.0, u32[2,8,128] broadcast.1, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{0,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Source 0 appears more than 2 times in instruction's "
+                        "source-target pairs:"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteSameTargetTooManyTimes) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    replica_id = u32[] replica-id()
+    broadcast.0 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] replica_id), dimensions={}
+    constant.1 = u32[] constant(1000)
+    broadcast.1 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+    constant.2 = s32[] constant(0)
+    constant.3 = s32[] constant(1)
+    tuple.2 = (s32[],s32[],s32[]) tuple(constant.2, constant.2, constant.2)
+    tuple.3 = (s32[],s32[],s32[]) tuple(constant.3, constant.2, constant.2)
+    tuple.4 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.3)
+    ROOT collective-permute = u32[2,8,128]{2,1,0:T(2,128)} collective-permute(u32[2,8,128] broadcast.0, u32[2,8,128] broadcast.1, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,3},{1,0}}, slice_sizes={{1,8,128},{1,8,128}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Target 3 appears more than 2 times in instruction's "
+                        "source-target pairs:"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteUnmatchingSourceTarget) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    replica_id = u32[] replica-id()
+    broadcast.0 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] replica_id), dimensions={}
+    constant.1 = u32[] constant(1000)
+    broadcast.1 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+    broadcast.2 = u32[4,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+    constant.2 = s32[] constant(0)
+    constant.3 = s32[] constant(1)
+    tuple.output = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple(u32[2,8,128]{2,1,0:T(2,128)} broadcast.1, u32[4,8,128]{2,1,0:T(2,128)} broadcast.2)
+    tuple.2 = (s32[],s32[],s32[]) tuple(constant.2, constant.2, constant.2)
+    tuple.3 = (s32[],s32[],s32[]) tuple(constant.3, constant.2, constant.2)
+    tuple.4 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.3)
+    constant.4 = s32[] constant(2)
+    tuple.5 = (s32[],s32[],s32[]) tuple(constant.4, constant.2, constant.2)
+    tuple.6 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.5)
+    tuple.9 = (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple(((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.6)
+    ROOT collective-permute.53 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute(u32[2,8,128]{2,1,0:T(2,128)} broadcast.0, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.9), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Unmatching input buffers and output buffers"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteUnmatchingInputAndInputOffset) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    replica_id = u32[] replica-id()
+    broadcast.0 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] replica_id), dimensions={}
+    constant.1 = u32[] constant(1000)
+    broadcast.1 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+    broadcast.2 = u32[4,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+    constant.2 = s32[] constant(0)
+    constant.3 = s32[] constant(1)
+    tuple.input = (u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple(u32[2,8,128]{2,1,0:T(2,128)} broadcast.0, u32[2,8,128]{2,1,0:T(2,128)} broadcast.0)
+    tuple.output = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple(u32[2,8,128]{2,1,0:T(2,128)} broadcast.1, u32[4,8,128]{2,1,0:T(2,128)} broadcast.2)
+    tuple.2 = (s32[],s32[],s32[]) tuple(constant.2, constant.2, constant.2)
+    tuple.3 = (s32[],s32[],s32[]) tuple(constant.3, constant.2, constant.2)
+    tuple.4 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.3)
+    constant.4 = s32[] constant(2)
+    tuple.5 = (s32[],s32[],s32[]) tuple(constant.4, constant.2, constant.2)
+    tuple.6 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.5)
+    tuple.9 = (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple(((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.6)
+    ROOT collective-permute.53 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute((u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple.input, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, (s32[],s32[],s32[]) tuple.3, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.9), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Unmatching input buffers and input offset."));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteUnmatchingOutputAndOutputOffset) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    replica_id = u32[] replica-id()
+      broadcast.0 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] replica_id), dimensions={}
+      constant.1 = u32[] constant(1000)
+      broadcast.1 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+      broadcast.2 = u32[4,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+      constant.2 = s32[] constant(0)
+      constant.3 = s32[] constant(1)
+      tuple.input = (u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple(u32[2,8,128]{2,1,0:T(2,128)} broadcast.0, u32[2,8,128]{2,1,0:T(2,128)} broadcast.0)
+      tuple.output = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple(u32[2,8,128]{2,1,0:T(2,128)} broadcast.1, u32[4,8,128]{2,1,0:T(2,128)} broadcast.2)
+      tuple.2 = (s32[],s32[],s32[]) tuple(constant.2, constant.2, constant.2)
+      tuple.3 = (s32[],s32[],s32[]) tuple(constant.3, constant.2, constant.2)
+      tuple.4 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.3)
+      constant.4 = s32[] constant(2)
+      tuple.5 = (s32[],s32[],s32[]) tuple(constant.4, constant.2, constant.2)
+      tuple.7 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.2)
+      tuple.8 = (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple(((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.7)
+      ROOT collective-permute.53 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute((u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple.input, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.8, (s32[],s32[],s32[]) tuple.2), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Unmatching output buffers and output offset."));
 }
 
 TEST_F(HloVerifierTest, CollectivePermuteCrossReplicaSourceOOR) {
@@ -1585,6 +1719,76 @@ TEST_F(HloVerifierTest, InvalidChannelIDandUseGlobalDeviceIDs) {
       status.error_message(),
       HasSubstr(
           "Invalid combination of has_channel_id and use_global_device_ids"));
+}
+
+TEST_F(HloVerifierTest, ReduceScatterInvalidOutputSize0) {
+  const char* const hlo_string = R"(
+  HloModule Module
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY CRS {
+    input = f32[8]{0} parameter(0)
+    ROOT crs = f32[8]{0} reduce-scatter(input), replica_groups={{0,1}},
+                         to_apply=add, dimensions={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("shard_count = 1, subgroup_size = 2"));
+}
+
+TEST_F(HloVerifierTest, ReduceScatterInvalidScatterDim) {
+  const char* const hlo_string = R"(
+  HloModule Module
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY CRS {
+    input = f32[8]{0} parameter(0)
+    ROOT crs = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}},
+                         to_apply=add, dimensions={1}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("ars->scatter_dimension() < ars->operand(i)->shape().rank()"));
+}
+
+TEST_F(HloVerifierTest, ReduceScatterNonUniformGroups) {
+  const char* const hlo_string = R"(
+  HloModule Module
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY CRS {
+    input = f32[8]{0} parameter(0)
+    ROOT crs = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}, {2,3,4}},
+                         to_apply=add, dimensions={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Replica groups expected to be of uniform size"));
 }
 
 }  // namespace

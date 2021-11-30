@@ -139,6 +139,7 @@ cc_library(
         ":host_training_loop_optimization_util",
         ":incomplete_nodedef_builder",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
@@ -237,4 +238,35 @@ cc_library(
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+cc_library(
+    name = "configure_tpu_embedding_rewrite_pass",
+    srcs = [
+        "configure_tpu_embedding_rewrite_pass.cc",
+    ],
+    hdrs = [
+        "configure_tpu_embedding_rewrite_pass.h",
+    ],
+    deps = [
+        ":distributed_tpu_rewrite_helpers",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/core/tpu:tpu_embedding_configuration_proto_rewrite",
+    ],
+)
+
+cc_library(
+    name = "configure_tpu_embedding_rewrite_registration",
+    srcs = ["configure_tpu_embedding_rewrite_registration.cc"],
+    deps = [
+        ":configure_tpu_embedding_rewrite_pass",
+        "//tensorflow/core:core_cpu",
+    ],
+    alwayslink = 1,
 )

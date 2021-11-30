@@ -76,7 +76,7 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
   } else if (size_splits->type == kTfLiteInt64) {
     GetSizeSplitsVector<int64_t>(size_splits, &size_splits_vector);
   } else {
-    context->ReportError(context, "size_splits only support type int32|int64.");
+    TF_LITE_KERNEL_LOG(context, "size_splits only support type int32|int64.");
     return kTfLiteError;
   }
 
@@ -88,8 +88,9 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
       if (minus_one_index == -1) {
         minus_one_index = i;
       } else {
-        context->ReportError(context,
-                             "The size_splits contains more than one -1.");
+        TF_LITE_KERNEL_LOG(context,
+                           "The size_splits contains more than one -1.");
+        return kTfLiteError;
       }
     } else {
       size_splits_sum += size_splits_vector.at(i);

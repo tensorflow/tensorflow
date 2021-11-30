@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Utils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -49,7 +50,7 @@ namespace {
 // inlining does). In fact, tf-shape-inference attempts to do specialization
 // of callees which is difficult if callees have multiple uses.
 class GuaranteeAllFuncsOneUse
-    : public PassWrapper<GuaranteeAllFuncsOneUse, OperationPass<ModuleOp>> {
+    : public GuaranteeAllFuncsOneUsePassBase<GuaranteeAllFuncsOneUse> {
  public:
   void runOnOperation() override {
     if (failed(Run())) {
@@ -63,39 +64,40 @@ class GuaranteeAllFuncsOneUse
     // Overall strategy:
     // Fixed point iteration, iteratively applying a rule that clones
     // any FuncOp with more than one use to eliminate its uses.
-
-    SymbolTable symbol_table(module);
+    SymbolTableCollection symbol_table_collection;
+    SymbolTable &symbol_table = symbol_table_collection.getSymbolTable(module);
     bool made_changes = false;
+
     // This value needs to be low enough to actually stop compilation in a
     // reasonable time, but not too low that it blocks real programs.
     // This number was chosen semi-randomly.
-    const int k_max_clones = 1000;
+    // TODO(jpienaar): Switch to a more context aware heuristic.
+    const int kMaxClones = 10000;
     int num_clones = 0;
     do {
+      SymbolUserMap symbol_users(symbol_table_collection, module);
+
       made_changes = false;
       for (auto func : llvm::make_early_inc_range(module.getOps<FuncOp>())) {
-        auto uses_optional = symbol_table.getSymbolUses(func, module);
-        if (!uses_optional.hasValue()) {
-          return func.emitError() << "could not walk uses of func";
-        }
-        auto &uses = *uses_optional;
-        if (llvm::size(uses) <= 1) {
+        ArrayRef<Operation *> users = symbol_users.getUsers(func);
+        if (users.size() <= 1) {
           continue;
         }
+
         // At this point, we know we are going to change the module.
         made_changes = true;
-        for (const SymbolTable::SymbolUse &use : llvm::drop_begin(uses, 1)) {
-          if (num_clones++ > k_max_clones) {
+        for (Operation *user : users.drop_front()) {
+          if (num_clones++ > kMaxClones) {
             return func.emitError()
                    << "reached cloning limit (likely recursive call graph or "
                       "repeated diamond-like call structure "
                       "or just very large program)";
           }
-          auto new_func = func.clone();
+          FuncOp new_func = func.clone();
           symbol_table.insert(new_func);
           new_func.setPrivate();
-          if (failed(symbol_table.replaceAllSymbolUses(func, new_func.getName(),
-                                                       use.getUser()))) {
+          if (failed(SymbolTable::replaceAllSymbolUses(
+                  func, new_func.sym_nameAttr(), user))) {
             return func.emitError() << "could not replace symbol use";
           }
         }
@@ -111,10 +113,6 @@ class GuaranteeAllFuncsOneUse
 std::unique_ptr<OperationPass<ModuleOp>> CreateGuaranteeAllFuncsOneUsePass() {
   return std::make_unique<GuaranteeAllFuncsOneUse>();
 }
-
-static PassRegistration<GuaranteeAllFuncsOneUse> pass(
-    "tf-guarantee-all-funcs-one-use",
-    "Guarantee all FuncOp's have only a single use.");
 
 }  // namespace TF
 

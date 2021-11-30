@@ -43,7 +43,7 @@ class TaskIterator {
   virtual Status GetNext(std::vector<Tensor>& element,
                          bool& end_of_sequence) = 0;
   // Reports the cardinality of the dataset that created this iterator.
-  virtual int64 Cardinality() const = 0;
+  virtual int64_t Cardinality() const = 0;
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -55,7 +55,7 @@ class StandaloneTaskIterator : public TaskIterator {
   StandaloneTaskIterator(std::unique_ptr<standalone::Dataset> dataset,
                          std::unique_ptr<standalone::Iterator> iterator);
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override;
-  int64 Cardinality() const override;
+  int64_t Cardinality() const override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
@@ -103,7 +103,7 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
 
   mutex mu_;
   std::unique_ptr<TaskIterator> iterator_ TF_GUARDED_BY(mu_);
-  int64 element_index_ TF_GUARDED_BY(mu_) = 0;
+  int64_t element_index_ TF_GUARDED_BY(mu_) = 0;
 
   ThreadSafeBuffer<GetElementResult> buffer_;
   std::unique_ptr<Thread> prefetch_thread_;
@@ -113,20 +113,20 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
 
 // An element produced by a task.
 struct Element {
-  explicit Element(std::vector<Tensor>&& components, int64 index)
+  explicit Element(std::vector<Tensor>&& components, int64_t index)
       : components(components), index(index) {}
   // The components of the element.
   std::vector<Tensor> components;
   // The element's index within the task, e.g. 0 for the first element produced
   // by the task, 1 for the second element, etc.
-  int64 index;
+  int64_t index;
 };
 
 // Thread for prefetching a round worth of elements.
 class PrefetchThread {
  public:
   explicit PrefetchThread(std::unique_ptr<TaskIterator> iterator,
-                          int64 round_size);
+                          int64_t round_size);
   ~PrefetchThread();
   // Runs the prefetch thread. It runs until an error is encountered or the
   // destructor is called.
@@ -134,15 +134,16 @@ class PrefetchThread {
   // Fills `out` with a round of data. Waits for up to `wait_us` micoseconds
   // before giving up and returning with `out` empty. A negative `wait_us`
   // signals to wait indefinitely.
-  Status FillBuffer(int64 wait_us, std::vector<std::unique_ptr<Element>>& out);
+  Status FillBuffer(int64_t wait_us,
+                    std::vector<std::unique_ptr<Element>>& out);
   // Returns the status for any failures encountered by the prefetch thread.
   Status GetStatus();
 
  private:
   const std::unique_ptr<TaskIterator> iterator_;
-  const int64 round_size_;
+  const int64_t round_size_;
   mutex mu_;
-  int64 index_ TF_GUARDED_BY(mu_) = 0;
+  int64_t index_ TF_GUARDED_BY(mu_) = 0;
   // Buffered results for the next round.
   std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);
   // The status if the prefetch thread fails.
@@ -176,7 +177,7 @@ class PrefetchThread {
 class RoundRobinTaskRunner : public TaskRunner {
  public:
   RoundRobinTaskRunner(std::unique_ptr<TaskIterator> iterator,
-                       int64 num_consumers, string worker_address);
+                       int64_t num_consumers, string worker_address);
 
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
@@ -185,27 +186,27 @@ class RoundRobinTaskRunner : public TaskRunner {
  private:
   // Prepares a full round of data. `wait_us` indicates how long to wait before
   // skipping if a full round of data is not yet ready.
-  Status PrepareFullRound(int64 wait_us) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status PrepareFullRound(int64_t wait_us) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Prepares a partial round to get consumers back in sync.
   Status PreparePartialRound() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status ValidateRequest(const GetElementRequest& req);
   // Prepares data for the next round, blocking until the round is ready to
   // start.
   Status PrepareRound(const GetElementRequest& req);
-  const int64 num_consumers_;
+  const int64_t num_consumers_;
   const string worker_address_;
   mutex mu_;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Condition variable notified whenever we start a new round of round-robin.
   condition_variable new_round_cv_;
   // Outstanding requests, indexed by round number and then consumer index.
-  absl::flat_hash_map<int64,
-                      absl::flat_hash_map<int64, const GetElementRequest*>>
+  absl::flat_hash_map<int64_t,
+                      absl::flat_hash_map<int64_t, const GetElementRequest*>>
       requests_ TF_GUARDED_BY(mu_);
   // Index of the first round we plan to serve. At startup, this is the minimum
   // of all requested element indices.
-  int64 first_round_ TF_GUARDED_BY(mu_) = kint64max;
-  int64 current_round_ TF_GUARDED_BY(mu_) = -1;
+  int64_t first_round_ TF_GUARDED_BY(mu_) = kint64max;
+  int64_t current_round_ TF_GUARDED_BY(mu_) = -1;
   bool round_skipped_ TF_GUARDED_BY(mu_) = false;
   // Buffered results for the current round.
   std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);

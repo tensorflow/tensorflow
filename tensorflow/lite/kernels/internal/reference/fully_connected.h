@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_FULLY_CONNECTED_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_FULLY_CONNECTED_H_
 
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -311,6 +312,29 @@ inline void ShuffledFullyConnected(
   } else {
     TFLITE_DCHECK(false);
     return;
+  }
+}
+
+inline void AddBiasToOutput(const FullyConnectedParams& params,
+                            const int64_t* bias_data,
+                            const RuntimeShape& output_shape,
+                            int16_t* output_data) {
+  ruy::profiler::ScopeLabel label("FullyConnected:AddBias_16x8_quant");
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+  const int output_depth = output_shape.Dims(output_dim_count - 1);
+  int index = 0;
+  for (int b = 0; b < batches; ++b) {
+    for (int out_c = 0; out_c < output_depth; ++out_c) {
+      int32_t acc =
+          output_data[index] +
+          MultiplyByQuantizedMultiplier(
+              bias_data[out_c], params.output_multiplier, params.output_shift);
+      acc = std::max(acc, params.quantized_activation_min);
+      acc = std::min(acc, params.quantized_activation_max);
+      output_data[index] = static_cast<int16_t>(acc);
+      ++index;
+    }
   }
 }
 

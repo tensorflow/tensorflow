@@ -13,10 +13,6 @@
 # limitations under the License.
 # =============================================================================
 """Tests for api_init_files.bzl and api_init_files_v1.bzl."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 # The unused imports are needed so that the python and lite modules are
@@ -24,7 +20,9 @@ import sys
 # pylint: disable=unused-import
 from tensorflow import python as _tf_for_api_traversal
 from tensorflow.lite.python import lite as _tflite_for_api_traversal
+from tensorflow.lite.python.authoring import authoring
 from tensorflow.python import modules_with_exports
+from tensorflow.python.distribute import merge_call_interim
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2

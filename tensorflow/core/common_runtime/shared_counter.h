@@ -24,11 +24,11 @@ namespace tensorflow {
 // temporal ordering.
 class SharedCounter {
  public:
-  int64 get() { return value_; }
-  int64 next() { return ++value_; }
+  int64_t get() { return value_; }
+  int64_t next() { return ++value_; }
 
  private:
-  std::atomic<int64> value_{0};
+  std::atomic<int64_t> value_{0};
 };
 
 }  // namespace tensorflow

@@ -23,7 +23,13 @@ limitations under the License.
 
 int TfLiteIntArrayGetSizeInBytes(int size) {
   static TfLiteIntArray dummy;
-  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
+
+  int computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  computed_size -= sizeof(dummy.data[0]);
+#endif
+  return computed_size;
 }
 
 int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b) {
@@ -68,7 +74,13 @@ void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
 
 int TfLiteFloatArrayGetSizeInBytes(int size) {
   static TfLiteFloatArray dummy;
-  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
+
+  int computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  computed_size -= sizeof(dummy.data[0]);
+#endif
+  return computed_size;
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
@@ -176,6 +188,26 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
   tensor->quantization.params = NULL;
 }
 
+TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
+  if (!src || !dst)
+    return kTfLiteOk;
+  if (src->bytes != dst->bytes)
+    return kTfLiteError;
+  if (src == dst)
+    return kTfLiteOk;
+
+  dst->type = src->type;
+  if (dst->dims)
+    TfLiteIntArrayFree(dst->dims);
+  dst->dims = TfLiteIntArrayCopy(src->dims);
+  memcpy(dst->data.raw, src->data.raw, src->bytes);
+  dst->buffer_handle = src->buffer_handle;
+  dst->data_is_stale = src->data_is_stale;
+  dst->delegate = src->delegate;
+
+  return kTfLiteOk;
+}
+
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic &&
       tensor->allocation_type != kTfLitePersistentRo) {
@@ -231,7 +263,7 @@ const char* TfLiteTypeGetName(TfLiteType type) {
   return "Unknown type";
 }
 
-TfLiteDelegate TfLiteDelegateCreate() {
+TfLiteDelegate TfLiteDelegateCreate(void) {
   TfLiteDelegate d = {
       .data_ = NULL,
       .Prepare = NULL,

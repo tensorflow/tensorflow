@@ -34,10 +34,10 @@ class AsStringOp : public OpKernel {
   using OpKernel::OpKernel;
 
   explicit AsStringOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    int32 precision;
+    int32_t precision;
     bool scientific;
     bool shortest;
-    int32 width;
+    int32_t width;
     string fill_string;
     DataType dtype;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype));
@@ -168,7 +168,7 @@ class AsStringOp : public OpKernel {
       ENCODE_TYPE(DT_INT8, int8, format_);
       ENCODE_TYPE(DT_INT16, int16, format_);
       ENCODE_TYPE(DT_INT32, int32, format_);
-      ENCODE_TYPE(DT_INT64, int64, format_);
+      ENCODE_TYPE(DT_INT64, int64_t, format_);
       ENCODE_TYPE(DT_FLOAT, float, format_);
       ENCODE_TYPE(DT_DOUBLE, double, format_);
       case (DT_BOOL): {

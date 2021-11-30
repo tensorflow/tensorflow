@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 
 #include <atomic>
+#include <functional>
 #include <utility>
 
 #include "absl/memory/memory.h"
@@ -37,8 +38,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -46,7 +49,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/equal_graph_def.h"
@@ -62,8 +68,9 @@ Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
-void HasError(const Status& s, StringPiece substr) {
-  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
+void HasError(const Status& s, const error::Code code, StringPiece substr) {
+  EXPECT_EQ(s.code(), code) << s;
+  EXPECT_TRUE(absl::StrContains(s.error_message(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -164,7 +171,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
         /*parent=*/nullptr, /*session_metadata=*/nullptr,
         Rendezvous::Factory{
-            [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
               *r = new IntraProcessRendezvous(device_mgr);
               return Status::OK();
             }}));
@@ -442,6 +449,8 @@ class ConsumeArgumentCallFrame : public CallFrameInterface {
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_ConsumeArgument_DefaultExecutor) {
   Init({test::function::XTimesTwo()});
+  auto default_executor = metrics::TestDelta("flr_executor", "default");
+  auto single_threaded = metrics::TestDelta("flr_executor", "single_threaded");
   FunctionLibraryRuntime::Handle handle;
   TF_CHECK_OK(flr0_->Instantiate(
       "XTimesTwo", test::function::Attrs({{"T", DT_FLOAT}}), &handle));
@@ -463,11 +472,15 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_ConsumeArgument_DefaultExecutor) {
   EXPECT_FALSE(x.IsInitialized());
 
   TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+  EXPECT_GT(default_executor.Get(), 0);
+  EXPECT_EQ(single_threaded.Get(), 0);
 }
 
 TEST_F(FunctionLibraryRuntimeTest,
        XTimesTwo_ConsumeArgument_SingleThreadedExecutor) {
   Init({test::function::XTimesTwo()});
+  auto default_executor = metrics::TestDelta("flr_executor", "default");
+  auto single_threaded = metrics::TestDelta("flr_executor", "single_threaded");
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   FunctionLibraryRuntime::Handle handle;
@@ -492,6 +505,8 @@ TEST_F(FunctionLibraryRuntimeTest,
   EXPECT_FALSE(x.IsInitialized());
 
   TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+  EXPECT_EQ(default_executor.Get(), 0);
+  EXPECT_GT(single_threaded.Get(), 0);
 }
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesN) {
@@ -528,7 +543,7 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesNInLibDef) {
   // Ensure that the function is not installed in the base library.
   HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
                              {} /* options */, {x}, {&y}),
-           "Not found: Function XTimesTwo is not defined.");
+           error::NOT_FOUND, "Function XTimesTwo is not defined.");
 
   TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
                                 {x}, {&y}));
@@ -543,7 +558,7 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesNInLibDef) {
   // Ensure that the function is still not installed in the base library.
   HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
                              {} /* options */, {x}, {&y}),
-           "Not found: Function XTimesTwo is not defined.");
+           error::NOT_FOUND, "Function XTimesTwo is not defined.");
 }
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesNInLibDefAndDelayedInstantiation) {
@@ -627,7 +642,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
   Tensor y;
   {
     // Simple case: instantiating with no state_handle.
-    for (int32 expected : {6, 4}) {
+    for (int32_t expected : {6, 4}) {
       TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
@@ -640,7 +655,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     TF_CHECK_OK(
         Instantiate(flr0_, "RandomUniformWrapper", {}, &handle_non_isolated));
     EXPECT_EQ(handle, handle_non_isolated);
-    for (int32 expected : {0, 1}) {
+    for (int32_t expected : {0, 1}) {
       TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
@@ -655,7 +670,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
                             &handle_isolated));
     EXPECT_NE(handle, handle_isolated);
-    for (int32 expected : {6, 4, 0, 1}) {
+    for (int32_t expected : {6, 4, 0, 1}) {
       TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
@@ -670,7 +685,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
                             &handle_isolated));
     EXPECT_NE(handle, handle_isolated);
-    for (int32 expected : {6, 4, 0, 1}) {
+    for (int32_t expected : {6, 4, 0, 1}) {
       TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
@@ -687,7 +702,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
       TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
                               &handle_isolated));
       EXPECT_NE(handle, handle_isolated);
-      for (int32 expected : {6, 4, 0, 1}) {
+      for (int32_t expected : {6, 4, 0, 1}) {
         TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
         test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
       }
@@ -744,7 +759,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExecutorFactory) {
     options.executor_type = "DUMMY";
     HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
                                {x}, {&y}),
-             "Internal: This is a dummy.");
+             error::INTERNAL, "This is a dummy.");
   }
 
   // Test that a non-default executor factory can be invoked via an attr.
@@ -753,7 +768,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExecutorFactory) {
     HasError(InstantiateAndRun(flr0_, "XTimesTwo",
                                {{"T", DT_FLOAT}, {"_executor", "DUMMY"}},
                                options, {x}, {&y}),
-             "Internal: This is a dummy.");
+             error::INTERNAL, "This is a dummy.");
   }
 
   // Test that a non-default executor factory specified via an
@@ -765,7 +780,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExecutorFactory) {
         InstantiateAndRun(flr0_, "XTimesTwo",
                           {{"T", DT_FLOAT}, {"_executor", "UNKNOWN_EXECUTOR"}},
                           options, {x}, {&y}),
-        "Internal: This is a dummy.");
+        error::INTERNAL, "This is a dummy.");
   }
 
   // Test that non-existent executor types trigger an error.
@@ -774,7 +789,8 @@ TEST_F(FunctionLibraryRuntimeTest, ExecutorFactory) {
     options.executor_type = "UNKNOWN_EXECUTOR";
     HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
                                {x}, {&y}),
-             "Not found: No executor factory registered for the given executor "
+             error::NOT_FOUND,
+             "No executor factory registered for the given executor "
              "type: UNKNOWN_EXECUTOR");
   }
   {
@@ -783,7 +799,8 @@ TEST_F(FunctionLibraryRuntimeTest, ExecutorFactory) {
         InstantiateAndRun(flr0_, "XTimesTwo",
                           {{"T", DT_FLOAT}, {"_executor", "UNKNOWN_EXECUTOR"}},
                           options, {x}, {&y}),
-        "Not found: No executor factory registered for the given executor "
+        error::NOT_FOUND,
+        "No executor factory registered for the given executor "
         "type: UNKNOWN_EXECUTOR");
   }
 }
@@ -836,10 +853,10 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto x4_x2_two = ops::Const<int64>(s.WithOpName("x4/x2/two"), int64{2});
-    auto x4_y_two = ops::Const<int64>(s.WithOpName("x4/y/two"), int64{2});
-    auto y_x2_two = ops::Const<int64>(s.WithOpName("y/x2/two"), int64{2});
-    auto y_y_two = ops::Const<int64>(s.WithOpName("y/y/two"), int64{2});
+    auto x4_x2_two = ops::Const<int64_t>(s.WithOpName("x4/x2/two"), int64_t{2});
+    auto x4_y_two = ops::Const<int64_t>(s.WithOpName("x4/y/two"), int64_t{2});
+    auto y_x2_two = ops::Const<int64_t>(s.WithOpName("y/x2/two"), int64_t{2});
+    auto y_y_two = ops::Const<int64_t>(s.WithOpName("y/y/two"), int64_t{2});
     auto x4_x2_scale =
         ops::Cast(s.WithOpName("x4/x2/scale"), x4_x2_two, DT_FLOAT);
     auto x4_y_scale = ops::Cast(s.WithOpName("x4/y/scale"), x4_y_two, DT_FLOAT);
@@ -882,10 +899,10 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto x4_x2_two = ops::Const<int64>(s.WithOpName("x4/x2/two"), int64{2});
-    auto x4_y_two = ops::Const<int64>(s.WithOpName("x4/y/two"), int64{2});
-    auto y_x2_two = ops::Const<int64>(s.WithOpName("y/x2/two"), int64{2});
-    auto y_y_two = ops::Const<int64>(s.WithOpName("y/y/two"), int64{2});
+    auto x4_x2_two = ops::Const<int64_t>(s.WithOpName("x4/x2/two"), int64_t{2});
+    auto x4_y_two = ops::Const<int64_t>(s.WithOpName("x4/y/two"), int64_t{2});
+    auto y_x2_two = ops::Const<int64_t>(s.WithOpName("y/x2/two"), int64_t{2});
+    auto y_y_two = ops::Const<int64_t>(s.WithOpName("y/y/two"), int64_t{2});
     auto x4_x2_scale =
         ops::Cast(s.WithOpName("x4/x2/scale"), x4_x2_two, DT_FLOAT);
     auto x4_y_scale = ops::Cast(s.WithOpName("x4/y/scale"), x4_y_two, DT_FLOAT);
@@ -963,7 +980,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithInputControlEdges) {
         s.WithOpName("Func/b/x2/input/_4").WithControlDependencies({func3}),
         func1);
     auto b_x2_two = ops::Const(
-        s.WithOpName("b/x2/two").WithControlDependencies({func3}), int64{2});
+        s.WithOpName("b/x2/two").WithControlDependencies({func3}), int64_t{2});
     auto b_x2_scale = ops::Cast(s.WithOpName("b/x2/scale"), b_x2_two, DT_FLOAT);
     auto b_x2_y = ops::Mul(s.WithOpName("b/x2/y"), func4, b_x2_scale);
     auto func5 = ops::Identity(s.WithOpName("Func/b/x2/output/_5"), b_x2_y);
@@ -974,7 +991,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithInputControlEdges) {
         s.WithOpName("Func/b/y/input/_7").WithControlDependencies({func6}),
         func5);
     auto b_y_two = ops::Const(
-        s.WithOpName("b/y/two").WithControlDependencies({func6}), int64{2});
+        s.WithOpName("b/y/two").WithControlDependencies({func6}), int64_t{2});
     auto b_y_scale = ops::Cast(s.WithOpName("b/y/scale"), b_y_two, DT_FLOAT);
     auto b_y_y = ops::Mul(s.WithOpName("b/y/y"), func7, b_y_scale);
     auto func8 = ops::Identity(s.WithOpName("Func/b/y/output/_8"), b_y_y);
@@ -1538,7 +1555,7 @@ TEST_F(FunctionLibraryRuntimeTest, Error_NotFound) {
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
   HasError(InstantiateAndRun(flr0_, "Foo", {{"T", DT_FLOAT}}, {x}, {&y}),
-           "Not found: Function Foo is not defined.");
+           error::NOT_FOUND, "Function Foo is not defined.");
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Error_InstantiationError) {
@@ -1562,7 +1579,7 @@ TEST_F(FunctionLibraryRuntimeTest, Error_InstantiationError) {
   FunctionLibraryRuntime::Handle handle;
   HasError(flr0_->Instantiate(
                "XTimesTwo", test::function::Attrs({{"T", DT_FLOAT}}), &handle),
-           "Not found: type attr not found");
+           error::NOT_FOUND, "type attr not found");
 
   // But XTimesFour and XTimes16 instantiation should succeed. Only
   // when they run, they fail because XTimesTwo is bad.
@@ -1574,7 +1591,7 @@ TEST_F(FunctionLibraryRuntimeTest, Error_InstantiationError) {
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
   HasError(InstantiateAndRun(flr0_, "XTimes16", {{"T", DT_FLOAT}}, {x}, {&y}),
-           "type attr not found");
+           error::NOT_FOUND, "type attr not found");
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Error_BadControlFlow) {
@@ -1583,6 +1600,7 @@ TEST_F(FunctionLibraryRuntimeTest, Error_BadControlFlow) {
   DCHECK_EQ(x.dtype(), DT_INT32);
   Tensor y;
   HasError(InstantiateAndRun(flr0_, "InvalidControlFlow", {}, {x}, {&y}),
+           error::INVALID_ARGUMENT,
            "{{node add}} has inputs from different frames. The input"
            " {{node enter}} is in frame 'while'. The input {{node i}} is in"
            " frame ''.");
@@ -1595,7 +1613,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto two = ops::Const(s.WithOpName("two"), int64{2});
+    auto two = ops::Const(s.WithOpName("two"), int64_t{2});
     auto scale = ops::Cast(s.WithOpName("scale"), two, DT_FLOAT);
     auto y = ops::Mul(s.WithOpName("y"), x, scale);
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), y, 0);
@@ -1613,7 +1631,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
-    auto two = ops::Const(s.WithOpName("two"), int64{2});
+    auto two = ops::Const(s.WithOpName("two"), int64_t{2});
     auto scale = ops::Cast(s.WithOpName("scale"), two, DT_FLOAT);
     auto y = ops::Mul(s.WithOpName("y"), x, scale);
     NameAttrList fn0;
@@ -2030,9 +2048,68 @@ TEST_F(FunctionLibraryRuntimeTest, RunAllKernelsInline) {
     FunctionLibraryRuntime::Options opts;
     opts.run_all_kernels_inline = inline_option;
     Tensor result;
-    TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&result}));
+    TF_ASSERT_OK(Run(flr0_, handle, opts, {}, {&result}));
     EXPECT_EQ(result.scalar<bool>()(), inline_option);
   }
+}
+
+class UserIntraOpThreadPoolOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  class DummyThreadPool : public thread::ThreadPoolInterface {
+   public:
+    void Schedule(std::function<void()> fn) override { fn(); }
+    int NumThreads() const override { return 1; }
+    int CurrentThreadId() const override { return -1; }
+  };
+
+  static DummyThreadPool& dummy_thread_pool() {
+    static DummyThreadPool& thread_pool = *new DummyThreadPool();
+    return thread_pool;
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* result;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &result));
+    result->scalar<bool>()() =
+        ctx->device()
+            ->tensorflow_cpu_worker_threads()
+            ->workers->AsEigenThreadPool() == &dummy_thread_pool();
+  }
+};
+
+REGISTER_OP("UserIntraOpThreadPool").Output("result: bool").SetIsStateful();
+REGISTER_KERNEL_BUILDER(Name("UserIntraOpThreadPool").Device(DEVICE_CPU),
+                        UserIntraOpThreadPoolOp);
+
+TEST_F(FunctionLibraryRuntimeTest, RunUserIntraOpThreadPool) {
+  // Create a function "F" that includes an AreAllKernelsInline op, and a
+  // function "G" that calls "F".
+  auto f = FDH::Create(
+      // Name
+      "F",
+      // Args
+      {},
+      // Return values
+      {"ret: bool"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = UserIntraOpThreadPool()
+       {{"y"}, "UserIntraOpThreadPool", {}, {}}},
+      {{"ret", "y:result:0"}});
+
+  Init({f});
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "F", {}, &handle));
+
+  FunctionLibraryRuntime::Options opts;
+  opts.user_intra_op_threadpool = &UserIntraOpThreadPoolOp::dummy_thread_pool();
+
+  Tensor result;
+  TF_ASSERT_OK(Run(flr0_, handle, opts, {}, {&result}));
+  EXPECT_TRUE(result.scalar<bool>()());
 }
 
 namespace {

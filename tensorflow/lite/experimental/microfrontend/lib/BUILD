@@ -20,8 +20,6 @@ cc_library(
         "fft_util.h",
     ],
     deps = [
-        ":fprintf_shim",
-        ":memory_util",
         "@kissfft//:kiss_fftr_16",
     ],
 )
@@ -39,17 +37,7 @@ cc_library(
     deps = [
         ":bits",
         ":fft",
-        ":fprintf_shim",
-        ":memory_util",
     ],
-)
-
-cc_library(
-    name = "fprintf_shim",
-    hdrs = [
-        "fprintf_shim.h",
-    ],
-    defines = ["MICROFRONTEND_USE_FPRINTF"],
 )
 
 cc_library(
@@ -66,7 +54,6 @@ cc_library(
         ":bits",
         ":fft",
         ":filterbank",
-        ":fprintf_shim",
         ":log_scale",
         ":noise_reduction",
         ":pcan_gain_control",
@@ -92,16 +79,6 @@ cc_library(
 )
 
 cc_library(
-    name = "memory_util",
-    srcs = [
-        "memory_util_stdlib.c",
-    ],
-    hdrs = [
-        "memory_util.h",
-    ],
-)
-
-cc_library(
     name = "noise_reduction",
     srcs = [
         "noise_reduction.c",
@@ -110,10 +87,6 @@ cc_library(
     hdrs = [
         "noise_reduction.h",
         "noise_reduction_util.h",
-    ],
-    deps = [
-        ":fprintf_shim",
-        ":memory_util",
     ],
 )
 
@@ -129,8 +102,6 @@ cc_library(
     ],
     deps = [
         ":bits",
-        ":fprintf_shim",
-        ":memory_util",
     ],
 )
 
@@ -143,102 +114,5 @@ cc_library(
     hdrs = [
         "window.h",
         "window_util.h",
-    ],
-    deps = [
-        "fprintf_shim",
-        ":memory_util",
-    ],
-)
-
-cc_test(
-    name = "fft_test",
-    srcs = ["fft_test.cc"],
-    deps = [
-        ":fft",
-        "//tensorflow/lite/micro/testing:micro_test",
-    ],
-)
-
-cc_test(
-    name = "filterbank_test",
-    srcs = ["filterbank_test.cc"],
-    # Setting copts for experimental code to [], but this code should be fixed
-    # to build with the default copts (micro_copts())
-    copts = [],
-    deps = [
-        ":filterbank",
-        "//tensorflow/lite/micro/testing:micro_test",
-    ],
-)
-
-cc_test(
-    name = "frontend_test",
-    srcs = ["frontend_test.cc"],
-    # Setting copts for experimental code to [], but this code should be fixed
-    # to build with the default copts (micro_copts())
-    copts = [],
-    deps = [
-        ":frontend",
-        "//tensorflow/lite/micro/testing:micro_test",
-    ],
-)
-
-cc_test(
-    name = "log_scale_test",
-    srcs = ["log_scale_test.cc"],
-    # Setting copts for experimental code to [], but this code should be fixed
-    # to build with the default copts (micro_copts())
-    copts = [],
-    deps = [
-        ":log_scale",
-        "//tensorflow/lite/micro/testing:micro_test",
-    ],
-)
-
-cc_test(
-    name = "memory_util_test",
-    srcs = ["memory_util_test.cc"],
-    # Setting copts for experimental code to [], but this code should be fixed
-    # to build with the default copts (micro_copts())
-    copts = [],
-    deps = [
-        ":memory_util",
-        "//tensorflow/lite/micro/testing:micro_test",
-    ],
-)
-
-cc_test(
-    name = "noise_reduction_test",
-    srcs = ["noise_reduction_test.cc"],
-    # Setting copts for experimental code to [], but this code should be fixed
-    # to build with the default copts (micro_copts())
-    copts = [],
-    deps = [
-        ":noise_reduction",
-        "//tensorflow/lite/micro/testing:micro_test",
-    ],
-)
-
-cc_test(
-    name = "pcan_gain_control_test",
-    srcs = ["pcan_gain_control_test.cc"],
-    # Setting copts for experimental code to [], but this code should be fixed
-    # to build with the default copts (micro_copts())
-    copts = [],
-    deps = [
-        ":pcan_gain_control",
-        "//tensorflow/lite/micro/testing:micro_test",
-    ],
-)
-
-cc_test(
-    name = "window_test",
-    srcs = ["window_test.cc"],
-    # Setting copts for experimental code to [], but this code should be fixed
-    # to build with the default copts (micro_copts())
-    copts = [],
-    deps = [
-        ":window",
-        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

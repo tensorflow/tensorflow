@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for less_equal."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -39,6 +35,26 @@ def make_less_equal_tests(options):
       "fully_quantize": [True],
   }]
 
+  # High dimension broadcasting support in MLIR converter.
+  # Note(b/204360746): XNNPack delegate don't support high dimension.
+  if options.use_experimental_converter and not options.skip_high_dimension_inputs:
+    test_parameters = test_parameters + [
+        {
+            "input_dtype": [tf.float32, tf.int32],
+            "input_shape_pair": [([6, 5, 4, 3, 2, 1], [4, 3, 2, 1]),
+                                 ([6, 5, 4, 3, 2, 1], [None, 3, 2, 1]),
+                                 ([6, 5, None, 3, 2, 1], [None, 3, 2, 1])],
+            "fully_quantize": [False],
+            "dynamic_size_value": [4, 1],
+        },
+    ]
+
+  def populate_dynamic_shape(parameters, input_shape):
+    return [
+        parameters["dynamic_size_value"] if x is None else x
+        for x in input_shape
+    ]
+
   def build_graph(parameters):
     """Build the less_equal op testing graph."""
     input_value1 = tf.compat.v1.placeholder(
@@ -53,10 +69,13 @@ def make_less_equal_tests(options):
     return [input_value1, input_value2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_value1 = create_tensor_data(parameters["input_dtype"],
-                                      parameters["input_shape_pair"][0])
-    input_value2 = create_tensor_data(parameters["input_dtype"],
-                                      parameters["input_shape_pair"][1])
+    input_shape_1 = populate_dynamic_shape(parameters,
+                                           parameters["input_shape_pair"][0])
+    input_shape_2 = populate_dynamic_shape(parameters,
+                                           parameters["input_shape_pair"][1])
+
+    input_value1 = create_tensor_data(parameters["input_dtype"], input_shape_1)
+    input_value2 = create_tensor_data(parameters["input_dtype"], input_shape_2)
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 

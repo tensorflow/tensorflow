@@ -95,6 +95,12 @@ TYPED_TEST(ReshapeOpTest, TooManySpecialDimensions) {
 TYPED_TEST(ReshapeOpTest, InvalidShape) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    if (SingleOpModel::GetForceUseNnapi() &&
+        shape_type == ShapeSpecificationType::kAsTensor) {
+      // NNAPI delegate does not support RESHAPE with shape as a non-constant
+      // tensor.
+      continue;
+    }
     ReshapeOpModel<TypeParam> m({1, 2, 2}, {2, 2}, {1, 2, 2, 1}, shape_type);
     m.SetInput({5, 6, 7, 8});
     m.Invoke();
@@ -107,6 +113,12 @@ TYPED_TEST(ReshapeOpTest, InvalidShape) {
 TYPED_TEST(ReshapeOpTest, RegularShapes) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    if (SingleOpModel::GetForceUseNnapi() &&
+        shape_type == ShapeSpecificationType::kAsTensor) {
+      // NNAPI delegate does not support RESHAPE with shape as a non-constant
+      // tensor.
+      continue;
+    }
     ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {3}, {2, 2, 2}, shape_type);
     m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
     m.Invoke();
@@ -118,6 +130,12 @@ TYPED_TEST(ReshapeOpTest, RegularShapes) {
 TYPED_TEST(ReshapeOpTest, WithStretchDimension) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    if (SingleOpModel::GetForceUseNnapi() &&
+        shape_type == ShapeSpecificationType::kAsTensor) {
+      // NNAPI delegate does not support RESHAPE with shape as a non-constant
+      // tensor.
+      continue;
+    }
     ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {3}, {2, 1, -1}, shape_type);
     m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
     m.Invoke();
@@ -136,6 +154,18 @@ TYPED_TEST(ReshapeOpTest, ScalarOutput) {
     m.Invoke();
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
     EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  }
+}
+
+TYPED_TEST(ReshapeOpTest, ZeroInShape) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  for (ShapeSpecificationType shape_type :
+       ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    ReshapeOpModel<TypeParam> m({4, 0}, {3}, {2, 0, -1}, shape_type);
+    m.Invoke();
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 0, 2}));
   }
 }
 

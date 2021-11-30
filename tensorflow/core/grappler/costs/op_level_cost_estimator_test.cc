@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 
@@ -393,9 +394,9 @@ std::vector<int> GetPoolingOutputSize(const std::vector<int>& input,
 }
 
 // Helper functions for testing GetTensorShapeProtoFromTensorProto().
-void GetTensorProto(const DataType dtype, const std::vector<int64>& shape,
-                    const std::vector<int64> values, const bool tensor_content,
-                    TensorProto* tensor_proto) {
+void GetTensorProto(const DataType dtype, const std::vector<int64_t>& shape,
+                    const std::vector<int64_t> values,
+                    const bool tensor_content, TensorProto* tensor_proto) {
   tensor_proto->Clear();
   TensorProto temp_tensor_proto;
   temp_tensor_proto.set_dtype(dtype);
@@ -516,19 +517,19 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     return estimator_.PredictCosts(op_context);
   }
 
-  int64 CountMatMulOperations(const OpInfo& op_info,
-                              bool* found_unknown_shapes) const {
+  int64_t CountMatMulOperations(const OpInfo& op_info,
+                                bool* found_unknown_shapes) const {
     return estimator_.CountMatMulOperations(op_info, found_unknown_shapes);
   }
 
-  int64 CountBatchMatMulOperations(const OpInfo& op_info,
-                                   bool* found_unknown_shapes) const {
+  int64_t CountBatchMatMulOperations(const OpInfo& op_info,
+                                     bool* found_unknown_shapes) const {
     return estimator_.CountBatchMatMulOperations(op_info, found_unknown_shapes);
   }
 
-  int64 CountBatchMatMulOperations(const OpInfo& op_info,
-                                   BatchMatMulDimensions* batch_mat_mul,
-                                   bool* found_unknown_shapes) const {
+  int64_t CountBatchMatMulOperations(const OpInfo& op_info,
+                                     BatchMatMulDimensions* batch_mat_mul,
+                                     bool* found_unknown_shapes) const {
     return estimator_.CountBatchMatMulOperations(op_info, batch_mat_mul,
                                                  found_unknown_shapes);
   }
@@ -558,9 +559,10 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     }
 
     bool found_unknown_shapes;
-    auto dims = OpLevelCostEstimator::OpDimensionsFromInputs(
-        op_context.op_info.inputs(0).shape(), op_context.op_info,
-        &found_unknown_shapes);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto dims, OpLevelCostEstimator::OpDimensionsFromInputs(
+                       op_context.op_info.inputs(0).shape(), op_context.op_info,
+                       &found_unknown_shapes));
     Padding padding_enum;
     if (padding == "VALID") {
       padding_enum = Padding::VALID;
@@ -579,6 +581,38 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     EXPECT_EQ(wo, dims.oy);
     EXPECT_EQ(c, dims.oz);
     EXPECT_EQ(padding_enum, dims.padding);
+  }
+
+  StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
+  CallOpDimensionsFromInputs(const int n, const int h, const int w, const int c,
+                             const int kx, const int ky, const int sx,
+                             const int sy, const string& data_format,
+                             const string& padding) {
+    OpContext op_context;
+
+    const std::vector<int> x = {n, h, w, c};
+    const std::vector<int> ksize = {1, kx, ky, 1};
+    std::vector<int> strides;
+    if (data_format == "NHWC") {
+      strides = {1, sy, sx, 1};
+    } else {
+      strides = {1, 1, sy, sx};
+    }
+
+    auto& op_info = op_context.op_info;
+    SetCpuDevice(&op_info);
+    op_info.set_op("MaxPool");
+
+    DescribeTensor4D(x[0], x[1], x[2], x[3], op_info.add_inputs());
+    auto* attr = op_info.mutable_attr();
+    SetAttrValue(data_format, &(*attr)["data_format"]);
+    SetAttrValue(padding, &(*attr)["padding"]);
+    SetAttrValue(strides, &(*attr)["strides"]);
+    SetAttrValue(ksize, &(*attr)["ksize"]);
+    bool found_unknown_shapes;
+    return OpLevelCostEstimator::OpDimensionsFromInputs(
+        op_context.op_info.inputs(0).shape(), op_context.op_info,
+        &found_unknown_shapes);
   }
 
   OpLevelCostEstimator estimator_;
@@ -600,14 +634,14 @@ class OpLevelBatchMatMulCostEstimatorTest
     return op_context;
   }
 
-  int64 CountBatchMatMulOperations(const OpInfo& op_info,
-                                   bool* found_unknown_shapes) const {
+  int64_t CountBatchMatMulOperations(const OpInfo& op_info,
+                                     bool* found_unknown_shapes) const {
     return OpLevelCostEstimatorTest::CountBatchMatMulOperations(
         op_info, found_unknown_shapes);
   }
 
-  int64 CountBatchMatMulDimProduct(const OpInfo& op_info,
-                                   bool* found_unknown_shapes) const {
+  int64_t CountBatchMatMulDimProduct(const OpInfo& op_info,
+                                     bool* found_unknown_shapes) const {
     BatchMatMulDimensions batch_mat_mul;
 
     batch_mat_mul.matmul_dims.n = 0;
@@ -818,7 +852,7 @@ TEST_F(OpLevelCostEstimatorTest, Conv2DExecutionTime) {
 
 TEST_F(OpLevelCostEstimatorTest, InvalidConv2DConfig) {
   // Convolution ops.
-  const std::vector<const std::string> conv_ops = {
+  const std::vector<std::string> conv_ops = {
       "Conv2D",
       "Conv2DBackpropFilter",
       "Conv2DBackpropInput",
@@ -1301,7 +1335,7 @@ TEST_F(OpLevelCostEstimatorTest, SparseTensorDenseMatMul) {
   }
 }
 
-void ExpectTensorShape(const std::vector<int64>& expected,
+void ExpectTensorShape(const std::vector<int64_t>& expected,
                        const TensorShapeProto& tensor_shape_proto) {
   TensorShape tensor_shape_expected(expected);
   TensorShape tensor_shape(tensor_shape_proto);
@@ -1333,7 +1367,7 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
 
   // Check GetTensorShapeProtoFromTensorProto() returns correct values.
   {
-    std::vector<int64> shape_expected = {10, 20, 30, 40};
+    std::vector<int64_t> shape_expected = {10, 20, 30, 40};
     GetTensorProto(DT_INT32, {4}, shape_expected,
                    /*tensor_content=*/false, &tensor_proto);
     EXPECT_TRUE(
@@ -1342,7 +1376,7 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
   }
 
   {
-    std::vector<int64> shape_expected = {40, 20, 90, 40};
+    std::vector<int64_t> shape_expected = {40, 20, 90, 40};
     GetTensorProto(DT_INT64, {4}, shape_expected,
                    /*tensor_content=*/false, &tensor_proto);
     EXPECT_TRUE(
@@ -1351,7 +1385,7 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
   }
 
   {
-    std::vector<int64> shape_expected = {10, 20, 30, 40};
+    std::vector<int64_t> shape_expected = {10, 20, 30, 40};
     GetTensorProto(DT_INT32, {4}, shape_expected,
                    /*tensor_content=*/true, &tensor_proto);
     EXPECT_TRUE(
@@ -1360,7 +1394,7 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
   }
 
   {
-    std::vector<int64> shape_expected = {40, 20, 90, 40};
+    std::vector<int64_t> shape_expected = {40, 20, 90, 40};
     GetTensorProto(DT_INT64, {4}, shape_expected,
                    /*tensor_content=*/true, &tensor_proto);
     EXPECT_TRUE(
@@ -1379,6 +1413,26 @@ TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputs) {
       ValidateOpDimensionsFromInputs(10, 20, 20, 100, 1, 1, 3, 3, f, p);
       ValidateOpDimensionsFromInputs(10, 200, 200, 100, 5, 5, 3, 3, f, p);
       ValidateOpDimensionsFromInputs(10, 14, 14, 3840, 3, 3, 2, 2, f, p);
+    }
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputsError) {
+  std::vector<string> paddings = {"VALID", "SAME"};
+  std::vector<string> formats = {"NHWC", "NCHW"};
+  for (const auto& p : paddings) {
+    for (const auto& f : formats) {
+      // n, h, w, c, kx, ky, sx, sy, data_format, padding.
+      ASSERT_THAT(
+          CallOpDimensionsFromInputs(10, 14, 14, 3840, 3, 3, 0, 2, f, p),
+          testing::StatusIs(
+              error::INVALID_ARGUMENT,
+              "Stride must be > 0 for Height and Width, but got (2, 0)"));
+      ASSERT_THAT(
+          CallOpDimensionsFromInputs(10, 14, 14, 3840, 3, 3, 2, 0, f, p),
+          testing::StatusIs(
+              error::INVALID_ARGUMENT,
+              "Stride must be > 0 for Height and Width, but got (0, 2)"));
     }
   }
 }
@@ -2207,25 +2261,25 @@ TEST_F(OpLevelCostEstimatorTest, ResizeBilinearExecutionTime) {
     // Cost with very large tensor.
     op_context.op_info.clear_outputs();
     // Number of elements in tensor exceeds 2^32.
-    constexpr int64 kLargeOutputImageDim = 40000;
+    constexpr int64_t kLargeOutputImageDim = 40000;
     DescribeTensor4D(1, kLargeOutputImageDim, kLargeOutputImageDim,
                      kChannelSize, op_context.op_info.add_outputs());
-    const int64 kInterpWeightCost = 12;
+    const int64_t kInterpWeightCost = 12;
     // Using half_pixel_centers.
     AttrValue half_pixel_centers;
     half_pixel_centers.set_b(true);
     (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
         half_pixel_centers;
 
-    const int64 num_ops =
+    const int64_t num_ops =
         kInterpWeightCost * (kLargeOutputImageDim * 2) +
         kComputeLerpCost *
             (kLargeOutputImageDim * kLargeOutputImageDim * kChannelSize);
-    const int64 expected_compute_time = std::ceil(
+    const int64_t expected_compute_time = std::ceil(
         num_ops /
         estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
 
-    const int64 expected_memory_time =
+    const int64_t expected_memory_time =
         (kImageDim * kImageDim + kLargeOutputImageDim * kLargeOutputImageDim) *
         4;
 

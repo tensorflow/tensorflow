@@ -79,22 +79,27 @@ TEST(DelegateDataTest, CheckFunctionDef) {
       absl::make_unique<TestErrorReporter>();
   auto add_subgraph = absl::make_unique<Subgraph>(
       error_reporter.get(), /*external_contexts=*/nullptr,
-      /*subgraphs=*/nullptr, /*resources=*/nullptr);
+      /*subgraphs=*/nullptr, /*resources=*/nullptr, /*resource_ids=*/nullptr,
+      /*initialization_status_map=*/nullptr);
   add_subgraph->SetName("add_subgraph");
   auto mul_subgraph = absl::make_unique<Subgraph>(
       error_reporter.get(), /*external_contexts=*/nullptr,
-      /*subgraphs=*/nullptr, /*resources=*/nullptr);
+      /*subgraphs=*/nullptr, /*resources=*/nullptr, /*resource_ids=*/nullptr,
+      /*initialization_status_map=*/nullptr);
   mul_subgraph->SetName("mul_subgraph");
   builder.BuildAddSubgraph(add_subgraph.get());
   builder.BuildMulSubgraph(mul_subgraph.get());
   std::vector<std::unique_ptr<Subgraph>> subgraphs;
   subgraphs.push_back(std::move(add_subgraph));
   subgraphs.push_back(std::move(mul_subgraph));
-  Subgraph main_subgraph(error_reporter.get(), nullptr, &subgraphs, nullptr);
+  Subgraph main_subgraph(error_reporter.get(), nullptr, &subgraphs,
+                         /*resources=*/nullptr, /*resource_ids=*/nullptr,
+                         /*initialization_status_map=*/nullptr);
   main_subgraph.SetName("main");
   TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
       main_subgraph, select_subgraphs_to_register,
-      eager_context->HostCPU()->resource_manager(), eager_context));
+      eager_context->HostCPU()->resource_manager(), eager_context,
+      /*flex_delegate=*/nullptr));
 
   const string add_fdef_txt = R"pb(
     signature {
@@ -218,11 +223,14 @@ TEST(DelegateDataTest, CheckFunctionDefWithOnlyMainGraph) {
   std::unique_ptr<ErrorReporter> error_reporter =
       absl::make_unique<TestErrorReporter>();
   Subgraph main_subgraph(error_reporter.get(), /*external_contexts=*/nullptr,
-                         /*subgraphs=*/nullptr, /*resources=*/nullptr);
+                         /*subgraphs=*/nullptr, /*resources=*/nullptr,
+                         /*resource_ids=*/nullptr,
+                         /*initialization_status_map=*/nullptr);
   main_subgraph.SetName("main");
   TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
       main_subgraph, select_subgraphs_to_register,
-      eager_context->HostCPU()->resource_manager(), eager_context));
+      eager_context->HostCPU()->resource_manager(), eager_context,
+      /*flex_delegate=*/nullptr));
 
   EXPECT_EQ(eager_context->GetFunctionDef("main"), nullptr);
 

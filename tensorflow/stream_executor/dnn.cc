@@ -18,9 +18,29 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 
 namespace stream_executor {
 namespace dnn {
+
+namespace {
+
+bool ProtoMapIsSubset(const google::protobuf::Map<int64_t, int64_t>& x,
+                      const google::protobuf::Map<int64_t, int64_t>& y) {
+  for (const auto& ypair : y) {
+    const auto it = x.find(ypair.first);
+    if (it == x.end() || it->second != ypair.second) return false;
+  }
+  return true;
+}
+
+bool ProtoMapsEqual(const google::protobuf::Map<int64_t, int64_t>& x,
+                    const google::protobuf::Map<int64_t, int64_t>& y) {
+  return ProtoMapIsSubset(x, y) && ProtoMapIsSubset(y, x);
+}
+
+}  // namespace
 
 constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
@@ -28,18 +48,45 @@ constexpr DataType ToDataType<Eigen::half>::value;
 constexpr DataType ToDataType<int8>::value;
 constexpr DataType ToDataType<int32>::value;
 
-uint64 AlgorithmDesc::hash() const {
-  if (IsExecutionPlan()) {
-    auto p = exec_plan_id();
-    return absl::Hash<decltype(p)>()(p);
+AlgorithmDesc::AlgorithmDesc(
+    int64_t engine_id,
+    const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs,
+    absl::optional<uint64_t> workspace_size) {
+  proto_.set_is_cudnn_frontend(true);
+  proto_.set_algo_id(engine_id);
+  if (workspace_size) {
+    proto_.mutable_workspace_size()->set_value(*workspace_size);
   }
-  auto p = std::make_pair(algo_id(), tensor_ops_enabled());
-  return absl::Hash<decltype(p)>()(p);
+  for (const auto& pair : tuning_knobs) {
+    (*proto_.mutable_tuning_knobs())[pair.first] = pair.second;
+  }
+}
+
+uint64_t AlgorithmDesc::hash() const {
+  return tensorflow::DeterministicProtoHash64(proto_);
+}
+
+bool AlgorithmDesc::operator==(const AlgorithmDesc& other) const {
+  if (is_cudnn_frontend()) {
+    return other.is_cudnn_frontend() && algo_id() == other.algo_id() &&
+           ProtoMapsEqual(proto_.tuning_knobs(), other.proto_.tuning_knobs());
+  }
+  return !other.is_cudnn_frontend() && algo_id() == other.algo_id() &&
+         tensor_ops_enabled() == other.tensor_ops_enabled();
 }
 
 std::string AlgorithmDesc::ToString() const {
-  if (IsExecutionPlan()) {
-    return absl::StrCat(exec_plan_id());
+  if (is_cudnn_frontend()) {
+    // Format similarly to cudnn_frontend::ExecutionPlan::getTag(), e.g.
+    // "eng2{k1=2,k3=4}".
+    return absl::StrFormat(
+        "eng%d{%s}", proto_.algo_id(),
+        absl::StrJoin(
+            proto_.tuning_knobs(), ",",
+            [](std::string* out,
+               const google::protobuf::Map<int64_t, int64_t>::value_type& pair) {
+              absl::StrAppendFormat(out, "k%d=%d", pair.first, pair.second);
+            }));
   }
   if (tensor_ops_enabled()) {
     return absl::StrCat(algo_id(), "#TC");
@@ -48,20 +95,74 @@ std::string AlgorithmDesc::ToString() const {
   }
 }
 
+std::vector<std::pair<int64_t, int64_t>> AlgorithmDesc::TuningKnobs() const {
+  std::vector<std::pair<int64_t, int64_t>> result;
+  result.reserve(proto_.tuning_knobs().size());
+  for (const auto& pair : proto_.tuning_knobs()) {
+    result.emplace_back(pair.first, pair.second);
+  }
+  return result;
+}
+
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
-bool DnnSupport::GetConvolveExecutionPlans(
-    dnn::ConvolutionKind /*kind*/, dnn::DataType /*element_type*/,
+port::Status DnnSupport::GetConvolveRunners(
+    bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
+    dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
     Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
+    DeviceMemoryBase /*input_data*/,
     const dnn::FilterDescriptor& /*filter_descriptor*/,
+    DeviceMemoryBase /*filter_data*/,
     const dnn::BatchDescriptor& /*output_descriptor*/,
+    DeviceMemoryBase /*output_data*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
-    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* /*exec_plans*/) {
-  return false;
+    bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
+    std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
+  return port::UnimplementedError("GetConvolveRunners not implemented.");
+}
+
+port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+DnnSupport::ConvolveRunnerFromDesc(
+    const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
+    dnn::DataType element_type, dnn::DataType output_type,
+    const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor) {
+  return port::UnimplementedError("ConvolveRunnerFromDesc not implemented.");
+}
+
+port::Status DnnSupport::GetFusedConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType element_type, dnn::DataType bias_type,
+    dnn::DataType output_type, double conv_input_scale, double side_input_scale,
+    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& bias_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
+    dnn::ActivationMode activation_mode,
+    std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
+  return port::UnimplementedError("GetFusedConvolveRunners not implemented.");
+}
+
+port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+DnnSupport::FusedConvolveRunnerFromDesc(
+    const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
+    dnn::DataType element_type, dnn::DataType bias_type,
+    dnn::DataType output_type, double conv_scale, double side_input_scale,
+    const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& bias_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    dnn::ActivationMode activation_mode) {
+  return port::UnimplementedError(
+      "FusedConvolveRunnerFromDesc not implemented.");
 }
 
 bool DnnSupport::GetMIOpenConvolveAlgorithms(
@@ -83,13 +184,13 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -155,6 +256,8 @@ std::string DataLayoutString(DataLayout layout) {
       return "BatchDepthYX";
     case DataLayout::kBatchDepthYX4:
       return "BatchDepthYX4";
+    case DataLayout::kBatchDepthYX32:
+      return "BatchDepthYX32";
     default:
       LOG(FATAL) << "Unknown data layout " << static_cast<int32>(layout);
   }
@@ -169,6 +272,8 @@ std::string FilterLayoutString(FilterLayout layout) {
       return "OutputYXInput";
     case FilterLayout::kOutputInputYX4:
       return "OutputInputYX4";
+    case FilterLayout::kOutputInputYX32:
+      return "OutputInputYX32";
     case FilterLayout::kInputYXOutput:
       return "InputYXOutput";
     case FilterLayout::kYXInputOutput:
@@ -245,6 +350,7 @@ ConvDimIndices GetDimIndices(const DataLayout& layout, const int data_dims) {
 
     case DataLayout::kBatchDepthYX:
     case DataLayout::kBatchDepthYX4:
+    case DataLayout::kBatchDepthYX32:
       dim_indices.data.depth_idx = 1;
       dim_indices.data.batch_idx = 0;
       dim_indices.data.spatial_idx = 2;
@@ -262,6 +368,7 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
   switch (layout) {
     case FilterLayout::kOutputInputYX:
     case FilterLayout::kOutputInputYX4:
+    case FilterLayout::kOutputInputYX32:
       dim_indices.filter.input_idx = 1;
       dim_indices.filter.output_idx = 0;
       dim_indices.filter.spatial_idx = 2;
@@ -292,14 +399,14 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
   return dim_indices;
 }
 
-std::vector<int64> ReorderDims(const std::vector<int64>& input,
-                               const DataLayout& from, const DataLayout& to) {
+std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
+                                 const DataLayout& from, const DataLayout& to) {
   if (from == to) return input;
 
   ConvDimIndices from_indices = GetDimIndices(from, input.size());
   ConvDimIndices to_indices = GetDimIndices(to, input.size());
 
-  std::vector<int64> reordered(input.size());
+  std::vector<int64_t> reordered(input.size());
   reordered[to_indices.data.batch_idx] = input[from_indices.data.batch_idx];
   reordered[to_indices.data.depth_idx] = input[from_indices.data.depth_idx];
 
@@ -313,15 +420,15 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
   return reordered;
 }
 
-std::vector<int64> ReorderDims(const std::vector<int64>& input,
-                               const FilterLayout& from,
-                               const FilterLayout& to) {
+std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
+                                 const FilterLayout& from,
+                                 const FilterLayout& to) {
   if (from == to) return input;
 
   ConvDimIndices from_indices = GetDimIndices(from, input.size());
   ConvDimIndices to_indices = GetDimIndices(to, input.size());
 
-  std::vector<int64> reordered(input.size());
+  std::vector<int64_t> reordered(input.size());
   reordered[to_indices.filter.output_idx] =
       input[from_indices.filter.output_idx];
   reordered[to_indices.filter.input_idx] = input[from_indices.filter.input_idx];
@@ -362,8 +469,9 @@ BatchDescriptor::BatchDescriptor(int ndims)
 
 BatchDescriptor::BatchDescriptor() : BatchDescriptor(/*ndims=*/2) {}
 
-std::vector<int64> BatchDescriptor::full_dims(const DataLayout& layout) const {
-  std::vector<int64> bdyx_dims(ndims() + 2);
+std::vector<int64_t> BatchDescriptor::full_dims(
+    const DataLayout& layout) const {
+  std::vector<int64_t> bdyx_dims(ndims() + 2);
   bdyx_dims[0] = count();
   bdyx_dims[1] = feature_map_count();
   std::copy(spatial_size().begin(), spatial_size().end(),
@@ -371,20 +479,34 @@ std::vector<int64> BatchDescriptor::full_dims(const DataLayout& layout) const {
   return ReorderDims(bdyx_dims, DataLayout::kBatchDepthYX, layout);
 }
 
-std::vector<int64> BatchDescriptor::full_strides(
+std::vector<int64_t> BatchDescriptor::full_strides(
     const DataLayout& layout) const {
-  if (this->layout() == DataLayout::kBatchDepthYX4) {
-    LOG(FATAL)
-        << "Cannot compute full strides for batch descriptor " << ToString()
-        << ", because its layout is kBatchDepthYX4. In fact, "
-           "cudnnSetTensorNdDescriptor doesn't work for kBatchDepthYX4 at all. "
-           "Use cudnnSetTensor4dDescriptor to set cudnnTensorDescriptor_t "
-           "instead.";
-  }
-  std::vector<int64> phys_dims = full_dims(this->layout());
-  std::vector<int64> phys_strides(phys_dims.size());
+  std::vector<int64_t> phys_dims = full_dims(this->layout());
+  std::vector<int64_t> phys_strides(phys_dims.size());
   phys_strides[ndims() + 1] = 1;
   for (int i = ndims(); i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return ReorderDims(phys_strides, this->layout(), layout);
+}
+
+std::vector<int64_t> BatchDescriptor::vectorized_dims(const DataLayout& layout,
+                                                      int vector_size,
+                                                      int vector_dim) const {
+  std::vector<int64_t> bdyx_dims = full_dims(dnn::DataLayout::kBatchDepthYX);
+  if (vector_dim != -1) {
+    bdyx_dims[vector_dim] /= vector_size;
+  }
+  return dnn::ReorderDims(bdyx_dims, dnn::DataLayout::kBatchDepthYX, layout);
+}
+
+std::vector<int64_t> BatchDescriptor::vectorized_strides(
+    const DataLayout& layout, int vector_size, int vector_dim) const {
+  std::vector<int64_t> phys_dims =
+      vectorized_dims(this->layout(), vector_size, vector_dim);
+  std::vector<int64_t> phys_strides(phys_dims.size());
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
     phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
   }
   return ReorderDims(phys_strides, this->layout(), layout);
@@ -439,6 +561,7 @@ std::string BatchDescriptor::ToShortString() const {
     case DataLayout::kBatchDepthYX:
       return absl::StrCat(batch, depth, spatial, suffix);
     case DataLayout::kBatchDepthYX4:
+    case DataLayout::kBatchDepthYX32:
       return absl::StrCat(batch, depth, spatial, suffix, "(VECT_C)");
     default:
       LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
@@ -446,28 +569,29 @@ std::string BatchDescriptor::ToShortString() const {
   }
 }
 
-int64 BatchDescriptor::NodesPerFeatureMap() const {
-  int64 ret = 1;
+int64_t BatchDescriptor::NodesPerFeatureMap() const {
+  int64_t ret = 1;
   for (int i = 0; i < ndims(); i++) {
     ret *= spatial_size()[i];
   }
   return ret;
 }
 
-int64 BatchDescriptor::NodesAcrossFeatureMaps() const {
+int64_t BatchDescriptor::NodesAcrossFeatureMaps() const {
   return NodesPerFeatureMap() * feature_map_count();
 }
 
-int64 BatchDescriptor::ElementCount() const {
+int64_t BatchDescriptor::ElementCount() const {
   return count() * feature_map_count() * NodesPerFeatureMap();
 }
 
-int64 BatchDescriptor::FullyConnectedWeightCount(
+int64_t BatchDescriptor::FullyConnectedWeightCount(
     const BatchDescriptor& input, const BatchDescriptor& output) {
   return input.NodesAcrossFeatureMaps() * output.NodesAcrossFeatureMaps();
 }
 
-int64 BatchDescriptor::FullyConnectedBiasCount(const BatchDescriptor& output) {
+int64_t BatchDescriptor::FullyConnectedBiasCount(
+    const BatchDescriptor& output) {
   return output.NodesAcrossFeatureMaps();
 }
 
@@ -542,6 +666,7 @@ std::string FilterDescriptor::ToShortString() const {
     case FilterLayout::kOutputYXInput:
       return absl::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
+    case FilterLayout::kOutputInputYX32:
       return absl::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:
       return absl::StrCat(id, spatial, od);
@@ -553,17 +678,17 @@ std::string FilterDescriptor::ToShortString() const {
   }
 }
 
-int64 FilterDescriptor::ComputeWeightCount() const {
-  int64 ret = output_feature_map_count() * input_feature_map_count();
+int64_t FilterDescriptor::ComputeWeightCount() const {
+  int64_t ret = output_feature_map_count() * input_feature_map_count();
   for (int i = 0; i < ndims(); i++) {
     ret *= input_filter_dims()[i];
   }
   return ret;
 }
 
-std::vector<int64> FilterDescriptor::full_dims(
+std::vector<int64_t> FilterDescriptor::full_dims(
     const FilterLayout& layout) const {
-  std::vector<int64> oiyx_dims(ndims() + 2);
+  std::vector<int64_t> oiyx_dims(ndims() + 2);
   oiyx_dims[0] = output_feature_map_count();
   oiyx_dims[1] = input_feature_map_count();
   std::copy(input_filter_dims().begin(), input_filter_dims().end(),
@@ -571,16 +696,33 @@ std::vector<int64> FilterDescriptor::full_dims(
   return ReorderDims(oiyx_dims, FilterLayout::kOutputInputYX, layout);
 }
 
-std::vector<int64> FilterDescriptor::full_strides(
+std::vector<int64_t> FilterDescriptor::full_strides(
     const FilterLayout& layout) const {
-  if (this->layout() == FilterLayout::kOutputInputYX4) {
-    LOG(FATAL) << "Cannot compute full strides for filter descriptor "
-               << ToString();
-  }
-  std::vector<int64> phys_dims = full_dims(this->layout());
-  std::vector<int64> phys_strides(phys_dims.size());
+  std::vector<int64_t> phys_dims = full_dims(this->layout());
+  std::vector<int64_t> phys_strides(phys_dims.size());
   phys_strides[ndims() + 1] = 1;
   for (int i = ndims(); i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return ReorderDims(phys_strides, this->layout(), layout);
+}
+
+std::vector<int64_t> FilterDescriptor::vectorized_dims(
+    const FilterLayout& layout, int vector_size, int vector_dim) const {
+  std::vector<int64_t> oiyx_dims = full_dims(dnn::FilterLayout::kOutputInputYX);
+  if (vector_dim != -1) {
+    oiyx_dims[vector_dim] /= vector_size;
+  }
+  return ReorderDims(oiyx_dims, FilterLayout::kOutputInputYX, layout);
+}
+
+std::vector<int64_t> FilterDescriptor::vectorized_strides(
+    const FilterLayout& layout, int vector_size, int vector_dim) const {
+  std::vector<int64_t> phys_dims =
+      vectorized_dims(this->layout(), vector_size, vector_dim);
+  std::vector<int64_t> phys_strides(phys_dims.size());
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
     phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
   }
   return ReorderDims(phys_strides, this->layout(), layout);

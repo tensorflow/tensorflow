@@ -115,6 +115,11 @@ void TestDelegation::SetUpSubgraph(Subgraph* subgraph) {
                                   &node_index_ignored);
 }
 
+void TestDelegation::AddSubgraphs(int subgraphs_to_add,
+                                  int* first_new_subgraph_index) {
+  interpreter_->AddSubgraphs(subgraphs_to_add, first_new_subgraph_index);
+}
+
 void TestDelegate::SetUp() {
   interpreter_.reset(new Interpreter);
   SetUpSubgraph(&interpreter_->primary_subgraph());
@@ -377,7 +382,7 @@ void TestFP16Delegation::SetUp() {
   interpreter_->SetInputs({0});
   interpreter_->SetOutputs({12});
 
-  float16_const_ = Eigen::half_impl::float_to_half_rtne(2.f);
+  float16_const_ = Eigen::half(2.f);
 
   // TENSORS.
   TfLiteQuantizationParams quant;

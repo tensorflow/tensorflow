@@ -107,7 +107,7 @@ xla::StatusOr<VariableUpdateMap> BuildVariableUpdateMap(
         compiled_variable_updates,
     absl::Span<int const> fused_device_var_reads_in_computation_inputs,
     const std::vector<int>& fused_device_var_updates_in_computation_outputs,
-    int64 computation_output_count) {
+    int64_t computation_output_count) {
   VariableUpdateMap map;
   auto add_pair = [&](int input, int output, bool from_compilation) -> Status {
     TF_RET_CHECK(map.input_to_output.emplace(input, output).second)
@@ -132,7 +132,7 @@ xla::StatusOr<VariableUpdateMap> BuildVariableUpdateMap(
   }
   TF_RET_CHECK(num_updated_variables <= computation_output_count)
       << num_updated_variables << " <= " << computation_output_count;
-  int64 compiled_variable_output_index =
+  int64_t compiled_variable_output_index =
       computation_output_count - num_updated_variables;
   for (auto update : compiled_variable_updates) {
     map.input_in_compiled_update_order.push_back(update->index());
@@ -148,7 +148,7 @@ xla::StatusOr<VariableUpdateMap> BuildVariableUpdateMap(
   // Now add the updates from the attributes.
   TF_RET_CHECK(fused_device_var_reads_in_computation_inputs.size() ==
                fused_device_var_updates_in_computation_outputs.size());
-  for (int64 i = 0; i < fused_device_var_reads_in_computation_inputs.size();
+  for (int64_t i = 0; i < fused_device_var_reads_in_computation_inputs.size();
        ++i) {
     TF_RETURN_IF_ERROR(
         add_pair(fused_device_var_reads_in_computation_inputs[i],
@@ -282,7 +282,7 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
       transfer_manager->HostShapeToDeviceShape(input_host_shape));
 
   // Allocates a buffer for the root tuple.
-  const int64 root_size =
+  const int64_t root_size =
       transfer_manager->GetByteSizeRequirement(input_buffers->buffers.shape());
   TF_ASSIGN_OR_RETURN(*input_buffers->buffers.mutable_element({}),
                       allocator->Allocate(device_ordinal, root_size));
@@ -295,7 +295,7 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
     buffers->buffers().ForEachMutableElement([&](const xla::ShapeIndex& index,
                                                  se::DeviceMemoryBase* buffer) {
       xla::ShapeIndex in_index = {arg_index};
-      for (int64 j : index) {
+      for (int64_t j : index) {
         in_index.push_back(j);
       }
       auto* in_buffer = input_buffers->buffers.mutable_element(in_index);
@@ -401,7 +401,7 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
 
   profiler::TraceMe trace_me("AllocateOutputTensors", /*level=*/2);
   // Shapes of the outputs, in TensorShape form.
-  const int64 sub_elements =
+  const int64_t sub_elements =
       xla::ShapeUtil::TupleElementCount(scoped_buffers.on_host_shape());
   if (sub_elements != output_tensor_shape_protos.size()) {
     return errors::InvalidArgument(
@@ -414,7 +414,7 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
 
   std::vector<TensorShape> output_tensor_shapes;
   output_tensor_shapes.reserve(sub_elements);
-  for (int64 i = 0; i < sub_elements; ++i) {
+  for (int64_t i = 0; i < sub_elements; ++i) {
     TF_RETURN_IF_ERROR(
         TensorShape::IsValidShape(*output_tensor_shape_protos[i]));
     TensorShape shape(*output_tensor_shape_protos[i]);
@@ -444,7 +444,7 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
   if (!output_device_shape.is_static()) {
     TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
         stream, &output_buffers->buffers, &output_device_shape));
-    for (int64 i = 0; i < sub_elements; ++i) {
+    for (int64_t i = 0; i < sub_elements; ++i) {
       const xla::Shape& subshape =
           xla::ShapeUtil::GetSubshape(output_device_shape, {i});
       TensorShape shape;
@@ -469,7 +469,7 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
       shaped_buffer.buffers().ForEachMutableElement(
           [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
             xla::ShapeIndex out_index = {i};
-            for (int64 j : index) {
+            for (int64_t j : index) {
               out_index.push_back(j);
             }
             *buffer = output_buffers->buffers.buffers().element(out_index);

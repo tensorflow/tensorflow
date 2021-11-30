@@ -120,7 +120,7 @@ static void BM_IncreasingSequence(benchmark::State& state) {
     Status stat = helper.RunOpKernel();
   }
   state.SetItemsProcessed(
-      static_cast<int64>(batch_size * input_size * state.iterations()));
+      static_cast<int64_t>(batch_size * input_size * state.iterations()));
 }
 
 BENCHMARK(BM_IncreasingSequence)

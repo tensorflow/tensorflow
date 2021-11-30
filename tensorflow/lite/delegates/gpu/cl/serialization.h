@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
+#include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -29,10 +30,12 @@ namespace cl {
 class InferenceContext;
 
 flatbuffers::Offset<data::InferenceContext> Encode(
-    const InferenceContext& inference, const std::vector<int64_t>& in_refs,
+    const CLDevice& device, const InferenceContext& inference,
+    const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
     std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
 
-absl::Status Decode(CLContext* context,
+absl::Status Decode(const CLContext& context, const CLDevice& device,
+                    ProgramCache* program_cache,
                     const data::InferenceContext* fb_inference,
                     InferenceContext* inference);
 

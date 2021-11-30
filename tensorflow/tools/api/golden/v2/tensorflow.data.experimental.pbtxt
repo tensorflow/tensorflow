@@ -9,6 +9,14 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "AutotuneAlgorithm"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "AutotuneOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }
@@ -31,10 +39,6 @@ tf_module {
   member {
     name: "INFINITE_CARDINALITY"
     mtype: "<type \'int\'>"
-  }
-  member {
-    name: "MapVectorizationOptions"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "OptimizationOptions"
@@ -190,7 +194,7 @@ tf_module {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'dataset\', \'path\', \'compression\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'dataset\', \'path\', \'compression\', \'shard_func\', \'checkpoint_args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "scan"

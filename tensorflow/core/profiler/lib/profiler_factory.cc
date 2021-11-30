@@ -38,20 +38,25 @@ std::vector<ProfilerFactory>* GetFactories() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
 
 void RegisterProfilerFactory(ProfilerFactory factory) {
   mutex_lock lock(mu);
-  GetFactories()->push_back(factory);
+  GetFactories()->push_back(std::move(factory));
 }
 
 void CreateProfilers(
     const ProfileOptions& options,
     std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result) {
   mutex_lock lock(mu);
-  for (auto factory : *GetFactories()) {
+  for (const auto& factory : *GetFactories()) {
     if (auto profiler = factory(options)) {
       // A factory might return nullptr based on options.
       if (profiler == nullptr) continue;
       result->push_back(std::move(profiler));
     }
   }
+}
+
+void ClearRegisteredProfilersForTest() {
+  mutex_lock lock(mu);
+  GetFactories()->clear();
 }
 
 }  // namespace profiler

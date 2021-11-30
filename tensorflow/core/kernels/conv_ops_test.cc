@@ -39,63 +39,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-struct ConvParametersPeer {
-  template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() {
-    return params.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
-  }
-
-  ConvParameters params;
-};
-
-TEST(ConvParameters, WinogradNonfusedAlgoSize) {
-  ConvParametersPeer conv_params_small = {{
-      1,            // batch
-      32,           // in_depths
-      {{300,        // in_rows
-        300}},      // in_cols
-      FORMAT_NCHW,  // compute_data_format
-      128,          // out_depths
-      {{3,          // filter_rows
-        3}},        // filter_cols
-      {{1,          // dilation_rows
-        1}},        // dilation_cols
-      {{1,          // stride_rows
-        1}},        // stride_cols
-      {{0,          // padding_rows
-        0}},        // padding_cols
-      DT_FLOAT,     // tensor datatype
-      0,            // device_id
-  }};
-  EXPECT_TRUE(
-      conv_params_small.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<float>());
-
-  ConvParametersPeer conv_params_large = {{
-      1,            // batch
-      128,          // in_depths
-      {{300,        // in_rows
-        300}},      // in_cols
-      FORMAT_NCHW,  // compute_data_format
-      768,          // out_depths
-      {{3,          // filter_rows
-        3}},        // filter_cols
-      {{1,          // dilation_rows
-        1}},        // dilation_cols
-      {{1,          // stride_rows
-        1}},        // stride_cols
-      {{0,          // padding_rows
-        0}},        // padding_cols
-      DT_FLOAT,     // tensor datatype
-      0,            // device_id
-  }};
-  EXPECT_FALSE(
-      conv_params_large.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<float>());
-}
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 class FusedResizePadConvOpTest : public OpsTestBase {
  protected:
   template <typename T>

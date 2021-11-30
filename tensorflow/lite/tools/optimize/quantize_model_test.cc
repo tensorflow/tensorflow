@@ -1613,13 +1613,8 @@ TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
       GetBuiltinCode(model_.operator_codes[requant1->opcode_index].get());
   ASSERT_TRUE(requant1_builtin_code == tflite::BuiltinOperator_QUANTIZE);
 
-  const auto& requant2 = subgraph->operators[2].get();
-  // Check that we have RE operator.
-  auto requant2_builtin_code =
-      GetBuiltinCode(model_.operator_codes[requant2->opcode_index].get());
-  ASSERT_TRUE(requant2_builtin_code == tflite::BuiltinOperator_QUANTIZE);
-
-  const auto& op = subgraph->operators[3].get();
+  // Constant is quantized rather than adding requant.
+  const auto& op = subgraph->operators[2].get();
 
   // Check that we have MINIMUM or MAXIMUM operator.
   auto op_builtin_code =
@@ -1651,15 +1646,14 @@ TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
   EXPECT_EQ(output->quantization->scale, input2->quantization->scale);
   EXPECT_EQ(output->quantization->zero_point, input2->quantization->zero_point);
 
-  EXPECT_EQ(subgraph->tensors.size(), 7);
+  EXPECT_EQ(subgraph->tensors.size(), 6);
 
   EXPECT_EQ(subgraph->tensors[0]->name, "input_int8");
   EXPECT_EQ(subgraph->tensors[1]->name, "output_int8");
   EXPECT_EQ(subgraph->tensors[2]->name, "output/y");
   EXPECT_EQ(subgraph->tensors[3]->name, "input_requantized");
-  EXPECT_EQ(subgraph->tensors[4]->name, "output/y_requantized");
-  EXPECT_EQ(subgraph->tensors[5]->name, "input");
-  EXPECT_EQ(subgraph->tensors[6]->name, "output");
+  EXPECT_EQ(subgraph->tensors[4]->name, "input");
+  EXPECT_EQ(subgraph->tensors[5]->name, "output");
 }
 
 INSTANTIATE_TEST_SUITE_P(MinimumMaximumTestInst, QuantizeMinimumMaximumTest,
@@ -2000,6 +1994,264 @@ TEST_F(QuantizeWhereModelTest, QuantizeWhere) {
   EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_WHERE);
   EXPECT_EQ(model_.operator_codes[0]->version, 1);
 }
+
+enum struct ModifyRangeType {
+  kNone = 0,
+  kAll = 1,
+  kReadOnly = 2,
+  kAssignOnly = 3,
+};
+
+struct TestType {
+  TensorType tensor_type;
+  ModifyRangeType modify_range;
+};
+
+class QuantizeResourcesModelTest
+    : public QuantizeModelTest,
+      public testing::WithParamInterface<TestType> {
+ protected:
+  QuantizeResourcesModelTest() {
+    TestType obj = GetParam();
+    tensor_type_ = obj.tensor_type;
+    modify_range_ = obj.modify_range;
+    input_model_ = ReadModel(internal::kModelWithResourceVarsCalibrated);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_, nullptr);
+    if (modify_range_ != ModifyRangeType::kNone) {
+      ModifyRange(&model_);
+    }
+  }
+  void ModifyRange(ModelT* model) {
+    // Modify ranges to test when min/max of the primary subgraph variable
+    // is smaller than the initializer subgraph.
+    const bool do_read = (modify_range_ == ModifyRangeType::kAll ||
+                          modify_range_ == ModifyRangeType::kReadOnly);
+    const bool do_assign = (modify_range_ == ModifyRangeType::kAll ||
+                            modify_range_ == ModifyRangeType::kAssignOnly);
+    SubGraphT* subgraph = model->subgraphs[0].get();
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); ++op_idx) {
+      OperatorT* op = subgraph->operators[op_idx].get();
+      const BuiltinOperator op_code =
+          GetBuiltinCode(model_.operator_codes[op->opcode_index].get());
+      TensorT* var_tensor;
+      if (op_code == BuiltinOperator_ASSIGN_VARIABLE && do_assign) {
+        var_tensor = subgraph->tensors[op->inputs[1]].get();
+      } else if (op_code == BuiltinOperator_READ_VARIABLE && do_read) {
+        var_tensor = subgraph->tensors[op->outputs[0]].get();
+      } else {
+        continue;
+      }
+      // This value is lower than the initial values, so should be replaced
+      var_tensor->quantization->max[0] = 12.5;
+    }
+  }
+  TensorType tensor_type_;
+  ModifyRangeType modify_range_ = ModifyRangeType::kAll;
+};
+
+INSTANTIATE_TEST_SUITE_P(QuantizeResourcesModelTest, QuantizeResourcesModelTest,
+                         testing::ValuesIn<TestType>(
+                             {{TensorType_INT8, ModifyRangeType::kNone},
+                              {TensorType_INT8, ModifyRangeType::kAll},
+                              {TensorType_INT8, ModifyRangeType::kReadOnly},
+                              {TensorType_INT8, ModifyRangeType::kAssignOnly},
+                              {TensorType_INT16, ModifyRangeType::kNone},
+                              {TensorType_INT16, ModifyRangeType::kAll},
+                              {TensorType_INT16, ModifyRangeType::kReadOnly},
+                              {TensorType_INT16,
+                               ModifyRangeType::kAssignOnly}}));
+
+TEST_P(QuantizeResourcesModelTest, GraphIsFullyQuantized) {
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, tensor_type_, tensor_type_,
+      /*allow_float*/ false, tensor_type_, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+  std::vector<QuantizationParametersT*> quant_params;
+  const float quant_eps = tensor_type_ == TensorType_INT8 ? 1e-1 : 1e-2;
+  for (const auto& subgraph : model_.subgraphs) {
+    for (const auto& tensor : subgraph->tensors) {
+      if (tensor_type_ == TensorType_INT8) {
+        EXPECT_TRUE(
+            tensor->type == TensorType_RESOURCE ||  // resource
+            tensor->type == TensorType_INT32 ||     // bias and gather indices
+            tensor->type == TensorType_INT8);       // weights and activations
+      } else if (tensor_type_ == TensorType_INT16) {
+        EXPECT_TRUE(tensor->type == TensorType_RESOURCE ||  // resource
+                    tensor->type == TensorType_INT64 ||     // bias
+                    tensor->type == TensorType_INT32 ||     // gather indices
+                    tensor->type == TensorType_INT16 ||     // activations
+                    tensor->type == TensorType_INT8);       // weights
+      }
+    }
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); ++op_idx) {
+      OperatorT* op = subgraph->operators[op_idx].get();
+      const BuiltinOperator op_code =
+          GetBuiltinCode(model_.operator_codes[op->opcode_index].get());
+      if (op_code == BuiltinOperator_ASSIGN_VARIABLE) {
+        TensorT* var_tensor = subgraph->tensors[op->inputs[1]].get();
+        quant_params.push_back(var_tensor->quantization.get());
+        if (model_.buffers[var_tensor->buffer] &&
+            !model_.buffers[var_tensor->buffer]->data.empty()) {
+          const BufferT* buffer = model_.buffers[var_tensor->buffer].get();
+          const int num_elements = 25;
+          const int expected_buffer_size = tensor_type_ == TensorType_INT8
+                                               ? num_elements * sizeof(int8_t)
+                                               : num_elements * sizeof(int16_t);
+          EXPECT_EQ(buffer->data.size(), expected_buffer_size);
+          for (int i = 0; i < num_elements; ++i) {
+            float dequantized = 0;
+            if (tensor_type_ == TensorType_INT8) {
+              auto data = reinterpret_cast<const int8_t*>(buffer->data.data());
+              const int zero_point = var_tensor->quantization->zero_point[0];
+              dequantized =
+                  (data[i] - zero_point) * var_tensor->quantization->scale[0];
+            } else if (tensor_type_ == TensorType_INT16) {
+              auto data = reinterpret_cast<const int16_t*>(buffer->data.data());
+              dequantized = data[i] * var_tensor->quantization->scale[0];
+            }
+            EXPECT_NEAR(dequantized, 25.0 - i, quant_eps);
+          }
+        }
+      } else if (op_code == BuiltinOperator_READ_VARIABLE) {
+        TensorT* var_tensor = subgraph->tensors[op->outputs[0]].get();
+        quant_params.push_back(var_tensor->quantization.get());
+      }
+
+      // Test that the bias was duplicated.
+      if (op_code == BuiltinOperator_FULLY_CONNECTED) {
+        TensorT* bias = subgraph->tensors[op->inputs[2]].get();
+        EXPECT_EQ(bias->name, "Const_duplicate_1");
+        if (tensor_type_ == TensorType_INT8) {
+          EXPECT_EQ(bias->type, TensorType_INT32);
+        } else if (tensor_type_ == TensorType_INT8) {
+          EXPECT_EQ(bias->type, TensorType_INT64);
+        }
+      }
+    }
+  }
+  EXPECT_EQ(quant_params.size(), 4);
+  QuantizationParametersT* expected_quant_param = quant_params[0];
+  EXPECT_EQ(expected_quant_param->scale.size(), 1);
+  float expected_scale =
+      tensor_type_ == TensorType_INT8 ? 0.1960605f : 0.0015258f;
+  if (modify_range_ == ModifyRangeType::kAll) {
+    expected_scale = tensor_type_ == TensorType_INT8 ? 0.0980392f : 0.0007629f;
+  }
+  const float eps = 1e-7;
+  EXPECT_NEAR(expected_quant_param->scale[0], expected_scale, eps);
+  for (int i = 1; i < quant_params.size(); ++i) {
+    QuantizationParametersT* test_param = quant_params[i];
+    EXPECT_EQ(test_param->scale, expected_quant_param->scale);
+    EXPECT_EQ(test_param->zero_point, expected_quant_param->zero_point);
+    EXPECT_EQ(test_param->min, expected_quant_param->min);
+    EXPECT_EQ(test_param->max, expected_quant_param->max);
+  }
+}
+
+class QuantizeConcatConstModelTest
+    : public QuantizeModelTest,
+      public testing::WithParamInterface<TensorType> {
+ protected:
+  QuantizeConcatConstModelTest() {
+    input_model_ = ReadModel(internal::kFloatConcatMax5Max10Max10);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+    // Make one of the values constant.
+    MakeInputConstant(&model_);
+  }
+
+  void SetUp() override { tensor_type_ = GetParam(); }
+
+  void MakeInputConstant(tflite::ModelT* model) {
+    auto& subgraph = model->subgraphs[0];
+    const int tensor_id = subgraph->inputs.back();
+    int replace_tensor_id = subgraph->inputs[0];
+    subgraph->inputs[0] = tensor_id;
+    subgraph->inputs.pop_back();
+    auto& tensor = subgraph->tensors[replace_tensor_id];
+    tensor->name = "const_input0";
+    model->buffers.emplace_back(new tflite::BufferT());
+    tensor->buffer = model->buffers.size() - 1;
+    auto& buffer = model->buffers[tensor->buffer];
+    std::vector<float> tensor_buffer = {0.0, 5.0};
+    uint8_t* uint8_data = reinterpret_cast<uint8_t*>(tensor_buffer.data());
+    buffer->data = std::vector<uint8_t>(
+        uint8_data, uint8_data + (sizeof(float) * tensor_buffer.size()));
+  }
+
+  TensorType tensor_type_;
+};
+
+TEST_P(QuantizeConcatConstModelTest, AddRequantBeforeConcat) {
+  auto status =
+      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
+                                false, tensor_type_, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  // There is only one subgraph.
+  const int32_t subgraph_idx = 0;
+  const auto& subgraph = model_.subgraphs[subgraph_idx];
+  const auto& readonly_subgraph =
+      readonly_model_->subgraphs()->Get(subgraph_idx);
+
+  // There should be 1 op: concat.
+  EXPECT_EQ(readonly_subgraph->operators()->size(), 1);
+  EXPECT_EQ(subgraph->operators.size(), 1);
+  const auto& concat = subgraph->operators[0];
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[concat->opcode_index].get()),
+            BuiltinOperator_CONCATENATION);
+
+  auto zero_point_control = tensor_type_ == TensorType_INT8 ? -128 : 0;
+
+  auto input0_scale_control =
+      tensor_type_ == TensorType_INT8 ? 0.039215688 : 0.00030518509;
+  auto input1_scale =
+      tensor_type_ == TensorType_INT8 ? 0.039215688 : 0.00030518509;
+
+  // There should be 3 tensors: const_input0, input1, output.
+  EXPECT_EQ(subgraph->tensors.size(), 3);
+  EXPECT_EQ(subgraph->tensors[0]->type, tensor_type_);
+  EXPECT_EQ(subgraph->tensors[0]->name, "const_input0");
+  EXPECT_EQ(subgraph->tensors[0]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[0]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->scale[0],
+                  input0_scale_control);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->zero_point[0],
+                  zero_point_control);
+
+  EXPECT_EQ(subgraph->tensors[1]->type, tensor_type_);
+  EXPECT_EQ(subgraph->tensors[1]->name, "input1");
+  EXPECT_EQ(subgraph->tensors[1]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[1]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[1]->quantization->scale[0], input1_scale);
+  EXPECT_FLOAT_EQ(subgraph->tensors[1]->quantization->zero_point[0],
+                  zero_point_control);
+  EXPECT_EQ(subgraph->tensors[2]->type, tensor_type_);
+  EXPECT_EQ(subgraph->tensors[2]->name, "output");
+  EXPECT_EQ(subgraph->tensors[2]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[2]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[2]->quantization->scale[0], input1_scale);
+  EXPECT_FLOAT_EQ(subgraph->tensors[2]->quantization->zero_point[0],
+                  zero_point_control);
+
+  EXPECT_EQ(concat->inputs.size(), 2);
+  EXPECT_EQ(concat->outputs.size(), 1);
+  EXPECT_EQ(concat->inputs[0], 0);
+  EXPECT_EQ(concat->inputs[1], 1);
+  EXPECT_EQ(concat->outputs[0], 2);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[0].get()),
+            BuiltinOperator_CONCATENATION);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
+}
+
+INSTANTIATE_TEST_SUITE_P(QuantizeConcatConstModelTest,
+                         QuantizeConcatConstModelTest,
+                         testing::ValuesIn({TensorType_INT8,
+                                            TensorType_INT16}));
 
 }  // namespace
 }  // namespace optimize

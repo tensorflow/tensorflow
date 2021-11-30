@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for tensor_util."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import sys
 
@@ -518,7 +514,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
       string_val: "foo"
       """, t)
     a = tensor_util.MakeNdarray(t)
-    self.assertEqual(np.object, a.dtype)
+    self.assertEqual(np.object_, a.dtype)
     self.assertEqual([b"foo"], a)
 
   def testStringWithImplicitRepeat(self):
@@ -527,7 +523,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         np.array([[b"f", b"g", b"g", b"g"], [b"g", b"g", b"g", b"g"],
                   [b"g", b"g", b"g", b"g"]],
-                 dtype=np.object), a)
+                 dtype=np.object_), a)
 
   def testStringN(self):
     t = tensor_util.make_tensor_proto([b"foo", b"bar", b"baz"], shape=[1, 3])
@@ -539,7 +535,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
       string_val: "baz"
       """, t)
     a = tensor_util.MakeNdarray(t)
-    self.assertEqual(np.object, a.dtype)
+    self.assertEqual(np.object_, a.dtype)
     self.assertAllEqual(np.array([[b"foo", b"bar", b"baz"]]), a)
 
   def testStringNpArray(self):
@@ -554,14 +550,15 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
       string_val: "abcd"
       """, t)
     a = tensor_util.MakeNdarray(t)
-    self.assertEqual(np.object, a.dtype)
+    self.assertEqual(np.object_, a.dtype)
     self.assertAllEqual(np.array([[b"a", b"ab"], [b"abc", b"abcd"]]), a)
 
   def testArrayMethod(self):
 
     class Wrapper(object):
 
-      def __array__(self):
+      def __array__(self, dtype=None):
+        del dtype
         return np.array([b"foo", b"bar", b"baz"])
 
     t = tensor_util.make_tensor_proto(Wrapper(), shape=[1, 3])
@@ -573,7 +570,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
       string_val: "baz"
       """, t)
     a = tensor_util.MakeNdarray(t)
-    self.assertEqual(np.object, a.dtype)
+    self.assertEqual(np.object_, a.dtype)
     self.assertAllEqual(np.array([[b"foo", b"bar", b"baz"]]), a)
 
   def testArrayInterface(self):
@@ -593,7 +590,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
       string_val: "baz"
       """, t)
     a = tensor_util.MakeNdarray(t)
-    self.assertEqual(np.object, a.dtype)
+    self.assertEqual(np.object_, a.dtype)
     self.assertAllEqual(np.array([[b"foo", b"bar", b"baz"]]), a)
 
   def testStringTuple(self):
@@ -607,7 +604,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
       string_val: "abcd"
       """, t)
     a = tensor_util.MakeNdarray(t)
-    self.assertEqual(np.object, a.dtype)
+    self.assertEqual(np.object_, a.dtype)
     self.assertAllEqual(np.array((b"a", b"ab", b"abc", b"abcd")), a)
 
   def testStringNestedTuple(self):
@@ -621,7 +618,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
       string_val: "abcd"
       """, t)
     a = tensor_util.MakeNdarray(t)
-    self.assertEqual(np.object, a.dtype)
+    self.assertEqual(np.object_, a.dtype)
     self.assertAllEqual(np.array(((b"a", b"ab"), (b"abc", b"abcd"))), a)
 
   def testComplex64(self):
@@ -762,7 +759,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
 
     # Validate the helpful error message when trying to convert an
     # unconvertible list as strings.
-    with self.assertRaisesRegex(TypeError, "Failed to convert object"):
+    with self.assertRaisesRegex(TypeError, "Failed to convert elements"):
       tensor_util.make_tensor_proto([tensor_shape.Dimension(1)])
 
   def testTensorShapeVerification(self):

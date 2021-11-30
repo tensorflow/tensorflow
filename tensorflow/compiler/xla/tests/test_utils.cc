@@ -269,7 +269,9 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
                                           bool use_large_range) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
-    for (const Shape& element_shape : shape.tuple_shapes()) {
+    const auto& shape_tuple_shapes = shape.tuple_shapes();
+    elements.reserve(shape_tuple_shapes.size());
+    for (const Shape& element_shape : shape_tuple_shapes) {
       TF_ASSIGN_OR_RETURN(Literal element, MakeFakeLiteralInternal(
                                                element_shape, engine,
                                                no_duplicates, use_large_range));
@@ -322,10 +324,10 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
       PopulateWithRandomIntegralData<uint32>(&literal, engine, no_duplicates);
       break;
     case S64:
-      PopulateWithRandomIntegralData<int64>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int64_t>(&literal, engine, no_duplicates);
       break;
     case U64:
-      PopulateWithRandomIntegralData<uint64>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint64_t>(&literal, engine, no_duplicates);
       break;
     case C64:
       PopulateWithComplexData<complex64>(&literal, engine, no_duplicates,
@@ -338,7 +340,7 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
     case PRED: {
       std::uniform_int_distribution<int> generator(0, 1);
       TF_CHECK_OK(
-          literal.Populate<bool>([&](absl::Span<const int64> /*indices*/) {
+          literal.Populate<bool>([&](absl::Span<const int64_t> /*indices*/) {
             return generator(*engine);
           }));
       break;
@@ -367,11 +369,13 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 // range [min, max]. Currently this works only for INT types.
 StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
                                                     std::minstd_rand0* engine,
-                                                    int64 min, int64 max,
+                                                    int64_t min, int64_t max,
                                                     bool is_sorted) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
-    for (const Shape& element_shape : shape.tuple_shapes()) {
+    const auto& shape_tuple_shapes = shape.tuple_shapes();
+    elements.reserve(shape_tuple_shapes.size());
+    for (const Shape& element_shape : shape_tuple_shapes) {
       TF_ASSIGN_OR_RETURN(Literal element,
                           MakeFakeLiteralInternalWithBounds(
                               element_shape, engine, min, max, is_sorted));
@@ -432,17 +436,21 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
       }
       break;
     case S64:
-      PopulateWithRandomIntegralDataWithBounds<int64>(
-          &literal, engine, static_cast<int64>(min), static_cast<int64>(max));
+      PopulateWithRandomIntegralDataWithBounds<int64_t>(
+          &literal, engine, static_cast<int64_t>(min),
+          static_cast<int64_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int64>().begin(), literal.data<int64>().end());
+        std::sort(literal.data<int64_t>().begin(),
+                  literal.data<int64_t>().end());
       }
       break;
     case U64:
-      PopulateWithRandomIntegralDataWithBounds<uint64>(
-          &literal, engine, static_cast<uint64>(min), static_cast<uint64>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint64_t>(
+          &literal, engine, static_cast<uint64_t>(min),
+          static_cast<uint64_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint64>().begin(), literal.data<uint64>().end());
+        std::sort(literal.data<uint64_t>().begin(),
+                  literal.data<uint64_t>().end());
       }
       break;
     default:
@@ -481,7 +489,7 @@ ConstantType GetInitValue(const HloComputation& computation) {
 bool NeedsInitValue(const HloUse& use) {
   const HloInstruction* const instruction = use.instruction;
   const HloOpcode opcode = instruction->opcode();
-  const int64 op_num = use.operand_number;
+  const int64_t op_num = use.operand_number;
   return ((opcode == HloOpcode::kReduceWindow && op_num == 1) ||
           (opcode == HloOpcode::kSelectAndScatter && op_num == 2) ||
           (opcode == HloOpcode::kReduce &&
@@ -490,7 +498,7 @@ bool NeedsInitValue(const HloUse& use) {
 
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
-Literal MakeRandomIndex(int64 index_bound, std::minstd_rand0* engine) {
+Literal MakeRandomIndex(int64_t index_bound, std::minstd_rand0* engine) {
   std::uniform_int_distribution<int32> generator(0, index_bound);
   return LiteralUtil::CreateR0<int32>(generator(*engine));
 }
@@ -508,7 +516,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
     for (const HloUse& use : value.uses()) {
       HloInstruction* instruction = use.instruction;
       const HloOpcode opcode = instruction->opcode();
-      const int64 op_num = use.operand_number;
+      const int64_t op_num = use.operand_number;
       if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
           (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
         constrained_uses.push_back(instruction);
@@ -550,7 +558,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
     std::minstd_rand0* engine, bool use_large_range) {
-  int64 index_bound = INT64_MAX;
+  int64_t index_bound = INT64_MAX;
   bool no_duplicates = false;
   bool needs_constant = false;
   bool needs_sorted_indices = false;
@@ -563,9 +571,9 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         const Shape& slice_shape = use->opcode() == HloOpcode::kDynamicSlice
                                        ? use->shape()
                                        : use->operand(1)->shape();
-        const int64 first_index =
+        const int64_t first_index =
             Cast<HloDynamicIndexInstruction>(use)->first_index_operand_number();
-        for (int64 operand = first_index; operand < use->operand_count();
+        for (int64_t operand = first_index; operand < use->operand_count();
              ++operand) {
           if (use->operand(operand) == &param) {
             index_bound = std::min(

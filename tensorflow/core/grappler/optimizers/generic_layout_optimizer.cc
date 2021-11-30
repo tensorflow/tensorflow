@@ -415,16 +415,16 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
 
   TransposeContext context;
   if (num_gpus > 0) {
-    TF_RETURN_IF_ERROR(
-        TransposeContext::InitializeTransposeContext(item, cluster, &context));
+    TF_RETURN_IF_ERROR(TransposeContext::InitializeTransposeContext(
+        /*assume_valid_feeds=*/is_aggressive, item, cluster, &context));
 
     const auto src_dst_formats = GetSrcAndDstDataFormats(
         context, num_gpus, num_gpus_and_num_volta.second);
     context.AssignDeviceAndDataFormats(kGPU, src_dst_formats.first,
                                        src_dst_formats.second);
   } else {
-    TF_RETURN_IF_ERROR(
-        TransposeContext::InitializeTransposeContext(item, cluster, &context));
+    TF_RETURN_IF_ERROR(TransposeContext::InitializeTransposeContext(
+        /*assume_valid_feeds=*/is_aggressive, item, cluster, &context));
     switch (cpu_layout_conversion_) {
       case RewriterConfig::NCHW_TO_NHWC:
         context.AssignDeviceAndDataFormats(kCPU, kNCHW, kNHWC);
@@ -457,13 +457,6 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
 
   *output = context.graph;
   return Status::OK();
-}
-
-void GenericLayoutOptimizer::Feedback(Cluster* cluster,
-                                      const GrapplerItem& item,
-                                      const GraphDef& optimize_output,
-                                      double result) {
-  // Takes no feedback.
 }
 
 }  // end namespace grappler

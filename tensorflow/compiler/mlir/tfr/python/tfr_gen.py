@@ -18,10 +18,6 @@
 # pylint: disable=missing-function-docstring
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import os
 import re
@@ -98,10 +94,19 @@ class TFRTypes(enum.Enum):
       return self.name.lower()
 
 
-_attribute_types = [
+_ATTRIBUTE_TYPES = (
     TFRTypes.I1, TFRTypes.I32, TFRTypes.I64, TFRTypes.F32, TFRTypes.INDEX,
     TFRTypes.ATTR
-]
+    )
+
+# TODO(b/203493652): implement the "rename_to" for the customization in
+# tensorflow/core/api_def/base_api/*
+# {op_name: {API's attribute name: OpDef's attribute name}}
+_ATTRIBUTE_RENAMES = {
+    'Mean': {'axis': 'reduction_indices'},
+    'Split': {'axis': 'split_dim'},
+    'SplitV': {'axis': 'split_dim'},
+}
 
 
 def _get_type_from_proto(arg_def=None, attr_def=None):
@@ -234,7 +239,7 @@ class OpDefCache(object):
     self._op_defs = {}
 
   def lookup(self, f_name, func_def=None, optional=False):
-    if f_name in self._op_defs.keys():
+    if f_name in self._op_defs:
       return self._op_defs[f_name]
 
     if isinstance(func_def, types.FunctionType):
@@ -277,7 +282,7 @@ class OpDefCache(object):
     return (op_def, derived_attrs)
 
   def mlir_external_funcs(self):
-    tfr_funcs = []
+    tfr_funcs = set()
     for _, (op_def, derived_attrs) in sorted(self._op_defs.items()):
       tfr_func = '\ntfr.func @tf__{}_('.format(_camel_to_snake(op_def.name))
 
@@ -297,7 +302,7 @@ class OpDefCache(object):
       attrs_with_default = [
           attr for attr in non_derived_attrs if attr.HasField('default_value')
       ]
-      attr_names = set()
+      attr_names = {'f32_', 'i32_', 'i64_', 'i1_'}  # reserved
       for attr_def in attrs_no_default + attrs_with_default:
         inputs.append(_get_type_info_from_proto(None, attr_def))
         attr_names.add(attr_def.name)
@@ -310,9 +315,9 @@ class OpDefCache(object):
       inputs = ','.join(inputs)
       outputs = ','.join(outputs)
       attrs = ','.join(sorted(derived_attrs.union(attr_names)))
-      tfr_funcs.append('{}{}) -> ({}) attributes {{{}}}'.format(
+      tfr_funcs.add('{}{}) -> ({}) attributes {{{}}}'.format(
           tfr_func, inputs, outputs, attrs))
-    return tfr_funcs
+    return sorted(list(tfr_funcs))
 
 
 _PY_TYPE_TO_TFR = {
@@ -692,7 +697,7 @@ class TFRGen(transformer.CodeGenerator):
   def _pack_tensor_list(self, value):
     # This is packing a list of tensors, then the axis is 0.
     axis = self._ssa_name('zero')
-    self._emit_with_loc('\n{} = constant 0 : i64'.format(axis))
+    self._emit_with_loc('\n{} = arith.constant 0 : i64'.format(axis))
     casted = self._ssa_name('pack')
     self.emit('\n{} = tfr.call @tf__pack({}, {})'.format(casted, value, axis))
     self._emit_with_loc(' : (!tfr.tensor_list, i64) -> !tfr.tensor')
@@ -703,7 +708,7 @@ class TFRGen(transformer.CodeGenerator):
   def _index_to_I64(self, value, ty):
     if ty == TFRTypes.INDEX:
       casted = self._ssa_name('casted')
-      self._emit_with_loc('\n{} = index_cast {} : index to i64'.format(
+      self._emit_with_loc('\n{} = arith.index_cast {} : index to i64'.format(
           casted, value))
       return casted, TFRTypes.I64
     else:
@@ -712,7 +717,7 @@ class TFRGen(transformer.CodeGenerator):
   def _i64_to_index(self, value, ty):
     if ty == TFRTypes.I64:
       casted = self._ssa_name('casted')
-      self._emit_with_loc('\n{} = index_cast {} : i64 to index'.format(
+      self._emit_with_loc('\n{} = arith.index_cast {} : i64 to index'.format(
           casted, value))
       return casted, TFRTypes.INDEX
     else:
@@ -821,7 +826,7 @@ class TFRGen(transformer.CodeGenerator):
           for idx, key in enumerate(targets):
             idx_name = self._ssa_name('idx')
             self._emit_with_loc(
-                '\n{} = constant {} : index'.format(idx_name, idx), node)
+                '\n{} = arith.constant {} : index'.format(idx_name, idx), node)
             elt_name = self._ssa_name('elt')
             self.emit('\n{} = tfr.get_element {}[{}]'.format(
                 elt_name, name, idx_name))
@@ -847,13 +852,13 @@ class TFRGen(transformer.CodeGenerator):
   def _emit_binary_op(self, op, lhs, lhs_ty, rhs, rhs_ty):
     assert lhs_ty, rhs_ty
     if isinstance(op, ast.Sub):
-      code = 'sub'
+      code = 'arith.sub'
     elif isinstance(op, ast.Add):
-      code = 'add'
+      code = 'arith.add'
     elif isinstance(op, ast.Mult):
-      code = 'mul'
+      code = 'arith.mul'
     elif isinstance(op, ast.Div):
-      code = 'div'
+      code = 'arith.div'
     else:
       raise NotImplementedError('BinOp operator not recognized' + op)
 
@@ -979,11 +984,11 @@ class TFRGen(transformer.CodeGenerator):
             '\n{} = tfr.equal {}, {} -> i1'.format(ret, lhs, rhs), node)
       else:
         if lhs_ty == TFRTypes.I64:
-          code = 'cmpi'
+          code = 'arith.cmpi'
         elif lhs_ty == TFRTypes.F32:
-          code = 'cmpf'
+          code = 'arith.cmpf'
         elif lhs_ty == TFRTypes.INDEX:
-          code = 'cmpi'
+          code = 'arith.cmpi'
           # TODO(fengliuai): the reverse type inference should solve the issue.
           rhs, _ = self._i64_to_index(rhs, rhs_ty)
         else:
@@ -1001,7 +1006,8 @@ class TFRGen(transformer.CodeGenerator):
     elif isinstance(node.value, bool):
       cst_ty = self._get_inferred_type(node)
       cst_val = str(node.value).lower()
-      self._emit_with_loc('\n{} = constant {}'.format(cst_name, cst_val), node)
+      self._emit_with_loc('\n{} = arith.constant {}'.format(cst_name, cst_val),
+                          node)
     else:
       cst_ty = self._get_inferred_type(node)
       cst_val = node.value
@@ -1011,7 +1017,8 @@ class TFRGen(transformer.CodeGenerator):
             node)
       else:
         self._emit_with_loc(
-            '\n{} = constant {} : {}'.format(cst_name, cst_val, cst_ty), node)
+            '\n{} = arith.constant {} : {}'.format(cst_name, cst_val, cst_ty),
+            node)
     return cst_name, cst_ty
 
   def visit_FunctionDef(self, node):
@@ -1152,29 +1159,31 @@ class TFRGen(transformer.CodeGenerator):
 
         if begin is None:
           begin = self._ssa_name('begin')
-          self._emit_with_loc('\n{} = constant 0 : index'.format(begin), node)
+          self._emit_with_loc('\n{} = arith.constant 0 : index'.format(begin),
+                              node)
         elif begin_ty != TFRTypes.INDEX:
           begin_ = self._ssa_name('begin')
           self._emit_with_loc(
-              '\n{} = index_cast {} : {} to index'.format(
+              '\n{} = arith.index_cast {} : {} to index'.format(
                   begin_, begin, begin_ty), node)
           begin = begin_
 
         if end_ty != TFRTypes.INDEX:
           end_ = self._ssa_name('end')
           self._emit_with_loc(
-              '\n{} = index_cast {} : {} to index'.format(end_, end, end_ty),
-              node)
+              '\n{} = arith.index_cast {} : {} to index'.format(
+                  end_, end, end_ty), node)
           end = end_
 
         if step is None:
           step = self._ssa_name('step')
-          self._emit_with_loc('\n{} = constant 1 : index'.format(step), node)
+          self._emit_with_loc('\n{} = arith.constant 1 : index'.format(step),
+                              node)
         elif step_ty != TFRTypes.INDEX:
           step_ = self._ssa_name('step')
           self._emit_with_loc(
-              '\n{} = index_cast {} : {} to index'.format(step_, step, step_ty),
-              node)
+              '\n{} = arith.index_cast {} : {} to index'.format(
+                  step_, step, step_ty), node)
           step = step_
 
         return begin, end, step
@@ -1232,14 +1241,20 @@ class TFRGen(transformer.CodeGenerator):
     """emit mlir constant statement from default value of the ArgDef proto."""
     name = self._ssa_name('cst')
     cst_ty = _get_type_from_proto(None, attr_def)
-    cst_val = _get_val_from_proto(cst_ty, attr_def.default_value)
+    try:
+      cst_val = _get_val_from_proto(cst_ty, attr_def.default_value)
+    except AttributeError:
+      raise AttributeError(
+          f'attribute "{attr_def.name}" does not have default_value. If the '
+          "attribute names from the API and OpDef don't match, please add it "
+          'to _ATTRIBUTE_RENAMES.')
     if cst_ty == TFRTypes.ATTR:
       self._emit_with_loc('\n{} = tfr.constant {} -> {}'.format(
           name, cst_val, cst_ty))
     elif cst_ty == TFRTypes.I1:
-      self._emit_with_loc('\n{} = constant {}'.format(name, cst_val))
+      self._emit_with_loc('\n{} = arith.constant {}'.format(name, cst_val))
     else:
-      self._emit_with_loc('\n{} = constant {} : {}'.format(
+      self._emit_with_loc('\n{} = arith.constant {} : {}'.format(
           name, cst_val, cst_ty))
     return name, cst_ty
 
@@ -1300,10 +1315,9 @@ class TFRGen(transformer.CodeGenerator):
       value, (ssa_name, ty) = self.visit(arg)
       ty = self._get_inferred_type(arg.value, ty)
 
-      # TODO(fengliuai): implement the "rename_to" for the customization in
-      # tensorflow/core/api_def/base_api/*
-      if value == 'axis':
-        value = 'split_dim'
+      # TODO(b/203493652): see comment on _ATTRIBUTE_RENAMES
+      if op_name in _ATTRIBUTE_RENAMES and value in _ATTRIBUTE_RENAMES[op_name]:
+        value = _ATTRIBUTE_RENAMES[op_name][value]
 
       kw_args[value] = (ssa_name, ty)
 
@@ -1313,7 +1327,7 @@ class TFRGen(transformer.CodeGenerator):
       if attr_def.name in kw_args:
         value, ty = kw_args[attr_def.name]
         if attr_def in input_args:
-          if ty in _attribute_types:
+          if ty in _ATTRIBUTE_TYPES:
             # the argument shouldn't be used as tf op calls directly.
             value, ty = self._value_to_tensor(value, ty, node)
           if ty is TFRTypes.TENSOR_LIST and not _require_tensor_list(attr_def):
@@ -1387,7 +1401,7 @@ class TFRGen(transformer.CodeGenerator):
         # TODO(fengliuai): promote to an assignment
         idx_val = self._ssa_name('cst')
         self._emit_with_loc(
-            '\n{} = constant {} : index'.format(idx_val, s.value), node)
+            '\n{} = arith.constant {} : index'.format(idx_val, s.value), node)
       else:
         idx_val, _ = self.visit(s)
     else:
@@ -1414,7 +1428,7 @@ class TFRGen(transformer.CodeGenerator):
     for elt in node.elts:
       val, ty = self.visit(elt)
       ty = self._get_inferred_type(elt, ty)
-      if ty in _attribute_types and out_type == TFRTypes.TENSOR_LIST:
+      if ty in _ATTRIBUTE_TYPES and out_type == TFRTypes.TENSOR_LIST:
         # This list is a tensor list, then cast all the input values to tensors.
         val, ty = self._value_to_tensor(val, ty, node)
       else:
@@ -1439,16 +1453,16 @@ class TFRGen(transformer.CodeGenerator):
       ssa_value = self._ssa_name('cst')
       if ty == TFRTypes.I32 or ty == TFRTypes.I64:
         self._emit_with_loc(
-            '\n{} = constant 0 : {}'.format(zero_value, ty), node)
+            '\n{} = arith.constant 0 : {}'.format(zero_value, ty), node)
         self._emit_with_loc(
-            '\n{} = subi {}, {} : {}'.format(ssa_value, zero_value, value, ty),
-            node)
+            '\n{} = arith.subi {}, {} : {}'.format(ssa_value, zero_value, value,
+                                                   ty), node)
       elif ty == TFRTypes.F32:
         self._emit_with_loc(
-            '\n{} = constant 0.0 : {}'.format(zero_value, ty), node)
+            '\n{} = arith.constant 0.0 : {}'.format(zero_value, ty), node)
         self._emit_with_loc(
-            '\n{} = subf {}, {} : {}'.format(ssa_value, zero_value, value, ty),
-            node)
+            '\n{} = arith.subf {}, {} : {}'.format(ssa_value, zero_value, value,
+                                                   ty), node)
       else:
         raise NotImplementedError('USub type not recognized: ' + str(ty))
       return ssa_value, ty
@@ -1506,9 +1520,9 @@ def tfr_gen(func, op_defs):
   return mlir_code
 
 
-def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
+def tfr_funcs_gen_from_module(source, op_defs, method_prefix=None,
+                              op_libraries=None):
   """Parse the input source module and emit the TFR functions."""
-  op_defs = OpDefCache()
 
   # Load the op library so the op is added to the op registry. This is
   # required when the op cc_library couldn't be statically linked in open
@@ -1546,5 +1560,14 @@ def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
   # functions called.
   py_funcs = sorted(py_funcs, key=lambda x: x.__code__.co_firstlineno)
   mlir_funcs = [tfr_gen(func, op_defs) for func in py_funcs]
+
+  return mlir_funcs
+
+
+def tfr_gen_from_module(source, method_prefix=None, op_libraries=None,
+                        op_defs=OpDefCache()):
+  """Parse the input source module and emit the TFR and external functions."""
+  mlir_funcs = tfr_funcs_gen_from_module(
+      source, op_defs, method_prefix, op_libraries)
 
   return '\n'.join(mlir_funcs + op_defs.mlir_external_funcs())

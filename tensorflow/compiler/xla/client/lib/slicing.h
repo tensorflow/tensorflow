@@ -26,26 +26,26 @@ namespace xla {
 // using the supplied strides. This is the equivalent of the Python slicing op
 // [base_indices : base_indices+window_sizes : stride].
 XlaOp DynamicStridedSlice(XlaOp input, absl::Span<const XlaOp> base_indices,
-                          absl::Span<const int64> window_sizes,
-                          absl::Span<const int64> strides);
+                          absl::Span<const int64_t> window_sizes,
+                          absl::Span<const int64_t> strides);
 
 // Updates a slice of 'x', i.e.,
 // x[start[0], ..., start[n]] = update
-XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64> start);
+XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64_t> start);
 
 // Performs a slice in the minor dimensions of a tensor.
 // x[..., start[0]:end[0], ..., start[n]:end[n]]
-XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64> start,
-                       absl::Span<const int64> end);
+XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64_t> start,
+                       absl::Span<const int64_t> end);
 
 // Updates a slice of 'x', where 'start' contains a list of minor dimensions:
 // x[..., start[0]:..., ..., start[n]:...] = update
 XlaOp UpdateSliceInMinorDims(XlaOp x, XlaOp update,
-                             absl::Span<const int64> start);
+                             absl::Span<const int64_t> start);
 
 // Performs a dynamic slice in the minor dimensions of a tensor.
 XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
-                              absl::Span<const int64> sizes);
+                              absl::Span<const int64_t> sizes);
 
 XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
                                     absl::Span<const XlaOp> starts);
@@ -62,13 +62,13 @@ XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
 // [X0,X1,X2,..XN] and dim = i `index` must be an n-dimensional tensor with size
 // [X0,X1,...Y,Xi+1,...,X[N] where y >= 1 and `out` will have the same sizes as
 // `index`.
-XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse = true);
+XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse = true);
 
 // idx = index[i][j][k]
 // output[idx][j][k] = combiner(input[idx][j][k], src[i][j][k])  # if dim == 0
 // output[i][idx][k] = combiner(input[i][idx][k], src[i][j][k])  # if dim == 1
 // output[i][j][idx] = combiner(input[i][j][idx], src[i][j][k])  # if dim == 2
-XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64 dim,
+XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64_t dim,
                         const std::function<XlaOp(XlaOp, XlaOp)>& combiner);
 
 // Returns a new tensor which indexes the input tensor along dimension dim using
@@ -80,8 +80,8 @@ XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64 dim,
 //
 // This operation supports 0 or more major batch dimensions that act like a
 // multidimensional loop over both the input and the index.
-XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim,
-                       int64 batch_dims = 0);
+XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64_t dim,
+                       int64_t batch_dims = 0);
 
 }  // namespace xla
 

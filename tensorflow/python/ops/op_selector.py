@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tools for selecting ops in a graph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.util import object_identity
 
@@ -128,7 +124,8 @@ def check_graphs(*args):
     if graph is None and sgv.graph is not None:
       graph = sgv.graph
     elif sgv.graph is not None and sgv.graph is not graph:
-      raise ValueError("Argument[{}]: Wrong graph!".format(i))
+      raise ValueError(f"args[{i}] does not belong to the same graph as "
+                       "other arguments.")
 
 
 def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):

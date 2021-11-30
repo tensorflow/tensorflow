@@ -90,7 +90,7 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
   Status Flush() override { return Status::OK(); }
   Status Sync() override { return Status::OK(); }
 
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     *position = -1;
     return errors::Unimplemented("This filesystem does not support Tell()");
   }

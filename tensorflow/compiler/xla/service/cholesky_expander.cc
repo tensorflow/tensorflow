@@ -57,9 +57,9 @@ StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int ndims = a_shape.rank();
-  const int64 n = ShapeUtil::GetDimension(a_shape, -1);
-  std::vector<int64> error_dims(a_shape.dimensions().begin(),
-                                a_shape.dimensions().end());
+  const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
+  std::vector<int64_t> error_dims(a_shape.dimensions().begin(),
+                                  a_shape.dimensions().end());
   error_dims.back() = error_dims.at(ndims - 2) = 1;
 
   auto major_dims = AsInt64Slice(a_shape.dimensions())
@@ -77,8 +77,8 @@ StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
   // Construct the for loop body to iterate over rows.
   auto body_fn = [&](XlaOp i, absl::Span<const XlaOp> loop_vars,
                      XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
-    std::vector<int64> row_shape_dims(major_dims.begin(), major_dims.end());
-    std::vector<int64> col_shape_dims(major_dims.begin(), major_dims.end());
+    std::vector<int64_t> row_shape_dims(major_dims.begin(), major_dims.end());
+    std::vector<int64_t> col_shape_dims(major_dims.begin(), major_dims.end());
     auto body_a = loop_vars[0];
     auto body_l = loop_vars[1];
     auto seen_error = loop_vars[2];
@@ -125,7 +125,7 @@ StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
   return std::make_pair(cholesky_while[1], cholesky_while[2]);
 }
 
-XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64 block_size,
+XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64_t block_size,
                                       PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -137,7 +137,7 @@ XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64 block_size,
           a_shape.ToString());
     }
 
-    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
     if (n != ShapeUtil::GetDimension(a_shape, -2)) {
       return InvalidArgument(
           "Argument to Cholesky must be batched square matrices; got shape %s",
@@ -149,10 +149,10 @@ XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64 block_size,
           "block_size argument to Cholesky must be >= 1; got %d", block_size);
     }
 
-    std::vector<int64> error_dims(a_shape.dimensions().begin(),
-                                  a_shape.dimensions().end());
+    std::vector<int64_t> error_dims(a_shape.dimensions().begin(),
+                                    a_shape.dimensions().end());
     error_dims.back() = error_dims.at(ndims - 2) = 1;
-    std::vector<int64> error_dim_indices(ndims);
+    std::vector<int64_t> error_dim_indices(ndims);
     absl::c_iota(error_dim_indices, 0);
 
     // Blocked left-looking Cholesky factorization.
@@ -161,8 +161,8 @@ XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64 block_size,
     // GPU-only execution." Proceedings of General Purpose GPUs. ACM, 2017.
     XlaOp l = ZerosLike(a);
     XlaOp seen_error = Zeros(builder, ShapeUtil::MakeShape(PRED, error_dims));
-    for (int64 i = 0; i < n; i += block_size) {
-      int64 k = std::min(block_size, n - i);
+    for (int64_t i = 0; i < n; i += block_size) {
+      int64_t k = std::min(block_size, n - i);
       auto panel = SliceInMinorDims(a, {i, i}, {n, i + k});
       if (i > 0) {
         // TODO(phawkins): consider implementing SYRK for the diagonal part of

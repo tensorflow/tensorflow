@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for constant ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -35,6 +31,7 @@ def make_constant_tests(options):
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[], [1], [2], [1, 1, 1, 1], [2, 2, 2, 2]],
       "constant_is_also_output": [True, False],
+      # TODO(b/192473002) investigate if it can be removed for MLIR converter.
       # This is a regression test for a bug where Toco rejects models with
       # unread inputs.
       "has_unread_input": [True, False],

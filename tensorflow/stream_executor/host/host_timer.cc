@@ -32,11 +32,11 @@ bool HostTimer::Stop(Stream* stream) {
   return stream->ThenDoHostCallback([this]() { this->StopNow(); }).ok();
 }
 
-uint64 HostTimer::Microseconds() const {
+uint64_t HostTimer::Microseconds() const {
   return duration_cast<std::chrono::microseconds>(duration_).count();
 }
 
-uint64 HostTimer::Nanoseconds() const {
+uint64_t HostTimer::Nanoseconds() const {
   return duration_cast<std::chrono::nanoseconds>(duration_).count();
 }
 

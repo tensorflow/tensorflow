@@ -28,8 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -73,7 +75,7 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
   if (!param->shape().IsTuple()) {
     return false;
   }
-  std::set<int64> tuple_indices_to_keep;
+  std::set<int64_t> tuple_indices_to_keep;
   for (HloInstruction* user : param->users()) {
     // If the user is not a get tuple element, assume it is unsafe to remove
     // elements from the tuple.
@@ -84,7 +86,8 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
   }
   // If all tuple elements are used in this conditional branch, there is nothing
   // to be removed.
-  int64 old_tuple_element_count = ShapeUtil::TupleElementCount(param->shape());
+  int64_t old_tuple_element_count =
+      ShapeUtil::TupleElementCount(param->shape());
   if (tuple_indices_to_keep.size() == old_tuple_element_count) {
     return false;
   }
@@ -93,8 +96,8 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
   // computation branch.
   std::vector<Shape> new_tuple_shapes;
   new_tuple_shapes.reserve(tuple_indices_to_keep.size());
-  std::vector<int64> map(old_tuple_element_count, -1);
-  for (int64 i : tuple_indices_to_keep) {
+  std::vector<int64_t> map(old_tuple_element_count, -1);
+  for (int64_t i : tuple_indices_to_keep) {
     map[i] = new_tuple_shapes.size();
     new_tuple_shapes.push_back(param->shape().tuple_shapes(i));
   }
@@ -118,7 +121,7 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
     if (conditional->has_sharding()) {
       continue;
     }
-    for (int64 branch = 0; branch < conditional->branch_count(); ++branch) {
+    for (int64_t branch = 0; branch < conditional->branch_count(); ++branch) {
       if (conditional->branch_computation(branch) != computation) {
         continue;
       }
@@ -129,7 +132,7 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
       // original operand tuple.
       std::vector<HloInstruction*> new_tuple_operands;
       new_tuple_operands.reserve(tuple_indices_to_keep.size());
-      for (int64 i : tuple_indices_to_keep) {
+      for (int64_t i : tuple_indices_to_keep) {
         new_tuple_operands.push_back(conditional->parent()->AddInstruction(
             HloInstruction::CreateGetTupleElement(
                 old_shape.tuple_shapes(i),
@@ -159,7 +162,7 @@ bool ReplaceRootWithEmptyTupleIfNoUsers(HloInstruction* conditional_op) {
   if (conditional_op->user_count() == 0 &&
       conditional_op != conditional_op->parent()->root_instruction() &&
       !ShapeUtil::Compatible(empty_tuple, conditional_op->shape())) {
-    for (int64 branch_id = 0; branch_id < conditional_op->branch_count();
+    for (int64_t branch_id = 0; branch_id < conditional_op->branch_count();
          ++branch_id) {
       auto branch_computation =
           conditional_op->GetModule()->AddEmbeddedComputation(
@@ -393,7 +396,7 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
   //
   // In this case, vectorize(1), vectorize(2) are equal and index 1, 2 are
   // identical.
-  auto vectorize_branches_root_tuple_ith_operand = [conditional](int64 i) {
+  auto vectorize_branches_root_tuple_ith_operand = [conditional](int64_t i) {
     std::vector<const HloInstruction*> operands;
     absl::c_transform(conditional->branch_computations(),
                       std::back_inserter(operands),
@@ -403,8 +406,8 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
     return operands;
   };
 
-  auto replace_root_user_gte_jth_with_gte_ith = [conditional](int64 i,
-                                                              int64 j) {
+  auto replace_root_user_gte_jth_with_gte_ith = [conditional](int64_t i,
+                                                              int64_t j) {
     bool changed = false;
     for (HloInstruction* user : conditional->users()) {
       if (user->tuple_index() == j) {
@@ -416,7 +419,7 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
   };
 
   bool changed = false;
-  absl::flat_hash_map<std::vector<const HloInstruction*>, int64>
+  absl::flat_hash_map<std::vector<const HloInstruction*>, int64_t>
       index_collision_table;
   for (int i = 0; i < conditional->shape().tuple_shapes_size(); ++i) {
     const std::vector<const HloInstruction*> ith_operands_vector =
@@ -453,7 +456,7 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
 
   // We can always inline a 1-branch conditional due to default branch fallback.
   auto computation = conditional->parent();
-  auto create_call = [&](int64 branch) {
+  auto create_call = [&](int64_t branch) {
     auto call = computation->AddInstruction(HloInstruction::CreateCall(
         conditional->shape(), {conditional->mutable_operand(1 + branch)},
         conditional->branch_computation(branch)));
@@ -490,7 +493,6 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
       case HloOpcode::kDynamicSlice:
-      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kReduce:
       case HloOpcode::kReshape:
@@ -537,7 +539,7 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
         new_shape, conditional->mutable_operand(0), {}));
   };
 
-  auto gte = [&](HloInstruction* hlo, int64 i) {
+  auto gte = [&](HloInstruction* hlo, int64_t i) {
     return computation->AddInstruction(HloInstruction::CreateGetTupleElement(
         hlo->shape().tuple_shapes(i), hlo, i));
   };
@@ -554,10 +556,10 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
               t, f));
         }
         std::vector<HloInstruction*> selects;
-        const int64 tuple_element_count =
+        const int64_t tuple_element_count =
             ShapeUtil::TupleElementCount(f->shape());
         selects.reserve(tuple_element_count);
-        for (int64 i = 0; i < tuple_element_count; ++i) {
+        for (int64_t i = 0; i < tuple_element_count; ++i) {
           selects.push_back(select(gte(t, i), gte(f, i)));
         }
         return computation->AddInstruction(
@@ -572,6 +574,35 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
   return true;
 }
 
+static bool ComputationCallsChannelInstructions(
+    const HloComputation& computation) {
+  std::vector<const HloComputation*> worklist = {&computation};
+  while (!worklist.empty()) {
+    const HloComputation* work = worklist.back();
+    worklist.pop_back();
+    for (const HloInstruction* instruction : work->instructions()) {
+      if (DynCast<HloChannelInstruction>(instruction) != nullptr) {
+        return true;
+      }
+      worklist.insert(worklist.end(),
+                      instruction->called_computations().begin(),
+                      instruction->called_computations().end());
+    }
+  }
+  return false;
+}
+
+static bool InstructionCallsChannelInstructions(
+    const HloInstruction& instruction) {
+  for (const HloComputation* called_computation :
+       instruction.called_computations()) {
+    if (ComputationCallsChannelInstructions(*called_computation)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(
       3, "ConditionalSimplifier::Run(), before:\n" + module->ToString());
@@ -584,6 +615,15 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
   for (auto* comp : module->computations()) {
     for (auto* instr : comp->MakeInstructionPostOrder()) {
       if (instr->opcode() == HloOpcode::kConditional) {
+        // Verifier wants a single send/recv with a given channel. This pass
+        // clones computations which can result in that getting violated.
+        if (InstructionCallsChannelInstructions(*instr)) {
+          continue;
+        }
+        if (instr->has_sharding()) {
+          // The code below doesn't handle sharding properly.
+          continue;
+        }
         conditional_ops.push_back(instr);
       }
     }
@@ -591,10 +631,6 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
 
   absl::flat_hash_set<HloInstruction*> removed_conditionals;
   for (HloInstruction* conditional_op : conditional_ops) {
-    if (conditional_op->has_sharding()) {
-      // The code below doesn't handle sharding properly.
-      continue;
-    }
     changed |= MergeDuplicateTupleElements(conditional_op);
     changed |= RemoveUnusedTupleElements(conditional_op);
     changed |= ReplaceRootWithEmptyTupleIfNoUsers(conditional_op);
@@ -616,7 +652,7 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
       continue;
     }
 
-    for (int64 branch = 0; branch < conditional->branch_count(); ++branch) {
+    for (int64_t branch = 0; branch < conditional->branch_count(); ++branch) {
       auto* branch_comp = conditional->branch_computation(branch);
       if (!calling_conditionals.contains(branch_comp)) {
         calling_computationals_vector.push_back(branch_comp);

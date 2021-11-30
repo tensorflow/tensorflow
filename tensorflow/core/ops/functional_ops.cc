@@ -292,6 +292,7 @@ REGISTER_OP("StatefulPartitionedCall")
     .Attr("config_proto: string = ''")
     .Attr("executor_type: string = ''")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnknownShape);
 
 // This op is used as a placeholder in If branch functions. It doesn't provide a
@@ -315,6 +316,7 @@ REGISTER_OP("FakeParam")
 REGISTER_OP("DeviceIndex")
     .Output("index: int32")
     .Attr("device_names: list(string)")
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn(shape_inference::ScalarShape)
+    .SetDoNotOptimize();
 
 }  // end namespace tensorflow

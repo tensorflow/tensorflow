@@ -345,10 +345,11 @@ See also
 [`XlaBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
-operation from a data shape to a target shape. The dimensions must match, and
-the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
-via bitcast routine. Bitcast is implemented as a low-level cast, so machines
-with different floating-point representations will give different results.
+operation from a data shape to a target shape. The input and output size must
+match: e.g. `s32` elements become `f32` elements via bitcast routine, and one
+`s32` element will become four `s8` elements. Bitcast is implemented as a
+low-level cast, so machines with different floating-point representations will
+give different results.
 
 <b> `BitcastConvertType(operand, new_element_type)` </b>
 
@@ -357,9 +358,42 @@ Arguments          | Type            | Semantics
 `operand`          | `XlaOp`         | array of type T with dims D
 `new_element_type` | `PrimitiveType` | type U
 
-The dimensions of the operand and the target shape must match. The bit-width of
-the source and destination element types must be equal. The source
-and destination element types must not be tuples.
+The dimensions of the operand and the target shape must match, apart from the
+last dimension which will change by the ratio of the primitive size before and
+after the conversion.
+
+The source and destination element types must not be tuples.
+
+### Bitcast-converting to primitive type of different width
+
+`BitcastConvert` HLO instruction supports the case where the size of the output
+element type `T'` is not equal to the size of the input element `T`. As the
+whole operation is conceptually a bitcast and does not change the underlying
+bytes, the shape of the output element has to change. For `B = sizeof(T), B' =
+sizeof(T')`, there are two possible cases.
+
+First, when `B > B'`, the output shape gets a new minor-most dimension of size
+`B/B'`. For example:
+
+```
+  f16[10,2]{1,0} %output = f16[10,2]{1,0} bitcast-convert(f32[10]{0} %input)
+```
+
+The rule remains the same for effective scalars:
+
+```
+  f16[2]{0} %output = f16[2]{0} bitcast-convert(f32[] %input)
+```
+
+Alternatively, for `B' > B` the instruction requires the last logical dimension
+of the input shape to be equal to `B'/B`, and this dimension is dropped during
+the conversion:
+
+```
+  f32[10]{0} %output = f32[10]{0} bitcast-convert(f16[10,2]{1,0} %input)
+```
+
+Note that conversions between different bitwidths are not elementwise.
 
 ## Broadcast
 
@@ -1468,7 +1502,7 @@ as `batch_dims`.
 The output is an array of rank `batch_dims.size` + `offset_dims.size`.
 
 The `operand.rank` must equal the sum of `offset_dims.size` and
-`collapsed_slice_dims`. Also, `slice_sizes.size` has to be equal to
+`collapsed_slice_dims.size`. Also, `slice_sizes.size` has to be equal to
 `operand.rank`.
 
 If `index_vector_dim` is equal to `start_indices.rank` we implicitly consider
@@ -1520,10 +1554,11 @@ calculated as follows:
 4.  `In` is `O`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
     addition.
 
-`remapped_offset_dims` is a monotonic function with domain [`0`, `offset.size`)
-and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So if, e.g.,
-`offset.size` is `4`, `operand.rank` is `6` and `collapsed_slice_dims` is {`0`,
-`2`} then `remapped_offset_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+`remapped_offset_dims` is a monotonic function with domain [`0`,
+`offset_dims.size`) and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So
+if, e.g., `offset_dims.size` is `4`, `operand.rank` is `6` and
+`collapsed_slice_dims` is {`0`, `2`} then `remapped_offset_dims` is {`0`→`1`,
+`1`→`3`, `2`→`4`, `3`→`5`}.
 
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
 are sorted (in ascending `start_index_map` order) by the user. If they are not
@@ -1919,15 +1954,11 @@ an identity of the reduction function (for example, `0` for addition) or
 undefined behavior will occur. The applied `computation` is always passed the
 `init_value` on the left-hand side.
 
-The evaluation order of the reduction function is arbitrary and may be
-non-deterministic. Therefore, the reduction function should not be overly
-sensitive to reassociation.
-
-Some reduction functions like addition are not strictly associative for floats.
+Different backends are allowed to reassociate the reduction computation.  This
+can lead to numerical differences, as some reduction functions like addition are
+not associative for floats.
 However, if the range of the data is limited, floating-point addition is close
-enough to being associative for most practical uses. It is possible to conceive
-of some completely non-associative reductions, however, and these will produce
-incorrect or unpredictable results in XLA.
+enough to being associative for most practical uses.
 
 As an example, when reducing across one dimension in a single 1D array with
 values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)
@@ -2083,6 +2114,56 @@ distinguish a zero value from an infinity, since both have a zero mantissa), and
 must have a non-negative number of mantissa bits.  The number of exponent or
 mantissa bits may exceed the corresponding value for type `T`; the corresponding
 portion of the conversion is then simply a no-op.
+
+## ReduceScatter
+
+See also
+[`XlaBuilder::ReduceScatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+ReduceScatter is a collective operation that effectively does an AllReduce and
+then scatters the result by splitting it into `shard_count` blocks along the
+`scatter_dimension` and replica `i` in the replica group receives the `ith`
+shard.
+
+<b> `ReduceScatter(operand, computation, scatter_dim, shard_count,
+replica_group_ids, channel_id)` </b>
+
+| Arguments           | Type                 | Semantics                     |
+| ------------------- | -------------------- | ----------------------------- |
+| `operand`           | `XlaOp`              | Array or a non-empty tuple of |
+:                     :                      : arrays to reduce across       :
+:                     :                      : replicas.                     :
+| `computation`       | `XlaComputation`     | Reduction computation         |
+| `scatter_dimension` | `int64`              | Dimension to scatter.         |
+| `shard_count`       | `int64`              | Number of blocks to split     |
+:                     :                      : `scatter_dimension`           :
+| `replica_groups`    | vector of vectors of | Groups between which the      |
+:                     : `int64`              : reductions are performed      :
+| `channel_id`        | optional `int64`     | Optional channel ID for       |
+:                     :                      : cross-module communication    :
+
+-   When `operand` is a tuple of arrays, the reduce-scatter is performed on each
+    element of the tuple.
+-   `replica_groups` is a list of replica groups between which the reduction is
+    performed (replica id for the current replica can be retrieved using
+    [`ReplicaId`](#replicaid)). The order of replicas in each group determines
+    the order in which the all-reduce result will be scattered. `replica_groups`
+    must either be empty (in which case all replicas belong to a single group),
+    or contain the same number of elements as the number of replicas. When there
+    are more than one replica groups, they all must be of the same size. For
+    example, `replica_groups = {0, 2}, {1, 3}` performs reduction between the
+    replicas `0` and `2`, and `1` and `3` and then scatters the result.
+-   `shard_count` is the size of each replica group. We need this in cases where
+    `replica_groups` are empty. If `replica_groups` is not empty, `shard_count`
+    must be equal to the size of each replica group.
+-   `channel_id` is used for cross-module communication: only `reduce-scatter`
+    operations with the same `channel_id` can communicate with each other.
+
+The output shape is the input shape with the `scatter_dimension` made
+`shard_count` times smaller. For example, if there are two replicas and the
+operand has the value `[1.0, 2.25]` and `[3.0, 5.25]` respectively on the two
+replicas, then the output value from this op where `scatter_dim` is `0` will be
+`[4.0]` for the first replica and `[7.5]` for the second replica.
 
 ## ReduceWindow
 

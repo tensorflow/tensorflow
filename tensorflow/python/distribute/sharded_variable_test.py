@@ -14,11 +14,9 @@
 # ==============================================================================
 """Tests for ShardedVariable."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
+
+from absl.testing import parameterized
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
@@ -26,12 +24,14 @@ from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -99,7 +99,7 @@ class PartitionerTest(test.TestCase):
     self.assertAllEqual(got, [1, 1])
 
 
-class ShardedVariableTest(test.TestCase):
+class ShardedVariableTest(test.TestCase, parameterized.TestCase):
 
   def test_sharded_variable_simple(self):
     v0 = variables_lib.Variable([0])
@@ -143,6 +143,114 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(self.evaluate(s.variables[1]), [[0, 0], [1, 1]])
     self.assertAllEqual(self.evaluate(s.variables[2]), [[0, 0]])
     self.assertIs(ret, s)
+
+  def test_scatter_add_uneven_partition(self):
+    v = variables_lib.Variable(array_ops.zeros((32, 1)))
+    sparse_delta = indexed_slices.IndexedSlices(
+        values=constant_op.constant([[0.], [1.], [2.], [3.], [4.], [5.]]),
+        indices=constant_op.constant([0, 10, 11, 12, 30, 31]))
+
+    v0 = variables_lib.Variable(array_ops.zeros((11, 1)))
+    v1 = variables_lib.Variable(array_ops.zeros((11, 1)))
+    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    v.scatter_add(sparse_delta)
+    sv.scatter_add(sparse_delta)
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+    @def_function.function
+    def func():
+      v.scatter_add(sparse_delta)
+      sv.scatter_add(sparse_delta)
+
+    func()
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+  @parameterized.parameters('scatter_add', 'scatter_div', 'scatter_max',
+                            'scatter_min', 'scatter_mul', 'scatter_sub',
+                            'scatter_update')
+  def test_scatter_ops_even_partition(self, op):
+    v = variables_lib.Variable(array_ops.zeros((30, 1)))
+    # Make sure values does not contain 0 due to testing `scatter_div`!
+    sparse_delta = indexed_slices.IndexedSlices(
+        values=constant_op.constant([[1.], [2.], [3.], [4.], [5.]]),
+        indices=constant_op.constant([0, 10, 12, 21, 22]))
+
+    v0 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v1 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    getattr(v, op)(sparse_delta, name='scatter_v')
+    getattr(sv, op)(sparse_delta, name='scatter_sv')
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+    @def_function.function
+    def func():
+      getattr(v, op)(sparse_delta, name='scatter_v')
+      getattr(sv, op)(sparse_delta, name='scatter_sv')
+
+    func()
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+  def test_batch_scatter_update(self):
+    v = variables_lib.Variable(array_ops.zeros((32, 1)))
+    sparse_delta = indexed_slices.IndexedSlices(
+        values=constant_op.constant([[0.], [1.], [2.], [3.], [4.], [5.]]),
+        indices=constant_op.constant([10, 11, 12, 13, 14, 15]))
+
+    v0 = variables_lib.Variable(array_ops.zeros((11, 1)))
+    v1 = variables_lib.Variable(array_ops.zeros((11, 1)))
+    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    v.batch_scatter_update(sparse_delta)
+    sv.batch_scatter_update(sparse_delta)
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+    @def_function.function
+    def func():
+      v.batch_scatter_update(sparse_delta)
+      sv.batch_scatter_update(sparse_delta)
+
+    func()
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+  def test_sparse_read(self):
+    v = variables_lib.Variable(array_ops.zeros((30, 1)))
+    indices = constant_op.constant([0, 10, 12, 21, 22])
+
+    v0 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v1 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    self.assertAllEqual(v.sparse_read(indices), sv.sparse_read(indices))
+
+    @def_function.function
+    def func():
+      return v.sparse_read(indices), sv.sparse_read(indices)
+
+    got, expect = func()
+    self.assertAllEqual(got, expect)
+
+  def test_control_dep_on_assign(self):
+    v0 = variables_lib.Variable([[0, 0]])
+    v1 = variables_lib.Variable([[1, 1], [2, 2]])
+    v2 = variables_lib.Variable([[3, 3]])
+    s = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    @def_function.function
+    def func():
+      ret = s.assign([[4, 4], [5, 5], [6, 6], [7, 7]])
+      with ops.control_dependencies([ret]):
+        a = array_ops.ones((1, 1))
+      with ops.control_dependencies([control_flow_ops.group(ret)]):
+        b = array_ops.ones((1, 1))
+      return a, b
+
+    func()
 
   def test_convert_to_tensor(self):
     v0 = variables_lib.Variable([[0, 0]])
@@ -318,9 +426,15 @@ class ShardedVariableTest(test.TestCase):
       load.load(save_dir)
 
   def test_validation_errors(self):
-    with self.assertRaisesRegex(ValueError, 'Expected a list of '):
+    with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
+      sharded_variable.ShardedVariable(None)
+
+    with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
       sharded_variable.ShardedVariable(
           [variables_lib.Variable([0]), 'not-a-variable'])
+
+    with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
+      sharded_variable.ShardedVariable([])
 
     with self.assertRaisesRegex(ValueError, 'must have the same dtype'):
       sharded_variable.ShardedVariable([
@@ -375,7 +489,7 @@ class ShardedVariableTest(test.TestCase):
     s = sharded_variable.ShardedVariable(variables)
 
     got = nest.flatten(s)
-    self.assertEqual(s, got[0])
+    self.assertIs(s, got[0])
 
     got = nest.flatten(s, expand_composites=True)
     self.assertAllEqual(variables, got)
@@ -400,7 +514,7 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(model.variables, model.trainable_variables)
 
     self.assertLen(model._checkpoint_dependencies, 1)
-    self.assertEqual(model._checkpoint_dependencies[0].ref, model.w)
+    self.assertIs(model._checkpoint_dependencies[0].ref, model.w)
 
   def test_embedding_lookup(self):
     v = [
@@ -544,6 +658,23 @@ class ShardedVariableTest(test.TestCase):
       return a
 
     self.assertAllEqual(func(), [1, 3, 5, 7, 9, 11, 13, 15])
+
+  def test_operator_overload(self):
+    v1 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv1 = sharded_variable.ShardedVariable(v1)
+
+    v2 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv2 = sharded_variable.ShardedVariable(v2)
+
+    equal = sv1 == sv2
+    self.assertAllEqual(equal, [True, True])
+    self.assertAllEqual(sv1 + sv2, [2.0, 4.0])
 
 
 if __name__ == '__main__':

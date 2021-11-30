@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tools for serializing `Function`s."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -26,11 +22,11 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
 
-def _serialize_function_spec(function_spec, coder):
+def _serialize_function_spec(function_spec):
   """Serialize a FunctionSpec object into its proto representation."""
   if function_spec.is_method and not function_spec.fullargspec.args:
     raise NotImplementedError(
-        "Missing support to serialize a method function without a named "
+        "Cannot serialize a method function without a named "
         "'self' argument.")
   proto = saved_object_graph_pb2.FunctionSpec()
 
@@ -40,12 +36,12 @@ def _serialize_function_spec(function_spec, coder):
   # https://www.python.org/dev/peps/pep-3107/
   # https://docs.python.org/3/library/inspect.html#inspect.getfullargspec
   proto.fullargspec.CopyFrom(
-      coder.encode_structure(
+      nested_structure_coder.encode_structure(
           function_spec.fullargspec._replace(annotations={})))
 
   proto.is_method = function_spec.is_method
   proto.input_signature.CopyFrom(
-      coder.encode_structure(function_spec.input_signature))
+      nested_structure_coder.encode_structure(function_spec.input_signature))
 
   # See `tf.function` and the JitCompile proto for details.
   proto.jit_compile = {
@@ -57,7 +53,7 @@ def _serialize_function_spec(function_spec, coder):
   return proto
 
 
-def serialize_concrete_function(concrete_function, node_ids, coder):
+def serialize_concrete_function(concrete_function, node_ids):
   """Build a SavedConcreteFunction."""
   bound_inputs = []
   try:
@@ -65,20 +61,20 @@ def serialize_concrete_function(concrete_function, node_ids, coder):
       bound_inputs.append(node_ids[capture])
   except KeyError:
     raise KeyError(
-        "Failed to add concrete function %s to object based saved model as it "
-        "captures tensor %s which is unsupported or not reachable from root. "
+        f"Failed to add concrete function '{concrete_function.name}' to object-"
+        f"based SavedModel as it captures tensor {capture!r} which is unsupported"
+        " or not reachable from root. "
         "One reason could be that a stateful object or a variable that the "
         "function depends on is not assigned to an attribute of the serialized "
-        "trackable object "
-        "(see SaveTest.test_captures_unreachable_variable)."
-        % (concrete_function.name, capture))
+        "trackable object (see SaveTest.test_captures_unreachable_variable).")
   concrete_function_proto = saved_object_graph_pb2.SavedConcreteFunction()
   structured_outputs = func_graph_module.convert_structure_to_signature(
       concrete_function.structured_outputs)
   concrete_function_proto.canonicalized_input_signature.CopyFrom(
-      coder.encode_structure(concrete_function.structured_input_signature))
+      nested_structure_coder.encode_structure(
+          concrete_function.structured_input_signature))
   concrete_function_proto.output_signature.CopyFrom(
-      coder.encode_structure(structured_outputs))
+      nested_structure_coder.encode_structure(structured_outputs))
   concrete_function_proto.bound_inputs.extend(bound_inputs)
   return concrete_function_proto
 
@@ -93,20 +89,18 @@ def serialize_bare_concrete_function(concrete_function, name_map):
       allowed_positional_arguments=concrete_function._num_positional_args,
       argument_keywords=concrete_function._arg_keywords)
   if concrete_function._pre_initialized_function_spec is not None:
-    coder = nested_structure_coder.StructureCoder()
     proto.function_spec.CopyFrom(
         _serialize_function_spec(
-            concrete_function._pre_initialized_function_spec, coder))
+            concrete_function._pre_initialized_function_spec))
   return proto
   # pylint: enable=protected-access
 
 
 def serialize_function(function, name_map):
   """Build a SavedFunction proto."""
-  coder = nested_structure_coder.StructureCoder()
   proto = saved_object_graph_pb2.SavedFunction()
 
-  function_spec_proto = _serialize_function_spec(function.function_spec, coder)
+  function_spec_proto = _serialize_function_spec(function.function_spec)
   proto.function_spec.CopyFrom(function_spec_proto)
   all_concrete_functions = \
       function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access

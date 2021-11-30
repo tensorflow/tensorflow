@@ -372,12 +372,14 @@ class MklConvCustomBackpropInputOp
       memory::dims fwd_output_dims, fwd_output_dims_tf_order;
 
       // Get conv fwd parameters.
+      bool is_grouped_convolution = false;
       MklDnnConvUtil conv_util(context, this->strides_, this->padding_,
                                this->data_format_, this->dilations_);
       conv_util.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &fwd_src_dims, &fwd_filter_dims,
           &strides, &dilations, &fwd_output_dims_tf_order, &fwd_output_dims,
-          &padding_left, &padding_right, false, is_depthwise);
+          &padding_left, &padding_right, &is_grouped_convolution, false,
+          is_depthwise);
       if (!context->status().ok()) return;
 
       bool is_conv2d = (this->strides_.size() == 4);
@@ -400,7 +402,7 @@ class MklConvCustomBackpropInputOp
           filter_mkl_shape.IsMklTensor()
               ? filter_mkl_shape.GetMklLayout()
               : memory::desc(fwd_filter_dims, MklDnnType<T>(),
-                             is_depthwise
+                             (is_depthwise || is_grouped_convolution)
                                  ? memory::format_tag::hwigo
                                  : (is_conv2d ? memory::format_tag::hwio
                                               : memory::format_tag::dhwio));

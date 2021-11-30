@@ -209,10 +209,6 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   TF_LITE_ENSURE_STATUS(Commit());
 
   for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
-    // TODO(ahentz): we could do this only for the tensors that were modified
-    // in CalculateAllocations(), instead of redoing it for tensors that
-    // already had proper pointers. However we must be very careful, because
-    // SimpleMemoryArena::Commit() could move the base pointer.
     TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
   }
 
@@ -247,6 +243,12 @@ TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
 
 bool ArenaPlanner::HasNonPersistentMemory() {
   return arena_.GetBufferSize() != 0;
+}
+
+void ArenaPlanner::DumpDebugInfo(const std::vector<int>& execution_plan) const {
+  arena_.DumpDebugInfo("kTfLiteArenaRw Dump:", execution_plan);
+  persistent_arena_.DumpDebugInfo("kTfLiteArenaRwPersistent Dump:",
+                                  execution_plan);
 }
 
 TfLiteStatus ArenaPlanner::Commit() {

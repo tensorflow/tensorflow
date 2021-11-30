@@ -1,7 +1,7 @@
 # Understand the C++ library
 
 The TensorFlow Lite for Microcontrollers C++ library is part of the
-[TensorFlow repository](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro).
+[TensorFlow repository](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro).
 It is designed to be readable, easy to modify, well-tested, easy to integrate,
 and compatible with regular TensorFlow Lite.
 
@@ -11,7 +11,7 @@ provides information about creating your own project.
 ## File structure
 
 The
-[`micro`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro)
+[`micro`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro)
 root directory has a relatively simple structure. However, since it is located
 inside of the extensive TensorFlow repository, we have created scripts and
 pre-generated project files that provide the relevant source files in isolation
@@ -22,17 +22,17 @@ within various embedded development environments.
 The most important files for using the TensorFlow Lite for Microcontrollers
 interpreter are located in the root of the project, accompanied by tests:
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.h)
+-   [`all_ops_resolver.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/all_ops_resolver.h)
     or
-    [`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_mutable_op_resolver.h)
+    [`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)
     can be used to provide the operations used by the interpreter to run the
     model. Since `all_ops_resolver.h` pulls in every available operation, it
     uses a lot of memory. In production applications, you should use
     `micro_mutable_op_resolver.h` to pull in only the operations your model
     needs.
--   [`micro_error_reporter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_error_reporter.h)
+-   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_error_reporter.h)
     outputs debug information.
--   [`micro_interpreter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_interpreter.h)
+-   [`micro_interpreter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_interpreter.h)
     contains code to handle and run models.
 
 See [Get started with microcontrollers](get_started_low_level.md) for a
@@ -40,15 +40,15 @@ walkthrough of typical usage.
 
 The build system provides for platform-specific implementations of certain
 files. These are located in a directory with the platform name, for example
-[`sparkfun_edge`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/sparkfun_edge).
+[`sparkfun_edge`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/sparkfun_edge).
 
 Several other directories exist, including:
 
--   [`kernel`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/kernels),
+-   [`kernel`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/kernels),
     which contains operation implementations and the associated code.
--   [`tools`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/tools),
+-   [`tools`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/tools),
     which contains build tools and their output.
--   [`examples`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples),
+-   [`examples`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples),
     which contains sample code.
 
 ## Start a new project
@@ -186,4 +186,4 @@ The resulting library can be found in
 
 Guidance on porting TensorFlow Lite for Microcontrollers to new platforms and
 devices can be found in
-[`micro/README.md`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/README.md).
+[`micro/README.md`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/README.md).

@@ -215,5 +215,37 @@ TEST(CastOpModel, CastComplex64ToComplex64) {
            std::complex<float>(6.0f, 16.0f)}));
 }
 
+TEST(CastOpModel, CastUInt32ToInt32) {
+  CastOpModel m({TensorType_UINT32, {2, 3}}, {TensorType_INT32, {2, 3}});
+  m.PopulateTensor<uint32_t>(m.input(), {100, 200, 300, 400, 500, 600});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({100, 200, 300, 400, 500, 600}));
+}
+
+TEST(CastOpModel, CastInt32ToUInt32) {
+  CastOpModel m({TensorType_INT32, {2, 3}}, {TensorType_UINT32, {2, 3}});
+  m.PopulateTensor<int32_t>(m.input(), {100, 200, 300, 400, 500, 600});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<uint32_t>(m.output()),
+              ElementsAreArray({100, 200, 300, 400, 500, 600}));
+}
+
+TEST(CastOpModel, CastUInt8ToInt8) {
+  CastOpModel m({TensorType_UINT8, {2, 3}}, {TensorType_INT8, {2, 3}});
+  m.PopulateTensor<uint8_t>(m.input(), {10, 20, 30, 40, 50, 60});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<int8_t>(m.output()),
+              ElementsAreArray({10, 20, 30, 40, 50, 60}));
+}
+
+TEST(CastOpModel, CastInt8ToUInt8) {
+  CastOpModel m({TensorType_INT8, {2, 3}}, {TensorType_UINT8, {2, 3}});
+  m.PopulateTensor<int8_t>(m.input(), {10, 20, 30, 40, 50, 60});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
+              ElementsAreArray({10, 20, 30, 40, 50, 60}));
+}
+
 }  // namespace
 }  // namespace tflite

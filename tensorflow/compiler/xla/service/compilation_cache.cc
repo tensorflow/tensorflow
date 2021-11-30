@@ -27,11 +27,11 @@ namespace xla {
 
 namespace {
 
-int64 GetUniqueId() {
+int64_t GetUniqueId() {
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static int64 counter = 0;
+  static int64_t counter = 0;
   tensorflow::mutex_lock loc(mu);
-  const int64 id = counter++;
+  const int64_t id = counter++;
   return id;
 }
 

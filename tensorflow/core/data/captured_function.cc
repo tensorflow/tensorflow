@@ -48,7 +48,7 @@ namespace {
 // cares about collecting the CPU time needed to execute a captured function.
 class SimpleStepStatsCollector : public StepStatsCollectorInterface {
  public:
-  void IncrementProcessingTime(int64 delta) {
+  void IncrementProcessingTime(int64_t delta) {
     mutex_lock l(mu_);
     processing_time_ += delta;
   }
@@ -61,7 +61,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     return "";
   }
 
-  int64 processing_time() {
+  int64_t processing_time() {
     tf_shared_lock l(mu_);
     return processing_time_;
   }
@@ -96,16 +96,16 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
     void SetOutput(int slot, const Tensor* tensor) override {}
 
-    void SetScheduled(int64 nanos) override {}
+    void SetScheduled(int64_t nanos) override {}
 
    private:
-    int64 start_time_ns_ = 0;
-    int64 end_time_ns_ = 0;
+    int64_t start_time_ns_ = 0;
+    int64_t end_time_ns_ = 0;
     SimpleStepStatsCollector* step_stats_collector_;  // Not owned.
   };
 
   mutex mu_;
-  int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
+  int64_t processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
 Status GetCapturedInput(const CapturedFunction* const func, int index,
@@ -234,30 +234,6 @@ Status CreateFunctionLibraryDefinition(
   *result = absl::make_unique<FunctionLibraryDefinition>(
       lib_def->ReachableDefinitions(*fdef));
   return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
-}
-
-Status IsFunctionStateful(const FunctionLibraryDefinition& library,
-                          const FunctionDef& function_def) {
-  if (!function_def.signature().is_stateful()) {
-    return Status::OK();
-  }
-
-  for (const NodeDef& node_def : function_def.node_def()) {
-    TF_RETURN_IF_ERROR(IsNodeStateful(library, node_def));
-  }
-  return Status::OK();
-}
-
-// Returns whether an op has been allowlisted as stateless. Uses a heuristic to
-// allowlist source dataset ops which have been marked stateful due to
-// b/65524810. Also looks up the `op_def->name` in the global
-// `AllowlistedStatefulOpRegistry`.
-bool IsOpAllowlisted(const OpDef* op_def) {
-  return (op_def->output_arg_size() == 1 &&
-          op_def->output_arg(0).type() == DT_VARIANT &&
-          (absl::EndsWith(op_def->name(), "Dataset") ||
-           absl::EndsWith(op_def->name(), "DatasetV2"))) ||
-         AllowlistedStatefulOpRegistry::Global()->Contains(op_def->name());
 }
 
 Status LookupFunction(const FunctionLibraryDefinition& lib_def,
@@ -398,52 +374,9 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
 }  // namespace
 
-Status IsNodeStateful(const FunctionLibraryDefinition& library,
-                      const NodeDef& node) {
-  const OpDef* op_def;
-
-  // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
-  // `LookUpOpDef` errors here.
-  if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
-      IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
-      op_def->name() == "Assert") {
-    return Status::OK();
-  }
-
-  if (op_def->name() == "If") {
-    const FunctionDef* then_func =
-        library.Find(node.attr().at("then_branch").func().name());
-    const FunctionDef* else_func =
-        library.Find(node.attr().at("else_branch").func().name());
-    if (then_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *then_func));
-    }
-    if (else_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *else_func));
-    }
-    return Status::OK();
-  }
-
-  if (op_def->name() == "While") {
-    const FunctionDef* cond_func =
-        library.Find(node.attr().at("cond").func().name());
-    const FunctionDef* body_func =
-        library.Find(node.attr().at("body").func().name());
-    if (cond_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *cond_func));
-    }
-    if (body_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *body_func));
-    }
-    return Status::OK();
-  }
-
-  return errors::FailedPrecondition(op_def->name(), " is stateful.");
-}
-
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
-    const std::vector<Tensor>& input_element, int64 thread_index,
+    const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator) {
   return MakeIteratorFromInputElement(ctx, parent, input_element, thread_index,
@@ -453,7 +386,7 @@ Status MakeIteratorFromInputElement(
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
-    const std::vector<Tensor>& input_element, int64 thread_index,
+    const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node) {
@@ -475,15 +408,19 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
-  if (ctx->split_provider() == nullptr) {
-    return returned_dataset->MakeIterator(ctx, parent, iterator_prefix,
-                                          out_iterator);
+
+  return returned_dataset->MakeIterator(MakeNestedIteratorContext(ctx), parent,
+                                        iterator_prefix, out_iterator);
+}
+
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strip out any split providers so that they don't apply to sub-iterators.
+  if (ctx->split_providers().empty()) {
+    return *ctx;
   }
-  // Strip out the split provider so that it doesn't apply to sub-iterators.
   IteratorContext::Params params(ctx);
-  params.split_provider = nullptr;
-  return returned_dataset->MakeIterator(IteratorContext(std::move(params)),
-                                        parent, iterator_prefix, out_iterator);
+  params.split_providers.clear();
+  return IteratorContext(std::move(params));
 }
 
 /* static */
@@ -568,7 +505,7 @@ Status CapturedFunction::AddToGraph(
   other_arguments_types->reserve(captured_inputs_.size());
   for (const Tensor& t : captured_inputs_) {
     Node* node;
-    if (ctx->serialize_data_tensors()) {
+    if (!ctx->is_graph_rewrite()) {
       TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
     } else {
       TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
@@ -586,8 +523,18 @@ Status CapturedFunction::AddToGraph(
 Status CapturedFunction::Instantiate(
     IteratorContext* ctx, std::unique_ptr<InstantiatedCapturedFunction>*
                               instantiated_captured_function) {
+  return CapturedFunction::Instantiate(InstantiateCapturedFunctionParams(ctx),
+                                       instantiated_captured_function);
+}
+
+// TODO(b/190831948): Check whether the function creates a resource and if so,
+// produce a warning.
+Status CapturedFunction::Instantiate(
+    InstantiateCapturedFunctionParams params,
+    std::unique_ptr<InstantiatedCapturedFunction>*
+        instantiated_captured_function) {
   // The context's runtime will be used for all subsequent calls.
-  FunctionLibraryRuntime* lib = ctx->flr();
+  FunctionLibraryRuntime* lib = params.flr;
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
@@ -598,7 +545,7 @@ Status CapturedFunction::Instantiate(
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
   inst_opts.is_multi_device_function = metadata_->use_multi_device_function();
-  if (!ctx->function_handle_cache()) {
+  if (!params.function_handle_cache) {
     // If the caller does not provide a cache, we use the FLR cache.
     inst_opts.use_function_cache = true;
   }
@@ -704,8 +651,8 @@ Status CapturedFunction::Instantiate(
   }
 
   FunctionLibraryRuntime::Handle f_handle;
-  if (ctx->function_handle_cache()) {
-    TF_RETURN_IF_ERROR(ctx->function_handle_cache()->Instantiate(
+  if (params.function_handle_cache) {
+    TF_RETURN_IF_ERROR(params.function_handle_cache->Instantiate(
         metadata_->func().name(), AttrSlice(&metadata_->func().attr()),
         inst_opts, &f_handle));
   } else {
@@ -718,10 +665,11 @@ Status CapturedFunction::Instantiate(
   TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));
 
   bool is_multi_device;
-  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &is_multi_device));
-  return InstantiatedCapturedFunction::Create(
-      lib, f_handle, std::move(ret_types), *ctx->runner(), this,
-      is_multi_device, instantiated_captured_function);
+  TF_RETURN_IF_ERROR(IsMultiDevice(lib, &is_multi_device));
+  *instantiated_captured_function = absl::WrapUnique(
+      new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
+                                       *params.runner, this, is_multi_device));
+  return Status::OK();
 }
 
 Status CapturedFunction::CheckExternalState() const {
@@ -738,7 +686,7 @@ CapturedFunction::CapturedFunction(
     : metadata_(std::move(metadata)),
       captured_inputs_(std::move(captured_inputs)) {}
 
-Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
+Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
                                        bool* is_multi_device) const {
   if (!metadata_->use_multi_device_function()) {
     *is_multi_device = false;
@@ -749,7 +697,7 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
   TF_RETURN_IF_ERROR(
       LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
 
-  Device* current_device = ctx->flr()->device();
+  Device* current_device = flr->device();
   DeviceType current_device_type(current_device->device_type());
   DeviceNameUtils::ParsedName current_device_name;
   if (!DeviceNameUtils::ParseFullName(current_device->name(),
@@ -810,17 +758,6 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
   return Status::OK();
 }
 
-/* static */
-Status InstantiatedCapturedFunction::Create(
-    FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
-    DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
-    CapturedFunction* captured_func, bool is_multi_device,
-    std::unique_ptr<InstantiatedCapturedFunction>* out_function) {
-  out_function->reset(new InstantiatedCapturedFunction(
-      lib, f_handle, ret_types, runner, captured_func, is_multi_device));
-  return Status::OK();
-}
-
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
@@ -856,21 +793,21 @@ Status InstantiatedCapturedFunction::Run(
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage =
-      node && ctx->model() && ctx->model()->collect_resource_usage();
+  const bool collect_usage = node && ctx->model();
   f_opts.stats_collector = stats_collector.get();
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
+        return profiler::TraceMeEncode("InstantiatedCapturedFunction::Run",
+                                       {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   if (node) {
@@ -919,22 +856,22 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage =
-      node && ctx->model() && ctx->model()->collect_resource_usage();
+  const bool collect_usage = node && ctx->model();
   f_opts.stats_collector = stats_collector.get();
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "InstantiatedCapturedFunction::RunWithBorrowedArgs#id=",
-            f_opts.step_id, "#");
+        return profiler::TraceMeEncode(
+            "InstantiatedCapturedFunction::RunWithBorrowedArgs",
+            {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   if (node) {
@@ -979,8 +916,9 @@ Status InstantiatedCapturedFunction::RunInstantiated(
                               ret_types_);
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat("InstantiatedCapturedFunction::RunInstantiated#id=",
-                            f_opts.step_id, "#");
+        return profiler::TraceMeEncode(
+            "InstantiatedCapturedFunction::RunInstantiated",
+            {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
@@ -1021,13 +959,13 @@ void InstantiatedCapturedFunction::RunAsync(
   auto cancellation_manager =
       absl::make_unique<CancellationManager>(ctx->cancellation_manager());
   f_opts.cancellation_manager = cancellation_manager.get();
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage =
-      node && ctx->model() && ctx->model()->collect_resource_usage();
+  const bool collect_usage = node && ctx->model();
   f_opts.stats_collector = stats_collector.get();
 
   // Transfer ownership of the cancellation manager to `callback`.
@@ -1074,8 +1012,8 @@ void InstantiatedCapturedFunction::RunAsync(
 
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "InstantiatedCapturedFunction::RunAsync#id=", f_opts.step_id, "#");
+        return profiler::TraceMeEncode("InstantiatedCapturedFunction::RunAsync",
+                                       {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   // Stop the usage collection before calling `Run()` because `callback` may

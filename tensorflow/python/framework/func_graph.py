@@ -14,12 +14,9 @@
 # ==============================================================================
 """FuncGraph and related functionality."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections as py_collections
 import itertools
+import traceback
 import weakref
 
 import numpy as np
@@ -34,15 +31,17 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.util import compat
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
@@ -167,7 +166,8 @@ class FuncGraph(ops.Graph):
       instead of reference.
   """
 
-  def __init__(self, name, collections=None, capture_by_value=None):
+  def __init__(self, name, collections=None, capture_by_value=None,
+               structured_input_signature=None, structured_outputs=None):
     """Construct a new FuncGraph.
 
     The graph will inherit its graph key, collections, seed, and distribution
@@ -185,16 +185,21 @@ class FuncGraph(ops.Graph):
       capture_by_value: An optional boolean. If True, the func graph will
         capture Variables by value instead of reference. By default inherit
         from outer graphs, and failing that will default to False.
+      structured_input_signature: Optional. The structured input signature to
+        use for initializing the FuncGraph. See the docstring for FuncGraph for
+        more information.
+      structured_outputs: Optional. The structured outputs to use for
+        initializing the FuncGraph. See the docstring for FuncGraph for more
+        information.
     """
     super(FuncGraph, self).__init__()
-
     self.name = name
     self.inputs = []
     self.outputs = []
     self.control_outputs = []
-    self.control_captures = set()
-    self.structured_input_signature = None
-    self.structured_outputs = None
+    self.control_captures = object_identity.ObjectIdentitySet()
+    self.structured_input_signature = structured_input_signature
+    self.structured_outputs = structured_outputs
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
     self.is_control_flow_graph = False
@@ -274,19 +279,71 @@ class FuncGraph(ops.Graph):
       self._watched_variables.add(v)
       self = self.outer_graph
 
-  def capture_call_time_value(self, closure, spec, key=None):
-    """Creates a placeholder which at call time has the value closure().
+  def capture_call_time_value(self,
+                              closure,
+                              spec,
+                              key=None,
+                              default_value=None,
+                              placeholder=None):
+    """Returns a placeholder which at call time has the value closure().
 
-    Useful, for example, to respect TensorFlow context managers, which are often
-    dynamically scoped.
+    The `tf.function` supports the notion of captures, that is, it allows Python
+    functions to have closure variables, which bind over some value outside the
+    function. However, this name binding is "early binding" performed before the
+    program is run, i.e.,
+    ```
+    @tf.function
+    def f():
+      return x
+
+    x = tf.constant(1)
+    f()  # returns 1
+
+    x = tf.constant(2)
+    f()  # still returns 1!
+    ```
+    while in Python, name binding is performed as the program is running.
+    ```
+    def f():
+      return x
+
+    x = 1
+    f()  # returns 1
+
+    x = 2
+    f()  # returns 2
+    ```
+    `capture_call_time_value` allows tf.function to mimic late binding as a
+    Python function does, by passing in a `closure` callable argument to be
+    executed when the tf.function is invoked eagerly.  E.g.
+    ```
+    @tf.function
+    def f():
+      return ops.get_default_graph.capture_call_time_value(lambda: x)
+
+    x = tf.constant(1)
+    f()  # returns 1
+
+    x = tf.constant(2)
+    f()  # returns 2
+    ```
+    Note that a `capture_call_time_value` function itself does not work well in
+    the saving process (since the tf.function in which it's called is not
+    invoked eagerly) unless passed a `default_value` argument. At saving time,
+    the `default_value` argument is returned instead.
 
     Args:
       closure: function which takes no arguments, to be evaluated at function
-       call time, returning a nest of tensors compatible with `spec`.
+        call time, returning a nest of tensors compatible with `spec`.
       spec: nest of TypeSpec for the value to capture.
       key: optional. If not None, multiple calls to lazy_capture with the same
-       key in the same graph will return the same placeholder, and the
-       first closure will be used at function call time.
+        key in the same graph will return the same placeholder, and the
+        first closure will be used at function call time.
+      default_value: optional value to return in environments that cannot safely
+        evaluate closure.
+      placeholder: optional. If not None, the graph will take the passed-in
+        `placeholder` as the internal capture instead of creating a new one.
+        This is useful when loading from a SavedModel.
 
     Returns:
       Nest of placeholders which, at function call time, will be fed with the
@@ -300,18 +357,54 @@ class FuncGraph(ops.Graph):
       key = object()
     if key not in self._deferred_captures:
 
-      def convert_to_placeholder(s):
-        if not isinstance(s, tensor_spec.DenseSpec):
-          raise TypeError(
-              "Expected a nest of `TypeSpec` objects, found %s of type %s." %
-              (s, type(s)))
-        return array_ops.placeholder(dtype=s.dtype, shape=s.shape)
+      if placeholder is None:
+        def convert_to_placeholder(s):
+          if not isinstance(s, tensor_spec.DenseSpec):
+            raise TypeError(
+                "Expected a nest of `TypeSpec` objects, found %s of type %s." %
+                (s, type(s)))
+          return array_ops.placeholder(dtype=s.dtype, shape=s.shape)
 
-      placeholder = nest.map_structure(
-          convert_to_placeholder, spec, expand_composites=True)
+        placeholder = nest.map_structure(
+            convert_to_placeholder, spec, expand_composites=True)
 
       def wrapped_closure():
-        ret_nest = closure()
+
+        # One major case requiring returning a `default_value` is when passing a
+        # concrete function to `save`, i.e.
+        # serving_fn = serve_fn.get_concrete_function(...)
+        # model.save(save_dir, signatures={"serving_default": serving_fn})
+        # `serving_fn` has deferred captures added through
+        # `capture_call_time_value`. It can't be saved correctly since
+        # `wrapped_closure` will end up executing under a default Graph instead
+        # of FuncGraph. The user of `capture_call_time_value` also cannot
+        # conditionally avoid this call since presence of `save_context` when
+        # executing `wrapped_closure` is not known at tracing time of
+        # `serving_fn`.
+        if save_context.in_save_context() and default_value is not None:
+          return default_value
+        # TODO(wxinyi): raise an error if in save context but no default value.
+
+        if not context.executing_eagerly():
+          graph = ops.get_default_graph()
+
+          # In the case of control flow, we need to capture the
+          # external_captures (deferred or not) of the body_graph (i.e.
+          # `WhileBodyFuncGraph) in `cond_graph` (i.e. WhileCondFuncGraph) and
+          # create the corresponding placeholders in `cond_graph` so that it
+          # expects to receive these as arguments. However, doing so requires
+          # having evaluated the call_time_value already (and maybe repeatedly),
+          # so we skip adding deferred_captures to the control flow graph but
+          # add it to its outer graph.
+          while graph.is_control_flow_graph:
+            graph = graph.outer_graph
+
+          with graph.as_default():
+            ret_nest = graph.capture_call_time_value(
+                closure, spec, key=key, default_value=default_value)
+        else:
+          ret_nest = closure()
+
         nest.assert_same_structure(spec, ret_nest, expand_composites=True)
         # This uses the tensor dtype defined in `spec` when converting values
         # in `ret_nest` to tensors.
@@ -321,6 +414,7 @@ class FuncGraph(ops.Graph):
         # pylint: enable=protected-access
         return nest.flatten(y, expand_composites=True)
 
+      wrapped_closure.output_spec = spec
       self._deferred_captures[key] = (wrapped_closure, placeholder)
     return self._deferred_captures[key][1]
 
@@ -352,7 +446,7 @@ class FuncGraph(ops.Graph):
     filtered_control_inputs = []
     for c in control_inputs:
       # Check for _UnreadVariable
-      if (isinstance(c, ops.IndexedSlices) or
+      if (isinstance(c, indexed_slices.IndexedSlices) or
           (hasattr(c, "_handle") and hasattr(c, "op"))):
         c = c.op
       graph_element = ops._as_graph_element(c)  # pylint: disable=protected-access
@@ -639,12 +733,27 @@ class FuncGraph(ops.Graph):
       inner_graph = tensor.graph
       while inner_graph is not None and isinstance(inner_graph, FuncGraph):
         if inner_graph is self:
+          try:
+            tb = tensor.op.traceback
+          except AttributeError:
+            tensor_traceback = "<unknown>"
+          else:
+            tensor_traceback_list = []
+            for frame in traceback.format_list(tb.get_user_frames()):
+              tensor_traceback_list.extend(
+                  [f"  {line}" for line in frame.split("\n") if line.strip()])
+            tensor_traceback = "\n".join(tensor_traceback_list)
+          # Keep in sync with tfe_wrapper.cc.
+          # TODO(b/200991648): Unify those two paths.
           raise errors.InaccessibleTensorError(
-              "The tensor '%s' cannot be accessed here: it is defined"
-              " in another function or code block. Use return values,"
-              " explicit Python locals or TensorFlow collections to access"
-              " it. Defined in: %s; accessed from: %s.\n"
-              % (tensor, tensor.graph, self))
+              f"{tensor!r} is out of scope and cannot be used here. Use return "
+              "values, explicit Python locals or TensorFlow collections to "
+              "access it.\n"
+              "Please see https://www.tensorflow.org/guide/function#all_outputs_of_a_tffunction_must_be_return_values "
+              "for more information.\n\n"
+              f"{tensor!r} was defined here:\n{tensor_traceback}\n\n"
+              f"The tensor {tensor!r} cannot be accessed from {self}, because "
+              f"it was defined in {tensor.graph}, which is out of scope.")
         inner_graph = inner_graph.outer_graph
       return self._capture_helper(tensor, name)
     return tensor
@@ -688,6 +797,52 @@ class FuncGraph(ops.Graph):
     """Replace already existing capture."""
     self._captures[id(tensor)] = (tensor, placeholder)
 
+  def replace_capture_with_deferred_capture(self,
+                                            tensor,
+                                            closure,
+                                            spec,
+                                            placeholder,
+                                            default_value=None):
+    """Replaces existing capture `tensor` with a deferred capture `closure`.
+
+    Caution: It is the caller's responsibility to make sure that, after calling
+    this function, the TypeSpec of the `inputs` (i.e. internal placeholders) and
+    the `_captured_inputs` (i.e. external captures) of a concrete function that
+    wraps this function graph are still compatible. Thus user should pairing
+    usage of this function with `ConcreteFunction.set_external_captures` to make
+    sure the order still matches. For example,
+    ```
+    # concrete_fn._captured_inputs == [tensor1, tensor2, tensor3]
+    # concrete_fn.inputs == [placeholder1, placeholder2, placeholder3]
+    # replace external capture `tensor2` with a deferred_capture, i.e., a
+    # closure, `closure2`
+    concrete_fn.graph.replace_capture_with_deferred_capture(tensor2,
+                                                            closure2,
+                                                            placeholder2,
+                                                            some_spec,
+                                                            some_default)
+    concrete_fn.set_external_captures([tensor1, closure2, tensor3])
+    ```
+
+    Args:
+      tensor: Tensor already captured.
+      closure: function which takes no arguments, to be evaluated at function
+        call time, returning a nest of tensors compatible with `spec`.
+      spec: nest of TypeSpec for the value to capture.
+      placeholder: the internal placeholder corresponding to the captured
+        `tensor`.
+      default_value: optional value to use in environments that cannot safely
+        evaluate closure.
+    """
+    if id(tensor) in self._captures:
+      self.pop_capture(tensor)
+    self.capture_call_time_value(
+        closure,
+        spec,
+        key=id(tensor),
+        default_value=default_value,
+        placeholder=placeholder)
+
   def reset_captures(self, capture_list):
     """Set the captures with the provided list of captures & placeholder."""
     self._captures = py_collections.OrderedDict()
@@ -722,10 +877,7 @@ class FuncGraph(ops.Graph):
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(id(tensor))
     if capture is None:
-      # We clear all control dependencies and place the Const op on the same
-      # device as the source tensor. The device placement may be relaxed at
-      # a later date.
-      with ops.control_dependencies(None), self.device(tensor.device):
+      with ops.control_dependencies(None):
         constant_value = tensor_util.constant_value(tensor)
         if constant_value is None:
           # Some eager tensors, e.g. parallel tensors, are not convertible to a
@@ -881,8 +1033,8 @@ def func_graph_from_py_func(name,
     A FuncGraph.
 
   Raises:
-    TypeError: If any of `python_func`'s return values is neither `None` nor a
-      `Tensor`.
+    TypeError: If any of `python_func`'s return values is neither `None`, a
+      `Tensor` or a `tf.experimental.ExtensionType`.
     ValueError: If both `signature` and `override_flat_arg_shapes` are
       passed in.
   """
@@ -963,10 +1115,11 @@ def func_graph_from_py_func(name,
           x = ops.convert_to_tensor_or_composite(x)
         except (ValueError, TypeError):
           raise TypeError(
-              "To be compatible with tf.eager.defun, Python functions "
-              "must return zero or more Tensors; in compilation of %s, found "
-              "return value of type %s, which is not a Tensor." %
-              (str(python_func), type(x)))
+              "To be compatible with tf.function, Python functions "
+              "must return zero or more Tensors or ExtensionTypes or None "
+              f"values; in compilation of {str(python_func)}, found return "
+              f"value of type {type(x).__name__}, which is not a Tensor or "
+              "ExtensionType.")
       if add_control_dependencies:
         x = deps_ctx.mark_as_return(x)
       return x
@@ -976,7 +1129,7 @@ def func_graph_from_py_func(name,
         from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
         _, original_func = tf_decorator.unwrap(python_func)
 
-        def wrapper(*args, **kwargs):
+        def autograph_handler(*args, **kwargs):
           """Calls a converted version of original_func."""
           # TODO(mdan): Push this block higher in tf.function's call stack.
           try:
@@ -997,7 +1150,8 @@ def func_graph_from_py_func(name,
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.
-        converted_func = tf_decorator.make_decorator(original_func, wrapper)
+        converted_func = tf_decorator.make_decorator(
+            original_func, autograph_handler)
         python_func = tf_decorator.rewrap(python_func, original_func,
                                           converted_func)
 
@@ -1150,7 +1304,7 @@ def _create_substitute_placeholder(value, name=None, dtype=None, shape=None):
   with ops.control_dependencies(None):
     placeholder = graph_placeholder(
         dtype=dtype or value.dtype, shape=shape, name=name)
-  custom_gradient.copy_handle_data(value, placeholder)
+  handle_data_util.copy_handle_data(value, placeholder)
   return placeholder
 
 
@@ -1237,7 +1391,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
           # unnamed placeholders.
           placeholder = graph_placeholder(arg.dtype, placeholder_shape)
         if not arg_is_spec:
-          custom_gradient.copy_handle_data(arg, placeholder)
+          handle_data_util.copy_handle_data(arg, placeholder)
         if name is not None:
           # Record the requested/user-specified name in case it's different than
           # the uniquified name, for validation when exporting signatures.

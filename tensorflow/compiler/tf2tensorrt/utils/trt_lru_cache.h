@@ -133,7 +133,8 @@ struct EngineContext {
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
 
-  Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx)
+  Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx,
+                             bool* has_device_memory)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
     if (idx >= execution_contexts.size()) {
       return errors::Internal("Requested engine context with index ", idx,
@@ -141,6 +142,7 @@ struct EngineContext {
                               "contexts are present.");
     }
     *exec_ctx = execution_contexts[idx].get();
+    *has_device_memory = execution_contexts[idx].HasDeviceMemory();
     return Status::OK();
   }
 
@@ -153,8 +155,6 @@ struct EngineContext {
   // where each context is created for a specific profile. This is because it is
   // either not possible or non-trivial to change the profile of a context for
   // the following reasons:
-  // - In TRT 6 it is not possible to switch a profile after it is set
-  //   https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-601/tensorrt-api/c_api/classnvinfer1_1_1_i_execution_context.html#aba0731b9fbc926c477010df818650b0a
   // - To switch profiles (from TRT 7), one must first ensure that all inference
   //   calls in that context are finished. This would require an additional
   //   synchronization before we call setOptimizationProfile. To avoid this

@@ -167,7 +167,7 @@ TEST(VariantOpCopyTest, CreateConstOnCPU) {
   // Create the input StoredTensorValue and serialize it.
   StoredTensorValue from;
   from.stored = Tensor(DT_INT64, TensorShape({}));
-  from.stored.scalar<int64>()() = 0xdeadbeef;
+  from.stored.scalar<int64_t>()() = 0xdeadbeef;
   VariantTensorData data;
   data.set_type_name(from.TypeName());
   from.Encode(&data);
@@ -190,7 +190,7 @@ TEST(VariantOpCopyTest, CreateConstOnCPU) {
   EXPECT_EQ("StoredTensorValue", variant.TypeName());
   const StoredTensorValue* to = variant.get<StoredTensorValue>();
   EXPECT_EQ(to->stored.dtype(), DT_INT64);
-  EXPECT_EQ(0xdeadbeef, to->stored.scalar<int64>()());
+  EXPECT_EQ(0xdeadbeef, to->stored.scalar<int64_t>()());
 }
 
 TEST(VariantOpCopyTest, CreateConstOnGPU) {
@@ -201,7 +201,7 @@ TEST(VariantOpCopyTest, CreateConstOnGPU) {
   // Create the input StoredTensorValue and serialize it.
   StoredTensorValue from;
   from.stored = Tensor(DT_INT64, TensorShape({}));
-  from.stored.scalar<int64>()() = 0xdeadbeef;
+  from.stored.scalar<int64_t>()() = 0xdeadbeef;
   VariantTensorData data;
   data.set_type_name(from.TypeName());
   from.Encode(&data);
@@ -233,7 +233,7 @@ TEST(VariantOpCopyTest, CreateConstOnGPU) {
   EXPECT_EQ("StoredTensorValue", variant.TypeName());
   const StoredTensorValue* to = variant.get<StoredTensorValue>();
   EXPECT_EQ(to->stored.dtype(), DT_INT64);
-  EXPECT_EQ(0xdeadbeef, to->stored.scalar<int64>()());
+  EXPECT_EQ(0xdeadbeef, to->stored.scalar<int64_t>()());
 }
 
 TEST(VariantOpCopyTest, CreateConstOnGPUFailsGracefully) {

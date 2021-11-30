@@ -274,6 +274,6 @@ tf_module {
   }
   member_method {
     name: "tridiagonal_solve"
-    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\', \'partial_pivoting\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\', \'True\'], "
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\', \'partial_pivoting\', \'perturb_singular\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\', \'True\', \'False\'], "
   }
 }

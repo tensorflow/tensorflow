@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/disc-ral/IR/disc_ral_ops.h"
+#include "mlir-hlo/Dialect/disc-ral/transforms/register_passes.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "mlir-hlo/Transforms/register_passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Support/MlirOptMain.h"
@@ -26,13 +28,15 @@ int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
+  mlir::disc_ral::registerAllDiscRalPasses();
+  mlir::hlo::registerAllHloPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
-  registry.insert<mlir::mhlo::MhloDialect>();
-  registry.insert<mlir::chlo::HloClientDialect>();
+  mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<mlir::lmhlo::LmhloDialect>();
   registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
+  registry.insert<mlir::disc_ral::RalDialect>();
 
   return failed(mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n",
                                   registry,

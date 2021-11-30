@@ -259,6 +259,17 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrString(
     TF_OpKernelConstruction* ctx, const char* attr_name, char* val,
     size_t max_length, TF_Status* status);
 
+// Interprets the named kernel construction attribute as tensor and places it
+// into *val. Allocates a new TF_Tensor which the caller is expected to take
+// ownership of (and can deallocate using TF_DeleteTensor). *status is set to
+// TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// tensor, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensor(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Tensor** val,
+    TF_Status* status);
+
 // Interprets the named kernel construction attribute as a TF_DataType array and
 // places it into *vals. *status is set to TF_OK.
 // `vals` must point to an array of length at least `max_values` (ideally set
@@ -322,6 +333,18 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
     size_t* lengths, int max_values, void* storage, size_t storage_size,
     TF_Status* status);
 
+// Interprets the named kernel construction attribute as tensor array and places
+// it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values`
+// (ideally set to list_size from TF_OpKernelConstruction_GetAttrSize(ctx,
+// attr_name, list_size, total_size)).
+//
+// The caller takes ownership of all the non-null TF_Tensor* entries in `vals`
+// (which can be deleted using TF_DeleteTensor(vals[i])).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensorList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Tensor** vals,
+    int max_values, TF_Status* status);
+
 // Return true if the kernel construction has the attr_name
 TF_CAPI_EXPORT extern bool TF_OpKernelConstruction_HasAttr(
     TF_OpKernelConstruction* ctx, const char* attr_name, TF_Status* status);
@@ -337,7 +360,7 @@ TF_CAPI_EXPORT extern TF_StringView TF_OpKernelConstruction_GetName(
 // compute function.
 TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int index, TF_DataType dtype,
-                                            int64_t* dims, int num_dims,
+                                            const int64_t* dims, int num_dims,
                                             size_t len, TF_Status* status);
 
 // Tries to forward one of the inputs given in input_indices to
@@ -348,8 +371,9 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
 // -1.
 TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
     TF_OpKernelContext* context, int* candidate_input_indices,
-    int num_candidate_input_indices, int output_index, int64_t* output_dims,
-    int output_num_dims, int* forwarded_input, TF_Status* status);
+    int num_candidate_input_indices, int output_index,
+    const int64_t* output_dims, int output_num_dims, int* forwarded_input,
+    TF_Status* status);
 
 // Allocates a temporary Tensor of the specified type and shape. The
 // Tensor must not be used after kernel construction is
@@ -357,8 +381,8 @@ TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
 //
 // num_dims must equal the size of array dims
 TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(
-    TF_OpKernelContext* context, TF_DataType dtype, int64_t* dims, int num_dims,
-    TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
+    TF_OpKernelContext* context, TF_DataType dtype, const int64_t* dims,
+    int num_dims, TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

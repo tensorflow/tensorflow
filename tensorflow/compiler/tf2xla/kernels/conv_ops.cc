@@ -104,7 +104,9 @@ class ConvBackpropInputOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape input_tensor_shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &input_tensor_shape));
+    OP_REQUIRES_OK(
+        ctx, ctx->ConstantInputAsShape(0, &input_tensor_shape,
+                                       xla::ValueInferenceMode::kUpperBound));
     xla::Shape input_shape =
         TensorShapeToXLAShape(ctx->input_xla_type(1), input_tensor_shape);
     OP_REQUIRES(ctx, input_shape.rank() == attrs_.num_spatial_dims + 2,
@@ -170,7 +172,9 @@ class ConvBackpropFilterOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape filter_tensor_shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(1, &filter_tensor_shape));
+    OP_REQUIRES_OK(
+        ctx, ctx->ConstantInputAsShape(1, &filter_tensor_shape,
+                                       xla::ValueInferenceMode::kUpperBound));
     xla::Shape filter_shape =
         TensorShapeToXLAShape(ctx->input_xla_type(0), filter_tensor_shape);
 

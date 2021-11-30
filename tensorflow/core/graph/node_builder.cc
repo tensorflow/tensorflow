@@ -22,11 +22,12 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
-NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
+NodeBuilder::NodeOut::NodeOut(Node* n, int32_t i)  // NOLINT(runtime/explicit)
     : node(n),
       error(false),
       name(node != nullptr ? node->name() : (error = true, "")),
@@ -35,7 +36,7 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
 
 NodeBuilder::NodeOut::NodeOut(OutputTensor t) : NodeOut(t.node, t.index) {}
 
-NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
+NodeBuilder::NodeOut::NodeOut(StringPiece n, int32_t i, DataType t)
     : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()
@@ -116,69 +117,17 @@ NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
   return *this;
 }
 
-namespace {
-
-Status run_type_constructor(Graph* graph, NodeDef* node_def, FullTypeDef* ft) {
-  // TODO(mdan): Decouple this from graph building, or run again after.
-  // TODO(mdan): Also run in eager.
-  // TODO(mdan): Merge with shape inference.
-  const auto* op_registry = graph->op_registry();
-  const tensorflow::OpRegistrationData* op_reg_data;
-  TF_RETURN_IF_ERROR(op_registry->LookUp(node_def->op(), &op_reg_data));
-  if (op_reg_data->type_ctor == nullptr) {
-    return Status::OK();
-  }
-
-  ft->set_type_id(TFT_PRODUCT);
-
-  for (int i = 0; i < op_reg_data->op_def.output_arg_size(); i++) {
-    auto* t = ft->add_args();
-
-    t->CopyFrom(op_reg_data->op_def.output_arg(i).experimental_full_type());
-
-    // Resolve dependent types. The convention for op registrations is to use
-    // attributes as type variables.
-    // See https://www.tensorflow.org/guide/create_op#type_polymorphism.
-    // Once the op signature can be defined entirely in FullType, this
-    // convention can be deprecated.
-    //
-    // Note: While this code performs some basic verifications, it generally
-    // assumes consistent op defs and attributes. If more complete
-    // verifications are needed, they should be done by separately, and in a
-    // way that can be reused for type inference.
-    for (int j = 0; j < t->args_size(); j++) {
-      auto* arg = t->mutable_args(i);
-      if (arg->type_id() == TFT_VAR) {
-        const auto& attr_val = node_def->attr().at(arg->s());
-        if (attr_val.value_case() == AttrValue::kList) {
-          const auto& attr_list = attr_val.list();
-          arg->set_type_id(TFT_PRODUCT);
-          for (int i = 0; i < attr_list.type_size(); i++) {
-            map_dtype_to_tensor(attr_list.type(i), arg->add_args());
-          }
-
-        } else if (attr_val.value_case() == AttrValue::kType) {
-          map_dtype_to_tensor(attr_val.type(), arg);
-
-        } else {
-          return Status(error::UNIMPLEMENTED,
-                        absl::StrCat("unknown attribute type",
-                                     node_def->DebugString().c_str()));
-        }
-
-        arg->clear_s();
-      }
-    }
-  }
-
-  return Status::OK();
+StatusOr<Node*> NodeBuilder::Finalize(Graph* graph, bool consume) {
+  Node* out;
+  TF_RETURN_IF_ERROR(Finalize(graph, &out, consume));
+  return out;
 }
-
-}  // namespace
 
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   // In case of error, set *created_node to nullptr.
-  if (created_node != nullptr) *created_node = nullptr;
+  if (created_node != nullptr) {
+    *created_node = nullptr;
+  }
   if (!errors_.empty()) {
     return errors::InvalidArgument(absl::StrJoin(errors_, "\n"));
   }
@@ -189,16 +138,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   TF_RETURN_IF_ERROR(
       CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
 
-  FullTypeDef ft;
-  Status status = run_type_constructor(graph, &node_def, &ft);
-  if (!status.ok()) return status;
-
-  Node* node = graph->AddNode(std::move(node_def), &status);
-  if (!status.ok()) return status;
-
-  if (ft.type_id() != TFT_UNSET) {
-    graph->SetNodeType(node->name(), ft);
-  }
+  TF_ASSIGN_OR_RETURN(Node * node, graph->AddNode(std::move(node_def)));
 
   node->set_assigned_device_name(assigned_device_);
 
@@ -210,7 +150,9 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   for (Node* control_input : control_inputs_) {
     graph->AddControlEdge(control_input, node);
   }
+
   if (created_node != nullptr) *created_node = node;
+
   return Status::OK();
 }
 

@@ -34,8 +34,9 @@ namespace tridiagonal {
 
 namespace {
 
-Status CheckSecondToLastDimension(const Shape& op_shape, int64 rank,
-                                  int64 expected, const std::string& op_name) {
+Status CheckSecondToLastDimension(const Shape& op_shape, int64_t rank,
+                                  int64_t expected,
+                                  const std::string& op_name) {
   const auto actual_num_dims = ShapeUtil::GetDimension(op_shape, rank - 2);
 
   if (actual_num_dims != expected) {
@@ -47,10 +48,10 @@ Status CheckSecondToLastDimension(const Shape& op_shape, int64 rank,
   return Status::OK();
 }
 
-StatusOr<int64> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
-                                                 XlaOp main_diagonal,
-                                                 XlaOp upper_diagonal,
-                                                 XlaOp rhs) {
+StatusOr<int64_t> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
+                                                   XlaOp main_diagonal,
+                                                   XlaOp upper_diagonal,
+                                                   XlaOp rhs) {
   XlaBuilder* builder = lower_diagonal.builder();
 
   TF_ASSIGN_OR_RETURN(Shape lower_diagonal_shape,
@@ -108,7 +109,7 @@ StatusOr<int64> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
   return num_equations;
 }
 
-XlaOp Coefficient(XlaOp operand, int32 i) {
+XlaOp Coefficient(XlaOp operand, int32_t i) {
   return DynamicSliceInMinorDims(operand,
                                  /*starts=*/{ConstantR0(operand.builder(), i)},
                                  /*sizes=*/{1});
@@ -119,7 +120,7 @@ XlaOp Coefficient(XlaOp operand, XlaOp i) {
                                  /*starts=*/{i}, /*sizes=*/{1});
 }
 
-XlaOp UpdateEq(XlaOp updated, int32 i, XlaOp update) {
+XlaOp UpdateEq(XlaOp updated, int32_t i, XlaOp update) {
   return DynamicUpdateSliceInMinorDims(
       updated, update, /*starts=*/{ConstantR0(updated.builder(), i)});
 }
@@ -151,7 +152,7 @@ StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
                                                XlaOp rhs) {
   XlaBuilder* builder = lower_diagonal.builder();
 
-  TF_ASSIGN_OR_RETURN(int64 num_eqs,
+  TF_ASSIGN_OR_RETURN(int64_t num_eqs,
                       CheckSystemAndReturnNumEquations(
                           lower_diagonal, main_diagonal, upper_diagonal, rhs));
 
@@ -310,7 +311,7 @@ StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
                                   XlaOp rhs) {
   XlaBuilder* builder = diagonals.builder();
   TF_ASSIGN_OR_RETURN(Shape diagonals_shape, builder->GetShape(diagonals));
-  const int64 rank = diagonals_shape.rank();
+  const int64_t rank = diagonals_shape.rank();
 
   auto upper_diagonal =
       SliceInDim(diagonals, /*start_index=*/0, /*limit_index=*/1,
@@ -323,7 +324,7 @@ StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
                  /*stride=*/1, /*dimno=*/rank - 2);
 
   // TODO(belletti): Get rid of the transposes here.
-  std::vector<int64> transpose_order(rank);
+  std::vector<int64_t> transpose_order(rank);
   std::iota(transpose_order.begin(), transpose_order.end(), 0);
   transpose_order[rank - 2] = rank - 1;
   transpose_order[rank - 1] = rank - 2;

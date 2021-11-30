@@ -36,10 +36,10 @@ limitations under the License.
 // Startup:
 // -------
 //
-// The startup is initiated by a call from Python to StartOutfeedReceiver,
-// which starts N threads for listening to the N devices and for enqueueing
-// the received data into a callback queue. There is one additional callback
-// thread for dequeing the data and invoking the Python callback.
+// The startup is initiated by a call from Python to StartOutfeedReceiver. For
+// each local device there is one thread for listening for outfeeds from the
+// device, one queue of received outfeeds, and one thread for invoking the
+// Python callbacks.
 //
 // Framing protocol
 // ----------------
@@ -62,7 +62,7 @@ limitations under the License.
 // --------------
 //
 // We maintain a sum of the bytes from all the data waiting in the callback
-// queue. The listening threads will wait for the sum to drop below a
+// queues. The listening threads will wait for the sum to drop below a
 // configurable threshold, default 256Mb. While the listening thread is waiting,
 // on CPU and GPU the next outfeed operation from the device will block. On
 // TPU there is a buffer, but eventually the TPU will also block.
@@ -78,9 +78,9 @@ limitations under the License.
 // * we enqueue on all devices a computation that outfeeds a special header
 //   with customer ID kOutfeedCidShutdown.
 // * when each listening threads gets the shutdown header, it decrements
-//   a counter of listening threads, and if the counter reaches 0, it
+//   a counter of listening threads, and it
 //   enqueues a special shutdown callback.
-// * when the callback thread gets the shutdown callback marker, it terminates.
+// * when each callback thread gets the shutdown callback marker, it terminates.
 // * the shutdown code waits until all threads terminate.
 //
 // Since we currently keep the shape registry in the OutfeedReceiver, it is
@@ -170,10 +170,6 @@ class OutfeedReceiverImpl {
                                       std::vector<XlaOp> arrays);
 
  private:
-  bool CallbackQueueNotEmpty() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return !callback_queue_.empty();
-  }
-
   bool CallbackQueueHasSpace() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return callback_queue_size_bytes_ < max_callback_queue_size_bytes_;
   }
@@ -182,7 +178,7 @@ class OutfeedReceiverImpl {
     return (num_working_callback_threads_ == 0 && num_listening_threads_ == 0);
   }
 
-  void CallbackThreadLoop();
+  void CallbackThreadLoop(int device_idx);
   void DeviceListenerThreadLoop(int device_idx);
 
   // Enqueues to a device an outfeed operation with a shutdown consumer ID.
@@ -193,7 +189,8 @@ class OutfeedReceiverImpl {
                                                            const Shape& shape);
 
   // Enqueues received data in the callbaback queue.
-  void EnqueueReceivedData(std::unique_ptr<OutfeedData> received)
+  void EnqueueReceivedData(uint32_t device_idx,
+                           std::unique_ptr<OutfeedData> received)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Shuts down the threads. See implementation notes at top of file.
@@ -203,7 +200,7 @@ class OutfeedReceiverImpl {
   OutfeedReceiver::Callback callback_;
   // The devices on which we are listening.
   std::vector<PjRtDevice*> devices_;
-  // Maximum bytes capacity of the callback queue.
+  // Maximum bytes capacity of the ensemble of callback queues.
   uint64_t max_callback_queue_size_bytes_;
 
   absl::Mutex mu_;
@@ -211,7 +208,7 @@ class OutfeedReceiverImpl {
   // The shape registry must be alive as long as the program exists.
   // Right now we tell the user to never restart after Shutdown.
   absl::flat_hash_map<uint32_t, Shape> shape_registry_ TF_GUARDED_BY(mu_);
-  // How many bytes of Literal are in the callback queue.
+  // How many bytes of Literal are in the ensemble of callback queues.
   uint64_t callback_queue_size_bytes_ TF_GUARDED_BY(mu_);
   // Threads listening.
   int num_listening_threads_ TF_GUARDED_BY(mu_);
@@ -220,7 +217,8 @@ class OutfeedReceiverImpl {
   // How many callback threads are still working. Used for shutdown.
   int num_working_callback_threads_ TF_GUARDED_BY(mu_);
 
-  std::queue<std::unique_ptr<OutfeedData>> callback_queue_ TF_GUARDED_BY(mu_);
+  std::vector<std::queue<std::unique_ptr<OutfeedData>>> callback_queues_
+      TF_GUARDED_BY(mu_);
   // The threadpool must come last to ensure the queue exists
   // when the pool destructor is called.
   std::unique_ptr<tensorflow::thread::ThreadPool> threads_;
@@ -237,6 +235,8 @@ OutfeedReceiverImpl::OutfeedReceiverImpl(
     }
   }
   CHECK_GT(devices_.size(), 0);
+  callback_queues_ =
+      std::vector<std::queue<std::unique_ptr<OutfeedData>>>(devices_.size());
 
   callback_queue_size_bytes_ = 0;
   num_listening_threads_ = 0;
@@ -249,13 +249,15 @@ void OutfeedReceiverImpl::Start() {
     absl::MutexLock lock(&mu_);
     CHECK(!shutdown_started_);
   }
-  int num_threads = 1 + devices_.size();
+
+  int num_threads = 2 * devices_.size();
   threads_ = absl::make_unique<tensorflow::thread::ThreadPool>(
       tensorflow::Env::Default(), "outfeed_receiver", num_threads);
-  threads_->Schedule([this]() { CallbackThreadLoop(); });
   for (int device_idx = 0; device_idx < devices_.size(); ++device_idx) {
     threads_->Schedule(
         [this, device_idx]() { DeviceListenerThreadLoop(device_idx); });
+    threads_->Schedule(
+        [this, device_idx]() { CallbackThreadLoop(device_idx); });
   }
 }
 
@@ -314,30 +316,30 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
               << "] Listener received shutdown header";
       absl::MutexLock lock(&mu_);
       --num_listening_threads_;
-      if (num_listening_threads_ == 0) {
-        VLOG(2) << "Last listener shutdown; enqueue shutdown callback";
-        EnqueueReceivedData(std::move(received));
-      }
+      VLOG(2) << "[" << device->DebugString() << "] Enqueue shutdown callback";
+      EnqueueReceivedData(device_idx, std::move(received));
       return;
     }
     std::unique_ptr<Literal> data =
         ReceiveRawFromOutfeed(device, shape).ValueOrDie();
     received->SetLiteral(std::move(data));
     absl::MutexLock lock(&mu_);
-    EnqueueReceivedData(std::move(received));
+    EnqueueReceivedData(device_idx, std::move(received));
   }
 }
 
 void OutfeedReceiverImpl::EnqueueReceivedData(
-    std::unique_ptr<OutfeedData> received) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    uint32_t device_idx, std::unique_ptr<OutfeedData> received)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   mu_.Await(absl::Condition(this, &OutfeedReceiverImpl::CallbackQueueHasSpace));
   ssize_t literal_size_bytes = received->literal_size_bytes();
   callback_queue_size_bytes_ += literal_size_bytes;
   VLOG(2) << "Listener enqueues data " << received->DebugString() << " of size "
-          << literal_size_bytes << " bytes; " << (1 + callback_queue_.size())
+          << literal_size_bytes << " bytes; "
+          << (1 + callback_queues_[device_idx].size())
           << " callbacks in queue of total size " << callback_queue_size_bytes_
           << " bytes.\n";
-  callback_queue_.push(std::move(received));
+  callback_queues_[device_idx].push(std::move(received));
 }
 
 StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
@@ -347,34 +349,39 @@ StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
   return literal;
 }
 
-void OutfeedReceiverImpl::CallbackThreadLoop() {
+void OutfeedReceiverImpl::CallbackThreadLoop(int device_idx) {
+  const PjRtDevice* device = devices_[device_idx];
   {
     absl::MutexLock lock(&mu_);
     num_working_callback_threads_++;
-    CHECK_EQ(num_working_callback_threads_, 1);
   }
   while (true) {
     std::unique_ptr<OutfeedData> received;
     {
       absl::MutexLock lock(&mu_);
-      mu_.Await(
-          absl::Condition(this, &OutfeedReceiverImpl::CallbackQueueNotEmpty));
-      received = std::move(callback_queue_.front());
-      callback_queue_.pop();
+      mu_.Await(absl::Condition(
+          +[](std::queue<std::unique_ptr<OutfeedData>>* queue) {
+            return !queue->empty();
+          },
+          &callback_queues_[device_idx]));
+      received = std::move(callback_queues_[device_idx].front());
+      callback_queues_[device_idx].pop();
       callback_queue_size_bytes_ -= received->literal_size_bytes();
-      VLOG(2) << "Dequeued callback for " << received->DebugString() << "; "
-              << callback_queue_.size() << " callbacks in queue of total size "
+      VLOG(2) << "[" << device->DebugString() << "] Dequeued callback for "
+              << received->DebugString() << "; "
+              << callback_queues_[device_idx].size()
+              << " callbacks in queue of total size "
               << callback_queue_size_bytes_ << " bytes.\n";
     }
     if (received->consumer_id() == kOutfeedCidShutdown) {
-      VLOG(2) << "Callback loop received shutdown signal";
+      VLOG(2) << "[" << device->DebugString()
+              << "] Callback loop received shutdown signal";
       {
         absl::MutexLock lock(&mu_);
-        CHECK(callback_queue_.empty());
-        CHECK_EQ(callback_queue_size_bytes_, 0);
+        CHECK(callback_queues_[device_idx].empty());
         --num_working_callback_threads_;
       }
-      VLOG(2) << "Callback loop done";
+      VLOG(2) << "[" << device->DebugString() << "] Callback loop done";
       return;
     }
     {

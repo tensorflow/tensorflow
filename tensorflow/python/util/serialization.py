@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for serializing Python objects."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import wrapt
 
@@ -76,4 +72,7 @@ def get_json_type(obj):
   if isinstance(obj, wrapt.ObjectProxy):
     return obj.__wrapped__
 
-  raise TypeError('Not JSON Serializable:', obj)
+  raise TypeError(f'Object {obj} is not JSON-serializable. You may implement '
+                  'a `get_config()` method on the class '
+                  '(returning a JSON-serializable dictionary) to make it '
+                  'serializable.')

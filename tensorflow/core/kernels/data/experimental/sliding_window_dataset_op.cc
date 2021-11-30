@@ -26,28 +26,34 @@ namespace data {
 namespace experimental {
 namespace {
 
+constexpr char kDropRemainder[] = "drop_remainder";
+
 class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit SlidingWindowDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    if (ctx->HasAttr(kDropRemainder)) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(kDropRemainder, &drop_remainder_));
+    }
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 window_size = 0;
+    int64_t window_size = 0;
     OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<int64>(ctx, "window_size", &window_size));
+        ctx, ParseScalarArgument<int64_t>(ctx, "window_size", &window_size));
     OP_REQUIRES(
         ctx, window_size > 0,
         errors::InvalidArgument("Window size must be greater than zero."));
-    int64 window_shift = 0;
+    int64_t window_shift = 0;
     OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<int64>(ctx, "window_shift", &window_shift));
+        ctx, ParseScalarArgument<int64_t>(ctx, "window_shift", &window_shift));
     OP_REQUIRES(
         ctx, window_shift > 0,
         errors::InvalidArgument("Window shift must be greater than zero."));
-    int64 window_stride = 0;
-    OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<int64>(ctx, "window_stride", &window_stride));
+    int64_t window_stride = 0;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "window_stride",
+                                                     &window_stride));
     OP_REQUIRES(
         ctx, window_stride > 0,
         errors::InvalidArgument("window_stride must be greater than zero."));
@@ -56,18 +62,21 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                    << " is equal to window_size: " << window_size
                    << " and window_stride is 1, use `batch` instead.";
     }
-    *output = new Dataset(ctx, window_size, window_shift, window_stride, input);
+    *output = new Dataset(ctx, window_size, window_shift, window_stride,
+                          drop_remainder_, input);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, int64 window_size, int64 window_shift,
-            int64 window_stride, const DatasetBase* input)
+    Dataset(OpKernelContext* ctx, int64_t window_size, int64_t window_shift,
+            int64_t window_stride, bool drop_remainder,
+            const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)),
           window_size_(window_size),
           window_shift_(window_shift),
           window_stride_(window_stride),
+          drop_remainder_(drop_remainder),
           input_(input) {
       input_->Ref();
 
@@ -97,15 +106,16 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return strings::StrCat("SlidingWindowDatasetOp(", window_size_, ", ",
-                             window_shift_, ", ", window_stride_, ")::Dataset");
+                             window_shift_, ", ", window_stride_, ", ",
+                             drop_remainder_, ")::Dataset");
     }
 
-    int64 Cardinality() const override {
-      int64 n = input_->Cardinality();
+    int64_t CardinalityInternal() const override {
+      int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
-      return n / window_shift_;
+      return (drop_remainder_ ? n : n + window_shift_ - 1) / window_shift_;
     }
 
     Status InputDatasets(
@@ -127,12 +137,17 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       Node* window_size = nullptr;
       Node* window_shift = nullptr;
       Node* window_stride = nullptr;
+
+      // Attr: drop_remainder.
+      AttrValue drop_remainder_attr;
+      b->BuildAttrValue(drop_remainder_, &drop_remainder_attr);
+
       TF_RETURN_IF_ERROR(b->AddScalar(window_size_, &window_size));
       TF_RETURN_IF_ERROR(b->AddScalar(window_shift_, &window_shift));
       TF_RETURN_IF_ERROR(b->AddScalar(window_stride_, &window_stride));
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_graph_node, window_size, window_shift, window_stride},
-          output));
+          {std::make_pair(kDropRemainder, drop_remainder_attr)}, output));
       return Status::OK();
     }
 
@@ -150,27 +165,23 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        const int64 window_size = dataset()->window_size_;
-        const int64 window_shift = dataset()->window_shift_;
-        const int64 window_stride = dataset()->window_stride_;
+        const int64_t window_size = dataset()->window_size_;
+        const int64_t window_shift = dataset()->window_shift_;
+        const int64_t window_stride = dataset()->window_stride_;
+        const bool drop_remainder = dataset()->drop_remainder_;
         std::vector<std::vector<Tensor>> batch_elements;
         {
           mutex_lock l(mu_);
-          if (!input_impl_) {
-            *end_of_sequence = true;
-            return Status::OK();
-          }
           batch_elements.reserve(window_size);
 
-          // Fill up buffer.
+          // Fill up buffer if not entire data was consumed.
           size_t target_size = TargetBufferSize(window_size, window_stride);
-          *end_of_sequence = false;
-          for (size_t i = buffer_.size(); i < target_size && !*end_of_sequence;
-               ++i) {
+          for (size_t i = buffer_.size(); i < target_size && input_impl_; ++i) {
+            bool end_of_input;
             std::vector<Tensor> element;
             TF_RETURN_IF_ERROR(
-                input_impl_->GetNext(ctx, &element, end_of_sequence));
-            if (!*end_of_sequence) {
+                input_impl_->GetNext(ctx, &element, &end_of_input));
+            if (!end_of_input) {
               buffer_.push_back(std::move(element));
             } else {
               input_impl_.reset();
@@ -178,25 +189,27 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           }
 
           // Drop the final smaller batch.
-          if (buffer_.size() < target_size) {
-            DCHECK(*end_of_sequence);
+          if (buffer_.empty() ||
+              (buffer_.size() < target_size && drop_remainder)) {
+            DCHECK(input_impl_ == nullptr);
+            *end_of_sequence = true;
             return Status::OK();
           }
 
-          for (size_t i = 0; i < window_size; ++i) {
-            batch_elements.emplace_back(buffer_[window_stride * i]);
+          for (size_t i = 0; i < buffer_.size(); i += window_stride) {
+            batch_elements.emplace_back(buffer_[i]);
           }
 
           // Drop the data before the next iteration.
           if (window_shift >= buffer_.size()) {
-            for (size_t i = buffer_.size(); i < window_shift; ++i) {
+            for (size_t i = buffer_.size(); i < window_shift && input_impl_;
+                 ++i) {
               bool end_of_input;
               std::vector<Tensor> element;
               TF_RETURN_IF_ERROR(
                   input_impl_->GetNext(ctx, &element, &end_of_input));
               if (end_of_input) {
                 input_impl_.reset();
-                break;
               }
             }
             buffer_.clear();
@@ -207,7 +220,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
 
         // Construct output tensors.
         const size_t num_tuple_components = batch_elements[0].size();
-        const int64 num_batch_elements = batch_elements.size();
+        const int64_t num_batch_elements = batch_elements.size();
         for (size_t component_index = 0; component_index < num_tuple_components;
              ++component_index) {
           const Tensor& first_element = batch_elements[0][component_index];
@@ -257,10 +270,10 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
         // Save buffer.
         TF_RETURN_IF_ERROR(writer->WriteScalar(strings::StrCat("buffer_size"),
                                                buffer_.size()));
-        for (int64 i = 0; i < buffer_.size(); i++) {
+        for (int64_t i = 0; i < buffer_.size(); i++) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               strings::StrCat("buffer[", i, "]_size"), buffer_[i].size()));
-          for (int64 j = 0; j < buffer_[i].size(); j++) {
+          for (int64_t j = 0; j < buffer_[i].size(); j++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
                 strings::StrCat("buffer[", i, "][", j, "]"), buffer_[i][j]));
           }
@@ -277,25 +290,26 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
         }
         // Restore buffer.
-        int64 buffer_size = 0;
+        int64_t buffer_size = 0;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(strings::StrCat("buffer_size"), &buffer_size));
         buffer_.resize(buffer_size);
-        for (int64 i = 0; i < buffer_size; i++) {
-          int64 vector_size;
+        for (int64_t i = 0; i < buffer_size; i++) {
+          int64_t vector_size;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               strings::StrCat("buffer[", i, "]_size"), &vector_size));
           buffer_[i].resize(vector_size);
-          for (int64 j = 0; j < vector_size; j++) {
+          for (int64_t j = 0; j < vector_size; j++) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                strings::StrCat("buffer[", i, "][", j, "]"), &buffer_[i][j]));
+                ctx->flr(), strings::StrCat("buffer[", i, "][", j, "]"),
+                &buffer_[i][j]));
           }
         }
         return Status::OK();
       }
 
      private:
-      size_t TargetBufferSize(int64 window_size, int64 window_stride) {
+      size_t TargetBufferSize(int64_t window_size, int64_t window_stride) {
         return (window_size - 1) * window_stride + 1;
       }
 
@@ -304,12 +318,14 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
-    const int64 window_size_;
-    const int64 window_shift_;
-    const int64 window_stride_;
+    const int64_t window_size_;
+    const int64_t window_shift_;
+    const int64_t window_stride_;
+    const bool drop_remainder_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;
   };
+  bool drop_remainder_ = true;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SlidingWindowDataset").Device(DEVICE_CPU),

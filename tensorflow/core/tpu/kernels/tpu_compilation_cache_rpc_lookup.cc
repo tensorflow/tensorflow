@@ -48,7 +48,7 @@ static gpr_timespec TimeToGprTimespec(absl::Time time) {
 }
 }  // namespace
 TpuCompilationCacheRpcLookup::TpuCompilationCacheRpcLookup(
-    const std::string& server_address, int64 max_cache_size)
+    const std::string& server_address, int64_t max_cache_size)
     : max_cache_size_(max_cache_size) {
   // Ensure that large TPU program can get sent over the channel.
   ::grpc::ChannelArguments args;
@@ -96,7 +96,7 @@ Status TpuCompilationCacheRpcLookup::Lookup(
 }
 
 Status TpuCompilationCacheRpcLookup::Lookup(
-    int64 uid, int proto_index,
+    int64_t uid, int proto_index,
     std::unique_ptr<CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
   profiler::TraceMe proto_lookup_traceme("Remote TPU proto cache lookup by uid",

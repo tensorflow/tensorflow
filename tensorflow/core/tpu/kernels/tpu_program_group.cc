@@ -188,13 +188,6 @@ void TpuProgramGroup::RefreshHloMetadatasPtrs() {
   }
 }
 
-Status TpuProgramGroup::LogCompilationStats(const TpuCompilationCacheKey& key,
-                                            absl::Duration duration) {
-  // A placeholder for tracking compilation statistics for future work. The
-  // implementation can be pushing into some external storage for analytics.
-  return Status::OK();
-}
-
 const std::vector<bool>& TpuProgramGroup::may_modify_variables_list() const {
   return may_modify_variables_;
 }
@@ -229,6 +222,10 @@ void TpuProgramGroup::set_fingerprints() {
         std::string(fingerprint.bytes, fingerprint.size));
     OpsApiFn()->TpuProgram_DestroyFingerprintFn(fingerprint);
   }
+}
+
+const std::string& TpuProgramGroup::fingerprint(int index) const {
+  return fingerprints().at(index);
 }
 
 const XLA_TpuProgram* TpuProgramGroup::tpu_program(int index) const {

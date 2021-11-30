@@ -30,10 +30,6 @@ namespace tensorflow {
 // encapsulate subgraphs pass.
 extern const char* const kXlaClusterAttr;
 
-// The attribute that marks nodes in a cluster to be placed outside the xla
-// compilation by the encapsulate subgraphs pass.
-extern const char* const kXlaOutsideCompilationAttr;
-
 // Marks a subset of nodes in the graph which are to be clustered
 // with an attribute _XlaCluster=<cluster id> so they are picked up by the
 // EncapsulateSubgraphsPass.

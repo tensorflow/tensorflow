@@ -56,8 +56,8 @@ namespace tensorflow {
 // REQUIRES: workers != nullptr
 // REQUIRES: total >= 0
 // REQUIRES: cost_per_unit >= 0
-void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
-           int64 cost_per_unit, std::function<void(int64, int64)> work);
+void Shard(int max_parallelism, thread::ThreadPool* workers, int64_t total,
+           int64_t cost_per_unit, std::function<void(int64_t, int64_t)> work);
 
 // Each thread has an associated option to express the desired maximum
 // parallelism. Its default is a very large quantity.
@@ -89,12 +89,12 @@ class Sharder {
  public:
   typedef std::function<void()> Closure;
   typedef std::function<void(Closure)> Runner;
-  typedef std::function<void(int64, int64)> Work;
+  typedef std::function<void(int64_t, int64_t)> Work;
 
   // Refers to Shard()'s comment for the meaning of total,
   // cost_per_unit, work, max_parallelism. runner is an interface to
   // schedule a closure. Shard() uses thread::ThreadPool instead.
-  static void Do(int64 total, int64 cost_per_unit, const Work& work,
+  static void Do(int64_t total, int64_t cost_per_unit, const Work& work,
                  const Runner& runner, int max_parallelism);
 };
 

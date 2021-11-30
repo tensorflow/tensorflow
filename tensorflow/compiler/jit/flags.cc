@@ -34,12 +34,14 @@ XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
 IntroduceFloatingPointJitterPassFlags* jitter_flags;
 MlirCommonFlags* mlir_flags;
+CpuRtFlags* cpurt_flags;
+std::vector<Flag>* cpurt_flag_list;
 
 std::vector<Flag>* flag_list;
 absl::once_flag flags_init;
 
 bool SetterForXlaAutoJitFlag(const string& value) {
-  int32 opt_level;
+  int32_t opt_level;
   // We need to use the mark_for_compilation_flags directly here instead of
   // going via GetMarkForCompilationPassFlags() to avoid infinite recursion. The
   // latter will try to setup and parse flags, which would bring us back to this
@@ -133,6 +135,15 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
+void AllocateAndParseCpurtFlags() {
+  cpurt_flags = new CpuRtFlags;
+  cpurt_flags->vectorize = false;
+  cpurt_flag_list = new std::vector<Flag>({
+      Flag("vectorize", &cpurt_flags->vectorize, ""),
+  });
+  xla::ParseFlagsFromEnvAndDieIfUnknown("TF_CPURT_FLAGS", *cpurt_flag_list);
+}
+
 void AllocateAndParseFlags() {
   build_ops_flags = new BuildXlaOpsPassFlags;
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
@@ -151,7 +162,7 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags->tf_xla_clustering_debug = false;
   mark_for_compilation_flags->tf_xla_cpu_global_jit = false;
   mark_for_compilation_flags->tf_xla_clustering_fuel =
-      std::numeric_limits<int64>::max();
+      std::numeric_limits<int64_t>::max();
   mark_for_compilation_flags
       ->tf_xla_disable_deadness_safety_checks_for_debugging = false;
   mark_for_compilation_flags
@@ -180,7 +191,7 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge_is_explicit = false;
   bool mlir_bridge_safe_mode = false;
   bool enable_mlir_merge_control_flow_pass = false;
-
+  bool enable_mlir_convert_control_to_data_outputs_pass = false;
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
     return true;
@@ -239,6 +250,10 @@ void AllocateAndParseFlags() {
             &enable_mlir_merge_control_flow_pass,
             "Enables MergeControlFlow pass for MLIR-Based TensorFlow Compiler "
             "Bridge."),
+       Flag("tf_mlir_enable_convert_control_to_data_outputs_pass",
+            &enable_mlir_convert_control_to_data_outputs_pass,
+            "Enables `tf-executor-convert-control-to-data-outputs` pass for "
+            "MLIR-Based TensorFlow Compiler Bridge."),
        Flag(
            "tf_mlir_bridge_safe_mode", &mlir_bridge_safe_mode,
            "When tf_mlir_enable_mlir_bridge is true, this field can enable "
@@ -267,6 +282,23 @@ void AllocateAndParseFlags() {
   }
   mlir_flags->tf_mlir_enable_merge_control_flow_pass =
       enable_mlir_merge_control_flow_pass;
+  mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
+      enable_mlir_convert_control_to_data_outputs_pass;
+
+  AllocateAndParseCpurtFlags();
+}
+
+void ResetFlags() {
+  delete build_ops_flags;
+  delete mark_for_compilation_flags;
+  delete device_flags;
+  delete ops_flags;
+  delete jitter_flags;
+  delete mlir_flags;
+  delete flag_list;
+  delete cpurt_flags;
+  delete cpurt_flag_list;
+  AllocateAndParseFlags();
 }
 
 }  // namespace
@@ -305,6 +337,13 @@ GetIntroduceFloatingPointJitterPassFlags() {
 MlirCommonFlags* GetMlirCommonFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return mlir_flags;
+}
+
+void ResetMlirCommonFlags() { ResetFlags(); }
+
+const CpuRtFlags& GetCpuRtFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return *cpurt_flags;
 }
 
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(

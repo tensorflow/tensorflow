@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for reshape."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -48,6 +44,18 @@ def make_reshape_tests(options):
       "constant_shape": [True],
       "fully_quantize": [True],
   }]
+
+  if options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        # Zero in input shape.
+        {
+            "dtype": [tf.float32],
+            "input_shape": [[1, 4, 0]],
+            "output_shape": [[2, -1], [2, 0, -1]],
+            "constant_shape": [True, False],
+            "fully_quantize": [False],
+        }
+    ]
 
   def build_graph(parameters):
     """Build the graph for reshape tests."""

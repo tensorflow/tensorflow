@@ -14,12 +14,7 @@
 # ==============================================================================
 """Tests for TPUStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import os
-
+from absl import logging
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
@@ -44,11 +39,13 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
-from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -58,9 +55,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 
 
@@ -89,6 +84,7 @@ def get_tpu_strategy(enable_packed_var=False):
 
 
 # TPU tests which don't use TPUStrategy.
+@test_util.with_eager_op_as_function
 class TPUTest(test.TestCase):
 
   def test_multiple_initialize_system(self):
@@ -168,6 +164,7 @@ class TPUTest(test.TestCase):
 
 
 @parameterized.named_parameters([("PackedVar", True), ("", False)])
+@test_util.with_eager_op_as_function
 class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
   def test_handle_in_cross_replica_context(self, enable_packed_var):
@@ -183,7 +180,57 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     ret = func()
     self.assertAllEqual(ret, 2.0)
 
+  def testStaticHashTableDatasetFnHostTrainingLoop(self, enable_packed_var):
+    self._dataset_fn_tracing_count = 0
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    with strategy.scope():
+      vals = [0, 1, 2]
+      keys_tensor = constant_op.constant(
+          list(range(len(vals))), dtype=dtypes.int64)
+      vals_tensor = constant_op.constant(vals)
+      initializer = lookup_ops.KeyValueTensorInitializer(
+          keys_tensor, vals_tensor)
+      per_worker_table = lookup_ops.StaticHashTable(
+          initializer, default_value=-1)
+
+    @def_function.function
+    def dataset_fn(input_context):
+      tensor = constant_op.constant([0, 1, 3], dtype=dtypes.int64)
+      global_batch_size = 2
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      dataset = dataset_ops.Dataset.from_tensors(tensor).repeat().batch(
+          batch_size, drop_remainder=True)
+      dataset = dataset.shard(input_context.num_input_pipelines,
+                              input_context.input_pipeline_id)
+      dataset = dataset.prefetch(2)  # This prefetches 2 batches per device.
+      dataset = dataset.map(per_worker_table.lookup)
+      self._dataset_fn_tracing_count += 1
+      return dataset
+
+    dist_iterator = iter(
+        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+
+    @def_function.function
+    def step_fn(inputs):
+      # inputs should be [0, 1, -1]
+      return math_ops.reduce_sum(inputs)
+
+    def train_steps(iterator, steps):
+
+      for _ in math_ops.range(steps):
+        strategy.run(step_fn, args=(next(iterator),))
+
+    train_steps(dist_iterator, steps=5)
+    self.assertEqual(self._dataset_fn_tracing_count, 1)
+
   def test_function_compile_with_xla(self, enable_packed_var):
+    if FLAGS.tpu_use_tfrt:
+      self.skipTest(
+          "This test triggers _XlaCompile and XlaLaunch which are not "
+          "supported in tfrt yet. We should avoid using these kernels on TPU. "
+          "However, it is a workaround to support b/129842431. We need more "
+          "discussion about how to support it in the long term.")
     strategy = get_tpu_strategy(enable_packed_var)
     with strategy.scope():
       v = variables.Variable(1.0)
@@ -962,7 +1009,46 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       update_variable.get_concrete_function()
       self.assertLen(strategy.extended.worker_devices, trace_count[0])
 
+  def test_tpu_cancellation_does_not_close_chips(self, enable_packed_var):
+    if not FLAGS.tpu_use_tfrt:
+      self.skipTest(
+          "`tpu_cancellation_closes_chip only applies to TFRT TPU Runtime.")
+    strategy = get_tpu_strategy(enable_packed_var)
+    num_replicas = strategy.num_replicas_in_sync
+    with strategy.scope():
+      x = random_ops.random_normal((10240, 10240))
+      y = random_ops.random_normal((10240, 10240))
 
+      v = variables.Variable(array_ops.identity(x))
+      dist_dataset = strategy.experimental_distribute_dataset(
+          dataset_ops.Dataset.from_tensors(y).repeat(num_replicas).batch(
+              num_replicas))
+      dist_iterator = iter(dist_dataset)
+
+      @def_function.function
+      def train_steps(v, iterator, steps):
+
+        def step_fn(inputs):
+          for val in inputs:
+            v.assign(math_ops.matmul(v, val))
+
+        for _ in math_ops.range(steps):
+          strategy.run(step_fn, args=(next(iterator),))
+
+      with self.assertRaises(errors.OutOfRangeError):
+        # The iterator has num_replicas/num_replicas = 1 step only.
+        train_steps(v, dist_iterator, 2)
+
+      # If TPU chips are not closed we can run the function on TPU again.
+      w = variables.Variable(array_ops.identity(x))
+      dist_dataset = strategy.experimental_distribute_dataset(
+          dataset_ops.Dataset.from_tensors(y).repeat(num_replicas).batch(
+              num_replicas))
+      dist_iterator = iter(dist_dataset)
+      train_steps(w, dist_iterator, 1)
+
+
+@test_util.with_eager_op_as_function
 class TPUStrategyDataPrefetchTest(test.TestCase):
 
   def test_prefetch_to_device_default(self):
@@ -1062,7 +1148,18 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
       iter(strategy.distribute_datasets_from_function(dataset_fn))
 
+  def test_create_iterator_on_device(self):
 
+    @def_function.function
+    def create_iter():
+      with ops.device("/device:TPU:0"):
+        return gen_dataset_ops.anonymous_iterator_v3(
+            output_types=[dtypes.float32], output_shapes=[[]])
+
+    create_iter()
+
+
+@test_util.with_eager_op_as_function
 class TPUStrategyDistributionTest(
     strategy_test_lib.DistributionTestBase,
     strategy_test_lib.TwoDeviceDistributionTestBase):
@@ -1195,109 +1292,8 @@ class TPUStrategyDistributionTest(
     strategy = get_tpu_strategy()
     self._test_trainable_variable(strategy)
 
-  def test_model_parallelism(self):
-    resolver = get_tpu_cluster_resolver()
-    remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
-    device_assignment = device_assignment_lib.DeviceAssignment(
-        topology, core_assignment=[[[0, 0, 0, 0], [0, 0, 0, 1]]])
-    strategy = tpu_lib.TPUStrategyV2(
-        resolver,
-        experimental_device_assignment=device_assignment)
 
-    with strategy.scope():
-      v = variables.Variable(2.)
-      with strategy.extended.experimental_logical_device(1):
-        w = variables.Variable(3.)
-
-    self.assertLen(strategy.experimental_local_results(v), 1)
-    self.assertLen(strategy.experimental_local_results(w), 1)
-    self.assertEqual("/job:localhost/replica:0/task:0/device:TPU:0",
-                     strategy.experimental_local_results(v)[0].device)
-    self.assertEqual("/job:localhost/replica:0/task:0/device:TPU:1",
-                     strategy.experimental_local_results(w)[0].device)
-
-    logical_devices = []
-    @def_function.function
-    def f(x):
-      replica_ctx = distribution_strategy_context.get_replica_context()
-      with replica_ctx.experimental_logical_device(0):
-        y = v * x
-      with replica_ctx.experimental_logical_device(1):
-        z = w * y
-      logical_devices.append((y.device, z.device))
-      return z
-
-    result = strategy.run(f, args=(5.,))
-
-    self.assertEqual(
-        [("/device:TPU_REPLICATED_CORE:0", "/device:TPU_REPLICATED_CORE:1")],
-        logical_devices)
-
-    with self.cached_session():
-      self.evaluate(variables.global_variables_initializer())
-      self.assertEqual(30., self.evaluate(result))
-
-  def test_model_parallelism_checkpointing(self):
-
-    class PartitionedModel(module.Module):
-
-      def __init__(self, v, w):
-        super(PartitionedModel, self).__init__()
-
-        assert distribution_strategy_context.has_strategy()
-        strategy = distribution_strategy_context.get_strategy()
-
-        with strategy.extended.experimental_logical_device(0):
-          self.v = variables.Variable(v)
-        with strategy.extended.experimental_logical_device(1):
-          self.w = variables.Variable(w)
-
-      def __call__(self, x):
-        replica_ctx = distribution_strategy_context.get_replica_context()
-        with replica_ctx.experimental_logical_device(0):
-          y = self.v * x
-        with replica_ctx.experimental_logical_device(1):
-          z = self.w * y
-        return z
-
-      def change_weights_op(self, v_new, w_new):
-        return control_flow_ops.group([self.v.assign(v_new),
-                                       self.w.assign(w_new)])
-
-    resolver = get_tpu_cluster_resolver()
-    remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
-    device_assignment = device_assignment_lib.DeviceAssignment(
-        topology, core_assignment=[[[0, 0, 0, 0], [0, 0, 0, 1]]])
-    strategy = tpu_lib.TPUStrategyV2(
-        resolver,
-        experimental_device_assignment=device_assignment)
-
-    with strategy.scope():
-      model = PartitionedModel(2., 3.)
-
-    checkpoint_dir = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-    checkpoint = util.Checkpoint(model=model)
-
-    with self.cached_session() as sess:
-      self.evaluate(variables.global_variables_initializer())
-      checkpoint.save(file_prefix=checkpoint_prefix)
-
-      self.evaluate(model.change_weights_op(1., 4.))
-      result = strategy.run(def_function.function(model), args=(5.0,))
-      self.assertEqual(20., self.evaluate(result))
-
-      status = checkpoint.restore(
-          checkpoint_management.latest_checkpoint(checkpoint_dir))
-      status.run_restore_ops(sess)  # must run restore op in non-eager mode.
-      status.assert_consumed()
-      status.assert_existing_objects_matched()
-      result = strategy.run(def_function.function(model), args=(5.0,))
-      self.assertEqual(30., self.evaluate(result))
-
-
+@test_util.with_eager_op_as_function
 class DeviceAssignmentTest(test.TestCase):
 
   def test_core_assignment(self):

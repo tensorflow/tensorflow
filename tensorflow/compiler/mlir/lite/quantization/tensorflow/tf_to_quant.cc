@@ -33,11 +33,21 @@ struct LegalizeTFToQuant : public PassWrapper<LegalizeTFToQuant, FunctionPass> {
 
   /// Performs the lowering to Quant ops dialect.
   void runOnFunction() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-to-quant";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize TF to quant ops dialect";
+  }
 };
 
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
 // "tf.FakeQuantWithMinMaxVarsOp" to be constant folded. Since the constant
-// folding logic will use a "std.constant" op to replace the
+// folding logic will use a "arith.constant" op to replace the
 // "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
 // the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
 // convert the output type to the next op. Here are the transformations:
@@ -150,8 +160,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass() {
   return std::make_unique<LegalizeTFToQuant>();
 }
 
-static PassRegistration<LegalizeTFToQuant> pass(
-    "tf-to-quant", "Legalize TF to quant ops dialect");
+static PassRegistration<LegalizeTFToQuant> pass([] {
+  return CreateLegalizeTFToQuantPass();
+});
 
 }  // namespace TF
 }  // namespace mlir

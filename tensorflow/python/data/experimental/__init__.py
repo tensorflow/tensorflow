@@ -23,6 +23,8 @@ removing existing functionality.
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@AutoShardPolicy
+@@AutotuneAlgorithm
+@@AutotuneOptions
 @@CheckpointInputPipelineHook
 @@Counter
 @@CsvDataset
@@ -30,7 +32,6 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@DatasetStructure
 @@DistributeOptions
 @@ExternalStatePolicy
-@@MapVectorizationOptions
 @@OptimizationOptions
 @@Optional
 @@OptionalStructure
@@ -90,10 +91,6 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@UNKNOWN_CARDINALITY
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.data.experimental import service
 from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
@@ -107,9 +104,6 @@ from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFI
 from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
 from tensorflow.python.data.experimental.ops.distribute import SHARD_HINT
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
-from tensorflow.python.data.experimental.ops.distribute_options import DistributeOptions
-from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
 from tensorflow.python.data.experimental.ops.get_single_element import get_single_element
@@ -127,8 +121,6 @@ from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_f
 from tensorflow.python.data.experimental.ops.lookup_ops import DatasetInitializer
 from tensorflow.python.data.experimental.ops.lookup_ops import index_table_from_dataset
 from tensorflow.python.data.experimental.ops.lookup_ops import table_from_dataset
-from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions
-from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device
 from tensorflow.python.data.experimental.ops.prefetching_ops import prefetch_to_device
@@ -142,7 +134,6 @@ from tensorflow.python.data.experimental.ops.scan_ops import scan
 from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.python.data.experimental.ops.snapshot import snapshot
 from tensorflow.python.data.experimental.ops.take_while_ops import take_while
-from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
@@ -154,6 +145,13 @@ from tensorflow.python.data.ops.dataset_ops import to_variant
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalSpec as OptionalStructure
+from tensorflow.python.data.ops.options import AutoShardPolicy
+from tensorflow.python.data.ops.options import AutotuneAlgorithm
+from tensorflow.python.data.ops.options import AutotuneOptions
+from tensorflow.python.data.ops.options import DistributeOptions
+from tensorflow.python.data.ops.options import ExternalStatePolicy
+from tensorflow.python.data.ops.options import OptimizationOptions
+from tensorflow.python.data.ops.options import ThreadingOptions
 from tensorflow.python.data.util.structure import _RaggedTensorStructure as RaggedTensorStructure
 from tensorflow.python.data.util.structure import _SparseTensorStructure as SparseTensorStructure
 from tensorflow.python.data.util.structure import _TensorArrayStructure as TensorArrayStructure

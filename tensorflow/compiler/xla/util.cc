@@ -20,8 +20,10 @@ limitations under the License.
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
@@ -41,6 +43,29 @@ limitations under the License.
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
+
+std::vector<int64_t> ToMixedRadix(const int64_t n,
+                                  absl::Span<const int64_t> bounds) {
+  if (bounds.empty()) {
+    return {};
+  }
+
+  std::vector<int64_t> digits;
+  digits.reserve(bounds.size());
+  int64_t divisor = Product(bounds);
+  CHECK_GT(divisor, 0);
+  int64_t remainder = n % divisor;
+  for (const int64_t radix : bounds) {
+    CHECK_GT(radix, 0);
+    divisor /= radix;
+    CHECK_GT(divisor, 0);
+
+    // The divisor is always 1 for the last iteration.
+    digits.push_back(remainder / divisor);
+    remainder = remainder % divisor;
+  }
+  return digits;
+}
 
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
@@ -110,29 +135,49 @@ string Reindent(absl::string_view original,
   });
 }
 
+template <typename IntT, typename FloatT>
+static void RoundTripNanPayload(FloatT value, std::string* result) {
+  const int kPayloadBits = NanPayloadBits<FloatT>();
+  if (std::isnan(value) && kPayloadBits > 0) {
+    auto rep = absl::bit_cast<IntT>(value);
+    auto payload = rep & NanPayloadBitMask<FloatT>();
+    if (payload != QuietNanWithoutPayload<FloatT>()) {
+      absl::StrAppendFormat(result, "(0x%x)", payload);
+    }
+  }
+}
+
 string RoundTripFpToString(tensorflow::bfloat16 value) {
-  return absl::StrFormat("%.4g", static_cast<float>(value));
+  std::string result = absl::StrFormat("%.4g", static_cast<float>(value));
+  RoundTripNanPayload<uint16_t>(value, &result);
+  return result;
 }
 
 string RoundTripFpToString(Eigen::half value) {
-  return absl::StrFormat("%.5g", static_cast<float>(value));
+  std::string result = absl::StrFormat("%.5g", static_cast<float>(value));
+  RoundTripNanPayload<uint16_t>(value, &result);
+  return result;
 }
 
 string RoundTripFpToString(float value) {
   char buffer[tensorflow::strings::kFastToBufferSize];
   tensorflow::strings::FloatToBuffer(value, buffer);
-  return buffer;
+  std::string result = buffer;
+  RoundTripNanPayload<uint32_t>(value, &result);
+  return result;
 }
 
 string RoundTripFpToString(double value) {
   char buffer[tensorflow::strings::kFastToBufferSize];
   tensorflow::strings::DoubleToBuffer(value, buffer);
-  return buffer;
+  std::string result = buffer;
+  RoundTripNanPayload<uint64_t>(value, &result);
+  return result;
 }
 
-PaddingConfig MakeNoPaddingConfig(int64 rank) {
+PaddingConfig MakeNoPaddingConfig(int64_t rank) {
   PaddingConfig padding_config;
-  for (int64 dnum = 0; dnum < rank; ++dnum) {
+  for (int64_t dnum = 0; dnum < rank; ++dnum) {
     auto dimension = padding_config.add_dimensions();
     dimension->set_edge_padding_low(0);
     dimension->set_edge_padding_high(0);
@@ -142,9 +187,9 @@ PaddingConfig MakeNoPaddingConfig(int64 rank) {
 }
 
 PaddingConfig MakeEdgePaddingConfig(
-    absl::Span<const std::pair<int64, int64>> padding) {
+    absl::Span<const std::pair<int64_t, int64_t>> padding) {
   PaddingConfig padding_config;
-  for (const std::pair<int64, int64>& dim : padding) {
+  for (const std::pair<int64_t, int64_t>& dim : padding) {
     auto dimension = padding_config.add_dimensions();
     dimension->set_edge_padding_low(dim.first);
     dimension->set_edge_padding_high(dim.second);
@@ -170,7 +215,7 @@ string HumanReadableNumOps(double flops, double nanoseconds,
   }
   double nano_flops = flops / nanoseconds;
   string throughput = tensorflow::strings::HumanReadableNum(
-      static_cast<int64>(nano_flops * 1e9));
+      static_cast<int64_t>(nano_flops * 1e9));
   absl::string_view sp(throughput);
   // Use the more common "G(FLOPS)", rather than "B(FLOPS)"
   if (absl::EndsWith(sp, "B") ||  // Ends in 'B', ignoring case
@@ -219,23 +264,23 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
   }
 }
 
-int64 Product(absl::Span<const int64> xs) {
-  return std::accumulate(xs.begin(), xs.end(), static_cast<int64>(1),
-                         std::multiplies<int64>());
+int64_t Product(absl::Span<const int64_t> xs) {
+  return std::accumulate(xs.begin(), xs.end(), static_cast<int64_t>(1),
+                         std::multiplies<int64_t>());
 }
 
-absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
-    absl::Span<const int64> a, absl::Span<const int64> b) {
+absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
+    absl::Span<const int64_t> a, absl::Span<const int64_t> b) {
   CHECK_EQ(Product(a), Product(b));
-  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
+  absl::InlinedVector<std::pair<int64_t, int64_t>, 8> bounds;
   if (absl::c_equal(a, b)) {
     bounds.reserve(a.size() + 1);
-    for (int64 i = 0; i <= a.size(); ++i) {
+    for (int64_t i = 0; i <= a.size(); ++i) {
       bounds.emplace_back(i, i);
     }
     return bounds;
   }
-  int64 i = 0, j = 0, prior_i = -1, prior_j = -1;
+  int64_t i = 0, j = 0, prior_i = -1, prior_j = -1;
   while (i < a.size() && j < b.size() && a[i] == b[j]) {
     std::tie(prior_i, prior_j) = std::make_pair(i, j);
     bounds.emplace_back(i, j);
@@ -260,7 +305,7 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
     return bounds;
   }
 
-  for (int64 partial_size_a = 1, partial_size_b = 1;;) {
+  for (int64_t partial_size_a = 1, partial_size_b = 1;;) {
     if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
       std::tie(prior_i, prior_j) = std::make_pair(i, j);
       bounds.emplace_back(i, j);
@@ -297,30 +342,30 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
 }
 
 ConvertedDimensionNumbers ConvertDimensionNumbers(
-    absl::Span<const int64> from_dimensions, absl::Span<const int64> from_sizes,
-    absl::Span<const int64> to_sizes) {
+    absl::Span<const int64_t> from_dimensions,
+    absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes) {
   ConvertedDimensionNumbers dimensions;
   auto common_factors = CommonFactors(from_sizes, to_sizes);
-  for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+  for (int64_t i = 0; i < common_factors.size() - 1; ++i) {
     bool any_present = false;
     bool all_present = true;
-    for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+    for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
          ++d) {
       const bool present = absl::c_linear_search(from_dimensions, d);
       any_present |= present;
       all_present &= present;
     }
     if (all_present) {
-      for (int64 d = common_factors[i].second; d < common_factors[i + 1].second;
-           ++d) {
+      for (int64_t d = common_factors[i].second;
+           d < common_factors[i + 1].second; ++d) {
         dimensions.to_dimensions.push_back(d);
       }
-      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+      for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
            ++d) {
         dimensions.transformed_from_dimensions.push_back(d);
       }
     } else if (any_present) {
-      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+      for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
            ++d) {
         if (absl::c_linear_search(from_dimensions, d)) {
           dimensions.untransformed_from_dimensions.push_back(d);

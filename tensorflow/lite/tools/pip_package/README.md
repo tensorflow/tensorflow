@@ -10,8 +10,7 @@ To build a binary wheel run this script:
 ```sh
 sudo apt install swig libjpeg-dev zlib1g-dev python3-dev python3-numpy
 pip install numpy pybind11
-sh tensorflow/lite/tools/make/download_dependencies.sh
-sh tensorflow/lite/tools/pip_package/build_pip_package.sh
+sh tensorflow/lite/tools/pip_package/build_pip_package_with_cmake.sh
 ```
 
 That will print out some output and a .whl file. You can then install that
@@ -95,6 +94,13 @@ tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
 
 ```sh
 tensorflow/tools/ci_build/ci_build.sh PI-PYTHON38 \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
+```
+
+### Cross build for aarch64 Python 3.9
+
+```sh
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON39 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
 ```
 

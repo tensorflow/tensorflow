@@ -21,13 +21,14 @@ cc_library(
     hdrs = ["device_profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":profiler_session",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "@com_google_absl//absl/memory",
-    ],
+    ] + if_not_android([
+        ":profiler_session",
+        "//tensorflow/core/profiler/convert:xplane_to_step_stats",
+    ]),
 )
 
 tf_profiler_pybind_cc_library_wrapper(
@@ -45,7 +46,6 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
     ] + if_static([
         ":profiler_session_impl",
     ]),
@@ -106,6 +106,21 @@ cc_library(
         "//tensorflow/core/profiler:profiler_options_proto_cc",
     ],
     alwayslink = True,
+)
+
+tf_cc_test(
+    name = "profiler_factory_test",
+    srcs = ["profiler_factory_test.cc"],
+    deps = [
+        ":profiler_factory",
+        ":profiler_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/memory",
+    ],
 )
 
 cc_library(
@@ -208,6 +223,15 @@ cc_library(
 )
 
 cc_library(
+    name = "scoped_memory_debug_annotation",
+    srcs = ["scoped_memory_debug_annotation.cc"],
+    hdrs = ["scoped_memory_debug_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+    ],
+)
+
+cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
@@ -248,15 +272,24 @@ cc_library(
 )
 
 filegroup(
-    name = "mobile_srcs",
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "scoped_annotation.h",
+        "scoped_memory_debug_annotation.cc",
+        "scoped_memory_debug_annotation.h",
+        "traceme.h",
+        "traceme_encode.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
     srcs = [
         "annotated_traceme.h",
         "connected_traceme.h",
         "device_profiler_session.h",
         "profiler_interface.h",
-        "scoped_annotation.h",
-        "traceme.h",
-        "traceme_encode.h",
     ],
     visibility = ["//visibility:public"],
 )

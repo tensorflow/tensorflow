@@ -66,6 +66,106 @@ ENTRY main {
       )");
 }
 
+TEST_F(ReductionLayoutNormalizerTest, LayoutCanonicalizerTestVariadic) {
+  const char* hlo_text = R"(
+HloModule ReduceWithLayoutChangeVariadic
+
+
+argmax {
+  running_max = f32[] parameter(0)
+  running_max_idx = u32[] parameter(1)
+  current_value = f32[] parameter(2)
+  current_value_idx = u32[] parameter(3)
+
+  current = (f32[], u32[]) tuple(running_max, running_max_idx)
+  potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+  cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+  new_max = f32[] select(cmp_code, current_value, running_max)
+  new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+  ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+}
+
+ENTRY main {
+  arg0 = f32[4,5,5,16,12,12,3,3]{2,3,5,4,0,7,6,1}  parameter(0)
+  idxs = u32[4,5,5,16,12,12,3,3]{2,3,5,4,0,7,6,1}  parameter(1)
+  constant0 = f32[] constant(0)
+  constant1 = u32[] constant(0)
+  ROOT reduce0 = (
+      f32[4,5,16,12,12]{4,3,2,1,0},
+      u32[4,5,16,12,12]{4,3,2,1,0}
+    ) reduce(arg0, idxs, constant0,constant1), dimensions={1,6,7}, to_apply=argmax
+}
+
+
+)";
+
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: %reduce = (f32[4,12,12,16,5]{2,1,3,4,0}, u32[4,12,12,16,5]{2,1,3,4,0}) reduce(f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast, u32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast.1, f32[] %constant0, u32[] %constant1), dimensions={0,1,2}, to_apply=%argmax
+//
+      )");
+}
+
+TEST_F(ReductionLayoutNormalizerTest,
+       LayoutCanonicalizerTestVariadicDifferentLayouts) {
+  const char* hlo_text = R"(
+HloModule ReduceWithLayoutChangeVariadicDifferent
+
+argmax {
+  running_max = f32[] parameter(0)
+  running_max_idx = u32[] parameter(1)
+  current_value = f32[] parameter(2)
+  current_value_idx = u32[] parameter(3)
+
+  current = (f32[], u32[]) tuple(running_max, running_max_idx)
+  potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+  cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+  new_max = f32[] select(cmp_code, current_value, running_max)
+  new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+  ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+}
+
+ENTRY main {
+  arg0 = f32[2,3,4,7]{2,1,0,3}  parameter(0)
+  idxs = u32[2,3,4,7]{3,2,1,0}  parameter(1)
+  constant0 = f32[] constant(0)
+  constant1 = u32[] constant(0)
+  ROOT reduce0 = (
+      f32[2,3,4]{2,1,0},
+      u32[2,3,4]{2,1,0}
+    ) reduce(arg0, idxs, constant0,constant1), dimensions={3}, to_apply=argmax
+}
+
+
+)";
+
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: %fused_computation (param_0.1: u32[2,3,4,7]) -> u32[7,2,3,4] {
+// CHECK:  %param_0.1 = u32[2,3,4,7]{3,2,1,0} parameter(0)
+// CHECK:  %copy.1 = u32[2,3,4,7]{2,1,0,3} copy(u32[2,3,4,7]{3,2,1,0} %param_0.1)
+// CHECK:  ROOT %bitcast.2 = u32[7,2,3,4]{3,2,1,0} bitcast(u32[2,3,4,7]{2,1,0,3} %copy.1)
+// CHECK: }
+//
+// CHECK: ENTRY %main (arg0: f32[2,3,4,7], idxs: u32[2,3,4,7]) -> (f32[2,3,4], u32[2,3,4]) {
+// CHECK:  %arg0 = f32[2,3,4,7]{2,1,0,3} parameter(0)
+// CHECK:  %bitcast = f32[7,2,3,4]{3,2,1,0} bitcast(f32[2,3,4,7]{2,1,0,3} %arg0)
+// CHECK:  %idxs = u32[2,3,4,7]{3,2,1,0} parameter(1)
+// CHECK:  %fusion = u32[7,2,3,4]{3,2,1,0} fusion(u32[2,3,4,7]{3,2,1,0} %idxs), kind=kLoop, calls=%fused_computation
+// CHECK:  %constant0 = f32[] constant(0)
+// CHECK:  %constant1 = u32[] constant(0)
+// CHECK:  ROOT %reduce = (f32[2,3,4]{2,1,0}, u32[2,3,4]{2,1,0}) reduce(f32[7,2,3,4]{3,2,1,0} %bitcast, u32[7,2,3,4]{3,2,1,0} %fusion, f32[] %constant0, u32[] %constant1), dimensions={0}, to_apply=%argmax
+// CHECK: }
+      )");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

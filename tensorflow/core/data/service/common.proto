@@ -3,14 +3,18 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/protobuf/data_service.proto";
 
+// Next tag: 2
 message DatasetDef {
   // We represent datasets as tensorflow GraphDefs which define the operations
   // needed to create a tf.data dataset.
   GraphDef graph = 1;
 }
 
+// Next tag: 13
 message TaskDef {
+  reserved 6;
   // The dataset to iterate over.
   oneof dataset {
     DatasetDef dataset_def = 1;
@@ -19,34 +23,53 @@ message TaskDef {
   int64 dataset_id = 3;
   int64 task_id = 4;
   int64 job_id = 5;
+  // In distributed epoch processing mode, we use one split provider for each
+  // source that feeds into the dataset. In parallel_epochs mode,
+  // `num_split_providers` is always zero.
+  int64 num_split_providers = 9;
   // Address of the worker that the task is assigned to.
   string worker_address = 8;
-  ProcessingModeDef processing_mode = 6;
+  ProcessingModeDef processing_mode_def = 10;
   // Optional number of consumers. If set, the results of the task will be
   // provided to consumers round-robin.
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
+  // Number of workers and the worker index. These are only populated when the
+  // `processing_mode_def` specifies a static sharding policy.
+  int64 num_workers = 11;
+  int64 worker_index = 12;
 }
 
+// Next tag: 8
 message TaskInfo {
   // The address of the worker processing the task.
   string worker_address = 1;
   // The transfer address of the worker processing the task.
   string transfer_address = 4;
+  // Tags attached to the worker. This allows reading from selected workers.
+  // For example, by applying a "COLOCATED" tag, tf.data service is able to read
+  // from the local tf.data worker if one exists, then from off-TF-host workers,
+  // to avoid cross-TF-host reads.
+  repeated string worker_tags = 6;
   // The task id.
   int64 task_id = 2;
   // The id of the job that the task is part of.
   int64 job_id = 3;
+  // The UID of the worker Borg job, used for telemetry.
+  int64 worker_uid = 7;
   // The round to start reading from the task in. For non-round-robin reads,
   // this is always 0.
   int64 starting_round = 5;
 }
 
-enum ProcessingModeDef {
-  INVALID = 0;
-  // Each tf.data worker processes an entire epoch.
-  PARALLEL_EPOCHS = 1;
-  // Processing of an epoch is distributed across all tf.data workers.
-  DISTRIBUTED_EPOCH = 2;
+// Specifies which tf.data service workers to read from.
+enum TargetWorkers {
+  TARGET_WORKERS_UNSPECIFIED = 0;
+  // tf.data service runtime decides which workers to read from.
+  TARGET_WORKERS_AUTO = 1;
+  // Reads from any available worker.
+  TARGET_WORKERS_ANY = 2;
+  // Only reads from local workers. If no local worker is found, it is an error.
+  TARGET_WORKERS_LOCAL = 3;
 }

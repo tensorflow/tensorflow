@@ -15,10 +15,6 @@
 
 """Tests for ram_file_system.h."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import def_function

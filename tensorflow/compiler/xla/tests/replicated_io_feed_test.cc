@@ -31,7 +31,7 @@ class ReplicatedIOFeedTest : public HloTestBase {};
 static DeviceAssignment MakeDeviceAssn(size_t num_devices) {
   DeviceAssignment assn(/*replica_count=*/num_devices,
                         /*computation_count=*/1);
-  for (int64 i = 0; i < num_devices; ++i) {
+  for (int64_t i = 0; i < num_devices; ++i) {
     assn(i, 0) = i;
   }
   return assn;

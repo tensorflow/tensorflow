@@ -18,8 +18,10 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -36,8 +38,7 @@ namespace {
 
 using linalg::LinalgOp;
 
-class LhloFuseLinalgPass
-    : public PassWrapper<LhloFuseLinalgPass, FunctionPass> {
+class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, linalg::LinalgDialect, scf::SCFDialect>();
   }
@@ -96,16 +97,16 @@ class LhloFuseLinalgPass
         continue;
       }
 
-      if (auto tensor_load = dyn_cast<memref::TensorLoadOp>(definingOp)) {
-        auto alias = tensor_load.memref();
+      if (auto to_tensor = dyn_cast<bufferization::ToTensorOp>(definingOp)) {
+        auto alias = to_tensor.memref();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);
         }
         continue;
       }
 
-      if (auto tensor_to_memref = dyn_cast<memref::BufferCastOp>(definingOp)) {
-        auto alias = tensor_to_memref.tensor();
+      if (auto to_memref = dyn_cast<bufferization::ToMemrefOp>(definingOp)) {
+        auto alias = to_memref.tensor();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);
         }
@@ -156,8 +157,8 @@ class LhloFuseLinalgPass
         tile_sizes = SmallVector<int64_t, 2>(generic_op.getNumLoops(), 1);
       }
       auto op = cast<LinalgOp>(generic_op.getOperation());
-      for (const Value result : op.getOutputBuffers()) {
-        if (!result_buffers.count(result)) continue;
+      for (OpOperand* op_operand : op.getOutputBufferOperands()) {
+        if (!result_buffers.count(op_operand->get())) continue;
         if (tileGenericOp(op, tile_sizes, &b)) {
           generic_op.erase();
           return;
@@ -172,17 +173,17 @@ class LhloFuseLinalgPass
     SmallVector<LinalgOp, 8> linalg_ops;
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
     for (LinalgOp op : llvm::reverse(linalg_ops)) {
-      for (OpOperand& inputOperand : op.getInputOpOperands()) {
+      for (OpOperand* inputOperand : op.getInputOperands()) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
-        if (auto info = fuseProducerOfBuffer(b, inputOperand, graph)) {
-          auto originalOp = info->originalProducer.getOperation();
-          erase_set.insert(originalOp);
-          auto originalOpInLinalgOpsVector = std::find_if(
-              linalg_ops.begin(), linalg_ops.end(),
-              [&](const Operation* op) { return op == originalOp; });
-          *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
-        }
+        auto info = fuseProducerOfBuffer(b, *inputOperand, graph);
+        if (failed(info)) continue;
+        auto originalOp = info->originalProducer.getOperation();
+        erase_set.insert(originalOp);
+        auto originalOpInLinalgOpsVector =
+            std::find_if(linalg_ops.begin(), linalg_ops.end(),
+                         [&](const Operation* op) { return op == originalOp; });
+        *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
@@ -196,24 +197,11 @@ class LhloFuseLinalgPass
     auto loopType = use_parallel_loops_
                         ? linalg::LinalgTilingLoopType::ParallelLoops
                         : linalg::LinalgTilingLoopType::Loops;
-    auto tiled_generic_op = linalg::tileLinalgOp(*b, op,
-                                                 linalg::LinalgTilingOptions()
-                                                     .setTileSizes(tile_sizes)
-                                                     .setLoopType(loopType));
-    return tiled_generic_op.hasValue();
+    return succeeded(linalg::tileLinalgOp(*b, op,
+                                          linalg::LinalgTilingOptions()
+                                              .setTileSizes(tile_sizes)
+                                              .setLoopType(loopType)));
   }
-
-  Option<bool> use_parallel_loops_{
-      *this, "use-parallel-loops",
-      llvm::cl::desc(
-          "Tiles GenericOp consumer to parallel loops before linalg fusion"),
-      llvm::cl::init(false)};
-
-  ListOption<unsigned> tile_sizes_{
-      *this, "tile-sizes",
-      llvm::cl::desc(
-          "Tile sizes by which to tile linalg generic before linalg fusion"),
-      llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated};
 };
 
 }  // namespace

@@ -29,7 +29,7 @@ namespace xla {
 //  will include all instructions <= `height` hops away from `root`.
 //  Instructions at the boundary are replaced by parameters.
 std::unique_ptr<HloModule> ExtractModule(HloInstruction* instruction,
-                                         int64 height = -1);
+                                         int64_t height = -1);
 
 }  // namespace xla
 

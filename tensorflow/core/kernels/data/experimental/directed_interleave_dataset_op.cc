@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/directed_interleave_dataset_op.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -73,6 +77,12 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
+    return Status::OK();
+  }
+
   const DataTypeVector& output_dtypes() const override {
     return data_inputs_[0]->output_dtypes();
   }
@@ -85,11 +95,11 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     // As long as one of input dataset has infinite cardinality, the output
     // cardinality is infinite.
     for (const auto& input : data_inputs_) {
-      int64 n = input->Cardinality();
+      int64_t n = input->Cardinality();
       if (n == kInfiniteCardinality) {
         return n;
       }
@@ -148,14 +158,16 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
+      TF_ASSIGN_OR_RETURN(input_contexts_,
+                          CreateInputIteratorContexts(ctx, dataset()));
       TF_RETURN_IF_ERROR(dataset()->selector_input_->MakeIterator(
-          ctx, this, prefix(), &selector_input_impl_));
+          &input_contexts_[0], this, prefix(), &selector_input_impl_));
       data_input_impls_.resize(dataset()->data_inputs_.size());
       for (size_t i = 0; i < data_input_impls_.size(); ++i) {
         const DatasetBase* data_input = dataset()->data_inputs_[i];
         TF_RETURN_IF_ERROR(data_input->MakeIterator(
-            ctx, this, strings::StrCat(prefix(), "[", i, "]"),
-            &data_input_impls_[i]));
+            &input_contexts_[i + 1], this,
+            strings::StrCat(prefix(), "[", i, "]"), &data_input_impls_[i]));
       }
       return Status::OK();
     }
@@ -172,14 +184,14 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       while (true) {
         std::vector<Tensor> selector_result;
         *end_of_sequence = false;
-        TF_RETURN_IF_ERROR(selector_input_impl_->GetNext(ctx, &selector_result,
-                                                         end_of_sequence));
+        TF_RETURN_IF_ERROR(selector_input_impl_->GetNext(
+            &input_contexts_[0], &selector_result, end_of_sequence));
         if (*end_of_sequence) {
           ResetInputs();
           return Status::OK();
         }
 
-        int64 selected_input = selector_result[0].scalar<int64>()();
+        int64_t selected_input = selector_result[0].scalar<int64_t>()();
         if (selected_input < 0 || selected_input >= data_input_impls_.size()) {
           return errors::InvalidArgument(
               "Selector index out of range: ", selected_input,
@@ -189,7 +201,8 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
         if (data_input_impls_[selected_input]) {
           bool end_of_selected_input = false;
           TF_RETURN_IF_ERROR(data_input_impls_[selected_input]->GetNext(
-              ctx, out_tensors, &end_of_selected_input));
+              &input_contexts_[selected_input + 1], out_tensors,
+              &end_of_selected_input));
 
           if (!end_of_selected_input) {
             return Status::OK();
@@ -273,10 +286,13 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
+    // Iterator contexts for inputs datasets. The first context is for the
+    // selector input, and the remaning contexts are for the data inputs.
+    std::vector<IteratorContext> input_contexts_;
     std::unique_ptr<IteratorBase> selector_input_impl_ TF_GUARDED_BY(mu_);
     std::vector<std::unique_ptr<IteratorBase>> data_input_impls_
         TF_GUARDED_BY(mu_);
-    int64 num_active_inputs_ TF_GUARDED_BY(mu_);
+    int64_t num_active_inputs_ TF_GUARDED_BY(mu_);
   };
 
   static PartialTensorShape MostSpecificCompatibleShape(

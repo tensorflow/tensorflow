@@ -19,7 +19,6 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "tensorflow/c/c_api.h"
-#include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/tf_status.h"

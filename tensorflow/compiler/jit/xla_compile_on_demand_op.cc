@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/refcount.h"
 
@@ -33,7 +34,7 @@ namespace tensorflow {
 // kernel context `ctx`.
 static std::vector<int> GetResourceVariableIndices(OpKernelContext* ctx) {
   std::vector<int> out;
-  for (int64 i = 0; i < ctx->num_inputs(); i++) {
+  for (int64_t i = 0; i < ctx->num_inputs(); i++) {
     if (ctx->input(i).dtype() == DT_RESOURCE) {
       out.push_back(i);
     }
@@ -76,6 +77,12 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
 
   VLOG(2) << "Executing computation: " << name();
   xla::ExecutableRunOptions run_options;
+  xla::gpu::GpuExecutableRunOptions gpu_options;
+  xla::DeviceAssignment device_assignment;
+  TF_RETURN_IF_ERROR(ResolveDeviceAssignment(ctx, result->collective_info,
+                                             run_options, device_assignment,
+                                             gpu_options));
+
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());

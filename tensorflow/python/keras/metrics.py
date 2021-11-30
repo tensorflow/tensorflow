@@ -1971,7 +1971,7 @@ class AUC(Metric):
   of binary classifiers. Unlike the accuracy, and like cross-entropy
   losses, ROC-AUC and PR-AUC evaluate all the operational points of a model.
 
-  This classes approximates AUCs using a Riemann sum: During the metric
+  This class approximates AUCs using a Riemann sum. During the metric
   accumulation phrase, predictions are accumulated within predefined buckets
   by value. The AUC is then computed by interpolating per-bucket averages. These
   buckets define the evaluated operational points.

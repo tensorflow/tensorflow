@@ -661,30 +661,6 @@ TEST_F(GraphTest, BuildNodeNameIndex) {
   }
 }
 
-TEST_F(GraphTest, NodeTypeBasicOperations) {
-  FromGraphDef(
-      "node { name: 'A' op: 'NoOp' }"
-      "node { name: 'B' op: 'NoOp' }");
-
-  auto node_name_index = graph_.BuildNodeNameIndex();
-
-  FullTypeDef* ft;
-  graph_.NodeType("A", &ft);
-  ASSERT_EQ(ft, nullptr);
-  graph_.NodeType("B", &ft);
-  ASSERT_EQ(ft, nullptr);
-
-  FullTypeDef basic_t;
-  basic_t.set_type_id(TFT_TENSOR);
-  graph_.SetNodeType("A", basic_t);
-
-  graph_.NodeType("A", &ft);
-  ASSERT_NE(ft, nullptr);
-  ASSERT_EQ(ft->type_id(), TFT_TENSOR);
-  graph_.NodeType("B", &ft);
-  ASSERT_EQ(ft, nullptr);
-}
-
 void BM_InEdgeIteration(::testing::benchmark::State& state) {
   const int num_nodes = state.range(0);
   const int num_edges_per_node = state.range(1);
@@ -694,7 +670,7 @@ void BM_InEdgeIteration(::testing::benchmark::State& state) {
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
 
-  int64 sum = 0;
+  int64_t sum = 0;
   for (auto s : state) {
     for (const Node* node : graph.nodes()) {
       for (auto e : node->in_edges()) {
@@ -735,7 +711,7 @@ void BM_GraphCreation(::testing::benchmark::State& state) {
   // Warmup step.
   Graph graph(registry);
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
-  int64 sum = 0;
+  int64_t sum = 0;
   for (auto s : state) {
     Graph graph(registry);
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
@@ -774,7 +750,7 @@ void BM_ToGraphDef(::testing::benchmark::State& state) {
   // Warmup step.
   Graph graph(registry);
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
-  int64 sum = 0;
+  int64_t sum = 0;
   for (auto s : state) {
     GraphDef graph_def;
     graph.ToGraphDef(&graph_def);

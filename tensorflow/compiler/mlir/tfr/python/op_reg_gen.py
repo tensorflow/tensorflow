@@ -18,10 +18,6 @@
 # pylint: disable=missing-function-docstring
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast as ast
 
 from tensorflow.python.autograph.pyct import transformer
@@ -99,7 +95,9 @@ class OpRegGenImpl(transformer.CodeGenerator):
     all_func_args = self.visit(node.args)
 
     if len(expected_args) != len(all_func_args):
-      raise KeyError('Composition arguments do not match the registration.')
+      raise KeyError(
+          'Composition arguments for {} do not match the registration. {} vs {}'
+          .format(op_name, expected_args, all_func_args))
 
     cxx_reg_code = ['\nREGISTER_OP("{}")'.format(op_name)]
     for input_ in inputs:

@@ -40,7 +40,7 @@ struct proxy_type_pod<CPUDevice, 16> {
 };
 template <>
 struct proxy_type_pod<CPUDevice, 8> {
-  typedef ::tensorflow::int64 type;
+  typedef ::int64_t type;
 };
 template <>
 struct proxy_type_pod<CPUDevice, 4> {

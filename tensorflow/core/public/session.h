@@ -232,7 +232,7 @@ class Session {
   }
 
   /// \brief A handle to a subgraph, created with `Session::MakeCallable()`.
-  typedef int64 CallableHandle;
+  typedef int64_t CallableHandle;
 
   /// \brief Creates a `handle` for invoking the subgraph defined by
   /// `callable_options`.

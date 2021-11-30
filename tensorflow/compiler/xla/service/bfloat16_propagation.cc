@@ -131,7 +131,7 @@ void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
     }
     if (inst->opcode() == HloOpcode::kFusion) {
       bool parameter_reverted = false;
-      for (int64 i = 0; i < inst->operand_count(); ++i) {
+      for (int64_t i = 0; i < inst->operand_count(); ++i) {
         if (has_changes(inst->mutable_operand(i))) {
           // Changes on the operand have not been reverted.
           continue;
@@ -208,7 +208,7 @@ void BFloat16Propagation::DetermineWhileComputationsPrecision(
 void BFloat16Propagation::DetermineConditionalComputationsPrecision(
     HloInstruction* cond) {
   CHECK_EQ(cond->opcode(), HloOpcode::kConditional);
-  for (int64 i = 0; i < cond->branch_count(); ++i) {
+  for (int64_t i = 0; i < cond->branch_count(); ++i) {
     auto branch = cond->branch_computation(i);
     auto root = branch->root_instruction();
     ShapeUtil::ForEachSubshape(
@@ -316,7 +316,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
             (use.instruction->opcode() == HloOpcode::kAllReduce &&
              use.instruction->shape().IsTuple())) {
           ShapeIndex use_output_index{use.operand_number};
-          for (int64 i : use.operand_index) {
+          for (int64_t i : use.operand_index) {
             use_output_index.push_back(i);
           }
           if (OutputTypeAfterChange(use.instruction, use_output_index) ==
@@ -325,7 +325,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
           }
         } else if (use.instruction->opcode() == HloOpcode::kGetTupleElement) {
           ShapeIndex use_output_index;
-          for (int64 i = 1; i < use.operand_index.size(); ++i) {
+          for (int64_t i = 1; i < use.operand_index.size(); ++i) {
             use_output_index.push_back(use.operand_index[i]);
           }
           if (OutputTypeAfterChange(use.instruction, use_output_index) ==
@@ -450,7 +450,7 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
       hlo->opcode() != HloOpcode::kGetTupleElement &&
       hlo->opcode() != HloOpcode::kDomain &&
       hlo->shape().element_type() != BF16) {
-    for (int64 i = 0; i < hlo->operand_count(); ++i) {
+    for (int64_t i = 0; i < hlo->operand_count(); ++i) {
       if (!bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(*hlo,
                                                                          i) ||
           !ContainsKey(consider_using_bfloat16_, hlo->operand(i))) {
@@ -468,7 +468,7 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
                   absl::Span<HloInstruction* const> operands) {
         // Adjust parameters.
         CHECK_EQ(operands.size(), computation->num_parameters());
-        for (int64 i = 0; i < operands.size(); ++i) {
+        for (int64_t i = 0; i < operands.size(); ++i) {
           auto parameter = computation->parameter_instruction(i);
           ShapeUtil::ForEachSubshape(
               parameter->shape(),
@@ -502,7 +502,7 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
       adjust_computation(hlo->while_body(), hlo->operands());
       break;
     case HloOpcode::kConditional:
-      for (int64 i = 0; i < hlo->branch_count(); ++i) {
+      for (int64_t i = 0; i < hlo->branch_count(); ++i) {
         adjust_computation(hlo->branch_computation(i),
                            {hlo->mutable_operand(i + 1)});
       }

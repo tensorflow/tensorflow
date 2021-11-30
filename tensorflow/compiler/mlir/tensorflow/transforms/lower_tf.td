@@ -15,11 +15,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-
-// Here, the element type can be any integer or float type. But, note that only
-// 32 bit integers are supported for the values.
-class GetScalarOfType<int value> : NativeCodeCall<
-  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
+include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
 class GetScalarOfFloatType<string value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
@@ -38,7 +34,7 @@ class GetI64ScalarElementsAttr<int value> :
 class GetF32Scalar<int value> :
   NativeCodeCall<"GetF32Scalar(&$_builder, " # value # ")">;
 
-def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
+def TrueBoolAttr : AttrConstraint<CPred<"$_self.cast<::mlir::BoolAttr>().getValue()">>;
 
 def CreateTFShapeOp : NativeCodeCall<
     "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
@@ -48,6 +44,24 @@ def IsI32 : NativeCodeCall<
 
 def CreateTFCastOpF32 : NativeCodeCall<
     "CreateTFCastOpF32(&$_builder, $0.getLoc(), $1, $2)">;
+
+def CreateTFCastOpI32 : NativeCodeCall<
+    "CreateTFCastOpI32(&$_builder, $0.getLoc(), $1, $2)">;
+
+def CreateTensorScatterNdOp : NativeCodeCall<
+    "$_builder.create<TF::ScatterNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
+
+//===----------------------------------------------------------------------===//
+// Add op patterns.
+//===----------------------------------------------------------------------===//
+
+// We can lower AddOp to AddV2Op, except for string type. AddOp is defined for
+// TF_NumberNotQuantizedOrStrTensor tensor types. TF_NumberNotQuantizedTensor
+// is the same, except not containing TF_Str.
+
+def LowerAddOp : Pat<(TF_AddOp TF_NumberNotQuantizedTensor:$x,
+                               TF_NumberNotQuantizedTensor:$y),
+                     (TF_AddV2Op $x, $y)>;
 
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
@@ -201,6 +215,14 @@ def LowerDivNoNanOp : BinaryNoNanPat<TF_DivNoNanOp, TF_DivOp>;
 def LowerMulNoNanOp : BinaryNoNanPat<TF_MulNoNanOp, TF_MulOp>;
 
 //===----------------------------------------------------------------------===//
+// TruncateDiv op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerTruncateDivOp : Pat<
+  (TF_TruncateDivOp $lhs, $rhs),
+  (TF_DivOp $lhs, $rhs)>;
+
+//===----------------------------------------------------------------------===//
 // Fill op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -215,6 +237,12 @@ def LowerEmptyOp : Pat<(TF_EmptyOp:$result $dims, TrueBoolAttr:$init),
                       (TF_BroadcastToOp
                        (TF_ConstOp (GetScalarOfType<0> $result)), $dims),
                       [(TF_SintOrFpTensor $result)]>;
+
+//===----------------------------------------------------------------------===//
+// Inv op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerInv : Pat<(TF_InvOp $x), (TF_ReciprocalOp $x)>;
 
 //===----------------------------------------------------------------------===//
 // Inf op patterns.
@@ -290,35 +318,43 @@ def LowerRoundOpOnIntTensor : Pat<
 // as RoundHalfToEven to be compatible with Numpy.
 def LowerRoundOpOnFloatTensor : Pat<
   (TF_RoundOp:$res TF_FloatTensor:$input),
-  (TF_SelectOp
-    (TF_LogicalOrOp
-      (TF_GreaterOp
-        (TF_SubOp:$fraction $input, (TF_FloorOp:$round_val $input)),
-        (TF_ConstOp:$half (GetScalarOfFloatType<"0.5"> $input))
-      ),
-      (TF_LogicalAndOp
-        // If the input is equal to 0.5 ...
-        (TF_EqualOp
-          $fraction,
-          $half,
-          /*incompatible_shape_error*/ConstBoolAttrTrue
-        ),
-        // ... check if the value is odd, so we can round up in that case.
-        (TF_EqualOp
-          (TF_SubOp
-            $round_val,
-            (TF_MulOp
-              (TF_ConstOp (GetScalarOfType<2> $input)),
-              (TF_FloorOp (TF_MulOp $half, $input))
-            )
+  (TF_SelectV2Op
+    (TF_EqualOp
+      (TF_ConstOp:$zero (GetScalarOfFloatType<"0.0"> $input)),
+      (TF_SelectV2Op:$rounded
+        (TF_LogicalOrOp
+          (TF_GreaterOp
+            (TF_SubOp:$fraction $input, (TF_FloorOp:$round_val $input)),
+            (TF_ConstOp:$half (GetScalarOfFloatType<"0.5"> $input))
           ),
-          (TF_ConstOp:$one (GetScalarOfType<1> $input)),
-          /*incompatible_shape_error*/ConstBoolAttrTrue
-        )
-      )
+          (TF_LogicalAndOp
+            // If the input is equal to 0.5 ...
+            (TF_EqualOp
+              $fraction,
+              $half,
+              /*incompatible_shape_error*/ConstBoolAttrTrue
+            ),
+            // ... check if the value is odd, so we can round up in that case.
+            (TF_EqualOp
+              (TF_SubOp
+                $round_val,
+                (TF_MulOp
+                  (TF_ConstOp (GetScalarOfType<2> $input)),
+                  (TF_FloorOp (TF_MulOp $half, $input))
+                )
+              ),
+              (TF_ConstOp:$one (GetScalarOfType<1> $input)),
+              /*incompatible_shape_error*/ConstBoolAttrTrue
+            )
+          )
+        ),
+        (TF_AddV2Op $round_val, $one),
+        $round_val
+      ),
+      /*incompatible_shape_error*/ConstBoolAttrTrue
     ),
-    (TF_AddV2Op $round_val, $one),
-    $round_val
+    $zero,
+    $rounded
   )>;
 
 //===----------------------------------------------------------------------===//
@@ -457,3 +493,96 @@ def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
                           (TF_SubOp $x, $x),
                           (TF_ConstOp (GetScalarOfType<0> $x)),
                           /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
+// TensorScatterUpdate op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerTensorScatterUpdate_1 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+          (TF_CastOp
+            (TF_TensorScatterUpdateOp
+              (CreateTFCastOpI32
+                $input,
+                $input,
+                /*truncate=*/ConstBoolAttrFalse),
+              $indices,
+              (CreateTFCastOpI32
+                $updates,
+                $updates,
+                /*truncate=*/ConstBoolAttrFalse)),
+             /*truncate=*/ConstBoolAttrFalse),
+          [(TensorOf<[TF_Bool]> $input), (TensorOf<[TF_Bool]> $updates)] >;
+
+def LowerTensorScatterUpdate_2 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+          (TF_AddV2Op
+             (TF_MulOp
+                (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $updates)),
+                   (CreateTensorScatterNdOp $input, $indices,
+                      (TF_OnesLikeOp $updates),
+                   (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
+             $input),
+           (CreateTensorScatterNdOp $input, $indices, $updates,
+              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
+          [(TensorOf<[TF_Int, TF_Float, TF_Complex]> $updates)]>;
+
+//===----------------------------------------------------------------------===//
+// Selu op patterns.
+//===----------------------------------------------------------------------===//
+
+def getScale : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($0), 1.0507009873554804934193349852946)"
+  >;
+
+def getScaledAlpha : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($0), 1.7580993408473768599402175208123)"
+  >;
+
+// Selu(x) = scale * x if x > 0 else scaledAlpha * (exp(x) - 1). Here
+// scale is taken as a constant 1.0507009873554804934193349852946 and
+// scaledAlpha  is taken as a constant 1.7580993408473768599402175208123.
+
+def LowerSeluOp : Pat<(TF_SeluOp TF_FloatTensor:$features),
+                  (TF_SelectV2Op
+                    (TF_GreaterOp
+                      $features,
+                      (TF_ConstOp (GetScalarOfType<0> $features))),
+                    (TF_MulOp
+                      (TF_ConstOp (getScale $features)),
+                      $features),
+                    (TF_MulOp
+                      (TF_ConstOp (getScaledAlpha $features)),
+                      (TF_Expm1Op $features)))>;
+
+// SeluGradOp(gradients, outputs) = gradients * scale if outputs > 0
+// else gradients * (outputs + scaledAlpha). Here scale is taken as a
+// constant 1.0507009873554804934193349852946 and scaledAlpha is taken
+// as a constant 1.7580993408473768599402175208123.
+
+def LowerSeluGradOp : Pat<(TF_SeluGradOp AnyStaticShapeTensor:$gradients,
+                          TF_FloatTensor:$features),
+                      (TF_SelectV2Op
+                        (TF_GreaterOp
+                          $features,
+                          (TF_ConstOp (GetScalarOfType<0> $features))),
+                        (TF_MulOp
+                          $gradients,
+                          (TF_ConstOp (getScale $features))),
+                        (TF_MulOp
+                          $gradients,
+                          (TF_AddV2Op
+                            $features,
+                            (TF_ConstOp (getScaledAlpha $features)))))>;
+
+
+
+//===----------------------------------------------------------------------===//
+// Expm1 op patterns.
+//===----------------------------------------------------------------------===//
+
+// Expm1(x) = Exp(x) - 1
+def LowerExp1mOp : Pat<
+  (TF_Expm1Op $x),
+  (TF_SubOp
+    (TF_ExpOp $x),
+    (TF_ConstOp (GetScalarOfType<1> $x))
+  )>;

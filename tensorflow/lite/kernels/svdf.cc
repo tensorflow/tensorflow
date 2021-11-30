@@ -256,14 +256,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                                      output_temp_size_array));
 
     // Calculate effective scales.
+    TF_LITE_ENSURE(context, input->quantization.type != kTfLiteNoQuantization);
     auto* input_params =
         reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
+    TF_LITE_ENSURE(context,
+                   weights_feature->quantization.type != kTfLiteNoQuantization);
     auto* weights_feature_params = reinterpret_cast<TfLiteAffineQuantization*>(
         weights_feature->quantization.params);
+    TF_LITE_ENSURE(context, state->quantization.type != kTfLiteNoQuantization);
     auto* state_params =
         reinterpret_cast<TfLiteAffineQuantization*>(state->quantization.params);
+    TF_LITE_ENSURE(context,
+                   weights_time->quantization.type != kTfLiteNoQuantization);
     auto* weight_time_params = reinterpret_cast<TfLiteAffineQuantization*>(
         weights_time->quantization.params);
+    TF_LITE_ENSURE(context, output->quantization.type != kTfLiteNoQuantization);
     auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
         output->quantization.params);
     const double effective_scale_1 = input_params->scale->data[0] *
@@ -299,6 +306,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     GetTemporarySafe(context, node, /*index=*/0, &scratch));
 
   TfLiteTensor* state = GetVariableInput(context, node, kStateTensor);
+  TF_LITE_ENSURE(context, state != nullptr);
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
@@ -314,7 +322,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorData<float>(state), GetTensorShape(output),
           GetTensorData<float>(output));
       return kTfLiteOk;
-      break;
     }
     case kTfLiteUInt8:
     case kTfLiteInt8: {
@@ -371,34 +378,32 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             GetTensorShape(output), GetTensorData<float>(output),
             zero_points_ptr, row_sums_ptr, &op_data->compute_row_sums);
         return kTfLiteOk;
-      } else {
-        auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
-            input->quantization.params);
-        auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
-            output->quantization.params);
-        TfLiteTensor* output_temp;
-        TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/1,
-                                                    &output_temp));
-
-        // Currently supports only ReLU.
-        // TODO(jianlijianli): support other activations.
-        TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
-
-        reference_ops::EvalIntegerSVDF(
-            params, GetTensorShape(input), GetTensorData<int8_t>(input),
-            GetTensorShape(weights_feature),
-            GetTensorData<int8_t>(weights_feature),
-            GetTensorShape(weights_time), GetTensorData<int16_t>(weights_time),
-            GetTensorShape(bias), GetTensorData<int32_t>(bias),
-            GetTensorData<int16_t>(state), GetTensorShape(output),
-            GetTensorData<int8_t>(output), GetTensorData<int32_t>(scratch),
-            GetTensorData<int32_t>(output_temp), op_data->effective_scale_1_a,
-            op_data->effective_scale_1_b, op_data->effective_scale_2_a,
-            op_data->effective_scale_2_b, input_params->zero_point->data[0],
-            output_params->zero_point->data[0]);
-        return kTfLiteOk;
       }
-      break;
+      auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
+          input->quantization.params);
+      auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
+          output->quantization.params);
+      TfLiteTensor* output_temp;
+      TF_LITE_ENSURE_OK(
+          context, GetTemporarySafe(context, node, /*index=*/1, &output_temp));
+
+      // Currently supports only ReLU.
+      // TODO(jianlijianli): support other activations.
+      TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
+
+      reference_ops::EvalIntegerSVDF(
+          params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(weights_feature),
+          GetTensorData<int8_t>(weights_feature), GetTensorShape(weights_time),
+          GetTensorData<int16_t>(weights_time), GetTensorShape(bias),
+          GetTensorData<int32_t>(bias), GetTensorData<int16_t>(state),
+          GetTensorShape(output), GetTensorData<int8_t>(output),
+          GetTensorData<int32_t>(scratch), GetTensorData<int32_t>(output_temp),
+          op_data->effective_scale_1_a, op_data->effective_scale_1_b,
+          op_data->effective_scale_2_a, op_data->effective_scale_2_b,
+          input_params->zero_point->data[0],
+          output_params->zero_point->data[0]);
+      return kTfLiteOk;
     }
     default:
       context->ReportError(context, "Type %s not currently supported.",

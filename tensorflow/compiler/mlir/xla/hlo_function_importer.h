@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/types/optional.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -62,20 +63,24 @@ class HloFunctionImporter {
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::OpBuilder* builder);
 
+  static StatusOr<mlir::Operation*> ImportInstruction(
+      const xla::HloInstruction* instr,
+      const llvm::SmallVectorImpl<mlir::Value>& operands,
+      mlir::OpBuilder* builder);
+
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
-                               llvm::StringRef attr_name = "minor_to_major");
+                               llvm::StringRef attr_name);
 
   // TODO(b/179166199): move this to attribute_importer.h.
   // Converts XLA instruction source target pairs to MLIR attribute.
   static mlir::NamedAttribute ConvertSourceTargetPairs(
-      const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
-          source_target_pairs,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
       mlir::Builder* builder);
 
   // TODO(b/179166199): move this to attribute_importer.h.
   // Converts replica groups to attribute
   static mlir::NamedAttribute ConvertReplicaGroups(
-      const std::vector<ReplicaGroup>& replica_groups, mlir::Builder* builder);
+      absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder);
 
  private:
   HloFunctionImporter(mlir::ModuleOp module,
@@ -86,6 +91,7 @@ class HloFunctionImporter {
         module_(module),
         builder_(builder),
         function_map_(function_map) {
+    context_->loadDialect<mlir::arith::ArithmeticDialect>();
     context_->loadDialect<mlir::StandardOpsDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
   }
@@ -108,14 +114,18 @@ class HloFunctionImporter {
       mlir::OpBuilder* builder);
 
   // Imports an instruction.
-  StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,
-                                               mlir::OpBuilder* func_builder);
+  StatusOr<mlir::Operation*> ImportInstructionWithLayout(
+      const xla::HloInstruction* instruction,
+      const llvm::SmallVectorImpl<mlir::Value>& operands,
+      mlir::OpBuilder* func_builder);
   StatusOr<mlir::Operation*> ImportInstructionImpl(
-      HloInstruction* instruction, mlir::OpBuilder* func_builder);
+      const HloInstruction* instruction,
+      const llvm::SmallVectorImpl<mlir::Value>& operands,
+      mlir::OpBuilder* func_builder);
 
   // Gets the MLIR operand values from an HLO Instruction.
   StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(
-      xla::HloInstruction* instruction);
+      const xla::HloInstruction* instruction);
 
   // Converts xla Tensor type to the corresponding MLIR type.
   StatusOr<mlir::RankedTensorType> ConvertTensorType(const xla::Shape& shape);
@@ -124,7 +134,7 @@ class HloFunctionImporter {
   StatusOr<mlir::Attribute> ConvertShapeToMlirLayout(const xla::Shape& shape);
 
   // Returns the output type of an HloInstruction.
-  StatusOr<mlir::Type> GetReturnType(xla::HloInstruction* instruction);
+  StatusOr<mlir::Type> GetReturnType(const xla::HloInstruction* instruction);
 
   // Takes a list of HloInstructions and generates the list of types used for
   // input, bypassing tuples to subsets.
@@ -132,7 +142,7 @@ class HloFunctionImporter {
                       llvm::SmallVectorImpl<mlir::Type>* types);
 
   // Returns the Mlir Value for the corresponding HloInstruction.
-  StatusOr<mlir::Value> GetMlirValue(xla::HloInstruction* instruction);
+  StatusOr<mlir::Value> GetMlirValue(const xla::HloInstruction* instruction);
 
   // Converts an XLA ComparisonDirection to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertComparisonDirection(
@@ -143,7 +153,7 @@ class HloFunctionImporter {
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(
-      llvm::ArrayRef<tensorflow::int64> op_dimensions);
+      llvm::ArrayRef<int64_t> op_dimensions);
 
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);
@@ -153,8 +163,7 @@ class HloFunctionImporter {
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
 
   // Converts channel id to attribute
-  mlir::NamedAttribute ConvertChannelHandle(
-      absl::optional<tensorflow::int64> channel_id);
+  mlir::NamedAttribute ConvertChannelHandle(absl::optional<int64_t> channel_id);
 
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
@@ -167,7 +176,8 @@ class HloFunctionImporter {
   std::unordered_map<const xla::HloComputation*, mlir::FuncOp>* function_map_;
 
   // Mapping from HloInstructions to the associative MLIR values.
-  std::unordered_map<xla::HloInstruction*, mlir::Value> instruction_value_map_;
+  std::unordered_map<const xla::HloInstruction*, mlir::Value>
+      instruction_value_map_;
 };
 
 }  // namespace xla

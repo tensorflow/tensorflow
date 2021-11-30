@@ -28,6 +28,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_test_util.h"
 
 namespace tflite {
 namespace subgraph_test_util {
@@ -90,6 +91,10 @@ class SubgraphBuilder {
   // No input and 1 output.
   void BuildCallOnceAndReadVariableSubgraph(Subgraph* graph);
 
+  // Build a subgraph with CallOnce op, ReadVariable op and Add op.
+  // No input and 1 output.
+  void BuildCallOnceAndReadVariablePlusOneSubgraph(Subgraph* graph);
+
   // Build a subgraph with a single Less op.
   // The subgraph is used as the condition subgraph for testing `While` op.
   // 3 inputs:
@@ -117,18 +122,15 @@ class SubgraphBuilder {
   std::vector<void*> buffers_;
 };
 
-class ControlFlowOpTest : public ::testing::Test {
+class ControlFlowOpTest : public InterpreterTest {
  public:
-  ControlFlowOpTest()
-      : interpreter_(new Interpreter), builder_(new SubgraphBuilder) {}
+  ControlFlowOpTest() : builder_(new SubgraphBuilder) {}
 
   ~ControlFlowOpTest() override {
-    interpreter_.reset();
     builder_.reset();
   }
 
  protected:
-  std::unique_ptr<Interpreter> interpreter_;
   std::unique_ptr<SubgraphBuilder> builder_;
 };
 

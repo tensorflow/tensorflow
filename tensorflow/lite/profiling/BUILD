@@ -141,6 +141,32 @@ cc_test(
 )
 
 cc_library(
+    name = "memory_usage_monitor",
+    srcs = ["memory_usage_monitor.cc"],
+    hdrs = ["memory_usage_monitor.h"],
+    copts = common_copts,
+    deps = [
+        ":memory_info",
+        "//tensorflow/lite:minimal_logging",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_test(
+    name = "memory_usage_monitor_test",
+    srcs = ["memory_usage_monitor_test.cc"],
+    tags = [
+    ],
+    deps = [
+        ":memory_info",
+        ":memory_usage_monitor",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "profile_summary_formatter",
     srcs = ["profile_summary_formatter.cc"],
     hdrs = ["profile_summary_formatter.h"],
@@ -189,4 +215,4 @@ cc_test(
     ],
 )
 
-tflite_portable_test_suite_combined(combine_conditions = {"deps": ["//testing/base/public:gunit_main"]})
+tflite_portable_test_suite_combined(combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]})

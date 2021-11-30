@@ -2,6 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -15,6 +16,7 @@ package_group(
     name = "friends",
     includes = [
         "//tensorflow:internal",
+        "//tensorflow/compiler/xla:friends",
     ],
     packages = [
         "//third_party/py/jax/...",
@@ -150,10 +152,12 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -194,8 +198,10 @@ cc_library(
         ":event_pool",
         ":local_device_state",
         ":metrics",
+        ":mlir_to_hlo",
         ":pjrt_client",
         ":tracked_device_buffer",
+        ":transpose",
         ":utils",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
@@ -269,6 +275,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/tpu:tpu_executable",
         "//tensorflow/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_interface",
@@ -315,7 +322,8 @@ cc_library(
     name = "gpu_device",
     srcs = ["gpu_device.cc"],
     hdrs = ["gpu_device.h"],
-    defines = if_cuda(["GOOGLE_CUDA=1"]),
+    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
+    visibility = [":friends"],
     deps = [
         ":pjrt_stream_executor_client",
         "@com_google_absl//absl/base:core_headers",
@@ -330,10 +338,13 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/stream_executor/cuda:cuda_activation_header",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-    ] + if_nccl([":nccl_plugin"]),
+    ] + if_cuda([
+        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]) + if_nccl([":nccl_plugin"]),
 )
 
 # We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,
@@ -370,6 +381,26 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "mlir_to_hlo",
+    srcs = ["mlir_to_hlo.cc"],
+    hdrs = ["mlir_to_hlo.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
     name = "tracked_tfrt_cpu_device_buffer",
     srcs = ["tracked_tfrt_cpu_device_buffer.cc"],
     hdrs = ["tracked_tfrt_cpu_device_buffer.h"],
@@ -389,9 +420,11 @@ cc_library(
     srcs = ["tfrt_cpu_pjrt_client.cc"],
     hdrs = ["tfrt_cpu_pjrt_client.h"],
     deps = [
+        ":mlir_to_hlo",
         ":pjrt_client",
         ":semaphore",
         ":tracked_tfrt_cpu_device_buffer",
+        ":transpose",
         ":utils",
         ":worker_thread",
         "//tensorflow/compiler/xla:literal",
@@ -419,5 +452,71 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
+    name = "lru_cache",
+    hdrs = ["lru_cache.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "lru_cache_test",
+    srcs = ["lru_cache_test.cc"],
+    deps = [
+        ":lru_cache",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "transpose",
+    srcs = [
+        "transpose.cc",
+        "transpose_kernels.h",
+    ],
+    hdrs = ["transpose.h"],
+    deps = [
+        ":lru_cache",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+tf_cc_test(
+    name = "transpose_test",
+    srcs = ["transpose_test.cc"],
+    deps = [
+        ":transpose",
+        "//tensorflow/compiler/xla:array",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/numeric:int128",
     ],
 )

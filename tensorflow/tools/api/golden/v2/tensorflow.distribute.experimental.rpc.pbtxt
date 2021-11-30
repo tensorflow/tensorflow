@@ -1,0 +1,11 @@
+path: "tensorflow.distribute.experimental.rpc"
+tf_module {
+  member {
+    name: "Client"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Server"
+    mtype: "<type \'type\'>"
+  }
+}

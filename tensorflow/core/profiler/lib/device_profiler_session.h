@@ -19,11 +19,13 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
+
 #if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/profiler/convert/xplane_to_step_stats.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #endif
 #include "tensorflow/core/profiler/profiler_options.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -32,12 +34,13 @@ namespace tensorflow {
 class DeviceProfilerSession {
  public:
   // Creates a DeviceProfilerSession and starts tracing.
-  // If gpu_only is true, traces a GPU device but not a TPU device.
-  static std::unique_ptr<DeviceProfilerSession> Create(bool gpu_only = false) {
+  // Traces GPU devices if present.
+  // Does not trace TPU devices (not supported).
+  static std::unique_ptr<DeviceProfilerSession> Create() {
 #if !defined(IS_MOBILE_PLATFORM)
     ProfileOptions options = ProfilerSession::DefaultOptions();
     options.set_host_tracer_level(0);
-    if (gpu_only) options.set_device_type(ProfileOptions::GPU);
+    options.set_device_type(ProfileOptions::GPU);
     return absl::WrapUnique(new DeviceProfilerSession(options));
 #else
     return nullptr;
@@ -47,13 +50,13 @@ class DeviceProfilerSession {
   // Stops tracing and converts the data to StepStats format.
   // Should be called at most once.
   Status CollectData(StepStats* step_stats) {
-#if !defined(IS_MOBILE_PLATFORM)
-    RunMetadata run_metadata;
-    Status status = profiler_session_.CollectData(&run_metadata);
-    step_stats->MergeFrom(run_metadata.step_stats());
-    return status;
-#else
+#if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented("Profiling not supported on mobile platform.");
+#else
+    profiler::XSpace space;
+    TF_RETURN_IF_ERROR(profiler_session_.CollectDataInternal(&space));
+    profiler::ConvertGpuXSpaceToStepStats(space, step_stats);
+    return Status::OK();
 #endif
   }
 

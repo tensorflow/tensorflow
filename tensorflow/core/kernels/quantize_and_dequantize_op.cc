@@ -158,6 +158,13 @@ class QuantizeAndDequantizeV4GradientOp : public OpKernel {
     Tensor* input_backprop = nullptr;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, input.shape(), &input_backprop));
+    OP_REQUIRES(
+        ctx, axis_ >= -1,
+        errors::InvalidArgument("Axis must be at least -1. Found ", axis_));
+    OP_REQUIRES(ctx, (axis_ == -1 || axis_ < input.shape().dims()),
+                errors::InvalidArgument(
+                    "Axis should be -1 or 0 or a positive value less than ",
+                    input.shape().dims(), "but given axis value was ", axis_));
 
     OP_REQUIRES(
         ctx, input.IsSameSize(gradient),

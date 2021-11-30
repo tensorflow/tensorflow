@@ -68,7 +68,7 @@ struct MarkForCompilationPassFlags {
 
   // "Compiler fuel" for clustering.  Only this many ops will be marked as
   // eligible for clustering.
-  int64 tf_xla_clustering_fuel;
+  int64_t tf_xla_clustering_fuel;
 
   // If tf_xla_disable_deadness_safety_checks_for_debugging is set to true then
   // we do not do deadness related safety checks.  This is unsound in general,
@@ -143,6 +143,12 @@ struct MlirCommonFlags {
   ConfigProto::Experimental::MlirBridgeRollout tf_mlir_enable_mlir_bridge;
 
   bool tf_mlir_enable_merge_control_flow_pass;
+  bool tf_mlir_enable_convert_control_to_data_outputs_pass;
+};
+
+// Flags for the CpuRt pipeline -- see tf_cpurt_pipeline.h for details.
+struct CpuRtFlags {
+  bool vectorize;
 };
 
 // Return a pointer to the DumpGraphFlags struct;
@@ -161,6 +167,9 @@ const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
+void ResetMlirCommonFlags();
+
+const CpuRtFlags& GetCpuRtFlags();
 
 // Returns the effective MLIR bridge rollout state based on the flags and the
 // optional configuration.

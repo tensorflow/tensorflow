@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -44,8 +45,8 @@ constexpr llvm::StringRef kOutlinedFuncPrefix = "_tpu_v1_compat_outlined_func";
 // This is only intended for V1 compatibility mode where the bridge runs without
 // feed/fetches on session create/extend.
 struct TPUBridgeExecutorIslandOutlining
-    : public PassWrapper<TPUBridgeExecutorIslandOutlining,
-                         OperationPass<ModuleOp>> {
+    : public TF::TPUBridgeExecutorIslandOutliningPassBase<
+          TPUBridgeExecutorIslandOutlining> {
   void runOnOperation() override;
 };
 
@@ -138,8 +139,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     OpBuilder builder = OpBuilder::atBlockEnd(&island_op.GetBody());
     auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
         island_op.getLoc(), func_result_types, operands.getArrayRef(),
-        builder.getSymbolRefAttr(
-            kNestedModule, builder.getSymbolRefAttr(outlined_func.getName())),
+        SymbolRefAttr::get(
+            builder.getContext(), kNestedModule,
+            SymbolRefAttr::get(builder.getContext(), outlined_func.getName())),
         /*config=*/builder.getStringAttr(""),
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));
@@ -152,11 +154,11 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   for (FuncOp func : outlined_module.getOps<FuncOp>()) {
     func.walk([&](Operation *op) {
       for (NamedAttribute attr : op->getAttrs()) {
-        if (auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>()) {
+        if (auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>()) {
           MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
           continue;
         }
-        if (auto array_attr = attr.second.dyn_cast<ArrayAttr>()) {
+        if (auto array_attr = attr.getValue().dyn_cast<ArrayAttr>()) {
           for (const Attribute &attribute : array_attr) {
             auto symbol_ref = attribute.dyn_cast<FlatSymbolRefAttr>();
             if (!symbol_ref) continue;
@@ -167,11 +169,6 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     });
   }
 }
-
-PassRegistration<TPUBridgeExecutorIslandOutlining> tpu_pass(
-    "tf-executor-tpu-v1-island-outlining",
-    "Outline TPU clusters from island into a nested module, so it can be "
-    "processed like a V2 module, intended for V1 compatibility mode");
 
 }  // namespace
 

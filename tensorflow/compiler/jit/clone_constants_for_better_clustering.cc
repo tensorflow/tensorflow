@@ -38,9 +38,7 @@ StatusOr<Node*> CloneConstantsForBetterClusteringPass::CloneNode(
   NodeDef new_in_def = n->def();
   new_in_def.clear_input();
   new_in_def.set_name(GenerateUniqueName(name_set, new_in_def.name()));
-  Status s;
-  Node* new_in = g->AddNode(new_in_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * new_in, g->AddNode(new_in_def));
 
   for (const Edge* e : n->in_edges()) {
     if (e->IsControlEdge()) {
@@ -74,7 +72,7 @@ StatusOr<bool> IsConstantSmall(Node* n) {
   // TODO(sanjoy): It may make sense to combine this threshold with XLA's "large
   // constant" threshold, if there is one.
   const int kSmallTensorThreshold = 16;
-  int64 total_elements = 1;
+  int64_t total_elements = 1;
   for (const auto& dim : proto->tensor_shape().dim()) {
     if (dim.size() < 0) {
       return errors::Internal("Unknown dimension size in constant tensor ",

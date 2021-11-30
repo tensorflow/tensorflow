@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <type_traits>
 
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 namespace mlir {
 namespace mhlo {
@@ -41,12 +41,14 @@ MAP_HLO_TO_LHLO(AbsOp);
 MAP_HLO_TO_LHLO(AddOp);
 MAP_HLO_TO_LHLO(AndOp);
 MAP_HLO_TO_LHLO(Atan2Op);
+MAP_HLO_TO_LHLO(BitcastConvertOp);
 MAP_HLO_TO_LHLO(BroadcastInDimOp);
 MAP_HLO_TO_LHLO(CeilOp);
 MAP_HLO_TO_LHLO(ClampOp);
 MAP_HLO_TO_LHLO(ConstOp);
 MAP_HLO_TO_LHLO(CompareOp);
 MAP_HLO_TO_LHLO(ComplexOp);
+MAP_HLO_TO_LHLO(ConcatenateOp);
 MAP_HLO_TO_LHLO(ConvOp);
 MAP_HLO_TO_LHLO(ConvertOp);
 MAP_HLO_TO_LHLO(CopyOp);
@@ -54,6 +56,11 @@ MAP_HLO_TO_LHLO(CosOp);
 MAP_HLO_TO_LHLO(CustomCallOp);
 MAP_HLO_TO_LHLO(DivOp);
 MAP_HLO_TO_LHLO(DotOp);
+MAP_HLO_TO_LHLO(DynamicBroadcastInDimOp);
+MAP_HLO_TO_LHLO(DynamicGatherOp);
+MAP_HLO_TO_LHLO(DynamicIotaOp);
+MAP_HLO_TO_LHLO(DynamicPadOp);
+MAP_HLO_TO_LHLO(DynamicReshapeOp);
 MAP_HLO_TO_LHLO(ExpOp);
 MAP_HLO_TO_LHLO(Expm1Op);
 MAP_HLO_TO_LHLO(FloorOp);
@@ -71,6 +78,7 @@ MAP_HLO_TO_LHLO(NegOp);
 MAP_HLO_TO_LHLO(NotOp);
 MAP_HLO_TO_LHLO(OrOp);
 MAP_HLO_TO_LHLO(PowOp);
+MAP_HLO_TO_LHLO(RealDynamicSliceOp);
 MAP_HLO_TO_LHLO(RealOp);
 MAP_HLO_TO_LHLO(ReduceOp);
 MAP_HLO_TO_LHLO(ReshapeOp);

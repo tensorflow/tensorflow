@@ -80,7 +80,7 @@ Node* Ones(Graph* const g, const int n) {
 
 Node* SparseIndices(Graph* const g, const int sparse_features_per_group) {
   Tensor data(DT_INT64, TensorShape({sparse_features_per_group}));
-  test::FillFn<int64>(&data, [&](const int i) { return i; });
+  test::FillFn<int64_t>(&data, [&](const int i) { return i; });
   return test::graph::Constant(g, data);
 }
 
@@ -88,7 +88,7 @@ Node* SparseExampleIndices(Graph* const g, const int sparse_features_per_group,
                            const int num_examples) {
   const int x_size = num_examples * 4;
   Tensor data(DT_INT64, TensorShape({x_size}));
-  test::FillFn<int64>(&data, [&](const int i) { return i / 4; });
+  test::FillFn<int64_t>(&data, [&](const int i) { return i / 4; });
   return test::graph::Constant(g, data);
 }
 
@@ -96,7 +96,7 @@ Node* SparseFeatureIndices(Graph* const g, const int sparse_features_per_group,
                            const int num_examples) {
   const int x_size = num_examples * 4;
   Tensor data(DT_INT64, TensorShape({x_size}));
-  test::FillFn<int64>(
+  test::FillFn<int64_t>(
       &data, [&](const int i) { return i % sparse_features_per_group; });
   return test::graph::Constant(g, data);
 }
@@ -119,10 +119,11 @@ Node* RandomZeroOrOneMatrix(Graph* const g, const int n, int d) {
   return test::graph::Constant(g, data);
 }
 
-void GetGraphs(const int32 num_examples, const int32 num_sparse_feature_groups,
-               const int32 sparse_features_per_group,
-               const int32 num_dense_feature_groups,
-               const int32 dense_features_per_group, Graph** const init_g,
+void GetGraphs(const int32_t num_examples,
+               const int32_t num_sparse_feature_groups,
+               const int32_t sparse_features_per_group,
+               const int32_t num_dense_feature_groups,
+               const int32_t dense_features_per_group, Graph** const init_g,
                Graph** train_g) {
   {
     // Build initialization graph

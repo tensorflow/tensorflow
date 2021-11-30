@@ -20,7 +20,9 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_instance.pb.h"  // NOLINT
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -79,11 +81,11 @@ class TRTEngineResourceOpsTest
     inputs_.clear();
   }
 
-  nvinfer1::ITensor* NetworkWith1Input(nvinfer1::INetworkDefinition* network,
-                                       nvinfer1::ITensor* input) {
+  ITensorProxyPtr NetworkWith1Input(nvinfer1::INetworkDefinition* network,
+                                    ITensorProxyPtr input) {
     // Add a unary layer.
     nvinfer1::IUnaryLayer* layer =
-        network->addUnary(*input, nvinfer1::UnaryOperation::kEXP);
+        network->addUnary(*input->trt_tensor(), nvinfer1::UnaryOperation::kEXP);
     EXPECT_NE(nullptr, layer);
     return layer->getOutput(0);
   }
@@ -92,23 +94,26 @@ class TRTEngineResourceOpsTest
   // tensor. We take a slice of the first input with the size of the slice
   // specified by the second input, assuming the first input is a 2D tensor.
   // We then add the slice to itself to produce the output of the network.
-  nvinfer1::ITensor* NetworkWith2Inputs(nvinfer1::INetworkDefinition* network,
-                                        nvinfer1::ITensor* input) {
+  ITensorProxyPtr NetworkWith2Inputs(nvinfer1::INetworkDefinition* network,
+                                     ITensorProxyPtr input) {
     nvinfer1::Dims dims2{1, {2}};
-    nvinfer1::ITensor* input2 =
-        network->addInput("input2", nvinfer1::DataType::kINT32, dims2);
-    EXPECT_NE(nullptr, input2);
+    ITensorProxyPtr input2 =
+        network->addInput(absl::StrCat(IONamePrefixes::kInputPHName, 1).c_str(),
+                          nvinfer1::DataType::kINT32, dims2);
+    EXPECT_NE(nullptr, input2->trt_tensor());
 
     nvinfer1::Dims start{2, {0, 0}};
     nvinfer1::Dims stride{2, {1, 1}};
-    auto slice_layer = network->addSlice(*input, start, stride, stride);
+    auto slice_layer =
+        network->addSlice(*input->trt_tensor(), start, stride, stride);
     EXPECT_NE(nullptr, slice_layer);
 
-    slice_layer->setInput(2, *input2);
-    nvinfer1::ITensor* sliced_input = slice_layer->getOutput(0);
-    EXPECT_NE(nullptr, sliced_input);
+    slice_layer->setInput(2, *input2->trt_tensor());
+    ITensorProxyPtr sliced_input = slice_layer->getOutput(0);
+    EXPECT_NE(nullptr, sliced_input->trt_tensor());
 
-    auto layer = network->addElementWise(*sliced_input, *sliced_input,
+    auto layer = network->addElementWise(*sliced_input->trt_tensor(),
+                                         *sliced_input->trt_tensor(),
                                          nvinfer1::ElementWiseOperation::kSUM);
     EXPECT_NE(nullptr, layer);
     return layer->getOutput(0);
@@ -118,43 +123,39 @@ class TRTEngineResourceOpsTest
     TrtUniquePtrType<nvinfer1::IBuilder> builder(
         nvinfer1::createInferBuilder(logger_));
     TrtUniquePtrType<nvinfer1::INetworkDefinition> network;
-    if (!this->param_.dynamic_shape || !IS_TRT_VERSION_GE(6, 0, 0, 0)) {
-      network = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
-          builder->createNetwork());
-    } else {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-      network = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
-          builder->createNetworkV2(
-              1U << static_cast<int>(
-                  nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+    network =
+        TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetworkV2(
+            1U << static_cast<int>(
+                nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+#else
+    network =
+        TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetworkV2(
+            1U << static_cast<int>(
+                nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
 #endif
-    }
 
     // Add the input.
     nvinfer1::Dims dims = this->param_.dims;
     if (this->param_.dynamic_shape) {
       std::fill(dims.d, dims.d + dims.nbDims, -1);
     }
-    const char* in_name = "input";
-    nvinfer1::ITensor* input =
-        network->addInput(in_name, nvinfer1::DataType::kFLOAT, dims);
-    EXPECT_NE(nullptr, input);
+    const std::string in_name = StrCat(IONamePrefixes::kInputPHName, 0);
+    ITensorProxyPtr input =
+        network->addInput(in_name.c_str(), nvinfer1::DataType::kFLOAT, dims);
+    EXPECT_NE(nullptr, input->trt_tensor());
     // Mark the output.
-    nvinfer1::ITensor* output =
+    ITensorProxyPtr output =
         this->param_.n_inputs == 1
             ? this->NetworkWith1Input(network.get(), input)
             : this->NetworkWith2Inputs(network.get(), input);
     output->setName("output");
-    network->markOutput(*output);
+    network->markOutput(*output->trt_tensor());
 
     // Build the engine
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config(
         builder->createBuilderConfig());
     builder_config->setMaxWorkspaceSize(1 << 10);
-#else
-    builder->setMaxWorkspaceSize(1 << 10);
-#endif
     builder->setMaxBatchSize(1);
 
     if (this->param_.dynamic_shape) {
@@ -170,7 +171,7 @@ class TRTEngineResourceOpsTest
         TF_CHECK_OK(
             TensorShapeUtils::MakeShape(dimvec.data(), dimvec.size(), &shape));
 
-        const nvinfer1::ITensor* input = network->getInput(0);
+        const ITensorProxyPtr input = network->getInput(0);
         const char* name = input->getName();
         VLOG(2) << "Defining profile for input " << name;
         shape_vec[0] = shape;
@@ -198,24 +199,17 @@ class TRTEngineResourceOpsTest
       profile.InitProfiles(input_partial_shapes,
                            ProfileStrategy::kImplicitBatchModeCompatible);
       // Configure and build engine
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
       TF_CHECK_OK(profile.ConfigureBuilder(builder.get(), builder_config.get(),
                                            network.get()));
-#endif
     }
     VLOG(2) << "ConfigureBuilder Finished";
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
         builder->buildEngineWithConfig(*network, *builder_config));
-#else
-    TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
-        builder->buildCudaEngine(*network));
-#endif
     VLOG(2) << "Engine constructed";
     EXPECT_NE(nullptr, engine);
     return engine;
   }
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
   TestParam param_;
 };
 
@@ -224,13 +218,10 @@ constexpr std::array<TestParam, 3> TestParameters = {
     TestParam{nvinfer1::Dims{1, {1}}, false, 1},
     TestParam{nvinfer1::Dims{1, {1}}, true, 1},
     TestParam{nvinfer1::Dims{2, {3, 3}}, true, 2}};
-#elif IS_TRT_VERSION_GE(6, 0, 0, 0)
+#else
 constexpr std::array<TestParam, 2> TestParameters = {
     TestParam{nvinfer1::Dims{1, {1}}, false, 1},
     TestParam{nvinfer1::Dims{1, {1}}, true, 1}};
-#else
-constexpr std::array<TestParam, 1> TestParameters = {
-    TestParam{nvinfer1::Dims{1, {1}}, false, 1}};
 #endif
 
 INSTANTIATE_TEST_CASE_P(EngineResourceOpsTestInstantiation,
@@ -243,8 +234,6 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
       DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
   ResourceMgr* rm = device->resource_manager();
   SetDevice(DEVICE_GPU, std::move(device));
-
-  VLOG(2) << "Is TRT64 ? " << IS_TRT_VERSION_GE(6, 0, 0, 0);
 
   // Create a resource handle.
   const string container(kTfTrtContainerName);
@@ -290,8 +279,13 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
   ExecutionContext context = ExecutionContext::Create(engine.get());
 
+  std::vector<TensorShape> engine_input_shape(1);
+  TF_ASSERT_OK(TrtDimsToTensorShape(param_.dims, &(engine_input_shape[0])));
+  if (param_.n_inputs > 1) {
+    engine_input_shape.push_back(TensorShape({1, 1}));
+  }
   resource->cache_.emplace(
-      std::vector<TensorShape>{TensorShape({1, 1})},
+      engine_input_shape,
       absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
@@ -334,10 +328,11 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   TF_ASSERT_OK(reader->ReadRecord(&offset, &record));
   TRTEngineInstance engine_instance;
   engine_instance.ParseFromString(record);
-  EXPECT_EQ(1, engine_instance.input_shapes_size());
-  EXPECT_EQ(2, engine_instance.input_shapes(0).dim_size());
-  EXPECT_EQ(1, engine_instance.input_shapes(0).dim(0).size());
-  EXPECT_EQ(1, engine_instance.input_shapes(0).dim(1).size());
+  EXPECT_EQ(param_.n_inputs, engine_instance.input_shapes_size());
+  EXPECT_EQ(param_.dims.nbDims, engine_instance.input_shapes(0).dim_size());
+  for (int i = 0; i < param_.dims.nbDims; i++) {
+    EXPECT_EQ(param_.dims.d[i], engine_instance.input_shapes(0).dim(i).size());
+  }
   EXPECT_TRUE(errors::IsOutOfRange(reader->ReadRecord(&offset, &record)));
 
   // Recreate the resource and use the file with the serialized engine to

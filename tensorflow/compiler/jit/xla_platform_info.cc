@@ -28,7 +28,7 @@ xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
   const std::vector<string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
   for (const string& platform_device_id_str : visible_devices) {
-    int32 platform_device_id;
+    int32_t platform_device_id;
     if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
       return errors::InvalidArgument(
           "Could not parse entry in 'visible_device_list': '",
@@ -171,7 +171,7 @@ XlaCompiler::Options GenerateCompilerOptions(
   options.device_allocator = GetAllocator(device, stream, platform_info);
   if (platform_info.xla_device_metadata()) {
     options.shape_representation_fn =
-        platform_info.xla_device_metadata()->shape_representation_fn();
+        platform_info.xla_device_metadata()->default_shape_representation_fn();
   }
   // If reference variables are not present in the graph, we can safely alias
   // passthrough parameters without performing a copy.

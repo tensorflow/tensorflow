@@ -48,7 +48,7 @@ class PluggableDeviceFactory : public DeviceFactory {
   // it to the 'devices' vector.
   Status CreatePluggableDevice(const SessionOptions& options,
                                const std::string& name_prefix,
-                               TfDeviceId tf_device_id, int64 memory_limit,
+                               TfDeviceId tf_device_id, int64_t memory_limit,
                                const DeviceLocality& dev_locality,
                                std::vector<std::unique_ptr<Device>>* devices);
 

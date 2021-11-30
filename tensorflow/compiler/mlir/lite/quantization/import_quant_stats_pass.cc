@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_info.pb.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/location_utils.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> quantize_stats(
@@ -59,6 +60,16 @@ class ImportQuantStatsPass
  public:
   explicit ImportQuantStatsPass(OperationToName op_to_name)
       : op_to_name_(op_to_name) {}
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "quant-import-stats";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Import quantization stats to the model";
+  }
 
   void runOnFunction() override;
 
@@ -211,7 +222,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateImportQuantStatsPass(
 std::unique_ptr<OperationPass<FuncOp>>
 CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
   auto get_name_func = [](Operation *op) {
-    Location loc = op->getLoc();
+    Location loc = tensorflow::GetLocationWithoutOpType(op->getLoc());
     if (auto name = loc.dyn_cast<NameLoc>()) {
       return name.getName().strref();
     } else if (auto fused_name = loc.dyn_cast<FusedLoc>()) {
@@ -228,10 +239,9 @@ CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
 }
 
 // Registers this pass with default values, only for test
-static PassRegistration<ImportQuantStatsPass> pass(
-    "quant-import-stats", "Import quantization stats to the model", [] {
-      return CreateImportQuantStatsPassForTFControlDialect(quantize_stats);
-    });
+static PassRegistration<ImportQuantStatsPass> pass([] {
+  return CreateImportQuantStatsPassForTFControlDialect(quantize_stats);
+});
 
 }  // namespace quant
 }  // namespace mlir

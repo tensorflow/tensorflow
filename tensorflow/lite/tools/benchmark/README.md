@@ -64,6 +64,15 @@ and the following optional parameters:
     will include allocated memory size of each tensor etc. Enabling this could
     help understand TfLite graph and memory usage, particularly when there are
     dynamic-shaped tensors in the graph.
+*  `report_peak_memory_footprint`: `bool` (default=false) \
+    Whether to report the peak memory footprint by periodically checking the
+    memory footprint. Internally, a separate thread will be spawned for this
+    periodic check. Therefore, the performance benchmark result could be
+    affected.
+*  `memory_footprint_check_interval_ms`: `int` (default=50) \
+   The interval in millisecond between two consecutive memory footprint checks.
+   This is only used when --report_peak_memory_footprint is set to true.
+
 *  `dry_run`: `bool` (default=false) \
     Whether to run the tool just with simply loading the model, allocating
     tensors etc. but without actually invoking any op kernels.
@@ -71,6 +80,9 @@ and the following optional parameters:
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
     flags.
+*  `release_dynamic_tensors`: `bool` (default=false) \
+    Whether to configure the Interpreter to immediately release the memory of
+    dynamic tensors in the graph once they are not used.
 
 ### Model input parameters
 By default, the tool will use randomized data for model inputs. The following
@@ -116,6 +128,8 @@ where applicable. For details about each parameter, please refer to
 #### Common parameters
 * `max_delegated_partitions`: `int` (default=0)
 * `min_nodes_per_partition`:`int` (default=0)
+* `delegate_serialize_dir`: `str` (default="")
+* `delegate_serialize_token`: `str` (default="")
 
 #### GPU delegate
 * `use_gpu`: `bool` (default=false)
@@ -139,6 +153,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 10+.
 *   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
+*   `nnapi_allow_dynamic_dimensions`:`bool` (default=false)
 *   `nnapi_use_burst_mode`:`bool` (default=false)
 
 #### Hexagon delegate

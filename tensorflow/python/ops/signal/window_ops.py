@@ -14,10 +14,6 @@
 # ==============================================================================
 """Ops for computing common window functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -245,5 +241,5 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
       return math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype)
     return control_flow_ops.cond(
         math_ops.equal(window_length, 1),
-        lambda: array_ops.ones([1], dtype=dtype),
+        lambda: array_ops.ones([window_length], dtype=dtype),
         lambda: math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype))

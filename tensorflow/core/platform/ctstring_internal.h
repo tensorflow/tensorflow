@@ -63,9 +63,9 @@ static inline uint32_t TF_swap32(uint32_t host_int) {
 #endif
 
 #if TF_TSTRING_LITTLE_ENDIAN
-#define TF_le32toh(x) TF_swap32(x)
-#else  // TF_TSTRING_LITTLE_ENDIAN
 #define TF_le32toh(x) x
+#else  // TF_TSTRING_LITTLE_ENDIAN
+#define TF_le32toh(x) TF_swap32(x)
 #endif  // TF_TSTRING_LITTLE_ENDIAN
 
 static inline size_t TF_align16(size_t i) { return (i + 0xF) & ~0xF; }
@@ -342,6 +342,14 @@ static inline void TF_TString_Reserve(TF_TString *str, size_t new_cap) {
   str->u.large.cap = new_cap;
 }
 
+static inline void TF_TString_ReserveAmortized(TF_TString *str,
+                                               size_t new_cap) {
+  const size_t curr_cap = TF_TString_GetCapacity(str);
+  if (new_cap > curr_cap) {
+    TF_TString_Reserve(str, new_cap > 2 * curr_cap ? new_cap : 2 * curr_cap);
+  }
+}
+
 static inline char *TF_TString_Resize(TF_TString *str, size_t new_size,
                                       char c) {
   size_t curr_size = TF_TString_GetSize(str);
@@ -368,6 +376,8 @@ static inline void TF_TString_AppendN(TF_TString *dst, const char *src,
 
   size_t dst_size = TF_TString_GetSize(dst);
 
+  // For append use cases, we want to ensure amortized growth.
+  TF_TString_ReserveAmortized(dst, dst_size + src_size);
   char *dst_c = TF_TString_ResizeUninitialized(dst, dst_size + src_size);
 
   memcpy(dst_c + dst_size, src, src_size);

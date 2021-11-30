@@ -42,13 +42,13 @@ static void EXPECT_REDZONE_VIOLATION(
 }
 
 TEST(RedzoneAllocatorTest, WriteToRedzone) {
-  constexpr int64 kRedzoneSize = 1 << 23;  // 8MiB redzone on each side
+  constexpr int64_t kRedzoneSize = 1 << 23;  // 8MiB redzone on each side
   // Redzone pattern should not be equal to zero; otherwise modify_redzone will
   // break.
   constexpr uint8 kRedzonePattern = 0x7e;
 
   // Allocate 32MiB + 1 byte (to make things misaligned)
-  constexpr int64 kAllocSize = (1 << 25) + 1;
+  constexpr int64_t kAllocSize = (1 << 25) + 1;
 
   Platform* platform =
       MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
@@ -76,9 +76,9 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
     std::vector<uint8> host_buf(kRedzoneSize);
     TF_ASSERT_OK(stream.ThenMemcpy(host_buf.data(), redzone, kRedzoneSize)
                      .BlockHostUntilDone());
-    const int64 kMaxMismatches = 16;
-    int64 mismatches = 0;
-    for (int64 i = 0; i < host_buf.size(); ++i) {
+    const int64_t kMaxMismatches = 16;
+    int64_t mismatches = 0;
+    for (int64_t i = 0; i < host_buf.size(); ++i) {
       if (mismatches == kMaxMismatches) {
         ADD_FAILURE() << "Hit max number of mismatches; skipping others.";
         break;
@@ -96,7 +96,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   // Modifies a redzone, checks that RedzonesAreUnmodified returns false, then
   // reverts it back to its original value and checks that RedzonesAreUnmodified
   // returns true.
-  auto modify_redzone = [&](DeviceMemoryBase redzone, int64 offset,
+  auto modify_redzone = [&](DeviceMemoryBase redzone, int64_t offset,
                             absl::string_view name) {
     SCOPED_TRACE(absl::StrCat(name, ", offset=", offset));
     DeviceMemoryBase redzone_at_offset(
@@ -124,7 +124,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
 // maximum number of threads per block is 1024.
 TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   // Make sure the redzone size would require grid dimension > 65535.
-  constexpr int64 kRedzoneSize = 65535 * 1024 + 1;
+  constexpr int64_t kRedzoneSize = 65535 * 1024 + 1;
   Platform* platform =
       MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();

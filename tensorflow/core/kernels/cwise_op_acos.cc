@@ -16,12 +16,16 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER2(UnaryOp, CPU, "Acos", functor::acos, float, double);
+REGISTER5(UnaryOp, CPU, "Acos", functor::acos, Eigen::half, bfloat16, float,
+          double, int8);
+REGISTER5(UnaryOp, CPU, "Acos", functor::acos, int16, int32, int64_t, complex64,
+          complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER2(UnaryOp, GPU, "Acos", functor::acos, float, double);
+REGISTER3(UnaryOp, GPU, "Acos", functor::acos, Eigen::half, float, double);
 #endif
+REGISTER(UnaryOp, GPU, "Acos", functor::acos, bfloat16);
 #endif
 
 }  // namespace tensorflow

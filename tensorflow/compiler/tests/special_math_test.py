@@ -15,10 +15,6 @@
 
 """Tests for special math operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl import flags
@@ -26,7 +22,6 @@ from absl.testing import parameterized
 
 import numpy as np
 import scipy.special as sps
-import six
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
@@ -81,10 +76,7 @@ class Log1pTest(xla_test.XLATestCase, parameterized.TestCase):
   def setUp(self):
     if flags.FLAGS.vary_seed:
       entropy = os.urandom(64)
-      if six.PY2:
-        answer = int(entropy.encode('hex'), 16)
-      else:
-        answer = int.from_bytes(entropy, 'big')
+      answer = int.from_bytes(entropy, 'big')
       np.random.seed(answer % (2**32 - 1))
     super(Log1pTest, self).setUp()
 
@@ -151,10 +143,7 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
   def setUp(self):
     if flags.FLAGS.vary_seed:
       entropy = os.urandom(64)
-      if six.PY2:
-        answer = int(entropy.encode('hex'), 16)
-      else:
-        answer = int.from_bytes(entropy, 'big')
+      answer = int.from_bytes(entropy, 'big')
       np.random.seed(answer % (2**32 - 1))
     super(ZetaTest, self).setUp()
 
@@ -281,10 +270,7 @@ class PolygammaTest(xla_test.XLATestCase, parameterized.TestCase):
   def setUp(self):
     if flags.FLAGS.vary_seed:
       entropy = os.urandom(64)
-      if six.PY2:
-        answer = int(entropy.encode('hex'), 16)
-      else:
-        answer = int.from_bytes(entropy, 'big')
+      answer = int.from_bytes(entropy, 'big')
       np.random.seed(answer % (2**32 - 1))
     super(PolygammaTest, self).setUp()
 
@@ -365,10 +351,7 @@ class IgammaTest(xla_test.XLATestCase, parameterized.TestCase):
   def setUp(self):
     if flags.FLAGS.vary_seed:
       entropy = os.urandom(64)
-      if six.PY2:
-        answer = int(entropy.encode('hex'), 16)
-      else:
-        answer = int.from_bytes(entropy, 'big')
+      answer = int.from_bytes(entropy, 'big')
       np.random.seed(answer % (2**32 - 1))
     super(IgammaTest, self).setUp()
 
@@ -550,10 +533,7 @@ class IgammacTest(xla_test.XLATestCase, parameterized.TestCase):
   def setUp(self):
     if flags.FLAGS.vary_seed:
       entropy = os.urandom(64)
-      if six.PY2:
-        answer = int(entropy.encode('hex'), 16)
-      else:
-        answer = int.from_bytes(entropy, 'big')
+      answer = int.from_bytes(entropy, 'big')
       np.random.seed(answer % (2**32 - 1))
     super(IgammacTest, self).setUp()
 

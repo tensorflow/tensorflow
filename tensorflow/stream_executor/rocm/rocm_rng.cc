@@ -169,7 +169,7 @@ bool GpuRng::DoPopulateRandUniformInternal(Stream* stream, DeviceMemory<T>* v) {
   }
 
   // std::complex<T> is currently implemented as two consecutive T variables.
-  uint64 element_count = v->ElementCount();
+  uint64_t element_count = v->ElementCount();
   if (std::is_same<T, std::complex<float>>::value ||
       std::is_same<T, std::complex<double>>::value) {
     element_count *= 2;
@@ -225,7 +225,7 @@ bool GpuRng::DoPopulateRandGaussianInternal(Stream* stream, ElemT mean,
     return false;
   }
 
-  uint64 element_count = v->ElementCount();
+  uint64_t element_count = v->ElementCount();
   hiprandStatus_t ret =
       func(parent_, rng_, GpuMemoryMutable(v), element_count, mean, stddev);
 
@@ -250,7 +250,7 @@ bool GpuRng::DoPopulateRandGaussian(Stream* stream, double mean, double stddev,
                                         wrap::hiprandGenerateNormalDouble);
 }
 
-bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64 seed_bytes) {
+bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64_t seed_bytes) {
   absl::MutexLock lock{&mu_};
   CHECK(rng_ != nullptr);
 
@@ -265,7 +265,7 @@ bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64 seed_bytes) {
   // Requires 8 bytes of seed data; checked in RngSupport::CheckSeed (above)
   // (which itself requires 16 for API consistency with host RNG fallbacks).
   hiprandStatus_t ret = wrap::hiprandSetPseudoRandomGeneratorSeed(
-      parent_, rng_, *(reinterpret_cast<const uint64*>(seed)));
+      parent_, rng_, *(reinterpret_cast<const uint64_t*>(seed)));
   if (ret != HIPRAND_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set rng seed: " << ret;
     return false;

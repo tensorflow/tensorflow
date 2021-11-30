@@ -125,7 +125,7 @@ void DeleteProfiler() {
   }
 }
 
-double AddStep(int64 step, const string* graph, const string* run_meta,
+double AddStep(int64_t step, const string* graph, const string* run_meta,
                const string* op_log) {
   CHECK(tf_stat);
 

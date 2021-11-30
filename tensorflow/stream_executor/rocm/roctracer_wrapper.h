@@ -68,7 +68,7 @@ namespace wrap {
   DO_FUNC(roctracer_disable_op_callback)         \
   DO_FUNC(roctracer_enable_domain_activity_expl) \
   DO_FUNC(roctracer_enable_domain_callback)      \
-  DO_FUNC(roctracer_enable_op_activity)          \
+  DO_FUNC(roctracer_enable_op_activity_expl)     \
   DO_FUNC(roctracer_enable_op_callback)          \
   DO_FUNC(roctracer_error_string)                \
   DO_FUNC(roctracer_flush_activity_expl)         \

@@ -104,12 +104,12 @@ Usage:
 
 // Unless an explicit width is specified, we will render a neighborhood of
 // kDefaultWidth nodes around the requested instruction.
-constexpr int64 kDefaultWidth = 2;
+constexpr int64_t kDefaultWidth = 2;
 
 // When printing all paths between two nodes, we print out only this many nodes
 // by default, truncating the graph if there are more nodes than this in the
 // all-paths set.
-constexpr int64 kDefaultMaxNumNodesInAllPaths = 100;
+constexpr int64_t kDefaultMaxNumNodesInAllPaths = 100;
 
 using absl::EqualsIgnoreCase;
 
@@ -380,7 +380,7 @@ void DoExtractCommand(const HloModule& module,
     return;
   }
 
-  int64 height = -1;
+  int64_t height = -1;
   if (tokens.size() == 3) {
     if (!absl::SimpleAtoi(tokens[2], &height)) {
       std::cerr << "Can't parse '" << tokens[2] << "' as an integer."
@@ -503,7 +503,7 @@ void DoAllPathsCommand(const Options& opts, const HloModule& module,
     return;
   }
 
-  int64 max_nodes = kDefaultMaxNumNodesInAllPaths;
+  int64_t max_nodes = kDefaultMaxNumNodesInAllPaths;
   if (tokens.size() == 4 && !absl::SimpleAtoi(tokens[3], &max_nodes)) {
     std::cerr << "Can't parse '" << tokens[3] << "' as an integer."
               << std::endl;

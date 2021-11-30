@@ -185,10 +185,6 @@ reasonable default behavior.
 """
 # pylint: enable=line-too-long
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import enum  # pylint: disable=g-bad-import-order
@@ -212,6 +208,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -231,7 +228,6 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
-
 
 # ------------------------------------------------------------------------------
 # Context tracking whether in a strategy.update() or .update_non_slot() call.
@@ -374,11 +370,13 @@ class _CurrentDistributionContext(object):
                strategy,
                var_creator_scope,
                var_scope=None,
+               resource_creator_scope=None,
                default_device=None):
     self._context = distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
         strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
+    self._resource_creator_scope = resource_creator_scope
     if default_device:
       self._device_scope = ops.device(default_device)
     else:
@@ -396,6 +394,9 @@ class _CurrentDistributionContext(object):
       if self._var_scope:
         self._var_scope.__enter__()
       self._var_creator_scope.__enter__()
+      if self._resource_creator_scope:
+        nest.map_structure(lambda scope: scope.__enter__(),
+                           self._resource_creator_scope)
       if self._device_scope:
         self._device_scope.__enter__()
     return self._context.strategy
@@ -421,6 +422,24 @@ class _CurrentDistributionContext(object):
           RuntimeError("Variable creator scope nesting error: move call to "
                        "tf.distribute.set_strategy() out of `with` scope."),
           e)
+
+    if self._resource_creator_scope:
+      try:
+        if isinstance(self._resource_creator_scope, list):
+          reversed_resource_creator_scope = self._resource_creator_scope[::-1]
+          nest.map_structure(
+              lambda scope: scope.__exit__(exception_type, exception_value,  # pylint:disable=g-long-lambda
+                                           traceback),
+              reversed_resource_creator_scope)
+
+        else:
+          self._resource_creator_scope.__exit__(exception_type, exception_value,
+                                                traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Resource creator scope nesting error: move call "
+                         "to tf.distribute.set_strategy() out of `with` "
+                         "scope."), e)
 
     if self._var_scope:
       try:
@@ -937,6 +956,7 @@ class StrategyBase(object):
   # pylint: enable=line-too-long
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED, moving to `extended`
+  @deprecated(None, "use extended.colocate_vars_with() instead.")
   def colocate_vars_with(self, colocate_with_variable):
     """DEPRECATED: use extended.colocate_vars_with() instead."""
     return self._extended.colocate_vars_with(colocate_with_variable)
@@ -959,6 +979,7 @@ class StrategyBase(object):
           input_fn, replication_mode=replication_mode)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
+  @deprecated(None, "use run() instead")
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
     with self.scope():
@@ -1081,6 +1102,8 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__, "distribute_dataset").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._experimental_distribute_dataset(dataset, options)  # pylint: disable=protected-access
 
@@ -1156,6 +1179,9 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__,
+        "distribute_datasets_from_function").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._distribute_datasets_from_function(  # pylint: disable=protected-access
         dataset_fn, options)
@@ -1490,6 +1516,7 @@ class StrategyBase(object):
     return math_ops.truediv(numer, denom)
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED
+  @deprecated(None, "use `experimental_local_results` instead.")
   def unwrap(self, value):
     """Returns the list of all local per-replica values contained in `value`.
 
@@ -1542,6 +1569,7 @@ class StrategyBase(object):
     return self._extended._num_replicas_in_sync  # pylint: disable=protected-access
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED: see doc string
+  @deprecated(None, "use `update_config_proto` instead.")
   def configure(self,
                 session_config=None,
                 cluster_spec=None,
@@ -1824,7 +1852,7 @@ class Strategy(StrategyBase):
                                                        error_message)
     dst = device_util.current(
     ) or self._extended._default_device or "/device:CPU:0"
-    if isinstance(value, ops.IndexedSlices):
+    if isinstance(value, indexed_slices.IndexedSlices):
       raise NotImplementedError("gather does not support IndexedSlices")
     return self._extended._local_results(
         self._extended._gather_to(value, dst, axis))[0]
@@ -1942,6 +1970,10 @@ class StrategyV1(StrategyBase):
     return self.extended.experimental_make_numpy_dataset(
         numpy_input, session=session)
 
+  @deprecated(
+      None,
+      "This method is not available in TF 2.x. Please switch to using `run` instead."
+  )
   def experimental_run(self, fn, input_iterator=None):  # pylint: disable=useless-super-delegation
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
 
@@ -2077,6 +2109,10 @@ class StrategyExtendedV2(object):
     # when creating Datasets from numpy array inputs.
     self._require_static_shapes = False
 
+  def _resource_creator_scope(self):
+    """Returns one or a list of ops.resource_creator_scope for some Strategy."""
+    return None
+
   def _container_strategy(self):
     """Get the containing `tf.distribute.Strategy`.
 
@@ -2151,7 +2187,9 @@ class StrategyExtendedV2(object):
         variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=distributed_getter), self._default_device)
+            custom_getter=distributed_getter),
+        strategy.extended._resource_creator_scope(),  # pylint: disable=protected-access
+        self._default_device)
 
   def _allow_variable_partition(self):
     return False
@@ -2747,6 +2785,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
+  @deprecated(None, "please use `run` instead.")
   def experimental_run_steps_on_iterator(self,
                                          fn,
                                          iterator,
@@ -3163,6 +3202,9 @@ class ReplicaContextBase(object):
     execute in the same order on all replicas. Dispatching all-reduce based on
     conditions is usually error-prone.
 
+    Known limitation: if `value` contains `tf.IndexedSlices`, attempting to
+    compute gradient w.r.t `value` would result in an error.
+
     This API currently can only be called in the replica context. Other
     variants to reduce values across replicas are:
     * `tf.distribute.StrategyExtended.reduce_to`: the reduce and all-reduce API
@@ -3176,9 +3218,9 @@ class ReplicaContextBase(object):
       reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
         be combined. Allows using string representation of the enum such as
         "SUM", "MEAN".
-      value: a nested structure of `tf.Tensor` which `tf.nest.flatten` accepts.
-        The structure and the shapes of the `tf.Tensor` need to be same on all
-        replicas.
+      value: a potentially nested structure of `tf.Tensor` or `tf.IndexedSlices` which
+        `tf.nest.flatten` accepts. The structure and the shapes of `value` need to be
+        same on all replicas.
       options: a `tf.distribute.experimental.CommunicationOptions`. Options to
         perform collective operations. This overrides the default options if the
         `tf.distribute.Strategy` takes one in the constructor. See
@@ -3189,6 +3231,13 @@ class ReplicaContextBase(object):
        A nested structure of `tf.Tensor` with the reduced values. The structure
        is the same as `value`.
     """
+    flattened_value = nest.flatten(value)
+    has_indexed_slices = False
+
+    for v in flattened_value:
+      if isinstance(v, indexed_slices.IndexedSlices):
+        has_indexed_slices = True
+
     if isinstance(reduce_op, six.string_types):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     if options is None:
@@ -3204,13 +3253,23 @@ class ReplicaContextBase(object):
     # found in b/184009754.
     if self._strategy.extended._use_merge_call():  # pylint: disable=protected-access
       # TODO(cjfj): Work out why `batch_reduce` doesn't return the correct grad.
+      if has_indexed_slices:
+        return nest.pack_sequence_as(
+            value,
+            self.merge_call(batch_all_reduce, args=flattened_value))
+
       @custom_gradient.custom_gradient
       def grad_wrapper(*xs):
         ys = self.merge_call(batch_all_reduce, args=xs)
         # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
         return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
-      return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+      return nest.pack_sequence_as(value, grad_wrapper(*flattened_value))
     else:
+      if has_indexed_slices:
+        return nest.pack_sequence_as(
+            value,
+            self._strategy.extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
+                reduce_op, flattened_value, options))
 
       @custom_gradient.custom_gradient
       def grad_wrapper(*xs):
@@ -3219,7 +3278,7 @@ class ReplicaContextBase(object):
         # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
         return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
 
-      return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+      return nest.pack_sequence_as(value, grad_wrapper(*flattened_value))
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`
@@ -3360,7 +3419,7 @@ class ReplicaContext(ReplicaContextBase):
        is the same as `value`.
     """
     for v in nest.flatten(value):
-      if isinstance(v, ops.IndexedSlices):
+      if isinstance(v, indexed_slices.IndexedSlices):
         raise NotImplementedError("all_gather does not support IndexedSlices")
 
     if options is None:
@@ -3404,7 +3463,7 @@ class ReplicaContext(ReplicaContextBase):
 
     Example usage:
 
-    >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'CPU:0']) # 2 replicas
+    >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'GPU:1']) # 2 replicas
     >>> with strategy.scope():
     ...   distributed_variable = tf.Variable(5.0)
     >>> distributed_variable
@@ -3495,8 +3554,6 @@ def _batch_reduce_destination(x):
     return x.device
   else:
     return x
-
-
 # ------------------------------------------------------------------------------
 
 
@@ -3791,3 +3848,6 @@ distribution_strategy_replica_gauge = monitoring.IntGauge(
     "/tensorflow/api/distribution_strategy/replica",
     "Gauge to track the number of replica each distribution strategy used.",
     "CountType")
+distribution_strategy_input_api_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/input_api",
+    "Counter to track the usage of the input APIs", "strategy", "api")

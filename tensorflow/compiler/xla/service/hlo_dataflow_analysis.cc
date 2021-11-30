@@ -47,10 +47,10 @@ namespace xla {
 namespace {
 // CalculatePostOrderSchedule traverses a module and assign a ordinal to each
 // instruction based the postorder dependency.
-int64 CalculatePostOrderScheduleHelper(
-    const HloComputation* comp, int64 start_ordinal,
-    absl::flat_hash_map<HloInstruction*, int64>* ordinal_map) {
-  int64 ordinal = start_ordinal;
+int64_t CalculatePostOrderScheduleHelper(
+    const HloComputation* comp, int64_t start_ordinal,
+    absl::flat_hash_map<HloInstruction*, int64_t>* ordinal_map) {
+  int64_t ordinal = start_ordinal;
   for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
     if (instruction->opcode() == HloOpcode::kCall ||
         instruction->opcode() == HloOpcode::kConditional) {
@@ -75,9 +75,9 @@ int64 CalculatePostOrderScheduleHelper(
   return ordinal;
 }
 
-absl::flat_hash_map<HloInstruction*, int64> CalculatePostOrderSchedule(
+absl::flat_hash_map<HloInstruction*, int64_t> CalculatePostOrderSchedule(
     const HloModule& module) {
-  absl::flat_hash_map<HloInstruction*, int64> map;
+  absl::flat_hash_map<HloInstruction*, int64_t> map;
   CalculatePostOrderScheduleHelper(module.entry_computation(), 0, &map);
   return map;
 }
@@ -106,7 +106,7 @@ bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     visited.insert(current);
     for (const HloInstruction* user : current->users()) {
       // Found a user that is non-elementwise on current instruction.
-      for (const int64 use_index : user->OperandIndices(current)) {
+      for (const int64_t use_index : user->OperandIndices(current)) {
         if (!user->IsElementwiseOnOperand(use_index) &&
             user->opcode() != HloOpcode::kTuple) {
           return false;
@@ -146,7 +146,7 @@ struct ConcatUsageInfo {
   // Pointer to a previously seen concat. nullptr if no previously seen concat.
   const HloInstruction* prev_concat;
   // The opnd id of the seen concat.
-  int64 concat_opnd_idx;
+  int64_t concat_opnd_idx;
   // The slice that recovers the opnd in the concat outputs.
   const HloInstruction* slice_to_recover_opnd;
 };
@@ -178,10 +178,10 @@ absl::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
   absl::c_sort(users, [](const HloInstruction* a, const HloInstruction* b) {
     return a->slice_starts().at(0) < b->slice_starts().at(0);
   });
-  int64 prev_limit = 0;
-  for (int64 i = 0; i < users.size(); ++i) {
+  int64_t prev_limit = 0;
+  for (int64_t i = 0; i < users.size(); ++i) {
     const HloInstruction* u = users[i];
-    int64 slice_size = u->slice_limits().at(0) - u->slice_starts().at(0);
+    int64_t slice_size = u->slice_limits().at(0) - u->slice_starts().at(0);
     if (u->slice_starts().at(0) != prev_limit ||
         slice_size != ShapeUtil::ElementsIn(concat.operand(i)->shape())) {
       return absl::optional<ConcatUsageInfo>();
@@ -194,7 +194,7 @@ absl::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
   // of the fusion candidates. Check that all concats and operand ids are the
   // same to know that the "transitive use closure" will be computed in the same
   // iteration space.
-  int64 operand_idx = concat.operand_index(&operand);
+  int64_t operand_idx = concat.operand_index(&operand);
   if (info.prev_concat != nullptr) {
     bool is_concat_identical = info.prev_concat->Identical(
         concat,
@@ -266,7 +266,7 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* param,
           continue;
         }
         default:
-          for (const int64 use_index : user->OperandIndices(current)) {
+          for (const int64_t use_index : user->OperandIndices(current)) {
             if (!user->IsElementwiseOnOperand(use_index)) {
               // Found a user that is non-elementwise on the current
               // instruction.
@@ -313,7 +313,7 @@ HloValue& HloDataflowAnalysis::GetValueDefinedAt(
 HloValue* HloDataflowAnalysis::NewHloValue(HloInstruction* instruction,
                                            const ShapeIndex& index,
                                            bool is_phi) {
-  const int64 value_id = next_value_id_++;
+  const int64_t value_id = next_value_id_++;
   auto emplaced = values_.emplace(
       std::piecewise_construct, std::forward_as_tuple(value_id),
       std::forward_as_tuple(value_id, instruction, index, is_phi));
@@ -588,28 +588,11 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
     const HloValueSet& operand_value_set = pair.second;
 
     ShapeIndex index = {0};
-    for (int64 i : operand_index) {
+    for (int64_t i : operand_index) {
       index.push_back(i);
     }
 
     HloValueSet& value_set = GetValueSet(send, index);
-    if (value_set != operand_value_set) {
-      value_set = operand_value_set;
-      changed = true;
-    }
-  }
-  return changed;
-}
-
-bool HloDataflowAnalysis::UpdateCustomCallValueSet(
-    HloInstruction* custom_call) {
-  CHECK_EQ(custom_call->opcode(), HloOpcode::kCustomCall);
-  bool changed = false;
-  for (const auto& aliasing : Cast<HloCustomCallInstruction>(custom_call)
-                                  ->output_to_operand_aliasing()) {
-    const HloValueSet& operand_value_set = GetValueSet(
-        custom_call->operand(aliasing.second.first), aliasing.second.second);
-    HloValueSet& value_set = GetValueSet(custom_call, aliasing.first);
     if (value_set != operand_value_set) {
       value_set = operand_value_set;
       changed = true;
@@ -760,7 +743,7 @@ bool HloDataflowAnalysis::UpdateGetTupleElementValueSet(HloInstruction* gte) {
     // The corresponding ShapeIndex of the operand is simply the GTE ShapeIndex
     // with the tuple element number prefixed.
     ShapeIndex operand_index = {gte->tuple_index()};
-    for (int64 i : index) {
+    for (int64_t i : index) {
       operand_index.push_back(i);
     }
 
@@ -781,11 +764,11 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
 
   // Subcomputations called in a parallel context (eg, map) do not have dataflow
   // from the caller operands.
-  if (call_graph_node.context() == CallContext::kParallel ||
+  if (call_graph_node.context() == CallContext::kEmbedded ||
       call_graph_node.caller_callsites().empty()) {
     return false;
   }
-  CHECK_EQ(call_graph_node.context(), CallContext::kSequential);
+  CHECK_EQ(call_graph_node.context(), CallContext::kControlFlow);
 
   std::vector<const InstructionValueSet*> inputs;
   bool need_phi = false;
@@ -868,7 +851,7 @@ bool HloDataflowAnalysis::UpdateTupleSelectValueSet(HloInstruction* select) {
 bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
   CHECK_EQ(tuple->opcode(), HloOpcode::kTuple);
   bool changed = false;
-  for (int64 i = 0; i < tuple->operands().size(); ++i) {
+  for (int64_t i = 0; i < tuple->operands().size(); ++i) {
     // Copy the value set(s) of each operand into the respective position in the
     // kTuple instruction's value sets.
     for (auto& pair : GetInstructionValueSet(tuple->operand(i))) {
@@ -876,7 +859,7 @@ bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
       HloValueSet& operand_value_set = pair.second;
 
       ShapeIndex index = {i};
-      for (int64 op_index : operand_index) {
+      for (int64_t op_index : operand_index) {
         index.push_back(op_index);
       }
       HloValueSet& value_set = GetValueSet(tuple, index);
@@ -902,21 +885,45 @@ bool HloDataflowAnalysis::UpdateWhileValueSet(HloInstruction* xla_while) {
   }
 }
 
-bool HloDataflowAnalysis::UpdateAllReduceStartValueSet(
-    HloInstruction* all_reduce_start) {
-  CHECK_EQ(all_reduce_start->opcode(), HloOpcode::kAllReduceStart);
+bool HloDataflowAnalysis::UpdateAllGatherStartValueSet(
+    HloInstruction* all_gather_start) {
+  CHECK_EQ(all_gather_start->opcode(), HloOpcode::kAllGatherStart);
   bool changed = false;
-  // AllReduceStart forwards the operand values to element {0} of its output.
-  for (int64_t i = 0; i < all_reduce_start->operand_count(); ++i) {
+  // AllGatherStart forwards the operand values to element {0} of its output.
+  for (int64_t i = 0; i < all_gather_start->operand_count(); ++i) {
     const HloValueSet& operand_value_set =
-        GetValueSet(all_reduce_start->operand(i));
+        GetValueSet(all_gather_start->operand(i));
 
     ShapeIndex output_index = {0};
-    if (all_reduce_start->operand_count() > 1) {
+    if (all_gather_start->operand_count() > 1) {
       output_index.push_back(i);
     }
 
-    HloValueSet& value_set = GetValueSet(all_reduce_start, output_index);
+    HloValueSet& value_set = GetValueSet(all_gather_start, output_index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateAllGatherDoneValueSet(
+    HloInstruction* all_gather_done) {
+  CHECK_EQ(all_gather_done->opcode(), HloOpcode::kAllGatherDone);
+  bool changed = false;
+  // AllGatherDone forwards the operand value at {1} to its output.
+  for (auto& pair : GetInstructionValueSet(all_gather_done)) {
+    const ShapeIndex& output_index = pair.first;
+    HloValueSet& value_set = pair.second;
+
+    ShapeIndex operand_index = {1};
+    for (int64_t i : output_index) {
+      operand_index.push_back(i);
+    }
+
+    const HloValueSet& operand_value_set =
+        GetValueSet(all_gather_done->operand(0), operand_index);
     if (value_set != operand_value_set) {
       value_set = operand_value_set;
       changed = true;
@@ -929,12 +936,12 @@ bool HloDataflowAnalysis::UpdateAllReduceDoneValueSet(
     HloInstruction* all_reduce_done) {
   CHECK_EQ(all_reduce_done->opcode(), HloOpcode::kAllReduceDone);
   bool changed = false;
-  // AllReduceDone forwards the operand value at {1} to its output.
+  // AllReduceDone forwards its only operand.
   for (auto& pair : GetInstructionValueSet(all_reduce_done)) {
     const ShapeIndex& output_index = pair.first;
     HloValueSet& value_set = pair.second;
 
-    ShapeIndex operand_index = {1};
+    ShapeIndex operand_index = {};
     for (int64_t i : output_index) {
       operand_index.push_back(i);
     }
@@ -956,12 +963,26 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteStartValueSet(
   bool changed = false;
   // CollectivePermuteStart forwards the operand value to element {0} of its
   // output.
-  const HloValueSet& operand_value_set =
-      GetValueSet(collective_permute_start->operand(0));
-  HloValueSet& value_set = GetValueSet(collective_permute_start, {0});
-  if (value_set != operand_value_set) {
-    value_set = operand_value_set;
-    changed = true;
+  if (collective_permute_start->operand(0)->shape().IsTuple()) {
+    for (int i = 0; i < ShapeUtil::TupleElementCount(
+                            collective_permute_start->operand(0)->shape());
+         ++i) {
+      const HloValueSet& operand_value_set =
+          GetValueSet(collective_permute_start->operand(0), {i});
+      HloValueSet& value_set = GetValueSet(collective_permute_start, {0, i});
+      if (value_set != operand_value_set) {
+        value_set = operand_value_set;
+        changed = true;
+      }
+    }
+  } else {
+    const HloValueSet& operand_value_set =
+        GetValueSet(collective_permute_start->operand(0));
+    HloValueSet& value_set = GetValueSet(collective_permute_start, {0});
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
   }
   return changed;
 }
@@ -972,12 +993,26 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteDoneValueSet(
            HloOpcode::kCollectivePermuteDone);
   bool changed = false;
   // CollectivePermuteDone forwards the operand value at {1} to its output.
-  const HloValueSet& operand_value_set =
-      GetValueSet(collective_permute_done->operand(0), {1});
-  HloValueSet& value_set = GetValueSet(collective_permute_done);
-  if (value_set != operand_value_set) {
-    value_set = operand_value_set;
-    changed = true;
+  if (collective_permute_done->shape().IsTuple()) {
+    for (int i = 0;
+         i < ShapeUtil::TupleElementCount(collective_permute_done->shape());
+         ++i) {
+      const HloValueSet& operand_value_set =
+          GetValueSet(collective_permute_done->operand(0), {1, i});
+      HloValueSet& value_set = GetValueSet(collective_permute_done, {i});
+      if (value_set != operand_value_set) {
+        value_set = operand_value_set;
+        changed = true;
+      }
+    }
+  } else {
+    const HloValueSet& operand_value_set =
+        GetValueSet(collective_permute_done->operand(0), {1});
+    HloValueSet& value_set = GetValueSet(collective_permute_done);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
   }
   return changed;
 }
@@ -988,10 +1023,12 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
   switch (instruction->opcode()) {
     case HloOpcode::kAddDependency:
       return UpdateAddDependencyValueSet(instruction);
+    case HloOpcode::kAllGatherStart:
+      return UpdateAllGatherStartValueSet(instruction);
+    case HloOpcode::kAllGatherDone:
+      return UpdateAllGatherDoneValueSet(instruction);
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
-    case HloOpcode::kCustomCall:
-      return UpdateCustomCallValueSet(instruction);
     case HloOpcode::kSetDimensionSize:
       return UpdateSetDimensionSizeValueSet(instruction);
     case HloOpcode::kDomain:
@@ -1020,8 +1057,6 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCopyDoneValueSet(instruction);
     case HloOpcode::kConditional:
       return UpdateConditionalValueSet(instruction);
-    case HloOpcode::kAllReduceStart:
-      return UpdateAllReduceStartValueSet(instruction);
     case HloOpcode::kAllReduceDone:
       return UpdateAllReduceDoneValueSet(instruction);
     case HloOpcode::kCollectivePermuteStart:
@@ -1036,7 +1071,7 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
 }
 
 void HloDataflowAnalysis::Propagate() {
-  using Work = std::pair<int64, HloInstruction*>;
+  using Work = std::pair<int64_t, HloInstruction*>;
   // Avoid duplicating work by preferring work items early in the post order
   // schedule. Intuitively, we start from entry parameters and propagate buffers
   // updates throughout the module only once.
@@ -1108,8 +1143,8 @@ void HloDataflowAnalysis::Propagate() {
         for (HloComputation* called_computation : user->called_computations()) {
           const CallGraphNode& call_graph_node =
               call_graph_->GetNode(called_computation);
-          if (call_graph_node.context() == CallContext::kSequential) {
-            for (int64 operand_number : user->OperandIndices(instruction)) {
+          if (call_graph_node.context() == CallContext::kControlFlow) {
+            for (int64_t operand_number : user->OperandIndices(instruction)) {
               add_to_worklist(
                   called_computation->parameter_instruction(operand_number));
             }
@@ -1206,7 +1241,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
                 computation->name());
           }
           if (call_graph_node.caller_callsites().empty() ||
-              call_graph_node.context() == CallContext::kParallel) {
+              call_graph_node.context() == CallContext::kEmbedded) {
             // Parameters of computations called in a parallel context (eg, map
             // and reduce) as well as parameters of dead computations define all
             // values in their output. Otherwise the values of the parameter
@@ -1232,19 +1267,20 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // CopyDone consumes a tuple produced by CopyStart and produces an
           // element. Its output aliases its input tuple element {0}.
           break;
-        case HloOpcode::kAllReduceStart:
-          // AllReduceStart produces a tuple of
+        case HloOpcode::kAllGatherStart:
+          // AllGatherStart produces a tuple of
           // {aliased operand, destination buffer}.
           define_value_at(/*index=*/{});
           define_value_at(/*index=*/{1});
-          if (instruction->operand_count() > 1) {
-            for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-              define_value_at(/*index=*/{1, i});
-            }
+          break;
+        case HloOpcode::kAllGatherDone:
+          // AllGatherDone's output aliases its input tuple element {1}.
+          if (instruction->shape().IsTuple()) {
+            define_value_at(/*index=*/{});
           }
           break;
         case HloOpcode::kAllReduceDone:
-          // AllReduceDone's output aliases its input tuple element {1}.
+          // AllReduceDone's output aliases its input.
           break;
         case HloOpcode::kCollectivePermuteStart:
           // CollectivePermuteStart produces a tuple of
@@ -1255,11 +1291,20 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           define_value_at(/*index=*/{3});
           if (instruction->operand_count() > 1) {
             CHECK_EQ(instruction->operand_count(), 4);
-            define_value_at(/*index=*/{4});
+            if (instruction->operand(1)->shape().IsTuple()) {
+              for (int i = 0; i < ShapeUtil::TupleElementCount(
+                                      instruction->operand(1)->shape());
+                   ++i) {
+                define_value_at(/*index=*/{1, i});
+              }
+            }
           }
           break;
         case HloOpcode::kCollectivePermuteDone:
           // CollectivePermuteDone's output aliases its input tuple element {1}.
+          if (instruction->shape().IsTuple()) {
+            define_value_at(/*index=*/{});
+          }
           break;
         case HloOpcode::kRecvDone:
           // RecvDone produces a two-element tuple. Element zero aliases its
@@ -1275,22 +1320,6 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           define_value_at(/*index=*/{1});
           define_value_at(/*index=*/{2});
           break;
-        case HloOpcode::kCustomCall: {
-          absl::flat_hash_set<ShapeIndex> aliasing_indices;
-          for (const auto& aliasing :
-               Cast<HloCustomCallInstruction>(instruction)
-                   ->output_to_operand_aliasing()) {
-            aliasing_indices.insert(aliasing.first);
-          }
-          ShapeUtil::ForEachSubshape(
-              instruction->shape(),
-              [&](const Shape& /*subshape*/, const ShapeIndex& index) {
-                if (!aliasing_indices.contains(index)) {
-                  define_value_at(index);
-                }
-              });
-          break;
-        }
         default:
           define_all_values();
           break;
@@ -1461,6 +1490,7 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   return opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
          opcode == HloOpcode::kCopyStart ||
          opcode == HloOpcode::kAllReduceStart ||
+         opcode == HloOpcode::kAllGatherStart ||
          opcode == HloOpcode::kCollectivePermuteStart;
 }
 
@@ -1469,6 +1499,7 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   return opcode == HloOpcode::kSendDone || opcode == HloOpcode::kRecvDone ||
          opcode == HloOpcode::kCopyDone ||
          opcode == HloOpcode::kAllReduceDone ||
+         opcode == HloOpcode::kAllGatherDone ||
          opcode == HloOpcode::kCollectivePermuteDone;
 }
 
@@ -1502,6 +1533,32 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
     } else {
       return {{HloUse{instruction, 1, {}}, {1}}};
     }
+  } else if (instruction->opcode() == HloOpcode::kCustomCall) {
+    // Custom Calls previously assumed that aliased operands were
+    // forwarded, but now supports modifiction semantics.
+    const auto& aliasing_pairs = Cast<HloCustomCallInstruction>(instruction)
+                                     ->output_to_operand_aliasing();
+    std::vector<std::pair<HloUse, ShapeIndex>> in_place_pairs;
+    in_place_pairs.reserve(aliasing_pairs.size());
+    for (const auto& pair : aliasing_pairs) {
+      ShapeIndex output_shape_index = pair.first;
+      int64_t operand_index = pair.second.first;
+      ShapeIndex operand_shape_index = pair.second.second;
+      in_place_pairs.push_back(
+          {HloUse{instruction, operand_index, {operand_shape_index}},
+           output_shape_index});
+    }
+    return in_place_pairs;
+  } else if (instruction->opcode() == HloOpcode::kAllReduceStart) {
+    if (instruction->operands().size() == 1) {
+      return {{HloUse{instruction, 0, {}}, {}}};
+    }
+    std::vector<std::pair<HloUse, ShapeIndex>> in_place_pairs;
+    in_place_pairs.reserve(instruction->operands().size());
+    for (int i = 0; i < instruction->operands().size(); i++) {
+      in_place_pairs.push_back({HloUse{instruction, i, {}}, {i}});
+    }
+    return in_place_pairs;
   } else if (instruction->opcode() != HloOpcode::kFusion) {
     return {};
   }
@@ -1510,7 +1567,7 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
   for (auto& indexed_shape : ShapeUtil::GetLeafShapes(instruction->shape())) {
     const HloInstruction* hlo_generating_output =
         instruction->fused_expression_root();
-    for (int64 i = 0; i < indexed_shape.index.size(); ++i) {
+    for (int64_t i = 0; i < indexed_shape.index.size(); ++i) {
       if (hlo_generating_output->opcode() == HloOpcode::kTuple) {
         hlo_generating_output =
             hlo_generating_output->operand(indexed_shape.index[i]);
@@ -1617,7 +1674,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       }
       auto* matched_add_operand = *add_operand_it;
       // Calculate operand index of 'add' operand which was not matched above.
-      const int64 other_add_operand_index =
+      const int64_t other_add_operand_index =
           matched_add_operand == add->operand(0) ? 1 : 0;
       // Returns true iff there is exactly one use of 'operand' at shape index
       // 'operand_index', and this singleton use is the fused root (at operand
@@ -1638,7 +1695,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // We eliminated other users in HloOrdering::LiveRangeStrictlyBefore
     // so here we just need to check that the use is at the right operand index.
     const auto operand_indices = user->OperandIndices(operand);
-    int64 operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
+    int64_t operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
     return operand_indices.size() == 1 && operand_indices[0] == operand_no;
   }
   if (user->opcode() == HloOpcode::kSort) {

@@ -36,24 +36,24 @@ namespace {
 // A subclass of a XlaBinaryOp must build the computation that
 // describes the (tensor,tensor)->tensor function to apply to each element of
 // the input.
-#define XLA_MAKE_BINARY(NAME, HLO)                                       \
-  class NAME##Op : public XlaBinaryOp {                                  \
-   public:                                                               \
-    explicit NAME##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}   \
-    xla::XlaOp Computation(                                              \
-        XlaOpKernelContext* ctx, const xla::XlaOp& lhs,                  \
-        const absl::Span<const int64>& lhs_shape, const xla::XlaOp& rhs, \
-        const absl::Span<const int64>& rhs_shape,                        \
-        const BCast& broadcast_helper,                                   \
-        const std::vector<int64>& extend_dimensions) override {          \
-      xla::XlaBuilder* b = ctx->builder();                               \
-      (void)b;                                                           \
-      (void)lhs_shape;                                                   \
-      (void)rhs_shape;                                                   \
-      (void)extend_dimensions;                                           \
-      return HLO;                                                        \
-    }                                                                    \
-  };                                                                     \
+#define XLA_MAKE_BINARY(NAME, HLO)                                         \
+  class NAME##Op : public XlaBinaryOp {                                    \
+   public:                                                                 \
+    explicit NAME##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}     \
+    xla::XlaOp Computation(                                                \
+        XlaOpKernelContext* ctx, const xla::XlaOp& lhs,                    \
+        const absl::Span<const int64_t>& lhs_shape, const xla::XlaOp& rhs, \
+        const absl::Span<const int64_t>& rhs_shape,                        \
+        const BCast& broadcast_helper,                                     \
+        const std::vector<int64_t>& extend_dimensions) override {          \
+      xla::XlaBuilder* b = ctx->builder();                                 \
+      (void)b;                                                             \
+      (void)lhs_shape;                                                     \
+      (void)rhs_shape;                                                     \
+      (void)extend_dimensions;                                             \
+      return HLO;                                                          \
+    }                                                                      \
+  };                                                                       \
   REGISTER_XLA_OP(Name(#NAME), NAME##Op)
 
 XLA_MAKE_BINARY(Add, xla::Add(lhs, rhs, extend_dimensions));
@@ -242,8 +242,9 @@ XLA_MAKE_BINARY(TanhGrad,
 
 XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
 
-xla::XlaOp SquaredDifferenceImpl(DataType dtype, xla::XlaOp x, xla::XlaOp y,
-                                 const std::vector<int64>& extend_dimensions) {
+xla::XlaOp SquaredDifferenceImpl(
+    DataType dtype, xla::XlaOp x, xla::XlaOp y,
+    const std::vector<int64_t>& extend_dimensions) {
   auto difference = xla::Sub(x, y, extend_dimensions);
   if (DataTypeIsComplex(dtype)) {
     return xla::Conj(difference) * difference;

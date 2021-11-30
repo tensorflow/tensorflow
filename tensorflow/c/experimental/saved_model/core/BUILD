@@ -14,9 +14,7 @@ package(
     default_visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/c/experimental/saved_model/internal:__pkg__",
-        # copybara:uncomment_begin(google-only)
-        # "//tensorflow/cc/experimental/libtf:__pkg__",
-        # copybara:uncomment_end
+        "//tensorflow/cc/experimental/libtf:__pkg__",
         "//tensorflow/core:__subpackages__",
     ],
     licenses = ["notice"],
@@ -50,6 +48,7 @@ cc_library(
     deps = [
         ":concrete_function",
         ":signature_def_function",
+        "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
     ],

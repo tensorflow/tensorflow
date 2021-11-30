@@ -31,10 +31,10 @@ class GpuInstructionFusion : public InstructionFusion {
 
   static bool IsExpensive(const HloInstruction& instruction);
 
-  bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;
+  bool ShouldFuse(HloInstruction* consumer, int64_t operand_index) override;
 
   bool ShouldFuseIntoMultiOutput(HloInstruction* consumer,
-                                 int64 operand_index) override;
+                                 int64_t operand_index) override;
 
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
@@ -48,7 +48,7 @@ class GpuInstructionFusion : public InstructionFusion {
   // This method is called by ShouldFuse() to do all the computationally
   // inexpensive checks whether we should fuse the operand into 'consumer'.
   bool ShouldFuseInexpensiveChecks(HloInstruction* consumer,
-                                   int64 operand_index);
+                                   int64_t operand_index);
 
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;

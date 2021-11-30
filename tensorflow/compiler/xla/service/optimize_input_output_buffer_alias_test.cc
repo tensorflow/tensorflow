@@ -41,8 +41,8 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
   }
 
   // Returns the number of output indices that aliases with the input.
-  int64 AliasCount() {
-    int64 count = 0;
+  int64_t AliasCount() {
+    int64_t count = 0;
 
     config_.ForEachAlias(
         [&](const ShapeIndex&, const HloInputOutputAliasConfig::Alias&) {

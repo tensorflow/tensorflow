@@ -26,11 +26,10 @@ namespace xla {
 
 // Visitor which verifies that the output shape is correctly set. Verifies
 // against the inferred shape for the instruction.
-// TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
   ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
-                std::function<int64(const Shape&)> shape_size_function)
+                std::function<int64_t(const Shape&)> shape_size_function)
       : layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision),
         shape_size_function_(shape_size_function) {}
@@ -57,6 +56,8 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleCholesky(HloInstruction* hlo) override;
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleAllGather(HloInstruction* hlo) override;
+  Status HandleAllGatherStart(HloInstruction* hlo) override;
+  Status HandleAllGatherDone(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* hlo) override;
   Status HandleAllReduceStart(HloInstruction* hlo) override;
   Status HandleAllReduceDone(HloInstruction* hlo) override;
@@ -92,6 +93,7 @@ class ShapeVerifier : public DfsHloVisitor {
       HloInstruction* dynamic_update_slice) override;
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleMap(HloInstruction* map) override;
+  Status HandleReduceScatter(HloInstruction* hlo) override;
   Status HandleReduceWindow(HloInstruction* reduce_window) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
   Status HandleWhile(HloInstruction* xla_while) override;
@@ -178,14 +180,14 @@ class ShapeVerifier : public DfsHloVisitor {
 
   // Checks that the given operand of the given instruction is of type TOKEN.
   Status CheckIsTokenOperand(const HloInstruction* instruction,
-                             int64 operand_no);
+                             int64_t operand_no);
 
   // Checks that the shape of the given operand of the given instruction matches
   // the given parameter of the given computation.
   Status CheckOperandAndParameter(const HloInstruction* instruction,
-                                  int64 operand_number,
+                                  int64_t operand_number,
                                   const HloComputation* computation,
-                                  int64 parameter_number);
+                                  int64_t parameter_number);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes
@@ -204,18 +206,25 @@ class ShapeVerifier : public DfsHloVisitor {
   bool allow_mixed_precision_;
 
   // Returns a target-specific shape size.
-  std::function<int64(const Shape&)> shape_size_function_;
+  std::function<int64_t(const Shape&)> shape_size_function_;
 };
 
 // An interface used to encapsulate target-specific verification quirks.
 class TargetVerifierMetadata {
  public:
-  TargetVerifierMetadata(std::function<int64(const Shape&)> shape_size_function)
+  explicit TargetVerifierMetadata(
+      std::function<int64_t(const Shape&)> shape_size_function)
       : shape_size_function_(shape_size_function) {}
 
   // Returns a target-specific shape size.
-  int64 ShapeSize(const Shape& shape) const {
+  int64_t ShapeSize(const Shape& shape) const {
     return shape_size_function_(shape);
+  }
+
+  void SetShapeSize(std::function<int64_t(const Shape&)> shape_size_function) {
+    CHECK(shape_size_function_ == nullptr)
+        << "shape_size_function_ is already set";
+    shape_size_function_ = shape_size_function;
   }
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
@@ -230,7 +239,7 @@ class TargetVerifierMetadata {
 
  protected:
   // Returns a target-specific shape size.
-  std::function<int64(const Shape&)> shape_size_function_;
+  std::function<int64_t(const Shape&)> shape_size_function_;
 };
 
 // The default implementation of TargetVerifierMetadata, used unless the target
@@ -239,7 +248,7 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
  public:
   DefaultVerifierMetadata(
       bool layout_sensitive, bool allow_mixed_precision,
-      std::function<int64(const Shape&)> shape_size_function)
+      std::function<int64_t(const Shape&)> shape_size_function)
       : TargetVerifierMetadata(shape_size_function),
         layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision) {}
@@ -268,18 +277,20 @@ class HloVerifier : public HloModulePass {
       bool layout_sensitive, bool allow_mixed_precision,
       std::function<bool(const HloInstruction*)>
           instruction_can_change_layout_func = {},
-      std::function<int64(const Shape&)> shape_size_func =
+      std::function<int64_t(const Shape&)> shape_size_func =
           [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
       : target_metadata_(absl::make_unique<DefaultVerifierMetadata>(
             layout_sensitive, allow_mixed_precision, shape_size_func)),
         instruction_can_change_layout_func_(
-            std::move(instruction_can_change_layout_func)) {
+            std::move(instruction_can_change_layout_func)),
+        context_("Unknown") {
     CHECK(instruction_can_change_layout_func_ == nullptr || layout_sensitive);
   }
 
   // Uses custom target metadata
-  explicit HloVerifier(std::unique_ptr<TargetVerifierMetadata> target_metadata)
-      : target_metadata_(std::move(target_metadata)) {}
+  explicit HloVerifier(std::unique_ptr<TargetVerifierMetadata> target_metadata,
+                       absl::string_view context = "Unknown")
+      : target_metadata_(std::move(target_metadata)), context_(context) {}
 
   ~HloVerifier() override = default;
   absl::string_view name() const override { return "verifier"; }
@@ -293,6 +304,9 @@ class HloVerifier : public HloModulePass {
   // Determines whether an instruction can change layouts.
   std::function<bool(const HloInstruction*)>
       instruction_can_change_layout_func_;
+
+  // The hlo pass when the verifier is invoked.
+  std::string context_;
 };
 
 }  // namespace xla

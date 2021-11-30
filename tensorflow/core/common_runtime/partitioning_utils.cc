@@ -27,7 +27,8 @@ namespace tensorflow {
 
 Status PartitionFunctionGraph(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph,
-    std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs) {
+    std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
+    std::function<string(const Edge*)> get_tensor_name_attr) {
   PartitionOptions partition_options;
   partition_options.node_to_loc = [](const Node* node) {
     // TODO(iga): To support the distributed case, first split the graph by
@@ -36,7 +37,7 @@ Status PartitionFunctionGraph(
     // Currently, we simply split the graph at device boundaries.
     return node->assigned_device_name();
   };
-  int64 edge_name_counter = 0;
+  int64_t edge_name_counter = 0;
   partition_options.new_name = [&edge_name_counter](const string& prefix) {
     return strings::StrCat(prefix, "/_", ++edge_name_counter);
   };
@@ -50,6 +51,7 @@ Status PartitionFunctionGraph(
     }
   };
   partition_options.control_flow_added = false;
+  partition_options.get_tensor_name_attr = get_tensor_name_attr;
   std::unordered_map<string, GraphDef> partitions;
   TF_RETURN_IF_ERROR(Partition(partition_options, graph.get(), &partitions));
 

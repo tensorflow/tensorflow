@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+// This file is MACHINE GENERATED! Do not edit.
+
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 
 #include "tensorflow/c/eager/abstract_context.h"
@@ -97,7 +100,7 @@ Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
 //   Broadcasting is supported, so `value` may have any number of dimensions.
 Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
                AbstractTensorHandle* const bias, AbstractTensorHandle** output,
-               const char* name, const char* data_format) {
+               const char* data_format, const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("BiasAdd", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -118,8 +121,8 @@ Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
 //   format, the feature dimension is the third-to-last.
 Status BiasAddGrad(AbstractContext* ctx,
                    AbstractTensorHandle* const out_backprop,
-                   AbstractTensorHandle** output, const char* name,
-                   const char* data_format) {
+                   AbstractTensorHandle** output, const char* data_format,
+                   const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("BiasAddGrad", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));

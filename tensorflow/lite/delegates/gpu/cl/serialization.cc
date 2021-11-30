@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/serialization.h"
 
 #include <cstdint>
+#include <set>
+#include <string>
+#include <utility>
 
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
@@ -473,6 +476,10 @@ flatbuffers::Offset<data::TensorDescriptor> Encode(
   tensor_builder.add_layout(ToFB(desc.layout));
   tensor_builder.add_shape(shape_fb);
   tensor_builder.add_data(data_fb);
+  tensor_builder.add_use_buffer_for_write_only_2d_texture(
+      desc.use_buffer_for_write_only_2d_texture);
+  tensor_builder.add_use_buffer_for_write_only_image_buffer(
+      desc.use_buffer_for_write_only_image_buffer);
   return tensor_builder.Finish();
 }
 
@@ -489,6 +496,10 @@ void Decode(const data::TensorDescriptor* fb_desc, TensorDescriptor* desc) {
   desc->data =
       std::vector<uint8_t>(fb_desc->data()->data(),
                            fb_desc->data()->data() + fb_desc->data()->size());
+  desc->use_buffer_for_write_only_2d_texture =
+      fb_desc->use_buffer_for_write_only_2d_texture();
+  desc->use_buffer_for_write_only_image_buffer =
+      fb_desc->use_buffer_for_write_only_image_buffer();
 }
 
 absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
@@ -805,13 +816,9 @@ void Decode(const data::OperationDef* fb_def, OperationDef* def) {
 
 absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
   RETURN_IF_ERROR(Decode(fb_op->arguments(), &op->args_));
-  op->code_ = std::string(fb_op->code()->c_str(), fb_op->code()->size());
   op->work_group_size_.x = fb_op->work_group_size()->x();
   op->work_group_size_.y = fb_op->work_group_size()->y();
   op->work_group_size_.z = fb_op->work_group_size()->z();
-  for (auto option_fb : *fb_op->compiler_options()) {
-    op->compiler_options_.push_back(ToEnum(option_fb->option()));
-  }
   op->tensor_to_grid_ = ToEnum(fb_op->tensor_to_grid());
   op->elementwise_ = fb_op->elementwise();
   op->linkable_ = fb_op->linkable();
@@ -836,23 +843,13 @@ absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
   op->work_groups_count_.y = fb_op->work_groups_count()->y();
   op->work_groups_count_.z = fb_op->work_groups_count()->z();
   op->linkable_count_ = fb_op->linkable_count();
-  op->elementwise_code_ = std::string(fb_op->elementwise_code()->c_str(),
-                                      fb_op->elementwise_code()->size());
   return absl::OkStatus();
 }
 
 flatbuffers::Offset<data::GPUOperation> Encode(
     const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder) {
   auto args_fb = Encode(op.args_, builder);
-  auto code_fb = builder->CreateString(op.code_);
   auto work_group_size_fb = Encode(op.work_group_size_, builder);
-  std::vector<flatbuffers::Offset<data::CompilerOption>> compiler_options_fb;
-  for (int i = 0; i < op.compiler_options_.size(); ++i) {
-    data::CompilerOptionBuilder option_builder(*builder);
-    option_builder.add_option(ToFB(op.compiler_options_[i]));
-    compiler_options_fb.push_back(option_builder.Finish());
-  }
-  auto compiler_options_fb_vec = builder->CreateVector(compiler_options_fb);
 
   auto def_fb = Encode(op.definition_, builder);
   auto work_group_launch_order_fb =
@@ -872,13 +869,9 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   }
   auto dst_names_fb_vec = builder->CreateVector(dst_names_fb);
 
-  auto elementwise_code_fb = builder->CreateString(op.elementwise_code_);
-
   data::GPUOperationBuilder op_builder(*builder);
   op_builder.add_arguments(args_fb);
-  op_builder.add_code(code_fb);
   op_builder.add_work_group_size(work_group_size_fb);
-  op_builder.add_compiler_options(compiler_options_fb_vec);
   op_builder.add_tensor_to_grid(ToFB(op.tensor_to_grid_));
   op_builder.add_elementwise(op.elementwise_);
   op_builder.add_linkable(op.linkable_);
@@ -891,7 +884,6 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   op_builder.add_dst_tensors_names(dst_names_fb_vec);
   op_builder.add_work_groups_count(work_groups_count_fb);
   op_builder.add_linkable_count(op.linkable_count_);
-  op_builder.add_elementwise_code(elementwise_code_fb);
   return op_builder.Finish();
 }
 
@@ -929,16 +921,20 @@ flatbuffers::Offset<data::CLNode> Encode(
   auto name_fb = builder->CreateString(node.name);
   data::CLNodeBuilder node_builder(*builder);
   node_builder.add_gpu_op(op_fb);
+  node_builder.add_fingerprint(node.cl_operation.GetKernelFingerprint());
   node_builder.add_input_ids(in_ids_fb);
   node_builder.add_output_ids(out_ids_fb);
   node_builder.add_name(name_fb);
   return node_builder.Finish();
 }
 
-absl::Status Decode(const data::CLNode* fb_node, CLNode* node) {
+absl::Status Decode(const ProgramCache& program_cache,
+                    const data::CLNode* fb_node, CLNode* node) {
   GPUOperation op;
   RETURN_IF_ERROR(Decode(fb_node->gpu_op(), &op));
   node->cl_operation.Init(absl::make_unique<GPUOperation>(std::move(op)));
+  RETURN_IF_ERROR(
+      node->cl_operation.InitFromCache(fb_node->fingerprint(), program_cache));
   for (auto in_fb : *fb_node->input_ids()) {
     node->inputs.push_back(in_fb);
   }
@@ -951,7 +947,8 @@ absl::Status Decode(const data::CLNode* fb_node, CLNode* node) {
 }
 
 flatbuffers::Offset<data::InferenceContext> Encode(
-    const InferenceContext& inference, const std::vector<int64_t>& in_refs,
+    const CLDevice& device, const InferenceContext& inference,
+    const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
     std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder) {
   std::vector<int32_t> in_ids(inference.input_ids_.size());
   for (int i = 0; i < in_ids.size(); ++i) {
@@ -973,10 +970,24 @@ flatbuffers::Offset<data::InferenceContext> Encode(
     nodes_fb.push_back(node_fb);
   }
   auto nodes_fb_vec = builder->CreateVector(nodes_fb);
+  std::set<uint64_t> fingerprints;
+  for (const auto& node : inference.nodes_) {
+    fingerprints.insert(node.cl_operation.GetKernelFingerprint());
+  }
+  std::vector<flatbuffers::Offset<data::BinaryProgram>> binary_programs_fb;
+  for (auto fingerprint : fingerprints) {
+    std::vector<uint8_t> program_binary;
+    program_cache.GetProgramBinary(fingerprint, &program_binary).IgnoreError();
+    auto binary_fb = builder->CreateVector(program_binary);
+    data::BinaryProgramBuilder program_builder(*builder);
+    program_builder.add_fingerprint(fingerprint);
+    program_builder.add_binary(binary_fb);
+    binary_programs_fb.push_back(program_builder.Finish());
+  }
+  auto binary_programs_fb_vec = builder->CreateVector(binary_programs_fb);
 
   std::vector<flatbuffers::Offset<data::TensorDescWithId>> tensors_fb;
-  auto tensors = inference.tensor_reserver_.GetTensorDescs();
-  for (const auto& tensor : tensors) {
+  for (const auto& tensor : inference.tensors_descs_) {
     auto tensor_fb = Encode(tensor.second, tensor.first, builder);
     tensors_fb.push_back(tensor_fb);
   }
@@ -999,14 +1010,11 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   }
   auto variable_ids_and_refs_fb_vec =
       builder->CreateVector(variable_ids_and_refs_fb);
+  auto driver_version = builder->CreateString(device.GetPlatformVersion());
 
   data::InferenceContextBuilder inf_builder(*builder);
-  inf_builder.add_need_flush(inference.need_flush_);
-  inf_builder.add_flush_periodically(inference.flush_periodically_);
-  inf_builder.add_flush_period(inference.flush_period_);
-  inf_builder.add_need_manual_release(inference.need_manual_release_);
-  inf_builder.add_precision(ToFB(inference.precision_));
-  inf_builder.add_storage_type(tflite::gpu::ToFB(inference.storage_type_));
+  inf_builder.add_driver_version(driver_version);
+  inf_builder.add_binary_programs(binary_programs_fb_vec);
   inf_builder.add_nodes(nodes_fb_vec);
   inf_builder.add_tensors(tensors_fb_vec);
   inf_builder.add_const_tensors(const_tensors_fb_vec);
@@ -1018,29 +1026,38 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   return inf_builder.Finish();
 }
 
-absl::Status Decode(const data::InferenceContext* fb_inference,
+absl::Status Decode(const CLContext& context, const CLDevice& device,
+                    ProgramCache* program_cache,
+                    const data::InferenceContext* fb_inference,
                     InferenceContext* inference) {
-  inference->need_flush_ = fb_inference->need_flush();
-  inference->flush_periodically_ = fb_inference->flush_periodically();
-  inference->flush_period_ = fb_inference->flush_period();
-  inference->need_manual_release_ = fb_inference->need_manual_release();
-  inference->precision_ = ToEnum(fb_inference->precision());
-  inference->storage_type_ = tflite::gpu::ToEnum(fb_inference->storage_type());
+  std::string platform_version(fb_inference->driver_version()->c_str(),
+                               fb_inference->driver_version()->size());
+  if (device.GetPlatformVersion() != platform_version) {
+    return absl::InvalidArgumentError(
+        "OpenCL driver changed, model respresentation invalid, must be "
+        "regenerated.");
+  }
+
+  for (auto binary_program_fb : *fb_inference->binary_programs()) {
+    RETURN_IF_ERROR(program_cache->AddProgramBinary(
+        context, device, binary_program_fb->fingerprint(),
+        absl::MakeSpan(binary_program_fb->binary()->data(),
+                       binary_program_fb->binary()->size())));
+  }
 
   inference->nodes_.resize(fb_inference->nodes()->size());
   int counter = 0;
   for (auto node_fb : *fb_inference->nodes()) {
-    RETURN_IF_ERROR(Decode(node_fb, &inference->nodes_[counter]));
+    RETURN_IF_ERROR(
+        Decode(*program_cache, node_fb, &inference->nodes_[counter]));
     counter++;
   }
 
-  std::vector<std::pair<ValueId, TensorDescriptor>> tensors;
   for (const auto& tensor_fb : *fb_inference->tensors()) {
     TensorDescriptor desc;
     Decode(tensor_fb->desc(), &desc);
-    tensors.push_back({tensor_fb->id(), std::move(desc)});
+    inference->tensors_descs_[tensor_fb->id()] = std::move(desc);
   }
-  inference->tensor_reserver_.Add(tensors);
   for (const auto& tensor_fb : *fb_inference->const_tensors()) {
     TensorDescriptor desc;
     Decode(tensor_fb->desc(), &desc);
@@ -1069,13 +1086,17 @@ absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
     return absl::DataLossError("Deserialization failed.");
   }
   auto fb_inference = data::GetInferenceContext(serialized_model.data());
-  in_refs->clear();
-  out_refs->clear();
-  for (auto in_fb : *fb_inference->input_refs()) {
-    in_refs->push_back(in_fb);
+  if (in_refs) {
+    in_refs->clear();
+    for (auto in_fb : *fb_inference->input_refs()) {
+      in_refs->push_back(in_fb);
+    }
   }
-  for (auto out_fb : *fb_inference->output_refs()) {
-    out_refs->push_back(out_fb);
+  if (out_refs) {
+    out_refs->clear();
+    for (auto out_fb : *fb_inference->output_refs()) {
+      out_refs->push_back(out_fb);
+    }
   }
   return absl::OkStatus();
 }

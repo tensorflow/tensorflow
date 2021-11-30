@@ -36,7 +36,7 @@ class CholeskyExpander : public OpExpanderPass {
       XlaOp a, PrecisionConfig::Precision precision);
 
  private:
-  XlaOp BuildCholesky(XlaOp a, int64 block_size,
+  XlaOp BuildCholesky(XlaOp a, int64_t block_size,
                       PrecisionConfig::Precision precision);
 
   // Mapping from op signatures to existing computations.

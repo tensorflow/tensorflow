@@ -19,9 +19,11 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -98,7 +101,7 @@ Status GetEagerOperationAndNumRetvals(const Operation& operation,
                                       EagerOperation* eager_op,
                                       int* num_retvals) {
   const char* name = operation.name().c_str();  // Shorthand
-  absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
+  absl::optional<tensorflow::EagerFunctionParams> remote_func_params =
       absl::nullopt;
   if (operation.is_function()) {
     if (operation.is_component_function()) {
@@ -175,7 +178,7 @@ Status AddOpRetvalsToResponse(
     std::function<TensorProto*()> add_tensor_proto_fn,
     std::function<TensorShapeProto*()> add_shape_proto_fn,
     std::function<string*()> add_device_fn = nullptr) {
-  if (op_id == kInvalidRemoteOpId) {
+  if (op_id == kInvalidOpId) {
     // Copy the output tensors back along with the response, since the op id
     // is invalid which cannot be added to RemoteMgr.
     for (int i = 0; i < num_retvals; i++) {
@@ -240,8 +243,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   }
   TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
-      true));
-  int64 context_id = request->context_id();
+      request->server_def().default_session_config().isolate_session_state()));
+  int64_t context_id = request->context_id();
   std::function<void()> session_destroyer = [this, context_id, session_name]() {
     env_->rendezvous_mgr->Cleanup(context_id);
     auto s = env_->session_mgr->DeleteSession(session_name);
@@ -259,9 +262,11 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 
   // Initialize remote tensor communication based on worker session.
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+  // Set the rendezvous as context-global instance for eager op-by-op execution.
+  r->SetRemoteEagerContextDefault();
 
-  std::function<Rendezvous*(const int64)> rendezvous_creator =
-      [worker_session, this](const int64 step_id) {
+  std::function<Rendezvous*(const int64_t)> rendezvous_creator =
+      [worker_session, this](const int64_t step_id) {
         auto* r = env_->rendezvous_mgr->Find(step_id);
         r->Initialize(worker_session.get()).IgnoreError();
         return r;
@@ -274,7 +279,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   opts.config = request->server_def().default_session_config();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, worker_session->cluster_flr());
+      request->async(), device_mgr, false, r, worker_session->cluster_flr(),
+      env_->collective_executor_mgr.get());
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
@@ -303,6 +309,29 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
             << s.ToString();
     return s;
   }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  const auto& config = request->server_def().default_session_config();
+  const bool enable_coordination =
+      !config.experimental().coordination_config().service_type().empty();
+  if (enable_coordination) {
+    auto dist_mgr = std::make_unique<EagerContextDistributedManager>(ctx);
+    ctx->SetDistributedManager(std::move(dist_mgr));
+    TF_RETURN_IF_ERROR(ctx->GetDistributedManager()->EnableCoordinationService(
+        config.experimental().coordination_config().service_type(), env_,
+        request->server_def(), worker_session->worker_cache()));
+    std::unique_ptr<CoordinationClientCache> client_cache;
+    TF_RETURN_IF_ERROR(
+        worker_session->worker_cache()->GetCoordinationClientCache(
+            &client_cache));
+    TF_RETURN_IF_ERROR(
+        ctx->GetDistributedManager()->GetCoordinationServiceAgent()->Initialize(
+            env_, request->server_def(), std::move(client_cache),
+            /*error_fn=*/[](Status s) {
+              LOG(ERROR) << "Coordination agent is set to error: " << s;
+            }));
+  }
+#endif  // !IS_MOBILE_PLATFORM
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
@@ -470,7 +499,7 @@ void EagerServiceImpl::RunComponentFunction(
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
           << operation.id();
   std::vector<int32> output_nums;
-  for (const int32 output_num : request->output_num()) {
+  for (const int32_t output_num : request->output_num()) {
     output_nums.push_back(output_num);
   }
 
@@ -748,7 +777,7 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
   auto iter = contexts_.find(context_id);
   if (iter == contexts_.end()) {
     *server_context = nullptr;
-    return errors::Unavailable(strings::Printf(
+    return errors::Aborted(strings::Printf(
         "Unable to find a context_id matching the specified one "
         "(%llu). Perhaps the worker was restarted, or the context was GC'd?",
         static_cast<unsigned long long>(context_id)));

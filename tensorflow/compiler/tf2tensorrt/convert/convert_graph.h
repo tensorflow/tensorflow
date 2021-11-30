@@ -19,7 +19,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -33,7 +35,7 @@ namespace convert {
 
 struct ConversionParams {
   const grappler::GrapplerItem* grappler_item = nullptr;
-  const std::vector<string>* output_names = nullptr;
+  const std::vector<string>* input_output_names = nullptr;
   string trt_logger_name;
   size_t max_batch_size = 1;
   size_t max_workspace_size_bytes = 1 << 30;
@@ -62,6 +64,14 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
 // library in `graph`.
 Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
                                       Graph* graph, const string& engine_name);
+
+// Creates and serializes an ICudaEngine. Used only in is_dynamic_op=false,
+// a.k.a. static engine mode.
+Status CreateStaticEngine(const ConversionParams& params,
+                          const EngineInfo& info, int max_batch_size,
+                          const std::vector<PartialTensorShape>& input_shapes,
+                          TrtShapeOptimizationProfile* profile,
+                          string* segment_string);
 
 }  // namespace convert
 }  // namespace tensorrt

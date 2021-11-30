@@ -37,7 +37,8 @@ tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test""$(maybe_skip_v1)"
 "${BAZEL_WRAPPER_PATH}" \
   test \
   --config=rbe_cpu_linux \
-  --config=rbe_linux_py39 \
+  --config=rbe_linux_py3 \
+  --python_path="/usr/bin/python3.9" \
   --config=tensorflow_testing_rbe_linux \
   --test_tag_filters="${tag_filters}" \
   --build_tag_filters="${tag_filters}" \

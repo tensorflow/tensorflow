@@ -363,12 +363,12 @@ void ReadModelFlagsFromCommandLineFlags(
       } else if (key == "back_edge_source_array") {
         rnn_state_proto->set_back_edge_source_array(value);
       } else if (key == "size") {
-        int32 size = 0;
+        int32_t size = 0;
         CHECK(absl::SimpleAtoi(value, &size));
         CHECK_GT(size, 0);
         rnn_state_proto->set_size(size);
       } else if (key == "num_dims") {
-        int32 size = 0;
+        int32_t size = 0;
         CHECK(absl::SimpleAtoi(value, &size));
         CHECK_GT(size, 0);
         rnn_state_proto->set_num_dims(size);
@@ -391,12 +391,12 @@ void ReadModelFlagsFromCommandLineFlags(
       if (key == "count_type") {
         model_check_proto->set_count_type(value);
       } else if (key == "count_min") {
-        int32 count = 0;
+        int32_t count = 0;
         CHECK(absl::SimpleAtoi(value, &count));
         CHECK_GE(count, -1);
         model_check_proto->set_count_min(count);
       } else if (key == "count_max") {
-        int32 count = 0;
+        int32_t count = 0;
         CHECK(absl::SimpleAtoi(value, &count));
         CHECK_GE(count, -1);
         model_check_proto->set_count_max(count);

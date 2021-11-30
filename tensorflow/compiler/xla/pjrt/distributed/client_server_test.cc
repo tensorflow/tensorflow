@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "grpcpp/grpcpp.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/time/time.h"
+#include "grpcpp/grpcpp.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"

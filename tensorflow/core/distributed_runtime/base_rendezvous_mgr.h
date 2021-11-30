@@ -69,32 +69,35 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   //
   // Note: the caller must guarantee to eventually call Initialize on the
   // returned RemoteRendezvous
-  RemoteRendezvous* Find(int64 step_id) override;
+  RemoteRendezvous* Find(int64_t step_id) override;
 
   // Finds the local rendezvous instance for the "step_id".  Runs
   // "done" when the tensor for "key" is produced or an error occurs.
   //
   // This method is used by the rpc handler of RecvTensor.
-  void RecvLocalAsync(int64 step_id, const Rendezvous::ParsedKey& parsed,
+  void RecvLocalAsync(int64_t step_id, const Rendezvous::ParsedKey& parsed,
                       Rendezvous::DoneCallback done) override;
 
   // Synchronous wrapper for RecvLocalAsync.
-  Status RecvLocal(int64 step_id, const Rendezvous::ParsedKey& parsed,
+  Status RecvLocal(int64_t step_id, const Rendezvous::ParsedKey& parsed,
                    Tensor* val, bool* is_dead) override;
 
   // Removes rendezvous for "step_id".
   //
   // TODO(zhifengc): Have a background thread in worker that
   // periodically calls CleanupAll().
-  void Cleanup(int64 step_id) override;
+  void Cleanup(int64_t step_id) override;
+
+  // Remove all rendezvous instances owned by the rendezvous_mgr.
+  void CleanupAll() override;
 
  protected:
-  virtual BaseRemoteRendezvous* Create(int64 step_id,
+  virtual BaseRemoteRendezvous* Create(int64_t step_id,
                                        const WorkerEnv* worker_env) = 0;
 
  private:
   // Maps step_id to rendezvous.
-  typedef absl::flat_hash_map<int64, BaseRemoteRendezvous*> Table;
+  typedef absl::flat_hash_map<int64_t, BaseRemoteRendezvous*> Table;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
@@ -102,7 +105,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   mutex mu_;
   Table table_ TF_GUARDED_BY(mu_);
 
-  BaseRemoteRendezvous* FindOrCreate(int64 step_id);
+  BaseRemoteRendezvous* FindOrCreate(int64_t step_id);
 
   TF_DISALLOW_COPY_AND_ASSIGN(BaseRendezvousMgr);
 };
@@ -115,10 +118,17 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
 // functionality to coordinate with remote workers.
 class BaseRemoteRendezvous : public RemoteRendezvous {
  public:
-  BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id);
+  BaseRemoteRendezvous(const WorkerEnv* env, int64_t step_id);
 
   // Upgrades the BaseRemoteRendezvous to full initialization.
   Status Initialize(WorkerSession* session) override;
+
+  void SetRemoteEagerContextDefault() override {
+    remote_eager_context_default_ = true;
+  }
+  bool IsRemoteEagerContextDefault() override {
+    return remote_eager_context_default_;
+  }
 
   // Forwards to local_, where the Tensor "val" will be buffered and
   // any waiting callback stored.
@@ -169,10 +179,16 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   ~BaseRemoteRendezvous() override;
 
   const WorkerEnv* const env_;  // Not owned.
-  const int64 step_id_;
+  const int64_t step_id_;
 
  private:
   Rendezvous* local_;  // Owns a Ref on this object.
+  // Indicates whether this remote rendezvous instance is used as the default
+  // rendezvous for remote eager op-by-op execution. Errors in eager op-by-op
+  // execution should not abort the rendezvous since it is a context-wide
+  // instance and needs to be reused; instead, the errors are propagated through
+  // eager executors.
+  bool remote_eager_context_default_ = false;
 
   mutable mutex mu_;
 

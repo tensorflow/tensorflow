@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cpu_feature_guard.h"
 
+#ifndef __ANDROID__
+#include <iostream>
+#endif
 #include <mutex>
 #include <string>
 
@@ -30,15 +33,21 @@ namespace {
 // If the CPU feature isn't present, log a fatal error.
 void CheckFeatureOrDie(CPUFeature feature, const string& feature_name) {
   if (!TestCPUFeature(feature)) {
+    const auto error_msg =
+        "The TensorFlow library was compiled to use " + feature_name +
+        " instructions, but these aren't available on your machine.";
 #ifdef __ANDROID__
-    // Some Android emulators seem to indicate they don't support SSE, so to
-    // avoid crashes when testing, switch this to a warning.
-    LOG(WARNING)
+    // Some Android emulators seem to indicate they don't support SSE, so we
+    // only issue a warning to avoid crashes when testing. We use the logging
+    // framework here because std::cout and std::cerr made some Android targets
+    // crash.
+    LOG(WARNING) << error_msg;
 #else
-    LOG(FATAL)
+    // Avoiding use of the logging framework here as that might trigger a SIGILL
+    // by itself.
+    std::cerr << error_msg << std::endl;
+    std::abort();
 #endif
-        << "The TensorFlow library was compiled to use " << feature_name
-        << " instructions, but these aren't available on your machine.";
   }
 }
 

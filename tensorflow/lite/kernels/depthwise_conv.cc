@@ -176,6 +176,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (data_type != kTfLiteFloat32) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
+    TF_LITE_ENSURE(context, filter->quantization.type != kTfLiteNoQuantization);
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             filter->quantization.params);
@@ -195,6 +196,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (is_hybrid) {
+    TF_LITE_ENSURE(context, filter->quantization.type != kTfLiteNoQuantization);
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             filter->quantization.params);
@@ -495,6 +497,7 @@ TfLiteStatus EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.weights_offset = 0;
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
+  TF_LITE_ENSURE(context, filter->quantization.type != kTfLiteNoQuantization);
   const auto* affine_quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
   if (kernel_type == kReference) {

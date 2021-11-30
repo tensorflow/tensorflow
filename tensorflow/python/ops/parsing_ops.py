@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Parsing Ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -304,7 +300,7 @@ def parse_example_v2(serialized, features, example_names=None, name=None):
     ValueError: if any feature is invalid.
   """
   if not features:
-    raise ValueError("Missing: features was %s." % features)
+    raise ValueError("Argument `features` cannot be None.")
   features = _prepend_none_dimension(features)
   params = _ParseOpParams.from_features(features, [
       VarLenFeature, SparseFeature, FixedLenFeature, FixedLenSequenceFeature,
@@ -340,7 +336,7 @@ def _parse_example_raw(serialized, names, params, name):
 
   """
   if params.num_features == 0:
-    raise ValueError("Must provide at least one feature key")
+    raise ValueError("Must provide at least one feature key.")
   with ops.name_scope(name, "ParseExample", [serialized, names]):
     names = [] if names is None else names
     serialized = ops.convert_to_tensor(serialized, name="serialized")
@@ -445,7 +441,7 @@ def parse_single_example_v2(
     ValueError: if any feature is invalid.
   """
   if not features:
-    raise ValueError("Missing features.")
+    raise ValueError("Invalid argument: features cannot be None.")
   with ops.name_scope(name, "ParseSingleExample", [serialized, example_names]):
     serialized = ops.convert_to_tensor(serialized, name="serialized")
     serialized = _assert_scalar(serialized, "serialized")
@@ -491,7 +487,7 @@ def parse_sequence_example(serialized,
 
   `sequence_features` contains `VarLenFeature`, `RaggedFeature`, and
   `FixedLenSequenceFeature` objects. Each `VarLenFeature` is mapped to a
-  `SparseTensor`; each `RaggedFeature` is mapped to a `RaggedTensor; and
+  `SparseTensor`; each `RaggedFeature` is mapped to a `RaggedTensor`; and
   each `FixedLenSequenceFeature` is mapped to a `Tensor`, each of the specified
   type. The shape will be `(B,T,) + df.dense_shape` for
   `FixedLenSequenceFeature` `df`, where `B` is the batch size, and `T` is the
@@ -507,10 +503,10 @@ def parse_sequence_example(serialized,
   provides dicts of shape tensors as part of the output. There is one dict for
   the context features, and one for the feature_list features. Context features
   of type `FixedLenFeature`s will not be present, since their shapes are already
-  known by the caller. In situations where the input 'FixedLenFeature`s are of
-  different lengths across examples, the shorter examples will be padded with
-  default datatype values: 0 for numeric types, and the empty string for string
-  types.
+  known by the caller. In situations where the input `FixedLenSequenceFeature`s
+  are of different sequence lengths across examples, the shorter examples will
+  be padded with default datatype values: 0 for numeric types, and the empty
+  string for string types.
 
   Each `SparseTensor` corresponding to `sequence_features` represents a ragged
   vector.  Its indices are `[time, index]`, where `time` is the `FeatureList`
@@ -549,7 +545,8 @@ def parse_sequence_example(serialized,
     ValueError: if any feature is invalid.
   """
   if not (context_features or sequence_features):
-    raise ValueError("Missing features.")
+    raise ValueError("Both `context_features` and `sequence_features` argument "
+                     "are None, but at least one should have values.")
   context_params = _ParseOpParams.from_features(
       context_features, [VarLenFeature, FixedLenFeature, RaggedFeature])
   feature_list_params = _ParseOpParams.from_features(
@@ -601,7 +598,7 @@ def _parse_sequence_example_raw(serialized,
     TypeError: if feature_list.dense_defaults is not either None or a dict.
   """
   if context.num_features + feature_list.num_features == 0:
-    raise ValueError("Must provide at least one feature key")
+    raise ValueError("Must provide at least one feature key.")
   with ops.name_scope(name, "ParseSequenceExample", [serialized]):
     debug_name = [] if debug_name is None else debug_name
 
@@ -784,7 +781,8 @@ def parse_single_sequence_example(
   """
   # pylint: enable=line-too-long
   if not (context_features or sequence_features):
-    raise ValueError("Missing features.")
+    raise ValueError("Both context_features and sequence_features are None, but"
+                     " at least one should have values.")
   context_params = _ParseOpParams.from_features(
       context_features, [VarLenFeature, FixedLenFeature, RaggedFeature])
   feature_list_params = _ParseOpParams.from_features(
@@ -1233,3 +1231,7 @@ def decode_json_example(json_examples, name=None):
      `tf.Example`
   """
   return gen_parsing_ops.decode_json_example(json_examples, name=name)
+
+
+# Register elementwise ops that don't have Python wrappers.
+dispatch.register_unary_elementwise_api(gen_parsing_ops.decode_compressed)

@@ -17,7 +17,7 @@ limitations under the License.
 // suitable for shape op canonicalization in MLIR Core.
 
 #include "llvm/ADT/Optional.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -51,7 +51,7 @@ struct BroadcastRemoveSubsumedOperandsPattern
     // dynamic size.
     SmallVector<int64_t> known_extents;
     SmallVector<SmallVector<int64_t, 4>, 4> operand_extents;
-    for (Value shape : op.shapes()) {
+    for (Value shape : op.getShapes()) {
       auto &extents = operand_extents.emplace_back();
       if (failed(shape::getShapeVec(shape, extents))) return failure();
 
@@ -86,7 +86,7 @@ struct BroadcastRemoveSubsumedOperandsPattern
     // If only some dimensions are known see if any of the operands can be
     // removed without affecting the result.
     SmallVector<Value, 4> filtered_operands;
-    for (auto tuple : llvm::zip(op.shapes(), operand_extents)) {
+    for (auto tuple : llvm::zip(op.getShapes(), operand_extents)) {
       Value shape = std::get<0>(tuple);
       auto &extents = std::get<1>(tuple);
 
@@ -129,26 +129,12 @@ struct BroadcastRemoveSubsumedOperandsPattern
         break;
       }
     }
-    if (filtered_operands.size() != op.shapes().size()) {
+    if (filtered_operands.size() != op.getShapes().size()) {
       rewriter.replaceOpWithNewOp<BroadcastOp>(op, op->getResultTypes(),
                                                filtered_operands);
       return success();
     }
     return failure();
-  }
-};
-
-struct ExtractFromExtentTensorCanonicalizationPattern
-    : public OpRewritePattern<tensor::ExtractOp> {
-  using OpRewritePattern<tensor::ExtractOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(tensor::ExtractOp op,
-                                PatternRewriter &rewriter) const override {
-    auto shape_of_op = op.tensor().getDefiningOp<ShapeOfOp>();
-    if (!shape_of_op) return failure();
-    Value index = op.indices().front();
-    rewriter.replaceOpWithNewOp<memref::DimOp>(op, shape_of_op.arg(), index);
-    return success();
   }
 };
 
@@ -163,7 +149,7 @@ struct ExtractFromExtentTensorCanonicalizationPattern
 // to
 //
 // ```
-//  %result = memref.dim %arg0[%c2] : tensor<?x?x2048xf64>
+//  %result = tensor.dim %arg0[%c2] : tensor<?x?x2048xf64>
 // ```
 struct ExtractFromBroadcastedTensorCanonicalizationPattern
     : public OpRewritePattern<tensor::ExtractOp> {
@@ -174,9 +160,9 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
     // Confirm that there is a constant index. This is required, so we can
     // confirm the DimOp's input will define the resulting broadcasted shape in
     // that dimension.
-    auto index = op.indices().front().getDefiningOp<ConstantIndexOp>();
+    auto index = op.indices().front().getDefiningOp<arith::ConstantIndexOp>();
     if (!index) return failure();
-    auto idx = index.getValue();
+    auto idx = index.value();
     auto broadcast_op = op.tensor().getDefiningOp<BroadcastOp>();
     if (!broadcast_op) return failure();
 
@@ -192,7 +178,7 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
     // returning immediately if a non-1 static dimension is seen.
     ShapeOfOp dynamic_shape;
     int64_t num_dynamic = 0;
-    for (auto shape : broadcast_op.shapes()) {
+    for (auto shape : broadcast_op.getShapes()) {
       auto shape_of_op = shape.getDefiningOp<ShapeOfOp>();
       if (!shape_of_op) return failure();
       auto shaped_type =
@@ -213,18 +199,18 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
       if (shaped_type.getDimSize(idx) == 1) continue;
 
       // Return as soon as we see a non-1 static dim.
-      rewriter.replaceOpWithNewOp<ConstantIndexOp>(op,
-                                                   shaped_type.getDimSize(idx));
+      rewriter.replaceOpWithNewOp<arith::ConstantIndexOp>(
+          op, shaped_type.getDimSize(idx));
       return success();
     }
     if (num_dynamic > 1) return failure();
 
     // Replace with the single dynamic dimension or 1.
     if (dynamic_shape) {
-      rewriter.replaceOpWithNewOp<memref::DimOp>(op, dynamic_shape.arg(),
+      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, dynamic_shape.getArg(),
                                                  index);
     } else {
-      rewriter.replaceOpWithNewOp<ConstantIndexOp>(op, 1);
+      rewriter.replaceOpWithNewOp<arith::ConstantIndexOp>(op, 1);
     }
     return success();
   }
@@ -236,26 +222,25 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
 struct ShapeSimplification
     : public ShapeSimplificationBase<ShapeSimplification> {
   void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mlir::arith::ArithmeticDialect>();
     registry.insert<mhlo::MhloDialect>();
     registry.insert<mlir::StandardOpsDialect>();
     registry.insert<shape::ShapeDialect>();
+    registry.insert<tensor::TensorDialect>();
   }
 
   void runOnFunction() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(&getContext());
 
-    Dialect *shape_dialect = context->getLoadedDialect<shape::ShapeDialect>();
-    Dialect *mhlo_dialect = context->getLoadedDialect<mhlo::MhloDialect>();
-    for (auto *op : context->getRegisteredOperations()) {
-      if (op->dialect.getTypeID() == shape_dialect->getTypeID() ||
-          op->dialect.getTypeID() == mhlo_dialect->getTypeID())
-        op->getCanonicalizationPatterns(patterns, context);
+    for (auto op : context->getRegisteredOperations()) {
+      if (isa<shape::ShapeDialect, mhlo::MhloDialect>(op.getDialect()))
+        op.getCanonicalizationPatterns(patterns, context);
     }
 
     patterns.insert<BroadcastRemoveSubsumedOperandsPattern,
-                    ExtractFromBroadcastedTensorCanonicalizationPattern,
-                    ExtractFromExtentTensorCanonicalizationPattern>(context);
+                    ExtractFromBroadcastedTensorCanonicalizationPattern>(
+        context);
 
     auto func = getFunction();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))

@@ -13,12 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.random_ops.random_poisson."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -44,7 +39,7 @@ class RandomPoissonTest(test.TestCase):
       with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
         rng = random_ops.random_poisson(lam, [num], dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 

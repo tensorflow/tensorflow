@@ -8,7 +8,6 @@ load(
     _tf_additional_all_protos = "tf_additional_all_protos",
     _tf_additional_binary_deps = "tf_additional_binary_deps",
     _tf_additional_core_deps = "tf_additional_core_deps",
-    _tf_additional_cupti_utils_cuda_deps = "tf_additional_cupti_utils_cuda_deps",
     _tf_additional_device_tracer_srcs = "tf_additional_device_tracer_srcs",
     _tf_additional_lib_deps = "tf_additional_lib_deps",
     _tf_additional_lib_hdrs = "tf_additional_lib_hdrs",
@@ -40,6 +39,8 @@ load(
     _tf_py_clif_cc = "tf_py_clif_cc",
     _tf_pyclif_proto_library = "tf_pyclif_proto_library",
     _tf_resource_deps = "tf_resource_deps",
+    _tf_stream_executor_deps = "tf_stream_executor_deps",
+    _tf_testing_deps = "tf_testing_deps",
     _tf_tpu_dependencies = "tf_tpu_dependencies",
     _tf_windows_aware_platform_deps = "tf_windows_aware_platform_deps",
 )
@@ -50,7 +51,6 @@ pyx_library = _pyx_library
 tf_additional_all_protos = _tf_additional_all_protos
 tf_additional_binary_deps = _tf_additional_binary_deps
 tf_additional_core_deps = _tf_additional_core_deps
-tf_additional_cupti_utils_cuda_deps = _tf_additional_cupti_utils_cuda_deps
 tf_additional_device_tracer_srcs = _tf_additional_device_tracer_srcs
 tf_additional_lib_deps = _tf_additional_lib_deps
 tf_additional_lib_hdrs = _tf_additional_lib_hdrs
@@ -82,5 +82,7 @@ tf_protos_profiler_service = _tf_protos_profiler_service
 tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
 tf_resource_deps = _tf_resource_deps
+tf_stream_executor_deps = _tf_stream_executor_deps
+tf_testing_deps = _tf_testing_deps
 tf_windows_aware_platform_deps = _tf_windows_aware_platform_deps
 tf_tpu_dependencies = _tf_tpu_dependencies

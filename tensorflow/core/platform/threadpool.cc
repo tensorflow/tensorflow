@@ -119,7 +119,7 @@ void ThreadPool::Schedule(std::function<void()> fn) {
 }
 
 int ThreadPool::NumShardsUsedByFixedBlockSizeScheduling(
-    const int64 total, const int64 block_size) {
+    const int64_t total, const int64_t block_size) {
   if (block_size <= 0 || total <= 1 || total <= block_size ||
       NumThreads() == 1) {
     return 1;
@@ -128,13 +128,13 @@ int ThreadPool::NumShardsUsedByFixedBlockSizeScheduling(
 }
 
 int ThreadPool::NumShardsUsedByTransformRangeConcurrently(
-    const int64 block_size, const int64 total) {
+    const int64_t block_size, const int64_t total) {
   return NumShardsUsedByFixedBlockSizeScheduling(total, block_size);
 }
 
-void ThreadPool::ParallelFor(int64 total,
+void ThreadPool::ParallelFor(int64_t total,
                              const SchedulingParams& scheduling_params,
-                             const std::function<void(int64, int64)>& fn) {
+                             const std::function<void(int64_t, int64_t)>& fn) {
   switch (scheduling_params.strategy()) {
     case SchedulingStrategy::kAdaptive: {
       if (scheduling_params.cost_per_unit().has_value()) {
@@ -153,8 +153,8 @@ void ThreadPool::ParallelFor(int64 total,
 }
 
 void ThreadPool::TransformRangeConcurrently(
-    const int64 block_size, const int64 total,
-    const std::function<void(int64, int64)>& fn) {
+    const int64_t block_size, const int64_t total,
+    const std::function<void(int64_t, int64_t)>& fn) {
   ParallelFor(total,
               SchedulingParams(SchedulingStrategy::kFixedBlockSize,
                                absl::nullopt /* cost_per_unit */, block_size),
@@ -164,8 +164,8 @@ void ThreadPool::TransformRangeConcurrently(
 // This functionality is similar to parallelFor, except that reasoning about
 // the number of shards used is significantly easier.
 void ThreadPool::ParallelForFixedBlockSizeScheduling(
-    const int64 total, const int64 block_size,
-    const std::function<void(int64, int64)>& fn) {
+    const int64_t total, const int64_t block_size,
+    const std::function<void(int64_t, int64_t)>& fn) {
   const int num_shards_used =
       NumShardsUsedByFixedBlockSizeScheduling(total, block_size);
   if (num_shards_used == 1) {
@@ -175,12 +175,12 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(
 
   // Adapted from Eigen's parallelFor implementation.
   BlockingCounter counter(num_shards_used);
-  std::function<void(int64, int64)> handle_range =
-      [=, &handle_range, &counter, &fn](int64 first, int64 last) {
+  std::function<void(int64_t, int64_t)> handle_range =
+      [=, &handle_range, &counter, &fn](int64_t first, int64_t last) {
         while (last - first > block_size) {
           // Find something near the midpoint which is a multiple of block size.
-          const int64 mid = first + ((last - first) / 2 + block_size - 1) /
-                                        block_size * block_size;
+          const int64_t mid = first + ((last - first) / 2 + block_size - 1) /
+                                          block_size * block_size;
           Schedule([=, &handle_range]() { handle_range(mid, last); });
           last = mid;
         }
@@ -200,24 +200,24 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(
   counter.Wait();
 }
 
-void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
-                             const std::function<void(int64, int64)>& fn) {
+void ThreadPool::ParallelFor(int64_t total, int64_t cost_per_unit,
+                             const std::function<void(int64_t, int64_t)>& fn) {
   CHECK_GE(total, 0);
-  CHECK_EQ(total, (int64)(Eigen::Index)total);
+  CHECK_EQ(total, (int64_t)(Eigen::Index)total);
   threadpool_device_->parallelFor(
       total, Eigen::TensorOpCost(0, 0, cost_per_unit),
       [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
 }
 
 void ThreadPool::ParallelForWithWorkerId(
-    int64 total, int64 cost_per_unit,
-    const std::function<void(int64, int64, int)>& fn) {
+    int64_t total, int64_t cost_per_unit,
+    const std::function<void(int64_t, int64_t, int)>& fn) {
   CHECK_GE(total, 0);
-  CHECK_EQ(total, (int64)(Eigen::Index)total);
+  CHECK_EQ(total, (int64_t)(Eigen::Index)total);
 
   threadpool_device_->parallelFor(total,
                                   Eigen::TensorOpCost(0, 0, cost_per_unit),
-                                  [this, &fn](int64 start, int64 limit) {
+                                  [this, &fn](int64_t start, int64_t limit) {
                                     // ParallelFor may use the current thread to
                                     // do some work synchronously. When calling
                                     // CurrentThreadId() from outside of the
@@ -229,15 +229,16 @@ void ThreadPool::ParallelForWithWorkerId(
 }
 
 void ThreadPool::ParallelForWithWorkerId(
-    int64 total, const SchedulingParams& scheduling_params,
-    const std::function<void(int64, int64, int)>& fn) {
-  ParallelFor(total, scheduling_params, [this, &fn](int64 start, int64 limit) {
-    // We may use the current thread to do some work synchronously.
-    // When calling CurrentThreadId() from outside of the thread
-    // pool, we get -1, so we can shift every id up by 1.
-    int id = CurrentThreadId() + 1;
-    fn(start, limit, id);
-  });
+    int64_t total, const SchedulingParams& scheduling_params,
+    const std::function<void(int64_t, int64_t, int)>& fn) {
+  ParallelFor(total, scheduling_params,
+              [this, &fn](int64_t start, int64_t limit) {
+                // We may use the current thread to do some work synchronously.
+                // When calling CurrentThreadId() from outside of the thread
+                // pool, we get -1, so we can shift every id up by 1.
+                int id = CurrentThreadId() + 1;
+                fn(start, limit, id);
+              });
 }
 
 int ThreadPool::NumThreads() const {

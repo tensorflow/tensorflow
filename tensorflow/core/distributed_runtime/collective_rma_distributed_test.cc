@@ -74,7 +74,7 @@ static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
   return absl::make_unique<FakeDevice>(attr, allocator);
 }
 
-static int64 kStepId = 123;
+static int64_t kStepId = 123;
 
 class FakeWorker : public TestWorkerInterface {
  public:
@@ -135,7 +135,7 @@ class FakeWorker : public TestWorkerInterface {
           Status s = status;
           if (s.ok()) {
             opts->ClearCancelCallback();
-            int64 num_bytes = h->prod_value->TotalBytes();
+            int64_t num_bytes = h->prod_value->TotalBytes();
 
             if (set_tensor_in_extra_) {
               // Since this is not really RDMA into pre-allocated memory send

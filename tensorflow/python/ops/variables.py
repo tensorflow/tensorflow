@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Variable class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum  # pylint: disable=g-bad-import-order
 import itertools
 import functools
@@ -29,6 +25,7 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -46,6 +43,7 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import core
 
@@ -261,6 +259,7 @@ class VariableMetaclass(type):
         aggregation=aggregation,
         shape=shape)
 
+  @traceback_utils.filter_traceback
   def __call__(cls, *args, **kwargs):
     if cls is VariableV1:
       return cls._variable_v1_call(*args, **kwargs)
@@ -817,14 +816,13 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = v.scatter_nd_sub(indices, updates)
-        with tf.compat.v1.Session() as sess:
-          print sess.run(op)
+        v.scatter_nd_sub(indices, updates)
+        print(v)
     ```
 
-    The resulting update to v would look like this:
+    After the update `v` would look like this:
 
-        [1, -9, 3, -6, -6, 6, 7, -4]
+        [1, -9, 3, -6, -4, 6, 7, -4]
 
     See `tf.scatter_nd` for more details about how to make updates to
     slices.
@@ -864,9 +862,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        add = v.scatter_nd_add(indices, updates)
-        with tf.compat.v1.Session() as sess:
-          print sess.run(add)
+        v.scatter_nd_add(indices, updates)
+        print(v)
     ```
 
     The resulting update to v would look like this:
@@ -911,9 +908,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = v.scatter_nd_assign(indices, updates)
-        with tf.compat.v1.Session() as sess:
-          print sess.run(op)
+        v.scatter_nd_update(indices, updates)
+        print(v)
     ```
 
     The resulting update to v would look like this:
@@ -1039,8 +1035,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     _ = name
     if dtype and not dtype.is_compatible_with(v.dtype):
       raise ValueError(
-          "Incompatible type conversion requested to type '%s' for variable "
-          "of type '%s'" % (dtype.name, v.dtype.name))
+          f"Incompatible type conversion requested to type '{dtype.name}' for "
+          f"variable of type '{v.dtype.name}' (Variable: {v}).")
     if as_ref:
       return v._ref()  # pylint: disable=protected-access
     else:
@@ -1083,8 +1079,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
   def __hash__(self):
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      raise TypeError("Variable is unhashable. "
-                      "Instead, use tensor.ref() as the key.")
+      raise TypeError(
+          "Variable is unhashable. "
+          f"Instead, use variable.ref() as the key. (Variable: {self})")
     else:
       return id(self)
 
@@ -1107,18 +1104,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       return self is not other
 
   def __iter__(self):
-    """Dummy method to prevent iteration.
-
-    Do not call.
-
-    NOTE(mrry): If we register __getitem__ as an overloaded operator,
-    Python will valiantly attempt to iterate over the variable's Tensor from 0
-    to infinity.  Declaring this method prevents this unintended behavior.
-
-    Raises:
-      TypeError: when invoked.
-    """
-    raise TypeError("'Variable' object is not iterable.")
+    """When executing eagerly, iterates over the value of the variable."""
+    return iter(self.read_value())
 
   # NOTE(mrry): This enables the Variable's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it
@@ -1784,7 +1771,9 @@ class RefVariable(VariableV1, core.Tensor):
       # Ensure that we weren't lifted into the eager context.
       if context.executing_eagerly():
         raise RuntimeError(
-            "RefVariable not supported when eager execution is enabled. ")
+            "Reference variables are not supported when eager execution is "
+            "enabled. Please run `tf.compat.v1.enable_resource_variables()` to "
+            "switch to resource variables.")
       with ops.name_scope(name, "Variable",
                           [] if init_from_fn else [initial_value]) as name:
 
@@ -2123,7 +2112,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_sub(
         self._variable,
@@ -2147,7 +2136,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_add(
         self._variable,
@@ -2172,7 +2161,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_max(
         self._variable,
@@ -2197,7 +2186,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_min(
         self._variable,
@@ -2221,7 +2210,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_mul(
         self._variable,
@@ -2245,7 +2234,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_div(
         self._variable,
@@ -2269,7 +2258,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_update(
         self._variable,
@@ -3125,6 +3114,15 @@ def global_variables(scope=None):
   An alternative to global variables are local variables. See
   `tf.compat.v1.local_variables`
 
+  @compatibility(TF2)
+  Not compatible with eager execution and `tf.function`. In particular, Graph
+  collections are deprecated in TF2. Instead please create a
+  [tf.Module](https://www.tensorflow.org/guide/intro_to_modules)
+  container for all your model state, including variables.
+  You can then list all the variables in your `tf.Module` through the
+  `variables` attribute.
+  @end_compatibility
+
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered to
       include only items whose `name` attribute matches `scope` using
@@ -3217,6 +3215,14 @@ def trainable_variables(scope=None):
   `GraphKeys.TRAINABLE_VARIABLES`. This convenience function returns the
   contents of that collection.
 
+  @compatibility(TF2)
+  Not compatible with eager execution and `tf.function`. In particular, Graph
+  collections are deprecated in TF2. Instead please create a `tf.Module`
+  container for all your model state, including variables.
+  You can then list all the trainable variables in your `tf.Module` through the
+  `trainable_variables` attribute.
+  @end_compatibility
+
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered to
       include only items whose `name` attribute matches `scope` using
@@ -3266,6 +3272,11 @@ def variables_initializer(var_list, name="init"):
   If `var_list` is empty, however, the function still returns an Op that can
   be run. That Op just has no effect.
 
+  @compatibility(TF2)
+  In TF2, variables are initialized immediately when they are created. There is
+  no longer a need to run variable initializers before using them.
+  @end_compatibility
+
   Args:
     var_list: List of `Variable` objects to initialize.
     name: Optional name for the returned operation.
@@ -3292,6 +3303,11 @@ def global_variables_initializer():
 
   This is just a shortcut for `variables_initializer(global_variables())`
 
+  @compatibility(TF2)
+  In TF2, variables are initialized immediately when they are created. There is
+  no longer a need to run variable initializers before using them.
+  @end_compatibility
+
   Returns:
     An Op that initializes global variables in the graph.
   """
@@ -3313,6 +3329,11 @@ def local_variables_initializer():
   """Returns an Op that initializes all local variables.
 
   This is just a shortcut for `variables_initializer(local_variables())`
+
+  @compatibility(TF2)
+  In TF2, variables are initialized immediately when they are created. There is
+  no longer a need to run variable initializers before using them.
+  @end_compatibility
 
   Returns:
     An Op that initializes all local variables in the graph.

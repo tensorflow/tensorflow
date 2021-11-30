@@ -15,10 +15,6 @@
 # ==============================================================================
 """Tests for activity module, that only run in Python 3."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct.static_analysis import activity_test
 from tensorflow.python.autograph.pyct.static_analysis import annos

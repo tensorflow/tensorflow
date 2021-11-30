@@ -32,15 +32,6 @@ limitations under the License.
 
 namespace tflite {
 
-// Corresponding weak declaration found in lite/interpreter_builder.cc.
-#if TFLITE_HAS_ATTRIBUTE_WEAK
-// If weak symbol is not supported (Windows), it can use
-// TF_AcquireFlexDelegate() path instead.
-TfLiteDelegateUniquePtr AcquireFlexDelegate() {
-  return tflite::FlexDelegate::Create();
-}
-#endif
-
 TfLiteDelegateUniquePtr FlexDelegate::Create(
     std::unique_ptr<FlexDelegate> base_delegate) {
   TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
@@ -57,6 +48,8 @@ TfLiteDelegateUniquePtr FlexDelegate::Create(
         ->CopyFromBufferHandle(context, buffer_handle, tensor);
   };
   flex_delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
+  reinterpret_cast<FlexDelegate*>(flex_delegate->data_)->base_delegate_ =
+      flex_delegate.get();
   return flex_delegate;
 }
 
@@ -67,10 +60,13 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
   if (context->recommended_num_threads > 0) {
     session_options.config.set_intra_op_parallelism_threads(
         context->recommended_num_threads);
+    session_options.config.set_inter_op_parallelism_threads(
+        context->recommended_num_threads);
   }
 
   auto status = delegate_data_.Prepare(
-      session_options, reinterpret_cast<Subgraph*>(context->impl_));
+      session_options, reinterpret_cast<Subgraph*>(context->impl_),
+      base_delegate_);
   if (!status.ok()) {
     context->ReportError(context, "Failed to initialize TensorFlow context: %s",
                          status.error_message().c_str());
@@ -139,7 +135,7 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
   // The life cycle of the pointer will be managed by the reference counting in
   // the TensorFlow world and the pointer will be freed when all the buffer
   // maps, who own it, are gone.
-  if (output->type == kTfLiteResource || output->type == kTfLiteVariant) {
+  if (flex::IsResourceOrVariant(output)) {
     const size_t required_bytes = sizeof(tensorflow::Tensor**);
     const tensorflow::Tensor** tf_tensor_ptr =
         reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));
@@ -169,17 +165,3 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 }
 
 }  // namespace tflite
-
-// LINT.IfChange
-// Exported C interface function which is used by AcquireFlexDelegate() at
-// interpreter_builder.cc. To export the function name globally, the function
-// name must be matched with patterns in tf_version_script.lds. In Android, we
-// don't use this feature so skip building.
-#if !defined(__ANDROID__)
-extern "C" {
-TFL_CAPI_EXPORT tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
-  return tflite::FlexDelegate::Create();
-}
-}  // extern "C"
-#endif  // !defined(__ANDROID__)
-// LINT.ThenChange(//tensorflow/lite/interpreter_builder.cc)

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Helpers to convert variables to constants in TensorFlow 2.0."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import numpy as np
 
@@ -30,11 +26,13 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.util import lazy_loader
@@ -47,6 +45,8 @@ wrap_function = lazy_loader.LazyLoader(
     "wrap_function", globals(),
     "tensorflow.python.eager.wrap_function")
 
+# Used in _FunctionConverterDataInGraph().
+VAR_ASSIGN_COLLECTION = "extra_var_assign_ops"
 _CONDITIONAL_OPS = set(["If", "StatelessIf"])
 _LOOP_OPS = set(["While", "StatelessWhile"])
 _CONTROL_FLOW_OPS = _CONDITIONAL_OPS.union(_LOOP_OPS)
@@ -95,7 +95,7 @@ class _Convertible(object):
       will be modified during conversion. Its main use will be in the
       implementations of convert_variable_to_constant().
     """
-    raise NotImplementedError()
+    raise NotImplementedError
 
   def convert_variable_to_constant(self, incoming_edge, tensor_data):
     """Converts a variable in this Convertible and its dependencies.
@@ -109,7 +109,7 @@ class _Convertible(object):
         converted to a constant.
       tensor_data: The tensor representing the constant.
     """
-    raise NotImplementedError()
+    raise NotImplementedError
 
   def create_edges(self):
     """Calls add_outgoing_edge for all edges known to this Convertible.
@@ -118,7 +118,7 @@ class _Convertible(object):
     variables to constants can be properly propagated through the graph. Usually
     this method will call add_outgoing_edge() to all the Convertible inputs.
     """
-    raise NotImplementedError()
+    raise NotImplementedError
 
   def add_outgoing_edge(self, edge):
     """Adds an outgoing edge to the Convertible's list of edges.
@@ -346,9 +346,9 @@ class _Node(_Convertible):
       if index == 0:
         attr.type = dtype
         return
-    raise ValueError(
-        "Index %d out of range for node(%s).attr(%s), which has %d elements." %
-        (index, self._node.name, attr_name, num_types))
+    raise ValueError(f"`index` {index:d} is out of range for "
+                     f"node({self._node.name}).attr({attr_name}), which has "
+                     f"{num_types:d} elements.")
 
 
 class _Intermediate(_Node):
@@ -404,7 +404,9 @@ class _ResourceGather(_Node):
     if self._function is not None:
       return
     if self._node.attr["batch_dims"].i != 0:
-      raise ValueError("batch_dims != 0 is not supported by freeze_graph.")
+      raise ValueError("batch_dims must be 0 for freeze_graph, but got "
+                       f"node({self._node.name}).attr('batch_dims') = "
+                       f"{self._node.attr['batch_dims'].i}.")
     axis_node_name = self._node.name + "/axis"
     axis_dtype = self._node.attr["Tindices"]
     axis_data = np.array(self._node.attr["batch_dims"].i)
@@ -807,7 +809,13 @@ class _FunctionConverterData(_ConverterData):
         graph_def,
         variable_names_allowlist=variable_names_allowlist,
         variable_names_denylist=variable_names_denylist)
+
     self._build_tensor_data()
+
+  def _eval(self, tensor):
+    """Returns the value in the tensor. Must be implemented in sub-classes."""
+    raise errors.UnimplementedError(
+        "The evaluation method should be implemented in sub-classes.")
 
   def _build_tensor_data(self):
     """Caches the tensor data for all Placeholders in the given function."""
@@ -824,12 +832,13 @@ class _FunctionConverterData(_ConverterData):
       if not self._should_convert(tensor_name):
         continue
       if idx in map_index_to_variable:
-        data = map_index_to_variable[idx].numpy()
+        data = self._eval(map_index_to_variable[idx])
       else:
         if val_tensor.dtype == dtypes.resource:
           logging.vlog(1, "Skip converting resource tensor %s" % tensor_name)
           continue
-        data = np.array(val_tensor.numpy())
+        data = np.array(self._eval(val_tensor))
+
       self._tensor_data[tensor_name] = _TensorData(
           numpy=data,
           dtype=dtypes.as_dtype(data.dtype).as_datatype_enum,
@@ -849,6 +858,59 @@ class _FunctionConverterData(_ConverterData):
               numpy=pruned_graph.numpy(),
               dtype=node.attr["dtype"].type,
               index=None)
+
+
+class _FunctionConverterDataInEager(_FunctionConverterData):
+  """Container for ConcreteFunction-based conversion data in Eager mode."""
+
+  def _eval(self, tensor):
+    """Returns the value in the tensor. Must be implemented in sub-classes."""
+    return tensor.numpy()
+
+
+class _FunctionConverterDataInGraph(_FunctionConverterData):
+  """Container for ConcreteFunction-based conversion data in Graph mode."""
+
+  def __init__(self,
+               func,
+               lower_control_flow,
+               aggressive_inlining,
+               variable_names_allowlist=None,
+               variable_names_denylist=None,
+               session=None):
+    """Creates the conversion data for the given function.
+
+    Args:
+      func: ConcreteFunction.
+      lower_control_flow: Boolean indicating whether or not to lower control
+        flow ops such as If and While.
+      aggressive_inlining: Boolean indicating whether or not to do aggressive
+        function inlining (might be unsafe if function has stateful ops, not
+        properly connected to control outputs).
+      variable_names_allowlist: The set of variable names to convert (by
+        default, all variables are converted).
+      variable_names_denylist: The set of variable names to omit converting to
+        constants.
+      session: Session object.
+    """
+    self._session = session
+
+    session.run(variables.global_variables_initializer())
+    # Run extra assignment ops if needed.
+    # These assignments are run sequentially to ensure order.
+    for op in ops.get_default_graph().get_collection(VAR_ASSIGN_COLLECTION):
+      session.run(op)
+
+    super(_FunctionConverterDataInGraph, self).__init__(
+        func,
+        lower_control_flow,
+        aggressive_inlining,
+        variable_names_allowlist,
+        variable_names_denylist)
+
+  def _eval(self, tensor):
+    """Returns the value in the tensor. Must be implemented in sub-classes."""
+    return self._session.run(tensor)
 
 
 class _SessionConverterData(_ConverterData):
@@ -1078,10 +1140,57 @@ def convert_variables_to_constants_v2(func,
     ConcreteFunction containing a simplified version of the original.
   """
 
-  converter_data = _FunctionConverterData(
+  converter_data = _FunctionConverterDataInEager(
       func=func,
       lower_control_flow=lower_control_flow,
       aggressive_inlining=aggressive_inlining)
+
+  output_graph_def, converted_input_indices = _replace_variables_by_constants(
+      converter_data=converter_data)
+
+  return _construct_concrete_function(func, output_graph_def,
+                                      converted_input_indices)
+
+
+def convert_var_to_const_function_in_v1(func,
+                                        lower_control_flow=True,
+                                        aggressive_inlining=False):
+  """Replaces all the variables in a graph with constants of the same values.
+
+  This function works as same as convert_variables_to_constants_v2, but it
+  should be used in Graph mode. It is a temporary solution when users want to
+  integrate their models written in TF2 with infra that requires TF1 mode.
+
+  The current implementation only works for graphs that do not contain any
+  control flow or embedding related ops.
+
+  The function must be called in a Session context.
+
+  Args:
+    func: ConcreteFunction.
+    lower_control_flow: Boolean indicating whether or not to lower control flow
+      ops such as If and While. (default True)
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
+      function inlining (might be unsafe if function has stateful ops, not
+      properly connected to control outputs). (default False)
+
+  Raises:
+      RuntimeError: If no Session context is present.
+
+  Returns:
+    ConcreteFunction containing a simplified version of the original.
+  """
+
+  session = ops.get_default_session()
+  if session is None:
+    raise RuntimeError(
+        "The conversion must be carried out in a Session context.")
+
+  converter_data = _FunctionConverterDataInGraph(
+      func=func,
+      lower_control_flow=lower_control_flow,
+      aggressive_inlining=aggressive_inlining,
+      session=session)
 
   output_graph_def, converted_input_indices = _replace_variables_by_constants(
       converter_data=converter_data)
@@ -1112,7 +1221,7 @@ def convert_variables_to_constants_v2_as_graph(func,
     the intermediate GraphDef containing the node debug information for the
     transformations in the frozen phase.
   """
-  converter_data = _FunctionConverterData(
+  converter_data = _FunctionConverterDataInEager(
       func=func,
       lower_control_flow=lower_control_flow,
       aggressive_inlining=aggressive_inlining)

@@ -16,15 +16,15 @@ limitations under the License.
 
 static void PrintArray(FILE* fp, const char* name, const int16_t* values,
                        size_t size) {
-  MICROFRONTEND_FPRINTF(fp, "static int16_t filterbank_%s[] = {", name);
+  fprintf(fp, "static int16_t filterbank_%s[] = {", name);
   int i;
   for (i = 0; i < size; ++i) {
-    MICROFRONTEND_FPRINTF(fp, "%d", values[i]);
+    fprintf(fp, "%d", values[i]);
     if (i < size - 1) {
-      MICROFRONTEND_FPRINTF(fp, ", ");
+      fprintf(fp, ", ");
     }
   }
-  MICROFRONTEND_FPRINTF(fp, "};\n");
+  fprintf(fp, "};\n");
 }
 
 void FilterbankWriteMemmapPreamble(FILE* fp,
@@ -44,31 +44,24 @@ void FilterbankWriteMemmapPreamble(FILE* fp,
   PrintArray(fp, "weights", state->weights, num_weights);
   PrintArray(fp, "unweights", state->unweights, num_weights);
 
-  MICROFRONTEND_FPRINTF(fp, "static uint64_t filterbank_work[%d];\n",
-                        num_channels_plus_1);
-  MICROFRONTEND_FPRINTF(fp, "\n");
+  fprintf(fp, "static uint64_t filterbank_work[%d];\n", num_channels_plus_1);
+  fprintf(fp, "\n");
 }
 
 void FilterbankWriteMemmap(FILE* fp, const struct FilterbankState* state,
                            const char* variable) {
-  MICROFRONTEND_FPRINTF(fp, "%s->num_channels = %d;\n", variable,
-                        state->num_channels);
-  MICROFRONTEND_FPRINTF(fp, "%s->start_index = %d;\n", variable,
-                        state->start_index);
-  MICROFRONTEND_FPRINTF(fp, "%s->end_index = %d;\n", variable,
-                        state->end_index);
+  fprintf(fp, "%s->num_channels = %d;\n", variable, state->num_channels);
+  fprintf(fp, "%s->start_index = %d;\n", variable, state->start_index);
+  fprintf(fp, "%s->end_index = %d;\n", variable, state->end_index);
 
-  MICROFRONTEND_FPRINTF(
+  fprintf(
       fp,
       "%s->channel_frequency_starts = filterbank_channel_frequency_starts;\n",
       variable);
-  MICROFRONTEND_FPRINTF(
-      fp, "%s->channel_weight_starts = filterbank_channel_weight_starts;\n",
-      variable);
-  MICROFRONTEND_FPRINTF(fp, "%s->channel_widths = filterbank_channel_widths;\n",
-                        variable);
-  MICROFRONTEND_FPRINTF(fp, "%s->weights = filterbank_weights;\n", variable);
-  MICROFRONTEND_FPRINTF(fp, "%s->unweights = filterbank_unweights;\n",
-                        variable);
-  MICROFRONTEND_FPRINTF(fp, "%s->work = filterbank_work;\n", variable);
+  fprintf(fp, "%s->channel_weight_starts = filterbank_channel_weight_starts;\n",
+          variable);
+  fprintf(fp, "%s->channel_widths = filterbank_channel_widths;\n", variable);
+  fprintf(fp, "%s->weights = filterbank_weights;\n", variable);
+  fprintf(fp, "%s->unweights = filterbank_unweights;\n", variable);
+  fprintf(fp, "%s->work = filterbank_work;\n", variable);
 }

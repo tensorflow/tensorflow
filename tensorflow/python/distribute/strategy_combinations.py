@@ -14,10 +14,7 @@
 # ==============================================================================
 """Strategy combinations for combinations.combine()."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import cluster_resolver
@@ -35,10 +32,11 @@ from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
+from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.training import server_lib
 from tensorflow.python.util.tf_export import tf_export
 
 _TF_INTERNAL_API_PREFIX = "__internal__.distribute.combinations."
@@ -75,6 +73,7 @@ CollectiveAllReduceStrategy = (
 def _get_tpu_strategy_creator(steps_per_run,
                               use_single_core=False,
                               enable_packed_variable=False,
+                              enable_spmd_xla_paritioning=False,
                               **kwargs):
 
   def _create_tpu_strategy():
@@ -112,10 +111,16 @@ def _get_tpu_strategy_creator(steps_per_run,
 
     # Steps per run is only supported in TF 1.x
     if tf2.enabled():
-      strategy = tpu_lib.TPUStrategy(resolver, device_assignment, **kwargs)
+      strategy = tpu_lib.TPUStrategyV2(
+          resolver,
+          device_assignment,
+          experimental_spmd_xla_partitioning=enable_spmd_xla_paritioning,
+          **kwargs)
     else:
       strategy = tpu_lib.TPUStrategyV1(resolver, steps_per_run,
                                        device_assignment, **kwargs)
+    if enable_packed_variable and enable_spmd_xla_paritioning:
+      raise ValueError("Packed Variable is not compatiable with SPMD mode")
     strategy._enable_packed_variable_in_eager_mode = enable_packed_variable  # pylint: disable=protected-access
     return strategy
 
@@ -181,21 +186,92 @@ def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
 
   return _create_multi_worker_mirrored
 
+_ps_cluster = None
+MAX_NUM_WORKER = 3
+MAX_NUM_PS = 2
 
-def _get_ps_strategy_creator(num_workers, num_ps, required_gpus=0):
+
+def get_cluster_def(num_workers, num_ps):
+  if num_workers > MAX_NUM_WORKER or num_ps > MAX_NUM_PS:
+    raise ValueError("Requesting more servers than the maximum, adjust"
+                     "MAX_NUM_PS and MAX_NUM_WORKER")
+  global _ps_cluster
+  if _ps_cluster is None:
+    _ps_cluster = multi_worker_test_base.create_in_process_cluster(
+        num_workers=MAX_NUM_WORKER, num_ps=MAX_NUM_PS)
+  return {
+      "worker": _ps_cluster["worker"][:num_workers],
+      "ps": _ps_cluster["ps"][:num_ps],
+  }
+
+
+# Due to b/195615322, FixedShardsPartitioner will wrongly partition
+# RNG state, so we use MinSizePartitioner as the default. Maximum RNG
+# state size is int64[3] which is 8 * 3 bytes, so we set
+# min_shard_bytes to 8 * 3 + 1.
+DEFAULT_PARTITIONER = sharded_variable.MinSizePartitioner(
+    min_shard_bytes=8 * 3 + 1, max_shards=2)
+
+
+def _get_ps_strategy_creator(
+    num_workers, num_ps, required_gpus=0,
+    variable_partitioner=DEFAULT_PARTITIONER):
+
+  def _create_ps_strategy(resolver, variable_partitioner):
+    return parameter_server_strategy_v2.ParameterServerStrategyV2(
+        resolver,
+        variable_partitioner=variable_partitioner
+        )
 
   def _create_parameter_server():
+    if framework_test_util.is_xla_enabled():
+      # To address test failures resulting in XLA with MultiProcessRunner,
+      # continue to use in-process cluster for XLA tests.
+      cluster_def = multi_worker_test_base.create_in_process_cluster(
+          num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
+      resolver = cluster_resolver.SimpleClusterResolver(
+          server_lib.ClusterSpec(cluster_def),
+          num_accelerators={"GPU": required_gpus},
+          rpc_layer="grpc")
+      return _create_ps_strategy(resolver, variable_partitioner)
+    else:
+      tf_config = cluster_resolver.TFConfigClusterResolver()
+      cluster_def = tf_config.cluster_spec().as_dict()
+      if not cluster_def:
+        # When MultiProcessRunner cluster is used, the cluster is not created
+        # initially when the decorator is called. When the test runs, initially
+        # this method is invoked via decorator before setting up the
+        # MultiProcessRunner with worker and ps in the combinations.py. After
+        # setup is done, the subprocess invokes this method again to get
+        # strategy object. We return None strategy when the main thread invokes
+        # this method before setting up cluster.
+        # Returning None is fine here, since this thread will proceed to create
+        # MultiProcessRunner and invoke tests with decorator inside
+        # subprocesses.
+        return None
+      # MultiProcessRunner is already setup and this method is invoked from a
+      # subprocess running the actual test.
+      resolver = cluster_resolver.SimpleClusterResolver(
+          server_lib.ClusterSpec(cluster_def),
+          num_accelerators={"GPU": required_gpus},
+          task_type=tf_config.task_type,
+          task_id=tf_config.task_id,
+          environment=tf_config.environment,
+          rpc_layer=tf_config.rpc_layer or "grpc")
+      if tf_config.task_type in ("worker", "ps"):
+        worker_config = config_pb2.ConfigProto()
+        worker_config.inter_op_parallelism_threads = 4  # max num_workers + 1
+        server = server_lib.Server(
+            cluster_def,
+            job_name=tf_config.task_type,
+            task_index=tf_config.task_id,
+            protocol="grpc",
+            config=worker_config)
 
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
-    resolver = cluster_resolver.SimpleClusterResolver(
-        ClusterSpec(cluster_def),
-        num_accelerators={"GPU": required_gpus},
-        rpc_layer="grpc")
-    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        resolver,
-        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
-    return strategy
+        # Blocking the process that starts a server from exiting.
+        server.join()
+
+      return _create_ps_strategy(resolver, variable_partitioner)
 
   return _create_parameter_server
 
@@ -243,7 +319,6 @@ _four_worker_pool = _deferred_pool_runner(
     num_workers=3,
     initializer=_get_multi_worker_mirrored_creator(required_gpus=0))
 
-
 # pylint: disable=g-long-lambda
 default_strategy = combinations.NamedDistribution(
     "Default",
@@ -266,6 +341,11 @@ tpu_strategy = combinations.NamedDistribution(
 tpu_strategy_packed_var = combinations.NamedDistribution(
     "TPUPackedVar",
     _get_tpu_strategy_creator(steps_per_run=2, enable_packed_variable=True),
+    required_tpu=True)
+tpu_strategy_spmd = combinations.NamedDistribution(
+    "TPUUseSPMD",
+    _get_tpu_strategy_creator(
+        steps_per_run=2, enable_spmd_xla_paritioning=True),
     required_tpu=True)
 tpu_strategy_one_step = combinations.NamedDistribution(
     "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1), required_tpu=True)
@@ -293,6 +373,10 @@ mirrored_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     "MirroredCPUAndGPU",
     lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0", "/cpu:0"]),
     required_gpus=1)
+mirrored_strategy_with_two_cpus = combinations.NamedDistribution(
+    "Mirrored2CPUs",
+    lambda: _mirrored_strategy_with_collective_key_base(["/cpu:0", "/cpu:1"]),
+    required_gpus=0)
 mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
     lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0", "/gpu:1"]),
@@ -302,6 +386,7 @@ mirrored_strategy_with_two_gpus_no_merge_call = combinations.NamedDistribution(
     lambda: _mirrored_strategy_with_no_merge_call(["/gpu:0", "/gpu:1"]),
     required_physical_gpus=2)
 # Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
+# Deprecated, use mirrored_strategy_with_two_cpus instead.
 mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
     "Mirrored2CPU",
     lambda: _mirrored_strategy_with_collective_key_base(["/cpu:1", "/cpu:2"]))
@@ -367,27 +452,30 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
     no_xla=True,
 )
 
-parameter_server_strategy_3worker_2ps_cpu = combinations.NamedDistribution(
-    "ParameterServer3Worker2PSCPU",
-    _get_ps_strategy_creator(num_workers=3, num_ps=2),
-)
 
-parameter_server_strategy_1worker_2ps_cpu = combinations.NamedDistribution(
-    "ParameterServer1Worker2PSCPU",
-    _get_ps_strategy_creator(num_workers=1, num_ps=2),
-)
+def parameter_server_strategy_fn(
+    name, num_workers, num_ps, required_gpus=0,
+    variable_partitioner=DEFAULT_PARTITIONER):
+  return combinations.NamedDistribution(
+      name,
+      _get_ps_strategy_creator(
+          num_workers=num_workers, num_ps=num_ps, required_gpus=required_gpus,
+          variable_partitioner=variable_partitioner),
+      required_gpus=required_gpus,
+      num_workers=num_workers,
+      has_chief=True,
+      num_ps=num_ps)
 
-parameter_server_strategy_3worker_2ps_1gpu = combinations.NamedDistribution(
-    "ParameterServer3Worker2PS1GPU",
-    _get_ps_strategy_creator(num_workers=3, num_ps=2, required_gpus=1),
-    required_gpus=1,
-)
 
-parameter_server_strategy_1worker_2ps_1gpu = combinations.NamedDistribution(
-    "ParameterServer1Worker2PS1GPU",
-    _get_ps_strategy_creator(num_workers=1, num_ps=2, required_gpus=1),
-    required_gpus=1,
-)
+parameter_server_strategy_3worker_2ps_cpu = parameter_server_strategy_fn(
+    "ParameterServer3Worker2PSCPU", num_workers=3, num_ps=2)
+parameter_server_strategy_1worker_2ps_cpu = parameter_server_strategy_fn(
+    "ParameterServer1Worker2PSCPU", num_workers=1, num_ps=2)
+parameter_server_strategy_3worker_2ps_1gpu = parameter_server_strategy_fn(
+    "ParameterServer3Worker2PS1GPU", num_workers=3, num_ps=2, required_gpus=1)
+parameter_server_strategy_1worker_2ps_1gpu = parameter_server_strategy_fn(
+    "ParameterServer1Worker2PS1GPU", num_workers=1, num_ps=2, required_gpus=1)
+
 
 graph_and_eager_modes = ["graph", "eager"]
 

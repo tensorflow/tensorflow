@@ -23,41 +23,18 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
 namespace {
 
-// This pass will replace a func's bound inputs which are bound to
-// tf.ReadVariable ops global tensors with tf.Const ops inside the func's body.
-// If this pass runs successfully, the resultant IR will be guaranteed to:
-//
-// 1. Not contain any tf_saved_model.global_tensor ops
-// 2. Not contain any  tf_saved_model.bound_input arg attrs on tf_saved_model
-// exported functions
-// Else, the pass fails.
-//
-// The reason this pass has this contract is so that once this succeeds, we know
-// the IR is in correct form for inference backends (like lite) that do not
-// support resources/variables . Further, this contract also ensures that this
-// pass lowers from saved model to pure TF. Hence it fails, if it cannot lower.
 struct FreezeGlobalTensorsPass
-    : public PassWrapper<FreezeGlobalTensorsPass, OperationPass<ModuleOp>> {
-  FreezeGlobalTensorsPass() = default;
-
+    : public FreezeGlobalTensorsPassBase<FreezeGlobalTensorsPass> {
   explicit FreezeGlobalTensorsPass(bool allow_mutable_tensors) {
     this->allow_mutable_tensors = allow_mutable_tensors;
   }
-  FreezeGlobalTensorsPass(const FreezeGlobalTensorsPass& pass) {}
-
   void runOnOperation() override;
-
- private:
-  // Force a specified data format for all layout sensitive operations.
-  Option<bool> allow_mutable_tensors{
-      *this, "allow-mutable-tensors",
-      llvm::cl::desc("Allows mutable tensors to be in the graph. Default is "
-                     "false which means only immutable are allowed.")};
 };
 
 void FreezeGlobalTensorsPass::runOnOperation() {
@@ -130,11 +107,6 @@ void FreezeGlobalTensorsPass::runOnOperation() {
 }
 
 }  // namespace
-
-// For "opt" to pick up this pass.
-static PassRegistration<FreezeGlobalTensorsPass> pass(
-    "tf-saved-model-freeze-global-tensors",
-    "Freeze tf_saved_model.global_tensor's in func bodies.");
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass(
     bool allow_mutable_tensors) {

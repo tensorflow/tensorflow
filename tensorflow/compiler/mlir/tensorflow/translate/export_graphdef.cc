@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -71,7 +73,9 @@ using llvm::dyn_cast;
 using llvm::isa;
 using mlir::BlockArgument;
 using mlir::Dialect;
+using mlir::FuncOp;
 using mlir::Operation;
+using mlir::SymbolTable;
 using mlir::Value;
 using stream_executor::port::StatusOr;
 
@@ -117,16 +121,17 @@ class Exporter {
   // definition library
   static Status ConvertLibFunction(
       const GraphExportConfig& configs, const Dialect* tf_dialect,
-      mlir::FuncOp function, FunctionDefLibrary* flib,
-      llvm::SmallDenseSet<mlir::FuncOp>& visited_functions);
+      const SymbolTable& symbol_table, FuncOp function,
+      FunctionDefLibrary* flib, llvm::SmallDenseSet<FuncOp>& visited_functions);
+
   // Converts the given FuncOp to a Graph. The arguments and returns of
   // function are added to the graph with special op names kArgOp and kRetOp.
   // Later on, this graph can be converted a function definition and added to
   // another graph.
   static StatusOr<std::unique_ptr<Graph>> Convert(
       const GraphExportConfig& configs, const Dialect* tf_dialect,
-      mlir::FuncOp function, FunctionDefLibrary* flib,
-      llvm::SmallDenseSet<mlir::FuncOp>& visited_functions,
+      const SymbolTable& symbol_table, FuncOp function,
+      FunctionDefLibrary* flib, llvm::SmallDenseSet<FuncOp>& visited_functions,
       absl::flat_hash_set<Node*>* control_ret_nodes);
 
  private:
@@ -135,7 +140,7 @@ class Exporter {
 
   Status AddArgumentNode(BlockArgument arg, unsigned index,
                          llvm::StringRef name);
-  Status AddFetchNode(mlir::FuncOp function, mlir::tf_executor::FetchOp fetch,
+  Status AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
                       llvm::ArrayRef<llvm::StringRef> names);
   Status AddInstructionNode(Operation* inst);
   Status AddEdge(Operation* inst);
@@ -143,7 +148,7 @@ class Exporter {
   StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(BlockArgument arg,
                                                      unsigned index,
                                                      llvm::StringRef name);
-  StatusOr<std::unique_ptr<NodeDef>> GetReturnNode(mlir::FuncOp function,
+  StatusOr<std::unique_ptr<NodeDef>> GetReturnNode(FuncOp function,
                                                    Value operand,
                                                    unsigned index,
                                                    llvm::StringRef name);
@@ -166,11 +171,11 @@ class Exporter {
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     BlockArgument arg, unsigned index, llvm::StringRef name) {
-  auto func = arg.getParentRegion()->getParentOfType<mlir::FuncOp>();
+  auto func = arg.getParentRegion()->getParentOfType<FuncOp>();
 
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
-    node_def->set_name(name.str());
+    node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
     node_def->set_name(
         std::string(op_to_name_.GetUniqueName(func.getName().str())));
@@ -227,11 +232,10 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 }
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
-    mlir::FuncOp function, Value operand, unsigned index,
-    llvm::StringRef name) {
+    FuncOp function, Value operand, unsigned index, llvm::StringRef name) {
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
-    node_def->set_name(name.str());
+    node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
     node_def->set_name(
         std::string(op_to_name_.GetUniqueName(function.getName().str())));
@@ -360,17 +364,14 @@ Status Exporter::AddInstructionNode(Operation* inst) {
                       ConvertTFDialectOpToNodeDef(
                           inst, name, /*ignore_unregistered_attrs=*/false));
 
-  Status status;
-  Node* node = graph_->AddNode(*node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
   DCHECK(node != nullptr);
   nodes_[inst] = node;
   return Status::OK();
 }
 
 bool IsEntryFunctionArg(BlockArgument arg) {
-  return arg.getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
-         "main";
+  return arg.getParentRegion()->getParentOfType<FuncOp>().getName() == "main";
 }
 
 // Creates argument nodes from Block argument. If a name is supplied, that
@@ -378,19 +379,15 @@ bool IsEntryFunctionArg(BlockArgument arg) {
 Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
                                  llvm::StringRef name) {
   TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
-  Status status;
-  Node* node = graph_->AddNode(*node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
   args_[arg] = node;
   return Status::OK();
 }
 
 // Creates return nodes per operand of a FetchOp. If names is supplied, those
 // names will be used per node in order instead of generating a unique name.
-Status Exporter::AddFetchNode(mlir::FuncOp function,
-                              mlir::tf_executor::FetchOp fetch,
+Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
                               llvm::ArrayRef<llvm::StringRef> names) {
-  Status status;
   auto& return_nodes = returns_[fetch];
   for (auto operand_and_idx : llvm::enumerate(fetch.getOperands())) {
     if (operand_and_idx.value().getType().isa<mlir::tf_executor::ControlType>())
@@ -401,8 +398,7 @@ Status Exporter::AddFetchNode(mlir::FuncOp function,
         GetReturnNode(function, operand_and_idx.value(),
                       operand_and_idx.index(),
                       names.empty() ? "" : names[operand_and_idx.index()]));
-    Node* node = graph_->AddNode(*node_def, &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
     return_nodes.push_back(node);
   }
   return Status::OK();
@@ -427,14 +423,15 @@ Status Exporter::GetControlRetNodes(
 
 StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     const GraphExportConfig& configs, const Dialect* tf_dialect,
-    mlir::FuncOp function, FunctionDefLibrary* flib,
-    llvm::SmallDenseSet<mlir::FuncOp>& visited_functions,
+    const SymbolTable& symbol_table, FuncOp function, FunctionDefLibrary* flib,
+    llvm::SmallDenseSet<FuncOp>& visited_functions,
     absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::Block& block = function.front();
 
   // Extract input & output names if set.
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
+  llvm::SmallVector<llvm::StringRef, 2> unique_output_names;
   auto dict_attr =
       function->getAttrOfType<mlir::DictionaryAttr>(kEntryFuncAttr);
   if (dict_attr) {
@@ -465,7 +462,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // generate unique names.
   if (!output_names.empty()) {
     const int num_data_results = graph_op.getNumResults();
-    const int64 output_names_size = output_names.size();
+    const int64_t output_names_size = output_names.size();
     TF_RET_CHECK(output_names_size == num_data_results)
         << "output names (" << output_names.size()
         << ") != terminator operands (" << num_data_results << ")";
@@ -473,7 +470,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     llvm::StringMap<Operation*> name_to_op;
     for (const auto& it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
       // Skip control rets.
-      const int64 index = it.index();
+      const int64_t index = it.index();
       if (index >= num_data_results) break;
       // TODO(jpienaar): If there is a result index specified, ensure only one
       // and that it matches the result index of the op.
@@ -484,7 +481,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       mlir::LegalizeNodeName(tensor_id_node);
 
       // Ensure name does not get reused.
-      (void)exporter.op_to_name_.GetUniqueName(tensor_id_node);
+      unique_output_names.push_back(
+          exporter.op_to_name_.GetUniqueName(tensor_id_node));
     }
   }
 
@@ -521,12 +519,10 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   }
 
   auto convert_called_function = [&](llvm::StringRef name) {
-    auto func =
-        function->getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
-            name);
+    auto func = symbol_table.lookup<FuncOp>(name);
     if (func != nullptr) {
-      TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, func, flib,
-                                            visited_functions));
+      TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, symbol_table,
+                                            func, flib, visited_functions));
       // TODO(prakalps): Optimize to only add the requested function to graph
       // library rather than the all the functions exported so far.
       TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
@@ -549,7 +545,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // tf_executor.NextIteration.Sink will be used instead.
       continue;
     } else if (auto fetch = llvm::dyn_cast<mlir::tf_executor::FetchOp>(inst)) {
-      TF_RETURN_IF_ERROR(exporter.AddFetchNode(function, fetch, output_names));
+      TF_RETURN_IF_ERROR(
+          exporter.AddFetchNode(function, fetch, unique_output_names));
     } else if (auto island =
                    llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
       Operation& inner_op = island.GetBody().front();
@@ -566,7 +563,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       if (IsLegacyCallInstruction(&inner_op)) {
         TF_RETURN_IF_ERROR(convert_called_function(
             inner_op.getAttrOfType<mlir::SymbolRefAttr>("f")
-                .getLeafReference()));
+                .getLeafReference()
+                .getValue()));
       }
 
       TF_RETURN_IF_ERROR(exporter.AddInstructionNode(&inner_op));
@@ -590,8 +588,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
 
 Status Exporter::ConvertLibFunction(
     const GraphExportConfig& configs, const Dialect* tf_dialect,
-    mlir::FuncOp function, FunctionDefLibrary* flib,
-    llvm::SmallDenseSet<mlir::FuncOp>& visited_functions) {
+    const SymbolTable& symbol_table, FuncOp function, FunctionDefLibrary* flib,
+    llvm::SmallDenseSet<FuncOp>& visited_functions) {
   // Return early if the function has already been exported.
   bool is_new_function = visited_functions.insert(function).second;
   if (!is_new_function) return Status::OK();
@@ -600,9 +598,10 @@ Status Exporter::ConvertLibFunction(
 
   // TODO(fengliuai): use a small flib_def to reduce overhead
   absl::flat_hash_set<Node*> control_ret_nodes;
-  TF_ASSIGN_OR_RETURN(auto sub_graph,
-                      Exporter::Convert(configs, tf_dialect, function, flib,
-                                        visited_functions, &control_ret_nodes));
+  TF_ASSIGN_OR_RETURN(
+      auto sub_graph,
+      Exporter::Convert(configs, tf_dialect, symbol_table, function, flib,
+                        visited_functions, &control_ret_nodes));
   const auto control_ret = [&](const Node* n) -> absl::optional<string> {
     return control_ret_nodes.contains(n)
                ? absl::make_optional<string>(n->name())
@@ -626,11 +625,9 @@ Status Exporter::ConvertLibFunction(
   auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
   if (auto attr =
           function->getAttrOfType<mlir::FlatSymbolRefAttr>(grad_string)) {
-    auto grad_func =
-        function->getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
-            attr.getValue());
-    TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, grad_func, flib,
-                                          visited_functions));
+    auto grad_func = symbol_table.lookup<FuncOp>(attr.getValue());
+    TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, symbol_table,
+                                          grad_func, flib, visited_functions));
     GradientDef grad;
     grad.set_function_name(function_name);
     grad.set_gradient_func(grad_func.getName().str());
@@ -660,18 +657,6 @@ Status Exporter::ConvertLibFunction(
       (*func_def.mutable_resource_arg_unique_id())[i] =
           resource_arg_unique_id_attr.getInt();
     }
-
-    llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
-        function.getArgAttrs(i);
-    if (func_arg_i_attrs.empty()) continue;
-    absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-        kDeviceAttr, kResourceArgUniqueIdAttr};
-    FunctionDef::ArgAttrs func_def_arg_i_attrs;
-    TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
-                                         /*remove_ref_type=*/false,
-                                         func_def_arg_i_attrs.mutable_attr()));
-    if (func_def_arg_i_attrs.attr().empty()) continue;
-    (*func_def.mutable_arg_attr())[i] = std::move(func_def_arg_i_attrs);
   }
 
   (*flib->add_function()) = std::move(func_def);
@@ -685,11 +670,14 @@ Status Exporter::Convert(mlir::ModuleOp module,
                          absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::Identifier entry_func_id =
       mlir::Identifier::get("main", module.getContext());
-  absl::optional<mlir::FuncOp> entry_func;
+  absl::optional<FuncOp> entry_func;
   FunctionDefLibrary flib;
-  llvm::SmallDenseSet<mlir::FuncOp> visited_functions;
+  llvm::SmallDenseSet<FuncOp> visited_functions;
   auto tf_dialect = module.getContext()->getLoadedDialect("tf");
-  for (auto function : module.getOps<mlir::FuncOp>()) {
+  // Construct SymbolTable to enable cheap function lookups. The cost
+  // of constructing the table is offset by the number of queries.
+  SymbolTable symbol_table(module);
+  for (auto function : module.getOps<FuncOp>()) {
     if (function.isExternal())
       return errors::FailedPrecondition("External functions not supported");
 
@@ -697,8 +685,9 @@ Status Exporter::Convert(mlir::ModuleOp module,
         !configs.export_entry_func_to_flib) {
       entry_func.emplace(function);
     } else {
-      TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, function,
-                                            &flib, visited_functions));
+      TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, symbol_table,
+                                            function, &flib,
+                                            visited_functions));
     }
   }
 
@@ -709,8 +698,9 @@ Status Exporter::Convert(mlir::ModuleOp module,
 
     // Updates the graph and the function library definition.
     TF_ASSIGN_OR_RETURN(
-        *graph, Exporter::Convert(configs, tf_dialect, entry_func.value(),
-                                  &flib, visited_functions, control_ret_nodes));
+        *graph,
+        Exporter::Convert(configs, tf_dialect, symbol_table, entry_func.value(),
+                          &flib, visited_functions, control_ret_nodes));
     // Add FunctionDefs and GradientDefs of MLIR functions to graph's function
     // library. If duplicate FunctionDefs already exist (can happen if exporter
     // had already added some FunctionDefs to the library to support legacy
@@ -781,13 +771,18 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
 }
 
 stream_executor::port::Status ConvertMlirFunctionToFunctionLibraryDef(
-    mlir::FuncOp func, const GraphExportConfig& configs,
-    FunctionDef* function_def) {
+    FuncOp func, const GraphExportConfig& configs, FunctionDef* function_def) {
   Dialect* tf_dialect = func.getContext()->getLoadedDialect("tf");
   FunctionDefLibrary flib;
-  llvm::SmallDenseSet<mlir::FuncOp> visited_functions;
-  TF_RETURN_IF_ERROR(Exporter::ConvertLibFunction(configs, tf_dialect, func,
-                                                  &flib, visited_functions));
+  llvm::SmallDenseSet<FuncOp> visited_functions;
+  // Construct SymbolTable to enable cheap function lookups. The cost
+  // of constructing the table is offset by the number of queries. Even
+  // though this only converts one function in theory, this function
+  // may have gradient associated which would result in a lookup. This
+  // could be made lazy if we find this to be broad.
+  SymbolTable symbol_table(func->getParentOfType<mlir::ModuleOp>());
+  TF_RETURN_IF_ERROR(Exporter::ConvertLibFunction(
+      configs, tf_dialect, symbol_table, func, &flib, visited_functions));
   for (auto& func_def : flib.function()) {
     if (func_def.signature().name() == func.getName()) {
       *function_def = func_def;

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/shim/test_op/simple_tf_op.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/fake_input.h"
@@ -27,6 +29,7 @@ namespace tflite {
 namespace shim {
 namespace {
 
+using ::tensorflow::DT_INT64;
 using ::tensorflow::DT_STRING;
 using ::tensorflow::FakeInput;
 using ::tensorflow::NodeDefBuilder;
@@ -37,14 +40,19 @@ using ::tensorflow::test::ExpectTensorEqual;
 
 class SimpleOpTfTest : public ::tensorflow::OpsTestBase {};
 
-TEST_F(SimpleOpTfTest, OutputSize5) {
+TEST_F(SimpleOpTfTest, Output1Size_5_N_2) {
   // Prepare graph.
   TF_ASSERT_OK(NodeDefBuilder("simple_op", "SimpleOperation")
-                   .Attr("output2_size", 5)
+                   .Attr("output1_size", 5)
+                   .Attr("output2_suffix", "foo")
+                   .Attr("N", 2)
                    .Input(FakeInput(DT_STRING))
+                   .Input(FakeInput(2, DT_INT64))
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<tstring>(TensorShape({}), {"abc"});
+  AddInputFromArray<int64_t>(TensorShape({}), {123});
+  AddInputFromArray<int64_t>(TensorShape({2}), {456, 789});
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -53,18 +61,25 @@ TEST_F(SimpleOpTfTest, OutputSize5) {
                          AsTensor<int>({0, 1, 2, 3, 4}, /*shape=*/{5}));
   ExpectTensorEqual<float>(
       *GetOutput(1), AsTensor<float>({0, 0.5, 1., 1.5, 2.}, /*shape=*/{5}));
-  ExpectTensorEqual<int>(*GetOutput(2),
-                         AsTensor<int>({0, 1, 2}, /*shape=*/{3}));
+  ExpectTensorEqual<tstring>(
+      *GetOutput(2), AsTensor<tstring>({"0", "1", "2", "foo"}, /*shape=*/{4}));
+  ExpectTensorEqual<int64_t>(*GetOutput(3),
+                             AsTensor<int64_t>({124}, /*shape=*/{}));
+  ExpectTensorEqual<int64_t>(*GetOutput(4),
+                             AsTensor<int64_t>({457, 790}, /*shape=*/{2}));
 }
 
-TEST_F(SimpleOpTfTest, OutputSize3) {
+TEST_F(SimpleOpTfTest, Output1Size_3_N_0) {
   // Prepare graph.
   TF_ASSERT_OK(NodeDefBuilder("simple_op", "SimpleOperation")
-                   .Attr("output2_size", 3)
+                   .Attr("output1_size", 3)
+                   .Attr("output2_suffix", "foo")
+                   .Attr("N", 0)
                    .Input(FakeInput(DT_STRING))
+                   .Input(FakeInput(0, DT_INT64))
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<tstring>(TensorShape({}), {"abc"});
+  AddInputFromArray<tstring>(TensorShape({}), {"abcde"});
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -73,8 +88,9 @@ TEST_F(SimpleOpTfTest, OutputSize3) {
                          AsTensor<int>({0, 1, 2, 3, 4}, /*shape=*/{5}));
   ExpectTensorEqual<float>(*GetOutput(1),
                            AsTensor<float>({0, 0.5, 1.}, /*shape=*/{3}));
-  ExpectTensorEqual<int>(*GetOutput(2),
-                         AsTensor<int>({0, 1, 2}, /*shape=*/{3}));
+  ExpectTensorEqual<tstring>(
+      *GetOutput(2),
+      AsTensor<tstring>({"0", "1", "2", "3", "4", "foo"}, /*shape=*/{6}));
 }
 
 }  // namespace

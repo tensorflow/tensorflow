@@ -174,6 +174,16 @@ class LegalizeHashTables
   LegalizeHashTables() = default;
   LegalizeHashTables(const LegalizeHashTables&) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-legalize-hashtables-tf";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize TensorFlow hash tables to TensorFlow Lite dialect";
+  }
+
   void runOnOperation() override {
     auto module = getOperation();
 
@@ -198,9 +208,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHashTablesPass() {
   return std::make_unique<LegalizeHashTables>();
 }
 
-static PassRegistration<LegalizeHashTables> pass(
-    "tfl-legalize-hashtables-tf",
-    "Legalize TensorFlow hash tables to TensorFlow Lite dialect");
+static PassRegistration<LegalizeHashTables> pass;
 
 }  // namespace TFL
 }  // namespace mlir

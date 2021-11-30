@@ -50,7 +50,7 @@ class TensorToHashBucketOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output("output", input_tensor->shape(),
                                             &output_tensor));
-    auto output_flat = output_tensor->flat<int64>();
+    auto output_flat = output_tensor->flat<int64_t>();
 
     functor::LaunchTensorToHashBucket<Device, T>()(
         context, num_buckets_, input_flat.data(), input_tensor->NumElements(),
@@ -58,7 +58,7 @@ class TensorToHashBucketOp : public OpKernel {
   }
 
  private:
-  int64 num_buckets_;
+  int64_t num_buckets_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TensorToHashBucketOp);
 };

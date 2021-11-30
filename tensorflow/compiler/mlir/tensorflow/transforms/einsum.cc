@@ -19,12 +19,16 @@ limitations under the License.
 #include <cctype>
 #include <climits>
 #include <cstdint>
+#include <string>
+#include <tuple>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -32,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/Regex.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
@@ -41,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -57,7 +63,7 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
   auto perm_type = RankedTensorType::get(
       {static_cast<int32_t>(permutation.size())}, rewriter->getIntegerType(32));
   auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
-  auto perm_op = rewriter->create<ConstantOp>(loc, perm_type, perm_attr);
+  auto perm_op = rewriter->create<arith::ConstantOp>(loc, perm_type, perm_attr);
   SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
@@ -77,7 +83,7 @@ TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
   Type resultType = RankedTensorType::get(shape, element_type);
   auto constant_attr = DenseElementsAttr::get(shape_spec_type, shape);
   auto shape_tensor =
-      rewriter->create<ConstantOp>(loc, shape_spec_type, constant_attr);
+      rewriter->create<arith::ConstantOp>(loc, shape_spec_type, constant_attr);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);
 }
@@ -112,8 +118,131 @@ llvm::Optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
   return map;
 }
 
+llvm::Optional<llvm::SetVector<char>> GetAvailableLabels(
+    llvm::StringRef lhs, llvm::StringRef rhs, int* lhs_named_label_count,
+    int* rhs_named_label_count) {
+  llvm::SetVector<char> labels;
+  for (int i = 0; i < 26; ++i) {
+    labels.insert('a' + i);
+    labels.insert('A' + i);
+  }
+
+  auto is_start_of_ellipsis = [](StringRef equation, int start_index) {
+    if (equation.size() < (start_index + 3)) return false;
+
+    if (equation.substr(start_index, 3) != "...") return false;
+    return true;
+  };
+
+  int lhs_count = 0;
+  const int lhs_size = lhs.size();
+  for (int i = 0; i < lhs_size; ++i) {
+    const char label = lhs[i];
+    if (std::isalpha(label)) {
+      labels.remove(label);
+      ++lhs_count;
+    } else if (label == '.') {
+      if (!is_start_of_ellipsis(lhs, i)) return llvm::None;
+      i += 2;
+    } else {
+      // Unsupported character in the equation.
+      return llvm::None;
+    }
+  }
+  *lhs_named_label_count = lhs_count;
+
+  int rhs_count = 0;
+  const int rhs_size = rhs.size();
+  for (int i = 0; i < rhs_size; ++i) {
+    const char label = rhs[i];
+    if (std::isalpha(label)) {
+      labels.remove(label);
+      ++rhs_count;
+    } else if (label == '.') {
+      if (!is_start_of_ellipsis(rhs, i)) return llvm::None;
+      i += 2;
+    } else {
+      // Unsupported character in the equation.
+      return llvm::None;
+    }
+  }
+
+  *rhs_named_label_count = rhs_count;
+  return labels;
+}
+
+// Generate new unnamed labels for the expression.
+// For example, if we have GenerateLabels(2, {'b', 'c', 'd'}) for "...xy"
+// We will have "dcxy" for the ellipsis expression since it's rank 4,
+// we will have dcbxy if it's rank 5.
+std::string GenerateLabels(int count,
+                           const llvm::SetVector<char>& available_labels) {
+  std::string new_labels(count, 0);
+  for (int i = 0; i < count; ++i) {
+    new_labels[count - 1 - i] = available_labels[i];
+  }
+
+  return new_labels;
+}
+
+std::tuple<std::string, std::string, std::string> FlattenEllipsis(
+    llvm::StringRef lhs, int lhs_named_label_count, llvm::StringRef rhs,
+    int rhs_named_label_count, llvm::StringRef out, RankedTensorType lhs_ty,
+    RankedTensorType rhs_ty, const llvm::SetVector<char>& available_labels) {
+  std::string new_labels;
+  std::string new_lhs;
+  for (int i = 0; i < lhs.size(); ++i) {
+    const char label = lhs[i];
+    if (std::isalpha(label)) {
+      new_lhs.push_back(label);
+    } else {
+      // Encounter ellipsis: generate unnamed labels then insert to the new
+      // labels.
+      new_labels = GenerateLabels(lhs_ty.getRank() - lhs_named_label_count,
+                                  available_labels);
+      new_lhs.append(new_labels);
+      i += 2;
+    }
+  }
+
+  std::string new_rhs, new_rhs_labels;
+  for (int i = 0; i < rhs.size(); ++i) {
+    const char label = rhs[i];
+    if (std::isalpha(label)) {
+      new_rhs.push_back(label);
+    } else {
+      // Encounter ellipsis: generate unnamed labels then insert to the new
+      // labels.
+      new_rhs_labels = GenerateLabels(rhs_ty.getRank() - rhs_named_label_count,
+                                      available_labels);
+      new_rhs.append(new_rhs_labels);
+      i += 2;
+      if (new_rhs_labels.size() > new_labels.size()) {
+        new_labels = new_rhs_labels;
+      }
+    }
+  }
+
+  // Deal with the output next.
+  std::string new_output;
+  for (int i = 0; i < out.size(); ++i) {
+    const char label = out[i];
+    if (std::isalpha(label)) {
+      new_output.push_back(label);
+    } else {
+      // Encounter ellipsis: we will just insert the generated labels to the new
+      // output label.
+      new_output.append(new_labels);
+      i += 2;
+    }
+  }
+
+  return std::make_tuple(new_lhs, new_rhs, new_output);
+}
+
 llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
-    llvm::StringRef equation) {
+    llvm::StringRef equation, RankedTensorType lhs_ty,
+    RankedTensorType rhs_ty) {
   llvm::StringRef lhs_rhs;
   llvm::StringRef out;
   std::tie(lhs_rhs, out) = equation.split("->");
@@ -123,6 +252,20 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
   llvm::StringRef rhs;
   std::tie(lhs, rhs) = lhs_rhs.split(',');
   if (lhs.empty() || rhs.empty()) return llvm::None;
+
+  // Try to flatten the "..." if possible.
+  int lhs_named_label, rhs_named_label;
+  auto avaiable_labels =
+      GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
+  if (!avaiable_labels.hasValue()) return llvm::None;
+
+  auto flattended_labels =
+      FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
+                      rhs_ty, avaiable_labels.getValue());
+
+  lhs = std::get<0>(flattended_labels);
+  rhs = std::get<1>(flattended_labels);
+  out = std::get<2>(flattended_labels);
 
   auto lhs_map_or = EquationToMap(lhs);
   if (!lhs_map_or.hasValue()) return llvm::None;
@@ -231,59 +374,79 @@ LogicalResult transposeForBatchMatmul(
   return success();
 }
 
+template <int I>
+inline int64_t ProdShapeWithIndexInTuple(
+    ArrayRef<int64_t> shape,
+    const std::vector<std::tuple<int64_t, int64_t>>& index_tuples) {
+  int64_t prod_shape = 1;
+  for (auto index_tuple : index_tuples) {
+    const int64_t shape_i = shape[std::get<I>(index_tuple)];
+    if (shape_i == -1) return -1;
+    prod_shape *= shape_i;
+  }
+  return prod_shape;
+}
+
 // Reshapes LHS and RHS to have B0,...,Bn,L,C and B0,...,Bn,C,R shape
 // respectively while assuming that the initial shape for them is
 // B0,...,Bn,L0,...,Ln,C0,...,Cn and B0,...,Bn,C0,...,Cn,R0,...,Rn respectively.
 LogicalResult reshapeForBatchMatmul(const Location& loc,
                                     EinsumDimensionNumbers& dnums, Value* lhs,
-                                    Value* rhs, std::vector<int64_t>* out_shape,
+                                    Value* rhs,
+                                    SmallVectorImpl<int64_t>* out_shape,
                                     PatternRewriter* rewriter) {
   RankedTensorType lhs_type = lhs->getType().cast<RankedTensorType>();
   RankedTensorType rhs_type = rhs->getType().cast<RankedTensorType>();
 
+  // Labels exist in all lhs, rhs and output are the batch labels B0,...,Bn.
   std::vector<int64_t> lhs_shape;
   std::vector<int64_t> rhs_shape;
   lhs_shape.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() + 1);
   rhs_shape.reserve(dnums.lhs_rhs_out.size() + 2);
   for (auto i : dnums.lhs_rhs_out) {
-    int64_t b = lhs_type.getShape()[std::get<0>(i)];
-    lhs_shape.push_back(b);
-    rhs_shape.push_back(b);
-    out_shape->push_back(b);
+    const int64_t b1 = lhs_type.getShape()[std::get<0>(i)];
+    lhs_shape.push_back(b1);
+    const int64_t b2 = rhs_type.getShape()[std::get<1>(i)];
+    rhs_shape.push_back(b2);
+  }
+  if (!OpTrait::util::getBroadcastedShape(lhs_shape, rhs_shape, *out_shape)) {
+    return failure();
   }
 
+  // Calculates dimension for the label L from L0,...,Ln in lhs.
   if (dnums.lhs_out.empty()) {
     lhs_shape.push_back(1);
     out_shape->push_back(1);
     dnums.lhs_out.emplace_back(lhs_shape.size() - 1, out_shape->size() - 1);
   } else if (dnums.lhs_rhs_out.empty()) {
+    // If there is not batch labels B0,...,Bn, it is safe to use L0,...,Ln as
+    // the batch labels in lhs, the rhs will be broadcasted.
     for (auto i : dnums.lhs_out) {
-      int64_t b = lhs_type.getShape()[std::get<0>(i)];
+      const int64_t b = lhs_type.getShape()[std::get<0>(i)];
       lhs_shape.push_back(b);
       out_shape->push_back(b);
     }
   } else {
-    int64_t lhs_out_size = 1;
-    for (auto i : dnums.lhs_out) {
-      lhs_out_size *= lhs_type.getShape()[std::get<0>(i)];
-    }
+    const int64_t lhs_out_size =
+        ProdShapeWithIndexInTuple<0>(lhs_type.getShape(), dnums.lhs_out);
     lhs_shape.push_back(lhs_out_size);
     out_shape->push_back(lhs_out_size);
   }
 
-  int64_t lhs_rhs_size = 1;
-  for (auto i : dnums.lhs_rhs) {
-    lhs_rhs_size *= lhs_type.getShape()[std::get<0>(i)];
-  }
-  lhs_shape.push_back(lhs_rhs_size);
-  rhs_shape.push_back(lhs_rhs_size);
-
-  int64_t rhs_size = 1;
-  for (auto i : dnums.rhs_out) {
-    rhs_size *= rhs_type.getShape()[std::get<0>(i)];
-  }
+  // Calculates dimension for the common label C from labels C0,...,Cn that
+  // exist in both lhs and rhs.
+  const int64_t lhs_size =
+      ProdShapeWithIndexInTuple<0>(lhs_type.getShape(), dnums.lhs_rhs);
+  const int64_t rhs_size =
+      ProdShapeWithIndexInTuple<1>(rhs_type.getShape(), dnums.lhs_rhs);
+  lhs_shape.push_back(lhs_size);
   rhs_shape.push_back(rhs_size);
-  out_shape->push_back(rhs_size);
+
+  // Calculates dimension for the label R from R0,...,Rn in rhs.
+  const int64_t rhs_out_size =
+      ProdShapeWithIndexInTuple<0>(rhs_type.getShape(), dnums.rhs_out);
+  rhs_shape.push_back(rhs_out_size);
+  out_shape->push_back(rhs_out_size);
 
   if (failed(VerifyShapeOfReshapeOp(lhs_shape)) ||
       failed(VerifyShapeOfReshapeOp(rhs_shape)))
@@ -322,7 +485,7 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
                                      &out_transpose, &rewriter)))
     return failure();
 
-  std::vector<int64_t> matmul_shape;
+  llvm::SmallVector<int64_t, 4> matmul_shape;
   if (failed(reshapeForBatchMatmul(op.getLoc(), dnums, &lhs, &rhs,
                                    &matmul_shape, &rewriter)))
     return failure();
@@ -345,26 +508,9 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   return success();
 }
 
-}  // namespace
-
-LogicalResult ConvertTFEinsumOp::matchAndRewrite(
-    TF::EinsumOp op, PatternRewriter& rewriter) const {
-  const auto dnums_or = GetEinsumDimensionNumbers(op.equation());
-  if (!dnums_or.hasValue()) return failure();
-  const auto& dnums = dnums_or.getValue();
-
-  RankedTensorType lhs =
-      op.getOperand(0).getType().dyn_cast_or_null<RankedTensorType>();
-  RankedTensorType rhs =
-      op.getOperand(1).getType().dyn_cast_or_null<RankedTensorType>();
-  if (!lhs || !rhs) return failure();
-
-  return rewriteToBatchMatmul(op, dnums, rewriter);
-}
-
 // Transform Einsum to other TF Ops for the supported variants.
 struct TransformEinsumPass
-    : public PassWrapper<TransformEinsumPass, FunctionPass> {
+    : public TransformEinsumPassBase<TransformEinsumPass> {
   void runOnFunction() override;
 };
 
@@ -376,8 +522,30 @@ void TransformEinsumPass::runOnFunction() {
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
-static PassRegistration<TransformEinsumPass> pass(
-    "tf-einsum", "Transform Einsum to other TF Ops for the supported variants");
+}  // namespace
+
+LogicalResult ConvertTFEinsumOp::matchAndRewrite(
+    TF::EinsumOp op, PatternRewriter& rewriter) const {
+  RankedTensorType lhs =
+      op.getOperand(0).getType().dyn_cast_or_null<RankedTensorType>();
+  RankedTensorType rhs =
+      op.getOperand(1).getType().dyn_cast_or_null<RankedTensorType>();
+  if (!lhs || !rhs) {
+    return failure();
+  }
+
+  // TODO(b/162328998) Better support Einsum with dynamic input. Currently, one
+  // dynamic dimension is always supported. If there are two or more dynamic
+  // dimensions, it is supported if they only exist in a single component
+  // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
+  if (const auto dnums_or = GetEinsumDimensionNumbers(op.equation(), lhs, rhs))
+    return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
+  return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
+}
+
+std::unique_ptr<FunctionPass> CreateTransformEinsumPass() {
+  return std::make_unique<TransformEinsumPass>();
+}
 
 }  // namespace TF
 }  // namespace mlir

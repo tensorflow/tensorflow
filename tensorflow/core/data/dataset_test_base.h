@@ -185,14 +185,14 @@ class DatasetParams {
 // testing.
 class RangeDatasetParams : public DatasetParams {
  public:
-  RangeDatasetParams(int64 start, int64 stop, int64 step,
+  RangeDatasetParams(int64_t start, int64_t stop, int64_t step,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
                      string node_name);
 
-  RangeDatasetParams(int64 start, int64 stop, int64 step);
+  RangeDatasetParams(int64_t start, int64_t stop, int64_t step);
 
-  RangeDatasetParams(int64 start, int64 stop, int64 step,
+  RangeDatasetParams(int64_t start, int64_t stop, int64_t step,
                      DataTypeVector output_dtypes);
 
   std::vector<Tensor> GetInputTensors() const override;
@@ -204,9 +204,9 @@ class RangeDatasetParams : public DatasetParams {
   string dataset_type() const override;
 
  private:
-  int64 start_;
-  int64 stop_;
-  int64 step_;
+  int64_t start_;
+  int64_t stop_;
+  int64_t step_;
 };
 
 // `BatchDatasetParams` is a common dataset parameter type that are used in
@@ -214,7 +214,7 @@ class RangeDatasetParams : public DatasetParams {
 class BatchDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  BatchDatasetParams(T input_dataset_params, int64 batch_size,
+  BatchDatasetParams(T input_dataset_params, int64_t batch_size,
                      bool drop_remainder, bool parallel_copy,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
@@ -240,7 +240,7 @@ class BatchDatasetParams : public DatasetParams {
   string dataset_type() const override;
 
  private:
-  int64 batch_size_;
+  int64_t batch_size_;
   bool drop_remainder_;
   bool parallel_copy_;
 };
@@ -294,7 +294,8 @@ class MapDatasetParams : public DatasetParams {
 // in testing.
 class TensorSliceDatasetParams : public DatasetParams {
  public:
-  TensorSliceDatasetParams(std::vector<Tensor> components, string node_name);
+  TensorSliceDatasetParams(std::vector<Tensor> components, string node_name,
+                           bool is_files = false);
 
   std::vector<Tensor> GetInputTensors() const override;
 
@@ -304,7 +305,7 @@ class TensorSliceDatasetParams : public DatasetParams {
 
   string dataset_type() const override;
 
-  int64 num_slices() const { return components_[0].dim_size(0); }
+  int64_t num_slices() const { return components_[0].dim_size(0); }
 
   size_t num_tensors_per_slice() const { return components_.size(); }
 
@@ -316,6 +317,7 @@ class TensorSliceDatasetParams : public DatasetParams {
 
  public:
   std::vector<Tensor> components_;
+  bool is_files_;
 };
 
 // `TakeDatasetParams` is a common dataset parameter type that are used in
@@ -345,7 +347,7 @@ class TakeDatasetParams : public DatasetParams {
   string dataset_type() const override;
 
  private:
-  int64 count_;
+  int64_t count_;
 };
 
 // `ConcatenateDatasetParams` is a common dataset parameter type that are used
@@ -464,7 +466,7 @@ struct DatasetOutputShapesTestCase {
 template <typename T>
 struct CardinalityTestCase {
   T dataset_params;
-  int64 expected_cardinality;
+  int64_t expected_cardinality;
 };
 
 template <typename T>
@@ -574,11 +576,11 @@ class DatasetOpsTestBase : public ::testing::Test {
                      std::unique_ptr<TestDataset>* dataset);
 
   // Creates an iterator for the given dataset, using the specified split
-  // provider.
-  Status MakeIterator(const DatasetParams& dataset_params,
-                      const TestDataset& dataset,
-                      std::unique_ptr<SplitProvider> split_provider,
-                      std::unique_ptr<TestIterator>* iterator);
+  // providers.
+  Status MakeIterator(
+      const DatasetParams& dataset_params, const TestDataset& dataset,
+      std::vector<std::unique_ptr<SplitProvider>> split_providers,
+      std::unique_ptr<TestIterator>* iterator);
   // Creates an iterator for the given dataset.
   Status MakeIterator(const DatasetParams& dataset_params,
                       const TestDataset& dataset,
@@ -633,7 +635,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   // with the given `num_shards` and `shard_index` produces the expected
   // outputs.
   Status CheckSplitProviderShardedIteration(
-      const DatasetParams& params, int64 num_shards, int64 shard_index,
+      const DatasetParams& params, int64_t num_shards, int64_t shard_index,
       const std::vector<Tensor>& expected_outputs);
 
   // Checks `DatasetBase::node_name()`.

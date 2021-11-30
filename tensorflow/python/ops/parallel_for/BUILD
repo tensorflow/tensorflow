@@ -31,7 +31,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:functional_ops",
-        "//tensorflow/python:gradients",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
@@ -140,7 +140,7 @@ cuda_py_test(
         # XLA is not enabled by default on Mac or Windows.
         "no_mac",
         "no_windows",
-        "nogpu",  # TODO(b/155761551): Flaky on GPU on TAP
+        "no_gpu",  # TODO(b/155761551): Flaky on GPU on TAP
         "no_tfrt",  # Note: Legacy XLA test, which depends on EncapsulateXlaComputationsPass.
     ],
     xla_enabled = True,

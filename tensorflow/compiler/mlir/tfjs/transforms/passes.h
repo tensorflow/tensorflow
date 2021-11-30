@@ -18,18 +18,20 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+
 namespace mlir {
 class FuncOp;
-template <typename T>
-class OperationPass;
 
 namespace tfjs {
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass();
 
-}  // namespace tfjs
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tfjs/transforms/passes.h.inc"
 
+}  // namespace tfjs
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFJS_TRANSFORMS_PASSES_H_

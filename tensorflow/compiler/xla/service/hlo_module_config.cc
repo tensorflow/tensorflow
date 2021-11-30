@@ -72,7 +72,12 @@ string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, "::intra_op_parallelism_threads=",
               intra_op_parallelism_threads());
   }
+  if (!device_type().empty()) {
+    StrAppend(&key, device_type());
+  }
   StrAppend(&key, "::alias_passthrough_params=", alias_passthrough_params_);
+  StrAppend(&key, "::allow_spmd_sharding_propagation_to_output=",
+            allow_spmd_sharding_propagation_to_output_);
   return key;
 }
 

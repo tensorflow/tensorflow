@@ -27,16 +27,33 @@ def TFKernelToLLVMPass : Pass<"tf-kernel-to-llvm", "ModuleOp"> {
   ];
 }
 
-def EmbedTFFrameworkFunctionAndAllocPass
-    : Pass<"embed-tf-framework-func-and-alloc", "ModuleOp"> {
-  let summary = "Pass to embed TF Framework for allocation and context";
-  let constructor = "tf_framework::CreateEmbedTFFrameworkFunctionAndAllocPass()";
+def EmbedTFFrameworkPass
+    : Pass<"embed-tf-framework", "ModuleOp"> {
+  let summary = "Pass to embed TF Framework for allocation and assertions,";
+  let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
 }
 
-def EmbedTFFrameworkAssertPass
-    : Pass<"embed-tf-framework-assert", "ModuleOp"> {
-  let summary = "Pass to rewrite assertions to TF framework calls";
-  let constructor = "tf_framework::CreateEmbedTFFrameworkAssertPass()";
+def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
+  let summary = "Pass to rewrite TFAssertOps to CondBranchOp";
+  let constructor = "tf_framework::CreateRewriteTFFrameworkAssert()";
+}
+
+def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
+  let summary = "Pass to rewrite all TF operations to JIT invocations";
+  let constructor = "transforms::CreateTFToJITInvocationPass()";
+  let options = [
+      ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
+                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+      ListOption<"unroll_factors_", "unroll-factors", "int64_t",
+                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore, "
+                 "llvm::cl::MiscFlags::CommaSeparated">,
+      Option<"max_supported_rank_", "max-supported-rank", "int64_t",
+             /*default=*/"", "Max rank that this kernel supports">,
+      Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
+             "Enable the denormal flush to zero mode when generating code">,
+      Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
+             "CPU codegen (false implies GPU)">,
+  ];
 }
 
 def BufferReusePass : FunctionPass<"buffer-reuse"> {
@@ -55,10 +72,20 @@ def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "Module
   let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
 }
 
+def TiledLoopBufferizePass : FunctionPass<"tiled-loop-bufferize"> {
+  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
+  let constructor = "transforms::CreateTiledLoopBufferizePass()";
+}
+
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "
                 "ones.";
   let constructor = "transforms::CreateFinalBufferizePass()";
+}
+
+def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
+  let summary = "Pass to transform the IR to be on signless integers.";
+  let constructor = "transforms::CreateConvertToSignlessPass()";
 }
 
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
@@ -82,6 +109,8 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
            "fatbin.">,
     Option<"print_ptx_", "print-ptx", "bool", /*default=*/"false",
            "Print generated PTX code per target architecture.">,
+    Option<"print_llvmir_", "print-llvmir", "bool", /*default=*/"false",
+           "Print llvm ir when lowering code per target architecture.">,
   ];
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
@@ -128,6 +157,12 @@ def FuseInnerParallelLoopsPass
   }];
 }
 
+def LowerIndexCastPass
+    : FunctionPass<"kernelgen-lower-index-cast"> {
+  let summary = "Lower index cast on tensors to tensor dialect";
+  let constructor = "transforms::CreateLowerIndexCastPass()";
+}
+
 def ShapeSimplification
     : FunctionPass<"kernelgen-shape-simplification"> {
   let summary = "Simplify shape ops";
@@ -150,6 +185,17 @@ def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
     VectorizationPass creates some memory transfers that are unneeded but cannot
     be safely removed by current generic infrastructure. This removes the
     specific operations.
+  }];
+}
+
+def CopyCleanupPass : FunctionPass<"copy-cleanup"> {
+  let summary = "Pass to remove copies which are consumed by a GenericOp.";
+  let constructor = "transforms::CreateCopyCleanupPass()";
+  let description = [{
+    We can have GenericOps which have operands that are a copy, but the copy is
+    not used by any other op. In this case, the GenericOp can just use the
+    buffer which is the source of the copy, and we can remove the Alloc and the
+    copy.
   }];
 }
 

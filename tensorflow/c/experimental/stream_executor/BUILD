@@ -43,6 +43,7 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/device:device_utils",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/stream_executor:executor_cache",

@@ -176,8 +176,8 @@ Status CTCLossCalculator<T>::CalculateLoss(
                                   &seq_len, &inputs, requires_backprop,
                                   ctc_merge_repeated,
                                   ignore_longer_outputs_than_inputs, &loss,
-                                  &gradients](int64 start_row,
-                                              int64 limit_row) {
+                                  &gradients](int64_t start_row,
+                                              int64_t limit_row) {
     for (int b = start_row; b < limit_row; b++) {
       // Return zero gradient for empty sequences or sequences with labels
       // longer than input, which is not supported by CTC.
@@ -260,13 +260,13 @@ Status CTCLossCalculator<T>::CalculateLoss(
     // softmax: T * L * (Cost(Exp) + Cost(Div))softmax +
     // fwd,bwd: T * 2 * (2*L + 1) * (Cost(LogSumExp) + Cost(Log)) +
     // grad: T * ((2L + 1) * Cost(LogSumExp) + L * (Cost(Expf) + Cost(Add)).
-    const int64 cost_exp = Eigen::internal::functor_traits<
+    const int64_t cost_exp = Eigen::internal::functor_traits<
         Eigen::internal::scalar_exp_op<T>>::Cost;
-    const int64 cost_log = Eigen::internal::functor_traits<
+    const int64_t cost_log = Eigen::internal::functor_traits<
         Eigen::internal::scalar_log_op<T>>::Cost;
-    const int64 cost_log_sum_exp =
+    const int64_t cost_log_sum_exp =
         Eigen::TensorOpCost::AddCost<T>() + cost_exp + cost_log;
-    const int64 cost =
+    const int64_t cost =
         max_seq_len * num_classes *
             (cost_exp + Eigen::TensorOpCost::DivCost<T>()) +
         max_seq_len * 2 * (2 * num_classes + 1) *

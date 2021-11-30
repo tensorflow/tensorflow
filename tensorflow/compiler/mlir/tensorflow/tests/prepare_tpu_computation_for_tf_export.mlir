@@ -24,7 +24,7 @@ func @RewriteHostComputeMlirOp(%arg0: tensor<*xf32>, %arg1: tensor<3x?xf64>) -> 
   // CHECK-SAME: recv_key = "host_compute_channel_recv"
   // CHECK-SAME: send_key = "host_compute_channel_send"
   // CHECK-SAME: shape_inference_graph = @host_func
-  // CHECK-SAME: shapes = [#tf.shape<*>, #tf.shape<3x?>]
+  // CHECK-SAME: shapes = [#tf_type.shape<*>, #tf_type.shape<3x?>]
   // CHECK-SAME: tpu_core = 0 : i64
   // CHECK: func @host_func
   // CHECK: %[[RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHost"
@@ -42,7 +42,7 @@ func @RewriteHostComputeMlirOp(%arg0: tensor<*xf32>, %arg1: tensor<3x?xf64>) -> 
 // CHECK-LABEL: @RewriteSendRecvOps
 func @RewriteSendRecvOps() -> () {
   // CHECK: key = "recv_key_htod_0"
-  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf.shape<>} : () -> tensor<i32>
+  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
 
   // CHECK: key = "send_key_dtoh_0"
   "tf.XlaSendToHost"(%0) {key = "send_key"} : (tensor<i32>) -> ()
@@ -53,7 +53,7 @@ func @RewriteSendRecvOps() -> () {
 // CHECK-LABEL: @CommunicateOpTokenAttrs
 func @CommunicateOpTokenAttrs() -> () {
   // CHECK: _xla_original_oc_node_name = [[NODE_NAME1:.*]], _xla_token_input_nodes = ["_xla_token_arg_node"]
-  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf.shape<>} : () -> tensor<i32>
+  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
 
   // CHECK: _xla_original_oc_node_name = [[NODE_NAME2:.*]], _xla_token_input_nodes = {{\[}}[[NODE_NAME1]]{{\]}}
   "tf.XlaSendToHost"(%0) {key = "send_key"} : (tensor<i32>) -> ()
@@ -70,7 +70,7 @@ func @IfOpTokenAttrs(%arg0: tensor<i1>, %arg1: tensor<f32>) -> (tensor<f32>) {
       // CHECK: tf.XlaRecvFromHost
       // CHECK-SAME-DAG: _xla_original_oc_node_name =
       // CHECK-SAME-DAG: _xla_token_input_nodes = ["_xla_token_arg_node"]
-      %recv = "tf.XlaRecvFromHost"() {key = "if_op_token_recv_key", shape = #tf.shape<>} : () -> tensor<f32>
+      %recv = "tf.XlaRecvFromHost"() {key = "if_op_token_recv_key", shape = #tf_type.shape<>} : () -> tensor<f32>
 
       // CHECK: tf.Yield
       "tf.Yield"(%recv) : (tensor<f32>) -> ()
@@ -103,7 +103,7 @@ func @IfOpWithoutCommunicationOps(%arg0: tensor<i1>, %arg1: tensor<f32>) -> (ten
 
   // CHECK: tf.IfRegion
   %1 = "tf.IfRegion"(%arg0) ({
-      %recv = "tf.XlaRecvFromHost"() {key = "if_op_token_recv_key", shape = #tf.shape<>} : () -> tensor<f32>
+      %recv = "tf.XlaRecvFromHost"() {key = "if_op_token_recv_key", shape = #tf_type.shape<>} : () -> tensor<f32>
       "tf.Yield"(%recv) : (tensor<f32>) -> ()
     }, {
       %add = "tf.Add"(%arg1, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -129,7 +129,7 @@ func @PartitionedCall3(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: _xla_original_oc_node_name = [[NODE_NAME1:.*]], _xla_token_input_nodes = ["_xla_token_arg_node"]
   "tf.XlaSendToHost"(%arg0) {key = "send_key_call3"} : (tensor<i32>) -> ()
   // CHECK: _xla_original_oc_node_name = [[NODE_NAME2:.*]], _xla_token_input_nodes = {{\[}}[[NODE_NAME1]]{{\]}}
-  %1 = "tf.XlaRecvFromHost"() {key = "recv_key_call3", shape = #tf.shape<>} : () -> tensor<i32>
+  %1 = "tf.XlaRecvFromHost"() {key = "recv_key_call3", shape = #tf_type.shape<>} : () -> tensor<i32>
   return %1 : tensor<i32>
 }
 
@@ -153,7 +153,7 @@ func @PartitionedCall1(%arg0: tensor<i32>) -> tensor<i32> {
 
 func @Callee(%arg0: tensor<i32>) -> tensor<i32> {
   "tf.XlaSendToHost"(%arg0) {key = "send_key_call3"} : (tensor<i32>) -> ()
-  %1 = "tf.XlaRecvFromHost"() {key = "recv_key_call3", shape = #tf.shape<>} : () -> tensor<i32>
+  %1 = "tf.XlaRecvFromHost"() {key = "recv_key_call3", shape = #tf_type.shape<>} : () -> tensor<i32>
   return %1 : tensor<i32>
 }
 

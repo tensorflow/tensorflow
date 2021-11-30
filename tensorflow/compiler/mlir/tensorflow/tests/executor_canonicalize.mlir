@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='builtin.func(canonicalize)' | FileCheck %s
 
 
 // Test single graph with no outputs and one island is folded away.

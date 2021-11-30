@@ -1,0 +1,125 @@
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+// This file is MACHINE GENERATED! Do not edit.
+
+#include "tensorflow/c/experimental/ops/gen/cpp/golden/testing_ops.h"
+
+#include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/tracing_utils.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
+
+using tensorflow::tracing::MaybeSetOpName;
+
+namespace tensorflow {
+namespace ops {
+
+// Op: Neg()
+// Summary:
+//
+// Description:
+Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHandle** y, const char* name) {
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Neg", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
+  int num_retvals = 1;
+  return op_ptr->Execute(absl::MakeSpan(y, 1), &num_retvals);
+}
+
+// Op: MatMul()
+// Summary:
+//
+// Description:
+Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, bool transpose_a, bool transpose_b, const char* name) {
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("MatMul", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(a));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(b));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("transpose_a", transpose_a));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("transpose_b", transpose_b));
+  int num_retvals = 1;
+  return op_ptr->Execute(absl::MakeSpan(product, 1), &num_retvals);
+}
+
+// Op: IdentityN()
+// Summary:
+//
+// Description:
+Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> input, absl::Span<AbstractTensorHandle*> output, const char* name) {
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInputList(input));
+  int num_retvals = output.size();
+  return op_ptr->Execute(output, &num_retvals);
+}
+
+// Op: SparseSoftmaxCrossEntropyWithLogits()
+// Summary:
+//
+// Description:
+Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorHandle* const features, AbstractTensorHandle* const labels, AbstractTensorHandle** loss, AbstractTensorHandle** backprop, const char* name) {
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(labels));
+  int num_retvals = 2;
+  AbstractTensorHandle* temp_outputs[2];
+  Status status = op_ptr->Execute(temp_outputs, &num_retvals);
+  *loss = temp_outputs[0];
+  *backprop = temp_outputs[1];
+  return status;
+}
+
+// Op: AccumulatorApplyGradient()
+// Summary:
+//
+// Description:
+Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name) {
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("AccumulatorApplyGradient", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(handle));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(local_step));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(gradient));
+  int num_retvals = 0;
+  std::vector<AbstractTensorHandle*> dummy_outputs;
+  return op_ptr->Execute(absl::MakeSpan(dummy_outputs), &num_retvals);
+}
+
+// Op: VarHandleOp()
+// Summary:
+//
+// Description:
+Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataType dtype, const PartialTensorShape shape, const char* container, const char* shared_name, absl::Span<string const> allowed_devices, const char* name) {
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("VarHandleOp", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrString("container", container, strlen(container)));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrString("shared_name", shared_name, strlen(shared_name)));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrType("dtype", dtype));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrShape("shape", shape));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrStringList("allowed_devices", allowed_devices));
+  int num_retvals = 1;
+  return op_ptr->Execute(absl::MakeSpan(resource, 1), &num_retvals);
+}
+
+}  // namespace ops
+}  // namespace tensorflow

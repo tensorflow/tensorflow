@@ -37,6 +37,16 @@ namespace {
 struct GetArithmeticCountPass
     : public PassWrapper<GetArithmeticCountPass, FunctionPass> {
   void runOnFunction() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-get-arithmetic-count";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Calculate arithmetic count for tfl operations.";
+  }
 };
 
 void GetArithmeticCountPass::runOnFunction() {
@@ -59,9 +69,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass() {
   return std::make_unique<GetArithmeticCountPass>();
 }
 
-static PassRegistration<GetArithmeticCountPass> pass(
-    "tfl-get-arithmetic-count",
-    "Calculate arithmetic count for tfl operations.");
+static PassRegistration<GetArithmeticCountPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

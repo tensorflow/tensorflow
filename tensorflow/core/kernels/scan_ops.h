@@ -36,8 +36,12 @@ struct Scan {
     dims[0] = false;
     dims[1] = reverse;
     dims[2] = false;
-    To32Bit(out).device(d) =
-        To32Bit(in).reverse(dims).scan(1, reducer, exclusive).reverse(dims);
+    MaybeWith32BitIndexing<Device>(
+        [&](auto in32, auto out32) {
+          out32.device(d) =
+              in32.reverse(dims).scan(1, reducer, exclusive).reverse(dims);
+        },
+        in, out);
   }
 };
 

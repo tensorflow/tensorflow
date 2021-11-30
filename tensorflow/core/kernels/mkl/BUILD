@@ -24,6 +24,7 @@ MKL_SHORT_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:ops_util",
+    "//tensorflow/core/util:mkl_util",
 ] + mkl_deps()
 
 MKL_DEPS = MKL_SHORT_DEPS + [
@@ -53,6 +54,7 @@ MKL_TEST_DEPS = [
     "//tensorflow/core:testlib",
     "//tensorflow/core/kernels:ops_testutil",
     "//tensorflow/core/kernels:ops_util",
+    "//tensorflow/core/util:mkl_util",
 ]
 
 tf_mkl_kernel_library(
@@ -263,10 +265,8 @@ tf_mkl_kernel_library(
     name = "mkl_dequantize_op",
     srcs = ["mkl_dequantize_op.cc"],
     deps = [
-        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -277,12 +277,12 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/kernels:meta_support",
-        "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/util:image_resizer_state",
+        "//tensorflow/core/util:mkl_util",
     ] + mkl_deps(),
 )
 
@@ -325,11 +325,9 @@ tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
     deps = [
-        "//third_party/eigen3",
-        "//tensorflow/core:framework",
         "//tensorflow/core/kernels:fused_batch_norm_op",
         "//tensorflow/core/kernels:no_op",
-    ] + mkl_deps(),
+    ] + MKL_DEPS,
 )
 
 tf_cc_test_mkl(
@@ -453,4 +451,15 @@ tf_mkl_kernel_library(
         "mkl_transpose_op.cc",
     ],
     deps = MKL_DEPS + ["//tensorflow/core/kernels:transpose_op"],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_matmul_op_benchmark",
+    size = "small",
+    srcs = ["mkl_matmul_op_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_matmul_op",
+    ] + MKL_TEST_DEPS,
 )

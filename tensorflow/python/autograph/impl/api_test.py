@@ -14,16 +14,13 @@
 # ==============================================================================
 """Tests for api module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
 import contextlib
 import functools
 import gc
 import imp
+import inspect
 import os
 import re
 import sys
@@ -56,7 +53,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-
 
 global_n = 2
 
@@ -335,6 +331,7 @@ class ApiTest(test.TestCase):
 
   @test_util.run_v1_only('b/120545219')
   def test_converted_call_functools_partial_kwarg_mutation(self):
+
     def test_fn(x, y, z):
       if x < 0:
         return -x, -y, -z
@@ -553,8 +550,8 @@ class ApiTest(test.TestCase):
         return self.__private
 
     tc = TestClass()
-    with self.assertRaisesRegex(
-        errors.UnsupportedLanguageElementError, 'mangled names'):
+    with self.assertRaisesRegex(errors.UnsupportedLanguageElementError,
+                                'mangled names'):
       api.converted_call(tc.test_method, (), None, options=DEFAULT_RECURSIVE)
 
     # TODO(mdan): Refactor to avoid this use of global state.
@@ -815,7 +812,7 @@ class ApiTest(test.TestCase):
     def fail_if_warning(*_):
       self.fail('No warning should be issued')
 
-    with test.mock.patch.object(ag_logging, 'warn', fail_if_warning):
+    with test.mock.patch.object(ag_logging, 'warning', fail_if_warning):
       with self.assertRaisesRegex(ValueError, 'fault'):
         api.converted_call(
             np.power, (bad_obj, 2), None, options=DEFAULT_RECURSIVE)
@@ -1120,17 +1117,15 @@ class ApiTest(test.TestCase):
   def test_tf_convert_overrides_current_context(self):
 
     def f(expect_converted):
-      self.assertEqual(
-          converter_testing.is_inside_generated_code(), expect_converted)
+      self.assertEqual(converter_testing.is_inside_generated_code(),
+                       expect_converted)
 
     @api.do_not_convert
     def test_fn(ctx, expect_converted):
       return api.tf_convert(f, ctx)(expect_converted)
 
-    test_fn(
-        ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED), True)
-    test_fn(
-        ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED), False)
+    test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED), True)
+    test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED), False)
 
   def test_tf_convert_unspecified_not_converted_by_default(self):
 
@@ -1146,9 +1141,6 @@ class ApiTest(test.TestCase):
     test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED))
 
   def test_tf_convert_allowlisted_method(self):
-
-    if six.PY2:
-      self.skipTest('Test bank not comptible with Python 2.')
 
     class TestClass(object):
 
@@ -1288,8 +1280,36 @@ class ApiTest(test.TestCase):
     ]:
       with self.assertRaises(expected_exception) as error:
         raise_from_tf_function(code)
-      self.assertEqual(error.exception.experimental_payloads['key1'], 'value1')
-      self.assertEqual(error.exception.experimental_payloads['key2'], 'value2')
+      self.assertEqual(error.exception.experimental_payloads[b'key1'],
+                       b'value1')
+      self.assertEqual(error.exception.experimental_payloads[b'key2'],
+                       b'value2')
+
+  def test_inspect_source_unsupported(self):
+
+    @def_function.function
+    def test_func(a):
+      if constant_op.constant(True):
+        return a
+      else:
+        return a + a
+
+    patch = test.mock.patch
+    with patch.dict(os.environ, {'AUTOGRAPH_STRICT_CONVERSION': '0'}), \
+         patch.object(inspect, 'findsource', side_effect=OSError()), \
+         patch.object(ag_logging, 'warning') as warning_log_mock:
+
+      with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', False):
+        with self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
+                                    'AutoGraph is unavailable in this runtime'):
+          test_func(2)
+      warning_log_mock.assert_not_called()
+
+      with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', True):
+        with self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
+                                    'AutoGraph did convert this function'):
+          test_func(2)
+      warning_log_mock.called_once_with('AutoGraph could not transform')
 
 
 if __name__ == '__main__':

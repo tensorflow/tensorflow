@@ -99,7 +99,7 @@ class FileBlockCache {
   // exist before. If the signature changes, update the existing signature with
   // the new one and remove the file from cache.
   virtual bool ValidateAndUpdateFileSignature(const string& filename,
-                                              int64 file_signature) = 0;
+                                              int64_t file_signature) = 0;
 
   /// Remove all cached blocks for `filename`.
   virtual void RemoveFile(const string& filename) = 0;

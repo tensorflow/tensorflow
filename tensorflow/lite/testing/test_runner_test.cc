@@ -38,6 +38,18 @@ class ConcreteTestRunner : public TestRunner {
   bool CheckFloatSizes(size_t bytes, size_t values) {
     return CheckSizes<float>(bytes, values);
   }
+  void LoadModel(const string& bin_file_path,
+                 const string& signature) override {}
+  void ReshapeTensor(const string& name, const string& csv_values) override {}
+  void ResetTensor(const std::string& name) override {}
+  string ReadOutput(const string& name) override { return ""; }
+  void Invoke(const std::vector<std::pair<string, string>>& inputs) override {}
+  bool CheckResults(
+      const std::vector<std::pair<string, string>>& expected_outputs,
+      const std::vector<std::pair<string, string>>& expected_output_shapes)
+      override {
+    return true;
+  }
 
  private:
   std::vector<int> ids_;

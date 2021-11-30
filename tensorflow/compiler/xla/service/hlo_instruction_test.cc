@@ -106,13 +106,13 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  int64 NumOperands(const HloInstruction* node) {
+  int64_t NumOperands(const HloInstruction* node) {
     auto count_iterator = count_.find(node);
     EXPECT_NE(count_.end(), count_iterator);
     return count_iterator->second.operand_count;
   }
 
-  int64 NumUsers(const HloInstruction* node) {
+  int64_t NumUsers(const HloInstruction* node) {
     auto count_iterator = count_.find(node);
     EXPECT_NE(count_.end(), count_iterator);
     return count_iterator->second.user_count;
@@ -120,8 +120,8 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
 
  private:
   struct NumOpsAndUsers {
-    int64 operand_count;
-    int64 user_count;
+    int64_t operand_count;
+    int64_t user_count;
   };
 
   // Helper function to count operands and users for the given HLO.
@@ -1134,7 +1134,7 @@ TEST_F(HloInstructionTest, PartiallyElementwise) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {max, broadcast, div, mul}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
-  for (int64 operand_idx = 0; operand_idx < fusion->operand_count();
+  for (int64_t operand_idx = 0; operand_idx < fusion->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = fusion->operand(operand_idx);
     if (operand == p3) {
@@ -1175,7 +1175,7 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {sub, broadcast, min}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
-  for (int64 operand_idx = 0; operand_idx < fusion->operand_count();
+  for (int64_t operand_idx = 0; operand_idx < fusion->operand_count();
        ++operand_idx) {
     if (fusion->operand(operand_idx) == y) {
       EXPECT_FALSE(fusion->IsElementwiseOnOperand(operand_idx));

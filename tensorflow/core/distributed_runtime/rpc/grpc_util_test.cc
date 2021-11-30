@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 
+#include "grpcpp/grpcpp.h"
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -62,6 +65,24 @@ CleanupAllRequest MakeProto(int size) {
   return proto;
 }
 }  // namespace
+
+TEST(PayloadSerialization, PayloadsAreTransmitted) {
+  ::tensorflow::Status status = errors::InvalidArgument("invalid arg message");
+  status.SetPayload("a", "\\xFF\\x02\\x03");
+  ::tensorflow::Status status_recovered = FromGrpcStatus(ToGrpcStatus(status));
+
+  ASSERT_TRUE(status_recovered.GetPayload("a").has_value());
+  EXPECT_EQ(status_recovered.GetPayload("a").value(), "\\xFF\\x02\\x03");
+}
+
+TEST(PayloadSerialization, PayloadsCorrupted) {
+  ::grpc::Status status(
+      ::grpc::StatusCode::INVALID_ARGUMENT, "invalid arg message",
+      "string that can not be serialized to the GrpcPayloadContainer proto");
+
+  ::tensorflow::Status converted = FromGrpcStatus(status);
+  EXPECT_TRUE(converted.GetPayload(kGrpcPayloadsLost).has_value());
+}
 
 TEST(GrpcProto, Unparse) {
   CleanupAllRequest proto;
@@ -150,7 +171,6 @@ static void BM_UnparseString(::testing::benchmark::State& state) {
   const int size = state.range(0);
 
   auto proto = MakeProto(size);
-  testing::StartTiming();
 
   for (auto s : state) {
     string buf;
@@ -165,7 +185,6 @@ static void BM_ParseGrpc(::testing::benchmark::State& state) {
 
   CleanupAllRequest proto = MakeProto(size);
   auto buf = MakeBuffer(proto.SerializeAsString(), num_slices);
-  testing::StartTiming();
 
   for (auto s : state) {
     CHECK(GrpcMaybeParseProto(&buf, &proto));
@@ -183,7 +202,6 @@ static void BM_ParseString(::testing::benchmark::State& state) {
 
   CleanupAllRequest proto = MakeProto(size);
   string serial = proto.SerializeAsString();
-  testing::StartTiming();
 
   for (auto s : state) {
     CHECK(proto.ParseFromString(serial));

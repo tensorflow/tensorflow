@@ -29,9 +29,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Tensor MakeScalarInt64(int64 x) {
+Tensor MakeScalarInt64(int64_t x) {
   Tensor t(DT_INT64, TensorShape({}));
-  t.scalar<int64>()() = x;
+  t.scalar<int64_t>()() = x;
   return t;
 }
 
@@ -62,7 +62,7 @@ class SummaryDbWriterTest : public ::testing::Test {
     db_ = nullptr;
   }
 
-  int64 QueryInt(const string& sql) {
+  int64_t QueryInt(const string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
     Status s = stmt.Step(&is_done);
@@ -191,10 +191,10 @@ TEST_F(SummaryDbWriterTest, TensorsWritten_RowsGetInitialized) {
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Tags"));
   ASSERT_EQ(1000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
 
-  int64 user_id = QueryInt("SELECT user_id FROM Users");
-  int64 experiment_id = QueryInt("SELECT experiment_id FROM Experiments");
-  int64 run_id = QueryInt("SELECT run_id FROM Runs");
-  int64 tag_id = QueryInt("SELECT tag_id FROM Tags");
+  int64_t user_id = QueryInt("SELECT user_id FROM Users");
+  int64_t experiment_id = QueryInt("SELECT experiment_id FROM Experiments");
+  int64_t run_id = QueryInt("SELECT run_id FROM Runs");
+  int64_t tag_id = QueryInt("SELECT tag_id FROM Tags");
   EXPECT_LT(0LL, user_id);
   EXPECT_LT(0LL, experiment_id);
   EXPECT_LT(0LL, run_id);
@@ -256,8 +256,8 @@ TEST_F(SummaryDbWriterTest, WriteEvent_Scalar) {
   TF_ASSERT_OK(writer_->Flush());
   ASSERT_EQ(2LL, QueryInt("SELECT COUNT(*) FROM Tags"));
   ASSERT_EQ(2000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
-  int64 tag1_id = QueryInt("SELECT tag_id FROM Tags WHERE tag_name = 'π'");
-  int64 tag2_id = QueryInt("SELECT tag_id FROM Tags WHERE tag_name = 'φ'");
+  int64_t tag1_id = QueryInt("SELECT tag_id FROM Tags WHERE tag_name = 'π'");
+  int64_t tag2_id = QueryInt("SELECT tag_id FROM Tags WHERE tag_name = 'φ'");
   EXPECT_GT(tag1_id, 0LL);
   EXPECT_GT(tag2_id, 0LL);
   EXPECT_EQ(123.456, QueryDouble(strings::StrCat(
@@ -301,7 +301,7 @@ TEST_F(SummaryDbWriterTest, WriteGraph) {
   ASSERT_EQ(QueryInt("SELECT run_id FROM Runs"),
             QueryInt("SELECT run_id FROM Graphs"));
 
-  int64 graph_id = QueryInt("SELECT graph_id FROM Graphs");
+  int64_t graph_id = QueryInt("SELECT graph_id FROM Graphs");
   EXPECT_GT(graph_id, 0LL);
   EXPECT_EQ(0.023, QueryDouble("SELECT inserted_time FROM Graphs"));
 

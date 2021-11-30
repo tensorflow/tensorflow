@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -58,18 +59,9 @@ using llvm_ir::SetToFirstInsertPoint;
 
 namespace {
 
-int64 GlobalRandomValue() {
-  static auto* mu = new tensorflow::mutex();
-  static std::mt19937_64 rng{42};
-  tensorflow::mutex_lock l(*mu);
-  return rng();
-}
-
-StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
-                                             llvm::Value* x,
-                                             int64 dest_exponent_bits,
-                                             int64 dest_mantissa_bits,
-                                             llvm::IRBuilder<>* b) {
+StatusOr<llvm::Value*> EmitReducePrecisionIR(
+    PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
+    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilder<>* b) {
   using llvm::APInt;
 
   if (!primitive_util::IsFloatingPointType(src_ty)) {
@@ -80,7 +72,7 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
 
   // Integer and float types for casting and constant generation.
   llvm::Type* float_type = x->getType();
-  int64 nbits = float_type->getPrimitiveSizeInBits();
+  int64_t nbits = float_type->getPrimitiveSizeInBits();
   llvm::IntegerType* int_type = b->getIntNTy(nbits);
 
   // SignificandWidth includes the implicit extra bit.
@@ -89,6 +81,19 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
 
   // Cast the input value to an integer for bitwise manipulation.
   llvm::Value* x_as_int = b->CreateBitCast(x, int_type);
+
+  // Clear the sign bit, it does not participate in rounding and we will restore
+  // it later.
+  APInt sign_bit_mask(nbits, 1);
+  sign_bit_mask <<= nbits - 1;
+  llvm::Value* x_abs_bits =
+      b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, ~sign_bit_mask));
+
+  APInt exp_bits_mask(nbits, 1);
+  exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
+                  << src_mantissa_bits;
+  auto x_is_nan = b->CreateICmpUGT(
+      x_abs_bits, llvm::ConstantInt::get(int_type, exp_bits_mask));
 
   if (dest_mantissa_bits < src_mantissa_bits) {
     // Last remaining mantissa bit.
@@ -112,19 +117,17 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
     // correct; the non-masked mantissa bits will all be zero, and the
     // exponent will be incremented by one.
     APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
-    x_as_int = b->CreateAdd(x_as_int, x_rounding_bias);
-    x_as_int = b->CreateAnd(x_as_int,
-                            llvm::ConstantInt::get(int_type, truncation_mask));
+    llvm::Value* x_rounded = b->CreateAdd(x_as_int, x_rounding_bias);
+    x_rounded = b->CreateAnd(x_rounded,
+                             llvm::ConstantInt::get(int_type, truncation_mask));
+    if (quiet_nans) {
+      x_as_int = b->CreateSelect(x_is_nan, x_as_int, x_rounded);
+    } else {
+      x_as_int = x_rounded;
+    }
   }
 
   if (dest_exponent_bits < src_exponent_bits) {
-    APInt sign_bit_mask(nbits, 1);
-    sign_bit_mask <<= nbits - 1;
-
-    APInt exp_bits_mask(nbits, 1);
-    exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
-                    << src_mantissa_bits;
-
     // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
     // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
     // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
@@ -179,19 +182,23 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
   // is mandatory).  This logic also handles cases where mantissa-rounding
   // causes a NaN's mantissa to overflow into the exponent bits, which would
   // otherwise create an erroneous zero value.
-  //
-  // If the fast-math flags are set to assume no NaNs, the comparison is likely
-  // to be optimized away, so there's no point in even emitting it.
-  if (!b->getFastMathFlags().noNaNs()) {
-    llvm::Value* x_is_nan = b->CreateFCmpUNO(x, x);
 
-    if (dest_mantissa_bits > 0) {
-      result = b->CreateSelect(x_is_nan, x, result);
+  if (dest_mantissa_bits > 0) {
+    if (quiet_nans) {
+      APInt qnan_mask(nbits, 1);
+      qnan_mask <<= src_mantissa_bits - 1;
+      llvm::Value* x_with_qnan_bit_set =
+          b->CreateOr(x_as_int, llvm::ConstantInt::get(int_type, qnan_mask));
+      x_with_qnan_bit_set = b->CreateBitCast(x_with_qnan_bit_set, float_type);
+      result = b->CreateSelect(x_is_nan, x_with_qnan_bit_set, result);
     } else {
-      result = b->CreateSelect(
-          x_is_nan, llvm::ConstantFP::getInfinity(float_type), result);
+      result = b->CreateSelect(x_is_nan, x, result);
     }
+  } else {
+    result = b->CreateSelect(x_is_nan,
+                             llvm::ConstantFP::getInfinity(float_type), result);
   }
+
   return result;
 }
 
@@ -203,7 +210,7 @@ StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
           /*src_ty=*/F32, f32_value,
           /*dest_exponent_bits=*/primitive_util::ExponentWidth(BF16),
           /*dest_mantissa_bits=*/primitive_util::SignificandWidth(BF16) - 1,
-          b));
+          /*quiet_nans=*/true, b));
   auto as_int32 = b->CreateBitCast(reduced_precision, b->getInt32Ty());
   auto shifted = b->CreateLShr(as_int32, 16);
   auto truncated = b->CreateTrunc(shifted, b->getInt16Ty());
@@ -558,25 +565,20 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
           : input_type;
   switch (op->opcode()) {
     case HloOpcode::kLog: {
-      // log(a+bi) = log(abs(a+bi)) + i*atan2(b,a)
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      TF_ASSIGN_OR_RETURN(llvm::Value * angle,
-                          EmitAtan2(component_type, b, a, ""));
-      TF_ASSIGN_OR_RETURN(llvm::Value * abs,
-                          EmitComplexAbs(component_type, operand_value));
-      TF_ASSIGN_OR_RETURN(llvm::Value * log_abs, EmitLog(component_type, abs));
-      return EmitComposeComplex(op, log_abs, angle);
+      return EmitComplexLog(op, operand_value);
     }
     case HloOpcode::kLog1p: {
       // log1p(a+bi) = .5*log((a+1)^2+b^2) + i*atan2(b, a + 1)
+      // log((a+1)+bi) = .5*log(a*a + 2*a + 1 + b*b) + i*atan2(b, a+1)
+      // log((a+1)+bi) = .5*log1p(a*a + 2*a + b*b) + i*atan2(b, a+1)
       auto a = EmitExtractReal(operand_value);
       auto b = EmitExtractImag(operand_value);
       llvm::Type* llvm_ty = a->getType();
       auto one = llvm::ConstantFP::get(llvm_ty, 1.0);
+      auto two = llvm::ConstantFP::get(llvm_ty, 2.0);
       auto a_plus_one = FAdd(a, one);
-      auto sum_sq = FAdd(FMul(a_plus_one, a_plus_one), FMul(b, b));
-      TF_ASSIGN_OR_RETURN(auto log_sum_sq, EmitLog(component_type, sum_sq));
+      auto sum_sq = FAdd(FAdd(FMul(a, a), FMul(two, a)), FMul(b, b));
+      TF_ASSIGN_OR_RETURN(auto log_sum_sq, EmitLog1p(component_type, sum_sq));
       TF_ASSIGN_OR_RETURN(auto angle,
                           EmitAtan2(component_type, b, a_plus_one, ""));
       auto one_half = llvm::ConstantFP::get(llvm_ty, 0.5);
@@ -1005,6 +1007,161 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitRsqrtComplexAbs(
   return Select(FCmpUNO(result, result), rsqrt_min, result);
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAdd(
+    const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
+  return EmitComposeComplex(
+      op, FAdd(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
+      FAdd(EmitExtractImag(lhs_value), EmitExtractImag(rhs_value)));
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexSubtract(
+    const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
+  return EmitComposeComplex(
+      op, FSub(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
+      FSub(EmitExtractImag(lhs_value), EmitExtractImag(rhs_value)));
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexMultiply(
+    const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
+  return EmitComposeComplex(
+      op,
+      FSub(FMul(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
+           FMul(EmitExtractImag(lhs_value), EmitExtractImag(rhs_value))),
+      FAdd(FMul(EmitExtractReal(lhs_value), EmitExtractImag(rhs_value)),
+           FMul(EmitExtractImag(lhs_value), EmitExtractReal(rhs_value))));
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexDivide(
+    const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
+  // Division of complex numbers is implemented here, taking into account
+  // over/underflow, NaN and Inf values.
+  auto a_r = EmitExtractReal(lhs_value);
+  auto a_i = EmitExtractImag(lhs_value);
+  auto b_r = EmitExtractReal(rhs_value);
+  auto b_i = EmitExtractImag(rhs_value);
+  auto type = a_r->getType();
+
+  // Smith's algorithm to divide complex numbers. It is just a bit smarter
+  // way to compute the following formula:
+  //  (a_r + a_i * i) / (b_r + b_i * i)
+  //    = (a_r + a_i * i) (b_r - b_i * i) / ((b_r + b_i * i)(b_r - b_i * i))
+  //    = ((a_r * b_r + a_i * b_i) + (a_i * b_r - a_r * b_i) * i) / ||b||^2
+  //
+  // Depending on whether |b_r| < |b_i| we compute either
+  //   b_r_b_i_ratio = b_r / b_i
+  //   b_r_b_i_denom = b_i + b_r * b_r_b_i_ratio
+  //   c_r = (a_r * b_r_b_i_ratio + a_i ) / b_r_b_i_denom
+  //   c_i = (a_i * b_r_b_i_ratio - a_r ) / b_r_b_i_denom
+  //
+  // or
+  //
+  //   b_i_b_r_ratio = b_i / b_r
+  //   b_i_b_r_denom = b_r + b_i * b_i_b_r_ratio
+  //   c_r = (a_r + a_i * b_i_b_r_ratio ) / b_i_b_r_denom
+  //   c_i = (a_i - a_r * b_i_b_r_ratio ) / b_i_b_r_denom
+  //
+  // See https://dl.acm.org/citation.cfm?id=368661 for more details.
+  auto b_r_b_i_ratio = FDiv(b_r, b_i);
+  auto b_r_b_i_denom = FAdd(b_i, FMul(b_r_b_i_ratio, b_r));
+  auto b_i_b_r_ratio = FDiv(b_i, b_r);
+  auto b_i_b_r_denom = FAdd(b_r, FMul(b_i_b_r_ratio, b_i));
+
+  auto b_r_abs =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {b_r}, {type}, b_);
+  auto b_i_abs =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {b_i}, {type}, b_);
+  auto b_r_lt_b_i = FCmpOLT(b_r_abs, b_i_abs);
+  auto c_r = Select(b_r_lt_b_i,
+                    FDiv(FAdd(FMul(b_r_b_i_ratio, a_r), a_i), b_r_b_i_denom),
+                    FDiv(FAdd(FMul(b_i_b_r_ratio, a_i), a_r), b_i_b_r_denom));
+  auto c_i = Select(b_r_lt_b_i,
+                    FDiv(FSub(FMul(b_r_b_i_ratio, a_i), a_r), b_r_b_i_denom),
+                    FDiv(FSub(a_i, FMul(b_i_b_r_ratio, a_r)), b_i_b_r_denom));
+  auto result = EmitComposeComplex(op, c_r, c_i);
+
+  // Consider corner cases, if the result is (NaN, NaN).
+  auto zero = llvm::ConstantFP::get(type, 0.0);
+  auto one = llvm::ConstantFP::get(type, 1.0);
+  auto inf = llvm::ConstantFP::getInfinity(type);
+
+  // Case 1. Zero denominator.
+  auto zero_denominator =
+      And(And(FCmpOEQ(b_r_abs, zero), FCmpOEQ(b_i_abs, zero)),
+          Or(Not(FCmpUNO(a_r, zero)), Not(FCmpUNO(a_i, zero))));
+  auto inf_with_sign_of_b_r = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::copysign, {inf, b_r}, {type}, b_);
+  auto zero_denominator_result = EmitComposeComplex(
+      op, FMul(inf_with_sign_of_b_r, a_r), FMul(inf_with_sign_of_b_r, a_i));
+
+  // Case 2. Infinite numerator, finite denominator.
+  auto b_r_finite = FCmpONE(b_r_abs, inf);
+  auto b_i_finite = FCmpONE(b_i_abs, inf);
+  auto a_r_abs =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {a_r}, {type}, b_);
+  auto a_i_abs =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {a_i}, {type}, b_);
+  auto a_r_infinite = FCmpOEQ(a_r_abs, inf);
+  auto a_i_infinite = FCmpOEQ(a_i_abs, inf);
+  auto inf_num_finite_denom =
+      And(Or(a_r_infinite, a_i_infinite), And(b_r_finite, b_i_finite));
+
+  auto a_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::copysign, {Select(a_r_infinite, one, zero), a_r}, {type},
+      b_);
+  auto a_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::copysign, {Select(a_i_infinite, one, zero), a_i}, {type},
+      b_);
+  auto inf_num_finite_denom_result = EmitComposeComplex(
+      op,
+      FMul(inf,
+           FAdd(FMul(a_r_inf_with_sign, b_r), FMul(a_i_inf_with_sign, b_i))),
+      FMul(inf,
+           FSub(FMul(a_i_inf_with_sign, b_r), FMul(a_r_inf_with_sign, b_i))));
+
+  // Case 3. Finite numerator, infinite denominator.
+  auto a_r_finite = FCmpONE(a_r_abs, inf);
+  auto a_i_finite = FCmpONE(a_i_abs, inf);
+  auto b_r_infinite = FCmpOEQ(b_r_abs, inf);
+  auto b_i_infinite = FCmpOEQ(b_i_abs, inf);
+  auto finite_num_inf_denom =
+      And(Or(b_r_infinite, b_i_infinite), And(a_r_finite, a_i_finite));
+
+  auto b_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::copysign, {Select(b_r_infinite, one, zero), b_r}, {type},
+      b_);
+  auto b_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::copysign, {Select(b_i_infinite, one, zero), b_i}, {type},
+      b_);
+  auto finite_num_inf_denom_result = EmitComposeComplex(
+      op,
+      FMul(zero,
+           FAdd(FMul(a_r, b_r_inf_with_sign), FMul(a_i, b_i_inf_with_sign))),
+      FMul(zero,
+           FSub(FMul(a_i, b_r_inf_with_sign), FMul(a_r, b_i_inf_with_sign))));
+
+  auto c_nan = And(FCmpUNO(c_r, zero), FCmpUNO(c_i, zero));
+  return Select(c_nan,
+                Select(zero_denominator, zero_denominator_result,
+                       Select(inf_num_finite_denom, inf_num_finite_denom_result,
+                              Select(finite_num_inf_denom,
+                                     finite_num_inf_denom_result, result))),
+                result);
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexLog(
+    const HloInstruction* op, llvm::Value* operand_value) {
+  // log(a+bi) = log(abs(a+bi)) + i*atan2(b,a)
+  PrimitiveType component_type =
+      primitive_util::ComplexComponentType(op->shape().element_type());
+  auto a = EmitExtractReal(operand_value);
+  auto b = EmitExtractImag(operand_value);
+  TF_ASSIGN_OR_RETURN(llvm::Value * angle, EmitAtan2(component_type, b, a, ""));
+  TF_ASSIGN_OR_RETURN(llvm::Value * abs,
+                      EmitComplexAbs(component_type, operand_value));
+  TF_ASSIGN_OR_RETURN(llvm::Value * log_abs, EmitLog(component_type, abs));
+  return EmitComposeComplex(op, log_abs, angle);
+}
+
 // Using our EmitComplexPower formula, but setting c=0.5 and d=0, we get:
 //   e^[ln(r)*c - t*d] * [cos(ln(r)*d + t*c) + i*sin(ln(r)*d + t*c)]
 // = e^[ln(r)*0.5] * [cos(t*0.5) + i*sin(t*0.5)]
@@ -1182,135 +1339,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
   switch (op->opcode()) {
     case HloOpcode::kAdd:
-      return EmitComposeComplex(
-          op, FAdd(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
-          FAdd(EmitExtractImag(lhs_value), EmitExtractImag(rhs_value)));
+      return EmitComplexAdd(op, lhs_value, rhs_value);
     case HloOpcode::kSubtract:
-      return EmitComposeComplex(
-          op, FSub(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
-          FSub(EmitExtractImag(lhs_value), EmitExtractImag(rhs_value)));
+      return EmitComplexSubtract(op, lhs_value, rhs_value);
     case HloOpcode::kMultiply:
-      return EmitComposeComplex(
-          op,
-          FSub(FMul(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
-               FMul(EmitExtractImag(lhs_value), EmitExtractImag(rhs_value))),
-          FAdd(FMul(EmitExtractReal(lhs_value), EmitExtractImag(rhs_value)),
-               FMul(EmitExtractImag(lhs_value), EmitExtractReal(rhs_value))));
+      return EmitComplexMultiply(op, lhs_value, rhs_value);
     case HloOpcode::kDivide: {
-      // Division of complex numbers is implemented here, taking into account
-      // over/underflow, NaN and Inf values.
-      auto a_r = EmitExtractReal(lhs_value);
-      auto a_i = EmitExtractImag(lhs_value);
-      auto b_r = EmitExtractReal(rhs_value);
-      auto b_i = EmitExtractImag(rhs_value);
-      auto type = a_r->getType();
-
-      // Smith's algorithm to divide complex numbers. It is just a bit smarter
-      // way to compute the following formula:
-      //  (a_r + a_i * i) / (b_r + b_i * i)
-      //    = (a_r + a_i * i) (b_r - b_i * i) / ((b_r + b_i * i)(b_r - b_i * i))
-      //    = ((a_r * b_r + a_i * b_i) + (a_i * b_r - a_r * b_i) * i) / ||b||^2
-      //
-      // Depending on whether |b_r| < |b_i| we compute either
-      //   b_r_b_i_ratio = b_r / b_i
-      //   b_r_b_i_denom = b_i + b_r * b_r_b_i_ratio
-      //   c_r = (a_r * b_r_b_i_ratio + a_i ) / b_r_b_i_denom
-      //   c_i = (a_i * b_r_b_i_ratio - a_r ) / b_r_b_i_denom
-      //
-      // or
-      //
-      //   b_i_b_r_ratio = b_i / b_r
-      //   b_i_b_r_denom = b_r + b_i * b_i_b_r_ratio
-      //   c_r = (a_r + a_i * b_i_b_r_ratio ) / b_i_b_r_denom
-      //   c_i = (a_i - a_r * b_i_b_r_ratio ) / b_i_b_r_denom
-      //
-      // See https://dl.acm.org/citation.cfm?id=368661 for more details.
-      auto b_r_b_i_ratio = FDiv(b_r, b_i);
-      auto b_r_b_i_denom = FAdd(b_i, FMul(b_r_b_i_ratio, b_r));
-      auto b_i_b_r_ratio = FDiv(b_i, b_r);
-      auto b_i_b_r_denom = FAdd(b_r, FMul(b_i_b_r_ratio, b_i));
-
-      auto b_r_abs = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {b_r},
-                                                  {type}, b_);
-      auto b_i_abs = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {b_i},
-                                                  {type}, b_);
-      auto b_r_lt_b_i = FCmpOLT(b_r_abs, b_i_abs);
-      auto c_r = Select(
-          b_r_lt_b_i, FDiv(FAdd(FMul(b_r_b_i_ratio, a_r), a_i), b_r_b_i_denom),
-          FDiv(FAdd(FMul(b_i_b_r_ratio, a_i), a_r), b_i_b_r_denom));
-      auto c_i = Select(
-          b_r_lt_b_i, FDiv(FSub(FMul(b_r_b_i_ratio, a_i), a_r), b_r_b_i_denom),
-          FDiv(FSub(a_i, FMul(b_i_b_r_ratio, a_r)), b_i_b_r_denom));
-      auto result = EmitComposeComplex(op, c_r, c_i);
-
-      // Consider corner cases, if the result is (NaN, NaN).
-      auto zero = llvm::ConstantFP::get(type, 0.0);
-      auto one = llvm::ConstantFP::get(type, 1.0);
-      auto inf = llvm::ConstantFP::getInfinity(type);
-
-      // Case 1. Zero denominator.
-      auto zero_denominator =
-          And(And(FCmpOEQ(b_r_abs, zero), FCmpOEQ(b_i_abs, zero)),
-              Or(Not(FCmpUNO(a_r, zero)), Not(FCmpUNO(a_i, zero))));
-      auto inf_with_sign_of_b_r = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::copysign, {inf, b_r}, {type}, b_);
-      auto zero_denominator_result = EmitComposeComplex(
-          op, FMul(inf_with_sign_of_b_r, a_r), FMul(inf_with_sign_of_b_r, a_i));
-
-      // Case 2. Infinite numerator, finite denominator.
-      auto b_r_finite = FCmpONE(b_r_abs, inf);
-      auto b_i_finite = FCmpONE(b_i_abs, inf);
-      auto a_r_abs = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {a_r},
-                                                  {type}, b_);
-      auto a_i_abs = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {a_i},
-                                                  {type}, b_);
-      auto a_r_infinite = FCmpOEQ(a_r_abs, inf);
-      auto a_i_infinite = FCmpOEQ(a_i_abs, inf);
-      auto inf_num_finite_denom =
-          And(Or(a_r_infinite, a_i_infinite), And(b_r_finite, b_i_finite));
-
-      auto a_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::copysign, {Select(a_r_infinite, one, zero), a_r},
-          {type}, b_);
-      auto a_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::copysign, {Select(a_i_infinite, one, zero), a_i},
-          {type}, b_);
-      auto inf_num_finite_denom_result =
-          EmitComposeComplex(op,
-                             FMul(inf, FAdd(FMul(a_r_inf_with_sign, b_r),
-                                            FMul(a_i_inf_with_sign, b_i))),
-                             FMul(inf, FSub(FMul(a_i_inf_with_sign, b_r),
-                                            FMul(a_r_inf_with_sign, b_i))));
-
-      // Case 3. Finite numerator, infinite denominator.
-      auto a_r_finite = FCmpONE(a_r_abs, inf);
-      auto a_i_finite = FCmpONE(a_i_abs, inf);
-      auto b_r_infinite = FCmpOEQ(b_r_abs, inf);
-      auto b_i_infinite = FCmpOEQ(b_i_abs, inf);
-      auto finite_num_inf_denom =
-          And(Or(b_r_infinite, b_i_infinite), And(a_r_finite, a_i_finite));
-
-      auto b_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::copysign, {Select(b_r_infinite, one, zero), b_r},
-          {type}, b_);
-      auto b_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::copysign, {Select(b_i_infinite, one, zero), b_i},
-          {type}, b_);
-      auto finite_num_inf_denom_result =
-          EmitComposeComplex(op,
-                             FMul(zero, FAdd(FMul(a_r, b_r_inf_with_sign),
-                                             FMul(a_i, b_i_inf_with_sign))),
-                             FMul(zero, FSub(FMul(a_i, b_r_inf_with_sign),
-                                             FMul(a_r, b_i_inf_with_sign))));
-
-      auto c_nan = And(FCmpUNO(c_r, zero), FCmpUNO(c_i, zero));
-      return Select(
-          c_nan,
-          Select(zero_denominator, zero_denominator_result,
-                 Select(inf_num_finite_denom, inf_num_finite_denom_result,
-                        Select(finite_num_inf_denom,
-                               finite_num_inf_denom_result, result))),
-          result);
+      return EmitComplexDivide(op, lhs_value, rhs_value);
     }
     // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
     // comparisons always return false when one of the operands is NaN, whereas
@@ -1347,6 +1382,33 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       auto c = EmitExtractReal(rhs_value);
       auto d = EmitExtractImag(rhs_value);
       return EmitComplexPower(op, a, b, c, d);
+    }
+    case HloOpcode::kAtan2: {
+      // atan2(y,x) = -i * log((x + i * y)/sqrt(x**2+y**2))
+      auto y = lhs_value;
+      auto x = rhs_value;
+      TF_ASSIGN_OR_RETURN(auto x_squared, EmitComplexMultiply(op, x, x));
+      TF_ASSIGN_OR_RETURN(auto y_squared, EmitComplexMultiply(op, y, y));
+      TF_ASSIGN_OR_RETURN(auto x_squared_plus_y_squared,
+                          EmitComplexAdd(op, x_squared, y_squared));
+      auto component_type =
+          primitive_util::ComplexComponentType(op->shape().element_type());
+      TF_ASSIGN_OR_RETURN(
+          auto sqrt_x_squared_plus_y_squared,
+          EmitComplexSqrt(op, component_type, x_squared_plus_y_squared));
+      auto type = llvm_ir::PrimitiveTypeToIrType(component_type, module_);
+      auto zero = llvm::ConstantFP::get(type, 0.0);
+      auto one = llvm::ConstantFP::get(type, 1.0);
+      auto i = EmitComposeComplex(op, zero, one);
+      TF_ASSIGN_OR_RETURN(auto i_times_y, EmitComplexMultiply(op, i, y));
+      TF_ASSIGN_OR_RETURN(auto x_plus_iy, EmitComplexAdd(op, x, i_times_y));
+      TF_ASSIGN_OR_RETURN(
+          auto div_result,
+          EmitComplexDivide(op, x_plus_iy, sqrt_x_squared_plus_y_squared));
+      TF_ASSIGN_OR_RETURN(auto log_result, EmitComplexLog(op, div_result));
+      auto negative_one = llvm::ConstantFP::get(type, -1.0);
+      auto negative_i = EmitComposeComplex(op, zero, negative_one);
+      return EmitComplexMultiply(op, negative_i, log_result);
     }
     default:
       return Unimplemented("binary complex op '%s'",
@@ -1516,7 +1578,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
   return EmitReducePrecisionIR(
       /*src_ty=*/hlo->operand(0)->shape().element_type(), x,
       /*dest_exponent_bits=*/hlo->exponent_bits(),
-      /*dest_mantissa_bits=*/hlo->mantissa_bits(), b_);
+      /*dest_mantissa_bits=*/hlo->mantissa_bits(),
+      /*quiet_nans=*/false, b_);
 }
 
 static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* b,
@@ -1837,31 +1900,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalClamp(
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
-    const llvm_ir::IrArray::Index& target_index) {
-  const int64 concat_dim = hlo->dimensions(0);
-  auto source_index = target_index;
-
+    const llvm_ir::IrArray::Index& source_index) {
+  const int64_t concat_dim = hlo->dimensions(0);
   llvm::BasicBlock* init_block = b_->GetInsertBlock();
 
-  // A terminator should be present iff we're emitting code
-  // into the middle (as opposed to the end) of a basic block.
-  CHECK_EQ(b_->GetInsertPoint() == init_block->end(),
-           init_block->getTerminator() == nullptr);
-
   llvm::BasicBlock* exit_block;
-  if (b_->GetInsertPoint() == init_block->end()) {
-    exit_block = llvm_ir::CreateBasicBlock(
-        /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
-  } else {
+  if (b_->GetInsertPoint() != init_block->end()) {
+    // Inserting into the middle.
+    CHECK(init_block->getTerminator());
     exit_block =
         init_block->splitBasicBlock(b_->GetInsertPoint(), IrName(hlo, "merge"));
     init_block->getTerminator()->eraseFromParent();
+  } else {
+    // Inserting at the end.
+    CHECK(!init_block->getTerminator());
+    exit_block = llvm_ir::CreateBasicBlock(
+        /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
   }
 
   llvm_ir::SetToFirstInsertPoint(exit_block, b_);
-  llvm::PHINode* output =
-      PHI(llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(), module_),
-          hlo->operands().size());
+  llvm::PHINode* output = b_->CreatePHI(
+      llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(), module_),
+      hlo->operands().size());
   auto prior_insert_point = b_->GetInsertPoint();
 
   b_->SetInsertPoint(init_block);
@@ -1869,13 +1929,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
   // Assign a unique id for each *different* operand, and count how often each
   // operand is used. If all operands are different, the usage count will be 1
   // for each operand.
-  absl::flat_hash_map<const HloInstruction*, int64> to_unique_operand_id;
-  std::vector<int64> operand_usage_count;
-  for (const auto* operand : hlo->operands()) {
+  absl::flat_hash_map<const HloInstruction*, int64_t> to_unique_operand_id;
+  std::vector<int64_t> operand_usage_count;
+  for (const HloInstruction* operand : hlo->operands()) {
     if (to_unique_operand_id.contains(operand)) {
       ++operand_usage_count[to_unique_operand_id[operand]];
     } else {
-      int64 unique_operand_id = to_unique_operand_id.size();
+      int64_t unique_operand_id = to_unique_operand_id.size();
       to_unique_operand_id[operand] = unique_operand_id;
       operand_usage_count.push_back(1);
     }
@@ -1888,8 +1948,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
       to_unique_operand_id.size(), nullptr);
   std::vector<llvm::PHINode*> source_index_phis(to_unique_operand_id.size(),
                                                 nullptr);
-  for (const auto* operand : hlo->operands()) {
-    int64 operand_id = to_unique_operand_id[operand];
+  for (const HloInstruction* operand : hlo->operands()) {
+    int64_t operand_id = to_unique_operand_id[operand];
     if (emit_operand_blocks[operand_id] != nullptr) {
       continue;
     }
@@ -1899,10 +1959,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     auto saved_insert_point = b_->GetInsertPoint();
     llvm_ir::SetToFirstInsertPoint(emit_operand_blocks[operand_id], b_);
     source_index_phis[operand_id] =
-        PHI(source_index.GetType(), operand_usage_count[operand_id]);
+        b_->CreatePHI(source_index.GetType(), operand_usage_count[operand_id]);
     std::vector<llvm::Value*> operand_multi_index = source_index.multidim();
-    operand_multi_index[concat_dim] =
-        NSWSub(operand_multi_index[concat_dim], source_index_phis[operand_id]);
+    operand_multi_index[concat_dim] = b_->CreateNSWSub(
+        operand_multi_index[concat_dim], source_index_phis[operand_id]);
 
     // Create the terminator of the block before calling operand generators,
     // because they require non-degenerate basic blocks.
@@ -1910,33 +1970,69 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
     llvm_ir::IrArray::Index operand_index(operand_multi_index, operand->shape(),
                                           source_index.GetType());
+
     TF_ASSIGN_OR_RETURN(llvm::Value * value,
                         operand_to_generator.at(operand)(operand_index));
     output->addIncoming(value, b_->GetInsertBlock());
     b_->SetInsertPoint(init_block, saved_insert_point);
   }
 
-  int64 concat_dim_size = 0;
-  for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
-       ++operand_idx) {
-    const HloInstruction* operand = hlo->operand(operand_idx);
-    auto false_block = llvm_ir::CreateBasicBlock(
-        exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
-    int64 operand_id = to_unique_operand_id[operand];
-    source_index_phis[operand_id]->addIncoming(
-        source_index.GetConstantWithIndexType(concat_dim_size),
-        b_->GetInsertBlock());
-    concat_dim_size += operand->shape().dimensions(concat_dim);
-    CondBr(ICmpULT(source_index[concat_dim],
-                   source_index.GetConstantWithIndexType(concat_dim_size)),
-           emit_operand_blocks[operand_id], false_block);
+  // We use bisection to select the input operand.
+  int64_t current_offset = 0;
 
-    // Subtract the size of the concat dimension of the current operand
-    // from the source index.
-    b_->SetInsertPoint(false_block);
+  // Offset for every operand.
+  std::vector<std::pair<int64_t, const HloInstruction*>> cases;
+
+  cases.reserve(hlo->operand_count());
+  for (const HloInstruction* operand : hlo->operands()) {
+    cases.emplace_back(current_offset, operand);
+    current_offset += operand->shape().dimensions(concat_dim);
   }
+  CHECK_EQ(current_offset, hlo->shape().dimensions(concat_dim));
 
-  Unreachable();
+  std::function<llvm::BasicBlock*(
+      absl::Span<const std::pair<int64_t, const HloInstruction*>> operands)>
+      emit_tree =
+          [&](absl::Span<const std::pair<int64_t, const HloInstruction*>>
+                  operands) {
+            llvm::IRBuilder<>::InsertPointGuard guard(*b_);
+            size_t mid = operands.size() / 2;
+            const std::pair<int64_t, const HloInstruction*>& pivot =
+                operands[mid];
+            llvm::BasicBlock* block = llvm_ir::CreateBasicBlock(
+                exit_block,
+                absl::StrCat("concatenate.pivot.", pivot.first, "."), b_);
+            b_->SetInsertPoint(block);
+
+            // If there's only one element we're done. The range is contiguous
+            // so we can just jump to the block for it.
+            if (operands.size() == 1) {
+              const std::pair<int64_t, const HloInstruction*>& operand =
+                  operands.back();
+              int64_t operand_id = to_unique_operand_id[operand.second];
+
+              source_index_phis[operand_id]->addIncoming(
+                  source_index.GetConstantWithIndexType(operand.first),
+                  b_->GetInsertBlock());
+              b_->CreateBr(emit_operand_blocks[operand_id]);
+              return block;
+            }
+
+            // Take the middle element and recurse.
+            llvm::Constant* pivot_const = llvm::ConstantInt::get(
+                source_index[concat_dim]->getType(), pivot.first);
+            llvm::Value* comp =
+                b_->CreateICmpULT(source_index[concat_dim], pivot_const);
+
+            llvm::BasicBlock* left_block = emit_tree(operands.subspan(0, mid));
+            llvm::BasicBlock* right_block = emit_tree(operands.subspan(mid));
+
+            b_->CreateCondBr(comp, left_block, right_block);
+            return block;
+          };
+
+  Br(emit_tree(cases));
+
   b_->SetInsertPoint(exit_block, prior_insert_point);
   return output;
 }
@@ -1947,11 +2043,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     const llvm_ir::IrArray::Index& index) {
   // Emit IR to read dynamic start indices from hlo->operand(1).
   const HloInstruction* input_hlo = hlo->operand(0);
-  const int64 rank = input_hlo->shape().rank();
+  const int64_t rank = input_hlo->shape().rank();
   // Use the same index type for all tensor accesses in the same kernel.
   llvm::Type* index_type = index.GetType();
   std::vector<llvm::Value*> slice_start_multi_index(rank);
-  for (int64 i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
@@ -1963,7 +2059,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     // Clamp the start index so that the sliced portion fits in the operand:
     // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
     start_index_value = SExtOrTrunc(start_index_value, index_type);
-    int64 largest_valid_start_index =
+    int64_t largest_valid_start_index =
         input_hlo->shape().dimensions(i) - hlo->shape().dimensions(i);
     CHECK_GE(largest_valid_start_index, 0);
 
@@ -1978,7 +2074,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   }
 
   std::vector<llvm::Value*> input_multi_index(rank);
-  for (int64 i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     // Emit IR which computes:
     //   input_index = start_index + offset_index
     input_multi_index[i] = Add(slice_start_multi_index[i], index[i]);
@@ -2011,13 +2107,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   // First copy in the window indices to operand_index. Also collect a mapping
   // from operand dimension to output window dimension. Elided window dimensions
   // map to -1.
-  std::vector<int64> operand_to_output_dim(operand_shape.dimensions_size(), -1);
-  for (int64 i = 0, e = operand_shape.dimensions_size(), operand_index_dim = 0;
+  std::vector<int64_t> operand_to_output_dim(operand_shape.dimensions_size(),
+                                             -1);
+  for (int64_t i = 0, e = operand_shape.dimensions_size(),
+               operand_index_dim = 0;
        i < e; i++) {
     if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
       operand_multi_index.push_back(index.GetConstantWithIndexType(0));
     } else {
-      int64 output_window_dim = dim_numbers.offset_dims(operand_index_dim++);
+      int64_t output_window_dim = dim_numbers.offset_dims(operand_index_dim++);
       operand_to_output_dim[i] = output_window_dim;
       operand_multi_index.push_back(index[output_window_dim]);
     }
@@ -2026,7 +2124,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   // This is the index of the index vector in the start_indices tensor.
   std::vector<llvm::Value*> gather_index_index_components;
   {
-    for (int64 i = 0, e = output_shape.dimensions_size(); i < e; i++) {
+    for (int64_t i = 0, e = output_shape.dimensions_size(); i < e; i++) {
       if (!absl::c_binary_search(dim_numbers.offset_dims(), i)) {
         gather_index_index_components.push_back(index[i]);
       }
@@ -2041,7 +2139,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     }
   }
 
-  auto add_to_operand_index = [&](llvm::Value* index_component, int64 dim) {
+  auto add_to_operand_index = [&](llvm::Value* index_component, int64_t dim) {
     auto index_component_type = index_component->getType();
     auto extended_type = index_component_type->getScalarSizeInBits() >=
                                  index_type->getScalarSizeInBits()
@@ -2053,14 +2151,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
         index_component_type != extended_type
             ? b_->CreateSExt(index_component, extended_type)
             : index_component;
-    int64 operand_dim = dim_numbers.start_index_map(dim);
-    int64 output_dim = operand_to_output_dim[operand_dim];
+    int64_t operand_dim = dim_numbers.start_index_map(dim);
+    int64_t output_dim = operand_to_output_dim[operand_dim];
     // If 'output_dim' is -1, it means 'operand_dim' is an elided window dim.
     // This means we set the iteration index to 0, so for the purpose of the
     // following calculations we can consider the output dimension size to be 1.
-    int64 output_dim_size =
+    int64_t output_dim_size =
         output_dim == -1 ? 1 : output_shape.dimensions(output_dim);
-    int64 largest_valid_start_index =
+    int64_t largest_valid_start_index =
         operand_shape.dimensions(operand_dim) - output_dim_size;
     CHECK_GE(largest_valid_start_index, 0);
 
@@ -2089,9 +2187,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
                         indices_generator(gather_index_index));
     add_to_operand_index(gather_dim_component, 0);
   } else {
-    int64 index_vector_size =
+    int64_t index_vector_size =
         indices_shape.dimensions(dim_numbers.index_vector_dim());
-    for (int64 i = 0; i < index_vector_size; i++) {
+    for (int64_t i = 0; i < index_vector_size; i++) {
       gather_index_index_components[dim_numbers.index_vector_dim()] =
           index.GetConstantWithIndexType(i);
       IrArray::Index gather_index_index(gather_index_index_components,
@@ -2113,14 +2211,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const HloInstruction* update_hlo = hlo->operand(1);
   const HloInstruction* start_hlo = hlo->operand(2);
   // Calculate slice start/end indices.
-  const int64 rank = input_hlo->shape().rank();
+  const int64_t rank = input_hlo->shape().rank();
   std::vector<llvm::Value*> slice_start_multi_index(rank);
   std::vector<llvm::Value*> slice_limit_multi_index(rank);
   // Slice intersection gathers (ANDs) conditions on all ranks for which
   // 'input' is set to 'update'
   llvm::Value* slice_intersection = b_->getTrue();
 
-  for (int64 i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     llvm::Type* index_type = index[0]->getType();
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
@@ -2136,7 +2234,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
     start_index_value = SExtOrTrunc(start_index_value, index_type);
     llvm::Value* update_dim_size =
         index_typed_const(update_hlo->shape().dimensions(i));
-    int64 largest_valid_start_index =
+    int64_t largest_valid_start_index =
         input_hlo->shape().dimensions(i) - update_hlo->shape().dimensions(i);
     CHECK_GE(largest_valid_start_index, 0);
 
@@ -2172,7 +2270,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   SetToFirstInsertPoint(if_data.true_block, b_);
   // Compute update index for intersection case.
   std::vector<llvm::Value*> update_multi_index(rank);
-  for (int64 i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     update_multi_index[i] = Sub(index[i], slice_start_multi_index[i]);
   }
   llvm_ir::IrArray::Index update_index(update_multi_index, update_hlo->shape(),
@@ -2198,7 +2296,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
   std::vector<llvm::Value*> multi_index = padded_index.multidim();
   llvm::Value* in_bounds = b_->getTrue();
   for (size_t i = 0; i < multi_index.size(); ++i) {
-    auto index_typed_const = [=](int64 n) {
+    auto index_typed_const = [=](int64_t n) {
       return padded_index.GetConstantWithIndexType(n);
     };
     const auto& pad_dim = hlo->padding_config().dimensions(i);
@@ -2260,13 +2358,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   auto rhs_generator = operand_to_generator.at(hlo->operand(1));
 
   const DotDimensionNumbers& dim_numbers = hlo->dot_dimension_numbers();
-  int64 lhs_contracting_dim = dim_numbers.lhs_contracting_dimensions(0);
-  int64 rhs_contracting_dim = dim_numbers.rhs_contracting_dimensions(0);
+  int64_t lhs_contracting_dim = dim_numbers.lhs_contracting_dimensions(0);
+  int64_t rhs_contracting_dim = dim_numbers.rhs_contracting_dimensions(0);
 
-  int64 contracted_dim_size =
+  int64_t contracted_dim_size =
       hlo->operand(0)->shape().dimensions(lhs_contracting_dim);
-  int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
-  int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
+  int64_t lhs_dims = hlo->operand(0)->shape().dimensions_size();
+  int64_t rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
   llvm::Type* index_type = dot_result_index.GetType();
   auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
@@ -2294,7 +2392,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   //   sum(lhs[a,b,c,t]*rhs[d,t,e] for t in [0, T))
 
   std::vector<llvm::Value*> lhs_multi_index, rhs_multi_index;
-  for (int64 i = 0; i < lhs_dims - 1; i++) {
+  for (int64_t i = 0; i < lhs_dims - 1; i++) {
     lhs_multi_index.push_back(dot_result_index[i]);
   }
   lhs_multi_index.insert(lhs_multi_index.begin() + lhs_contracting_dim,
@@ -2302,12 +2400,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   IrArray::Index lhs_index(lhs_multi_index, hlo->operand(0)->shape(),
                            index_type);
 
-  int64 num_batch_dims = dim_numbers.rhs_batch_dimensions_size();
-  for (int64 i = 0; i < num_batch_dims; i++) {
+  int64_t num_batch_dims = dim_numbers.rhs_batch_dimensions_size();
+  for (int64_t i = 0; i < num_batch_dims; i++) {
     rhs_multi_index.push_back(
         dot_result_index[dim_numbers.rhs_batch_dimensions(i)]);
   }
-  for (int64 i = 0; i < rhs_dims - 1 - num_batch_dims; i++) {
+  for (int64_t i = 0; i < rhs_dims - 1 - num_batch_dims; i++) {
     rhs_multi_index.push_back(dot_result_index[lhs_dims - 1 + i]);
   }
   rhs_multi_index.insert(rhs_multi_index.begin() + rhs_contracting_dim,
@@ -2415,7 +2513,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
         const HloInstruction* operand = hlo->operand(0);
         std::vector<llvm::Value*> source_multi_index = target_index.multidim();
-        for (int64 dim : hlo->dimensions()) {
+        for (int64_t dim : hlo->dimensions()) {
           source_multi_index[dim] = Sub(target_index.GetConstantWithIndexType(
                                             hlo->shape().dimensions(dim) - 1),
                                         target_index[dim]);
@@ -2450,7 +2548,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                 : target_index;
         llvm::Value* elem_index_linear = elem_index.linear();
         if (elem_index_linear == nullptr) {
-          std::vector<int64> iota_bound = {
+          std::vector<int64_t> iota_bound = {
               iota->shape().dimensions(iota->iota_dimension())};
           elem_index_linear = elem_index.Linearize(iota_bound, b_);
         }
@@ -2684,11 +2782,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   //     if I in bounds of input
   //       value = function(value, input[I])
   //     output[O] = value
-  int64 input_count = reduce_window->input_count();
+  int64_t input_count = reduce_window->input_count();
   std::vector<PrimitiveType> operand_element_types;
   std::vector<llvm::Type*> accum_types;
   std::vector<llvm::Value*> accum_ptrs;
-  for (int64 operand_index = 0; operand_index < input_count; ++operand_index) {
+  for (int64_t operand_index = 0; operand_index < input_count;
+       ++operand_index) {
     auto operand = reduce_window->inputs()[operand_index];
     PrimitiveType operand_element_type = operand->shape().element_type();
     operand_element_types.push_back(operand_element_type);
@@ -2715,8 +2814,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
 
   const Window& window = reduce_window->window();
   llvm_ir::ForLoopNest loops(IrName(reduce_window), b_, index_type);
-  std::vector<int64> window_size;
-  for (const auto& dim : window.dimensions()) {
+  std::vector<int64_t> window_size;
+  const auto& dimensions = window.dimensions();
+  window_size.reserve(dimensions.size());
+  for (const auto& dim : dimensions) {
     window_size.push_back(dim.size());
   }
   const IrArray::Index window_index = loops.AddLoopsForShape(
@@ -2769,7 +2870,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   std::vector<llvm::Value*> input_values(reduce_window->operand_count());
   IrArray::Index input_index(input_multi_index,
                              reduce_window->inputs()[0]->shape(), index_type);
-  for (int64 operand_idx = 0; operand_idx < input_count; ++operand_idx) {
+  for (int64_t operand_idx = 0; operand_idx < input_count; ++operand_idx) {
     TF_ASSIGN_OR_RETURN(llvm::Value * input_value,
                         input_generators[operand_idx](input_index));
     input_values[input_count + operand_idx] = input_value;
@@ -2779,7 +2880,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
                       EmitThreadLocalCall(*reduce_window->to_apply(),
                                           input_values, "reducer_function"));
 
-  for (int64 operand_idx = 0; operand_idx < accum_values.size();
+  for (int64_t operand_idx = 0; operand_idx < accum_values.size();
        ++operand_idx) {
     Store(accum_values[operand_idx], accum_ptrs[operand_idx]);
   }
@@ -2802,7 +2903,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
     accumulators_count = out_shape.tuple_shapes_size();
   }
 
-  absl::Span<const int64> reduced_dimensions(reduce->dimensions());
+  absl::Span<const int64_t> reduced_dimensions(reduce->dimensions());
 
   std::vector<llvm::Value*> accumulator_addrs;
   std::vector<llvm::Type*> accumulator_types;
@@ -2887,7 +2988,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitAccumResult(
     // Emit a structure, as that what the LoopEmitter expects.
     llvm::Value* returned_structure = llvm::UndefValue::get(
         llvm::StructType::get(b()->getContext(), accumulator_types));
-    for (int64 i = 0; i < accumulator_addrs.size(); i++) {
+    for (int64_t i = 0; i < accumulator_addrs.size(); i++) {
       llvm::Value* accumulator_value = Load(accumulator_addrs[i]);
       returned_structure =
           b()->CreateInsertValue(returned_structure, accumulator_value, i);
@@ -2903,6 +3004,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
     const HloInstruction* convolution,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& index) {
+  TF_RET_CHECK(convolution->batch_group_count() == 1);
   const HloInstruction* lhs = convolution->operand(0);
   const auto& input_generator = operand_to_generator.at(lhs);
   const HloInstruction* rhs = convolution->operand(1);
@@ -2942,13 +3044,20 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
                 absl::StrCat("k", i))
             ->GetIndVarValue();
   }
+  const int64_t input_group_size =
+      rhs->shape().dimensions(dnums.kernel_input_feature_dimension());
+  const int64_t feature_group_count = convolution->feature_group_count();
+  const int64_t output_group_size =
+      rhs->shape().dimensions(dnums.kernel_output_feature_dimension()) /
+      feature_group_count;
   llvm::Value* input_feature =
-      loops
-          .AddLoop(0, lhs->shape().dimensions(dnums.input_feature_dimension()),
-                   "iz")
-          ->GetIndVarValue();
+      loops.AddLoop(0, input_group_size, "iz")->GetIndVarValue();
 
   SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
+
+  llvm::Value* group_id = SDiv(output_feature, b_->getInt64(output_group_size));
+  llvm::Value* lhs_input_feature =
+      NSWAdd(input_feature, NSWMul(group_id, b_->getInt64(input_group_size)));
 
   // Calculate the spatial index in the input array, taking striding, dilation
   // and padding into account. An index in the padding will be out of the bounds
@@ -2977,7 +3086,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
 
   // Also need to check that the input coordinates are not in one of the
   // holes created by base dilation.
-  const auto not_in_hole = [&](llvm::Value* input_index, int64 base_dilation) {
+  const auto not_in_hole = [&](llvm::Value* input_index,
+                               int64_t base_dilation) {
     llvm::Value* remainder = SRem(input_index, b_->getInt64(base_dilation));
     return ICmpEQ(remainder, b_->getInt64(0));
   };
@@ -2996,7 +3106,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
 
   // Now we need to map the dilated base coordinates back to the actual
   // data indices on the lhs.
-  const auto undilate = [&](llvm::Value* input_index, int64 base_dilation) {
+  const auto undilate = [&](llvm::Value* input_index, int64_t base_dilation) {
     return SDiv(input_index, b_->getInt64(base_dilation));
   };
   for (int i = 0; i < num_spatial_dims; ++i) {
@@ -3014,7 +3124,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
   for (int i = 0; i < num_spatial_dims; ++i) {
     input_multi_index[dnums.input_spatial_dimensions(i)] = input_spatial[i];
   }
-  input_multi_index[dnums.input_feature_dimension()] = input_feature;
+  input_multi_index[dnums.input_feature_dimension()] = lhs_input_feature;
   input_multi_index[dnums.input_batch_dimension()] = batch;
 
   std::vector<llvm::Value*> kernel_multi_index(num_dims);

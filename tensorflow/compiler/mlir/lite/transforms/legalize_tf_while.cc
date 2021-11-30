@@ -37,6 +37,16 @@ struct LegalizeWhile
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-legalize-tf-while";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize from TensorFlow While to TensorFlow Lite While";
+  }
+
   void RunOnFunction(FuncOp func);
 
   void runOnOperation() override {
@@ -83,9 +93,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass() {
   return std::make_unique<LegalizeWhile>();
 }
 
-static PassRegistration<LegalizeWhile> pass(
-    "tfl-legalize-tf-while",
-    "Legalize from TensorFlow While to TensorFlow Lite While");
+static PassRegistration<LegalizeWhile> pass;
 
 }  // namespace TFL
 }  // namespace mlir

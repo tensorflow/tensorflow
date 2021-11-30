@@ -3,6 +3,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
     "if_windows",
 )
 
@@ -52,7 +53,18 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "tpu_embedding_configuration_proto_rewrite",
+    srcs = ["tpu_embedding_configuration_proto_rewrite.cc"],
+    hdrs = ["tpu_embedding_configuration_proto_rewrite.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
     ],
 )
 
@@ -215,6 +227,31 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_compile",
+    srcs = ["tpu_compile.cc"],
+    hdrs = ["tpu_compile.h"],
+    deps = [
+        ":tpu_defs",
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:layout_util",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:compile_only_client",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:versions_proto_cc",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "//tensorflow/core/tpu/kernels:tpu_util_hdrs",
+    ],
+)
+
+cc_library(
     name = "tpu_execute",
     srcs = ["tpu_execute.cc"],
     hdrs = ["tpu_execute.h"],
@@ -241,6 +278,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
+        "//tensorflow/core/tpu/kernels:tpu_execute_op_options",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/lib",
@@ -274,7 +312,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "//tensorflow/stream_executor/tpu:status_helper",
-        "//tensorflow/stream_executor/tpu:tpu_executable_interface",
+        "//tensorflow/stream_executor/tpu:tpu_executable",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_id",
@@ -330,7 +368,6 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_api",
-        ":tpu_api_dlsym_initializer",
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
         ":tpu_initializer_helper",
@@ -341,4 +378,26 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_global_init",
+    srcs = ["tpu_global_init.cc"],
+    hdrs = ["tpu_global_init.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_defs",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:tpu_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
+        "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_configuration_rewrite_pass",
+        "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_rewrite_helpers",
+    ] + if_libtpu(["//tensorflow/compiler/jit"]),
 )

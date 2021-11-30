@@ -24,8 +24,8 @@ namespace libexport {
 namespace {
 
 TEST(LoadTest, TestDiskSavedModelLoad) {
-  absl::StatusOr<TFPackage> result = TFPackage::Load("test");
-  ASSERT_FALSE(result.status().ok());
+  StatusOr<TFPackage> result = TFPackage::Load("test");
+  EXPECT_FALSE(result.status().ok());
 }
 
 }  // namespace

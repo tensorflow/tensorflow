@@ -141,7 +141,7 @@ absl::Status AllocateTensors(std::unique_ptr<Interpreter>* interpreter) {
 absl::Status ModifyGraphWithDelegate(std::unique_ptr<Interpreter>* interpreter,
                                      TfLiteDelegate* delegate) {
   if ((*interpreter)->ModifyGraphWithDelegate(delegate) != kTfLiteOk) {
-    return absl::InternalError("Failed modify graph with delegate.");
+    return absl::InternalError("Failed to modify graph with delegate.");
   }
   return absl::OkStatus();
 }

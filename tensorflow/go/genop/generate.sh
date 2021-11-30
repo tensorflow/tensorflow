@@ -16,16 +16,21 @@
 
 set -e
 
-go get github.com/golang/protobuf/proto
-go get github.com/golang/protobuf/protoc-gen-go
+go get -d google.golang.org/protobuf/proto
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 
 if [ -z "${GOPATH}" ]
 then
   GOPATH=$(go env GOPATH)
 fi
 
+if [ -z "${GOOS}" ]
+then
+  GOOS=$(go env GOOS)
+fi
+
 # convert GOPATH's Windows style to UNIX style
-if [[ $1 == "win" ]]; then
+if [[ $GOOS == "windows" ]]; then
   # eg: convert "D:\go-14;D:\go-13" to "D\go-14;D\go-13"
   GOPATH=${GOPATH//:\\/\\}
   # eg: convert "D\go-14;D\go-13" to "\D\go-14:\D\go-13"
@@ -61,12 +66,11 @@ fi
 # Ensure that protoc-gen-go is available in $PATH
 # Since ${PROTOC} will require it.
 export PATH=$PATH:${GOPATH}/bin
-mkdir -p ../vendor
 for FILE in ${TF_DIR}/tensorflow/core/framework/*.proto \
     ${TF_DIR}/tensorflow/core/protobuf/*.proto \
     ${TF_DIR}/tensorflow/stream_executor/*.proto; do
   ${PROTOC} \
     -I ${TF_DIR} \
-    --go_out=../vendor \
+    --go_out=${GOPATH}/src \
     $FILE
 done

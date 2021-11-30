@@ -13,11 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Operations for embeddings."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -82,6 +77,16 @@ def _clip(params, ids, max_norm):
             else math_ops.range(ids_rank, params_rank)))
 
 
+def _colocate_with(param):
+  if ops.inside_function() and hasattr(param, "handle"):
+    # The `ops.colocate_with` will hard-code a device string if `param.device`
+    # is known, which will then break serving. We capture it here so that it
+    # produces a tensor without a device.
+    return ops.colocate_with(ops.get_default_graph().capture(param.handle))
+  else:
+    return ops.colocate_with(param)
+
+
 def _embedding_lookup_and_transform(params,
                                     ids,
                                     partition_strategy="mod",
@@ -118,7 +123,8 @@ def _embedding_lookup_and_transform(params,
   if params is None:
     raise ValueError("params must be specified")
   if isinstance(params, (list, tuple)) and not params:
-    raise ValueError("Need at least one param")
+    raise ValueError("Length of params is currently 0. "
+                     "Need at least one param.")
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
@@ -133,14 +139,14 @@ def _embedding_lookup_and_transform(params,
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     ids = ops.convert_to_tensor(ids, name="ids")
     if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
-      with ops.colocate_with(params[0]):
+      with _colocate_with(params[0]):
         result = _clip(
             array_ops.gather(params[0], ids, name=name), ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
       # Make sure the final result does not have colocation constraints on the
       # params. Similar to the case np > 1 where parallel_dynamic_stitch is
-      # outside the scioe of all with ops.colocate_with(params[p]).
+      # outside the scope of all with _colocate_with(params[p]).
       return array_ops.identity(result)
     else:
       # Flatten the ids. There are two cases where we need to do this.
@@ -161,19 +167,19 @@ def _embedding_lookup_and_transform(params,
         # if we already know the full shape statically.
         dim_0_size = tensor_shape.Dimension(
             tensor_shape.dimension_value(params[0].get_shape()[0]))
-        for p in xrange(1, np):
+        for p in range(1, np):
           dim_0_size += tensor_shape.Dimension(
               tensor_shape.dimension_value(params[p].get_shape()[0]))
         if dim_0_size.value:
           num_total_ids = constant_op.constant(dim_0_size.value, flat_ids.dtype)
         else:
           dim_0_sizes = []
-          for p in xrange(np):
+          for p in range(np):
             param_p_dim = tensor_shape.dimension_value(params[p].get_shape()[0])
             if param_p_dim is not None:
               dim_0_sizes.append(param_p_dim)
             else:
-              with ops.colocate_with(params[p]):
+              with _colocate_with(params[p]):
                 dim_0_sizes.append(array_ops.shape(params[p])[0])
           num_total_ids = math_ops.reduce_sum(
               math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
@@ -189,8 +195,9 @@ def _embedding_lookup_and_transform(params,
                                   flat_ids % (ids_per_partition + 1),
                                   (flat_ids - extras) % ids_per_partition)
       else:
-        raise ValueError("Unrecognized partition strategy: " +
-                         partition_strategy)
+        raise ValueError(
+            f"Unrecognized partition strategy: {partition_strategy}."
+            "Must be one of either `mod` or `div`.")
 
       # Cast partition assignments to int32 for use in dynamic_partition.
       # There really should not be more than 2^32 partitions.
@@ -202,10 +209,10 @@ def _embedding_lookup_and_transform(params,
                                                  p_assignments, np)
       # Do np separate lookups, finding embeddings for plist[p] in params[p]
       partitioned_result = []
-      for p in xrange(np):
+      for p in range(np):
         pids = gather_ids[p]
         with ops.device_v2(None):
-          with ops.colocate_with(params[p]):
+          with _colocate_with(params[p]):
             result = array_ops.gather(params[p], pids)
             if transform_fn:
               # If transform_fn is provided, the clip_by_norm precedes
@@ -231,7 +238,7 @@ def _embedding_lookup_and_transform(params,
       elif transform_fn is None:
         # It's important that we compute params[0].shape on the right device
         # to avoid data motion.
-        with ops.colocate_with(params[0]):
+        with _colocate_with(params[0]):
           params_shape = array_ops.shape(params[0])
         element_shape_d = params_shape[1:]
       else:
@@ -482,17 +489,19 @@ def embedding_lookup_sparse(params,
   if combiner is None:
     combiner = "mean"
   if combiner not in ("mean", "sqrtn", "sum"):
-    raise ValueError("combiner must be one of 'mean', 'sqrtn' or 'sum'")
+    raise ValueError(
+        f"combiner must be one of 'mean', 'sqrtn' or 'sum', got {combiner}")
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
     params = [params]
   if not isinstance(sp_ids, sparse_tensor.SparseTensor):
-    raise TypeError("sp_ids must be SparseTensor")
+    raise TypeError(f"sp_ids must be SparseTensor, got {type(sp_ids)}")
   ignore_weights = sp_weights is None
   if not ignore_weights:
     if not isinstance(sp_weights, sparse_tensor.SparseTensor):
-      raise TypeError("sp_weights must be either None or SparseTensor")
+      raise TypeError(f"sp_weights must be either None or SparseTensor,"
+                      f"got {type(sp_weights)}")
     sp_ids.values.get_shape().assert_is_compatible_with(
         sp_weights.values.get_shape())
     sp_ids.indices.get_shape().assert_is_compatible_with(
@@ -511,17 +520,20 @@ def embedding_lookup_sparse(params,
 
     embeddings = embedding_lookup(
         params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
-    if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
-      embeddings = math_ops.cast(embeddings, dtypes.float32)
     if not ignore_weights:
       if segment_ids.dtype != dtypes.int32:
         segment_ids = math_ops.cast(segment_ids, dtypes.int32)
 
       weights = sp_weights.values
+      embeddings = array_ops.gather(embeddings, idx)
+
+      original_dtype = embeddings.dtype
+      if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
+        # Cast low-precision embeddings to float32 during the computation to
+        # avoid numerical issues.
+        embeddings = math_ops.cast(embeddings, dtypes.float32)
       if weights.dtype != embeddings.dtype:
         weights = math_ops.cast(weights, embeddings.dtype)
-
-      embeddings = array_ops.gather(embeddings, idx)
 
       # Reshape weights to allow broadcast
       ones_shape = array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0)
@@ -555,6 +567,8 @@ def embedding_lookup_sparse(params,
         embeddings = math_ops.div_no_nan(embeddings, weight_sum_sqrt, name=name)
       else:
         assert False, "Unrecognized combiner"
+      if embeddings.dtype != original_dtype:
+        embeddings = math_ops.cast(embeddings, original_dtype)
     else:
       if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
         segment_ids = math_ops.cast(segment_ids, dtypes.int32)
@@ -855,13 +869,13 @@ def safe_embedding_lookup_sparse(embedding_weights,
     ValueError: if `embedding_weights` is empty.
   """
   if embedding_weights is None:
-    raise ValueError("Missing embedding_weights %s." % embedding_weights)
+    raise ValueError(f"Missing embedding_weights {embedding_weights}.")
   if isinstance(embedding_weights, variables.PartitionedVariable):
     embedding_weights = list(embedding_weights)  # get underlying Variables.
   if not isinstance(embedding_weights, list):
     embedding_weights = [embedding_weights]
   if len(embedding_weights) < 1:
-    raise ValueError("Missing embedding_weights %s." % embedding_weights)
+    raise ValueError(f"Missing embedding_weights {embedding_weights}.")
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
   embedding_weights = [
@@ -967,8 +981,8 @@ def embedding_lookup_ragged(embedding_weights,
   if isinstance(embedding_weights, (list, tuple)) and not embedding_weights:
     raise ValueError("The embedding weights should not be empty.")
   if ragged_ids.dtype != dtypes.int32 and ragged_ids.dtype != dtypes.int64:
-    raise ValueError("The values contained by the inputs have type " +
-                     str(ragged_ids.dtype) +
+    raise ValueError("The values contained by the inputs have type "
+                     f"{str(ragged_ids.dtype)}"
                      " and cannot be processed. All values"
                      " should be indices, either of type `in32` or `int64`.")
 

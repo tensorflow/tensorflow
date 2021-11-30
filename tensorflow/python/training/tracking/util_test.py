@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import copy
 import os
 import weakref
 
@@ -142,27 +139,6 @@ class InterfaceTests(test.TestCase):
     self.assertEqual(dtypes.float64, v2.dtype)
     self.assertAllEqual([1., 1., 1.], self.evaluate(v2))
 
-  def testNotTrackable(self):
-
-    class CallsFunctionalStuff(
-        tracking.NotTrackable, tracking.AutoTrackable):
-      pass
-
-    test_dir = self.get_temp_dir()
-    prefix = os.path.join(test_dir, "ckpt")
-    checkpoint = trackable_utils.Checkpoint(x=CallsFunctionalStuff())
-    with self.assertRaises(NotImplementedError):
-      checkpoint.save(prefix)
-
-    class CallsFunctionalStuffOtherMRO(
-        tracking.AutoTrackable, tracking.NotTrackable):
-      pass
-
-    checkpoint_reversed = trackable_utils.Checkpoint(
-        x=CallsFunctionalStuffOtherMRO())
-    with self.assertRaises(NotImplementedError):
-      checkpoint_reversed.save(prefix)
-
 
 class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
 
@@ -257,6 +233,17 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     status = ckpt.restore(save_path=save_path)
     del ckpt
     status.assert_consumed()
+
+  def testDeepCopyCheckpoint(self):
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    v = variables_lib.Variable(1.)
+    original_ckpt = trackable_utils.Checkpoint(v=v)
+    copied_ckpt = copy.deepcopy(original_ckpt)
+    copied_ckpt.v.assign(2.)
+    self.assertAllClose(1., v)
+    save_path = copied_ckpt.save(file_prefix=prefix)
+    original_ckpt.restore(save_path=save_path).assert_consumed()
+    self.assertAllClose(2., v)
 
   @test_util.run_in_graph_and_eager_modes
   def testPassingCheckpointOptions(self):
@@ -883,7 +870,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.NotFoundError,
-        "Failed to restore from checkpoint or SavedModel"):
+        "Error when restoring from checkpoint or SavedModel"):
       load_checkpoint.restore(saved_model_dir + "no").expect_partial()
 
     load_checkpoint.restore(saved_model_dir).expect_partial()
@@ -891,6 +878,72 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     new_model.deferred_variable = variables_lib.Variable(1.)
     self.assertEqual(self.evaluate(new_model.deferred_variable), 5)
+
+  def test_deferred_dependency_avoids_reference_cycles(self):
+    # Tests that there are no reference cycles when running garbage collection.
+    # Python uses reference counts as the primary garbage collector, which will
+    # not delete and finalize (__del__) objects in a cycle. The deletion is
+    # eventually triggered by gc, which only runs when the garbage has reached
+    # a certain threshold.
+
+    delete_counter = 0
+
+    class TrackableWithDel(tracking.AutoTrackable):
+
+      def __del__(self):
+        nonlocal delete_counter
+        delete_counter += 1
+
+    x = tracking.AutoTrackable()
+    x.v = variables_lib.Variable(100.)
+    x.has_del = TrackableWithDel()
+
+    checkpoint = trackable_utils.Checkpoint(x)
+    checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+
+    self.assertEqual(delete_counter, 0)
+    del checkpoint
+    del x
+    self.assertEqual(delete_counter, 1)
+
+    no_v = tracking.AutoTrackable()
+    no_v.has_del = TrackableWithDel()
+    checkpoint = trackable_utils.Checkpoint(no_v)
+    checkpoint.restore(save_path).expect_partial()
+    del checkpoint
+    del no_v
+    self.assertEqual(delete_counter, 2)
+
+  def test_defer_objects_with_values_only(self):
+    # Tests that deferred dependencies are only added if the node in the
+    # object graph has children or checkpointed values.
+    root = tracking.AutoTrackable()
+    root.branch_with_value = tracking.AutoTrackable()
+    root.branch_with_value.v = variables_lib.Variable(5.0)
+    root.branch_no_value = tracking.AutoTrackable()
+    root.branch_no_value.child = tracking.AutoTrackable()
+    root.v = variables_lib.Variable(1.0)
+
+    checkpoint = trackable_utils.Checkpoint(model=root)
+    checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+
+    new_root = tracking.AutoTrackable()
+    checkpoint = trackable_utils.Checkpoint(model=new_root)
+    checkpoint.restore(save_path)
+
+    # root should have two nodes with values/children (`branch-with_value`/`v`).
+    self.assertLen(new_root._deferred_dependencies, 2)
+
+    new_root.branch_no_value = tracking.AutoTrackable()
+    self.assertLen(new_root._deferred_dependencies, 2)
+
+    new_root.branch_with_value = tracking.AutoTrackable()
+    self.assertLen(new_root._deferred_dependencies, 1)
+
+    new_root.v = variables_lib.Variable(1.0)
+    self.assertEmpty(new_root._deferred_dependencies, 1)
 
 
 class TemplateTests(parameterized.TestCase, test.TestCase):

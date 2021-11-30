@@ -102,8 +102,8 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
 // Checks that the dependency between the step line and the TF op line prevents
 // TF op events from being expanded.
 TEST(DerivedTimelineTest, DependencyTest) {
-  constexpr int64 kFirstGroupId = 0;
-  constexpr int64 kSecondGroupId = 1;
+  constexpr int64_t kFirstGroupId = 0;
+  constexpr int64_t kSecondGroupId = 1;
 
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
@@ -153,7 +153,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
   // The TF name scope line and the TF op line are added.
   EXPECT_EQ(plane_visitor.NumLines(), 3);
   plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
-    int64 line_id = line_visitor.Id();
+    int64_t line_id = line_visitor.Id();
     if (line_id == 0) {
       return;
     } else if (line_id == kThreadIdTfNameScope) {

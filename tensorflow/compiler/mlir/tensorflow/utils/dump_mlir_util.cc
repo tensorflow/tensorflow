@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/core/platform/crash_analysis.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -110,7 +111,33 @@ struct CrashReproducerStream : public mlir::PassManager::ReproducerStream {
   std::string name;
   std::unique_ptr<llvm::raw_ostream> ostream;
 };
+
+// MLIR crash reproducer which reports failures to the crash analysis system.
+struct CrashAnalysisCrashReproducerStream
+    : public mlir::PassManager::ReproducerStream {
+ public:
+  CrashAnalysisCrashReproducerStream()
+      : internal_str(""), string_stream(internal_str) {}
+
+  ~CrashAnalysisCrashReproducerStream() override {
+    crash_analysis::ReportEvent(
+        "mlir_crash_reproducer.mlir",
+        "Pass pipeline failure; crash reproducer attached",
+        string_stream.str());
+  }
+
+  llvm::StringRef description() override { return "mlir_crash_reproducer"; }
+  raw_ostream& os() override { return string_stream; }
+
+ private:
+  std::string internal_str;
+  llvm::raw_string_ostream string_stream;
+};
+
 }  // namespace
+
+const char kCrashReproducerStdErr[] = "-";
+const char kCrashReproducerCrashAnalysis[] = "crash_analysis";
 
 Status CreateFileForDumping(llvm::StringRef name,
                             std::unique_ptr<raw_ostream>* os,
@@ -126,7 +153,7 @@ Status CreateFileForDumping(llvm::StringRef name,
                   "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
 
-  if (dir == "-") {
+  if (dir == kCrashReproducerStdErr) {
     *os = std::make_unique<LogInfoRawStream>();
     *filepath = "(stderr)";
     return Status();
@@ -200,7 +227,7 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
 
 void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
   std::string path = dir_path.str();
-  if (path.empty()) {
+  if (path.empty() || path == kCrashReproducerCrashAnalysis) {
     if (getenv("MLIR_CRASH_REPRODUCER_DIRECTORY"))
       path = getenv("MLIR_CRASH_REPRODUCER_DIRECTORY");
     else if (getenv("TEST_UNDECLARED_OUTPUTS_DIR"))
@@ -225,7 +252,9 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
     }
   }
 
-  if (path != "-") {
+  // kCrashReproducerStdErr and kCrashReproducerCrashAnalysis settings do not
+  // require explicit file creation.
+  if (path != kCrashReproducerStdErr && path != kCrashReproducerCrashAnalysis) {
     auto* env = tensorflow::Env::Default();
     auto status = env->RecursivelyCreateDir(path);
     if (!status.ok()) {
@@ -246,10 +275,12 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
   mlir::PassManager::ReproducerStreamFactory factory =
       [path](std::string& error)
       -> std::unique_ptr<mlir::PassManager::ReproducerStream> {
-    // Use the stderr stream.
-    if (path == "-")
+    if (path == kCrashReproducerStdErr)
       return std::make_unique<CrashReproducerStream>(
           "(stderr)", std::make_unique<LogInfoRawStream>());
+    if (path == kCrashReproducerCrashAnalysis) {
+      return std::make_unique<CrashAnalysisCrashReproducerStream>();
+    }
 
     // Try to open the file and generate a raw_ostream.
     std::unique_ptr<WritableFile> file;

@@ -50,19 +50,19 @@ class GrpcResponseCache {
   //    In either case, return true.
   // Otherwise, store the request and cb in the cache, and return false.
   // Note FinishResponseCB is assumed to be thread-safe.
-  bool QueueRequest(int64 request_id, int64 step_id,
+  bool QueueRequest(int64_t request_id, int64_t step_id,
                     const FinishResponseCB& cb);
 
   // Fill the response cache for the given request_id and respond to all
   // pending request.
-  void OnRequestFinished(int64 request_id, const Tensor& tensor, bool is_dead,
+  void OnRequestFinished(int64_t request_id, const Tensor& tensor, bool is_dead,
                          const Status& status);
 
   // Erase the cache entry with the given request_id
-  void EraseRequestId(int64 request_id);
+  void EraseRequestId(int64_t request_id);
 
   // Erase cache entries with the given step_id
-  void CleanEntriesForStep(int64 step_id);
+  void CleanEntriesForStep(int64_t step_id);
 
  private:
   struct ResponseCacheEntry {
@@ -73,7 +73,7 @@ class GrpcResponseCache {
     };
 
     State state = State::PENDING;
-    int64 step_id = -1;
+    int64_t step_id = -1;
     Tensor tensor;
     bool is_dead = false;
     Status response_status;
@@ -87,7 +87,7 @@ class GrpcResponseCache {
   mutex mu_;
   // response_cache_ is expected to be small, as entries are cleared immediately
   // on ack from the receiver.
-  gtl::FlatMap<int64, ResponseCacheEntry> response_cache_ TF_GUARDED_BY(mu_);
+  gtl::FlatMap<int64_t, ResponseCacheEntry> response_cache_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

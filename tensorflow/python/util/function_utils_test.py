@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Estimator related util."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from tensorflow.python.platform import test
@@ -235,7 +231,7 @@ class HasKwargsTest(test.TestCase):
 
   def test_raises_type_error(self):
     with self.assertRaisesRegex(TypeError,
-                                'fn should be a function-like object'):
+                                'should be a callable'):
       function_utils.has_kwargs('not a function')
 
 

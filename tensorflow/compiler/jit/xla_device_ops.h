@@ -104,9 +104,9 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("Shape")                                        \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
-                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint<int64_t>("out_type")             \
                               .TypeConstraint("T", TYPES),                     \
-                          ShapeOp<int64>);                                     \
+                          ShapeOp<int64_t>);                                   \
   REGISTER_KERNEL_BUILDER(Name("ShapeN")                                       \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -116,9 +116,9 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("ShapeN")                                       \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
-                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint<int64_t>("out_type")             \
                               .TypeConstraint("T", TYPES),                     \
-                          ShapeNOp<int64>);                                    \
+                          ShapeNOp<int64_t>);                                  \
   REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
                               .Device(DEVICE)                                  \
                               .TypeConstraint<int32>("out_type")               \
@@ -127,10 +127,10 @@ class XlaAssignVariableOp : public OpKernel {
                           VariableShapeOp<int32>);                             \
   REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
                               .Device(DEVICE)                                  \
-                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint<int64_t>("out_type")             \
                               .HostMemory("output")                            \
                               .HostMemory("input"),                            \
-                          VariableShapeOp<int64>);                             \
+                          VariableShapeOp<int64_t>);                           \
   REGISTER_KERNEL_BUILDER(Name("Size")                                         \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -140,9 +140,9 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("Size")                                         \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
-                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint<int64_t>("out_type")             \
                               .TypeConstraint("T", TYPES),                     \
-                          SizeOp<int64>);                                      \
+                          SizeOp<int64_t>);                                    \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Rank").Device(DEVICE).HostMemory("output").TypeConstraint("T",     \
                                                                       TYPES),  \
@@ -205,6 +205,8 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE),            \
                           data::AnonymousIteratorHandleOp);                    \
   REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV2").Device(DEVICE),          \
+                          data::AnonymousIteratorHandleOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV3").Device(DEVICE),          \
                           data::AnonymousIteratorHandleOp);                    \
   REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE),               \
                           data::DeleteIteratorOp);                             \

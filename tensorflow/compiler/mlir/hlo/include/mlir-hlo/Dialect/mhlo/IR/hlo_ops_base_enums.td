@@ -49,6 +49,27 @@ def HLO_FftTypeAttr : StrEnumAttr<"FftType",
 }
 
 //===----------------------------------------------------------------------===//
+// Custom call enum definitions.
+//===----------------------------------------------------------------------===//
+
+// TODO(b/189822916): Remove this enum when all clients are migrated to the
+// status-returning API.
+def HLO_CUSTOM_CALL_API_VERISON_UNSPECIFIED :
+    I32EnumAttrCase<"API_VERSION_UNSPECIFIED", 0>;
+def HLO_CUSTOM_CALL_API_VERSION_ORIGINAL :
+    I32EnumAttrCase<"API_VERSION_ORIGINAL", 1>;
+def HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING :
+    I32EnumAttrCase<"API_VERSION_STATUS_RETURNING", 2>;
+def HLO_CustomCallApiVersionAttr :
+    I32EnumAttr<"CustomCallApiVersion", "Custom call API version", [
+        HLO_CUSTOM_CALL_API_VERISON_UNSPECIFIED,
+        HLO_CUSTOM_CALL_API_VERSION_ORIGINAL,
+        HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING
+    ]> {
+  let cppNamespace = "::mlir::mhlo";
+}
+
+//===----------------------------------------------------------------------===//
 // Comparison op definitions.
 //===----------------------------------------------------------------------===//
 
@@ -113,6 +134,16 @@ def HLO_TransposeAttr : StrEnumAttr<"Transpose",
       HLO_TRANSPOSE,
       HLO_ADJOINT
     ]> {
+  let cppNamespace = "::mlir::mhlo";
+}
+
+def HLO_LOOP_FUSION : StrEnumAttrCase<"kLoop">;
+def HLO_INPUT_FUSION : StrEnumAttrCase<"kInput">;
+def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
+def HLO_CUSTOM_FUSION : StrEnumAttrCase<"kCustom">;
+def HLO_FusionKindAttr : StrEnumAttr<"FusionKind", "fusion kind", [
+    HLO_LOOP_FUSION, HLO_INPUT_FUSION, HLO_OUTPUT_FUSION, HLO_CUSTOM_FUSION
+]> {
   let cppNamespace = "::mlir::mhlo";
 }
 

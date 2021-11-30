@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for low-level eager execution primitives."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import traceback
 
@@ -249,10 +245,10 @@ class Tests(test.TestCase):
                                         "num_split", 1000000000000)
 
     value = constant_op.constant(value)
-    attrs = ("num_splits", 1000000000000)
+    attrs = ("num_split", 1000000000000, "T", value.dtype.as_datatype_enum)
     with self.assertRaisesRegex(ValueError, "Number of outputs is too big"):
-      pywrap_tfe.TFE_Py_Execute(ctx._handle, None, "Split", [value], attrs,
-                                1000000000000)
+      pywrap_tfe.TFE_Py_Execute(ctx._handle, None, "Split", [split_dim, value],
+                                attrs, 1000000000000)
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created

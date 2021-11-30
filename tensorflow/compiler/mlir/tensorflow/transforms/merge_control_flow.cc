@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 namespace mlir {
@@ -35,34 +36,8 @@ namespace TFDevice {
 
 namespace {
 
-// This pass merges IfRegion ops together if they have the same predicate and it
-// is safe to do so (there are no intermediate dependencies, they are in the
-// same block, etc).
-//
-// A simple example:
-//    "tf.IfRegion"(%0) ( {
-//      %2 = "tf.A"() : () -> (tensor<f32>)
-//      "tf.Yield"() : () -> ()
-//      }, {
-//      "tf.Yield"() : () -> ()
-//     }) { is_stateless = true } : (tensor<i1>) -> ()
-//    "tf.IfRegion"(%0) ( {
-//      %2 = "tf.B"() : () -> (tensor<f32>)
-//      "tf.Yield"() : () -> ()
-//      }, {
-//      "tf.Yield"() : () -> ()
-//     }) { is_stateless = true } : (tensor<i1>) -> ()
-// Would become:
-//    "tf.IfRegion"(%0) ( {
-//      %2 = "tf.A"() : () -> (tensor<f32>)
-//      %3 = "tf.B"() : () -> (tensor<f32>)
-//      "tf.Yield"() : () -> ()
-//      }, {
-//      "tf.Yield"() : () -> ()
-//     }) { is_stateless = true } : (tensor<i1>) -> ()
-
 struct MergeControlFlowPass
-    : public PassWrapper<MergeControlFlowPass, OperationPass<ModuleOp>> {
+    : public TF::MergeControlFlowPassBase<MergeControlFlowPass> {
   void runOnOperation() override;
 };
 
@@ -360,7 +335,5 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass() {
   return std::make_unique<MergeControlFlowPass>();
 }
 
-static PassRegistration<MergeControlFlowPass> pass(
-    "tf-merge-control-flow", "Merges control flow with a common predicate.");
 }  // namespace TFDevice
 }  // namespace mlir

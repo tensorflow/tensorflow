@@ -50,7 +50,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
     bool graph_as_function, bool upgrade_legacy, bool enable_shape_inference,
-    mlir::MLIRContext* context) {
+    bool unconditionally_use_set_output_shapes, mlir::MLIRContext* context) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(
       tensorflow::LoadProtoFromBuffer({input.data(), input.size()}, &graphdef));
@@ -66,6 +66,8 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
   specs.graph_as_function = graph_as_function;
   specs.upgrade_legacy = upgrade_legacy;
   specs.enable_shape_inference = enable_shape_inference;
+  specs.unconditionally_use_set_output_shapes =
+      unconditionally_use_set_output_shapes;
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(input_arrays, input_dtypes,
                                          input_shapes, &specs.inputs));
   TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.outputs));
@@ -108,12 +110,12 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
     bool graph_as_function, bool upgrade_legacy, bool enable_shape_inference,
-    mlir::MLIRContext* context) {
+    bool unconditionally_use_set_output_shapes, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, control_output_arrays, prune_unused_nodes,
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      enable_shape_inference, context);
+      enable_shape_inference, unconditionally_use_set_output_shapes, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
   }
@@ -126,7 +128,8 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view control_output_arrays, bool prune_unused_nodes,
     bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    bool enable_shape_inference, mlir::MLIRContext* context) {
+    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
+    mlir::MLIRContext* context) {
   std::vector<std::string> input_array_vector;
   std::vector<std::string> input_dtype_vector;
   std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
@@ -142,7 +145,8 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
       input, debug_info_file, input_array_vector, input_dtype_vector,
       input_shapes_vector, output_array_vector, control_output_array_vector,
       prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
-      upgrade_legacy, enable_shape_inference, context);
+      upgrade_legacy, enable_shape_inference,
+      unconditionally_use_set_output_shapes, context);
 }
 
 StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphToMlirImport(
@@ -169,22 +173,32 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options, bool lift_variables) {
-  tensorflow::SavedModelBundle bundle;
+    MLIRImportOptions options, bool lift_variables,
+    std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
+  // Create local bundle if no one is provided to use.
+  std::unique_ptr<tensorflow::SavedModelBundle> bundle;
+  if (saved_model_bundle == nullptr) {
+    bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  } else if (*saved_model_bundle == nullptr) {
+    *saved_model_bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  }
+  SavedModelBundle* bundle_ptr =
+      saved_model_bundle ? saved_model_bundle->get() : bundle.get();
   tensorflow::SessionOptions session_options;
+
   // Force saved model states to be restored to CPU.
   (*session_options.config.mutable_device_count())["GPU"] = 0;
-  auto load_status =
-      tensorflow::LoadSavedModel(session_options, /* run_options = */ {},
-                                 std::string(saved_model_dir), tags, &bundle);
+  auto load_status = tensorflow::LoadSavedModel(
+      session_options, /* run_options = */ {}, std::string(saved_model_dir),
+      tags, bundle_ptr);
   if (!load_status.ok()) {
     LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
                << "': " << load_status;
     return load_status;
   }
 
-  auto module_or = ConvertSavedModelV1ToMlir(bundle, exported_names, context,
-                                             options, lift_variables);
+  auto module_or = ConvertSavedModelV1ToMlir(*bundle_ptr, exported_names,
+                                             context, options, lift_variables);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
   }
@@ -228,12 +242,12 @@ StatusOr<mlir::OwningModuleRef> GraphdefToSplattedMlirTranslateFunction(
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
     bool graph_as_function, bool upgrade_legacy, bool enable_shape_inference,
-    mlir::MLIRContext* context) {
+    bool unconditionally_use_set_output_shapes, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, control_output_arrays, prune_unused_nodes,
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      enable_shape_inference, context);
+      enable_shape_inference, unconditionally_use_set_output_shapes, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return module_or.status();
@@ -276,7 +290,8 @@ StatusOr<mlir::OwningModuleRef> GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view control_output_arrays, bool prune_unused_nodes,
     bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    bool enable_shape_inference, mlir::MLIRContext* context) {
+    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
+    mlir::MLIRContext* context) {
   std::vector<std::string> input_array_vector;
   std::vector<std::string> input_dtype_vector;
   std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
@@ -292,7 +307,8 @@ StatusOr<mlir::OwningModuleRef> GraphdefToSplattedMlirTranslateFunction(
       input, debug_info_file, input_array_vector, input_dtype_vector,
       input_shapes_vector, output_array_vector, control_output_array_vector,
       prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
-      upgrade_legacy, enable_shape_inference, context);
+      upgrade_legacy, enable_shape_inference,
+      unconditionally_use_set_output_shapes, context);
 }
 
 }  // namespace tensorflow

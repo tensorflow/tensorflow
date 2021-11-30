@@ -222,7 +222,7 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
         "errors policy must be one of 'strict', 'replace', or 'ignore'");
   }
 
-  int32 replacement_char;
+  int32_t replacement_char;
   TF_RETURN_IF_ERROR(ctx->GetAttr("replacement_char", &replacement_char));
 
   if (replacement_char >= UCHAR_MIN_VALUE &&
@@ -492,12 +492,12 @@ class UnicodeDecodeWithOffsetsOp : public UnicodeDecodeBaseOp<SPLITS_TYPE> {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int64>("Tsplits"),
-    UnicodeDecodeOp<int64>);
+    Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int64_t>("Tsplits"),
+    UnicodeDecodeOp<int64_t>);
 REGISTER_KERNEL_BUILDER(Name("UnicodeDecodeWithOffsets")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("Tsplits"),
-                        UnicodeDecodeWithOffsetsOp<int64>);
+                            .TypeConstraint<int64_t>("Tsplits"),
+                        UnicodeDecodeWithOffsetsOp<int64_t>);
 REGISTER_KERNEL_BUILDER(
     Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int32>("Tsplits"),
     UnicodeDecodeOp<int32>);
@@ -533,6 +533,10 @@ class UnicodeEncodeOp : public OpKernel {
     const Tensor& input_splits = context->input(1);
     const auto input_splits_flat = input_splits.flat<SPLITS_TYPE>();
 
+    OP_REQUIRES(
+        context, input_splits.NumElements() > 0,
+        errors::InvalidArgument("Input_splits should contain elements, but "
+                                "given input_values has 0 elements"));
     // Operation will treat first argument in input_splits as if it were zero
     // regardless of its actual value since splits should begin with zero and
     // end with the length of the input values vector.
@@ -568,7 +572,7 @@ class UnicodeEncodeOp : public OpKernel {
           errors::InvalidArgument("Values in input_splits must be less than or "
                                   "equal to input_tensor length."));
       for (; idx < input_splits_flat(i); ++idx) {
-        int32 code_point = input_tensor_flat(idx);
+        int32_t code_point = input_tensor_flat(idx);
         // Check for invalid code point
         if (!U_IS_UNICODE_CHAR(code_point)) {
           if (error_options_.error_on_malformatting) {
@@ -594,8 +598,8 @@ class UnicodeEncodeOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int64>("Tsplits"),
-    UnicodeEncodeOp<int64>);
+    Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int64_t>("Tsplits"),
+    UnicodeEncodeOp<int64_t>);
 REGISTER_KERNEL_BUILDER(
     Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int32>("Tsplits"),
     UnicodeEncodeOp<int32>);

@@ -51,7 +51,7 @@ ExecutionHandle ExecutionTracker::Register(Backend* backend,
                                            const ExecutionProfile& profile,
                                            GlobalDataHandle result) {
   tensorflow::mutex_lock lock(execution_mutex_);
-  int64 handle = next_handle_++;
+  int64_t handle = next_handle_++;
   auto inserted = handle_to_execution_.emplace(
       handle, absl::make_unique<AsyncExecution>(backend, std::move(streams),
                                                 profile, result));

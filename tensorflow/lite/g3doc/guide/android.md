@@ -79,8 +79,8 @@ interfaces are specifically designed for each task to achieve the best
 performance and usability. Task Library works cross-platform and is supported on
 Java, C++, and Swift (coming soon).
 
-To use the Support Library in your Android app, we recommend using the AAR
-hosted at MavenCentral for
+To use the Task Library in your Android app, we recommend using the AAR hosted
+at MavenCentral for
 [Task Vision library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-vision)
 and
 [Task Text library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-text)
@@ -90,8 +90,9 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-audio:0.3.0'
 }
 ```
 
@@ -120,7 +121,7 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-support:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.3.0'
 }
 ```
 
@@ -208,3 +209,21 @@ so you must include all header files in `tensorflow/lite/` from the TensorFlow
 repository. Additionally, you will need header files from
 [FlatBuffers](https://github.com/google/flatbuffers) and
 [Abseil](https://github.com/abseil/abseil-cpp).
+
+## Min SDK version of TFLite
+
+| Library                     | `minSdkVersion` | Device Requirements    |
+| --------------------------- | --------------- | ---------------------- |
+| tensorflow-lite             | 19              | NNAPI usage requires   |
+:                             :                 : API 27+                :
+| tensorflow-lite-gpu         | 19              | GLES 3.1 or OpenCL     |
+:                             :                 : (typically only        :
+:                             :                 : available on API 21+   :
+| tensorflow-lite-hexagon     | 19              | -                      |
+| tensorflow-lite-support     | 19              | -                      |
+| tensorflow-lite-task-vision | 21              | android.graphics.Color |
+:                             :                 : related API requires   :
+:                             :                 : API 26+                :
+| tensorflow-lite-task-text   | 21              | -                      |
+| tensorflow-lite-task-audio  | 23              | -                      |
+| tensorflow-lite-metadata    | 19              | -                      |

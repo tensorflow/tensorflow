@@ -133,6 +133,40 @@ class LookupTableOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(LookupTableOp);
 };
 
+// An anonymous version of LookupTableOp, which creates a new table resource
+// everytime `Compute` is called. The resource can only be accessed by the
+// returned resource handle (e.g. it can't be looked up by a name in a resource
+// manager). The resource will be automatically deleted when all resource
+// handles pointing to it are gone.
+template <class Container, class key_dtype, class value_dtype>
+class AnonymousLookupTableOp : public OpKernel {
+ public:
+  explicit AnonymousLookupTableOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table = new Container(ctx, this);
+    if (!ctx->status().ok()) {
+      table->Unref();
+      return;
+    }
+    Tensor table_tensor;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(tensorflow::DT_RESOURCE,
+                                tensorflow::TensorShape({}), &table_tensor));
+    if (ctx->track_allocations()) {
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() +
+                                               table_tensor.AllocatedBytes());
+    }
+    table_tensor.scalar<ResourceHandle>()() =
+        ResourceHandle::MakeRefCountingHandle<lookup::LookupInterface>(
+            table, ctx->device()->name());
+    ctx->set_output(0, table_tensor);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(AnonymousLookupTableOp);
+};
+
 namespace lookup {
 
 // Ensure that the compiler cannot elide a copy into a local, for
@@ -230,7 +264,7 @@ class HashTable : public InitializableLookupTable {
       return errors::Aborted("HashTable is not initialized.");
     }
 
-    const int64 size = table_.size();
+    const int64_t size = table_.size();
 
     Tensor* keys;
     Tensor* values;
@@ -241,7 +275,7 @@ class HashTable : public InitializableLookupTable {
 
     auto keys_data = keys->flat<K>();
     auto values_data = values->flat<V>();
-    int64 i = 0;
+    int64_t i = 0;
     for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
       keys_data(i) = it->first;
       values_data(i) = it->second;
@@ -271,7 +305,7 @@ class HashTable : public InitializableLookupTable {
   Status DoInsert(const Tensor& keys, const Tensor& values) override {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       auto&& key = SubtleMustCopyIfIntegral(key_values(i));
       auto&& value = SubtleMustCopyIfIntegral(value_values(i));
       auto result = table_.try_emplace(key, value);
@@ -290,18 +324,18 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
 
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
           table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
     return Status::OK();
   }
 
-  int64 MemoryUsed() const override {
+  int64_t MemoryUsed() const override {
     if (!is_initialized()) {
       return 0;
     }
-    const int64 num_elements = table_.size();
+    const int64_t num_elements = table_.size();
     return num_elements * (sizeof(K) + sizeof(V));
   }
 

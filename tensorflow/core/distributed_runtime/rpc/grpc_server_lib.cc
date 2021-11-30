@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
@@ -127,8 +128,6 @@ GrpcServer::~GrpcServer() {
   // - worker_env_.env
   // - worker_env_.compute_pool
 }
-
-void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
 // Look up the requested host name and port for this task in `server_def`.
 Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
@@ -246,7 +245,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   builder.SetOption(std::move(server_build_option));
 
   // Allow subclasses to specify more args to pass to the gRPC server.
-  MaybeMutateBuilder(&builder);
+  MaybeMutateBuilder(&builder, requested_port);
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
   worker_impl_ = opts.worker_func ? opts.worker_func(&worker_env_, config)
@@ -255,6 +254,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                                          opts.worker_service_options)
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
+  coordination_service_ =
+      new GrpcCoordinationServiceImpl(&worker_env_, &builder);
 
   profiler_service_ = profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
@@ -288,16 +289,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
           "collective_mgr_func did not return CollectiveExecutorMgr");
     }
   } else {
-    std::unique_ptr<DeviceResolverDistributed> dev_resolver(
-        new DeviceResolverDistributed(worker_env_.device_mgr));
-    std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
-        new CollectiveParamResolverDistributed(config, worker_env_.device_mgr,
-                                               dev_resolver.get(), worker_cache,
-                                               default_worker_name));
-    worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
-        config, worker_env_.device_mgr, std::move(dev_resolver),
-        std::move(param_resolver), MaybeCreateNcclCommunicator(), worker_cache,
-        default_worker_name));
+    worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
+        config, worker_env_.device_mgr, MaybeCreateNcclCommunicator(config),
+        worker_cache, default_worker_name);
   }
 
   // Set up worker environment.
@@ -420,6 +414,9 @@ Status GrpcServer::Start() {
       eager_thread_.reset(
           env_->StartThread(ThreadOptions(), "TF_eager_service",
                             [this] { eager_service_->HandleRPCsLoop(); }));
+      coordination_thread_.reset(env_->StartThread(
+          ThreadOptions(), "TF_coordination_service",
+          [this] { coordination_service_->HandleRPCsLoop(); }));
 
       for (const auto& kv : extra_services_) {
         const std::string& service_name = kv.first;
@@ -473,20 +470,24 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
                                         &default_worker_name, &unused)) {
     return errors::Internal("Could not parse worker name.");
   }
-  std::unique_ptr<DeviceResolverDistributed> dev_resolver(
-      new DeviceResolverDistributed(worker_env_.device_mgr));
-  std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
-      new CollectiveParamResolverDistributed(
-          server_def_.default_session_config(), worker_env_.device_mgr,
-          dev_resolver.get(), worker_cache, default_worker_name));
-  worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
+  worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
       server_def_.default_session_config(), worker_env_.device_mgr,
-      std::move(dev_resolver), std::move(param_resolver),
-      MaybeCreateNcclCommunicator(), worker_cache, default_worker_name));
+      MaybeCreateNcclCommunicator(server_def_.default_session_config()),
+      worker_cache, default_worker_name);
 
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr =
       worker_env_.collective_executor_mgr.get();
+  return Status::OK();
+}
+
+// TODO(haoyuzhang): Remove this method once we have a mechanism to directly set
+// field inside the RPC coordination service handler.
+Status GrpcServer::SetCoordinationServiceAgentInstance(
+    CoordinationServiceAgent* agent) {
+  auto* coord_service =
+      static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
+  coord_service->SetCoordinationServiceAgentInstance(agent);
   return Status::OK();
 }
 

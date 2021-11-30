@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Provides templates which allow variable sharing."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import traceback
 
@@ -44,6 +40,25 @@ def make_template(name_,
                   custom_getter_=None,
                   **kwargs):
   """Given an arbitrary function, wrap it so that it does variable sharing.
+
+  @compatibility(TF2)
+  `tf.compat.v1.make_template` is a legacy API that is only compatible
+  with eager execution enabled and `tf.function` if you combine it with
+  `tf.compat.v1.keras.utils.track_tf1_style_variables`. See the model mapping
+  migration guide section on `make_template` for more info:
+
+  https://www.tensorflow.org/guide/migrate/model_mapping#using_tfcompatv1make_template_in_the_decorated_method
+
+  Even if you use legacy apis for `variable_scope`-based variable reuse,
+  we recommend using
+  `tf.compat.v1.keras.utils.track_tf1_style_variables` directly and not using
+  `tf.compat.v1.make_template`, as it interoperates with eager execution in a
+  simpler and more predictable fashion than `make_template`.
+
+  The TF2 API approach would be tracking your variables using
+  `tf.Module`s or Keras layers and models rather than relying on
+  `make_template`.
+  @end_compatibility
 
   This wraps `func_` in a Template and partially evaluates it. Templates are
   functions that create variables the first time they are called and reuse them
@@ -491,7 +506,10 @@ class _EagerTemplateVariableStore(object):
     if default._store_eager_variables:  # pylint: disable=protected-access
       self._eager_variable_store = variable_scope.EagerVariableStore(default)
     else:
+      # If no outer eager variable store has been made,
+      # the template needs to create one
       self._eager_variable_store = variable_scope.EagerVariableStore()
+    self._used_once = False
 
   def set_variable_scope_name(self, variable_scope_name):
     self._variable_scope_name = variable_scope_name
@@ -499,7 +517,15 @@ class _EagerTemplateVariableStore(object):
   @tf_contextlib.contextmanager
   def as_default(self):
     try:
-      with self._eager_variable_store.as_default():
+      if not self._used_once:
+        # If an outer eager VariableStore was explicitly created and set by
+        # the first time this template store was used (even if not at
+        # constructor time) then pick up the outer variable store.
+        default = variable_scope._get_default_variable_store()  # pylint: disable=protected-access
+        if default._store_eager_variables:  # pylint: disable=protected-access
+          self._eager_variable_store._store = default  # pylint: disable=protected-access
+        self._used_once = True
+      with self._eager_variable_store.as_default():  # pylint: disable=protected-access
         yield
     finally:
       # Each _EagerTemplateVariableStore object lives underneath a variable

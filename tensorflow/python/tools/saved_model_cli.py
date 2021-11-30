@@ -19,11 +19,8 @@ https://www.tensorflow.org/guide/saved_model#cli_to_inspect_and_execute_savedmod
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
+import ast
 import os
 import re
 import sys
@@ -109,7 +106,14 @@ def _get_inputs_tensor_info_from_meta_graph_def(meta_graph_def,
 
   Returns:
     A dictionary that maps input tensor keys to TensorInfos.
+
+  Raises:
+    ValueError if `signature_def_key` is not found in the MetaGraphDef.
   """
+  if signature_def_key not in meta_graph_def.signature_def:
+    raise ValueError(
+        f'Could not find signature "{signature_def_key}". Please choose from: '
+        f'{", ".join(meta_graph_def.signature_def.keys())}')
   return meta_graph_def.signature_def[signature_def_key].inputs
 
 
@@ -187,18 +191,20 @@ def _show_defined_functions(saved_model_dir):
     trackable_object = load.load(saved_model_dir)
 
   print('\nDefined Functions:', end='')
-  functions = (
+  children = list(
       save._AugmentedGraphView(trackable_object)  # pylint: disable=protected-access
-      .list_functions(trackable_object))
-  functions = sorted(functions.items(), key=lambda x: x[0])
-  for name, function in functions:
-    print('\n  Function Name: \'%s\'' % name)
+      .list_children(trackable_object))
+  children = sorted(children, key=lambda x: x.name)
+  for name, child in children:
     concrete_functions = []
-    if isinstance(function, defun.ConcreteFunction):
-      concrete_functions.append(function)
-    if isinstance(function, def_function.Function):
+    if isinstance(child, defun.ConcreteFunction):
+      concrete_functions.append(child)
+    elif isinstance(child, def_function.Function):
       concrete_functions.extend(
-          function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
+          child._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
+    else:
+      continue
+    print('\n  Function Name: \'%s\'' % name)
     concrete_functions = sorted(concrete_functions, key=lambda x: x.name)
     for index, concrete_function in enumerate(concrete_functions, 1):
       args, kwargs = None, None
@@ -518,7 +524,7 @@ def preprocess_inputs_arg_string(inputs_str):
   return input_dict
 
 
-def preprocess_input_exprs_arg_string(input_exprs_str):
+def preprocess_input_exprs_arg_string(input_exprs_str, safe=True):
   """Parses input arg into dictionary that maps input key to python expression.
 
   Parses input string in the format of 'input_key=<python expression>' into a
@@ -526,8 +532,10 @@ def preprocess_input_exprs_arg_string(input_exprs_str):
 
   Args:
     input_exprs_str: A string that specifies python expression for input keys.
-    Each input is separated by semicolon. For each input key:
+      Each input is separated by semicolon. For each input key:
         'input_key=<python expression>'
+    safe: Whether to evaluate the python expression as literals or allow
+      arbitrary calls (e.g. numpy usage).
 
   Returns:
     A dictionary that maps input keys to their values.
@@ -542,8 +550,15 @@ def preprocess_input_exprs_arg_string(input_exprs_str):
       raise RuntimeError('--input_exprs "%s" format is incorrect. Please follow'
                          '"<input_key>=<python expression>"' % input_exprs_str)
     input_key, expr = input_raw.split('=', 1)
-    # ast.literal_eval does not work with numpy expressions
-    input_dict[input_key] = eval(expr)  # pylint: disable=eval-used
+    if safe:
+      try:
+        input_dict[input_key] = ast.literal_eval(expr)
+      except:
+        raise RuntimeError(
+            f'Expression "{expr}" is not a valid python literal.')
+    else:
+      # ast.literal_eval does not work with numpy expressions
+      input_dict[input_key] = eval(expr)  # pylint: disable=eval-used
   return input_dict
 
 
@@ -656,7 +671,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   tensor_key_feed_dict = {}
 
   inputs = preprocess_inputs_arg_string(inputs_str)
-  input_exprs = preprocess_input_exprs_arg_string(input_exprs_str)
+  input_exprs = preprocess_input_exprs_arg_string(input_exprs_str, safe=False)
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
@@ -785,7 +800,7 @@ def convert_with_tensorrt(args):
     converter = trt.TrtGraphConverterV2(
         input_saved_model_dir=args.dir,
         input_saved_model_tags=args.tag_set.split(','),
-        conversion_params=params)
+        **params._asdict())
     try:
       converter.convert()
     except Exception as e:
@@ -920,8 +935,10 @@ def add_run_subparser(subparsers):
   parser_run.add_argument('--inputs', type=str, default='', help=msg)
   msg = ('Specifying inputs by python expressions, in the format of'
          ' "<input_key>=\'<python expression>\'", separated by \';\'. '
-         'numpy module is available as \'np\'. '
-         'Will override duplicate input keys from --inputs option.')
+         'numpy module is available as \'np\'. Please note that the expression '
+         'will be evaluated as-is, and is susceptible to code injection. '
+         'When this is set, the value will override duplicate input keys from '
+         '--inputs option.')
   parser_run.add_argument('--input_exprs', type=str, default='', help=msg)
   msg = (
       'Specifying tf.Example inputs as list of dictionaries. For example: '

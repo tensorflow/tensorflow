@@ -48,6 +48,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                          const GraphDebugInfo& debug_info,
                                          const GraphDef& input,
                                          string* result) {
+  using ::tflite::optimize::ReducedPrecisionSupport;
   mlir::MLIRContext context;
   GraphImportConfig specs;
   mlir::TFL::QuantizationSpecs quant_specs;
@@ -73,6 +74,13 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   TF_RETURN_IF_ERROR(
       tensorflow::ParseOutputArrayInfo(output_arrays, &specs.outputs));
 
+  // Parse control output arrays.
+  std::vector<string> control_output_arrays(
+      model_flags.control_output_arrays().begin(),
+      model_flags.control_output_arrays().end());
+  TF_RETURN_IF_ERROR(tensorflow::ParseOutputArrayInfo(control_output_arrays,
+                                                      &specs.control_outputs));
+
   specs.prune_unused_nodes = true;
   specs.convert_legacy_fed_inputs = true;
   specs.graph_as_function = false;
@@ -95,6 +103,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
     pass_config.unfold_batch_matmul = false;
   }
+  pass_config.unfold_large_splat_constant =
+      toco_flags.unfold_large_splat_constant();
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,

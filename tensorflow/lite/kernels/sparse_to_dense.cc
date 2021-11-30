@@ -190,7 +190,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   output->type = values->type;
   TF_LITE_ENSURE_EQ(context, NumDimensions(output_shape), 1);
 
-  if (!IsConstantTensor(output_shape)) {
+  if (!IsConstantOrPersistentTensor(output_shape)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

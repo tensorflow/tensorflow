@@ -125,7 +125,7 @@ Microseconds SlackAnalysis::ComputeAlap(std::vector<Microseconds>* alap_times) {
     // For reverse execution order, Switch nodes are special. We process
     // them only once when one of its outputs is processed.
     if (IsSwitch(n)) {
-      int32 num_control_edges = 0;
+      int32_t num_control_edges = 0;
       for (const Edge* edge : n->out_edges()) {
         if (edge->IsControlEdge()) {
           num_control_edges++;
@@ -172,7 +172,7 @@ Microseconds SlackAnalysis::ComputeAlap(std::vector<Microseconds>* alap_times) {
   return (*alap_times)[graph_->source_node()->id()];
 }
 
-void SlackAnalysis::ComputeSlack(std::vector<int64>* slacks) {
+void SlackAnalysis::ComputeSlack(std::vector<int64_t>* slacks) {
   std::vector<Microseconds> asap_times;
   std::vector<Microseconds> alap_times;
   ComputeAsap(&asap_times);
@@ -188,7 +188,7 @@ void SlackAnalysis::ComputeSlack(std::vector<int64>* slacks) {
 
 GreedyScheduler::GreedyScheduler(const DeviceSet* devices,
                                  const CostModel* cost_model, const Graph* g,
-                                 std::vector<int64>* priority)
+                                 std::vector<int64_t>* priority)
     : devices_(devices),
       cost_model_(cost_model),
       graph_(g),
@@ -280,7 +280,7 @@ Microseconds GreedyScheduler::ComputeSchedule(
 const Node* GreedyScheduler::GetNodeWithHighestPriority(
     const std::vector<const Node*>& nodes) {
   const Node* curr_node = nullptr;
-  int64 curr_priority = kint64max;
+  int64_t curr_priority = kint64max;
   for (const Node* n : nodes) {
     if ((*priority_)[n->id()] < curr_priority) {
       curr_node = n;
@@ -297,7 +297,7 @@ PriorityScheduler::PriorityScheduler(const DeviceSet* devices,
 
 Microseconds PriorityScheduler::ComputeSchedule(
     std::vector<Microseconds>* start_times) {
-  std::vector<int64> slacks;
+  std::vector<int64_t> slacks;
   SlackAnalysis slack(graph_, cost_model_);
   slack.ComputeSlack(&slacks);
   GreedyScheduler greedysched(devices_, cost_model_, graph_, &slacks);
@@ -305,7 +305,7 @@ Microseconds PriorityScheduler::ComputeSchedule(
 }
 
 Microseconds PriorityScheduler::AssignPriorities(
-    std::vector<int64>* priorities) {
+    std::vector<int64_t>* priorities) {
   std::vector<Microseconds> start_times;
   Microseconds makespan = ComputeSchedule(&start_times);
 

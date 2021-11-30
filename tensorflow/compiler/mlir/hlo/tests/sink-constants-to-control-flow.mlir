@@ -60,7 +60,7 @@ func @sink_const_to_conditional(%arg0: tensor<i64>) -> tensor<i64> {
 }
 
 func @sink_const_to_sort(%arg0: tensor<16xf32>) {
-  %c0 = constant dense<1.0> : tensor<f32>
+  %c0 = arith.constant dense<1.0> : tensor<f32>
   // CHECK: "mhlo.sort"
   %0 = "mhlo.sort"(%arg0) ( {
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):

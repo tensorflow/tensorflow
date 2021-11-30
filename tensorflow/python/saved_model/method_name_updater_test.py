@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for method name utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 
@@ -353,11 +349,11 @@ class MethodNameUpdaterTest(test.TestCase):
         path, _SAVED_MODEL_PROTO.SerializeToString(deterministic=True))
     updater = method_name_updater.MethodNameUpdater(self._saved_model_path)
 
-    with self.assertRaisesRegex(ValueError, "signature_key must be defined"):
+    with self.assertRaisesRegex(ValueError, "`signature_key` must be defined"):
       updater.replace_method_name(
           signature_key=None, method_name="classify")
 
-    with self.assertRaisesRegex(ValueError, "method_name must be defined"):
+    with self.assertRaisesRegex(ValueError, "`method_name` must be defined"):
       updater.replace_method_name(
           signature_key="foobar", method_name="")
 
@@ -369,7 +365,7 @@ class MethodNameUpdaterTest(test.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, r"MetaGraphDef associated with tags \['serve'\] does not "
-                    r"have a signature_def with key: baz"):
+        r"have a signature_def with key: 'baz'"):
       updater.replace_method_name(
           signature_key="baz", method_name="classify", tags=["serve"])
 

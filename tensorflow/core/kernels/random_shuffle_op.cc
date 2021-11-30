@@ -47,7 +47,7 @@ static inline void RandomShuffle(Iter first, Iter last, Random& uniform) {
 }
 
 template <class IntT, class InT, class OutT, class Random>
-static void IndexedShuffle(const int64 size, const InT& input_mat,
+static void IndexedShuffle(const int64_t size, const InT& input_mat,
                            OutT output_mat, Random& uniform) {
   std::vector<IntT> permutation(size);
   for (IntT i = 0; i < size; i++) {
@@ -74,8 +74,8 @@ class RandomShuffleOp : public OpKernel {
       context->set_output(0, input);
     } else {
       // Reserve enough random samples for shuffling
-      const int64 size = input.dim_size(0);
-      const int64 samples = size - 1;
+      const int64_t size = input.dim_size(0);
+      const int64_t samples = size - 1;
       auto local_gen = generator_.ReserveSamples32(samples);
       random::SingleSampleAdapter<random::PhiloxRandom> single(&local_gen);
       const auto uniform = [&single](uint32 n) { return single() % n; };
@@ -95,7 +95,7 @@ class RandomShuffleOp : public OpKernel {
         if (size < kint32max) {
           IndexedShuffle<int32>(size, input_mat, output_mat, uniform);
         } else {
-          IndexedShuffle<int64>(size, input_mat, output_mat, uniform);
+          IndexedShuffle<int64_t>(size, input_mat, output_mat, uniform);
         }
       }
     }

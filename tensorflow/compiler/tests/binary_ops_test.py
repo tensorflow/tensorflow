@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test cases for binary operators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 import numpy as np
@@ -765,8 +761,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
-  @test_util.disable_mlir_bridge(
-      "F16 type is not supported in CreateDenseElementsAttrFromLiteral")
   def testFloatRemainder(self):
     for dtype in self.float_types:
       self._testRemainder(dtype)
@@ -774,123 +768,123 @@ class BinaryOpsTest(xla_test.XLATestCase):
   def testLogicalOps(self):
     self._testBinary(
         math_ops.logical_and,
-        np.array([[True, False], [False, True]], dtype=np.bool),
-        np.array([[False, True], [False, True]], dtype=np.bool),
-        expected=np.array([[False, False], [False, True]], dtype=np.bool))
+        np.array([[True, False], [False, True]], dtype=np.bool_),
+        np.array([[False, True], [False, True]], dtype=np.bool_),
+        expected=np.array([[False, False], [False, True]], dtype=np.bool_))
 
     self._testBinary(
         math_ops.logical_or,
-        np.array([[True, False], [False, True]], dtype=np.bool),
-        np.array([[False, True], [False, True]], dtype=np.bool),
-        expected=np.array([[True, True], [False, True]], dtype=np.bool))
+        np.array([[True, False], [False, True]], dtype=np.bool_),
+        np.array([[False, True], [False, True]], dtype=np.bool_),
+        expected=np.array([[True, True], [False, True]], dtype=np.bool_))
 
   def testComparisons(self):
     self._testBinary(
         math_ops.equal,
         np.array([1, 5, 20], dtype=np.float32),
         np.array([10, 5, 2], dtype=np.float32),
-        expected=np.array([False, True, False], dtype=np.bool))
+        expected=np.array([False, True, False], dtype=np.bool_))
     self._testBinary(
         math_ops.equal,
         np.float32(5),
         np.array([1, 5, 20], dtype=np.float32),
-        expected=np.array([False, True, False], dtype=np.bool))
+        expected=np.array([False, True, False], dtype=np.bool_))
     self._testBinary(
         math_ops.equal,
         np.array([[10], [7], [2]], dtype=np.float32),
         np.float32(7),
-        expected=np.array([[False], [True], [False]], dtype=np.bool))
+        expected=np.array([[False], [True], [False]], dtype=np.bool_))
 
     self._testBinary(
         math_ops.not_equal,
         np.array([1, 5, 20], dtype=np.float32),
         np.array([10, 5, 2], dtype=np.float32),
-        expected=np.array([True, False, True], dtype=np.bool))
+        expected=np.array([True, False, True], dtype=np.bool_))
     self._testBinary(
         math_ops.not_equal,
         np.float32(5),
         np.array([1, 5, 20], dtype=np.float32),
-        expected=np.array([True, False, True], dtype=np.bool))
+        expected=np.array([True, False, True], dtype=np.bool_))
     self._testBinary(
         math_ops.not_equal,
         np.array([[10], [7], [2]], dtype=np.float32),
         np.float32(7),
-        expected=np.array([[True], [False], [True]], dtype=np.bool))
+        expected=np.array([[True], [False], [True]], dtype=np.bool_))
 
     for greater_op in [math_ops.greater, (lambda x, y: x > y)]:
       self._testBinary(
           greater_op,
           np.array([1, 5, 20], dtype=np.float32),
           np.array([10, 5, 2], dtype=np.float32),
-          expected=np.array([False, False, True], dtype=np.bool))
+          expected=np.array([False, False, True], dtype=np.bool_))
       self._testBinary(
           greater_op,
           np.float32(5),
           np.array([1, 5, 20], dtype=np.float32),
-          expected=np.array([True, False, False], dtype=np.bool))
+          expected=np.array([True, False, False], dtype=np.bool_))
       self._testBinary(
           greater_op,
           np.array([[10], [7], [2]], dtype=np.float32),
           np.float32(7),
-          expected=np.array([[True], [False], [False]], dtype=np.bool))
+          expected=np.array([[True], [False], [False]], dtype=np.bool_))
 
     for greater_equal_op in [math_ops.greater_equal, (lambda x, y: x >= y)]:
       self._testBinary(
           greater_equal_op,
           np.array([1, 5, 20], dtype=np.float32),
           np.array([10, 5, 2], dtype=np.float32),
-          expected=np.array([False, True, True], dtype=np.bool))
+          expected=np.array([False, True, True], dtype=np.bool_))
       self._testBinary(
           greater_equal_op,
           np.float32(5),
           np.array([1, 5, 20], dtype=np.float32),
-          expected=np.array([True, True, False], dtype=np.bool))
+          expected=np.array([True, True, False], dtype=np.bool_))
       self._testBinary(
           greater_equal_op,
           np.array([[10], [7], [2]], dtype=np.float32),
           np.float32(7),
-          expected=np.array([[True], [True], [False]], dtype=np.bool))
+          expected=np.array([[True], [True], [False]], dtype=np.bool_))
 
     for less_op in [math_ops.less, (lambda x, y: x < y)]:
       self._testBinary(
           less_op,
           np.array([1, 5, 20], dtype=np.float32),
           np.array([10, 5, 2], dtype=np.float32),
-          expected=np.array([True, False, False], dtype=np.bool))
+          expected=np.array([True, False, False], dtype=np.bool_))
       self._testBinary(
           less_op,
           np.float32(5),
           np.array([1, 5, 20], dtype=np.float32),
-          expected=np.array([False, False, True], dtype=np.bool))
+          expected=np.array([False, False, True], dtype=np.bool_))
       self._testBinary(
           less_op,
           np.array([[10], [7], [2]], dtype=np.float32),
           np.float32(7),
-          expected=np.array([[False], [False], [True]], dtype=np.bool))
+          expected=np.array([[False], [False], [True]], dtype=np.bool_))
       if np.int64 in self.numeric_types:
         self._testBinary(
             less_op,
             np.array([[10], [7], [2], [-1]], dtype=np.int64),
             np.int64(7),
-            expected=np.array(
-                [[False], [False], [True], [True]], dtype=np.bool))
+            expected=np.array([[False], [False], [True], [True]],
+                              dtype=np.bool_))
 
     for less_equal_op in [math_ops.less_equal, (lambda x, y: x <= y)]:
       self._testBinary(
           less_equal_op,
           np.array([1, 5, 20], dtype=np.float32),
           np.array([10, 5, 2], dtype=np.float32),
-          expected=np.array([True, True, False], dtype=np.bool))
+          expected=np.array([True, True, False], dtype=np.bool_))
       self._testBinary(
           less_equal_op,
           np.float32(5),
           np.array([1, 5, 20], dtype=np.float32),
-          expected=np.array([False, True, True], dtype=np.bool))
+          expected=np.array([False, True, True], dtype=np.bool_))
       self._testBinary(
           less_equal_op,
           np.array([[10], [7], [2]], dtype=np.float32),
           np.float32(7),
-          expected=np.array([[False], [True], [True]], dtype=np.bool))
+          expected=np.array([[False], [True], [True]], dtype=np.bool_))
 
   def testS64Comparisons(self):
     for op in [(lambda x, y: x < y), (lambda x, y: x <= y),
@@ -963,7 +957,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
               np.int64(-1)
           ],
           dtype=np.int64)
-      expected = np.array([op(l, r) for l, r in zip(lhs, rhs)], dtype=np.bool)
+      expected = np.array([op(l, r) for l, r in zip(lhs, rhs)], dtype=np.bool_)
       self._testBinary(op, lhs, rhs, expected=expected)
 
   def testBroadcasting(self):
@@ -1646,6 +1640,12 @@ class BinaryOpsTest(xla_test.XLATestCase):
                      np.array([3, 1], dtype=np.int32),
                      np.array([2, 1, 5], dtype=np.int32),
                      expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(
+        array_ops.broadcast_dynamic_shape,
+        np.array([2, 3, 5], dtype=np.int64),
+        np.array([1], dtype=np.int64),
+        expected=np.array([2, 3, 5], dtype=np.int64))
 
   @test_util.disable_mlir_bridge("Error handling")
   def testBroadcastArgsError(self):

@@ -13,15 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Wraps toco interface with python lazy loader."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # We need to import pywrap_tensorflow prior to the toco wrapper.
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_toco_api
-
 
 # TODO(b/137402359): Remove lazy loading wrapper
 
@@ -40,17 +35,15 @@ def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
 
 def wrapped_experimental_mlir_quantize(input_data_str, disable_per_channel,
                                        fully_quantize, inference_type,
-                                       input_data_type,
-                                       output_data_type,
-                                       enable_numeric_verify):
+                                       input_data_type, output_data_type,
+                                       enable_numeric_verify,
+                                       enable_whole_model_verify,
+                                       denylisted_ops, denylisted_nodes):
   """Wraps experimental mlir quantize model."""
-  return _pywrap_toco_api.ExperimentalMlirQuantizeModel(input_data_str,
-                                                        disable_per_channel,
-                                                        fully_quantize,
-                                                        inference_type,
-                                                        input_data_type,
-                                                        output_data_type,
-                                                        enable_numeric_verify)
+  return _pywrap_toco_api.ExperimentalMlirQuantizeModel(
+      input_data_str, disable_per_channel, fully_quantize, inference_type,
+      input_data_type, output_data_type, enable_numeric_verify,
+      enable_whole_model_verify, denylisted_ops, denylisted_nodes)
 
 
 def wrapped_experimental_mlir_sparsify(input_data_str):
@@ -61,3 +54,13 @@ def wrapped_experimental_mlir_sparsify(input_data_str):
 def wrapped_register_custom_opdefs(custom_opdefs_list):
   """Wraps RegisterCustomOpdefs with lazy loader."""
   return _pywrap_toco_api.RegisterCustomOpdefs(custom_opdefs_list)
+
+
+def wrapped_retrieve_collected_errors():
+  """Wraps RetrieveCollectedErrors with lazy loader."""
+  return _pywrap_toco_api.RetrieveCollectedErrors()
+
+
+def wrapped_flat_buffer_file_to_mlir(model, input_is_filepath):
+  """Wraps FlatBufferFileToMlir with lazy loader."""
+  return _pywrap_toco_api.FlatBufferToMlir(model, input_is_filepath)

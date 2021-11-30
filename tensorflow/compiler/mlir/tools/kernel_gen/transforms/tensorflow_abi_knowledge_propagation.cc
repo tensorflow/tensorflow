@@ -22,13 +22,14 @@ limitations under the License.
 
 #include "llvm/ADT/Bitfields.h"
 #include "llvm/ADT/DenseMap.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -90,7 +91,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       // coincide with laucnh operands as memref parameters get expanded when
       // lowered to llvm.
       int kernel_p = 0;
-      OpBuilder b = OpBuilder::atBlockBegin(&kernel.body().front());
+      OpBuilder b = OpBuilder::atBlockBegin(&kernel.getBody().front());
       llvm::SmallDenseMap<int64_t, Value> constants;
       auto loc = kernel.getLoc();
       for (auto operand : launch.operands()) {
@@ -183,9 +184,9 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           // TODO(herhut): Remove this once canonicalization handles this.
           if (cast.isDynamicStride(last_stride)) {
             auto dyn_stride = cast.getDynamicStride(last_stride)
-                                  .getDefiningOp<ConstantIndexOp>();
+                                  .getDefiningOp<arith::ConstantIndexOp>();
             if (dyn_stride) {
-              inner_stride_is_constant.insert({result, dyn_stride.getValue()});
+              inner_stride_is_constant.insert({result, dyn_stride.value()});
             }
           } else {
             inner_stride_is_constant.insert(

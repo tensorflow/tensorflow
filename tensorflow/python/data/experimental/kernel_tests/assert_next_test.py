@@ -13,15 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.assert_next()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -33,7 +30,7 @@ class AssertNextTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testAssertNext(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         testing.assert_next(["Map"])).map(lambda x: x)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[0])
@@ -44,7 +41,7 @@ class AssertNextTest(test_base.DatasetTestBase, parameterized.TestCase):
     # still match that with "Batch".
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         testing.assert_next(["Map", "Batch"])).map(lambda x: x).batch(1)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[[0]])

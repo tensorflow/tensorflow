@@ -15,15 +15,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace mlir {
 
 StatusScopedDiagnosticHandler::StatusScopedDiagnosticHandler(
-    MLIRContext* context, bool propagate)
+    MLIRContext* context, bool propagate, bool filter_stack)
     : SourceMgrDiagnosticHandler(source_mgr_, context, diag_stream_),
       diag_stream_(diag_str_),
       propagate_(propagate) {
+  if (filter_stack) {
+    this->shouldShowLocFn = [](Location loc) -> bool {
+      // For a Location to be surfaced in the stack, it must evaluate to true.
+      // For any Location that is a FileLineColLoc:
+      if (FileLineColLoc fileLoc = loc.dyn_cast<FileLineColLoc>()) {
+        return !tensorflow::IsInternalFrameForFilename(
+            fileLoc.getFilename().str());
+      } else {
+        // If this is a non-FileLineColLoc, go ahead and include it.
+        return true;
+      }
+    };
+  }
+
   setHandler([this](Diagnostic& diag) { return this->handler(&diag); });
 }
 

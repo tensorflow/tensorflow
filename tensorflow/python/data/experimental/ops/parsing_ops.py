@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Experimental `dataset` API for parsing example."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
@@ -37,7 +33,8 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     if not structure.are_compatible(
         input_dataset.element_spec,
         tensor_spec.TensorSpec([None], dtypes.string)):
-      raise TypeError("Input dataset should be a dataset of vectors of strings")
+      raise TypeError("Input dataset should be a dataset of vectors of "
+                      f"strings. Instead it is `{input_dataset.element_spec}`.")
     self._num_parallel_calls = num_parallel_calls
     if deterministic is None:
       self._deterministic = "default"
@@ -131,9 +128,8 @@ def parse_example_dataset(features, num_parallel_calls=1, deterministic=None):
       should be traded for performance by allowing elements to be produced out
       of order if some parsing calls complete faster than others. If
       `deterministic` is `None`, the
-      `tf.data.Options.experimental_deterministic` dataset option (`True` by
-      default) is used to decide whether to produce elements
-      deterministically.
+      `tf.data.Options.deterministic` dataset option (`True` by default) is used
+      to decide whether to produce elements deterministically.
 
   Returns:
     A dataset transformation function, which can be passed to
@@ -143,7 +139,7 @@ def parse_example_dataset(features, num_parallel_calls=1, deterministic=None):
     ValueError: if features argument is None.
   """
   if features is None:
-    raise ValueError("Missing: features was %s." % features)
+    raise ValueError("Argument `features` is required, but not specified.")
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""

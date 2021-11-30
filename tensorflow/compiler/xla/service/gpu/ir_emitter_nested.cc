@@ -56,14 +56,18 @@ StatusOr<std::unique_ptr<IrEmitterNested>> IrEmitterNested::Create(
 Status IrEmitterNested::CodegenNestedComputation() {
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
-  std::vector<int64> argument_dereferenceable_bytes;
-  for (const HloInstruction* param :
-       nested_computation_.parameter_instructions()) {
+  std::vector<int64_t> argument_dereferenceable_bytes;
+  const auto& params = nested_computation_.parameter_instructions();
+  const auto n = params.size() + 1;
+  io_hlos.reserve(n - 1);
+  argument_types.reserve(n);
+  argument_dereferenceable_bytes.reserve(n);
+  for (const HloInstruction* param : params) {
     io_hlos.push_back(param);
     const Shape& param_shape = param->shape();
     argument_types.push_back(
         llvm_ir::ShapeToIrType(param_shape, module_)->getPointerTo());
-    int64 param_size =
+    int64_t param_size =
         llvm_ir::ByteSizeOf(param_shape, module_->getDataLayout());
     argument_dereferenceable_bytes.push_back(param_size);
   }
@@ -73,7 +77,7 @@ Status IrEmitterNested::CodegenNestedComputation() {
     const Shape& root_shape = root->shape();
     argument_types.push_back(
         llvm_ir::ShapeToIrType(root_shape, module_)->getPointerTo());
-    int64 root_size = llvm_ir::ByteSizeOf(
+    int64_t root_size = llvm_ir::ByteSizeOf(
         root_shape, ir_emitter_context_->llvm_module()->getDataLayout());
     argument_dereferenceable_bytes.push_back(root_size);
   }
@@ -89,9 +93,9 @@ Status IrEmitterNested::CodegenNestedComputation() {
       ir_emitter_context_->llvm_module());   // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
        ++arg_no) {
-    int64 arg_size = argument_dereferenceable_bytes[arg_no];
+    int64_t arg_size = argument_dereferenceable_bytes[arg_no];
     if (arg_size > 0) {
-      function->addDereferenceableAttr(arg_no + 1, arg_size);
+      function->addDereferenceableParamAttr(arg_no, arg_size);
     }
   }
 

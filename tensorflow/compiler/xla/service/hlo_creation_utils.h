@@ -53,25 +53,25 @@ StatusOr<HloInstruction*> MakePadHlo(HloInstruction* operand,
 // Creates a slice HLO instruction and adds it to the computation containing
 // `operand`.
 StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
-                                       absl::Span<const int64> start_indices,
-                                       absl::Span<const int64> limit_indices,
-                                       absl::Span<const int64> strides);
+                                       absl::Span<const int64_t> start_indices,
+                                       absl::Span<const int64_t> limit_indices,
+                                       absl::Span<const int64_t> strides);
 
 // Creates a convolution HLO instruction and adds it to the computation
 // containing `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
 // If the result shape has integral element type, an optional
 // preferred_element_type can be specified to override the element type.
 StatusOr<HloInstruction*> MakeConvolveHlo(
-    HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
-    int64 batch_group_count, const Window& window,
+    HloInstruction* lhs, HloInstruction* rhs, int64_t feature_group_count,
+    int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     absl::optional<PrimitiveType> preferred_element_type);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
 // `operand`.
-StatusOr<HloInstruction*> MakeTransposeHlo(HloInstruction* operand,
-                                           absl::Span<const int64> dimensions);
+StatusOr<HloInstruction*> MakeTransposeHlo(
+    HloInstruction* operand, absl::Span<const int64_t> dimensions);
 
 // Creates a reshape HLO instruction and adds it to the computation containing
 // `operand`.
@@ -79,17 +79,17 @@ StatusOr<HloInstruction*> MakeReshapeHlo(const Shape& result_shape,
                                          HloInstruction* operand);
 
 StatusOr<HloInstruction*> MakeReshapeHlo(
-    absl::Span<const int64> result_shape_dim_bounds, HloInstruction* operand);
+    absl::Span<const int64_t> result_shape_dim_bounds, HloInstruction* operand);
 
 // Creates a dynamic-slice HLO instruction and adds it to the computation
 // containing `operand` and `start_indices` (`operand` and `start_indices` must
 // be in the same computation).
 StatusOr<HloInstruction*> MakeDynamicSliceHlo(
     HloInstruction* operand, absl::Span<HloInstruction* const> start_indices,
-    absl::Span<const int64> slice_sizes);
+    absl::Span<const int64_t> slice_sizes);
 StatusOr<HloInstruction*> MakeDynamicSliceHlo(
     HloInstruction* operand, HloInstruction* start_indices,
-    absl::Span<const int64> slice_sizes);
+    absl::Span<const int64_t> slice_sizes);
 
 // Creates a dynamic-update-slice HLO instruction and adds it to the computation
 // containing `operand`, `update` and `start_indices` (`operand`, `update` and
@@ -101,22 +101,22 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
 // Creates a broadcast HLO instruction and adds it to the computation containing
 // `operand`.
 HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
-                                 absl::Span<const int64> broadcast_dimensions,
-                                 absl::Span<const int64> result_shape_bounds);
+                                 absl::Span<const int64_t> broadcast_dimensions,
+                                 absl::Span<const int64_t> result_shape_bounds);
 HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
-                                 absl::Span<const int64> broadcast_dimensions,
+                                 absl::Span<const int64_t> broadcast_dimensions,
                                  const Shape& shape);
 
 // Creates a GetTupleElement HLO instruction and adds it to the computation
 // containing `operand`.
 StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
-                                                 int64 index);
+                                                 int64_t index);
 
 // Creates a Concatenate HLO instruction and adds it to the computation
 // containing `operands` (`operands` must be non-empty and every element must be
 // contained in the same computation).
 StatusOr<HloInstruction*> MakeConcatHlo(
-    absl::Span<HloInstruction* const> operands, int64 dimension);
+    absl::Span<HloInstruction* const> operands, int64_t dimension);
 
 // Creates a Convert HLO instruction that converts the given instruction to have
 // the given primitive type.
@@ -128,7 +128,7 @@ HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
 
 // Creates an Iota HLO instruction.
 HloInstruction* MakeIotaHlo(HloComputation* computation, const Shape& shape,
-                            int64 iota_dimension);
+                            int64_t iota_dimension);
 
 // Creates a Dot HLO instruction and adds it to the computation containing `lhs`
 // and `rhs` (both must be in the same computation). If the result shape has
@@ -150,7 +150,7 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
 // the given module. binary_opcode should represent a binary operation.
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
-                                        absl::Span<const int64> dimensions,
+                                        absl::Span<const int64_t> dimensions,
                                         HloOpcode binary_opcode);
 
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
@@ -161,7 +161,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
 // Creates a Reverse HLO instruction and adds it to the computation containing
 // `operand`.
 StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,
-                                         absl::Span<const int64> dimensions);
+                                         absl::Span<const int64_t> dimensions);
 
 // Creates a Select HLO instruction and adds it to the computation containing
 // the predicate. The on_true and on_false instructions must also be contained
@@ -178,7 +178,7 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
 // order. 'is_stable' specifies whether the sorting should be stable.
 StatusOr<HloInstruction*> MakeSortHlo(
     const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
-    int64 dimension_to_sort, bool is_stable, HloComputation::Builder* builder,
+    int64_t dimension_to_sort, bool is_stable, HloComputation::Builder* builder,
     HloModule* module);
 
 // Creates an R1 Constant HLO instruction of the given PrimitiveType with the
@@ -235,7 +235,8 @@ StatusOr<HloInstruction*> MakeFusionInstruction(
 //
 // For instance if `operand` has shape f32[7,8,9] and n is 2 then the output is
 // the `operand` reshaped to [56,9].
-StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n);
+StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand,
+                                             int64_t n);
 
 // Prepends `n` degenerate dimensions (dimensions with bound = 1) to `operand`
 // using a reshape.
@@ -244,7 +245,7 @@ StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n);
 // reshaped to f32[1,3,4,5].  If the operand is a f32 scalar (i.e. has shape
 // f32[]) then this returns the operand reshaped to f32[1].
 StatusOr<HloInstruction*> PrependDegenerateDims(HloInstruction* operand,
-                                                int64 n);
+                                                int64_t n);
 
 // Expands (via reshape) the first (logical) dimension of `operand` into a
 // sequence of `expanded_dims` dimensions.  `operand` must at least be of rank 1
@@ -254,7 +255,7 @@ StatusOr<HloInstruction*> PrependDegenerateDims(HloInstruction* operand,
 // For instance if `operand` has shape f32[200,9,7] and expanded_dims is
 // {2,5,20} the result is `operand` reshaped to [2,5,20,9,7].
 StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
-    HloInstruction* operand, absl::Span<const int64> expanded_dims);
+    HloInstruction* operand, absl::Span<const int64_t> expanded_dims);
 
 // Elides (via reshape) a set of degenerate dimensions (dimensions containing
 // exactly one element), `dims_to_elide` from `operand`.  Every dimension in
@@ -264,7 +265,7 @@ StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
 // For example if `operand` is of shape f32[19,1,20,1,7,1,9] and dims_to_elide
 // is {1,5} then the result is `operand` reshaped to [19,20,1,7,9].
 StatusOr<HloInstruction*> ElideDegenerateDims(
-    HloInstruction* operand, absl::Span<const int64> dims_to_elide);
+    HloInstruction* operand, absl::Span<const int64_t> dims_to_elide);
 
 // Inserts (via reshape) a set of degenerate dimensions (dimensions containing
 // exactly one element), `dims_to_insert` into `operand`. The dimensions in
@@ -274,25 +275,25 @@ StatusOr<HloInstruction*> ElideDegenerateDims(
 // For example, if `operand` is of shape f32[12,21,8,34] and dims_to_insert is
 // {0, 2}, then the result is `operand` reshaped to [1,12,1,21,8,34].
 StatusOr<HloInstruction*> InsertDegenerateDims(
-    HloInstruction* operand, absl::Span<const int64> dims_to_insert);
+    HloInstruction* operand, absl::Span<const int64_t> dims_to_insert);
 
 // Pads `operand` (which must have rank 1) with `zeros_to_prepend` zeros in the
 // front and `zeros_to_append` zeros in the back.
 StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
-                                             int64 zeros_to_prepend,
-                                             int64 zeros_to_append);
+                                             int64_t zeros_to_prepend,
+                                             int64_t zeros_to_append);
 
 // Broadcasts a zero value of type `element_type` into a tensor with element
 // type `element_type` and dimension bounds `broadcast_dimensions`.  The
 // broadcast instruction is emitted into `computation`.
 HloInstruction* BroadcastZeros(HloComputation* computation,
                                PrimitiveType element_type,
-                               absl::Span<const int64> broadcast_dimensions);
+                               absl::Span<const int64_t> broadcast_dimensions);
 
 // Same as above, but fill the tensor with ones.
 HloInstruction* BroadcastOnes(HloComputation* computation,
                               PrimitiveType element_type,
-                              absl::Span<const int64> broadcast_dimensions);
+                              absl::Span<const int64_t> broadcast_dimensions);
 
 // Creates a HLO computation that takes arguments of type `domain` and produces
 // a value of type `range`.

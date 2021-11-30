@@ -26,6 +26,8 @@ namespace data {
 //
 // In addition to writing the actual compressed bytes, `Compress` fills
 // out the per-component metadata for the `CompressedElement`.
+//
+// Returns an error if the uncompressed size of the element exceeds 4GB.
 Status CompressElement(const std::vector<Tensor>& element,
                        CompressedElement* out);
 

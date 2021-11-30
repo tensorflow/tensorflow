@@ -41,7 +41,7 @@ struct TemporaryMemoryRecord {
   //
   // Currently the generation counter is bumped for every allocation, but this
   // could be made coarser if necessary.
-  uint64 allocation_generation;
+  uint64_t allocation_generation;
 
   // Notes whether the temporary memory has been marked as finalized, such that
   // we can release the DeviceMemory associated with this record at
@@ -60,7 +60,7 @@ class TemporaryMemoryManager {
   // Allocates a temporary array that is then managed by this object.
   template <typename T>
   port::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>> AllocateArray(
-      uint64 element_count);
+      uint64_t element_count);
 
   // Forces deallocation of all managed temporary memory regions.
   //
@@ -74,7 +74,7 @@ class TemporaryMemoryManager {
   //
   // If must_exist is set, this will check-fail if the temporary memory record
   // is not found.
-  void MarkFinalized(const DeviceMemoryBase& device_memory, uint64 generation,
+  void MarkFinalized(const DeviceMemoryBase& device_memory, uint64_t generation,
                      bool must_exist);
 
   // Deallocates temporary memories that have been finalized.
@@ -89,7 +89,7 @@ class TemporaryMemoryManager {
   // memory records, it is either not a temporary at all, or has already been
   // deallocated, and thus returns true.
   bool IsFinalized(const DeviceMemoryBase& device_memory,
-                   uint64 allocation_generation) const;
+                   uint64_t allocation_generation) const;
 
   // Returns whether the manager has a live allocation record for the given
   // device memory pointer with the given generation counter.
@@ -97,7 +97,7 @@ class TemporaryMemoryManager {
   // Note: this is a polling call -- there is no guarantee that the region is
   // still allocated once the call has completed.
   bool HasAllocated(const DeviceMemoryBase& device_memory,
-                    uint64 generation) const;
+                    uint64_t generation) const;
 
  private:
   // Allocates an array without type parameterization, so that the
@@ -105,7 +105,7 @@ class TemporaryMemoryManager {
   // method, we incur a circular dependency between the StreamExecutor
   // definition and this class' definition.
   port::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> AllocateArrayBase(
-      uint64 element_count, uint64 element_size);
+      uint64_t element_count, uint64 element_size);
 
   // Mutex to guard temporary record state.
   mutable absl::Mutex mutex_;
@@ -120,7 +120,7 @@ class TemporaryMemoryManager {
   // Allocation generation -- we bump this counter to distinguish temporary
   // memory handles that have been deallocated and later reallocated at the same
   // device memory address.
-  uint64 generation_ TF_GUARDED_BY(mutex_);
+  uint64_t generation_ TF_GUARDED_BY(mutex_);
 
   // The stream (parent object) for this temporary memory manager -- allocations
   // are performed through this stream handle.
@@ -134,7 +134,7 @@ class TemporaryMemoryManager {
 
 template <typename T>
 port::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
-TemporaryMemoryManager::AllocateArray(uint64 element_count) {
+TemporaryMemoryManager::AllocateArray(uint64_t element_count) {
   port::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> temporary_memory =
       AllocateArrayBase(element_count, sizeof(T));
   if (!temporary_memory.ok()) {

@@ -1,6 +1,6 @@
 // RUN: not tf-mlir-translate -mlir-to-graphdef %s -o - 2>&1 | FileCheck %s
 
-// CHECK: Graph export failed: Failed precondition: entry function `main` must be present
+// CHECK: entry function `main` must be present
 
 func @const() {
   tf_executor.graph {

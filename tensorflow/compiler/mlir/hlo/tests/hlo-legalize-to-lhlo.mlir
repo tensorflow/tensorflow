@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -buffer-hoisting \
-// RUN: -buffer-deallocation -split-input-file -cse %s -o - \
-// RUN: | FILECHECK_OPTS="" FileCheck %s
+// RUN: -buffer-deallocation -split-input-file -cse %s \
+// RUN: | FileCheck %s
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -138,49 +138,6 @@ func @broadcast(%operand: tensor<5xf32>) -> tensor<10x5xf32> {
 
 // -----
 
-// CHECK: #[[MAP:.*]] = affine_map<(d0, d1, d2)[s0, s1, s2] -> (d0 * s0 + d1 * s1 + d2 * s2)>
-
-// CHECK-LABEL: func @dyn_broadcast
-func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
-  // CHECK-SAME: %[[OPERAND:.*]]: memref<?x?xf32>
-  %c1 = constant 1 : i64
-  %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xi64>
-  %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %shape) {
-    broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
-  } : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %result : tensor<?x?x?xf32>
-}
-// CHECK: %[[SHAPE:.*]] = tensor.from_elements
-
-// CHECK: %[[C0:.*]] = constant 0 : index
-// CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[OPER_DIM_1:.*]] = memref.dim %[[OPERAND]], %[[C1]] : memref<?x?xf32>
-// CHECK: %[[OP_STRIDE_0:.*]] = muli %[[C1]], %[[OPER_DIM_1]] : index
-// CHECK: %[[OPER_DIM_0:.*]] = memref.dim %[[OPERAND]], %[[C0]] : memref<?x?xf32>
-
-// CHECK: %[[EL0:.*]] = tensor.extract %[[SHAPE]]{{\[}}%[[C0]]] : tensor<3xi64>
-// CHECK: %[[SIZE_0:.*]] = index_cast %[[EL0]] : i64 to index
-// CHECK: %[[EL1:.*]] = tensor.extract %[[SHAPE]]{{\[}}%[[C1]]] : tensor<3xi64>
-
-// CHECK: %[[SIZE_1:.*]] = index_cast %[[EL1]] : i64 to index
-// CHECK: %[[EXPAND_1:.*]] = cmpi slt, %[[OPER_DIM_0]], %[[SIZE_1]] : index
-// CHECK: %[[STRIDE_1:.*]] = select %[[EXPAND_1]], %[[C0]], %[[OP_STRIDE_0]] : index
-
-// CHECK: %[[C2:.*]] = constant 2 : index
-// CHECK: %[[EL2:.*]] = tensor.extract %[[SHAPE]]{{\[}}%[[C2]]] : tensor<3xi64>
-// CHECK: %[[SIZE_2:.*]] = index_cast %[[EL2]] : i64 to index
-// CHECK: %[[EXPAND_2:.*]] = cmpi slt, %[[OPER_DIM_1]], %[[SIZE_2]] : index
-// CHECK: %[[STRIDE_2:.*]] = select %[[EXPAND_2]], %[[C0]], %[[C1]] : index
-
-// CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref.reinterpret_cast %[[OPERAND]] to offset: [0], sizes: {{\[}}%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]], strides: {{\[}}%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]] : memref<?x?xf32> to memref<?x?x?xf32, #map>
-
-// CHECK: %[[RESULT:.*]] = memref.alloc(%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]) : memref<?x?x?xf32>
-
-// CHECK: "lmhlo.copy"(%[[TRANSFORMED_MEMREF]], %[[RESULT]]) : (memref<?x?x?xf32, #map>, memref<?x?x?xf32>) -> ()
-// CHECK: return %[[RESULT]] : memref<?x?x?xf32>
-
-// -----
-
 // CHECK-LABEL: func @complex
 func @complex(%real: tensor<2x2xf32>, %imag: tensor<2x2xf32>)
     -> tensor<2x2xcomplex<f32>> {
@@ -236,17 +193,16 @@ func @imag(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
 // CHECK-LABEL: func @gather
 func @gather(%operand: tensor<13x7xf32>, %idxs: tensor<5xi32>)
     -> tensor<5x7xf32> {
-  %result =
-    "mhlo.gather"(%operand, %idxs)
-      { dimension_numbers =
-        { collapsed_slice_dims = dense<0> : tensor<1xi64>
-        , index_vector_dim = 1 : i64
-        , offset_dims = dense<1> : tensor<1xi64>
-        , start_index_map = dense<0> : tensor<1xi64> }
-      , indices_are_sorted = false
-      , name = "gather.71"
-      , slice_sizes = dense<[1, 7]> : tensor<2xi64> }
-      : (tensor<13x7xf32>, tensor<5xi32>) -> tensor<5x7xf32>
+  %result = "mhlo.gather"(%operand, %idxs) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 1,
+      offset_dims = [1],
+      start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 7]> : tensor<2xi64>
+  } : (tensor<13x7xf32>, tensor<5xi32>) -> tensor<5x7xf32>
   // CHECK: "lmhlo.gather"(%{{.*}}, %{{.*}}, %{{.*}})
   return %result : tensor<5x7xf32>
 }
@@ -467,7 +423,9 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %result = "mhlo.add"(%lhs, %rhs)
       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[INPUT:.*]] : tensor<?x?xf32> -> tensor<2xindex>
+  // CHECK: %[[C0:.*]] = arith.constant 0
   // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xindex>
+  // CHECK: %[[C1:.*]] = arith.constant 1
   // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xindex>
   // CHECK: %[[RESULT:.*]] = memref.alloc(%[[EE0]], %[[EE1]])
   // CHECK: "lmhlo.add"(%arg0, %arg1, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
@@ -483,7 +441,9 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %result = "mhlo.tanh"(%arg0)
       : (tensor<?x?xf32>) -> tensor<?x?xf32>
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[INPUT:.*]] : tensor<?x?xf32> -> tensor<2xindex>
+  // CHECK: %[[C0:.*]] = arith.constant 0
   // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xindex>
+  // CHECK: %[[C1:.*]] = arith.constant 1
   // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xindex>
   // CHECK: %[[RESULT:.*]] = memref.alloc(%[[EE0]], %[[EE1]])
   // CHECK: "lmhlo.tanh"(%arg0, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
@@ -498,12 +458,11 @@ func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 // CHECK-SAME: (%[[ARG0:.*]]: [[TYPE:.*]]) -> [[TYPE]]
 // CHECK-NEXT: %[[ALLOC:.*]] = memref.alloc
 //      CHECK: "lmhlo.dot"(%[[ARG0]], %[[ARG0]], %[[ALLOC]]) {
-//        dot_dimension_numbers = {
-//          lhs_batching_dimensions = dense<> : tensor<0xi64>,
-//          lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
-//          rhs_batching_dimensions = dense<> : tensor<0xi64>,
-//          rhs_contracting_dimensions = dense<0> : tensor<1xi64>}}
-//        : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+//      CHECK:  dot_dimension_numbers =
+//      CHECK-NOT:    lhs_batching_dimensions =
+//      CHECK-NOT:    rhs_batching_dimensions =
+//      CHECK-SAME:   lhs_contracting_dimensions = [1]
+//      CHECK-SAME:   rhs_contracting_dimensions = [0]
   %dot = "mhlo.dot"(%arg0, %arg0)
           : (tensor<1024x1024xf32>, tensor<1024x1024xf32>)
               -> tensor<1024x1024xf32>
@@ -516,23 +475,23 @@ func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 // CHECK-LABEL: func @conv
 func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
     -> tensor<3x5x5x4xf32> {
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   // CHECK: %[[OUT:.*]] = memref.alloc() : memref<3x5x5x4xf32>
   // CHECK: lmhlo.convolution(%{{.+}}, %{{.+}}, %[[OUT]])
   // CHECK-SAME{LITERAL}: window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
   %out = "mhlo.convolution"(%filter, %input) {
     batch_group_count = 1 : i64,
-    dimension_numbers = {
-      input_batch_dimension = 0 : i64,
-      input_feature_dimension = 3 : i64,
-      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
-      kernel_input_feature_dimension = 2 : i64,
-      kernel_output_feature_dimension = 3 : i64,
-      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
-      output_batch_dimension = 0 : i64,
-      output_feature_dimension = 3 : i64,
-      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
-    },
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 2,
+      kernel_output_feature_dimension = 3,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2]
+    >,
     feature_group_count = 1 : i64,
     padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
     rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
@@ -562,6 +521,36 @@ func @reduce(%arg0: tensor<1x8xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
   }) {dimensions = dense<1> : tensor<1xi64>}
       : (tensor<1x8xf32>, tensor<f32>) -> tensor<1xf32>
   return %0 : tensor<1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_multiple_operand
+func @reduce_multiple_operand(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> 
+  (tensor<1xf32>, tensor<1xi32>) {
+  // CHECK: %[[OUT_F:.*]] = memref.alloc() : memref<1xf32>
+  // CHECK: %[[OUT_I:.*]] = memref.alloc() : memref<1xi32>
+  // CHECK: "lmhlo.reduce"(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}, %[[OUT_F]], %[[OUT_I]]) ( {
+  // CHECK:  ^bb0(%[[ARG1:.*]]: memref<f32>, %[[ARG2:.*]]: memref<i32>, %[[ARG3:.*]]: memref<f32>, %[[ARG4:.*]]: memref<i32>,
+  // CHECK-SAME:  %[[ARG5:.*]]: memref<f32>, %[[ARG6:.*]]: memref<i32>):
+  // CHECK:    %[[TMP_OUT0:.*]] = memref.alloc() : memref<f32>
+  // CHECK:    "lmhlo.add"(%[[ARG1]], %[[ARG3]], %[[TMP_OUT0]])
+  // CHECK:    %[[TMP_OUT1:.*]] = memref.alloc() : memref<i32>
+  // CHECK:    "lmhlo.add"(%[[ARG2]], %[[ARG4]], %[[TMP_OUT1]])
+  // CHECK:    "lmhlo.copy"(%[[TMP_OUT0]], %[[ARG5]])
+  // CHECK:    "lmhlo.copy"(%[[TMP_OUT1]], %[[ARG6]])
+  // CHECK:    "lmhlo.terminator"() : () -> ()
+  // CHECK:  }) {dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-SAME: : (memref<1x8xf32>, memref<1x8xi32>, memref<f32>, memref<i32>, memref<1xf32>, memref<1xi32>) -> ()
+  %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ( {
+  ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
+    %1 = mhlo.add %arg4, %arg6 : tensor<f32>
+    %2 = mhlo.add %arg5, %arg7 : tensor<i32>
+    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} 
+    : (tensor<1x8xf32>, tensor<1x8xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
+  return %0#0, %0#1 : tensor<1xf32>, tensor<1xi32>
 }
 
 // -----
@@ -610,23 +599,11 @@ func @isfinite(%arg0: tensor<2x2xf32>) -> tensor<2x2xi1> {
 
 // -----
 
-// Test that assuming ops propagate tensor types.
-// CHECK-LABEL: func @shape_assuming_tensor
-func @shape_assuming_tensor(%arg0: tensor<?xf16>) -> tensor<?xf16> {
-  %0 = mhlo.constant dense<0.000000e+00> : tensor<f16>
-  %1 = shape.const_witness true
-  // CHECK: shape.assuming %{{.*}} -> (memref<?xf16>)
-  %2 = shape.assuming %1 -> (tensor<?xf16>) {
-    %3 = shape.shape_of %arg0 : tensor<?xf16> -> tensor<?xindex>
-    %4 = tensor.cast %3 : tensor<?xindex> to tensor<1xindex>
-    %5 = "mhlo.dynamic_broadcast_in_dim"(%0, %4) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f16>, tensor<1xindex>) -> tensor<?xf16>
-    %6 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %4) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<?xf16>, tensor<1xindex>) -> tensor<?xf16>
-    // CHECK: "lmhlo.maximum"(%{{.*}}, %{{.*}}, %{{.*}}) : (memref<?xf16>, memref<?xf16>, memref<?xf16>) -> ()
-    %7 = mhlo.maximum %5, %6 : tensor<?xf16>
-    // CHECK: shape.assuming_yield %{{.*}} : memref<?xf16>
-    shape.assuming_yield %7 : tensor<?xf16>
-  }
-  return %2 : tensor<?xf16>
+// CHECK-LABEL: func @zero_inputs
+func @zero_inputs() -> tensor<100x100xf32> {
+  // CHECK: "lmhlo.constant"(%{{.*}})
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<100x100xf32>
+  return %0 : tensor<100x100xf32>
 }
 
 

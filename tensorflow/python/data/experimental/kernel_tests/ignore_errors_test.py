@@ -13,21 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.ignore_errors()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
@@ -178,15 +174,16 @@ class IgnoreErrorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     dataset = dataset_ops.Dataset.from_tensor_slices(components)
     dataset = dataset.map(lambda x: array_ops.check_numerics(x, "message"))
     dataset = dataset.apply(error_ops.ignore_errors())
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_external_state_policy = (
-        distribute_options.ExternalStatePolicy.IGNORE)
+        options_lib.ExternalStatePolicy.IGNORE)
     return dataset.with_options(options)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testIgnoreErrorsCore(self):
-    num_outputs = 4
-    self.run_core_tests(self._build_ds, num_outputs)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(self, self._build_ds, num_outputs=4)
 
 
 if __name__ == "__main__":

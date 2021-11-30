@@ -14,9 +14,6 @@
 # ==============================================================================
 """Decorator to overrides the gradient for a function."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape as tape_lib
@@ -25,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import handle_data_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -40,10 +38,6 @@ VAR_OP_TYPES = [
     "VariableV2",
     "VarHandleOp",
 ]
-
-
-# TODO(allenl): Remove this alias and migrate callers.
-copy_handle_data = handle_data_util.copy_handle_data
 
 
 @tf_export("custom_gradient")
@@ -165,6 +159,89 @@ def custom_gradient(f=None):
   Additional arguments to the inner `@tf.custom_gradient`-decorated function
   control the expected return values of the innermost function.
 
+  The examples above illustrate how to specify custom gradients for functions
+  which do not read from variables. The following example uses variables, which
+  require special handling because they are effectively inputs of the forward
+  function.
+
+  >>> weights = tf.Variable(tf.ones([2]))  # Trainable variable weights
+  >>> @tf.custom_gradient
+  ... def linear_poly(x):
+  ...   # Creating polynomial
+  ...   poly = weights[1] * x + weights[0]
+  ...
+  ...   def grad_fn(dpoly, variables):
+  ...     # dy/dx = weights[1] and we need to left multiply dpoly
+  ...     grad_xs = dpoly * weights[1]  # Scalar gradient
+  ...
+  ...     grad_vars = []  # To store gradients of passed variables
+  ...     assert variables is not None
+  ...     assert len(variables) == 1
+  ...     assert variables[0] is weights
+  ...     # Manually computing dy/dweights
+  ...     dy_dw = dpoly * tf.stack([x ** 1, x ** 0])
+  ...     grad_vars.append(
+  ...         tf.reduce_sum(tf.reshape(dy_dw, [2, -1]), axis=1)
+  ...     )
+  ...     return grad_xs, grad_vars
+  ...   return poly, grad_fn
+  >>> x = tf.constant([1., 2., 3.])
+  >>> with tf.GradientTape(persistent=True) as tape:
+  ...   tape.watch(x)
+  ...   poly = linear_poly(x)
+  >>> poly # poly = x + 1
+  <tf.Tensor: shape=(3,),
+    dtype=float32,
+    numpy=array([2., 3., 4.], dtype=float32)>
+  >>> tape.gradient(poly, x)  # conventional scalar gradient dy/dx
+  <tf.Tensor: shape=(3,),
+    dtype=float32,
+    numpy=array([1., 1., 1.], dtype=float32)>
+  >>> tape.gradient(poly, weights)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([6., 3.], dtype=float32)>
+
+  Above example illustrates usage of trainable variable `weights`.
+  In the example, the inner `grad_fn` accepts an extra `variables` input
+  parameter and also returns an extra `grad_vars` output. That extra argument
+  is passed if the forward function reads any variables. You need to
+  compute the gradient w.r.t. each of those `variables` and output it as a list
+  of `grad_vars`. Note here that default value of `variables` is set to `None`
+  when no variables are used in the forward function.
+
+  It should be noted `tf.GradientTape` is still watching the forward pass of a
+  `tf.custom_gradient`, and will use the ops it watches. As a consequence,
+  calling `tf.function` while the tape is still watching leads
+  to a gradient graph being built. If an op is used in `tf.function` without
+  registered gradient, a `LookupError` will be raised.
+
+  Users can insert `tf.stop_gradient` to customize this behavior. This
+  is demonstrated in the example below. `tf.random.shuffle` does not have a
+  registered gradient. As a result `tf.stop_gradient` is used to avoid the
+  `LookupError`.
+
+  ```python
+  x = tf.constant([0.3, 0.5], dtype=tf.float32)
+
+  @tf.custom_gradient
+  def test_func_with_stop_grad(x):
+    @tf.function
+    def _inner_func():
+      # Avoid exception during the forward pass
+      return tf.stop_gradient(tf.random.shuffle(x))
+      # return tf.random.shuffle(x)  # This will raise
+
+    res = _inner_func()
+    def grad(upstream):
+      return upstream  # Arbitrarily defined custom gradient
+    return res, grad
+
+  with tf.GradientTape() as g:
+    g.watch(x)
+    res = test_func_with_stop_grad(x)
+
+  g.gradient(res, x)
+  ```
+
   See also `tf.RegisterGradient` which registers a gradient function for a
   primitive TensorFlow operation. `tf.custom_gradient` on the other hand allows
   for fine grained control over the gradient computation of a sequence of
@@ -212,8 +289,6 @@ def custom_gradient(f=None):
   @Bind.decorator
   def decorated(wrapped, args, kwargs):
     """Decorated function with custom gradient."""
-    # raise ValueError("PW: trap")
-
     if context.executing_eagerly():
       return _eager_mode_decorator(wrapped, args, kwargs)
     else:
@@ -266,9 +341,17 @@ class Bind(object):
 
 def get_variable_by_name(var_name):
   """Given a variable name, retrieves a handle on the tensorflow Variable."""
+  global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
 
-  candidate_vars = ops.get_collection(
-      ops.GraphKeys.GLOBAL_VARIABLES, scope="{}:0".format(var_name))
+  def _filter_fn(item):
+    try:
+      return var_name == item.op.name
+    except AttributeError:
+      # Collection items without operation are ignored.
+      return False
+
+  candidate_vars = list(filter(_filter_fn, global_vars))
+
   if len(candidate_vars) >= 1:
     # Filter out non-trainable variables.
     candidate_vars = [v for v in candidate_vars if v.trainable]
@@ -394,8 +477,9 @@ def _graph_mode_decorator(f, args, kwargs):
         "since function uses variables: {}".format(variables))
   if variables_in_signature and not variables:
     # User seems to intend to use variables but none were captured.
-    logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
-                 "no ResourceVariables were used on the forward pass.")
+    logging.warning(
+        "@custom_gradient grad_fn has 'variables' in signature, but "
+        "no ResourceVariables were used on the forward pass.")
 
   all_tensors = flat_result + args + variables
 
@@ -435,7 +519,7 @@ def _graph_mode_decorator(f, args, kwargs):
   tape_lib.record_operation(
       f.__name__, all_tensors, original_tensors, tape_grad_fn)
   for ot, t in zip(original_tensors, all_tensors):
-    copy_handle_data(ot, t)
+    handle_data_util.copy_handle_data(ot, t)
   return nest.pack_sequence_as(
       structure=result, flat_sequence=all_tensors[:flat_result_len])
 
@@ -495,24 +579,107 @@ def _eager_mode_decorator(f, args, kwargs):
 
 @tf_export("recompute_grad")
 def recompute_grad(f):
-  """An eager-compatible version of recompute_grad.
+  """Defines a function as a recompute-checkpoint for the tape auto-diff.
 
-  For f(*args, **kwargs), this supports gradients with respect to args or
-  kwargs, but kwargs are currently only supported in eager-mode.
-  Note that for keras layer and model objects, this is handled automatically.
+  Tape checkpointing is a technique to reduce the memory consumption of the
+  auto-diff tape:
 
-  Warning: If `f` was originally a tf.keras Model or Layer object, `g` will not
-  be able to access the member variables of that object, because `g` returns
-  through the wrapper function `inner`.  When recomputing gradients through
-  objects that inherit from keras, we suggest keeping a reference to the
-  underlying object around for the purpose of accessing these variables.
+  - Without tape checkpointing operations and intermediate values are
+  recorded to the tape for use in the backward pass.
+
+  - With tape checkpointing, only the function call and its inputs are
+  recorded. During back-propagation the `recompute_grad` custom gradient
+  (`tf.custom_gradient`) recomputes the function under a localized Tape object.
+  This recomputation of the function during backpropagation performs redundant
+  calculation, but reduces the overall memory usage of the Tape.
+
+  >>> y = tf.Variable(1.0)
+
+  >>> def my_function(x):
+  ...   tf.print('running')
+  ...   z = x*y
+  ...   return z
+
+  >>> my_function_recompute = tf.recompute_grad(my_function)
+
+  >>> with tf.GradientTape() as tape:
+  ...   r = tf.constant(1.0)
+  ...   for i in range(4):
+  ...     r = my_function_recompute(r)
+  running
+  running
+  running
+  running
+
+  >>> grad = tape.gradient(r, [y])
+  running
+  running
+  running
+  running
+
+  Without `recompute_grad`, the tape contains all intermitate steps, and no
+  recomputation is performed.
+
+  >>> with tf.GradientTape() as tape:
+  ...   r = tf.constant(1.0)
+  ...   for i in range(4):
+  ...     r = my_function(r)
+  running
+  running
+  running
+  running
+
+  >>> grad = tape.gradient(r, [y])
+
+
+  If `f` was a `tf.keras` `Model` or `Layer` object, methods and attributes
+  such as `f.variables` are not available on the returned function `g`.
+  Either keep a reference of `f` , or use `g.__wrapped__` for accessing
+  these variables and methods.
+
+
+  >>> def print_running_and_return(x):
+  ...   tf.print("running")
+  ...   return x
+
+  >>> model = tf.keras.Sequential([
+  ...   tf.keras.layers.Lambda(print_running_and_return),
+  ...   tf.keras.layers.Dense(2)
+  ... ])
+
+  >>> model_recompute = tf.recompute_grad(model)
+
+  >>> with tf.GradientTape(persistent=True) as tape:
+  ...   r = tf.constant([[1,2]])
+  ...   for i in range(4):
+  ...     r = model_recompute(r)
+  running
+  running
+  running
+  running
+
+  >>> grad = tape.gradient(r, model.variables)
+  running
+  running
+  running
+  running
+
+  Alternatively, use the `__wrapped__` attribute to access the original
+  model object.
+
+  >>> grad = tape.gradient(r, model_recompute.__wrapped__.variables)
+  running
+  running
+  running
+  running
+
 
   Args:
     f: function `f(*x)` that returns a `Tensor` or sequence of `Tensor` outputs.
 
   Returns:
-    A function `g` that wraps `f`, but which recomputes `f` on the backwards
-    pass of a gradient call.
+    A function `g` wrapping `f` that defines a custom gradient, which recomputes
+    `f` on the backwards pass of a gradient call.
   """
   # TODO(cdfreeman) Add is_recomputing functionality from graph mode version
 
@@ -523,27 +690,44 @@ def recompute_grad(f):
     with tape_lib.stop_recording():
       result = f(*args, **kwargs)
 
-    def grad_wrapper(*wrapper_args, **grad_kwargs):
-      """Wrapper function to accomodate lack of kwargs in graph mode decorator."""
+    def grad_wrapper(*wrapper_args, variables=None):
+      """Wrapper function to accomodate lack of kwargs in graph mode custom_gradient."""
 
       @custom_gradient
       def inner_recompute_grad(*dresult):
         """Nested custom gradient function for computing grads in reverse and forward mode autodiff."""
         # Gradient calculation for reverse mode autodiff.
-        variables = grad_kwargs.get("variables")
         with backprop.GradientTape() as t:
           id_args = nest.map_structure(gen_array_ops.identity, args)
+          # Tuple `dresult` should contain at least one tensor.
+          assert len(dresult) >= 1
+
+          if not context.executing_eagerly():
+            # XLA doesn't respect `tf.control_dependencies`. The code block
+            # below manually adds a data dependency to `dresult` to ensure
+            # recomputation of `f(*args, **kwargs)` happens after `dresult`.
+
+            # This works even if `dresult[0]` is a size 0 tensor as reduce_max
+            # of a size 0 tensor returns -inf. Use reshape here to avoid reading
+            # the entire `dresult[0]`.
+            elem = math_ops.reduce_max(array_ops.reshape(dresult[0], [-1])[:1])
+            # Cast elem to bool in case elem is NaN.
+            elem_bool = math_ops.cast(elem, dtypes.bool)
+            dresult_dep = array_ops.where_v2(
+                elem_bool == elem_bool, 0., float("nan"))  # pylint: disable=comparison-with-itself
+            id_args = nest.map_structure(
+                lambda x: x + math_ops.cast(dresult_dep, x.dtype), id_args)
+
           t.watch(id_args)
           if variables is not None:
             t.watch(variables)
-          with ops.control_dependencies(dresult):
-            with variable_scope.variable_scope(current_var_scope):
-              result = f(*id_args, **kwargs)
+          with variable_scope.variable_scope(current_var_scope):
+            recomputed_result = f(*id_args, **kwargs)
         kw_vars = []
         if variables is not None:
           kw_vars = list(variables)
         grads = t.gradient(
-            result,
+            recomputed_result,
             list(id_args) + kw_vars,
             output_gradients=dresult,
             unconnected_gradients=UnconnectedGradients.ZERO)
@@ -563,7 +747,7 @@ def recompute_grad(f):
 
     return result, grad_wrapper
 
-  return inner
+  return tf_decorator.make_decorator(f, inner)
 
 
 @tf_export("grad_pass_through")

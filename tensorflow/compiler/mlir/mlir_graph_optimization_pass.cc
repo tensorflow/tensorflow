@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_os_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -33,27 +34,38 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
-auto* mlir_function_optimization_pass_success =
-    monitoring::Counter<0>::New("/tensorflow/core/mlir_shadow_run_success",
-                                "Success count of MLIR pass runs");
+auto* mlir_function_pass_fallback_count = monitoring::Counter<1>::New(
+    /* metric name */ "/tensorflow/core/mlir_function_pass_fallback_count",
+    /* metric description */
+    "Track success/failure of MLIR pass runs when fallback used",
+    /* metric field */ "status");
 
-auto* mlir_function_optimization_pass_failure = monitoring::Counter<2>::New(
-    "/tensorflow/core/mlir_shadow_run_failure",
-    "Failure count of MLIR pass runs", "kind", "name");
+auto* mlir_graph_optimization_pass_fallback_count = monitoring::Counter<1>::New(
+    /* metric name */
+    "/tensorflow/core/mlir_graph_optimization_pass_fallback_count",
+    /* metric description */
+    "Track success/failure of MLIR graph optimization pass runs when fallback "
+    "used",
+    /* metric field */ "status");
 
-auto* mlir_function_pass_failed_fallback = monitoring::Counter<0>::New(
-    "/tensorflow/core/mlir_pass_failed_fallback",
-    "Failure count of MLIR pass runs when fallback used");
+// The status metric field is used to record success/failure of mlir
+// function/graph optimization passes.
+constexpr char kSuccess[] = "kSuccess";
+constexpr char kFailure[] = "kFailure";
 
-auto* mlir_function_pass_succeeded_fallback = monitoring::Counter<0>::New(
-    "/tensorflow/core/mlir_pass_succeeded_fallback",
-    "Success count of MLIR pass runs when fallback enabled");
+// Graph <-> MLIR transformations outcomes (for logging)
+constexpr char kGraphImportFallbackFail[] = "kGraphImportFallbackFail";
+constexpr char kGraphImportFail[] = "kGraphImportFail";
+constexpr char kGraphImportSuccess[] = "kGraphImportSuccess";
+constexpr char kRoundTripSuccess[] = "kRoundTripSuccess";
+constexpr char kRoundTripFailure[] = "kRoundTripFailure";
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -112,7 +124,8 @@ MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
 
 static void RegisterDialects(mlir::DialectRegistry& registry) {
   // clang-format off
-  registry.insert<mlir::StandardOpsDialect,
+  registry.insert<mlir::arith::ArithmeticDialect,
+                  mlir::StandardOpsDialect,
                   mlir::TF::TensorFlowDialect,
                   mlir::shape::ShapeDialect,
                   mlir::tf_device::TensorFlowDeviceDialect,
@@ -128,7 +141,6 @@ Status MlirFunctionOptimizationPass::Run(
   //  overall_state equals to:
   //    Enabled if at least one pass is Enabled.
   //    Disabled if all passes are Disabled.
-  //    ShadowEnabled if all non Disabled passes are ShadowEnabled.
   //    FallbackEnabled if there are no Enabled passes and there is at least one
   //      FallbackEnabled pass.
   MlirOptimizationPassState overall_state = MlirOptimizationPassState::Disabled;
@@ -138,18 +150,12 @@ Status MlirFunctionOptimizationPass::Run(
   per_pass_state.reserve(registry_->passes().size());
 
   int num_passes_enabled = 0, num_passes_disabled = 0,
-      num_passes_shadow_enabled = 0, num_passes_fallback_enabled = 0;
+      num_passes_fallback_enabled = 0;
   for (const auto& pass_registration : registry_->passes()) {
     MlirOptimizationPassState pass_state = pass_registration.pass->GetPassState(
         &device_set, config_proto, **graph, *flib_def);
     per_pass_state.push_back(pass_state);
     switch (pass_state) {
-      case MlirOptimizationPassState::ShadowEnabled: {
-        if (overall_state == MlirOptimizationPassState::Disabled)
-          overall_state = MlirOptimizationPassState::ShadowEnabled;
-        ++num_passes_shadow_enabled;
-        break;
-      }
       case MlirOptimizationPassState::FallbackEnabled: {
         if (overall_state != MlirOptimizationPassState::Enabled)
           overall_state = MlirOptimizationPassState::FallbackEnabled;
@@ -168,25 +174,34 @@ Status MlirFunctionOptimizationPass::Run(
     }
   }
 
+  static const char* kTfMlirCategory = "TfMlir";
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kTfMlirCategory, "graph_analysis"});
   // Capture stats on graph properties analyzed before running the MLIR bridge.
   // We set `uses_uninitialized_resource_args` to false here because function
   // optimization is not affected by uninitialized resource args.
   GetMlirBridgeRolloutPolicy(**graph, flib_def, config_proto,
                              /*uses_uninitialized_resource_args=*/false,
                              /*record_stats=*/true);
+  timings.ReportAndStop();
 
   if (overall_state == MlirOptimizationPassState::Disabled) {
-    LOG_FIRST_N(INFO, 1) << "None of the MLIR Optimization Passes are enabled "
-                         << "(registered " << registry_->passes().size() << ")";
+    if (VLOG_IS_ON(1)) {
+      LOG_FIRST_N(INFO, 1)
+          << "None of the MLIR Optimization Passes are enabled "
+          << "(registered " << registry_->passes().size() << ")";
+    }
     return Status::OK();
   }
 
-  LOG_FIRST_N(INFO, 1) << "MLIR Graph Optimization Passes."
-                       << " Enabled: " << num_passes_enabled
-                       << ", Disabled: " << num_passes_disabled
-                       << ", ShadowEnabled: " << num_passes_shadow_enabled
-                       << ", FallbackEnabled: " << num_passes_fallback_enabled
-                       << ", Total: " << registry_->passes().size();
+  if (VLOG_IS_ON(1)) {
+    LOG_FIRST_N(INFO, 1) << "MLIR Graph Optimization Passes."
+                         << " Enabled: " << num_passes_enabled
+                         << ", Disabled: " << num_passes_disabled
+                         << ", FallbackEnabled: " << num_passes_fallback_enabled
+                         << ", Total: " << registry_->passes().size();
+  }
 
   GraphDebugInfo debug_info;
   mlir::DialectRegistry registry;
@@ -203,20 +218,27 @@ Status MlirFunctionOptimizationPass::Run(
   // during import is not necessary.
   import_config.enable_shape_inference = false;
 
+  timings.Reset({kTfMlirCategory, "convert_graph_to_mlir"});
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);
+  timings.ReportAndStop();
+
   if (!module_ref_status.ok()) {
     // If at least one pass is enabled, return failure to the caller
     // immediately.
     if (overall_state == MlirOptimizationPassState::Enabled) {
+      metrics::UpdateTfMlirGraphOptimizationPassStateCounter("",
+                                                             kGraphImportFail);
       return module_ref_status.status();
     }
 
-    mlir_function_optimization_pass_failure->GetCell("graph_to_mlir", "")
-        ->IncrementBy(1);
-    // Do not fail, just keep the original TF graph unchanged in shadow mode.
+    // Do not fail, just keep the original TF graph unchanged in fallback mode.
+    metrics::UpdateTfMlirGraphOptimizationPassStateCounter(
+        "", kGraphImportFallbackFail);
     return Status::OK();
   }
+  metrics::UpdateTfMlirGraphOptimizationPassStateCounter("",
+                                                         kGraphImportSuccess);
 
   mlir::OwningModuleRef module_ref = std::move(module_ref_status.ValueOrDie());
   AddDevicesToOp(*module_ref, &device_set);
@@ -232,50 +254,42 @@ Status MlirFunctionOptimizationPass::Run(
 
     Status pass_status = Status::OK();
     auto pass_state = per_pass_state[per_pass_state_index++];
-    // There will not be MLIR module conversion back to the TF graph at the
-    // very end if overall state is ShadowEnabled.
-    // Avoid making MLIR module copies in this case.
-    if (pass_state == MlirOptimizationPassState::Enabled ||
-        (pass_state == MlirOptimizationPassState::ShadowEnabled &&
-         overall_state == MlirOptimizationPassState::ShadowEnabled)) {
+    if (pass_state == MlirOptimizationPassState::Enabled) {
+      timings.Reset({kTfMlirCategory, name.str()});
       pass_status = pass_registration.pass->Run(config_proto, *module_ref,
                                                 **graph, *flib_def);
-    } else if (pass_state == MlirOptimizationPassState::ShadowEnabled ||
-               pass_state == MlirOptimizationPassState::FallbackEnabled) {
-      // Make sure when the pass is:
-      //   ShadowEnabled, it does not modify the MLIR module.
-      //   FallbackEnabled, it only modifies the MLIR module in case of
-      //     no failures.
+      timings.ReportAndStop();
+    } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      // Make sure when the pass is FallbackEnabled, it only modifies the MLIR
+      // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
+      timings.Reset({kTfMlirCategory, name.str() + "_fallback"});
       pass_status = pass_registration.pass->Run(config_proto, module_ref_clone,
                                                 **graph, *flib_def);
-      if (pass_state == MlirOptimizationPassState::FallbackEnabled &&
-          pass_status.ok()) {
+      timings.ReportAndStop();
+
+      if (pass_status.ok())
         module_ref = module_ref_clone;
-      } else {
+      else
         module_ref_clone->destroy();
-      }
     }
 
     if (!pass_status.ok()) {
       // If pass failed and it is:
-      //   (Shadow|Fallback)Enabled - only collect metrics, do not propagate
+      //   FallbackEnabled - only collect metrics, do not propagate
       //     error to the caller.
       //   Enabled - return error back to the caller.
-      if (pass_state == MlirOptimizationPassState::ShadowEnabled) {
-        mlir_function_optimization_pass_failure->GetCell("pass", name.str())
-            ->IncrementBy(1);
-      } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
         LOG(WARNING) << StringRefToView(name)
                      << " pass failed, continuing without the pass because the "
                         "pass has fallback enabled";
-        mlir_function_pass_failed_fallback->GetCell()->IncrementBy(1);
+        mlir_function_pass_fallback_count->GetCell(kFailure)->IncrementBy(1);
       } else if (pass_state == MlirOptimizationPassState::Enabled) {
         return pass_status;
       }
     } else {
       if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-        mlir_function_pass_succeeded_fallback->GetCell()->IncrementBy(1);
+        mlir_function_pass_fallback_count->GetCell(kSuccess)->IncrementBy(1);
       }
     }
 
@@ -287,31 +301,21 @@ Status MlirFunctionOptimizationPass::Run(
   GraphExportConfig export_config;
   absl::flat_hash_set<Node*> control_ret_nodes;
 
-  // All passes are shadow enabled. Just convert MLIR module back to
-  // the dummy graph and record success/failure stats.
-  if (overall_state == MlirOptimizationPassState::ShadowEnabled) {
-    auto empty_graph = std::make_unique<Graph>(OpRegistry::Global());
-    FunctionLibraryDefinition empty_flib = empty_graph->flib_def();
-
-    auto mlir_to_graph_status =
-        ConvertMlirToGraph(*module_ref, export_config, &empty_graph,
-                           &empty_flib, &control_ret_nodes);
-    if (mlir_to_graph_status.ok()) {
-      mlir_function_optimization_pass_success->GetCell()->IncrementBy(1);
-    } else {
-      mlir_function_optimization_pass_failure->GetCell("mlir_to_graph", "")
-          ->IncrementBy(1);
-    }
-
-    return Status::OK();
-  }
-
+  timings.Reset({kTfMlirCategory, "convert_mlir_to_graph"});
   // Some or all passes are enabled. Convert MLIR module and return back
   // resulted graph.
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertMlirToGraph(*module_ref, export_config, graph, flib_def,
-                         &control_ret_nodes),
-      "Error converting MLIR module back to graph");
+  Status status = ConvertMlirToGraph(*module_ref, export_config, graph,
+                                     flib_def, &control_ret_nodes);
+  if (!status.ok()) {
+    metrics::UpdateTfMlirGraphOptimizationPassStateCounter("",
+                                                           kRoundTripFailure);
+    errors::AppendToMessage(&status,
+                            "Error converting MLIR module back to graph");
+    return status;
+  }
+  metrics::UpdateTfMlirGraphOptimizationPassStateCounter("", kRoundTripSuccess);
+
+  timings.ReportAndStop();
 
   control_ret_node_names->clear();
   control_ret_node_names->reserve(control_ret_nodes.size());
@@ -340,9 +344,7 @@ Status MlirV1CompatGraphOptimizationPass::Run(
       pass->GetPassState(options.device_set, options.session_options->config,
                          **options.graph, *options.flib_def);
 
-  // Do not run V1 compatibility pass in shadow mode.
-  if (pass_state == MlirOptimizationPassState::Disabled ||
-      pass_state == MlirOptimizationPassState::ShadowEnabled) {
+  if (pass_state == MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "MLIR V1 optimization pass is not enabled";
     return Status::OK();
   }
@@ -386,12 +388,14 @@ Status MlirV1CompatGraphOptimizationPass::Run(
       LOG(WARNING) << StringRefToView(name)
                    << " pass failed, continuing without the pass because the "
                       "pass has fallback enabled";
-      mlir_function_pass_failed_fallback->GetCell()->IncrementBy(1);
+      mlir_graph_optimization_pass_fallback_count->GetCell(kFailure)
+          ->IncrementBy(1);
       return Status::OK();
     }
   } else {
     if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-      mlir_function_pass_succeeded_fallback->GetCell()->IncrementBy(1);
+      mlir_graph_optimization_pass_fallback_count->GetCell(kSuccess)
+          ->IncrementBy(1);
     }
   }
 

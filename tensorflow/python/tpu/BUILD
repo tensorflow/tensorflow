@@ -15,6 +15,7 @@ package(
         "//learning/serving:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//waymo/ml/deploy/sync_test/tools:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -235,7 +236,6 @@ pytype_library(
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:batch_ops",
         "//tensorflow/python:control_flow_ops",
@@ -246,6 +246,7 @@ pytype_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_analytics",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:tpu_ops_gen",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -293,7 +294,6 @@ pytype_library(
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )
@@ -316,8 +316,6 @@ pytype_library(
 pytype_library(
     name = "tpu_function",
     srcs = ["tpu_function.py"],
-    deps = [
-    ],
 )
 
 pytype_library(
@@ -459,6 +457,14 @@ pytype_library(
 pytype_library(
     name = "tpu_strategy_util",
     srcs = ["tpu_strategy_util.py"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
+        "//learning/serving:__subpackages__",
+        "//research/graph:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//third_party/py/tensorflow_numerics/extensions:__pkg__",
+    ],
     deps = [
         ":tpu_lib",
         "//tensorflow/python:dtypes",
@@ -535,6 +541,7 @@ tf_py_test(
         "feature_column_v2_test.py",
     ],
     main = "feature_column_v2_test.py",
+    tags = ["no_oss"],  # Due to the usage of keras component.
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",

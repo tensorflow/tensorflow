@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_
 #define TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -29,13 +29,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/util/cuda_solvers.h"  // For ScratchSpace
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
-#include "tensorflow/core/util/rocm_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -58,7 +57,7 @@ struct SegmentIndicatorFunctor {
 
 template <typename TIndex>
 __global__ void ExtractFirstOccurrenceIndicesKernel(
-    int64 input_size, int64 uniq_size,
+    int64_t input_size, int64_t uniq_size,
     const TIndex* __restrict__ sorted_input_inds,
     const TIndex* __restrict__ sorted_input_unique_ids,
     TIndex* __restrict__ unique_input_inds, TIndex* __restrict__ segment_ends) {
@@ -84,8 +83,8 @@ __global__ void ExtractFirstOccurrenceIndicesKernel(
 // unique value's range in the sorted input (the last element is always set
 // to input_size).
 template <typename TIndex>
-Status ExtractFirstOccurrenceIndices(const GPUDevice& d, int64 input_size,
-                                     int64 uniq_size,
+Status ExtractFirstOccurrenceIndices(const GPUDevice& d, int64_t input_size,
+                                     int64_t uniq_size,
                                      const TIndex* sorted_input_inds,
                                      const TIndex* sorted_input_unique_ids,
                                      TIndex* unique_input_inds,
@@ -103,7 +102,7 @@ Status ExtractFirstOccurrenceIndices(const GPUDevice& d, int64 input_size,
 
 template <typename T, typename TIndex>
 __global__ void GatherOutputsAndInvertPermutationKernel(
-    int64 uniq_size, const T* __restrict__ input,
+    int64_t uniq_size, const T* __restrict__ input,
     const TIndex* __restrict__ sorted_unique_input_inds,
     const TIndex* __restrict__ sorted_unique_perm,
     const TIndex* __restrict__ segment_ends, T* __restrict__ output,
@@ -123,7 +122,7 @@ __global__ void GatherOutputsAndInvertPermutationKernel(
 // Gathers input values using sorted_unique_input_inds, and inverts the
 // permutation specified by sorted_unique_perm.
 template <typename T, typename TIndex>
-Status GatherOutputsAndInvertPermutation(const GPUDevice& d, int64 uniq_size,
+Status GatherOutputsAndInvertPermutation(const GPUDevice& d, int64_t uniq_size,
                                          const T* input,
                                          const TIndex* sorted_unique_input_inds,
                                          const TIndex* sorted_unique_perm,
@@ -143,7 +142,7 @@ Status GatherOutputsAndInvertPermutation(const GPUDevice& d, int64 uniq_size,
 
 template <typename TIndex>
 __global__ void LookupAndScatterUniqueIdsKernel(
-    int64 input_size, const TIndex* sorted_input_inds,
+    int64_t input_size, const TIndex* sorted_input_inds,
     const TIndex* __restrict__ sorted_input_unique_ids,
     const TIndex* __restrict__ inv_sorted_unique_perm,
     TIndex* __restrict__ idx) {
@@ -156,7 +155,7 @@ __global__ void LookupAndScatterUniqueIdsKernel(
 // Maps the values of sorted_input_unique_ids and scatters them to idx using
 // sorted_input_inds.
 template <typename TIndex>
-Status LookupAndScatterUniqueIds(const GPUDevice& d, int64 input_size,
+Status LookupAndScatterUniqueIds(const GPUDevice& d, int64_t input_size,
                                  const TIndex* sorted_input_inds,
                                  const TIndex* sorted_input_unique_ids,
                                  const TIndex* inv_sorted_unique_perm,
@@ -181,7 +180,7 @@ class UniqueOpGPU : public AsyncOpKernel {
       : AsyncOpKernel(context) {}
 
   template <typename U>
-  void AllocateTemp(OpKernelContext* context, int64 size, Tensor* tensor,
+  void AllocateTemp(OpKernelContext* context, int64_t size, Tensor* tensor,
                     U** tensor_data, DoneCallback done) const {
     OP_REQUIRES_OK_ASYNC(context,
                          context->allocate_temp(DataTypeToEnum<U>::value,
@@ -209,7 +208,7 @@ class UniqueOpGPU : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(context, stream,
                       errors::Internal("No GPU stream available."), done);
 
-    int64 input_size = input.NumElements();
+    int64_t input_size = input.NumElements();
     bool has_count_output = num_outputs() > 2;
     if (input_size == 0) {
       // Early exit for trivial case.

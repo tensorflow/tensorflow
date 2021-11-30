@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <functional>
 
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -64,7 +67,9 @@ class SessionMgr {
   Status CreateSession(
       const string& session, const ServerDef& server_def,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
-      bool isolate_session_state, string master_task, int64 master_incarnation);
+      bool isolate_session_state, string master_task,
+      int64_t master_incarnation,
+      const CoordinationServiceConfig& coordination_service_config);
 
   void ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache);
 
@@ -82,11 +87,16 @@ class SessionMgr {
 
   Status DeleteSession(const string& session);
 
+  // Provides access to the coordination service. This method should only be
+  // called after the agent has been initialized during session creation, or an
+  // invalid nullptr is returned. Note: the agent is thread-safe and mutable.
+  CoordinationServiceAgent* GetCoordinationServiceAgent();
+
   static string WorkerNameFromServerDef(const ServerDef& server_def);
 
   void SetLogging(bool active);
 
-  void RetrieveLogs(tensorflow::int64 step_id, LoggingResponse* response);
+  void RetrieveLogs(int64_t step_id, LoggingResponse* response);
 
   void ClearLogs();
 
@@ -108,6 +118,8 @@ class SessionMgr {
 
   std::unique_ptr<WorkerCacheInterface> default_worker_cache_;
   std::shared_ptr<WorkerSession> legacy_session_;
+  std::unique_ptr<CoordinationServiceInterface> coordination_service_;
+  std::unique_ptr<CoordinationServiceAgent> coordination_service_agent_;
 
   bool is_logging_active_ = false;
 
@@ -123,7 +135,7 @@ class SessionMgr {
 
   // Incarnation and WorkerSession handle associated with a master task.
   struct MasterAssociatedSession {
-    const int64 master_incarnation;
+    const int64_t master_incarnation;
     const string session_handle;
   };
   // A map from master task name to its associated worker sessions.

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
 
+#include <functional>
 #include <memory>
 
 #include "mlir/IR/MLIRContext.h"
@@ -25,6 +26,8 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+class RemoveSignTypeConverter;
 
 // Collection of rewrite patterns for lowering a general dot product.
 void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
@@ -38,6 +41,10 @@ void PopulateComplexLoweringPatterns(MLIRContext *context,
 void PopulateOptimizeMHLOPatterns(MLIRContext *context,
                                   OwningRewritePatternList *patterns);
 
+// Rewrite patterns for einsum to equivalent dot_general legalization.
+void PopulateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
+                                        OwningRewritePatternList *patterns);
+
 // Rewrite patterns for gather to equivalent torch index select legalization.
 void PopulateGatherToTorchIndexSelectPatterns(
     mlir::MLIRContext *context, OwningRewritePatternList *patterns);
@@ -45,15 +52,28 @@ void PopulateGatherToTorchIndexSelectPatterns(
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                MLIRContext *ctx);
 
-// Collection of rewrite patterns for lowering of dynamic HLOs to LHLO dialect.
+// Collection of rewrite patterns for lowering all mhlo ops to their
+// lmhlo counterparts.
 void populateDynamicHLOToLHLOConversionPattern(
     MLIRContext *context, BufferizeTypeConverter *converter,
-    OwningRewritePatternList *patterns, bool insert_copy = true);
+    OwningRewritePatternList *patterns);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
                                         BufferizeTypeConverter *converter,
                                         OwningRewritePatternList *patterns);
+
+// Collection of rewrite patterns for lowering of HLO to memref dialect.
+// These patterns generally assume that the HLO operation are aliasing their
+// input memrefs. If enforce_identity_map returns true for an op, copies will be
+// inserted when the lowering would otherwise lead to a memref with a
+// non-identity map.
+void populateHLOToMemrefConversionPattern(
+    BufferizeTypeConverter *converter, RemoveSignTypeConverter *sign_converter,
+    OwningRewritePatternList *patterns,
+    std::function<bool(Operation *)> enforce_identity_map = [](Operation *) {
+      return true;
+    });
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
@@ -71,10 +91,6 @@ void SetupMaterializeBroadcastsLegality(MLIRContext *context,
 // attributes to equivalent sequences of ops.
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
                                            OwningRewritePatternList *patterns);
-
-// Sets up legality definitions for element-wise operations on ranked tensors.
-void SetupTransformUnrankedHloLegality(MLIRContext *context,
-                                       ConversionTarget *conversionTarget);
 
 // Populates a collection of rewrite patterns to realize element-wise operations
 // on ranked tensors where possible.
@@ -95,10 +111,11 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
 void PopulateTrigonometricToApproximationPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
-void PopulateMoveUpDynamicBroadcastsForFusionLegality(ConversionTarget *target);
-
-void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns);
+// Populate patterns to move dynamic broadcasts up over element-wise operations
+// and broadcast the operands rather than the result. This will eventually allow
+// for larger fusions.
+void PopulateBroadcastsPropagationPatterns(MLIRContext *context,
+                                           OwningRewritePatternList *patterns);
 
 /// Populate rank specialization clustering and lowering patterns.
 void PopulateRankSpecializationClusterPatterns(

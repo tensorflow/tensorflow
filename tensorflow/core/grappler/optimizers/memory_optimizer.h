@@ -47,9 +47,6 @@ class MemoryOptimizer : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* pruned_graph) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& pruned_graph, double result) override;
-
  private:
   RewriterConfig::MemOptType optimization_level_;
   string recomputation_targets_name_scope_;

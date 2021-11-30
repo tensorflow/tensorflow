@@ -223,6 +223,14 @@ check_python_pip_version() {
   fi
 }
 
+# Write an entry to the sponge key-value store for this job.
+write_to_sponge() {
+  # The location of the key-value CSV file sponge imports.
+  TF_SPONGE_CSV="${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
+  echo "$1","$2" >> "${TF_SPONGE_CSV}"
+}
+
+
 ###########################################################################
 # Setup: directories, local/global variables
 ###########################################################################
@@ -262,7 +270,7 @@ PIP_WHL_DIR=$(realpath "${PIP_WHL_DIR}") # Get absolute path
 WHL_PATH=""
 # Determine the major.minor versions of python being used (e.g., 3.7).
 # Useful for determining the directory of the local pip installation.
-PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -c1-3)
+PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -d. -f1-2)
 
 if [[ -z "${PY_MAJOR_MINOR_VER}" ]]; then
   die "ERROR: Unable to determine the major.minor version of Python."
@@ -511,7 +519,7 @@ run_test_with_bazel() {
 
   # Figure out how many concurrent tests we can run and do run the tests.
   BAZEL_PARALLEL_TEST_FLAGS=""
-  if [[ $CONTAINER_TYPE == "gpu" ]]; then
+  if [[ $CONTAINER_TYPE == "gpu" ]] || [[ $CONTAINER_TYPE == "rocm" ]]; then
     # Number of test threads is the number of GPU cards available.
     if [[ $OS_TYPE == "macos" ]]; then
       BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
@@ -626,6 +634,18 @@ if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   fi
 fi
 
+if [[ ${CONTAINER_TYPE} == "rocm" ]]; then
+  GPU_FLAG="--rocm"
+  if ! [[ $PROJECT_NAME == *"rocm"* ]]; then
+    # Only update PROJECT_NAME if TF_PROJECT_NAME is not set
+    if [[ -z "${TF_PROJECT_NAME}" ]]; then
+      echo "WARNING: ROCM is specified but requested project name (PROJECT_NAME=${PROJECT_NAME}) \
+      does not include 'rocm'. Appending '_rocm' to the project name."
+      PROJECT_NAME="${PROJECT_NAME}_rocm"
+    fi
+  fi
+fi
+
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
 
 PY_DOTLESS_MAJOR_MINOR_VER=$(echo $PY_MAJOR_MINOR_VER | tr -d '.')
@@ -642,8 +662,10 @@ fi
 
 WHL_DIR=$(dirname "${WHL_PATH}")
 
-# Print the size of the wheel file.
-echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
+# Print the size of the wheel file and log to sponge.
+WHL_SIZE=$(ls -l ${WHL_PATH} | awk '{print $5}')
+echo "Size of the PIP wheel file built: ${WHL_SIZE}"
+write_to_sponge TF_INFO_WHL_SIZE ${WHL_SIZE}
 
 # Build the other GPU package.
 if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq "1" ]]; then
@@ -687,7 +709,8 @@ fi
 run_all_tests
 
 
-if [[ ${OS_TYPE} == "ubuntu" ]]; then
+if [[ ${OS_TYPE} == "ubuntu" ]] && \
+   ! [[ ${CONTAINER_TYPE} == "rocm" ]] ; then
   # Avoid Python3.6 abnormality by installing auditwheel here.
   set +e
   pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel

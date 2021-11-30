@@ -14,13 +14,10 @@
    ==============================================================================
 */
 #if TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/rocm_solvers.h"
-
 #include <complex>
 #include <unordered_map>
 #include <vector>
 
-#include "rocm/include/rocblas.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -31,94 +28,51 @@
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/default/dso_loader.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
 
 namespace tensorflow {
 namespace {
 
 using stream_executor::gpu::GpuExecutor;
 using stream_executor::gpu::ScopedActivateExecutorContext;
-using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
 
-namespace wrap {
-#ifdef PLATFORM_GOOGLE
-#define ROCBLAS_WRAP(__name)                                       \
-  struct WrapperShim__##__name {                                   \
-    static const char* kName;                                      \
-    template <typename... Args>                                    \
-    rocblas_status operator()(GpuExecutor* parent, Args... args) { \
-      ScopedActivateExecutorContext sac{parent};                   \
-      return ::__name(args...);                                    \
-    }                                                              \
-  } __name;                                                        \
-  const char* WrapperShim__##__name::kName = #__name;
+inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
+                             const void* src, uint64 bytes) {
+  auto stream = context->op_device_context()->stream();
+  se::DeviceMemoryBase wrapped_dst(dst);
+  return stream->ThenMemcpy(&wrapped_dst, src, bytes).ok();
+}
 
-#else
-
-#define ROCBLAS_WRAP(__name)                                                \
-  struct DynLoadShim__##__name {                                            \
-    static const char* kName;                                               \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;            \
-    static void* GetDsoHandle() {                                           \
-      auto s = GetRocblasDsoHandle();                                       \
-      return s.ValueOrDie();                                                \
-    }                                                                       \
-    static FuncPtrT LoadOrDie() {                                           \
-      void* f;                                                              \
-      auto s = stream_executor::port::Env::Default()->GetSymbolFromLibrary( \
-          GetDsoHandle(), kName, &f);                                       \
-      CHECK(s.ok()) << "could not find " << kName                           \
-                    << " in rocblas DSO; dlerror: " << s.error_message();   \
-      return reinterpret_cast<FuncPtrT>(f);                                 \
-    }                                                                       \
-    static FuncPtrT DynLoad() {                                             \
-      static FuncPtrT f = LoadOrDie();                                      \
-      return f;                                                             \
-    }                                                                       \
-    template <typename... Args>                                             \
-    rocblas_status operator()(GpuExecutor* parent, Args... args) {          \
-      ScopedActivateExecutorContext sac{parent};                            \
-      return DynLoad()(args...);                                            \
-    }                                                                       \
-  } __name;                                                                 \
-  const char* DynLoadShim__##__name::kName = #__name;
-
-#endif
-
-ROCBLAS_WRAP(rocblas_create_handle)
-ROCBLAS_WRAP(rocblas_destroy_handle)
-ROCBLAS_WRAP(rocblas_set_stream)
-ROCBLAS_WRAP(rocblas_dtrsm)
-ROCBLAS_WRAP(rocblas_strsm)
-
-}  // namespace wrap
-
-struct ROCmSolverHandles {
-  explicit ROCmSolverHandles(GpuExecutor* parent, hipStream_t stream) {
+struct GpuSolverHandles {
+  explicit GpuSolverHandles(GpuExecutor* parent, hipStream_t stream) {
     parent_ = parent;
-    CHECK(wrap::rocblas_create_handle(parent_, &rocm_blas_handle) ==
+    ScopedActivateExecutorContext sac{parent_};
+    CHECK(wrap::rocblas_create_handle(&rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to create rocBlas instance.";
-    CHECK(wrap::rocblas_set_stream(parent_, rocm_blas_handle, stream) ==
+    CHECK(wrap::rocblas_set_stream(rocm_blas_handle, stream) ==
           rocblas_status_success)
         << "Failed to set rocBlas stream.";
   }
 
-  ~ROCmSolverHandles() {
-    CHECK(wrap::rocblas_destroy_handle(parent_, rocm_blas_handle) ==
+  ~GpuSolverHandles() {
+    ScopedActivateExecutorContext sac{parent_};
+    CHECK(wrap::rocblas_destroy_handle(rocm_blas_handle) ==
           rocblas_status_success)
-        << "Failed to destroy cuBlas instance.";
+        << "Failed to destroy rocBlas instance.";
   }
   GpuExecutor* parent_;
   rocblas_handle rocm_blas_handle;
 };
 
 using HandleMap =
-    std::unordered_map<hipStream_t, std::unique_ptr<ROCmSolverHandles>>;
+    std::unordered_map<hipStream_t, std::unique_ptr<GpuSolverHandles>>;
 
 // Returns a singleton map used for storing initialized handles for each unique
 // gpu stream.
@@ -131,7 +85,7 @@ static mutex handle_map_mutex(LINKER_INITIALIZED);
 
 }  // namespace
 
-ROCmSolver::ROCmSolver(OpKernelContext* context) : context_(context) {
+GpuSolver::GpuSolver(OpKernelContext* context) : context_(context) {
   mutex_lock lock(handle_map_mutex);
   GpuExecutor* gpu_executor = static_cast<GpuExecutor*>(
       context->op_device_context()->stream()->parent()->implementation());
@@ -145,21 +99,113 @@ ROCmSolver::ROCmSolver(OpKernelContext* context) : context_(context) {
   HandleMap* handle_map = CHECK_NOTNULL(GetHandleMapSingleton());
   auto it = handle_map->find(hip_stream_);
   if (it == handle_map->end()) {
-    LOG(INFO) << "Creating ROCmSolver handles for stream " << hip_stream_;
+    LOG(INFO) << "Creating GpuSolver handles for stream " << hip_stream_;
     // Previously unseen Gpu stream. Initialize a set of Gpu solver library
     // handles for it.
-    std::unique_ptr<ROCmSolverHandles> new_handles(
-        new ROCmSolverHandles(gpu_executor, hip_stream_));
+    std::unique_ptr<GpuSolverHandles> new_handles(
+        new GpuSolverHandles(gpu_executor, hip_stream_));
     it = handle_map->insert(std::make_pair(hip_stream_, std::move(new_handles)))
              .first;
   }
   rocm_blas_handle_ = it->second->rocm_blas_handle;
 }
 
-ROCmSolver::~ROCmSolver() {
+GpuSolver::~GpuSolver() {
   for (auto tensor_ref : scratch_tensor_refs_) {
     tensor_ref.Unref();
   }
+}
+
+// Static
+void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
+    std::unique_ptr<GpuSolver> solver,
+    const std::vector<DeviceLapackInfo>& dev_lapack_infos,
+    std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
+        info_checker_callback) {
+  CHECK(info_checker_callback != nullptr);
+  std::vector<HostLapackInfo> host_lapack_infos;
+  if (dev_lapack_infos.empty()) {
+    info_checker_callback(Status::OK(), host_lapack_infos);
+    return;
+  }
+
+  // Launch memcpys to copy info back from device to host
+  for (const auto& dev_lapack_info : dev_lapack_infos) {
+    bool success = true;
+    auto host_copy = dev_lapack_info.CopyToHost(&success);
+    OP_REQUIRES(
+        solver->context(), success,
+        errors::Internal(
+            "Failed to launch copy of dev_lapack_info to host, debug_info = ",
+            dev_lapack_info.debug_info()));
+    host_lapack_infos.push_back(std::move(host_copy));
+  }
+
+  // This callback checks that all batch items in all calls were processed
+  // successfully and passes status to the info_checker_callback accordingly.
+  auto* stream = solver->context()->op_device_context()->stream();
+  auto wrapped_info_checker_callback =
+      [stream](
+          GpuSolver* solver,
+          std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
+              info_checker_callback,
+          std::vector<HostLapackInfo> host_lapack_infos) {
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
+        Status status;
+        for (const auto& host_lapack_info : host_lapack_infos) {
+          for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
+            const int info_value = host_lapack_info(i);
+            if (info_value != 0) {
+              status = errors::InvalidArgument(
+                  "Got info = ", info_value, " for batch index ", i,
+                  ", expected info = 0. Debug_info = ",
+                  host_lapack_info.debug_info());
+            }
+          }
+          if (!status.ok()) {
+            break;
+          }
+        }
+        // Delete solver to release temp tensor refs.
+        delete solver;
+
+        // Delegate further error checking to provided functor.
+        info_checker_callback(status, host_lapack_infos);
+      };
+  // Note: An std::function cannot have unique_ptr arguments (it must be copy
+  // constructible and therefore so must its arguments). Therefore, we release
+  // solver into a raw pointer to be deleted at the end of
+  // wrapped_info_checker_callback.
+  // Release ownership of solver. It will be deleted in the cb callback.
+  auto solver_raw_ptr = solver.release();
+  auto cb =
+      std::bind(wrapped_info_checker_callback, solver_raw_ptr,
+                std::move(info_checker_callback), std::move(host_lapack_infos));
+
+  solver_raw_ptr->context()
+      ->device()
+      ->tensorflow_gpu_device_info()
+      ->event_mgr->ThenExecute(stream, std::move(cb));
+}
+
+// static
+void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
+    std::unique_ptr<GpuSolver> solver,
+    const std::vector<DeviceLapackInfo>& dev_lapack_info,
+    AsyncOpKernel::DoneCallback done) {
+  OpKernelContext* context = solver->context();
+  auto wrapped_done = [context, done](
+                          const Status& status,
+                          const std::vector<HostLapackInfo>& /* unused */) {
+    if (done != nullptr) {
+      OP_REQUIRES_OK_ASYNC(context, status, done);
+      done();
+    } else {
+      OP_REQUIRES_OK(context, status);
+    }
+  };
+  CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_lapack_info,
+                                      wrapped_done);
 }
 
 #define TF_RETURN_IF_ROCBLAS_ERROR(expr)                                  \
@@ -180,12 +226,169 @@ ROCmSolver::~ROCmSolver() {
 #define BLAS_SOLVER_FN(method, type_prefix) \
   wrap::rocblas##_##type_prefix##method
 
-// Allocates a temporary tensor. The ROCmSolver object maintains a
+// Macro to construct rocsolver method names.
+#define SOLVER_FN(method, type_prefix) wrap::rocsolver##_##type_prefix##method
+
+#define GETRF_INSTANCE(Scalar, type_prefix)                                \
+  template <>                                                              \
+  Status GpuSolver::Getrf<Scalar>(int m, int n, Scalar* A, int lda,        \
+                                  int* dev_pivots, int* dev_lapack_info) { \
+    mutex_lock lock(handle_map_mutex);                                     \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrf, type_prefix)(              \
+        rocm_blas_handle_, m, n, reinterpret_cast<ROCmScalar*>(A), lda,    \
+        dev_pivots, dev_lapack_info));                                     \
+    return Status::OK();                                                   \
+  }
+
+TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
+
+#define POTRF_INSTANCE(Scalar, type_prefix)                                    \
+  template <>                                                                  \
+  Status GpuSolver::Potrf<Scalar>(rocblas_fill uplo, int n, Scalar* dev_A,     \
+                                  int lda, int* dev_lapack_info) {             \
+    mutex_lock lock(handle_map_mutex);                                         \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                    \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrf, type_prefix)(                  \
+        rocm_blas_handle_, uplo, n, reinterpret_cast<ROCmScalar*>(dev_A), lda, \
+        dev_lapack_info));                                                     \
+    return Status::OK();                                                       \
+  }
+
+TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
+
+#define GETRS_INSTANCE(Scalar, type_prefix)                                   \
+  template <>                                                                 \
+  Status GpuSolver::Getrs<Scalar>(rocblas_operation trans, int n, int nrhs,   \
+                                  Scalar* A, int lda, const int* dev_pivots,  \
+                                  Scalar* B, int ldb, int* dev_lapack_info) { \
+    mutex_lock lock(handle_map_mutex);                                        \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrs, type_prefix)(                 \
+        rocm_blas_handle_, trans, n, nrhs, reinterpret_cast<ROCmScalar*>(A),  \
+        lda, dev_pivots, reinterpret_cast<ROCmScalar*>(B), ldb));             \
+    return Status::OK();                                                      \
+  }
+
+TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
+
+#define GETRF_BATCHED_INSTANCE(Scalar, type_prefix)                            \
+  template <>                                                                  \
+  Status GpuSolver::GetrfBatched<Scalar>(                                      \
+      int n, Scalar** A, int lda, int* dev_pivots, DeviceLapackInfo* dev_info, \
+      const int batch_size) {                                                  \
+    mutex_lock lock(handle_map_mutex);                                         \
+    rocblas_stride stride = n;                                                 \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                    \
+    ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                  \
+        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);             \
+    if (!CopyHostToDevice(context_, dev_a.mutable_data(), A, dev_a.bytes())) { \
+      return errors::Internal("GetrfBatched: Failed to copy ptrs to device");  \
+    }                                                                          \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrf_batched, type_prefix)(          \
+        rocm_blas_handle_, n, n,                                               \
+        reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda, dev_pivots, \
+        stride, dev_info->mutable_data(), batch_size));                        \
+    return Status::OK();                                                       \
+  }
+
+TF_CALL_LAPACK_TYPES(GETRF_BATCHED_INSTANCE);
+
+#define POTRF_BATCHED_INSTANCE(Scalar, type_prefix)                           \
+  template <>                                                                 \
+  Status GpuSolver::PotrfBatched<Scalar>(                                     \
+      rocblas_fill uplo, int n, const Scalar* const host_a_dev_ptrs[],        \
+      int lda, DeviceLapackInfo* dev_lapack_info, int batch_size) {           \
+    rocblas_stride stride = n;                                                \
+    mutex_lock lock(handle_map_mutex);                                        \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
+    ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                 \
+        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);            \
+    if (!CopyHostToDevice(context_, dev_a.mutable_data(), host_a_dev_ptrs,    \
+                          dev_a.bytes())) {                                   \
+      return errors::Internal("PotrfBatched: Failed to copy ptrs to device"); \
+    }                                                                         \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrf_batched, type_prefix)(         \
+        rocm_blas_handle_, uplo, n,                                           \
+        reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda,            \
+        dev_lapack_info->mutable_data(), batch_size));                        \
+    return Status::OK();                                                      \
+  }
+
+TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
+
+#define GETRS_BATCHED_INSTANCE(Scalar, type_prefix)                            \
+  template <>                                                                  \
+  Status GpuSolver::GetrsBatched<Scalar>(                                      \
+      const rocblas_operation trans, int n, int nrhs, Scalar** A, int lda,     \
+      int* dev_pivots, Scalar** B, const int ldb, int* host_lapack_info,       \
+      const int batch_size) {                                                  \
+    rocblas_stride stride = n;                                                 \
+    mutex_lock lock(handle_map_mutex);                                         \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                    \
+    ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                  \
+        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);             \
+    if (!CopyHostToDevice(context_, dev_a.mutable_data(), A, dev_a.bytes())) { \
+      return errors::Internal("GetrfBatched: Failed to copy ptrs to device");  \
+    }                                                                          \
+    ScratchSpace<uint8> dev_b = this->GetScratchSpace<uint8>(                  \
+        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);             \
+    if (!CopyHostToDevice(context_, dev_b.mutable_data(), B, dev_b.bytes())) { \
+      return errors::Internal("GetrfBatched: Failed to copy ptrs to device");  \
+    }                                                                          \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrs_batched, type_prefix)(          \
+        rocm_blas_handle_, trans, n, nrhs,                                     \
+        reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda, dev_pivots, \
+        stride, reinterpret_cast<ROCmScalar**>(dev_b.mutable_data()), ldb,     \
+        batch_size));                                                          \
+    return Status::OK();                                                       \
+  }
+
+TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);
+
+#define GETRI_BATCHED_INSTANCE(Scalar, type_prefix)                           \
+  template <>                                                                 \
+  Status GpuSolver::GetriBatched<Scalar>(                                     \
+      int n, const Scalar* const host_a_dev_ptrs[], int lda,                  \
+      const int* dev_pivots, const Scalar* const host_a_inverse_dev_ptrs[],   \
+      int ldainv, DeviceLapackInfo* dev_lapack_info, int batch_size) {        \
+    mutex_lock lock(handle_map_mutex);                                        \
+    rocblas_stride stride = n;                                                \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
+    ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                 \
+        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);            \
+    if (!CopyHostToDevice(context_, dev_a.mutable_data(), host_a_dev_ptrs,    \
+                          dev_a.bytes())) {                                   \
+      return errors::Internal("GetriBatched: Failed to copy ptrs to device"); \
+    }                                                                         \
+    ScratchSpace<uint8> dev_a_inverse = this->GetScratchSpace<uint8>(         \
+        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);            \
+    if (!CopyHostToDevice(context_, dev_a_inverse.mutable_data(),             \
+                          host_a_inverse_dev_ptrs, dev_a_inverse.bytes())) {  \
+      return errors::Internal("GetriBatched: Failed to copy ptrs to device"); \
+    }                                                                         \
+    ScratchSpace<uint8> pivots = this->GetScratchSpace<uint8>(                \
+        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);            \
+    if (!CopyHostToDevice(context_, pivots.mutable_data(), dev_pivots,        \
+                          pivots.bytes())) {                                  \
+      return errors::Internal("GetriBatched: Failed to copy ptrs to device"); \
+    }                                                                         \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getri_batched, type_prefix)(         \
+        rocm_blas_handle_, n,                                                 \
+        reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda,            \
+        reinterpret_cast<int*>(pivots.mutable_data()), stride,                \
+        dev_lapack_info->mutable_data(), batch_size));                        \
+    return Status::OK();                                                      \
+  }
+
+TF_CALL_LAPACK_TYPES(GETRI_BATCHED_INSTANCE);
+
+// Allocates a temporary tensor. The GpuSolver object maintains a
 // TensorReference to the underlying Tensor to prevent it from being deallocated
 // prematurely.
-Status ROCmSolver::allocate_scoped_tensor(DataType type,
-                                          const TensorShape& shape,
-                                          Tensor* out_temp) {
+Status GpuSolver::allocate_scoped_tensor(DataType type,
+                                         const TensorShape& shape,
+                                         Tensor* out_temp) {
   const Status status = context_->allocate_temp(type, shape, out_temp);
   if (status.ok()) {
     scratch_tensor_refs_.emplace_back(*out_temp);
@@ -193,7 +396,7 @@ Status ROCmSolver::allocate_scoped_tensor(DataType type,
   return status;
 }
 
-Status ROCmSolver::forward_input_or_allocate_scoped_tensor(
+Status GpuSolver::forward_input_or_allocate_scoped_tensor(
     gtl::ArraySlice<int> candidate_input_indices, DataType type,
     const TensorShape& shape, Tensor* out_temp) {
   const Status status = context_->forward_input_or_allocate_temp(
@@ -215,8 +418,9 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
   mutex_lock lock(handle_map_mutex);
   using ROCmScalar = typename ROCmComplexT<Scalar>::type;
 
-  TF_RETURN_IF_ROCBLAS_ERROR(solver(gpu_executor, rocm_blas_handle, side, uplo,
-                                    trans, diag, m, n,
+  ScopedActivateExecutorContext sac{gpu_executor};
+  TF_RETURN_IF_ROCBLAS_ERROR(solver(rocm_blas_handle, side, uplo, trans, diag,
+                                    m, n,
                                     reinterpret_cast<const ROCmScalar*>(alpha),
                                     reinterpret_cast<const ROCmScalar*>(A), lda,
                                     reinterpret_cast<ROCmScalar*>(B), ldb));
@@ -226,7 +430,7 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
 
 #define TRSM_INSTANCE(Scalar, type_prefix)                                    \
   template <>                                                                 \
-  Status ROCmSolver::Trsm<Scalar>(                                            \
+  Status GpuSolver::Trsm<Scalar>(                                             \
       rocblas_side side, rocblas_fill uplo, rocblas_operation trans,          \
       rocblas_diagonal diag, int m, int n,                                    \
       const Scalar* alpha, /* host or device pointer */                       \
@@ -239,6 +443,46 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
   }
 
 TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSM_INSTANCE);
+
+template <typename Scalar, typename SolverFnT>
+Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
+                         rocblas_handle rocm_blas_handle, int n,
+                         const Scalar* const host_a_dev_ptrs[], int lda,
+                         int* dev_pivots,
+                         const Scalar* const host_a_inverse_dev_ptrs[],
+                         int ldainv, DeviceLapackInfo* dev_lapack_info,
+                         int batch_size) {
+  mutex_lock lock(handle_map_mutex);
+  using ROCmScalar = typename ROCmComplexT<Scalar>::type;
+  ScopedActivateExecutorContext sac{gpu_executor};
+
+  GetrfBatched(n, host_a_dev_ptrs, lda, dev_pivots, dev_lapack_info,
+               batch_size);
+
+  GetriBatched(n, host_a_dev_ptrs, lda, dev_pivots, host_a_inverse_dev_ptrs,
+               ldainv, dev_lapack_info, batch_size);
+
+  return Status::OK();
+}
+
+#define GEAM_INSTANCE(Scalar, type_prefix)                                    \
+  template <>                                                                 \
+  Status GpuSolver::MatInvBatched<Scalar>(                                    \
+      int n, const Scalar* const host_a_dev_ptrs[], int lda,                  \
+      const Scalar* const host_a_inverse_dev_ptrs[], int ldainv,              \
+      DeviceLapackInfo* dev_lapack_info, int batch_size) {                    \
+    GpuExecutor* gpu_executor = static_cast<GpuExecutor*>(                    \
+        context_->op_device_context()->stream()->parent()->implementation()); \
+    Tensor pivots;                                                            \
+    context_->allocate_scoped_tensor(DataTypeToEnum<int>::value,              \
+                                     TensorShape{batch_size, n}, &pivots);    \
+    auto pivots_mat = pivots.template matrix<int>();                          \
+    int* dev_pivots = pivots_mat.data();                                      \
+    return MatInvBatchedImpl(                                                 \
+        gpu_executor, BLAS_SOLVER_FN(matinvbatched, type_prefix),             \
+        rocm_blas_handle_, n, host_a_dev_ptrs, lda, dev_pivots,               \
+        host_a_inverse_dev_ptrs, ldainv, dev_lapack_info, batch_size);        \
+  }
 
 }  // namespace tensorflow
 

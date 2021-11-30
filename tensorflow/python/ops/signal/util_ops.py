@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utility ops shared across tf.contrib.signal."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import fractions  # gcd is here for Python versions < 3
 import math  # Get gcd here for Python versions >= 3
 import sys

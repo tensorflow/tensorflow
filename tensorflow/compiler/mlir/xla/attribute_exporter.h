@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -27,7 +28,7 @@ namespace xla {
 
 // Converts the conv dimensions attribute to XLA HLO.
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
-    mlir::mhlo::ConvDimensionNumbers input);
+    mlir::mhlo::ConvDimensionNumbersAttr input);
 
 StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
     llvm::StringRef input);
@@ -37,12 +38,15 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 
 // Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
 // and source-target pairs are defined in HLO.
-StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
+StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     llvm::Optional<mlir::DenseIntElementsAttr> optional_attr);
 
 StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
 StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string);
+
+StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
+    mlir::mhlo::CustomCallApiVersion api_version);
 
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_

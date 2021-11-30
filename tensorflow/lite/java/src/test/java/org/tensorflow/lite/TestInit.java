@@ -27,7 +27,11 @@ public final class TestInit {
    */
   public static void init() {
     if (!initialized) {
-      System.loadLibrary("tensorflowlite_test_jni");
+      try {
+        System.loadLibrary("tensorflowlite_test_jni");
+      } catch (UnsatisfiedLinkError e) {
+        System.loadLibrary("tensorflowlite_stable_test_jni");
+      }
       initTfLiteForTest();
       initialized = true;
     }

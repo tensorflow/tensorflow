@@ -45,7 +45,7 @@ struct RecordReaderOptions {
   // If buffer_size is non-zero, then all reads must be sequential, and no
   // skipping around is permitted. (Note: this is the same behavior as reading
   // compressed files.) Consider using SequentialRecordReader.
-  int64 buffer_size = 0;
+  int64_t buffer_size = 0;
 
   static RecordReaderOptions CreateRecordReaderOptions(
       const string& compression_type);
@@ -74,9 +74,9 @@ class RecordReader {
 
   // Statistics (sizes are in units of bytes)
   struct Stats {
-    int64 file_size = -1;
-    int64 data_size = -1;
-    int64 entries = -1;  // Number of values
+    int64_t file_size = -1;
+    int64_t data_size = -1;
+    int64_t entries = -1;  // Number of values
   };
 
   // Metadata for the TFRecord file.

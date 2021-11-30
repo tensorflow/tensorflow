@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for TPU outside compilation."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 
@@ -25,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
+from tensorboard.plugins.image import summary_v2 as image_summary_v2
 from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -41,11 +38,13 @@ from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.tpu import functional as tpu_functional
@@ -551,6 +550,63 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     self.assertAllEqual(
         strategy.experimental_local_results(train_step(0)),
         constant_op.constant(10, shape=(strategy.num_replicas_in_sync)))
+
+  # Regression test for b/180509859.
+  def testImageSummary(self):
+    strategy = get_tpu_strategy()
+
+    def run():
+
+      @def_function.function
+      def sample_sequence():
+        bsz = 3
+        max_length = 32 * 32
+
+        def f():
+
+          def body(step, tokens):
+            next_token = random_ops.random_uniform([bsz])
+            tokens = tokens.write(step, next_token)
+            return (step + 1, tokens)
+
+          def cond(step, tokens):
+            del tokens
+            return math_ops.less(step, max_length)
+
+          tokens_var = tensor_array_ops.TensorArray(
+              dtype=dtypes.float32,
+              size=max_length,
+              dynamic_size=False,
+              clear_after_read=False,
+              element_shape=(bsz,),
+              name="tokens_accumulator",
+          )
+
+          step = constant_op.constant(0)
+          step, tokens_var = control_flow_ops.while_loop(
+              cond, body, [step, tokens_var])
+
+          image_flat = array_ops.transpose(tokens_var.stack(), [1, 0])
+          image = array_ops.tile(
+              array_ops.reshape(image_flat, [bsz, 32, 32, 1]), [1, 1, 1, 3])
+          image_summary_v2.image("image_sample", image,
+                                 constant_op.constant(5, dtype=dtypes.int64))
+
+        return strategy.run(f)
+
+      sample_sequence()
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    with summary_writer.as_default(), summary.always_record_summaries():
+      run()
+    events = _events_from_logdir(self, logdir)
+    decoded_image = image_ops.decode_png(
+        events[1].summary.value[0].tensor.string_val[2]).numpy()
+    # Ensure that non-zero values were written to the image summary.
+    self.assertNotAllEqual(
+        array_ops.zeros((3072,), dtype=dtypes.float32),
+        list(decoded_image.flat))
 
   def testSummaryWithAutoOutsideCompilation(self):
     strategy = get_tpu_strategy()

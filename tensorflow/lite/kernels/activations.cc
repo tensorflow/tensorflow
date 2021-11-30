@@ -75,7 +75,7 @@ struct SoftmaxOpData {
   uint8_t uint8_table1[256];
   uint8_t uint8_table2[256];
 #endif
-  static constexpr int kInt16LUTArraySize = 513;
+  static constexpr int kInt16LUTArraySize = lut_size<int16_t>();
   int16_t exp_lut[kInt16LUTArraySize];  // int16 LUT for exp(x), where x uniform
                                         // distributed between [-10.0 , 0.0]
   int16_t one_over_one_plus_x_lut[kInt16LUTArraySize];  // int16 LUT for 1 /
@@ -390,7 +390,7 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
 
       const double q =
           std::frexp(input_real_multiplier, &data->input_left_shift);
-      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1ll << 15)));
+      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1LL << 15)));
       data->input_multiplier = static_cast<int16_t>(q_fixed);
 
       int16_t input_range_radius =
@@ -495,7 +495,7 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
 
       const double q =
           std::frexp(input_real_multiplier, &data->input_left_shift);
-      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1ll << 15)));
+      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1LL << 15)));
       data->input_multiplier = static_cast<int16_t>(q_fixed);
 
       int16_t input_range_radius =
@@ -633,11 +633,13 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     data->params.exp_lut = data->exp_lut;
     // exp LUT only used on nagative values
     // we consider exp(-10.0) is insignificant to accumulation
-    gen_lut([](double value) { return std::exp(value); }, -10.0, 0.0,
-            data->params.exp_lut, data->kInt16LUTArraySize);
+    gen_lut<double, int16_t, int16_t>(
+        [](double value) { return std::exp(value); }, -10.0, 0.0, -1.0, 1.0,
+        data->params.exp_lut);
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
-    gen_lut([](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0,
-            data->params.one_over_one_plus_x_lut, data->kInt16LUTArraySize);
+    gen_lut<double, int16_t, int16_t>(
+        [](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0, -1.0, 1.0,
+        data->params.one_over_one_plus_x_lut);
     data->params.zero_point = output->params.zero_point;
     data->params.scale = output->params.scale;
 
@@ -807,15 +809,15 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
                            GetTensorShape(output),
                            GetTensorData<float>(output));
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteUInt8: {
       QuantizedReluX<uint8_t>(-1.0f, 1.0f, input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt8: {
       QuantizedReluX<int8_t>(-1, 1, input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Only float32, uint8, int8 supported "
@@ -895,18 +897,18 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       float* out = GetTensorData<float>(output);
       for (; in < in_end; in++, out++) *out = std::min(std::max(0.f, *in), 6.f);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteUInt8:
       QuantizedReluX<uint8_t>(0.0f, 6.0f, input, output, data);
       return kTfLiteOk;
     case kTfLiteInt8: {
       QuantizedReluX<int8_t>(0.0f, 6.0f, input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt16: {
       QuantizedReluX<int16_t>(0.0f, 6.0f, input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Only float32, uint8, int8 and int16 are supported "
@@ -1349,7 +1351,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
         }
       }
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteUInt8: {
       PreluParams op_params;
       op_params.input_offset = -input->params.zero_point;
@@ -1371,7 +1373,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       }
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt8: {
       PreluParams op_params;
       op_params.input_offset = -input->params.zero_point;
@@ -1393,7 +1395,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
             GetTensorShape(output), GetTensorData<int8_t>(output));
       }
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(
           context,
@@ -1437,19 +1439,19 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
           op_params, GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteUInt8: {
       QuantizeLeakyRelu<uint8_t>(input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt8: {
       QuantizeLeakyRelu<int8_t>(input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt16: {
       QuantizeLeakyRelu<int16_t>(input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(
           context,
@@ -1469,7 +1471,7 @@ TfLiteStatus EluPrepare(TfLiteContext* context, TfLiteNode* node) {
   // Use LUT to handle quantized elu path.
   if (input->type == kTfLiteInt8) {
     PopulateLookupTable<int8_t>(data, input, output, [](float value) {
-      return value < 0.0 ? std::exp(value) - 1.0f : value;
+      return value < 0.0f ? std::expm1(value) : value;
     });
   }
   return GenericPrepare(context, node);
@@ -1485,12 +1487,12 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
       optimized_ops::Elu(GetTensorShape(input), GetTensorData<float>(input),
                          GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt8: {
       OpData* data = reinterpret_cast<OpData*>(node->user_data);
       EvalUsingLookupTable(data, input, output);
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(
           context, "Only float32 and int8 is supported currently, got %s.",

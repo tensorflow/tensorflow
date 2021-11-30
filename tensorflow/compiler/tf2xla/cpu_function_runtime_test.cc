@@ -40,7 +40,7 @@ std::vector<BufferInfo> SizesToBufferInfos(const intptr_t* sizes, size_t n) {
                    if (size == -1) {
                      // Use a dummy on-stack buffer allocation to indicat the
                      // the current slot does not need an allocation.
-                     int64 on_stack_buffer_size = 4;
+                     int64_t on_stack_buffer_size = 4;
                      return BufferInfo::MakeOnStackBuffer(on_stack_buffer_size);
                    }
                    return BufferInfo::MakeTempBuffer(size);

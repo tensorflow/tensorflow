@@ -79,7 +79,10 @@ class GrpcServer : public ServerInterface {
              Env* env);
   // Allow children classes to override this and provide custom args to the
   // server before it is constructed. Default behavior is to do nothing.
-  virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder);
+  // requested_port provides the port requested by caller as bound_port() is
+  // not available till BuildAndStart has been called.
+  virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder,
+                                  int requested_port) {}
 
  public:
   static Status Create(const ServerDef& server_def, Env* env,
@@ -101,15 +104,19 @@ class GrpcServer : public ServerInterface {
   Status Join() override;
   const string target() const override;
 
-  WorkerEnv* worker_env() { return &worker_env_; }
-  MasterEnv* master_env() { return &master_env_; }
+  WorkerEnv* worker_env() override { return &worker_env_; }
+  MasterEnv* master_env() override { return &master_env_; }
 
   // Add master eager context to local eager service in order to handle enqueue
   // requests from remote workers.
   Status AddMasterEagerContextToEagerService(
-      const tensorflow::uint64 context_id, tensorflow::EagerContext* context);
+      const tensorflow::uint64 context_id,
+      tensorflow::EagerContext* context) override;
   // Update the set of workers that can be reached by the GRPC server
-  Status UpdateServerDef(const ServerDef& server_def);
+  Status UpdateServerDef(const ServerDef& server_def) override;
+  // Pass coordination service agent instance to server's RPC handler
+  Status SetCoordinationServiceAgentInstance(
+      CoordinationServiceAgent* agent) override;
 
  protected:
   virtual Status GetHostAndPort(const ServerDef& server_def, string* host_name,
@@ -139,6 +146,10 @@ class GrpcServer : public ServerInterface {
   virtual std::map<std::string, AsyncServiceInterface*> ExtraServices(
       ::grpc::ServerBuilder*) {
     return {};
+  }
+
+  virtual std::map<std::string, AsyncServiceInterface*> GetExtraServices() {
+    return extra_services_;
   }
 
   // Parses a WorkerCacheFactoryOptions into a GrpcChannelSpec.
@@ -202,6 +213,10 @@ class GrpcServer : public ServerInterface {
   AsyncServiceInterface* eager_service_ = nullptr;
   std::unique_ptr<Thread> eager_thread_ TF_GUARDED_BY(mu_);
   std::shared_ptr<WorkerSession> worker_session_;
+
+  // Experimental coordination service implementation, and RPC polling thread.
+  AsyncServiceInterface* coordination_service_ = nullptr;
+  std::unique_ptr<Thread> coordination_thread_ TF_GUARDED_BY(mu_);
 
   // TensorFlow profiler service implementation.
   std::unique_ptr<grpc::ProfilerService::Service> profiler_service_ = nullptr;

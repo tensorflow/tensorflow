@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_SHIM_TEST_UTILS_H_
 
 #include <initializer_list>
+#include <string>
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"

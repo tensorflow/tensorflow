@@ -61,10 +61,10 @@ StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
       }
 
       // Remove dead tuple elements.
-      const int64 tuple_element_count =
+      const int64_t tuple_element_count =
           ShapeUtil::TupleElementCount(xla_while->shape());
       bool modified_while_body_comp = false;
-      for (int64 i = 0; i < tuple_element_count; ++i) {
+      for (int64_t i = 0; i < tuple_element_count; ++i) {
         if (liveness->IsLive(xla_while, {i})) {
           continue;
         }
@@ -94,7 +94,7 @@ StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
   // Run DCE on while body computations that we modified.
   for (auto* while_body_comp : while_body_comps_to_dce) {
     TF_ASSIGN_OR_RETURN(bool changed_for_computation,
-                        HloDCE().RunOnComputation(
+                        HloDCE::RunOnComputation(
                             while_body_comp,
                             /*remove_cross_partition_collective_ops=*/false));
     changed |= changed_for_computation;

@@ -38,6 +38,7 @@ REGISTER_OP("InitializeTRTResource")
 
 REGISTER_OP("SerializeTRTResource")
     .Attr("delete_resource: bool = false")
+    .Attr("save_gpu_specific_engines: bool = True")
     .Input("resource_name: string")
     .Input("filename: string")
     .SetIsStateful()

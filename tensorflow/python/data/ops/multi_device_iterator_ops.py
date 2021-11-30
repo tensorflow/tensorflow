@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrapper for prefetching_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -223,7 +220,7 @@ class MultiDeviceIterator(object):
         prevent deadlocks, if the prefetch_buffer_size is greater than the
         max_buffer_size, we set the max_buffer_size to prefetch_buffer_size.
     """
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.num_devices = len(devices)
     dataset = dataset.with_options(options)
     self._dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
@@ -242,7 +239,7 @@ class MultiDeviceIterator(object):
       # TODO(b/121378567): Get rid of this shared_name hack.
       shared_name = ""
       if context.executing_eagerly():
-        shared_name = context.shared_name()
+        shared_name = context.anonymous_name()
       self._multi_device_iterator_resource = (
           gen_dataset_ops.multi_device_iterator(
               devices=self._devices,
@@ -335,7 +332,9 @@ class MultiDeviceIterator(object):
   def _eager_reset(self):
     """Resets the MultiDeviceIterator in eager mode."""
     if not ops.executing_eagerly_outside_functions():
-      raise ValueError("Eager reset is only supported in eager mode.")
+      raise ValueError(
+          "Resetting a multi-device iterator is only supported in the eager "
+          "mode.")
     # pylint: disable=protected-access
     self._incarnation_id = gen_dataset_ops.multi_device_iterator_init(
         self._dataset._variant_tensor,
@@ -467,7 +466,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
 
     Args:
       dataset: The input dataset to be iterated over.
-      devices: The list of devices to fetch data to.
+      devices: (Required.) The list of devices to fetch data to.
       max_buffer_size: Maximum size of the host side per device buffer to keep.
       prefetch_buffer_size: if > 0, then we setup a buffer on each device to
         prefetch into.
@@ -480,19 +479,25 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
 
     Raises:
       RuntimeError: If executed in graph mode or outside of function building
-      mode.
+        mode.
+      ValueError: If any of the following happens:
+        - `devices` is `None`
+        - `dataset` is `None` and either `components` or `element_spec` is
+          `None`
+        - `dataset` is not None and either `components` or `element_spec` is
+          provided
     """
     if not context.executing_eagerly() and not ops.inside_function():
       raise RuntimeError("OwnedMultiDeviceIterator is only supported inside of "
                          "tf.function or when eager execution is enabled.")
     if devices is None:
-      raise ValueError("`devices` must be provided")
-    error_message = "Either `dataset` or both `components` and "
-    "`element_spec` need to be provided."
+      raise ValueError("`devices` must be provided.")
 
     if dataset is None:
       if (components is None or element_spec is None):
-        raise ValueError(error_message)
+        raise ValueError(
+            "When `dataset` is not provided, both `components` and "
+            "`element_spec` must be specified.")
       self._element_spec = element_spec
       self._devices = devices
       self._source_device = source_device
@@ -504,8 +509,10 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
         iterator_handles.append(it._iterator_resource)  # pylint: disable=protected-access
     else:
       if (components is not None or element_spec is not None):
-        raise ValueError(error_message)
-      options = dataset_ops.Options()
+        raise ValueError(
+            "When `dataset` is provided, `element_spec` and `components` must "
+            "not be specified.")
+      options = options_lib.Options()
       options.experimental_distribute.num_devices = len(devices)
       dataset = dataset.with_options(options)
       dataset = dataset._apply_debug_options()  # pylint: disable=protected-access

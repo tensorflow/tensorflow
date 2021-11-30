@@ -22,10 +22,10 @@ limitations under the License.
 
 namespace toco {
 
+using ::int64_t;
 using std::string;
 using tensorflow::int16;
 using tensorflow::int32;
-using tensorflow::int64;
 using tensorflow::int8;
 using tensorflow::uint16;
 using tensorflow::uint32;

@@ -50,13 +50,8 @@ class TFLiteOperationParser {
   }
 };
 
-absl::Status CheckKernelsAndStrides(int kernel_h, int kernel_w, int strides_h,
-                                    int strides_w);
 absl::Status CheckMaxSupportedOpVersion(const TfLiteRegistration* registration,
                                         int max_version);
-absl::Status CheckStrides(int strides_h, int strides_w);
-absl::Status CheckTensorIsAvailable(const TfLiteContext* context,
-                                    const TfLiteNode* tflite_node, int idx);
 HW ToHW(int32_t h, int32_t w);
 absl::Status ParsePoolingAttributes(const TfLitePoolParams* tf_options,
                                     const BHWC& input_shape,

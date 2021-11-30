@@ -52,7 +52,7 @@ void StopPeriodicFunction(PeriodicFunction* periodic_function,
 }
 
 TEST(PeriodicFunctionTest, ObeyInterval) {
-  const int64 kPeriodMicros = 2;
+  const int64_t kPeriodMicros = 2;
   const int kCalls = 10;
 
   int actual_calls = 0;
@@ -77,8 +77,8 @@ TEST(PeriodicFunctionTest, ObeyInterval) {
 }
 
 TEST(PeriodicFunctionTest, ObeyStartupDelay) {
-  const int64 kDelayMicros = 10;
-  const int64 kPeriodMicros = kDelayMicros / 10;
+  const int64_t kDelayMicros = 10;
+  const int64_t kPeriodMicros = kDelayMicros / 10;
 
   int actual_calls = 0;
   {
@@ -104,8 +104,8 @@ TEST(PeriodicFunctionTest, ObeyStartupDelay) {
 
 // Test for race in calculating the first time the callback should fire.
 TEST(PeriodicFunctionTest, StartupDelayRace) {
-  const int64 kDelayMicros = 10;
-  const int64 kPeriodMicros = kDelayMicros / 10;
+  const int64_t kDelayMicros = 10;
+  const int64_t kPeriodMicros = kDelayMicros / 10;
 
   mutex mu;
   int counter = 0;
@@ -151,7 +151,7 @@ TEST(PeriodicFunctionTest, MinInterval) {
 
 class PeriodicFunctionWithFakeClockEnvTest : public ::testing::Test {
  protected:
-  const int64 kPeriodMicros = 50;
+  const int64_t kPeriodMicros = 50;
   PeriodicFunctionWithFakeClockEnvTest()
       : fake_clock_env_(Env::Default()),
         counter_(0),

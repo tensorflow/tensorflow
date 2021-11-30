@@ -264,12 +264,13 @@ TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
 
 *   Unsupported types: Certain TensorFlow ops may not support the full set of
     input/output types that are typically available in TensorFlow.
-*   Unsupported ops: Control flow ops and ops that require explicit
-    initialization from resources, like `HashTableV2`, are not yet supported.
 
 ## Updates
 
-*   Version 2.5 (not yet officially released)
+*   Version 2.6
+    -   Supports for GraphDef-attribute based operators and HashTable resource
+        initializations have improved.
+*   Version 2.5
     -   You can apply an optimization known as
         [post training quantization](../performance/post_training_quantization.md)
 *   Version 2.4

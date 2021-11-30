@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Lite Python Interface: Sanity check."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.lite.python import convert
@@ -72,6 +68,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
     tflite_model = convert.toco_convert_graph_def(
         sess.graph_def, [("input", [1, 16, 16, 3])], ["add"],
         enable_mlir_converter=False,
+        control_output_arrays=None,
         inference_type=dtypes.float32)
     self.assertTrue(tflite_model)
 
@@ -110,6 +107,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         input_arrays_map,
         output_arrays,
         enable_mlir_converter=False,
+        control_output_arrays=None,
         inference_type=dtypes.uint8,
         quantized_input_stats=[(0., 1.), (0., 1.)])
     self.assertTrue(tflite_model)
@@ -157,6 +155,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
           input_arrays_map,
           output_arrays,
           enable_mlir_converter=False,
+          control_output_arrays=None,
           inference_type=dtypes.uint8)
     self.assertEqual(
         "The `quantized_input_stats` flag must be defined when either "

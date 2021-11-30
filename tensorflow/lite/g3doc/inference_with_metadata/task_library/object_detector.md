@@ -69,8 +69,10 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.2.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
 
@@ -82,8 +84,14 @@ anymore.
 
 ```java
 // Initialization
-ObjectDetectorOptions options = ObjectDetectorOptions.builder().setMaxResults(1).build();
-ObjectDetector objectDetector = ObjectDetector.createFromFileAndOptions(context, modelFile, options);
+ObjectDetectorOptions options =
+    ObjectDetectorOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setMaxResults(1)
+        .build();
+ObjectDetector objectDetector =
+    ObjectDetector.createFromFileAndOptions(
+        context, modelFile, options);
 
 // Run inference
 List<Detection> results = objectDetector.detect(image);
@@ -171,7 +179,9 @@ The compatible object detector models should meet the following requirements:
             integer index of a class.
         -   optional (but recommended) label map(s) can be attached as
             AssociatedFile-s with type TENSOR_VALUE_LABELS, containing one label
-            per line. The first such AssociatedFile (if any) is used to fill the
+            per line. See the
+            [example label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/object_detector/labelmap.txt).
+            The first such AssociatedFile (if any) is used to fill the
             `class_name` field of the results. The `display_name` field is
             filled from the AssociatedFile (if any) whose locale matches the
             `display_names_locale` field of the `ObjectDetectorOptions` used at

@@ -101,7 +101,7 @@ TFStats::TFStats(const string& filename,
         node_pb.second.name(), std::move(node)));
   }
   has_code_traces_ = profile.has_trace();
-  for (int64 s : profile.steps()) {
+  for (int64_t s : profile.steps()) {
     steps_.insert(s);
   }
 }
@@ -156,7 +156,7 @@ const GraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
     return scope_view_->Show(prefix, opts);
   } else if (cmd == kCmds[1]) {
     if (opts.step < 0 && opts.output_type == kOutput[0]) {
-      for (int64 step : steps_) {
+      for (int64_t step : steps_) {
         Options nopts = opts;
         nopts.step = step;
         graph_view_->Show(prefix, nopts);
@@ -263,7 +263,7 @@ void TFStats::AddOpLogProto(std::unique_ptr<OpLogProto> op_log) {
   }
 }
 
-void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
+void TFStats::AddRunMeta(int64_t step, std::unique_ptr<RunMetadata> run_meta) {
   if (!run_meta || !run_meta->has_step_stats()) {
     absl::FPrintF(stderr, "Invalid RunMetadata for step %d\n", step);
     return;
@@ -340,7 +340,7 @@ void TFStats::SerializeToString(string* content) {
 
   profile.set_has_trace(has_code_traces_);
   profile.set_miss_accelerator_stream(miss_accelerator_stream_);
-  for (int64 s : steps_) {
+  for (int64_t s : steps_) {
     profile.add_steps(s);
   }
   *content = profile.SerializeAsString();
@@ -359,7 +359,7 @@ bool TFStats::Validate(const Options& opts) const {
   if (opts.step >= 0 && steps_.find(opts.step) == steps_.end()) {
     absl::FPrintF(stderr,
                   "Options -step=%d not found.\nAvailable steps: ", opts.step);
-    for (int64 s : steps_) {
+    for (int64_t s : steps_) {
       absl::FPrintF(stderr, "%d ", s);
     }
     absl::FPrintF(stderr, "\n");
@@ -368,7 +368,7 @@ bool TFStats::Validate(const Options& opts) const {
   return true;
 }
 
-void TFStats::AddNodeForTest(int64 step, std::unique_ptr<TFGraphNode> node) {
+void TFStats::AddNodeForTest(int64_t step, std::unique_ptr<TFGraphNode> node) {
   steps_.insert(step);
   nodes_map_[node->name()] = std::move(node);
 }

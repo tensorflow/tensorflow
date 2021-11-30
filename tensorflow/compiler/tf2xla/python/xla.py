@@ -24,10 +24,6 @@ by jax2tf. Hence, we need to maintain backwards compatibility for these
 operators. Please reach out to the JAX team if you want to make changes.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
@@ -40,6 +36,7 @@ from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops.numpy_ops import np_utils
 
 # TODO(phawkins): provide wrappers for all XLA operators. Currently the missing
@@ -252,7 +249,8 @@ def conv(lhs,
          feature_group_count=1,
          precision_config=None,
          preferred_element_type=None,
-         name=None):
+         name=None,
+         use_v2=False):
   """Wraps the XLA ConvGeneralDilated operator.
 
   ConvGeneralDilated is the most general form of XLA convolution and is
@@ -270,7 +268,8 @@ def conv(lhs,
     feature_group_count: number of feature groups for grouped convolution.
     precision_config: a `xla.PrecisionConfig` proto.
     preferred_element_type: the result `dtype`.
-    name: an optional name for the operator
+    name: an optional name for the operator.
+    use_v2: an optional request to use the XlaConvV2 op even if not necessary.
 
   Returns:
     A tensor representing the output of the convolution.
@@ -281,7 +280,7 @@ def conv(lhs,
   needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  if needs_v2:
+  if needs_v2 or use_v2:
     return gen_xla_ops.xla_conv_v2(
         lhs,
         rhs,
@@ -319,14 +318,15 @@ def dot_general(lhs,
                 dimension_numbers,
                 precision_config=None,
                 preferred_element_type=None,
-                name=None):
+                name=None,
+                use_v2=False):
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
   needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  if needs_v2:
+  if needs_v2 or use_v2:
     return gen_xla_ops.xla_dot_v2(
         lhs,
         rhs,
@@ -374,9 +374,31 @@ def random_uniform(minval, maxval, dims, name=None):
       dims, minval, maxval, dtype=minval.dtype, name=name)
 
 
+def rng_bit_generator(algorithm, initial_state, shape, dtype):
+  """Stateless PRNG bit generator.
+
+  Wraps the XLA RngBitGenerator operator, documented at
+    https://www.tensorflow.org/performance/xla/operation_semantics#rngbitgenerator.
+
+  Args:
+    algorithm: The PRNG algorithm to use, one of
+      tf.random.Algorithm.{PHILOX, THREEFRY, AUTO_SELECT}.
+    initial_state: Initial state for the PRNG algorithm. For THREEFRY, it
+      should be a u64[2] and for PHILOX a u64[3].
+    shape: The output shape of the generated data.
+    dtype: The type of the tensor.
+
+  Returns:
+    a tuple with a new state and generated data of the given shape.
+  """
+  alg_int = stateless_random_ops.convert_alg_to_int(algorithm)
+  return gen_xla_ops.xla_rng_bit_generator(alg_int, initial_state, shape,
+                                           dtype=dtype)
+
+
 recv = gen_xla_ops.xla_recv
 reduce = gen_xla_ops.xla_reduce
-variadic_reduce = gen_xla_ops.xla_variadic_reduce
+variadic_reduce = gen_xla_ops.xla_variadic_reduce_v2
 
 ops.no_gradient("XlaVariadicReduce")
 
@@ -452,6 +474,12 @@ set_bound = gen_xla_ops.xla_set_bound
 set_dynamic_dimension_size = gen_xla_ops.xla_set_dynamic_dimension_size
 
 
+# Inverse of xla_set_dynamic_dimension_size. Make an xla bounded dynamic
+# dimension into a static dimension. The bound of the size of dimension
+# `dim_index` becomes the static dimension size.
+remove_dynamic_dimension_size = gen_xla_ops.xla_remove_dynamic_dimension_size
+
+
 def reshape(x, new_sizes, dimensions=None, name=None):
   if dimensions is not None:
     x = array_ops.transpose(x, dimensions)
@@ -480,8 +508,12 @@ sharding = gen_xla_ops.xla_sharding
 
 @ops.RegisterGradient("XlaSharding")
 def _sharding_grad(op, grad):
+  """Gradient for XlaSharding op."""
   sharding_attr = op.get_attr("sharding")
-  grad_sharding = gen_xla_ops.xla_sharding(grad, sharding=sharding_attr)
+  grad_sharding = gen_xla_ops.xla_sharding(
+      grad,
+      sharding=sharding_attr,
+      unspecified_dims=op.get_attr("unspecified_dims"))
   # pylint: disable=protected-access
   grad_sharding.op._set_attr("_XlaSharding",
                              attr_value_pb2.AttrValue(s=sharding_attr))
@@ -497,14 +529,19 @@ def _spmd_full_to_shard_shape_grad(op, grad):
   s2f = gen_xla_ops.xla_spmd_shard_to_full_shape(
       grad,
       manual_sharding=op.get_attr("manual_sharding"),
-      full_shape=op.inputs[0].shape.as_list())
+      full_shape=op.inputs[0].shape.as_list(),
+      dim=op.get_attr("dim"),
+      unspecified_dims=op.get_attr("unspecified_dims"))
   return [s2f]
 
 
 @ops.RegisterGradient("XlaSpmdShardToFullShape")
 def _spmd_shard_to_full_shape_grad(op, grad):
   f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
-      grad, manual_sharding=op.get_attr("manual_sharding"))
+      grad,
+      manual_sharding=op.get_attr("manual_sharding"),
+      dim=op.get_attr("dim"),
+      unspecified_dims=op.get_attr("unspecified_dims"))
   return [f2s]
 
 

@@ -35,7 +35,7 @@ namespace {
 //
 // Stay on the conservative side, this is smaller than full 64kB, but allows
 // some extra space for cache.
-int64 kSharedMemoryBudgetInBytes = 40000;
+int64_t kSharedMemoryBudgetInBytes = 40000;
 
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
@@ -67,18 +67,18 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
-std::vector<int64> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
-  std::vector<int64> relative_order;
-  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+std::vector<int64_t> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
+  std::vector<int64_t> relative_order;
+  for (int64_t dim : LayoutUtil::MinorToMajor(shape)) {
     if (shape.dimensions(dim) > 1) {
       relative_order.push_back(dim);
     }
   }
   // Now normalize the dimensions to values between 0 and true rank - 1.
-  std::vector<int64> sorted_dims = relative_order;
+  std::vector<int64_t> sorted_dims = relative_order;
   std::sort(sorted_dims.begin(), sorted_dims.end());
-  for (int64& dim : relative_order) {
-    int64 sorted_index = std::distance(
+  for (int64_t& dim : relative_order) {
+    int64_t sorted_index = std::distance(
         sorted_dims.begin(),
         std::lower_bound(sorted_dims.begin(), sorted_dims.end(), dim));
     dim = sorted_index;
@@ -90,11 +90,21 @@ std::vector<int64> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
                                          const HloInstruction& reduce) {
+  if (producer.opcode() == HloOpcode::kFusion) {
+    for (const HloInstruction* instr : producer.fused_instructions()) {
+      if (instr->opcode() == HloOpcode::kCopy) {
+        // Elementwise copies are only inserted in input fusion for
+        // transposition, and those are never friendly to the reduction.
+        return false;
+      }
+    }
+  }
+
   std::vector<HloInstruction*> params;
   AppendParams(producer, &params);
   AppendParams(reduce, &params);
-  int64 max_true_rank = -1;
-  std::vector<int64> max_rank_order;
+  int64_t max_true_rank = -1;
+  std::vector<int64_t> max_rank_order;
   for (HloInstruction* param : params) {
     if (param->shape().IsArray() &&
         ShapeUtil::TrueRank(param->shape()) > max_true_rank) {
@@ -134,11 +144,6 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
-  // TODO(b/129089333): Don't fuse variadic reduce.
-  if (instr.opcode() == HloOpcode::kReduce && instr.shape().IsTuple()) {
-    return false;
-  }
-
   return IsReduceInputFusion(instr) ||
          IsReductionFromOrToContiguousDimensions(instr);
 }
@@ -316,32 +321,95 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
 }
 
 // Returns shared memory usage for a given instruction in bytes.
-static int64 SharedMemoryUsage(const HloInstruction& instr) {
+static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
   // For now we are only fusing reductions.
   if (instr.opcode() == HloOpcode::kReduce &&
       IsReductionFromOrToContiguousDimensions(instr)) {
     ReductionDimensions reduction_info =
         GetReductionKindAndContiguousComponents(instr);
-    int64 primitive_size =
-        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
+    int64_t primitive_size = ShapeUtil::ByteSizeOfPrimitiveType(
+        instr.operand(0)->shape().element_type());
+    int num_variadic =
+        instr.shape().IsTuple() ? instr.shape().tuple_shapes_size() : 1;
     if (reduction_info.is_row_reduction) {
       // __shared__[32] is used for row reduction.
-      return 32 * primitive_size;
+      return 32 * primitive_size * num_variadic;
     } else {
       // __shared__[2][32][33] cache is used for column reduction ("2" comes
       // from potential x-tiling).
-      return 2 * 32 * 33 * primitive_size;
+      return 2 * 32 * 33 * primitive_size * num_variadic;
     }
   } else if (instr.opcode() == HloOpcode::kFusion) {
-    int64 sum = 0;
+    int64_t sum = 0;
     for (const HloInstruction* hlo :
-         instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
-      sum += SharedMemoryUsage(*hlo);
+         instr.fused_instructions_computation()->instructions()) {
+      sum += SharedMemoryUsageNoCache(*hlo);
     }
     return sum;
   }
   // Other fused expressions for now don't need the shared memory budget.
   return 0;
+}
+
+static int64_t SharedMemoryUsage(const HloInstruction& instr,
+                                 FusionInfoCache* cache = nullptr) {
+  if (!cache) {
+    return SharedMemoryUsageNoCache(instr);
+  }
+
+  // nb: Users are only expected to call cache.Invalidate() on top-level
+  // instructions, not instructions inside fusion nodes.  Therefore we can only
+  // cache top-level instructions; it would not be valid to pass the cache to
+  // SharedMemoryUsageNoCache and use the cache *within* the fusion.
+  auto it_and_inserted = cache->shared_memory_usage.emplace(&instr, -1);
+  auto it = it_and_inserted.first;
+  auto inserted = it_and_inserted.second;
+
+  if (inserted) {
+    it->second = SharedMemoryUsageNoCache(instr);
+  }
+  return it->second;
+}
+
+// Codegen'ing unnested reductions requires a lot of registers, so a MOF
+// combining many of those runs a high risk of spilling.
+constexpr int64_t kMaxUnnestedReductionOutputsPerFusion = 8;
+
+// Returns the number of unnested reductions in the instruction output.
+static int64_t NumUnnestedReductionsNoCache(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kReduce &&
+      IsReductionFromOrToContiguousDimensions(instr)) {
+    return 1;
+  }
+  if (instr.opcode() == HloOpcode::kFusion) {
+    int64_t sum = 0;
+    for (const HloInstruction* hlo :
+         instr.fused_instructions_computation()->instructions()) {
+      sum += NumUnnestedReductionsNoCache(*hlo);
+    }
+    return sum;
+  }
+  return 0;
+}
+
+static int64_t NumUnnestedReductions(const HloInstruction& instr,
+                                     FusionInfoCache* cache) {
+  if (!cache) {
+    return NumUnnestedReductionsNoCache(instr);
+  }
+
+  // nb: Users are only expected to call cache.Invalidate() on top-level
+  // instructions, not instructions inside fusion nodes.  Therefore we can only
+  // cache top-level instructions; it would not be valid to pass the cache to
+  // NumUnnestedReductionsNoCache and use the cache *within* the fusion.
+  auto it_and_inserted = cache->num_unnested_reductions.emplace(&instr, -1);
+  auto it = it_and_inserted.first;
+  auto inserted = it_and_inserted.second;
+
+  if (inserted) {
+    it->second = NumUnnestedReductionsNoCache(instr);
+  }
+  return it->second;
 }
 
 // This function limits the maximum number of operands to a fusion, and the
@@ -369,12 +437,21 @@ static int64 SharedMemoryUsage(const HloInstruction& instr) {
 // to true to enable more fusion.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
                            const HloInstruction& instr2,
-                           bool is_consumer_producer_fusion) {
-  if (SharedMemoryUsage(instr1) + SharedMemoryUsage(instr2) >
+                           bool is_consumer_producer_fusion,
+                           FusionInfoCache* cache /*=nullptr*/) {
+  if (SharedMemoryUsage(instr1, cache) + SharedMemoryUsage(instr2, cache) >
       kSharedMemoryBudgetInBytes) {
     VLOG(5) << "Shared memory usage of fusion of " << instr1.ToString()
             << " and " << instr2.ToString() << " would be over the budget of "
             << kSharedMemoryBudgetInBytes << "B";
+    return true;
+  }
+
+  if (NumUnnestedReductions(instr1, cache) +
+          NumUnnestedReductions(instr2, cache) >
+      kMaxUnnestedReductionOutputsPerFusion) {
+    VLOG(5) << "Not fusing over " << kMaxUnnestedReductionOutputsPerFusion
+            << " unnested reductions in fusion";
     return true;
   }
 
@@ -393,8 +470,8 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   // But because this is a heuristic and our limit
   // kMaxOperandsAndOutputsPerFusion is a large value (so +/- 1 doesn't make a
   // big difference), we ignore this small inaccuracy in favor of simplicity.
-  int64 num_output_buffers = ShapeUtil::SubshapeCount(instr1.shape()) +
-                             ShapeUtil::SubshapeCount(instr2.shape());
+  int64_t num_output_buffers = ShapeUtil::SubshapeCount(instr1.shape()) +
+                               ShapeUtil::SubshapeCount(instr2.shape());
 
   // The new fusion will have no more operands and outputs than
   //   producer_operands + consumer_operands - 1 + num_output_buffers

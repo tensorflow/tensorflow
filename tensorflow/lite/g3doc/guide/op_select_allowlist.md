@@ -190,6 +190,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.FIFOQueue`
 *   `raw_ops.FIFOQueueV2`
 *   `raw_ops.Fill`
+*   `raw_ops.FilterDataset`
 *   `raw_ops.FinalizeDataset`
 *   `raw_ops.Fingerprint`
 *   `raw_ops.FlatMapDataset`
@@ -359,6 +360,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Print`
 *   `raw_ops.PrintV2`
 *   `raw_ops.Prod`
+*   `raw_ops.Qr`
 *   `raw_ops.QuantizedAdd`
 *   `raw_ops.QuantizedAvgPool`
 *   `raw_ops.QuantizedBatchNormWithGlobalNormalization`
@@ -564,6 +566,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SparseFillEmptyRowsGrad`
 *   `raw_ops.SparseReduceSum`
 *   `raw_ops.SparseReshape`
+*   `raw_ops.SparseReorder`
 *   `raw_ops.SparseSegmentMean`
 *   `raw_ops.SparseSegmentMeanGrad`
 *   `raw_ops.SparseSegmentMeanWithNumSegments`
@@ -573,7 +576,9 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SparseSegmentSum`
 *   `raw_ops.SparseSegmentSumGrad`
 *   `raw_ops.SparseSegmentSumWithNumSegments`
+*   `raw_ops.SparseSlice`
 *   `raw_ops.SparseSoftmaxCrossEntropyWithLogits`
+*   `raw_ops.SparseTensorDenseMatMul`
 *   `raw_ops.SparseToDense`
 *   `raw_ops.SparseToSparseSetOperation`
 *   `raw_ops.Split`
@@ -631,6 +636,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Switch`
 *   `raw_ops.SymbolicGradient`
 *   `raw_ops.TakeDataset`
+*   `raw_ops.TakeWhileDataset`
 *   `raw_ops.Tan`
 *   `raw_ops.Tanh`
 *   `raw_ops.TanhGrad`
@@ -791,8 +797,7 @@ SentencePiece library into the final app or binary.
 
 ## User's defined Operators
 
-*Note: This feature is only available in tf-nightly and the upcoming v2.5.0
-version*
+*Note: This feature is only available from TensorFlow 2.5 version*
 
 If you
 [created your own TensorFlow operators](https://www.tensorflow.org/guide/create_op),

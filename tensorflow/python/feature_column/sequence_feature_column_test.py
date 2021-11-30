@@ -14,17 +14,14 @@
 # ==============================================================================
 """Tests for sequential_feature_column."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
+# Should remove this in future since it use a keras component for unit test.
+from keras.feature_column import dense_features
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.feature_column import feature_column_lib as fc_lib
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column import serialization
@@ -133,7 +130,7 @@ def _get_sequence_dense_tensor(column, features):
 
 def _get_sequence_dense_tensor_state(column, features):
   state_manager = fc._StateManagerImpl(
-      fc_lib.DenseFeatures(column), trainable=True)
+      dense_features.DenseFeatures(column), trainable=True)
   column.create_state(state_manager)
   dense_tensor, lengths = column.get_sequence_dense_tensor(
       fc.FeatureTransformationCache(features), state_manager)

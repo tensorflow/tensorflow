@@ -388,14 +388,25 @@ class BinaryOpsTestBase : public OpsTestBase {
 // Macros to easily generate common test cases. The macros use `BinaryOpsTest`
 // fixture in order to share implementation across GPU and CPU platform tests.
 // For specific inputs, please define your own test fixtures.
+#define GENERATE_DEFAULT_NO_BROADCASTING_TESTS_2(                            \
+    op_name, test_name, T, BaselineT, OutT, BaselineOutT, lhs_input,         \
+    rhs_input, baseline_callback, config)                                    \
+  TEST_F(BinaryOpsTest, op_name##EqShapes##test_name) {                      \
+    TestEqualShapes<T, BaselineT, OutT, BaselineOutT>(                       \
+        #op_name, /*shape=*/test::DefaultInputShape(), lhs_input, rhs_input, \
+        baseline_callback, config);                                          \
+  }                                                                          \
+  TEST_F(BinaryOpsTest, op_name##IncompatibleShapes##test_name) {            \
+    TestIncompatibleShapes<T, OutT>(#op_name, lhs_input, rhs_input, config); \
+  }
+
 #define GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, BaselineT, OutT,      \
                                  BaselineOutT, lhs_input, rhs_input,          \
                                  baseline_callback, config)                   \
-  TEST_F(BinaryOpsTest, op_name##EqShapes##test_name) {                       \
-    TestEqualShapes<T, BaselineT, OutT, BaselineOutT>(                        \
-        #op_name, /*shape=*/test::DefaultInputShape(), lhs_input, rhs_input,  \
-        baseline_callback, config);                                           \
-  }                                                                           \
+                                                                              \
+  GENERATE_DEFAULT_NO_BROADCASTING_TESTS_2(                                   \
+      op_name, test_name, T, BaselineT, OutT, BaselineOutT, lhs_input,        \
+      rhs_input, baseline_callback, config)                                   \
                                                                               \
   TEST_F(BinaryOpsTest, op_name##OneScalar##test_name) {                      \
     TestOneScalar<T, BaselineT, OutT, BaselineOutT>(                          \
@@ -409,10 +420,6 @@ class BinaryOpsTestBase : public OpsTestBase {
         #op_name, /*scalar_input=*/lhs_input.front(),                         \
         /*other_shape=*/test::DefaultInputShape(), /*other_input=*/rhs_input, \
         baseline_callback, config);                                           \
-  }                                                                           \
-                                                                              \
-  TEST_F(BinaryOpsTest, op_name##IncompatibleShapes##test_name) {             \
-    TestIncompatibleShapes<T, OutT>(#op_name, lhs_input, rhs_input, config);  \
   }                                                                           \
                                                                               \
   TEST_F(BinaryOpsTest, op_name##BroadcastingExpand##test_name) {             \
@@ -440,17 +447,24 @@ class BinaryOpsTestBase : public OpsTestBase {
         #op_name, lhs_input, rhs_input, config);                              \
   }
 
-#define GENERATE_DEFAULT_TESTS(op_name, test_name, T, OutT, baseline_callback) \
+#define GENERATE_DEFAULT_TESTS(op_name, test_name, T, OutT, baseline_callback, \
+                               config)                                         \
   GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, T, OutT, OutT,               \
                            test::DefaultInput<T>(), test::DefaultInput<T>(),   \
-                           baseline_callback,                                  \
-                           test::OpsTestConfig().ExpectStrictlyEqual())
+                           baseline_callback, config)
 
 #define GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(                  \
-    op_name, test_name, T, OutT, lhs_input, rhs_input, baseline_callback)   \
+    op_name, test_name, T, OutT, lhs_input, rhs_input, baseline_callback,   \
+    config)                                                                 \
   GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, T, OutT, OutT, lhs_input, \
-                           rhs_input, baseline_callback,                    \
-                           test::OpsTestConfig().ExpectStrictlyEqual())
+                           rhs_input, baseline_callback, config)
+
+#define GENERATE_DEFAULT_NO_BROADCASTING_TESTS(op_name, test_name, T, OutT, \
+                                               baseline_callback)           \
+  GENERATE_DEFAULT_NO_BROADCASTING_TESTS_2(                                 \
+      op_name, test_name, T, T, OutT, OutT, test::DefaultInput<T>(),        \
+      test::DefaultInput<T>(), baseline_callback,                           \
+      test::OpsTestConfig().ExpectStrictlyEqual())
 
 }  // namespace tensorflow
 

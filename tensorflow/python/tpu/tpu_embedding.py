@@ -14,10 +14,6 @@
 # ==============================================================================
 """TPU embedding APIs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import math
@@ -116,31 +112,35 @@ class TableConfig(
         `None`.
     """
     if not isinstance(vocabulary_size, int) or vocabulary_size < 1:
-      raise ValueError('Invalid vocabulary_size {}.'.format(vocabulary_size))
+      raise ValueError(f'vocabulary_size must >= 1. '
+                       f'Received: {vocabulary_size}.')
 
     if not isinstance(dimension, int) or dimension < 1:
-      raise ValueError('Invalid dimension {}.'.format(dimension))
+      raise ValueError(
+          f'dimension must be a positive int. Received: {dimension}.')
 
     if (initializer is not None) and (not callable(initializer)):
-      raise ValueError('initializer must be callable if specified.')
+      raise ValueError(f'initializer must be callable if specified. '
+                       f'Received: {initializer}.')
     if initializer is None:
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=1 / math.sqrt(dimension))
 
     if combiner not in ('mean', 'sum', 'sqrtn', None):
-      raise ValueError('Invalid combiner {}'.format(combiner))
+      raise ValueError(f'combiner must be "mean", "sum", "sqrtn" or None. '
+                       f'Received: {combiner}.')
 
     if learning_rate is not None and learning_rate_fn is not None:
       raise ValueError('At most one of learning_rate and learning_rate_fn '
-                       'can be None; got {} and {}'.format(
+                       'can be None. Received: {} and {}'.format(
                            learning_rate, learning_rate_fn))
 
     if optimization_parameters is not None:
       if not isinstance(optimization_parameters, _OptimizationParameters):
-        raise ValueError('`optimization_parameters` must inherit from '
-                         '`_OptimizationParameters`. '
-                         '`type(optimization_parameters)`={}'.format(
-                             type(optimization_parameters)))
+        raise ValueError(f'`optimization_parameters` must inherit from '
+                         f'`_OptimizationParameters`. '
+                         f'Received: `type(optimization_parameters)`='
+                         f'{type(optimization_parameters)}.')
 
     return super(TableConfig,
                  cls).__new__(cls, vocabulary_size, dimension, initializer,
@@ -169,11 +169,11 @@ class FeatureConfig(
       `FeatureConfig`.
 
     Raises:
-      ValueError: if `max_sequence_length` non-negative.
+      ValueError: if `max_sequence_length` non-integer or negative.
     """
     if not isinstance(max_sequence_length, int) or max_sequence_length < 0:
-      raise ValueError(
-          'Invalid max_sequence_length {}.'.format(max_sequence_length))
+      raise ValueError(f'max_sequence_length must be zero or a positive int, '
+                       f'got {max_sequence_length}.')
 
     return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length,
                                              weight_key)
@@ -314,40 +314,46 @@ def get_enqueue_datas_list_from_ragged_tensors_list(rg_tensors_list):
 AdamSlotVariableNames = collections.namedtuple('AdamSlotVariableNames',
                                                ['m', 'v'])
 
-AdagradSlotVariableName = collections.namedtuple('AdagradSlotVariableName',
-                                                 ['accumulator'])
+AdagradSlotVariableNames = collections.namedtuple('AdagradSlotVariableNames',
+                                                  ['accumulator'])
 
-MomentumSlotVariableName = collections.namedtuple('MomentumSlotVariableName',
-                                                  ['momenta'])
+MomentumSlotVariableNames = collections.namedtuple('MomentumSlotVariableNames',
+                                                   ['momenta'])
+
+AdagradMomentumSlotVariableNames = collections.namedtuple(
+    'AdagradMomentumSlotVariableNames', ['accumulator', 'momenta'])
 
 RMSPropSlotVariableNames = collections.namedtuple('RMSPropSlotVariableNames',
                                                   ['ms', 'mom'])
 
-ProximalAdagradSlotVariableName = collections.namedtuple(
-    'ProximalAdagradSlotVariableName', ['accumulator'])
+ProximalAdagradSlotVariableNames = collections.namedtuple(
+    'ProximalAdagradSlotVariableNames', ['accumulator'])
 
-FtrlSlotVariableName = collections.namedtuple('FtrlSlotVariableName',
-                                              ['accumulator', 'linear'])
+FtrlSlotVariableNames = collections.namedtuple('FtrlSlotVariableNames',
+                                               ['accumulator', 'linear'])
 
 ProximalYogiSlotVariableNames = collections.namedtuple(
     'ProximalYogiSlotVariableNames', ['v', 'm'])
 
-FrequencyEstimatorSlotVariableName = collections.namedtuple(
-    'FrequencyEstimatorSlotVariableName', ['last_hit_step'])
+FrequencyEstimatorSlotVariableNames = collections.namedtuple(
+    'FrequencyEstimatorSlotVariableNames', ['last_hit_step'])
 
 AdamSlotVariables = collections.namedtuple('AdamSlotVariables', ['m', 'v'])
 
-MomentumSlotVariable = collections.namedtuple('MomentumSlotVariable',
-                                              ['momenta'])
+MomentumSlotVariables = collections.namedtuple('MomentumSlotVariables',
+                                               ['momenta'])
+
+AdagradMomentumSlotVariables = collections.namedtuple(
+    'AdagradMomentumSlotVariables', ['accumulator', 'momenta'])
 
 RMSPropSlotVariables = collections.namedtuple('RMSPropSlotVariables',
                                               ['ms', 'mom'])
 
-AdagradSlotVariable = collections.namedtuple('AdagradSlotVariable',
-                                             ['accumulator'])
+AdagradSlotVariables = collections.namedtuple('AdagradSlotVariables',
+                                              ['accumulator'])
 
-ProximalAdagradSlotVariable = collections.namedtuple(
-    'ProximalAdagradSlotVariable', ['accumulator'])
+ProximalAdagradSlotVariables = collections.namedtuple(
+    'ProximalAdagradSlotVariables', ['accumulator'])
 
 FtrlSlotVariable = collections.namedtuple('FtrlSlotVariable',
                                           ['accumulator', 'linear'])
@@ -390,8 +396,8 @@ class _OptimizationParameters(object):
 
     if not use_gradient_accumulation and (clip_gradient_min is not None or
                                           clip_gradient_max is not None):
-      ValueError('When using gradient clipping limits, gradient accumulation '
-                 'must be enabled.')
+      raise ValueError('When using gradient clipping limits, gradient  '
+                       'accumulation must be enabled.')
 
 
 @tf_export(v1=['tpu.experimental.AdagradParameters'])
@@ -457,8 +463,91 @@ class AdagradParameters(_OptimizationParameters):
         clip_gradient_max=clip_gradient_max,
     )
     if initial_accumulator <= 0:
-      raise ValueError('Adagrad initial_accumulator must be positive')
+      raise ValueError(
+          f'Adagrad initial_accumulator must be greater than zero. '
+          f'Received: {initial_accumulator}.')
     self.initial_accumulator = initial_accumulator
+
+
+class AdagradMomentumParameters(_OptimizationParameters):
+  """Optimization parameters for Adagrad + Momentum with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=tf.tpu.experimental.AdagradMomentumParameters(0.1),
+          ...))
+  ```
+
+  """
+
+  def __init__(
+      self,
+      learning_rate: float,
+      momentum: float,
+      use_nesterov: bool = False,
+      exponent: float = 2,
+      beta2: float = 1,
+      epsilon: float = 1e-10,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+      clip_gradient_min: Optional[float] = None,
+      clip_gradient_max: Optional[float] = None,
+  ):
+    """Optimization parameters for Adagrad.
+
+    Args:
+      learning_rate: used for updating embedding table.
+      momentum: Moving average parameter for the momentum accumulator.
+      use_nesterov: Whether to use the Nesterov variant of momentum. See
+        Sutskever et al., 2013.
+      exponent: Exponent for the Adagrad accumulator.
+      beta2: Moving average parameter for the Adagrad accumulator.
+      epsilon: initial accumulator for Adagrad accumulator.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
+      clip_gradient_min: the minimum value to clip by; None means -infinity.
+        Gradient accumulation must be set to true if this is set.
+      clip_gradient_max: the maximum value to clip by; None means +infinity.
+        Gradient accumulation must be set to true if this is set.
+    """
+    super(AdagradMomentumParameters, self).__init__(
+        learning_rate=learning_rate,
+        use_gradient_accumulation=use_gradient_accumulation,
+        clip_weight_min=clip_weight_min,
+        clip_weight_max=clip_weight_max,
+        weight_decay_factor=weight_decay_factor,
+        multiply_weight_decay_factor_by_learning_rate=(
+            multiply_weight_decay_factor_by_learning_rate),
+        clip_gradient_min=clip_gradient_min,
+        clip_gradient_max=clip_gradient_max,
+    )
+    if epsilon <= 0:
+      raise ValueError('Adagrad momentum: epsilon must be positive')
+    if exponent <= 0:
+      raise ValueError('Adagrad momentum: Precondition exponent must >0')
+    self.momentum = momentum
+    self.use_nesterov = use_nesterov
+    self.exponent = exponent
+    self.beta2 = beta2
+    self.epsilon = epsilon
 
 
 class ProximalAdagradParameters(_OptimizationParameters):
@@ -519,7 +608,8 @@ class ProximalAdagradParameters(_OptimizationParameters):
         clip_gradient_max=clip_gradient_max,
     )
     if initial_accumulator <= 0:
-      raise ValueError('Adagrad initial_accumulator must be positive')
+      raise ValueError(f'Adagrad initial_accumulator must be positive. '
+                       f'Received: {initial_accumulator}.')
     if l1_regularization_strength < 0.:
       raise ValueError('l1_regularization_strength must be greater than or '
                        'equal to 0. got {}.'.format(l1_regularization_strength))
@@ -868,7 +958,7 @@ class MomentumParameters(_OptimizationParameters):
 
     Args:
       learning_rate: a floating point value. The learning rate.
-      momentum: A `Tensor` or a floating point value.  The momentum.
+      momentum: a floating point value.  The momentum.
       use_nesterov: If `True` use Nesterov Momentum. See (Sutskever et al.,
         2013). This implementation always computes gradients at the value of the
         variable(s) passed to the optimizer. Using Nesterov Momentum makes the
@@ -1261,15 +1351,16 @@ class TPUEmbedding(object):
         embedding IDs per example and how well the embedding IDs are load
         balanced across the system. The lookup statistics are used during TPU
         initialization for embedding table partitioning. Collection of lookup
-        statistics is done at runtime by  profiling the embedding inputs: only
-        3% of input samples are profiled to minimize host CPU overhead. Once
-        a suitable number of samples are profiled, the lookup statistics are
-        saved to table-specific files in the profile data directory generally
-        at the end of a TPU training loop. The filename corresponding to each
-        table is obtained by hashing table specific parameters (e.g., table
-        name and number of features) and global configuration parameters (e.g.,
-        sharding strategy and task count). The same profile data directory can
-        be shared among several models to reuse embedding lookup statistics.
+        statistics is done at runtime by  profiling the embedding inputs, only a
+        small fraction of input samples are profiled to minimize host CPU
+        overhead. Once a suitable number of samples are profiled, the lookup
+        statistics are saved to table-specific files in the profile data
+        directory generally at the end of a TPU training loop. The filename
+        corresponding to each table is obtained by hashing table specific
+        parameters (e.g., table name and number of features) and global
+        configuration parameters (e.g., sharding strategy and task count). The
+        same profile data directory can be shared among several models to reuse
+        embedding lookup statistics.
       device_config: A DeviceConfig instance, used when `master` and
         `cluster_def` are both `None`.
       master_job_name: if set, overrides the master job name used to schedule
@@ -1279,8 +1370,8 @@ class TPUEmbedding(object):
       ValueError: if any input is invalid.
     """
     if partition_strategy not in ('div', 'mod'):
-      raise ValueError(
-          'Invalid partition_strategy {}'.format(partition_strategy))
+      raise ValueError(f'partition_strategy must be "div" or "mod". '
+                       f'Received: {partition_strategy}.')
     self._partition_strategy = partition_strategy
 
     self._profile_data_directory = profile_data_directory
@@ -1348,8 +1439,9 @@ class TPUEmbedding(object):
       self._optimization_parameters = optimization_parameters
     elif mode == INFERENCE:
       if optimization_parameters is not None:
-        raise ValueError('`optimization_parameters` should be `None` '
-                         'for inference mode.')
+        raise ValueError(f'`optimization_parameters` should be `None` '
+                         f'for inference mode. '
+                         f'Received: {optimization_parameters}.')
       self._optimization_parameters = (StochasticGradientDescentParameters(1.))
     else:
       raise ValueError('`mode` only supports {} and {}; got {}.'.format(
@@ -1505,9 +1597,8 @@ class TPUEmbedding(object):
     config_proto.num_hosts = self._num_hosts
     config_proto.num_tensor_cores = self._num_cores
     config_proto.sharding_strategy = (
-        elc.TPUEmbeddingConfiguration.DIV_DEFAULT
-        if self._partition_strategy == 'div' else
-        elc.TPUEmbeddingConfiguration.MOD)
+        elc.TPUEmbeddingConfiguration.DIV_DEFAULT if self._partition_strategy
+        == 'div' else elc.TPUEmbeddingConfiguration.MOD)
     config_proto.pipeline_execution_with_tensor_core = (
         self._pipeline_execution_with_tensor_core)
     if self._profile_data_directory:
@@ -1544,7 +1635,7 @@ class TPUEmbedding(object):
     Returns:
       `tpu_embedding.VariablesAndOps` with:
         A dictionary mapping from string of table name to embedding variables,
-        A dictionary mapping from string of table name to AdagradSlotVariable,
+        A dictionary mapping from string of table name to AdagradSlotVariables,
          AdamSlotVariables etc with slot variables,
         A function which returns a list of ops to load embedding and slot
          variables from CPU to TPU.
@@ -1788,12 +1879,12 @@ class TPUEmbedding(object):
         enqueue_data = enqueue_datas[feature]
 
         kwargs['sample_splits'].append(
-            enqueue_data.sample_splits
-            if enqueue_data.sample_splits is not None else int_zeros)
+            enqueue_data.sample_splits if enqueue_data
+            .sample_splits is not None else int_zeros)
 
         kwargs['aggregation_weights'].append(
-            enqueue_data.aggregation_weights
-            if enqueue_data.aggregation_weights is not None else float_zeros)
+            enqueue_data.aggregation_weights if enqueue_data
+            .aggregation_weights is not None else float_zeros)
 
         kwargs['embedding_indices'].append(enqueue_data.embedding_indices)
 
@@ -1827,12 +1918,12 @@ class TPUEmbedding(object):
         enqueue_data = enqueue_datas[feature]
 
         kwargs['sample_indices'].append(
-            enqueue_data.sample_indices
-            if enqueue_data.sample_indices is not None else int_zeros)
+            enqueue_data.sample_indices if enqueue_data
+            .sample_indices is not None else int_zeros)
 
         kwargs['aggregation_weights'].append(
-            enqueue_data.aggregation_weights
-            if enqueue_data.aggregation_weights is not None else float_zeros)
+            enqueue_data.aggregation_weights if enqueue_data
+            .aggregation_weights is not None else float_zeros)
 
         kwargs['embedding_indices'].append(enqueue_data.embedding_indices)
 
@@ -2025,7 +2116,7 @@ class _AdagradHandler(_OptimizerHandler):
     table_descriptor.optimization_parameters.adagrad.SetInParent()
 
   def get_default_slot_variable_names(self, table):
-    return AdagradSlotVariableName('{}/{}'.format(table, 'Adagrad'))
+    return AdagradSlotVariableNames('{}/{}'.format(table, 'Adagrad'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
                                table_config, table_variables, config_proto):
@@ -2038,7 +2129,7 @@ class _AdagradHandler(_OptimizerHandler):
         embedding_dimension=table_config.dimension,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES],
         initializer=accumulator_initializer)
-    slot_variables = AdagradSlotVariable(accumulator_variables)
+    slot_variables = AdagradSlotVariables(accumulator_variables)
 
     def load_ops_fn():
       """Returns the retrieve ops for AdaGrad embedding tables.
@@ -2090,6 +2181,108 @@ class _AdagradHandler(_OptimizerHandler):
     return slot_variables, load_ops_fn, retrieve_ops_fn
 
 
+class _AdagradMomentumHandler(_OptimizerHandler):
+  """Handles Adagrad with Momentum specific logic.
+
+  Creates slot variables and defines their initializers. Defines load/retrieve
+  operations to be used for loading variables into TPU memory (from host memory)
+  and retrieving variables from TPU memory (into host memory).
+  """
+
+  def set_optimization_parameters(self, table_descriptor):
+    table_descriptor.optimization_parameters.adagrad_momentum.SetInParent()
+    table_descriptor.optimization_parameters.adagrad_momentum.momentum = (
+        self._optimization_parameters.momentum)
+    table_descriptor.optimization_parameters.adagrad_momentum.use_nesterov = (
+        self._optimization_parameters.use_nesterov)
+    table_descriptor.optimization_parameters.adagrad_momentum.exponent = (
+        self._optimization_parameters.exponent)
+    table_descriptor.optimization_parameters.adagrad_momentum.beta2 = (
+        self._optimization_parameters.beta2)
+    table_descriptor.optimization_parameters.adagrad_momentum.epsilon = (
+        self._optimization_parameters.epsilon)
+
+  def get_default_slot_variable_names(self, table):
+    return AdagradMomentumSlotVariableNames(
+        '{}/{}/Accumulator'.format(table, 'AdagradMomentum'),
+        '{}/{}/Momentum'.format(table, 'AdagradMomentum'))
+
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables, config_proto):
+    accumulator_initializer = init_ops.zeros_initializer()
+    accumulator_variables = _create_partitioned_variables(
+        name=slot_variable_names.accumulator,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=accumulator_initializer)
+    momenta_initializer = init_ops.zeros_initializer()
+    momenta_variables = _create_partitioned_variables(
+        name=slot_variable_names.momenta,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=momenta_initializer)
+    slot_variables = AdagradMomentumSlotVariables(accumulator_variables,
+                                                  momenta_variables)
+
+    def load_ops_fn():
+      """Returns the load ops for AdaGrad with momentum embedding tables.
+
+      Returns:
+        A list of ops to load embedding and slot variables from CPU to TPU.
+      """
+      config = config_proto
+      load_op_list = []
+      for host_id, table_variable, accumulator_variable, momenta_variable in zip(
+          range(num_hosts), table_variables, accumulator_variables,
+          momenta_variables):
+        with ops.colocate_with(table_variable):
+          load_parameters_op = (
+              tpu_ops.load_tpu_embedding_adagrad_momentum_parameters(
+                  parameters=table_variable,
+                  accumulators=accumulator_variable,
+                  momenta=momenta_variable,
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config))
+        config = None
+        load_op_list.append(load_parameters_op)
+      return load_op_list
+
+    def retrieve_ops_fn():
+      """Returns the retrieve ops for AdaGrad with momentum embedding tables.
+
+      Returns:
+        A list of ops to retrieve embedding and slot variables from TPU to CPU.
+      """
+      config = config_proto
+      retrieve_op_list = []
+      for host_id, table_variable, accumulator_variable, momenta_variable in (
+          zip(
+              range(num_hosts), table_variables, accumulator_variables,
+              momenta_variables)):
+        with ops.colocate_with(table_variable):
+          retrieved_table, retrieved_accumulator, retrieved_momenta = (
+              tpu_ops.retrieve_tpu_embedding_adagrad_momentum_parameters(
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config))
+          retrieve_parameters_op = control_flow_ops.group(
+              state_ops.assign(table_variable, retrieved_table),
+              state_ops.assign(accumulator_variable, retrieved_accumulator),
+              state_ops.assign(momenta_variable, retrieved_momenta))
+        config = None
+        retrieve_op_list.append(retrieve_parameters_op)
+      return retrieve_op_list
+
+    return slot_variables, load_ops_fn, retrieve_ops_fn
+
+
 class _ProximalAdagradHandler(_OptimizerHandler):
   """Handles ProximalAdagrad specific logic."""
 
@@ -2101,7 +2294,7 @@ class _ProximalAdagradHandler(_OptimizerHandler):
         self._optimization_parameters.l2_regularization_strength)
 
   def get_default_slot_variable_names(self, table):
-    return ProximalAdagradSlotVariableName('{}/{}'.format(
+    return ProximalAdagradSlotVariableNames('{}/{}'.format(
         table, 'ProximalAdagrad'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
@@ -2115,7 +2308,7 @@ class _ProximalAdagradHandler(_OptimizerHandler):
         embedding_dimension=table_config.dimension,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES],
         initializer=accumulator_initializer)
-    slot_variables = ProximalAdagradSlotVariable(accumulator_variables)
+    slot_variables = ProximalAdagradSlotVariables(accumulator_variables)
 
     def load_ops_fn():
       """Returns the retrieve ops for Proximal AdaGrad embedding tables.
@@ -2280,7 +2473,7 @@ class _FtrlHandler(_OptimizerHandler):
   def get_default_slot_variable_names(self, table):
     # These match the default slot variable names created by
     # tf.train.FtrlOptimizer.
-    return FtrlSlotVariableName(
+    return FtrlSlotVariableNames(
         '{}/{}'.format(table, 'Ftrl'),  # accumulator
         '{}/{}'.format(table, 'Ftrl_1'))  # linear
 
@@ -2467,7 +2660,7 @@ class _MomentumHandler(_OptimizerHandler):
         self._optimization_parameters.use_nesterov)
 
   def get_default_slot_variable_names(self, table):
-    return MomentumSlotVariableName('{}/{}'.format(table, 'Momentum'))
+    return MomentumSlotVariableNames('{}/{}'.format(table, 'Momentum'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
                                table_config, table_variables, config_proto):
@@ -2480,7 +2673,7 @@ class _MomentumHandler(_OptimizerHandler):
         embedding_dimension=table_config.dimension,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES],
         initializer=momenta_initializer)
-    slot_variables = MomentumSlotVariable(momenta_variables)
+    slot_variables = MomentumSlotVariables(momenta_variables)
 
     def load_ops_fn():
       """Returns the retrieve ops for Momentum embedding tables.
@@ -2635,7 +2828,7 @@ class _FrequencyEstimatorHandler(_OptimizerHandler):
     freq.weight_exponent = self._optimization_parameters.weight_exponent
 
   def get_default_slot_variable_names(self, table):
-    return FrequencyEstimatorSlotVariableName(
+    return FrequencyEstimatorSlotVariableNames(
         '{}/FrequencyEstimator'.format(table))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
@@ -2771,6 +2964,8 @@ def _get_optimization_handler(optimization_parameters):
   """Gets the optimization handler given the parameter type."""
   if isinstance(optimization_parameters, AdagradParameters):
     return _AdagradHandler(optimization_parameters)
+  elif isinstance(optimization_parameters, AdagradMomentumParameters):
+    return _AdagradMomentumHandler(optimization_parameters)
   elif isinstance(optimization_parameters, ProximalAdagradParameters):
     return _ProximalAdagradHandler(optimization_parameters)
   elif isinstance(optimization_parameters, AdamParameters):

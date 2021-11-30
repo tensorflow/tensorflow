@@ -34,21 +34,13 @@ struct StridedSlice {
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& start_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& stop_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& strides) {
-    const bool use_64bit = input.size() > Eigen::NumTraits<int>::highest();
-    if (!use_64bit &&
-        Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
-      Eigen::DSizes<int, NDIMS> start_i, stop_i, strides_i;
-      for (int i = 0; i < NDIMS; ++i) {
-        start_i[i] = start_indices[i];
-        stop_i[i] = stop_indices[i];
-        strides_i[i] = strides[i];
-      }
-      To32Bit(output).device(d) =
-          To32Bit(input).stridedSlice(start_i, stop_i, strides_i);
-    } else {
-      output.device(d) =
-          input.stridedSlice(start_indices, stop_indices, strides);
-    }
+    MaybeWith32BitIndexing<Device>(
+        [&](auto output32, auto input32, const auto& start_indices32,
+            const auto& stop_indices32, const auto& strides32) {
+          output32.device(d) =
+              input32.stridedSlice(start_indices32, stop_indices32, strides32);
+        },
+        output, input, start_indices, stop_indices, strides);
   }
 };
 
@@ -83,21 +75,13 @@ struct StridedSliceGrad {
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& stop_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& strides) {
     InitOutput<T, NDIMS, Device>::run(d, output);
-    const bool use_64bit = input.size() > Eigen::NumTraits<int>::highest();
-    if (!use_64bit &&
-        Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
-      Eigen::DSizes<int, NDIMS> start_i, stop_i, strides_i;
-      for (int i = 0; i < NDIMS; ++i) {
-        start_i[i] = start_indices[i];
-        stop_i[i] = stop_indices[i];
-        strides_i[i] = strides[i];
-      }
-      To32Bit(output).stridedSlice(start_i, stop_i, strides_i).device(d) =
-          input;
-    } else {
-      output.stridedSlice(start_indices, stop_indices, strides).device(d) =
-          input;
-    }
+    MaybeWith32BitIndexing<Device>(
+        [&](auto output32, const auto& start_indices32,
+            const auto& stop_indices32, const auto& strides32) {
+          output32.stridedSlice(start_indices32, stop_indices32, strides32)
+              .device(d) = input;
+        },
+        output, start_indices, stop_indices, strides);
   }
 };
 
@@ -108,21 +92,13 @@ struct StridedSliceAssign {
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& start_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& stop_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& strides) {
-    const bool use_64bit = input.size() > Eigen::NumTraits<int>::highest();
-    if (!use_64bit &&
-        Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
-      Eigen::DSizes<int, NDIMS> start_i, stop_i, strides_i;
-      for (int i = 0; i < NDIMS; ++i) {
-        start_i[i] = start_indices[i];
-        stop_i[i] = stop_indices[i];
-        strides_i[i] = strides[i];
-      }
-      To32Bit(output).stridedSlice(start_i, stop_i, strides_i).device(d) =
-          To32Bit(input);
-    } else {
-      output.stridedSlice(start_indices, stop_indices, strides).device(d) =
-          input;
-    }
+    MaybeWith32BitIndexing<Device>(
+        [&](auto output32, auto input32, const auto& start_indices32,
+            const auto& stop_indices32, const auto& strides32) {
+          output32.stridedSlice(start_indices32, stop_indices32, strides32)
+              .device(d) = input32;
+        },
+        output, input, start_indices, stop_indices, strides);
   }
 };
 

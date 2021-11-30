@@ -1,6 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "op_resolver_internal_visibility_allowlist")
-load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
@@ -22,7 +21,7 @@ cc_library(
         "tensor_utils.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
+    copts = tflite_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":error_reporter",
@@ -48,7 +47,7 @@ cc_library(
     srcs = ["op_resolver.cc"],
     hdrs = ["op_resolver.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
+    copts = tflite_copts(),
     visibility = [
         "//visibility:public",
     ],
@@ -66,7 +65,7 @@ cc_library(
     srcs = ["error_reporter.cc"],
     hdrs = ["error_reporter.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
+    copts = tflite_copts(),
     visibility = [
         "//visibility:public",
     ],
@@ -77,7 +76,7 @@ cc_library(
     name = "verifier",
     hdrs = ["verifier.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
+    copts = tflite_copts(),
     visibility = ["//visibility:public"],
     deps = [":error_reporter"],
 )
@@ -86,7 +85,7 @@ cc_library(
     name = "op_resolver_internal",
     hdrs = ["op_resolver_internal.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
+    copts = tflite_copts(),
     visibility = op_resolver_internal_visibility_allowlist() + [
         "//tensorflow/lite:__pkg__",
     ],

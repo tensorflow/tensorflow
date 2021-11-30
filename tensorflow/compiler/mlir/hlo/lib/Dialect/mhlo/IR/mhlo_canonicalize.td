@@ -55,3 +55,15 @@ def DPadToPad: Pat<
             (CastIntElementsAttr $edge_padding_low),
             (CastIntElementsAttr $edge_padding_high),
             (CastIntElementsAttr $interior_paddin))>;
+
+// Convert RealDynamicSliceOp to SliceOp if start_indices, limit_indices and
+// strides are HLO_ConstOp
+def RealDSliceToSlice: Pat<
+          (HLO_RealDynamicSliceOp HLO_Tensor:$operand,
+            (HLO_ConstOp I64ElementsAttr:$start_indices),
+            (HLO_ConstOp I64ElementsAttr:$limit_indices),
+            (HLO_ConstOp I64ElementsAttr:$strides)),
+          (HLO_SliceOp $operand,
+            (CastIntElementsAttr $start_indices),
+            (CastIntElementsAttr $limit_indices),
+            (CastIntElementsAttr $strides))>;

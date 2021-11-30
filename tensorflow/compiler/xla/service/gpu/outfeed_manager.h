@@ -34,12 +34,12 @@ namespace gpu {
 // notification when that triggers when the transfer is done.
 class OutfeedBuffer {
  public:
-  explicit OutfeedBuffer(int64 length) : length_(length) {}
+  explicit OutfeedBuffer(int64_t length) : length_(length) {}
 
   // Waits for the device transfer to be finished.
   void WaitUntilAvailable() { done_.WaitForNotification(); }
 
-  int64 length() const { return length_; }
+  int64_t length() const { return length_; }
   void set_destination(std::unique_ptr<MutableBorrowingLiteral> destination) {
     destination_ = std::move(destination);
   }
@@ -50,13 +50,18 @@ class OutfeedBuffer {
 
  private:
   std::unique_ptr<MutableBorrowingLiteral> destination_;
-  const int64 length_;
+  const int64_t length_;
   tensorflow::Notification done_;
 };
 
 // Manages a thread-safe queue of buffers. The buffers are supposed to be
 // produced by the transfer manager and consumed by the device.
-using OutfeedManager = XfeedQueue<ShapeTree<std::unique_ptr<OutfeedBuffer>>*>;
+class OutfeedManager
+    : public XfeedQueue<ShapeTree<std::unique_ptr<OutfeedBuffer>>*> {
+ public:
+  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
+                                    MutableBorrowingLiteral literal);
+};
 
 // Returns the GPU outfeed manager for the given stream executor.
 OutfeedManager* GetOrCreateOutfeedManager(se::StreamExecutor* executor);

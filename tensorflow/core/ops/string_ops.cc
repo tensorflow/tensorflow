@@ -152,7 +152,7 @@ REGISTER_OP("StringFormat")
 
       std::vector<std::string> split_template;
       split_template = absl::StrSplit(template_, placeholder);
-      int64 num_placeholders = split_template.size() - 1;
+      int64_t num_placeholders = split_template.size() - 1;
       if (c->num_inputs() != num_placeholders) {
         return errors::InvalidArgument(strings::StrCat(
             "num placeholders in template and num inputs must match: ",
@@ -279,7 +279,7 @@ REGISTER_OP("Substr")
         TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
       }
       // Check that dimensions are equal
-      for (int32 i = 0; i < c->Rank(pos_shape); ++i) {
+      for (int32_t i = 0; i < c->Rank(pos_shape); ++i) {
         DimensionHandle pos_dim = c->Dim(pos_shape, i);
         DimensionHandle len_dim = c->Dim(len_shape, i);
         if (c->Value(pos_dim) != c->Value(len_dim)) {

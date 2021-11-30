@@ -15,10 +15,6 @@
 # ==============================================================================
 """Tests for liveness module, that only run in Python 3."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.pyct.static_analysis import annos
 from tensorflow.python.autograph.pyct.static_analysis import liveness_test
 from tensorflow.python.platform import test

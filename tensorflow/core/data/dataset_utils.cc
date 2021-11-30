@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_utils.h"
 
+#include <functional>
 #include <memory>
 #include <queue>
+#include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -29,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -37,16 +42,13 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr char kDelimiter[] = "@@";
-constexpr char kComponent[] = "component";
-constexpr char kNumElements[] = "num_elements";
-constexpr char kNumComponents[] = "num_components";
 constexpr char kOutputSize[] = "output_size";
 constexpr char kCode[] = "code";
 constexpr char kMessage[] = "msg";
@@ -57,45 +59,22 @@ static mutex* get_dataset_experiment_registry_lock() {
   return &dataset_experiment_registry_lock;
 }
 
-static absl::flat_hash_map<string, int64>* get_dataset_experiments() {
-  static absl::flat_hash_map<string, int64>* experiments =
-      new absl::flat_hash_map<string, int64>;
+static absl::flat_hash_map<string, int64_t>* get_dataset_experiments() {
+  static absl::flat_hash_map<string, int64_t>* experiments =
+      new absl::flat_hash_map<string, int64_t>;
   return experiments;
-}
-
-// We assume that all keys are of the form <iterator_prefix>:<name>. We extract
-// the iterator name by getting rid of everything post the final colon.
-Status GetIteratorName(StringPiece key, string* name) {
-  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
-    return errors::InvalidArgument("Save key: ", key,
-                                   " not generated using full_name.");
-  }
-  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
-  if (split_keys.size() != 2) {
-    return errors::InvalidArgument("Save key: ", key,
-                                   " not generated using full_name.");
-  }
-  string real_key = split_keys[1];
-  const int pos = real_key.rfind(kColon);
-  *name = real_key.substr(0, pos);
-  return Status::OK();
 }
 
 // Use "Opt" suffix so that they are not confused with the enums in Options
 // proto.
-constexpr char kMapVectorizationOpt[] = "map_vectorization";
 constexpr char kMapAndBatchFusionOpt[] = "map_and_batch_fusion";
 constexpr char kNoopEliminationOpt[] = "noop_elimination";
 constexpr char kMapParallelizationOpt[] = "map_parallelization";
 constexpr char kShuffleAndRepeatFusionOpt[] = "shuffle_and_repeat_fusion";
 constexpr char kFilterFusionOpt[] = "filter_fusion";
-constexpr char kFilterWithRandomUniformFusionOpt[] =
-    "filter_with_random_uniform_fusion";
-constexpr char kHoistRandomUniformOpt[] = "hoist_random_uniform";
 constexpr char kMapAndFilterFusionOpt[] = "map_and_filter_fusion";
 constexpr char kMapFusionOpt[] = "map_fusion";
 constexpr char kParallelBatchOpt[] = "parallel_batch";
-constexpr char kReorderDataDiscardingOpsOpt[] = "reorder_data_discarding_ops";
 constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
@@ -103,31 +82,17 @@ constexpr char kMakeSloppyOpt[] = "make_sloppy";
 constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
+constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
+constexpr char kInjectPrefetchEligibleOpt[] = "inject_prefetch_eligible";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
-
-void MapVectorizationGraphRewrites(
-    const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
-    absl::flat_hash_set<tstring>* optimization_disabled) {
-  if (options.optimization_options()
-          .map_vectorization()
-          .optional_enabled_case() != MapVectorization::kEnabled) {
-    return;
-  }
-  if (options.optimization_options().map_vectorization().enabled()) {
-    optimization_enabled->insert(kMapVectorizationOpt);
-  } else {
-    optimization_disabled->insert(kMapVectorizationOpt);
-  }
-}
+constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
     absl::flat_hash_set<tstring>* optimization_disabled,
     absl::flat_hash_set<tstring>* optimization_default) {
-  MapVectorizationGraphRewrites(options, optimization_enabled,
-                                optimization_disabled);
   const auto& optimization_options = options.optimization_options();
   if (optimization_options.optional_apply_default_optimizations_case() !=
           OptimizationOptions::kApplyDefaultOptimizations ||
@@ -148,6 +113,13 @@ void DefaultOptimizationGraphRewrites(
         OptimizationOptions::kShuffleAndRepeatFusion) {
       optimization_default->insert(kShuffleAndRepeatFusionOpt);
     }
+    if (optimization_options.optional_parallel_batch_case() !=
+        OptimizationOptions::kParallelBatch) {
+      optimization_default->insert(kParallelBatchOpt);
+    }
+  }
+  if (OpDeterminismRequired()) {
+    optimization_enabled->insert(kMakeDeterministicOpt);
   }
   if (optimization_options.optional_filter_fusion_case() ==
       OptimizationOptions::kFilterFusion) {
@@ -155,22 +127,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kFilterFusionOpt);
     } else {
       optimization_disabled->insert(kFilterFusionOpt);
-    }
-  }
-  if (optimization_options.optional_filter_with_random_uniform_fusion_case() ==
-      OptimizationOptions::kFilterWithRandomUniformFusion) {
-    if (optimization_options.filter_with_random_uniform_fusion()) {
-      optimization_enabled->insert(kFilterWithRandomUniformFusionOpt);
-    } else {
-      optimization_disabled->insert(kFilterWithRandomUniformFusionOpt);
-    }
-  }
-  if (optimization_options.optional_hoist_random_uniform_case() ==
-      OptimizationOptions::kHoistRandomUniform) {
-    if (optimization_options.hoist_random_uniform()) {
-      optimization_enabled->insert(kHoistRandomUniformOpt);
-    } else {
-      optimization_disabled->insert(kHoistRandomUniformOpt);
     }
   }
   if (optimization_options.optional_map_and_batch_fusion_case() ==
@@ -221,14 +177,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_disabled->insert(kParallelBatchOpt);
     }
   }
-  if (optimization_options.optional_reorder_data_discarding_ops_case() ==
-      OptimizationOptions::kReorderDataDiscardingOps) {
-    if (optimization_options.reorder_data_discarding_ops()) {
-      optimization_enabled->insert(kReorderDataDiscardingOpsOpt);
-    } else {
-      optimization_disabled->insert(kReorderDataDiscardingOpsOpt);
-    }
-  }
   if (optimization_options.optional_shuffle_and_repeat_fusion_case() ==
       OptimizationOptions::kShuffleAndRepeatFusion) {
     if (optimization_options.shuffle_and_repeat_fusion()) {
@@ -237,68 +185,24 @@ void DefaultOptimizationGraphRewrites(
       optimization_disabled->insert(kShuffleAndRepeatFusionOpt);
     }
   }
-  const bool has_autotune = optimization_options.optional_autotune_case() ==
-                            OptimizationOptions::kAutotune;
-  const bool has_autotune_buffers =
-      optimization_options.optional_autotune_buffers_case() ==
-      OptimizationOptions::kAutotuneBuffers;
-  if (!(has_autotune && !optimization_options.autotune()) &&
-      (has_autotune_buffers && optimization_options.autotune_buffers())) {
-    optimization_enabled->insert(kAutotuneBufferSizesOpt);
-    optimization_enabled->insert(kDisablePrefetchLegacyAutotuneOpt);
-  }
-  if (has_autotune && !optimization_options.autotune()) {
-    optimization_disabled->insert(kAutotuneBufferSizesOpt);
-    optimization_disabled->insert(kDisablePrefetchLegacyAutotuneOpt);
-  }
+}
+
+// Returns whether an op has been allowlisted as stateless. Uses a heuristic to
+// allowlist source dataset ops which have been marked stateful due to
+// b/65524810. Also looks up the `op_def->name` in the global
+// `AllowlistedStatefulOpRegistry`.
+bool IsOpAllowlisted(const OpDef* op_def) {
+  return (op_def->output_arg_size() == 1 &&
+          op_def->output_arg(0).type() == DT_VARIANT &&
+          (absl::EndsWith(op_def->name(), "Dataset") ||
+           absl::EndsWith(op_def->name(), "DatasetV2"))) ||
+         AllowlistedStatefulOpRegistry::Global()->Contains(op_def->name());
 }
 
 }  // namespace
 
-Status WriteElementsToCheckpoint(
-    IteratorStateWriter* writer, StringPiece key_prefix,
-    const std::vector<std::vector<Tensor>>& elements) {
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(key_prefix, kNumElements, elements.size()));
-  for (int i = 0; i < elements.size(); ++i) {
-    const std::vector<Tensor>& element = elements[i];
-    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
-    TF_RETURN_IF_ERROR(
-        writer->WriteScalar(element_prefix, kNumComponents, element.size()));
-    for (int j = 0; j < elements[i].size(); ++j) {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          element_prefix, absl::StrCat(kComponent, "[", j, "]"), element[j]));
-    }
-  }
-  return Status::OK();
-}
-
-Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
-                                  StringPiece key_prefix,
-                                  std::vector<std::vector<Tensor>>* elements) {
-  int64 num_elements;
-  TF_RETURN_IF_ERROR(
-      reader->ReadScalar(key_prefix, kNumElements, &num_elements));
-  elements->reserve(num_elements);
-  for (int i = 0; i < num_elements; ++i) {
-    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
-    int64 num_components;
-    TF_RETURN_IF_ERROR(
-        reader->ReadScalar(element_prefix, kNumComponents, &num_components));
-    elements->emplace_back();
-    std::vector<Tensor>& element = elements->at(i);
-    element.reserve(num_components);
-    for (int j = 0; j < num_components; ++j) {
-      element.emplace_back();
-      TF_RETURN_IF_ERROR(reader->ReadTensor(
-          element_prefix, absl::StrCat(kComponent, "[", j, "]"),
-          &element.back()));
-    }
-  }
-  return Status::OK();
-}
-
-std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
+std::pair<int64_t, int64_t> MaybeOverrideSeeds(
+    std::pair<int64_t, int64_t> seeds) {
   if (seeds.first == 0 && seeds.second == 0) {
     return {random::New64(), random::New64()};
   }
@@ -380,239 +284,6 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   return Status::OK();
 }
 
-VariantTensorDataReader::VariantTensorDataReader(
-    const std::vector<const tensorflow::VariantTensorData*>& data) {
-  for (const auto& d : data) {
-    string metadata;
-    d->get_metadata(&metadata);
-    auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
-    const string name = keys[0];
-    data_[name] = d;
-    map_[name] = std::map<string, size_t>();
-    for (size_t i = 1; i < keys.size(); ++i) {
-      map_[name][keys[i]] = i - 1;
-    }
-  }
-}
-
-Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) const {
-  return ReadScalarInternal(key, val);
-}
-
-Status VariantTensorDataReader::ReadScalar(StringPiece key,
-                                           tstring* val) const {
-  return ReadScalarInternal(key, val);
-}
-
-Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) const {
-  return ReadTensorInternal(key, val);
-}
-
-Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
-                                           int64* val) const {
-  return ReadScalarInternal(name, key, val);
-}
-
-Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
-                                           tstring* val) const {
-  return ReadScalarInternal(name, key, val);
-}
-
-Status VariantTensorDataReader::ReadTensor(StringPiece name, StringPiece key,
-                                           Tensor* val) const {
-  return ReadTensorInternal(name, key, val);
-}
-
-bool VariantTensorDataReader::Contains(StringPiece key) const {
-  string name;
-  if (!GetIteratorName(key, &name).ok()) {
-    return false;
-  }
-  return Contains(name, key);
-}
-
-bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) const {
-  string name(n);
-  auto it = map_.find(name);
-  if (it == map_.end()) {
-    return false;
-  }
-  const auto& bucket = it->second;
-  return bucket.find(string(key)) != bucket.end();
-}
-
-template <typename T>
-Status VariantTensorDataReader::ReadScalarInternal(StringPiece key,
-                                                   T* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadScalarInternal(name, key, val);
-}
-
-Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
-                                                   Tensor* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadTensorInternal(name, key, val);
-}
-
-template <typename T>
-Status VariantTensorDataReader::ReadScalarInternal(StringPiece n,
-                                                   StringPiece key,
-                                                   T* val) const {
-  string name(n);
-  auto it = map_.find(name);
-  if (it == map_.end()) {
-    return errors::NotFound(name);
-  }
-  const auto& bucket = it->second;
-  auto key_it = bucket.find(string(key));
-  if (key_it == bucket.end()) {
-    return errors::NotFound(key);
-  }
-  *val = data_.at(name)->tensors(key_it->second).scalar<T>()();
-  return Status::OK();
-}
-
-Status VariantTensorDataReader::ReadTensorInternal(StringPiece n,
-                                                   StringPiece key,
-                                                   Tensor* val) const {
-  string name(n);
-  auto it = map_.find(name);
-  if (it == map_.end()) {
-    return errors::NotFound(name);
-  }
-  const auto& bucket = it->second;
-  auto key_it = bucket.find(string(key));
-  if (key_it == bucket.end()) {
-    return errors::NotFound(key);
-  }
-  *val = data_.at(name)->tensors(key_it->second);
-  return Status::OK();
-}
-
-Status VariantTensorDataWriter::WriteScalar(StringPiece key, const int64 val) {
-  return WriteScalarInternal(key, val);
-}
-
-Status VariantTensorDataWriter::WriteScalar(StringPiece key,
-                                            const tstring& val) {
-  return WriteScalarInternal(key, val);
-}
-
-Status VariantTensorDataWriter::WriteTensor(StringPiece key,
-                                            const Tensor& val) {
-  return WriteTensorInternal(key, val);
-}
-
-Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
-                                            const int64 val) {
-  return WriteScalarInternal(name, key, val);
-}
-
-Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
-                                            const tstring& val) {
-  return WriteScalarInternal(name, key, val);
-}
-
-Status VariantTensorDataWriter::WriteTensor(StringPiece name, StringPiece key,
-                                            const Tensor& val) {
-  return WriteTensorInternal(name, key, val);
-}
-
-void VariantTensorDataWriter::MaybeFlush() {
-  if (is_flushed_) return;
-  for (auto& keys : keys_) {
-    const string name = keys.first;
-    string metadata = name;
-    for (size_t i = 0; i < keys_[name].size(); ++i) {
-      strings::StrAppend(&metadata, kDelimiter, keys_[name][i]);
-    }
-    data_[name]->set_metadata(metadata);
-  }
-  is_flushed_ = true;
-}
-
-void VariantTensorDataWriter::Reset() {
-  is_flushed_ = false;
-  data_.clear();
-  keys_.clear();
-}
-
-void VariantTensorDataWriter::ReleaseData(
-    std::vector<std::unique_ptr<VariantTensorData>>* variants) {
-  MaybeFlush();
-  for (auto& it : data_) {
-    variants->push_back(std::move(it.second));
-  }
-  Reset();
-}
-
-void VariantTensorDataWriter::GetData(
-    std::vector<const VariantTensorData*>* variants) {
-  MaybeFlush();
-  for (auto& it : data_) {
-    variants->push_back(it.second.get());
-  }
-}
-
-template <typename T>
-Status VariantTensorDataWriter::WriteScalarInternal(StringPiece key,
-                                                    const T& val) {
-  if (is_flushed_) {
-    return errors::FailedPrecondition(
-        "Cannot call WriteScalar after GetData or ReleaseData is called");
-  }
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return WriteScalarInternal(name, key, val);
-}
-
-Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
-                                                    const Tensor& val) {
-  if (is_flushed_) {
-    return errors::FailedPrecondition(
-        "Cannot call WriteTensor after GetData or ReleaseData is called");
-  }
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return WriteTensorInternal(name, key, val);
-}
-
-template <typename T>
-Status VariantTensorDataWriter::WriteScalarInternal(StringPiece name,
-                                                    StringPiece key,
-                                                    const T& val) {
-  if (is_flushed_) {
-    return errors::FailedPrecondition(
-        "Cannot call WriteScalar after GetData or ReleaseData is called");
-  }
-  Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
-  val_t.scalar<T>()() = val;
-  return WriteTensorInternal(name, key, val_t);
-}
-
-Status VariantTensorDataWriter::WriteTensorInternal(StringPiece n,
-                                                    StringPiece key,
-                                                    const Tensor& val) {
-  if (is_flushed_) {
-    return errors::FailedPrecondition(
-        "Cannot call WriteTensor after GetData or ReleaseData is called");
-  }
-  DCHECK_EQ(key.find(kDelimiter), string::npos);
-  string name(n);
-  if (keys_.count(name) == 0) {
-    keys_[name] = std::vector<string>();
-  }
-  keys_[name].push_back(string(key));
-  if (data_.count(name) == 0) {
-    data_[name] = absl::make_unique<VariantTensorData>();
-    data_[name]->set_type_name("tensorflow::Iterator");
-  }
-  *(data_[name]->add_tensors()) = val;
-  return Status::OK();
-}
-
 Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
                             const FunctionLibraryDefinition& to_add) {
   for (const auto& fn : to_add.ListFunctionNames()) {
@@ -642,6 +313,61 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
     }
   }
   return base->AddLibrary(to_add);
+}
+
+Status IsFunctionStateful(const FunctionLibraryDefinition& library,
+                          const FunctionDef& function_def) {
+  if (!function_def.signature().is_stateful()) {
+    return Status::OK();
+  }
+
+  for (const NodeDef& node_def : function_def.node_def()) {
+    TF_RETURN_IF_ERROR(IsNodeStateful(library, node_def));
+  }
+  return Status::OK();
+}
+
+Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                      const NodeDef& node) {
+  const OpDef* op_def;
+
+  // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
+  // `LookUpOpDef` errors here.
+  if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
+      IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
+      op_def->name() == "Assert") {
+    return Status::OK();
+  }
+
+  if (op_def->name() == "If") {
+    const FunctionDef* then_func =
+        library.Find(node.attr().at("then_branch").func().name());
+    const FunctionDef* else_func =
+        library.Find(node.attr().at("else_branch").func().name());
+    if (then_func != nullptr) {
+      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *then_func));
+    }
+    if (else_func != nullptr) {
+      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *else_func));
+    }
+    return Status::OK();
+  }
+
+  if (op_def->name() == "While") {
+    const FunctionDef* cond_func =
+        library.Find(node.attr().at("cond").func().name());
+    const FunctionDef* body_func =
+        library.Find(node.attr().at("body").func().name());
+    if (cond_func != nullptr) {
+      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *cond_func));
+    }
+    if (body_func != nullptr) {
+      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *body_func));
+    }
+    return Status::OK();
+  }
+
+  return errors::FailedPrecondition(op_def->name(), " is stateful.");
 }
 
 std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
@@ -740,7 +466,7 @@ absl::flat_hash_set<string> GetExperiments(
   }
 
   // Identify opted out experiments.
-  absl::flat_hash_map<string, int64> live_experiments =
+  absl::flat_hash_map<string, int64_t> live_experiments =
       DatasetExperimentRegistry::Experiments();
   absl::flat_hash_set<string> opt_outs;
   if (opt_outs_raw == "all") {
@@ -786,11 +512,13 @@ absl::flat_hash_set<string> GetExperiments(
 
 void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments) {
   if (!experiments.empty()) {
-    VLOG(1) << "The input pipeline is subject to tf.data experiments. "
-               "Please see `go/tf-data-experiments` for more details.";
+    constexpr float TEN_MINUTES = 60.0 * 10.0;
+    LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
+        << "The input pipeline is subject to the following tf.data experiments:"
+        << " " << absl::StrJoin(experiments, ", ") << ". "
+        << "See `go/tf-data-experiments` for more details.";
   }
   for (auto& experiment : experiments) {
-    VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
     metrics::RecordTFDataExperiment(experiment);
   }
 }
@@ -802,12 +530,10 @@ void GetOptimizations(const Options& options,
   DefaultOptimizationGraphRewrites(options, optimizations_enabled,
                                    optimizations_disabled,
                                    optimizations_default);
-  if (options.optional_deterministic_case() == Options::kDeterministic) {
-    if (options.deterministic()) {
-      optimizations_disabled->insert(kMakeSloppyOpt);
-    } else {
-      optimizations_enabled->insert(kMakeSloppyOpt);
-    }
+  if (!OpDeterminismRequired() &&
+      options.optional_deterministic_case() == Options::kDeterministic &&
+      !options.deterministic()) {
+    optimizations_enabled->insert(kMakeSloppyOpt);
   }
   if (options.optional_slack_case() == Options::kSlack) {
     if (options.slack()) {
@@ -818,27 +544,13 @@ void GetOptimizations(const Options& options,
   }
 }
 
-absl::flat_hash_set<tstring> SelectOptimizations(
-    const absl::flat_hash_set<string>& experiments,
-    const absl::flat_hash_set<tstring>& optimizations_enabled,
-    const absl::flat_hash_set<tstring>& optimizations_disabled,
-    const absl::flat_hash_set<tstring>& optimizations_default) {
-  absl::flat_hash_set<tstring> optimizations;
-
-  // Add the enabled and default optimizations.
-  optimizations.insert(optimizations_enabled.begin(),
-                       optimizations_enabled.end());
-  optimizations.insert(optimizations_default.begin(),
-                       optimizations_default.end());
-
-  // Add experiments unless they correspond to a disabled optimization.
-  for (auto& experiment : experiments) {
-    if (!optimizations_disabled.contains(experiment)) {
-      optimizations.insert(experiment);
-    }
+Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index) {
+  Tensor slice = tensor.SubSlice(index);
+  if (slice.IsAligned()) {
+    return slice;
+  } else {
+    return tensorflow::tensor::DeepCopy(slice);
   }
-
-  return optimizations;
 }
 
 void StripDevicePlacement(FunctionDefLibrary* library) {
@@ -851,7 +563,7 @@ void StripDevicePlacement(FunctionDefLibrary* library) {
   }
 }
 
-Status CopyPartialBatch(int64 num_elements, const Tensor& value,
+Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
                         Tensor* output) {
   switch (value.dtype()) {
 #define HANDLE_TYPE(type)                                         \
@@ -872,10 +584,10 @@ Status CopyPartialBatch(int64 num_elements, const Tensor& value,
   return Status::OK();
 }
 
-Status ReadBatch(int64 batch_size, const string& iterator_prefix,
-                 const string& batch_prefix, IteratorContext* ctx,
-                 IteratorStateReader* reader, std::vector<Tensor>* batch) {
-  int64 output_size;
+Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
+                 int64_t batch_size, const string& iterator_prefix,
+                 const string& batch_prefix, std::vector<Tensor>* batch) {
+  int64_t output_size;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix,
                strings::StrCat(batch_prefix, "_", kOutputSize)),
@@ -883,10 +595,9 @@ Status ReadBatch(int64 batch_size, const string& iterator_prefix,
   batch->reserve(output_size);
   for (int i = 0; i < output_size; i++) {
     Tensor t;
-    TF_RETURN_IF_ERROR(reader->ReadTensor(
-        FullName(iterator_prefix,
-                 strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-        &t));
+    TF_RETURN_IF_ERROR(
+        reader->ReadTensor(ctx->flr(), FullName(iterator_prefix, batch_prefix),
+                           strings::StrCat(kOutput, "_", i), &t));
     // If the batch was not full, we may have stored only the relevant slice.
     // Since tensors in `BatchResult.output` are expected to have the leading
     // dimension of size batch_size, we build a larger tensor and copy the slice
@@ -906,7 +617,7 @@ Status ReadBatch(int64 batch_size, const string& iterator_prefix,
   return Status::OK();
 }
 
-Status WriteBatch(int64 batch_size, int64 num_elements,
+Status WriteBatch(int64_t batch_size, int64_t num_elements,
                   const string& iterator_prefix, const string& batch_prefix,
                   IteratorStateWriter* writer, std::vector<Tensor>* batch) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -918,15 +629,14 @@ Status WriteBatch(int64 batch_size, int64 num_elements,
     // The rest of the batch tensor is *uninitialized* and accessing that will
     // raise msan errors.
     if (num_elements < batch_size) {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          FullName(iterator_prefix,
-                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-          (*batch)[i].Slice(0, num_elements)));
+      TF_RETURN_IF_ERROR(
+          writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
+                              strings::StrCat(kOutput, "_", i),
+                              (*batch)[i].Slice(0, num_elements)));
     } else {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          FullName(iterator_prefix,
-                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-          (*batch)[i]));
+      TF_RETURN_IF_ERROR(
+          writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
+                              strings::StrCat(kOutput, "_", i), (*batch)[i]));
     }
   }
   return Status::OK();
@@ -934,7 +644,7 @@ Status WriteBatch(int64 batch_size, int64 num_elements,
 
 Status ReadStatus(const string& iterator_prefix, const string& prefix,
                   IteratorStateReader* reader, Status* status) {
-  int64 code_int;
+  int64_t code_int;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
       &code_int));
@@ -956,7 +666,7 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
                    const Status& status, IteratorStateWriter* writer) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
-      static_cast<int64>(status.code())));
+      static_cast<int64_t>(status.code())));
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
@@ -965,10 +675,10 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   return Status::OK();
 }
 
-Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
-                    const Status& status, IteratorContext* ctx,
-                    std::vector<Tensor>* output, bool* end_of_sequence,
-                    std::vector<Tensor>* batch) {
+Status ProcessBatch(int64_t batch_size, int64_t num_elements,
+                    bool drop_remainder, const Status& status,
+                    IteratorContext* ctx, std::vector<Tensor>* output,
+                    bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
     if (status.ok() || errors::IsOutOfRange(status)) {
       *end_of_sequence = true;
@@ -1008,101 +718,105 @@ Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
   return Status::OK();
 }
 
-Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
-                 std::vector<Tensor>* out_tensors,
-                 std::vector<std::vector<Tensor>>* batch_elements) {
-  const size_t num_tuple_components = (*batch_elements)[0].size();
+Status CopyBatch(CopyBatchParams params,
+                 const std::vector<std::vector<Tensor>>& batch_elements,
+                 bool parallel_copy,
+                 std::function<Status()> allocation_callback,
+                 std::vector<Tensor>* out_tensors) {
+  const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
-  const int64 num_batch_elements = batch_elements->size();
+  const int64_t num_batch_elements = batch_elements.size();
   for (size_t component_index = 0; component_index < num_tuple_components;
        ++component_index) {
-    const Tensor& first_element = (*batch_elements)[0][component_index];
-    TensorShape batch_component_shape({num_batch_elements});
-    // NOTE(mrry): Copy the shape of the first element here, because
-    // `first_element.shape()` will become undefined after the 0th batch element
-    // is moved into the output batch.
+    const Tensor& first_element = batch_elements.at(0)[component_index];
     TensorShape first_element_shape(first_element.shape());
+    TensorShape batch_component_shape({num_batch_elements});
     batch_component_shape.AppendShape(first_element_shape);
-    out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
+    out_tensors->emplace_back(params.allocator, first_element.dtype(),
                               batch_component_shape);
     if (!out_tensors->back().IsInitialized()) {
       return errors::ResourceExhausted(
           "Failed to allocate memory for the batch of component ",
           component_index);
     }
-    Tensor& batch_component = out_tensors->back();
+  }
+  if (allocation_callback) {
+    TF_RETURN_IF_ERROR(allocation_callback());
+  }
+  for (size_t component_index = 0; component_index < num_tuple_components;
+       ++component_index) {
+    Tensor& batch_component = out_tensors->at(component_index);
+    const Tensor& first_element = batch_elements.at(0)[component_index];
+    TensorShape first_element_shape(first_element.shape());
     // Build the output tuple component by copying one slice from each input
     // element in the batch.
-    auto copy_element_fn = [component_index, &batch_elements,
-                            &batch_component](int index) {
-      TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
-          std::move((*batch_elements)[index][component_index]),
-          &batch_component, index));
-      return Status::OK();
-    };
-    Status status;
-    std::unique_ptr<BlockingCounter> counter;
-    std::unique_ptr<mutex> status_mu;
-    if (TF_PREDICT_FALSE(parallel_copy)) {
-      counter = std::make_unique<BlockingCounter>(num_batch_elements);
-      status_mu = std::make_unique<mutex>();
-    }
-    for (size_t i = 0; i < num_batch_elements; ++i) {
-      if ((*batch_elements)[i][component_index].shape() !=
+    auto copy_element_fn = [component_index, &batch_elements, &batch_component,
+                            &first_element_shape](int index) {
+      if (batch_elements.at(index)[component_index].shape() !=
           first_element_shape) {
         return errors::InvalidArgument(
             "Cannot batch tensors with different shapes in component ",
             component_index, ". First element had shape ",
-            first_element_shape.DebugString(), " and element ", i,
+            first_element_shape.DebugString(), " and element ", index,
             " had shape ",
-            (*batch_elements)[i][component_index].shape().DebugString(), ".");
+            batch_elements.at(index)[component_index].shape().DebugString(),
+            ".");
       }
-      if (TF_PREDICT_FALSE(parallel_copy)) {
-        (*ctx->runner())(
-            [i, &status, &status_mu, &counter, &copy_element_fn]() {
-              Status s = copy_element_fn(i);
-              {
-                mutex_lock l(*status_mu);
-                status.Update(s);
-              }
-              counter->DecrementCount();
-            });
-      } else {
-        status.Update(copy_element_fn(i));
+      return batch_util::CopyElementToSlice(
+          std::move(batch_elements.at(index)[component_index]),
+          &batch_component, index);
+    };
+    if (parallel_copy && first_element.AllocatedBytes() > (1 << 15)) {
+      Status status;
+      mutex status_mu;
+      BlockingCounter counter(num_batch_elements);
+      const auto num_threads = params.runner_threadpool_size;
+      const auto slice_size = num_batch_elements / num_threads;
+      int64_t offset = 0;
+      for (size_t i = 0; i < num_threads; ++i) {
+        int64_t length = slice_size;
+        // When the number of threads does not divide the number of elements
+        // evenly, the size of some slices is incremented to guarantee their
+        // sizes add up to the total number of elements.
+        if (i < num_batch_elements % num_threads) ++length;
+        (*params.runner)([offset, length, &status, &status_mu, &counter,
+                          &copy_element_fn]() {
+          for (size_t j = offset; j < offset + length; ++j) {
+            {
+              Status s = copy_element_fn(j);
+              mutex_lock l(status_mu);
+              status.Update(s);
+            }
+            counter.DecrementCount();
+          }
+        });
+        offset += length;
+      }
+      counter.Wait();
+      TF_RETURN_IF_ERROR(status);
+    } else {
+      for (size_t i = 0; i < num_batch_elements; ++i) {
+        TF_RETURN_IF_ERROR(copy_element_fn(i));
       }
     }
-    if (TF_PREDICT_FALSE(parallel_copy)) {
-      counter->Wait();
-    }
-    TF_RETURN_IF_ERROR(status);
   }
   return Status::OK();
 }
 
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
-  const auto& optimization_options = options.optimization_options();
-  const auto& map_vectorization = optimization_options.map_vectorization();
-  if (map_vectorization.optional_enabled_case() == MapVectorization::kEnabled &&
-      map_vectorization.enabled() &&
-      map_vectorization.optional_use_choose_fastest_case() ==
-          MapVectorization::kUseChooseFastest) {
-    if (map_vectorization.use_choose_fastest()) {
-      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
-                                  kUseChooseFastestOpt, ":true"));
-    } else {
-      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
-                                  kUseChooseFastestOpt, ":false"));
-    }
-  }
+  const auto& autotune_options = options.autotune_options();
   std::vector<tstring> autotune_only_optimizations = {
-      kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
-      kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
-      kMapParallelizationOpt};
+      kAutotuneBufferSizesOpt,
+      kBatchParallelizationOpt,
+      kDisablePrefetchLegacyAutotuneOpt,
+      kEnableGradientDescentOpt,
+      kMapParallelizationOpt,
+      kInjectPrefetchOpt,
+      kInjectPrefetchEligibleOpt};
 
-  if (optimization_options.optional_autotune_case() ==
-          OptimizationOptions::kAutotune &&
-      !optimization_options.autotune()) {
+  if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
+      !autotune_options.enabled()) {
     for (const auto& optimization : autotune_only_optimizations) {
       configs.insert(
           absl::StrCat(optimization.data(), ":", kAutotuneOpt, ":false"));
@@ -1136,9 +850,9 @@ bool ShouldUsePrivateThreadPool(const Options& options) {
 }
 
 bool ShouldUseAutotuning(const Options& options) {
-  return options.optimization_options().optional_autotune_case() !=
-             OptimizationOptions::kAutotune ||
-         options.optimization_options().autotune();
+  return options.autotune_options().optional_enabled_case() !=
+             AutotuneOptions::kEnabled ||
+         options.autotune_options().enabled();
 }
 
 bool ShouldApplyOptimizations(
@@ -1154,21 +868,24 @@ bool ShouldApplyOptimizations(
 
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
-                                         int64 rollout_pct) {
+                                         int64_t rollout_pct) {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   get_dataset_experiments()->insert(std::make_pair(experiment, rollout_pct));
 }
 
 // static
-absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
+absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   return *get_dataset_experiments();
 }
 
 namespace {
 
-REGISTER_DATASET_EXPERIMENT("enable_gradient_descent", 0);
-
-}
+REGISTER_DATASET_EXPERIMENT("enable_bufferedio_v2", 5);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", 5);
+REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
+REGISTER_DATASET_EXPERIMENT("max_parallelism_v2", 50);
+REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
+}  // namespace
 }  // namespace data
 }  // namespace tensorflow

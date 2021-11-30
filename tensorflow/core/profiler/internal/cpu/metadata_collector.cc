@@ -41,7 +41,6 @@ TF_PROFILER_ENABLE_CXX17_WARNINGS
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -69,10 +68,6 @@ class MetadataCollector : public ProfilerInterface {
       trace_active_ = false;
     }
     return Status::OK();
-  }
-
-  Status CollectData(RunMetadata* run_metadata) override {
-    return Status::OK();  // legacy session is not supported.
   }
 
   Status CollectData(XSpace* space) override {

@@ -230,6 +230,12 @@ TEST(ShapeUtilTest, CompatibleTuples) {
   EXPECT_TRUE(ShapeUtil::Compatible(tuple1, tuple2));
 }
 
+TEST(ShapeUtilTest, MakeMaybeTupleShape) {
+  Shape s1 =
+      ShapeUtil::MakeMaybeTupleShape({ShapeUtil::MakeShape(F32, {3, 2})});
+  EXPECT_TRUE(ShapeUtil::Compatible(s1, ShapeUtil::MakeShape(F32, {3, 2})));
+}
+
 TEST(ShapeUtilTest, CompatibleTuplesIgnoringFpPrecision) {
   Shape tuple1 = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(BF16, {3, 2}), ShapeUtil::MakeShape(F32, {4, 5})});
@@ -564,7 +570,7 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
 
 TEST(ShapeUtilTest, ForEachIndex) {
   struct ShapeDimensionAndNumberInvocations {
-    std::vector<int64> dimensions;
+    std::vector<int64_t> dimensions;
     int invocations;
   } test_data[] = {
       {{}, 1},     {{0}, 0},      {{16}, 16},          {{3, 0}, 0},
@@ -575,13 +581,13 @@ TEST(ShapeUtilTest, ForEachIndex) {
     Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
     // Increments at every invocation.
     int invocations = 0;
-    auto increment_func = [&invocations](absl::Span<const int64> indexes) {
+    auto increment_func = [&invocations](absl::Span<const int64_t> indexes) {
       invocations++;
       return true;
     };
 
-    std::vector<int64> zero_base(data.dimensions.size(), 0);
-    std::vector<int64> step(data.dimensions.size(), 1);
+    std::vector<int64_t> zero_base(data.dimensions.size(), 0);
+    std::vector<int64_t> step(data.dimensions.size(), 1);
 
     ShapeUtil::ForEachIndex(shape, zero_base, data.dimensions, step,
                             increment_func);
@@ -595,7 +601,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   // Increments at every invocation.
   int invocations = 0;
   auto increment_func =
-      [&invocations](absl::Span<const int64> indexes) -> StatusOr<bool> {
+      [&invocations](absl::Span<const int64_t> indexes) -> StatusOr<bool> {
     if (++invocations == 5) {
       return Unimplemented("Cannot increment beyond 5.");
     }
@@ -614,9 +620,9 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
 
 TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
-  int64 output[10][10];
+  int64_t output[10][10];
   int init = 5;
-  auto set_func = [&](absl::Span<const int64> indexes) {
+  auto set_func = [&](absl::Span<const int64_t> indexes) {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
   };
 
@@ -713,13 +719,13 @@ TEST(ShapeUtilTest, HasDegenerateDimensions) {
 }
 
 TEST(ShapeUtilTest, PermuteDimensionsLayout) {
-  std::vector<int64> layout(3);
+  std::vector<int64_t> layout(3);
   std::iota(layout.begin(), layout.end(), 0);
   do {
     Shape s = ShapeUtil::MakeShapeWithLayout(F32, {10, 100, 1000}, layout);
     SCOPED_TRACE(absl::StrCat("s=", ShapeUtil::HumanString(s)));
 
-    std::vector<int64> permutation(3);
+    std::vector<int64_t> permutation(3);
     std::iota(permutation.begin(), permutation.end(), 0);
     do {
       SCOPED_TRACE(
@@ -746,7 +752,7 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
                            /*dynamic_dimensions*/ {false, true, true});
   SCOPED_TRACE(absl::StrCat("shape=", shape.ToString()));
 
-  std::vector<int64> permutation(3);
+  std::vector<int64_t> permutation(3);
   std::iota(permutation.begin(), permutation.end(), 0);
   do {
     SCOPED_TRACE(absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));

@@ -35,13 +35,8 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#if GOOGLE_CUDA
-#include "tensorflow/core/util/cuda_solvers.h"
-#elif TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/rocm_solvers.h"
-#endif
 
 namespace tensorflow {
 
@@ -87,9 +82,9 @@ struct SequentialMatrixTriangularSolveKernel {
     const bool should_bcast = bcast.IsBroadcastingRequired();
     const auto& x_batch_indices = bcast.x_batch_indices();
     const auto& y_batch_indices = bcast.y_batch_indices();
-    for (int64 i = start; i < limit; ++i) {
-      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+    for (int64_t i = start; i < limit; ++i) {
+      const int64_t x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64_t y_batch_index = should_bcast ? y_batch_indices[i] : i;
       auto matrix = ConstTensorSliceToEigenMatrix(in_x, x_batch_index);
       auto rhs = ConstTensorSliceToEigenMatrix(in_y, y_batch_index);
       auto output = TensorSliceToEigenMatrix(out, i);
@@ -121,8 +116,8 @@ struct LaunchBatchMatrixTriangularSolve<CPUDevice, Scalar> {
                      const Tensor& in_y, bool adjoint, bool lower,
                      const MatMulBCast& bcast, Tensor* out) {
     // Number of matrix triangular solves i.e. size of the batch.
-    const int64 batch_size = bcast.output_batch_size();
-    const int64 cost_per_unit =
+    const int64_t batch_size = bcast.output_batch_size();
+    const int64_t cost_per_unit =
         in_x.dim_size(1) * in_x.dim_size(1) * in_y.dim_size(2) / 2;
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
 
@@ -290,11 +285,11 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
       std::vector<Scalar*> out_ptrs;
       std::vector<const Scalar*> b_tmp_ptrs;
       auto* b_base_ptr = in_y.template flat<Scalar>().data();
-      const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
-      for (int64 i = 0; i < bcast.y_batch_size(); ++i) {
+      const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
+      for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
         b_tmp_ptrs.push_back(b_base_ptr + i * m * n);
       }
-      for (int64 i = 0; i < bcast.output_batch_size(); ++i) {
+      for (int64_t i = 0; i < bcast.output_batch_size(); ++i) {
         auto src_device_mem = AsDeviceMemory(b_tmp_ptrs[b_batch_indices[i]]);
         auto dst_device_mem =
             AsDeviceMemory(out->template flat<Scalar>().data() + i * m * n);
@@ -329,7 +324,6 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
 
     uplo = lower ? CUBLAS_FILL_MODE_UPPER : CUBLAS_FILL_MODE_LOWER;
     trans = adjoint ? CUBLAS_OP_C : CUBLAS_OP_N;
-    auto solver = absl::make_unique<CudaSolver>(context);
 
 #elif TENSORFLOW_USE_ROCM
     rocblas_side side = rocblas_side_right;
@@ -347,16 +341,16 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
     uplo = lower ? rocblas_fill_upper : rocblas_fill_lower;
     trans = adjoint ? rocblas_operation_conjugate_transpose
                     : rocblas_operation_none;
-    auto solver = absl::make_unique<ROCmSolver>(context);
 
 #endif
 
+    auto solver = absl::make_unique<GpuSolver>(context);
     const uint64 leading_dim_matrix = m;
     const uint64 leading_dim_output = n;
     const uint64 colmajor_rows = n;
     const uint64 colmajor_cols = m;
 
-    const int64 batch_size = bcast.output_batch_size();
+    const int64_t batch_size = bcast.output_batch_size();
     std::vector<const Scalar*> a_ptrs;
     std::vector<Scalar*> out_ptrs;
     std::vector<const Scalar*> a_tmp_ptrs;
@@ -367,16 +361,16 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
     auto* out_base_ptr = out->template flat<Scalar>().data();
 
     if (!bcast.IsBroadcastingRequired()) {
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         a_ptrs.push_back(a_base_ptr + i * m * m);
         out_ptrs.push_back(out_base_ptr + i * m * n);
       }
     } else {
-      const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
-      for (int64 i = 0; i < bcast.x_batch_size(); ++i) {
+      const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
+      for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
         a_tmp_ptrs.push_back(a_base_ptr + i * m * m);
       }
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         a_ptrs.push_back(a_tmp_ptrs[a_batch_indices[i]]);
         out_ptrs.push_back(out_base_ptr + i * m * n);
       }

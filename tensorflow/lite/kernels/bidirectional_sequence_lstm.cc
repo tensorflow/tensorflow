@@ -1347,7 +1347,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                          TfLiteTypeGetName(fw_input_to_output_weights->type));
       return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 
 }  // namespace bidirectional_sequence_lstm

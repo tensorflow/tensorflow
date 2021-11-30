@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
@@ -36,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -48,13 +49,76 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
+namespace {
 
-constexpr int64 XlaCompilationCache::kDefaultCompilationThreshold;
-constexpr int64 XlaCompilationCache::AsyncCompilationState::kNumCompilerThreads;
-constexpr int64
+using TensorTypeAndShape = XlaCompilationCache::Signature::TensorTypeAndShape;
+
+// Functor that converts a Signature's arg to a human readable string.
+struct SignatureHumanStringAppender {
+  explicit SignatureHumanStringAppender(string* dest) : dest(dest) {}
+  string* dest;
+  void operator()(const Tensor& arg) {
+    absl::StrAppend(dest, "; ", arg.DebugString());
+  }
+  void operator()(const TensorTypeAndShape& arg) {
+    absl::StrAppend(dest, ",", DataTypeString(arg.first));
+    absl::StrAppend(dest, " [", absl::StrJoin(arg.second, ","), "]");
+  }
+};
+
+// Functor that compares the arg values of two different signatures. Returns
+// true when the args are not equal.
+struct SignatureNotEqual {
+  bool operator()(const Tensor& arg, const Tensor& other) {
+    return arg.dtype() != other.dtype() || arg.shape() != other.shape() ||
+           arg.tensor_data() != other.tensor_data();
+  }
+  bool operator()(const TensorTypeAndShape& arg,
+                  const TensorTypeAndShape& other) {
+    return arg.first != other.first || arg.second != other.second;
+  }
+  bool operator()(const Tensor& arg, const TensorTypeAndShape& other) {
+    return true;
+  }
+  bool operator()(const TensorTypeAndShape& arg, const Tensor& other) {
+    return true;
+  }
+};
+
+// Functor that incrementally computes a Signature's hash given its current hash
+// and one of its args.
+struct SignatureHashCombiner {
+  explicit SignatureHashCombiner(const uint64 h) : h(h) {}
+  uint64 h;
+  uint64 operator()(const Tensor& arg) {
+    h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.dtype())));
+    h = Hash64Combine(
+        h, Hash64(arg.tensor_data().data(), arg.tensor_data().size()));
+    for (int dim = 0; dim < arg.dims(); ++dim) {
+      h = Hash64Combine(h, std::hash<int>()(arg.dim_size(dim)));
+    }
+    return h;
+  }
+  uint64 operator()(const TensorTypeAndShape& arg) {
+    h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.first)));
+    h = Hash64Combine(h, std::hash<int>()(arg.second.size()));
+    for (int dim : arg.second) {
+      h = Hash64Combine(h, std::hash<int>()(dim));
+    }
+    return h;
+  }
+};
+
+}  // namespace
+
+constexpr int64_t XlaCompilationCache::kDefaultCompilationThreshold;
+constexpr int64_t
+    XlaCompilationCache::AsyncCompilationState::kNumCompilerThreads;
+constexpr int64_t
     XlaCompilationCache::AsyncCompilationState::kMaxNumOngoingCompilations;
 
 XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
@@ -93,26 +157,17 @@ string XlaCompilationCache::DebugString() const {
 // arguments in the supplied list.
 string XlaCompilationCache::Signature::HumanString() const {
   string result = name;
-  for (const auto& a : arg_shapes) {
-    absl::StrAppend(&result, ",", DataTypeString(a.first));
-    absl::StrAppend(&result, " [", absl::StrJoin(a.second, ","), "]");
-  }
-
-  for (const auto& v : arg_values) {
-    absl::StrAppend(&result, "; ", v.DebugString());
+  for (const auto& a : args) {
+    absl::visit(SignatureHumanStringAppender(&result), a);
   }
   return result;
 }
 
 bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
   if (name != other.name) return false;
-  if (arg_shapes != other.arg_shapes) return false;
-
-  if (arg_values.size() != other.arg_values.size()) return false;
-  for (int i = 0, end = arg_values.size(); i < end; ++i) {
-    if (arg_values[i].dtype() != other.arg_values[i].dtype() ||
-        arg_values[i].shape() != other.arg_values[i].shape() ||
-        arg_values[i].tensor_data() != other.arg_values[i].tensor_data()) {
+  if (args.size() != other.args.size()) return false;
+  for (int i = 0, end = args.size(); i < end; ++i) {
+    if (absl::visit(SignatureNotEqual(), args[i], other.args[i])) {
       return false;
     }
   }
@@ -122,16 +177,8 @@ bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
 uint64 XlaCompilationCache::Signature::Hash::operator()(
     const XlaCompilationCache::Signature& signature) const {
   uint64 h = std::hash<string>()(signature.name);
-  for (const auto& arg : signature.arg_shapes) {
-    h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.first)));
-    h = Hash64Combine(h, std::hash<int>()(arg.second.size()));
-    for (int dim : arg.second) {
-      h = Hash64Combine(h, std::hash<int>()(dim));
-    }
-  }
-  for (const auto& arg : signature.arg_values) {
-    h = Hash64Combine(
-        h, Hash64(arg.tensor_data().data(), arg.tensor_data().size()));
+  for (const auto& arg : signature.args) {
+    h = absl::visit(SignatureHashCombiner(h), arg);
   }
   return h;
 }
@@ -146,12 +193,12 @@ StatusOr<XlaCompilationCache::Signature> XlaCompilationCache::BuildSignature(
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
       case XlaCompiler::Argument::kConstantResource:
-        signature.arg_values.push_back(arg.constant_value);
+        signature.args.push_back(arg.constant_value);
         break;
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kResource:
-        signature.arg_shapes.emplace_back(arg.type,
-                                          arg.DimensionSizesAsInlinedVector());
+        signature.args.push_back(
+            TensorTypeAndShape(arg.type, arg.DimensionSizesAsInlinedVector()));
         break;
       default:
         return errors::InvalidArgument(
@@ -174,8 +221,8 @@ Status XlaCompilationCache::BuildExecutable(
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
-  if (result.collective_reduce_info) {
-    build_options.set_num_replicas(result.collective_reduce_info->group_size);
+  if (result.collective_info) {
+    build_options.set_num_replicas(result.collective_info->group_size);
   }
   build_options.set_device_ordinal(options.device_ordinal != -1
                                        ? options.device_ordinal
@@ -200,23 +247,15 @@ Status XlaCompilationCache::Compile(
     CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
-  // !!Pay attention when additional variables must be captured by this
-  // lambda!! compile_fn can run asynchronously after this funcion has
-  // exited. Make sure that any variable needed inside compile_fn is
-  // either passed as an argument, or captured by value right here.
-  auto compile_fn = [compile_options, function](
-                        XlaCompiler* compiler,
-                        const std::vector<XlaCompiler::Argument>& args,
-                        XlaCompiler::CompilationResult* result) {
-    return compiler->CompileFunction(compile_options, function, args, result);
-  };
-  return CompileImpl(options, function, args, compile_fn, compile_mode,
+  return CompileImpl(compile_options, options, function, args, /*ctx=*/nullptr,
+                     CompileScope::kFunction, compile_mode,
                      out_compilation_result, out_executable);
 }
 
-static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
-  const int64 kCompileThreshold = 10;
-  const int64 kMinExecutionsPerCompile = 50;
+static bool ShouldBeMegamorphic(int64_t compile_count,
+                                int64_t execution_count) {
+  const int64_t kCompileThreshold = 10;
+  const int64_t kMinExecutionsPerCompile = 50;
 
   // This heuristic is trying to capture the following property: have we sunk a
   // certain minimum amount of compile time into the cluster that didn't quite
@@ -232,14 +271,12 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
   // _Arg nodes, and let CompileGraph walk it. This could be optimized.
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
-  Status status;
   // First create the actual node we care about computing.
-  Node* main_node = graph->AddNode(node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * main_node, graph->AddNode(node_def));
 
   // Create dummy _Arg nodes. Link these to `node` and also via a control
   // dependency edge to the _SOURCE node.
-  for (int64 i = 0, end = args.size(); i < end; ++i) {
+  for (int64_t i = 0, end = args.size(); i < end; ++i) {
     Node* node;
     string arg_name = absl::StrCat("_arg", i);
     Status status =
@@ -255,7 +292,7 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
   }
 
   // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64 i = 0, end = result_types.size(); i < end; ++i) {
+  for (int64_t i = 0, end = result_types.size(); i < end; ++i) {
     Node* node;
     string retval_name = absl::StrCat("_retval", i);
     Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
@@ -267,6 +304,64 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
   }
   FixupSourceAndSinkEdges(graph.get());
   return graph;
+}
+
+Status XlaSingleOpToHlo(XlaCompiler* compiler,
+                        const XlaCompiler::Options& options,
+                        const std::vector<XlaCompiler::Argument>& args,
+                        OpKernelContext* ctx,
+                        const XlaCompiler::CompileOptions& compile_options,
+                        XlaCompiler::CompilationResult* compilation_result) {
+  std::vector<DataType> result_dtypes(ctx->num_outputs());
+  for (int i = 0, end = result_dtypes.size(); i < end; ++i) {
+    result_dtypes[i] = ctx->expected_output_dtype(i);
+  }
+
+  const NodeDef& node_def = ctx->op_kernel().def();
+  TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
+
+  auto compile_with_old_bridge = [&]() {
+    *compilation_result = {};
+    return compiler->CompileGraph(compile_options, node_def.name(),
+                                  std::move(graph), args, compilation_result);
+  };
+
+  const ConfigProto* config = ctx->function_library()->config_proto();
+  auto bridge_rollout = GetMlirBridgeRolloutState(
+      config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
+  if (bridge_rollout ==
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
+      node_def.op() == "VarIsInitializedOp" ||
+      (bridge_rollout !=
+           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
+       options.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
+    return compile_with_old_bridge();
+  }
+
+  GraphDebugInfo debug_info;
+  std::vector<std::string> control_rets;
+  if (result_dtypes.empty()) {
+    control_rets.push_back(node_def.name());
+  }
+
+  bool mlir_enabled = (bridge_rollout ==
+                       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
+  VLOG(1) << "Attempting MLIR bridge."
+          << (mlir_enabled ? " MLIR is explicitly enabled." : "");
+  auto mlir_result = CompileGraphToXlaHlo(
+      *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
+      options.device_type.type_string(), compile_options.use_tuple_arg,
+      /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
+      options.shape_representation_fn, compilation_result);
+
+  if (mlir_result.ok() || mlir_enabled) {
+    return mlir_result;
+  }
+
+  VLOG(2) << "Failed second phase of the MLIR bridge. Will "
+             "retry with the old bridge. MLIR bridge compilation status: "
+          << mlir_result;
+  return compile_with_old_bridge();
 }
 
 Status XlaCompilationCache::CompileSingleOp(
@@ -283,60 +378,8 @@ Status XlaCompilationCache::CompileSingleOp(
   // compilation cache key. This attribute is information for the colocator
   // and causes false uniqueness between nodes.
   name.mutable_attr()->erase("_class");
-  auto compile_op = [&](XlaCompiler* compiler,
-                        const std::vector<XlaCompiler::Argument>& args,
-                        XlaCompiler::CompilationResult* result) {
-    std::vector<DataType> result_dtypes(ctx->num_outputs());
-    for (int i = 0, end = result_dtypes.size(); i < end; ++i) {
-      result_dtypes[i] = ctx->expected_output_dtype(i);
-    }
-
-    const NodeDef& node_def = ctx->op_kernel().def();
-    TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
-
-    const ConfigProto* config = ctx->function_library()->config_proto();
-    auto bridge_rollout = GetMlirBridgeRolloutState(
-        config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
-
-    auto compile_with_old_bridge = [&]() {
-      return compiler->CompileGraph(compile_options, node_def.name(),
-                                    std::move(graph), args, result);
-    };
-
-    if (bridge_rollout ==
-            ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
-        node_def.op() == "VarIsInitializedOp") {
-      return compile_with_old_bridge();
-    }
-
-    GraphDebugInfo debug_info;
-    std::vector<std::string> control_rets;
-    if (result_dtypes.empty()) {
-      control_rets.push_back(node_def.name());
-    }
-
-    bool mlir_enabled =
-        (bridge_rollout ==
-         ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
-    VLOG(1) << "Attempting MLIR bridge."
-            << (mlir_enabled ? " MLIR is explicitly enabled." : "");
-    auto mlir_result = CompileGraphToXlaHlo(
-        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
-        options.device_type.type_string(), compile_options.use_tuple_arg,
-        /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
-        options.shape_representation_fn, result);
-
-    if (mlir_result.ok() || mlir_enabled) {
-      return mlir_result;
-    }
-
-    LOG_FIRST_N(WARNING, 5)
-        << "Failed second phase of the MLIR bridge. Will "
-           "retry with the old bridge. MLIR bridge compilation status: "
-        << mlir_result;
-    return compile_with_old_bridge();
-  };
-  return CompileImpl(options, name, args, compile_op, CompileMode::kStrict,
+  return CompileImpl(compile_options, options, name, args, ctx,
+                     CompileScope::kOp, CompileMode::kStrict,
                      out_compilation_result, out_executable);
 }
 
@@ -355,19 +398,26 @@ void LogOnceXlaCompiledFirstCluster() {
 }  // namespace
 
 Status XlaCompilationCache::CompileStrict(
-    Entry* entry, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args, const string& function_name,
-    const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
-                               XlaCompiler::CompilationResult*)>& compile_fn) {
+    Entry* entry, const XlaCompiler::CompileOptions& compile_options,
+    const XlaCompiler::Options& options,
+    const std::vector<XlaCompiler::Argument>& args,
+    const NameAttrList& function, OpKernelContext* ctx, CompileScope scope) {
   tensorflow::Env* env = tensorflow::Env::Default();
   const uint64 compile_start_us = env->NowMicros();
 
   XlaCompiler compiler(options);
   entry->compile_state = CompileState::kCompiled;
+  entry->compilation_status = [&] {
+    if (scope == CompileScope::kOp) {
+      return XlaSingleOpToHlo(&compiler, options, args, ctx, compile_options,
+                              &entry->compilation_result);
 
-  entry->compilation_status =
-      compile_fn(&compiler, args, &entry->compilation_result);
+    } else {
+      CHECK(scope == CompileScope::kFunction);  // Crash OK
+      return compiler.CompileFunction(compile_options, function, args,
+                                      &entry->compilation_result);
+    }
+  }();
   TF_RETURN_IF_ERROR(entry->compilation_status);
   TF_RET_CHECK(entry->executable.get() == nullptr);
   entry->compilation_status =
@@ -376,43 +426,40 @@ Status XlaCompilationCache::CompileStrict(
   const uint64 compile_end_us = env->NowMicros();
   const uint64 compile_time_us = compile_end_us - compile_start_us;
   metrics::UpdateXlaCompilationTime(compile_time_us);
-  {
-    mutex_lock lock(cluster_compile_stats_mu_);
-    auto it = cluster_compile_stats_.find(function_name);
-    const uint64 compile_time_s = compile_time_us / 1.0e6;
-    it->second.compile_count++;
-    it->second.cumulative_compile_time_us += compile_time_us;
 
-    LogOnceXlaCompiledFirstCluster();
-    VLOG(1) << "compiled " << function_name << " " << it->second.compile_count
-            << " times, compile time: " << compile_time_us
-            << " us, cumulative: " << it->second.cumulative_compile_time_us
-            << " us ("
-            << tensorflow::strings::HumanReadableElapsedTime(compile_time_s)
-            << " / "
-            << tensorflow::strings::HumanReadableElapsedTime(
-                   it->second.cumulative_compile_time_us / 1.0e6)
-            << ")";
+  mutex_lock lock(cluster_compile_stats_mu_);
+  const std::string& function_name = function.name();
+  auto it = cluster_compile_stats_.find(function_name);
+  const uint64 compile_time_s = compile_time_us / 1.0e6;
+  it->second.compile_count++;
+  it->second.cumulative_compile_time_us += compile_time_us;
+  LogOnceXlaCompiledFirstCluster();
+  VLOG(1) << "compiled " << function_name << " " << it->second.compile_count
+          << " times, compile time: " << compile_time_us
+          << " us, cumulative: " << it->second.cumulative_compile_time_us
+          << " us ("
+          << tensorflow::strings::HumanReadableElapsedTime(compile_time_s)
+          << " / "
+          << tensorflow::strings::HumanReadableElapsedTime(
+                 it->second.cumulative_compile_time_us / 1.0e6)
+          << ")";
 
-    XlaJitCompilationActivity jit_compilation_activity;
-    jit_compilation_activity.set_cluster_name(function_name);
-    jit_compilation_activity.set_compile_count(it->second.compile_count);
-    jit_compilation_activity.set_compile_time_us(compile_time_us);
-    jit_compilation_activity.set_cumulative_compile_time_us(
-        it->second.cumulative_compile_time_us);
-    TF_RETURN_IF_ERROR(
-        BroadcastXlaActivity(std::move(jit_compilation_activity)));
-  }
+  XlaJitCompilationActivity jit_compilation_activity;
+  jit_compilation_activity.set_cluster_name(function_name);
+  jit_compilation_activity.set_compile_count(it->second.compile_count);
+  jit_compilation_activity.set_compile_time_us(compile_time_us);
+  jit_compilation_activity.set_cumulative_compile_time_us(
+      it->second.cumulative_compile_time_us);
+  TF_RETURN_IF_ERROR(BroadcastXlaActivity(std::move(jit_compilation_activity)));
 
   return Status::OK();
 }
 
 Status XlaCompilationCache::CompileAsynchronous(
-    Entry* entry, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args, const string& function_name,
-    const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
-                               XlaCompiler::CompilationResult*)>& compile_fn) {
+    Entry* entry, const XlaCompiler::CompileOptions& compile_options,
+    const XlaCompiler::Options& options,
+    const std::vector<XlaCompiler::Argument>& args,
+    const NameAttrList& function, OpKernelContext* ctx, CompileScope scope) {
   // Explicitly capture all required data by value for async compilation.
   entry->compile_state = CompileState::kCompiling;
   {
@@ -428,6 +475,7 @@ Status XlaCompilationCache::CompileAsynchronous(
   // !!Pay attention when additional variables must be captured by this lambda!!
   // All values are captured by value. Make sure that all pointer values (like
   // entry) do not get freed until the lambda has finished,\.
+  const std::string& function_name = function.name();
   async_compilation_state_.compiler_threads->Schedule([=] {
     Entry local_entry;
     VLOG(2) << "Starting asynchronous compilation of cluster " << function_name
@@ -435,8 +483,8 @@ Status XlaCompilationCache::CompileAsynchronous(
     // We don't need to lock local_entry.mu, but do it anyway to satisfy
     // thread safety analysis.
     mutex_lock entry_lock(local_entry.mu);
-    (void)CompileStrict(&local_entry, options, args, function_name, compile_fn);
-
+    Status s = CompileStrict(&local_entry, compile_options, options, args,
+                             function, ctx, scope);
     VLOG(2) << "Finished asynchronous compililation of cluster "
             << function_name << '.';
     {
@@ -445,28 +493,80 @@ Status XlaCompilationCache::CompileAsynchronous(
     }
     {  // Populate original entry with compilation result.
       mutex_lock entry_lock(entry->mu);
+      if (!s.ok()) {
+        entry->compilation_status = s;
+      } else {
+        entry->compilation_status = local_entry.compilation_status;
+      }
       entry->compilation_result = local_entry.compilation_result;
       entry->compile_state = local_entry.compile_state;
-      entry->compilation_status = local_entry.compilation_status;
       entry->executable = std::move(local_entry.executable);
     }
   });
   return Status::OK();
 }
 
+bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
+                                               bool is_megamorphic,
+                                               bool is_first_execution,
+                                               int64_t current_request_count,
+                                               const NameAttrList& function) {
+  absl::optional<int64_t> compile_threshold;
+  if (compile_mode == CompileMode::kLazy) {
+    compile_threshold = kDefaultCompilationThreshold;
+  } else if (compile_mode == CompileMode::kAsync) {
+    compile_threshold = 0;  // for now, always compile right away.
+  }
+
+  if (compile_mode == CompileMode::kStrict) {
+    // Lazy compilation is disabled.
+    return true;
+  }
+
+  if (is_megamorphic) {
+    BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
+                                function.name())
+        .IgnoreError();
+    VLOG(2) << "Not compiling cluster " << function.name()
+            << " because it is megamorphic.";
+    return false;
+  }
+
+  if (is_first_execution) {
+    return true;
+  }
+
+  if (compile_mode == CompileMode::kAsync) {
+    // Asynchronous compilation is enabled.
+    mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
+    if (async_compilation_state_.num_ongoing_compilations >=
+        async_compilation_state_.kMaxNumOngoingCompilations) {
+      VLOG(2) << "Not asynchronously compiling cluster " << function.name()
+              << " because of too many ongoing compilations.";
+      return false;
+    }
+  }
+
+  bool reached_compile_threshold = current_request_count >= *compile_threshold;
+  if (!reached_compile_threshold) {
+    VLOG(2) << "Not compiling cluster " << function.name()
+            << " because it has not reached compile threshold; threshold is "
+            << *compile_threshold << " execution count "
+            << current_request_count << ".";
+  }
+  return reached_compile_threshold;
+}
+
 Status XlaCompilationCache::CompileImpl(
+    const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options, const NameAttrList& function,
-    const std::vector<XlaCompiler::Argument>& args,
-    const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
-                               XlaCompiler::CompilationResult*)>& compile_fn,
-    CompileMode compile_mode,
+    const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
+    CompileScope scope, CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
   if (FailOnXlaCompilation()) {
     return errors::Internal("XLA compilation disabled");
   }
-
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
@@ -476,20 +576,8 @@ Status XlaCompilationCache::CompileImpl(
       VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
-  absl::optional<int64> compile_threshold;
-  if (compile_mode == CompileMode::kLazy) {
-    compile_threshold = kDefaultCompilationThreshold;
-  } else if (compile_mode == CompileMode::kAsync) {
-    compile_threshold = 0;  // for now, always compile right away.
-  }
-
   TF_ASSIGN_OR_RETURN(Signature signature, BuildSignature(function, args));
 
-  string human_signature;
-  if (VLOG_IS_ON(2)) {
-    human_signature = VLOG_IS_ON(3) ? signature.HumanString() : function.name();
-    VLOG(2) << "Signature: " << human_signature;
-  }
 
   // The outer lock protects the existence of the cache entry. It does not
   // protect the contents of the cache entry.
@@ -536,92 +624,54 @@ Status XlaCompilationCache::CompileImpl(
     is_megamorphic = it->second.is_megamorphic;
   }
 
+  string human_signature;
+  if (VLOG_IS_ON(2)) {
+    human_signature = VLOG_IS_ON(3) ? signature.HumanString() : function.name();
+    VLOG(2) << "Signature: " << human_signature;
+  }
+
   // Acquire the cache entry lock and compile, if necessary.
   // TODO(phawkins): this locking will need to be restructured when we implement
   // cache eviction.
   mutex_lock entry_lock(entry->mu);
-  int64 current_request_count = ++entry->request_count;
+  int64_t current_request_count = ++entry->request_count;
   VLOG(2) << "Compilation cache entry hit: "
           << static_cast<int>(entry->compile_state)
           << " signature: " << human_signature << " with request count "
-          << current_request_count << " and compile threshold "
-          << compile_threshold.value_or(0);
-  // TODO(sanjoy): Refactor this code into helper functions.
-  bool return_null = false;
+          << current_request_count;
+
   CompileState state = entry->compile_state;
+  *out_compilation_result = nullptr;
+  *out_executable = nullptr;
+
   if (state == CompileState::kUncompiled) {
     XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
-    const bool should_compile = [&] {
-      if (compile_mode == CompileMode::kStrict) {
-        // Lazy compilation is disabled.
-        return true;
-      }
-
-      if (is_megamorphic) {
-        BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
-                                    function.name())
-            .IgnoreError();
-        VLOG(2) << "Not compiling cluster " << function.name()
-                << " because it is megamorphic.";
-        return false;
-      }
-
-      if (is_first_execution) {
-        return true;
-      }
-
-      if (compile_mode == CompileMode::kAsync) {
-        // Asynchronous compilation is enabled.
-        mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
-        if (async_compilation_state_.num_ongoing_compilations >=
-            async_compilation_state_.kMaxNumOngoingCompilations) {
-          VLOG(2) << "Not asynchronously compiling cluster " << function.name()
-                  << " because of too many ongoing compilations.";
-          return false;
-        }
-      }
-
-      bool reached_compile_threshold =
-          current_request_count >= *compile_threshold;
-      if (!reached_compile_threshold) {
-        VLOG(2)
-            << "Not compiling cluster " << function.name()
-            << " because it has not reached compile threshold; threshold is "
-            << *compile_threshold << " execution count "
-            << current_request_count << ".";
-      }
-      return reached_compile_threshold;
-    }();
-
-    if (!should_compile) {
+    if (!ShouldCompileCluster(compile_mode, is_megamorphic, is_first_execution,
+                              current_request_count, function)) {
       VLOG(2) << "Not compiling for signature: " << human_signature;
-      return_null = true;
+      return Status::OK();
     } else if (compile_mode == CompileMode::kAsync) {
       VLOG(2) << "Queueing asynchronous compilation for signature: "
               << human_signature;
-      TF_RETURN_IF_ERROR(CompileAsynchronous(entry, options, args,
-                                             function.name(), compile_fn));
-      return_null = true;
+      TF_RETURN_IF_ERROR(CompileAsynchronous(entry, compile_options, options,
+                                             args, function, ctx, scope));
+      return Status::OK();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
-      TF_RETURN_IF_ERROR(
-          CompileStrict(entry, options, args, function.name(), compile_fn));
+      TF_RETURN_IF_ERROR(CompileStrict(entry, compile_options, options, args,
+                                       function, ctx, scope));
     }
   } else if (state == CompileState::kCompiling) {
     VLOG(2) << "Ongoing asynchronous compilation for signature: "
             << human_signature;
-    return_null = true;
+    return Status::OK();
   } else if (state == CompileState::kCompiled) {
     VLOG(2) << "Already Compiled for signature: " << human_signature;
   }
-  if (return_null) {
-    *out_compilation_result = nullptr;
-    *out_executable = nullptr;
-  } else {
-    TF_RETURN_IF_ERROR(entry->compilation_status);
-    *out_compilation_result = &entry->compilation_result;
-    *out_executable = entry->executable.get();
-  }
+
+  TF_RETURN_IF_ERROR(entry->compilation_status);
+  *out_compilation_result = &entry->compilation_result;
+  *out_executable = entry->executable.get();
   return Status::OK();
 }
 

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/linalg_ops.cc.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -31,10 +31,10 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -62,12 +62,12 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
                                       input_matrix_shapes[1].dim_size(1)})});
   }
 
-  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+  int64_t GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
     double cost = rows * rows * (rows + num_rhss);
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   bool EnableInputForwarding() const final { return false; }
@@ -114,7 +114,7 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixSolveOp);
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 typedef Eigen::GpuDevice GPUDevice;
 
 template <class Scalar>
@@ -129,8 +129,8 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const Tensor& rhs = context->input(1);
     const int ndims = input.dims();
-    const int64 n = input.dim_size(ndims - 1);
-    const int64 nrhs = rhs.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
+    const int64_t nrhs = rhs.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -143,15 +143,22 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                       done);
     OP_REQUIRES_ASYNC(
         context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be squares, got",
+        errors::InvalidArgument("Input matrices must be squares, got ",
                                 input.dim_size(ndims - 2), " != ", n),
         done);
     OP_REQUIRES_ASYNC(context, rhs.dim_size(ndims - 2) == n,
                       errors::InvalidArgument(
                           "Input matrix and right-hand side must have the "
-                          "same number of rows, got",
+                          "same number of rows, got ",
                           n, " != ", rhs.dim_size(ndims - 2)),
                       done);
+    for (int dim = 0; dim < ndims - 2; dim++) {
+      OP_REQUIRES_ASYNC(
+          context, input.dim_size(dim) == rhs.dim_size(dim),
+          errors::InvalidArgument(
+              "All input tensors must have the same outer dimensions."),
+          done);
+    }
 
     // Allocate output.
     Tensor* output;
@@ -168,7 +175,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     }
 
     // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
 
     // Make a copy of the input for the factorization step, or, if adjoint_ is
     // false, try to reuse the input buffer if this op owns it exclusively.
@@ -197,7 +204,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       }
     }
     auto input_copy_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
-    const int64 batch_size = input_copy_reshaped.dimension(0);
+    const int64_t batch_size = input_copy_reshaped.dimension(0);
 
     // Allocate pivots on the device.
     Tensor pivots;
@@ -219,9 +226,14 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
         n <= kMaxMatrixSizeToBatchSizeRatio * batch_size;
     if (use_batched_solver) {
       // For small matrices or large batch sizes, we use the batched interface
-      // from cuBlas.
+      // from cuBlas/rocmSolver.
+#if GOOGLE_CUDA
       const Scalar** input_copy_ptrs_base =
           reinterpret_cast<const Scalar**>(input_copy_ptrs.mutable_data());
+#else  // TENSORFLOW_USE_ROCM
+      Scalar** input_copy_ptrs_base =
+          reinterpret_cast<Scalar**>(input_copy_ptrs.mutable_data());
+#endif
       for (int batch = 0; batch < batch_size; ++batch) {
         input_copy_ptrs_base[batch] = &input_copy_reshaped(batch, 0, 0);
       }
@@ -246,8 +258,8 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     }
 
     // 2. Make a transposed copy of the right-hand sides. This is necessary
-    // because cuBLAS assumes column-major storage while TensorFlow TF uses
-    // row-major.
+    // because cuBLAS/rocSolver assumes column-major storage while TensorFlow TF
+    // uses row-major.
     TensorShape transposed_rhs_shape(rhs.shape());
     transposed_rhs_shape.RemoveLastDims(2);
     transposed_rhs_shape.AddDim(nrhs);
@@ -266,6 +278,12 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                     rhs.flat<Scalar>().data(),
                     rhs.NumElements() * sizeof(Scalar));
     }
+#if GOOGLE_CUDA
+    auto op_t = adjoint_ ? CUBLAS_OP_C : CUBLAS_OP_T;
+#else  // TENSORFLOW_USE_ROCM
+    auto op_t = adjoint_ ? rocblas_operation_conjugate_transpose
+                         : rocblas_operation_transpose;
+#endif
 
     // 3. Solve op(A) X = B (in column major form).
     // We use a trick here: If adjoint_ is true, we converted A to column major
@@ -283,11 +301,18 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     auto transposed_rhs_reshaped =
         transposed_rhs.template flat_inner_dims<Scalar, 3>();
     if (use_batched_solver) {
+#if GOOGLE_CUDA
       const Scalar** input_copy_ptrs_base =
           reinterpret_cast<const Scalar**>(input_copy_ptr_array.mutable_data());
       const Scalar** transposed_rhs_ptrs_base =
           reinterpret_cast<const Scalar**>(
               transposed_rhs_ptr_array.mutable_data());
+#else  // TENSORFLOW_USE_ROCM
+      Scalar** input_copy_ptrs_base =
+          reinterpret_cast<Scalar**>(input_copy_ptr_array.mutable_data());
+      Scalar** transposed_rhs_ptrs_base =
+          reinterpret_cast<Scalar**>(transposed_rhs_ptr_array.mutable_data());
+#endif
       for (int batch = 0; batch < batch_size; ++batch) {
         input_copy_ptrs_base[batch] = &input_copy_reshaped(batch, 0, 0);
         transposed_rhs_ptrs_base[batch] = &transposed_rhs_reshaped(batch, 0, 0);
@@ -295,10 +320,9 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       int host_info = 0;
       OP_REQUIRES_OK_ASYNC(
           context,
-          solver->GetrsBatched(adjoint_ ? CUBLAS_OP_C : CUBLAS_OP_T, n, nrhs,
-                               input_copy_ptrs_base, n, pivots_mat.data(),
-                               transposed_rhs_ptrs_base, n, &host_info,
-                               batch_size),
+          solver->GetrsBatched(op_t, n, nrhs, input_copy_ptrs_base, n,
+                               pivots_mat.data(), transposed_rhs_ptrs_base, n,
+                               &host_info, batch_size),
           done);
       OP_REQUIRES_ASYNC(
           context, host_info == 0,
@@ -311,8 +335,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver->Getrs(adjoint_ ? CUBLAS_OP_C : CUBLAS_OP_T, n, nrhs,
-                          &input_copy_reshaped(batch, 0, 0), n,
+            solver->Getrs(op_t, n, nrhs, &input_copy_reshaped(batch, 0, 0), n,
                           &pivots_mat(batch, 0),
                           &transposed_rhs_reshaped(batch, 0, 0), n,
                           &dev_info.back()(batch)),
@@ -349,8 +372,8 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(context, status, done);
       done();
     };
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(info_checker));
   }
 
  private:

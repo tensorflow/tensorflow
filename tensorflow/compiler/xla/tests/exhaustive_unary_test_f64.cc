@@ -33,14 +33,14 @@ namespace exhaustive_op_test {
 class ExhaustiveF64UnaryTest : public ExhaustiveUnaryTest<F64>,
                                public ::testing::WithParamInterface<FpValues> {
  private:
-  int64 GetInputSize() override {
+  int64_t GetInputSize() override {
     FpValues values = GetParam();
     return values.GetTotalNumValues();
   }
 
   void FillInput(std::array<Literal, 1>* input_literal) override {
     FpValues fp_values = GetParam();
-    int64 input_size = (*input_literal)[0].element_count();
+    int64_t input_size = (*input_literal)[0].element_count();
     LOG(INFO) << "Checking fp values " << fp_values.ToString() << ", "
               << input_size;
     absl::Span<double> input_arr = (*input_literal)[0].data<double>();

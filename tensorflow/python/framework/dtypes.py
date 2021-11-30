@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Library of dtypes (Tensor element types)."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 from six.moves import builtins
 
@@ -37,8 +33,8 @@ _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 class DType(_dtypes.DType):
   """Represents the type of the elements in a `Tensor`.
 
-  `DType`s are used to specify the output data type for operations which
-  require it, or to inspect the data type of existing `Tensor`s.
+  `DType`'s are used to specify the output data type for operations which
+  require it, or to inspect the data type of existing `Tensor`'s.
 
   Examples:
 
@@ -47,7 +43,7 @@ class DType(_dtypes.DType):
   >>> tf.constant(1.0).dtype
   tf.float32
 
-  See `tf.dtypes` for a complete list of `DType`s defined.
+  See `tf.dtypes` for a complete list of `DType`'s defined.
   """
   __slots__ = ()
 
@@ -98,7 +94,9 @@ class DType(_dtypes.DType):
     """
     if (self.is_quantized or
         self.base_dtype in (bool, string, complex64, complex128)):
-      raise TypeError("Cannot find minimum value of %s." % self)
+      raise TypeError(f"Cannot find minimum value of {self} with "
+                      f"{'quantized type' if self.is_quantized else 'type'} "
+                      f"{self.base_dtype}.")
 
     # there is no simple way to get the min value of a dtype, we have to check
     # float and int types separately
@@ -110,7 +108,7 @@ class DType(_dtypes.DType):
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("-0x1.FEp127"))
-        raise TypeError("Cannot find minimum value of %s." % self)
+        raise TypeError(f"Cannot find minimum value of {self}.")
 
   @property
   def max(self):
@@ -122,7 +120,9 @@ class DType(_dtypes.DType):
     """
     if (self.is_quantized or
         self.base_dtype in (bool, string, complex64, complex128)):
-      raise TypeError("Cannot find maximum value of %s." % self)
+      raise TypeError(f"Cannot find maximum value of {self} with "
+                      f"{'quantized type' if self.is_quantized else 'type'} "
+                      f"{self.base_dtype}.")
 
     # there is no simple way to get the max value of a dtype, we have to check
     # float and int types separately
@@ -134,7 +134,7 @@ class DType(_dtypes.DType):
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("0x1.FEp127"))
-        raise TypeError("Cannot find maximum value of %s." % self)
+        raise TypeError(f"Cannot find maximum value of {self}.")
 
   @property
   def limits(self, clip_negative=True):
@@ -242,7 +242,7 @@ tf_export("dtypes.uint16", "uint16").export_constant(__name__, "uint16")
 
 uint32 = DType(types_pb2.DT_UINT32)
 doc_typealias.document(
-    obj=uint16,
+    obj=uint32,
     doc="Unsigned 32-bit (dword) integer.")
 tf_export("dtypes.uint32", "uint32").export_constant(__name__, "uint32")
 
@@ -530,8 +530,8 @@ _NP_TO_TF = {
     np.complex64: complex64,
     np.complex128: complex128,
     np.object_: string,
-    np.string_: string,
-    np.unicode_: string,
+    np.bytes_: string,
+    np.str_: string,
     np.bool_: bool,
     _np_qint8: qint8,
     _np_quint8: quint8,
@@ -579,10 +579,10 @@ _TF_TO_NP = {
         np.int16,
     types_pb2.DT_INT8:
         np.int8,
-    # NOTE(touts): For strings we use np.object as it supports variable length
+    # NOTE(touts): For strings we use object as it supports variable length
     # strings.
     types_pb2.DT_STRING:
-        np.object,
+        object,
     types_pb2.DT_COMPLEX64:
         np.complex64,
     types_pb2.DT_COMPLEX128:
@@ -624,7 +624,7 @@ _TF_TO_NP = {
     types_pb2.DT_INT8_REF:
         np.int8,
     types_pb2.DT_STRING_REF:
-        np.object,
+        np.object_,
     types_pb2.DT_COMPLEX64_REF:
         np.complex64,
     types_pb2.DT_COMPLEX128_REF:
@@ -634,7 +634,7 @@ _TF_TO_NP = {
     types_pb2.DT_UINT64_REF:
         np.uint64,
     types_pb2.DT_BOOL_REF:
-        np.bool,
+        np.bool_,
     types_pb2.DT_QINT8_REF:
         _np_qint8,
     types_pb2.DT_QUINT8_REF:
@@ -718,5 +718,5 @@ def as_dtype(type_value):
   if isinstance(type_value, _dtypes.DType):
     return _INTERN_TABLE[type_value.as_datatype_enum]
 
-  raise TypeError("Cannot convert value %r to a TensorFlow DType." %
-                  (type_value,))
+  raise TypeError(f"Cannot convert the argument `type_value`: {type_value!r} "
+                  "to a TensorFlow DType.")

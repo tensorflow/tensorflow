@@ -31,6 +31,8 @@ struct ExportParams {
   bool allow_dynamic_tensors = true;
   bool enable_select_tf_ops = false;
   QuantizedBufferType quantize_weights = QuantizedBufferType::NONE;
+  // Whether to use per-tensor (false) or per-channel (true) for hybrid quant.
+  bool disable_per_channel = false;
 };
 
 // Transform the given tf.mini model into a TF Lite flatbuffer and deposit the

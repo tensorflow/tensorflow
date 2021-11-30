@@ -63,6 +63,7 @@ bool ComputationLayout::LayoutIsSet() const {
 
 string ComputationLayout::ToString() const {
   std::vector<string> params;
+  params.reserve(parameter_layouts_.size());
   for (auto& param_layout : parameter_layouts_) {
     params.push_back(param_layout.ToString());
   }
@@ -72,7 +73,7 @@ string ComputationLayout::ToString() const {
 
 ProgramShape ComputationLayout::ComputeProgramShape() const {
   ProgramShape program_shape;
-  for (int64 i = 0; i < parameter_layouts_.size(); ++i) {
+  for (int64_t i = 0; i < parameter_layouts_.size(); ++i) {
     *program_shape.add_parameters() = parameter_layouts_[i].shape();
     *program_shape.add_parameter_names() = absl::StrCat("p", i);
   }

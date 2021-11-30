@@ -1,17 +1,21 @@
 # Where component owners are known, add them here.
 
-/tensorflow/c/eager @qqfish @kkimdev
-/tensorflow/core/common_runtime/eager @qqfish @kkimdev
+/tensorflow/c/eager @qqfish @saxenasaurabh
+/tensorflow/core/common_runtime/eager @qqfish @saxenasaurabh
 /tenosrflow/core/debug @caisq
 /tensorflow/core/kernels/mkl/ @penpornk
 /tensorflow/core/kernels/sparse/ @penpornk
 /tensorflow/core/nccl/ @azaks2 @chsigg
 /tensorflow/core/platform/windows/ @mihaimaruseac
 /tensorflow/lite/experimental/micro @petewarden @advaitjain
-/tensorflow/python/autograph/ @mdanatg @kkimdev
+/tensorflow/python/autograph/ @mdanatg @saxenasaurabh
 /tensorflow/python/debug @caisq
-/tensorflow/python/eager @rohan100jain @kkimdev
+/tensorflow/python/eager @rohan100jain @saxenasaurabh
 /tensorflow/python/tools/api/generator/ @annarev
 /tensorflow/tools/docs/ @markdaoust
+/tensorflow/compiler/mlir/ @aminim @jpienaar
+/tensorflow/core/ir/ @aminim @jpienaar
+/tensorflow/core/transforms/ @aminim @jpienaar
+
 
 /third_party/systemlibs/ @perfinion

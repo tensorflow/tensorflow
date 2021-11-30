@@ -427,7 +427,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     const string& input_name = node_names.GetInputName(node->name());
     argdef->set_name(input_name);
     FunctionDef::ArgAttrs arg_attrs;
-    int64 resource_arg_unique_id = -1;
+    int64_t resource_arg_unique_id = -1;
     for (const auto& attr : node->attrs()) {
       // Only copy internal attributes. These attributes will be applied to
       // _Arg/Placeholder nodes when this FunctionDef is converted to graph,

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for functions used to extract and analyze stacks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import traceback
 
 from tensorflow.python.platform import test
@@ -55,6 +51,18 @@ class TFStackTest(test.TestCase):
     trace = tf_stack.extract_stack()  # COMMENT
     frame = trace.last_user_frame()
     self.assertRegex(frame.line, "# COMMENT")
+
+  def testGetUserFrames(self):
+
+    def func():
+      trace = tf_stack.extract_stack()  # COMMENT
+      frames = list(trace.get_user_frames())
+      return frames
+
+    frames = func()  # CALLSITE
+
+    self.assertRegex(frames[-1].line, "# COMMENT")
+    self.assertRegex(frames[-2].line, "# CALLSITE")
 
 
 def extract_stack(limit=None):

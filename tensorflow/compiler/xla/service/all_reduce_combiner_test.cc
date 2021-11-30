@@ -39,10 +39,10 @@ namespace {
 using absl::nullopt;
 using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
-int64 kMaxCombineCount = 256;
+int64_t kMaxCombineCount = 256;
 
-int64 AllReduceCount(const HloModule& module) {
-  int64 count = 0;
+int64_t AllReduceCount(const HloModule& module) {
+  int64_t count = 0;
   for (HloComputation* computation : module.computations()) {
     if (computation->IsFusionComputation()) {
       continue;
@@ -60,12 +60,12 @@ int64 AllReduceCount(const HloModule& module) {
 // feeds into a a all reduce op in all_reduces[i]. Returns a tuple
 // of the all_reduces.
 HloInstruction* MakeCrossReplicaReductions(
-    std::vector<int64> sizes_in_kib, std::vector<HloComputation*> reductions,
+    std::vector<int64_t> sizes_in_kib, std::vector<HloComputation*> reductions,
     std::vector<HloInstruction*>* inputs, HloComputation::Builder* b) {
   CHECK_EQ(reductions.size(), sizes_in_kib.size());
   std::vector<HloInstruction*> all_reduces;
   for (int i = 0; i < sizes_in_kib.size(); i++) {
-    int64 size_in_kib = sizes_in_kib[i];
+    int64_t size_in_kib = sizes_in_kib[i];
     HloComputation* reduction = reductions[i];
     auto constant = b->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.3)));
@@ -99,9 +99,9 @@ HloComputation* MakeReduction(const HloOpcode type, HloModule* module) {
 // Creates replica groups for AllReduce. groups[i] represents replica ids
 // for group 'i'.
 std::vector<ReplicaGroup> CreateReplicaGroups(
-    absl::Span<const std::vector<int64>> groups) {
+    absl::Span<const std::vector<int64_t>> groups) {
   std::vector<ReplicaGroup> replica_groups(groups.size());
-  for (int64 i = 0; i < groups.size(); ++i) {
+  for (int64_t i = 0; i < groups.size(); ++i) {
     *replica_groups[i].mutable_replica_ids() = {groups[i].begin(),
                                                 groups[i].end()};
   }
@@ -132,7 +132,7 @@ TEST_F(AllReduceCombinerTest, CombineAllReduces) {
   ASSERT_EQ(inputs.size(), root->operands().size());
 
   HloInstruction* combined = nullptr;
-  for (int64 i = 0; i < root->operands().size(); ++i) {
+  for (int64_t i = 0; i < root->operands().size(); ++i) {
     HloInstruction* hlo = root->mutable_operand(i);
     ASSERT_TRUE(hlo->opcode() == HloOpcode::kGetTupleElement);
     EXPECT_EQ(hlo->tuple_index(), i);

@@ -67,7 +67,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return port::UnimplementedError("Not Implemented");
   }
 
-  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
+  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override;
   void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
                      uint64 size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
@@ -161,7 +161,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   int PlatformDeviceCount() override { return 1; }
 
-  bool DeviceMemoryUsage(int64 *free, int64 *total) const override {
+  bool DeviceMemoryUsage(int64_t *free, int64_t *total) const override {
     return false;
   }
 

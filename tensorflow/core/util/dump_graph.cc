@@ -115,7 +115,7 @@ class StderrWritableFile : public WritableFile {
 
   Status Sync() override { return Status::OK(); }
 
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     return errors::Unimplemented("Stream not seekable");
   }
 };
@@ -166,6 +166,10 @@ Status WriteTextProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
     return errors::FailedPrecondition("Unable to convert proto to text.");
   }
   TF_RETURN_IF_ERROR(file->Append(s));
+  StringPiece name;
+  TF_RETURN_IF_ERROR(file->Name(&name));
+  VLOG(5) << name;
+  VLOG(5) << s;
   return file->Close();
 }
 
@@ -175,6 +179,10 @@ Status WriteTextProtoToUniqueFile(
   if (!SerializeToStringDeterministic(proto, &s)) {
     return errors::Internal("Failed to serialize proto to string.");
   }
+  StringPiece name;
+  TF_RETURN_IF_ERROR(file->Name(&name));
+  VLOG(5) << name;
+  VLOG(5) << s;
   TF_RETURN_IF_ERROR(file->Append(s));
   return file->Close();
 }

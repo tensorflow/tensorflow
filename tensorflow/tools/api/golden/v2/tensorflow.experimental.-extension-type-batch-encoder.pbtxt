@@ -1,0 +1,29 @@
+path: "tensorflow.experimental.ExtensionTypeBatchEncoder"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeBatchEncoder\'>"
+  is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpecBatchEncoder\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "batch"
+    argspec: "args=[\'self\', \'spec\', \'batch_size\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "decode"
+    argspec: "args=[\'self\', \'spec\', \'encoded_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "encode"
+    argspec: "args=[\'self\', \'spec\', \'value\', \'minimum_rank\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "encoding_specs"
+    argspec: "args=[\'self\', \'spec\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unbatch"
+    argspec: "args=[\'self\', \'spec\'], varargs=None, keywords=None, defaults=None"
+  }
+}

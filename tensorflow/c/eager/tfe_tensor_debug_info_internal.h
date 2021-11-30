@@ -20,11 +20,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 struct TFE_TensorDebugInfo {
-  explicit TFE_TensorDebugInfo(const std::vector<tensorflow::int64>& dims)
+  explicit TFE_TensorDebugInfo(const std::vector<int64_t>& dims)
       : dev_dims(dims) {}
 
   // Fully-padded, minor-to-major.
-  std::vector<tensorflow::int64> dev_dims;
+  std::vector<int64_t> dev_dims;
 };
 
 #endif  // TENSORFLOW_C_EAGER_TFE_TENSOR_DEBUG_INFO_INTERNAL_H_

@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/fixed_length_record_dataset_op.h"
 
-#include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/data/file_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
@@ -50,9 +51,9 @@ constexpr char kGZIP[] = "GZIP";
 class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
  public:
   explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
-                   int64 header_bytes, int64 record_bytes, int64 footer_bytes,
-                   int64 buffer_size, const string& compression_type,
-                   int op_version)
+                   int64_t header_bytes, int64_t record_bytes,
+                   int64_t footer_bytes, int64_t buffer_size,
+                   const string& compression_type, int op_version)
       : DatasetBase(DatasetContext(ctx)),
         filenames_(std::move(filenames)),
         header_bytes_(header_bytes),
@@ -136,7 +137,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       do {
         // We are currently processing a file, so try to read the next record.
         if (input_buffer_) {
-          const int64 current_pos = input_buffer_->Tell();
+          const int64_t current_pos = input_buffer_->Tell();
           DCHECK_GE(file_pos_limit_, 0);
           if (current_pos < file_pos_limit_) {
             string record;
@@ -169,8 +170,9 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
         // Actually move on to next file.
         uint64 file_size;
-        TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
-            dataset()->filenames_[current_file_index_], &file_size));
+        const std::string& next_filename =
+            dataset()->filenames_[current_file_index_];
+        TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(next_filename, &file_size));
         file_pos_limit_ = file_size - dataset()->footer_bytes_;
 
         uint64 body_size =
@@ -180,14 +182,13 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           return errors::InvalidArgument(
               "Excluding the header (", dataset()->header_bytes_,
               " bytes) and footer (", dataset()->footer_bytes_,
-              " bytes), input file \"",
-              dataset()->filenames_[current_file_index_], "\" has body length ",
+              " bytes), input file \"", next_filename, "\" has body length ",
               body_size,
               " bytes, which is not an exact multiple of the record length (",
               dataset()->record_bytes_, " bytes).");
         }
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            dataset()->filenames_[current_file_index_], &file_));
+            file_utils::TranslateFileName(next_filename), &file_));
         input_buffer_ = absl::make_unique<io::InputBuffer>(
             file_.get(), dataset()->buffer_size_);
         TF_RETURN_IF_ERROR(input_buffer_->SkipNBytes(dataset()->header_bytes_));
@@ -204,7 +205,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       // `input_buffer_` is empty if
       // 1. GetNext has not been called even once.
       // 2. All files have been read and iterator has been exhausted.
-      int64 current_pos = input_buffer_ ? input_buffer_->Tell() : -1;
+      int64_t current_pos = input_buffer_ ? input_buffer_->Tell() : -1;
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kCurrentPos), current_pos));
       return Status::OK();
@@ -213,11 +214,11 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      int64 current_file_index;
+      int64_t current_file_index;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentFileIndex),
                                             &current_file_index));
       current_file_index_ = size_t(current_file_index);
-      int64 current_pos;
+      int64_t current_pos;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kCurrentPos), &current_pos));
 
@@ -226,11 +227,13 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       file_.reset();
       if (current_pos >= 0) {  // There was an active input_buffer_.
         uint64 file_size;
-        TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
-            dataset()->filenames_[current_file_index_], &file_size));
+        const std::string& current_filename =
+            dataset()->filenames_[current_file_index_];
+        TF_RETURN_IF_ERROR(
+            ctx->env()->GetFileSize(current_filename, &file_size));
         file_pos_limit_ = file_size - dataset()->footer_bytes_;
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            dataset()->filenames_[current_file_index_], &file_));
+            file_utils::TranslateFileName(current_filename), &file_));
         input_buffer_ = absl::make_unique<io::InputBuffer>(
             file_.get(), dataset()->buffer_size_);
         TF_RETURN_IF_ERROR(input_buffer_->Seek(current_pos));
@@ -245,7 +248,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<RandomAccessFile> file_
         TF_GUARDED_BY(mu_);  // must outlive input_buffer_
     std::unique_ptr<io::InputBuffer> input_buffer_ TF_GUARDED_BY(mu_);
-    int64 file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
+    int64_t file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
   };
 
   class CompressedIterator : public DatasetIterator<Dataset> {
@@ -262,7 +265,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       do {
         // We are currently processing a file, so try to read the next record.
         if (buffered_input_stream_) {
-          const int64 current_pos = buffered_input_stream_->Tell();
+          const int64_t current_pos = buffered_input_stream_->Tell();
           if (dataset()->compression_type_.empty()) {
             DCHECK_GE(file_pos_limit_, 0);
             if (current_pos < file_pos_limit_) {
@@ -349,7 +352,9 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           }
         }
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            dataset()->filenames_[current_file_index_], &file_));
+            file_utils::TranslateFileName(
+                dataset()->filenames_[current_file_index_]),
+            &file_));
         if (!dataset()->compression_type_.empty()) {
           const io::ZlibCompressionOptions zlib_options =
               dataset()->compression_type_ == kZLIB
@@ -389,7 +394,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       // `buffered_input_stream_` is empty if
       // 1. GetNext has not been called even once.
       // 2. All files have been read and iterator has been exhausted.
-      int64 current_pos =
+      int64_t current_pos =
           buffered_input_stream_ ? buffered_input_stream_->Tell() : -1;
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kCurrentPos), current_pos));
@@ -399,11 +404,11 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      int64 current_file_index;
+      int64_t current_file_index;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentFileIndex),
                                             &current_file_index));
       current_file_index_ = size_t(current_file_index);
-      int64 current_pos;
+      int64_t current_pos;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kCurrentPos), &current_pos));
 
@@ -412,7 +417,9 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       file_.reset();
       if (current_pos >= 0) {  // There was an active buffered_input_stream_.
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            dataset()->filenames_[current_file_index_], &file_));
+            file_utils::TranslateFileName(
+                dataset()->filenames_[current_file_index_]),
+            &file_));
         const io::ZlibCompressionOptions zlib_options =
             dataset()->compression_type_ == kZLIB
                 ? io::ZlibCompressionOptions::DEFAULT()
@@ -441,15 +448,15 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         file_stream_;  // must outlive buffered_input_stream_
     std::unique_ptr<io::InputStreamInterface> buffered_input_stream_
         TF_GUARDED_BY(mu_);
-    int64 file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
+    int64_t file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
     tstring lookahead_cache_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<string> filenames_;
-  const int64 header_bytes_;
-  const int64 record_bytes_;
-  const int64 footer_bytes_;
-  const int64 buffer_size_;
+  const int64_t header_bytes_;
+  const int64_t record_bytes_;
+  const int64_t footer_bytes_;
+  const int64_t buffer_size_;
   const tstring compression_type_;
   const int op_version_;
 };
@@ -474,27 +481,27 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
 
-  int64 header_bytes = -1;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kHeaderBytes, &header_bytes));
+  int64_t header_bytes = -1;
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument<int64_t>(ctx, kHeaderBytes, &header_bytes));
   OP_REQUIRES(ctx, header_bytes >= 0,
               errors::InvalidArgument("`header_bytes` must be >= 0"));
 
-  int64 record_bytes = -1;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kRecordBytes, &record_bytes));
+  int64_t record_bytes = -1;
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument<int64_t>(ctx, kRecordBytes, &record_bytes));
   OP_REQUIRES(ctx, record_bytes > 0,
               errors::InvalidArgument("`record_bytes` must be > 0"));
 
-  int64 footer_bytes = -1;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kFooterBytes, &footer_bytes));
+  int64_t footer_bytes = -1;
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument<int64_t>(ctx, kFooterBytes, &footer_bytes));
   OP_REQUIRES(ctx, footer_bytes >= 0,
               errors::InvalidArgument("`footer_bytes` must be >= 0"));
 
-  int64 buffer_size = -1;
+  int64_t buffer_size = -1;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0,
               errors::InvalidArgument("`buffer_size` must be >= 0"));
   if (buffer_size == 0) {

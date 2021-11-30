@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 37.
+// Next ID to use: 46.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -245,4 +245,41 @@ message TocoFlags {
   // tensor list ops.
   // WARNING: Experimental interface, subject to change.
   optional bool lower_tensor_list_ops = 36 [default = true];
+
+  // The accumulation type to use when quantize_to_float16 is true. Typical
+  // choices would be either float16 or float32.
+  optional IODataType accumulation_type = 37;
+
+  // Whether this model supports inference in bfloat16.
+  // Note: This is an experimental feature.
+  optional bool allow_bfloat16 = 38 [default = false];
+
+  // If true, automatically adds all tf ops into the model as select Tensorflow
+  // ops.
+  optional bool allow_all_select_tf_ops = 39;
+
+  // Whether to unfold large splat constant tensors in the flatbuffer to reduce
+  // model size.
+  optional bool unfold_large_splat_constant = 40 [default = false];
+
+  // Name of TFLite backends which are needed to check compatibility.
+  // WARNING: Experimental interface, subject to change.
+  repeated string supported_backends = 41;
+
+  // Whether to force to use batch size one when the batch size is None during
+  // lowering tensor list ops.
+  optional bool default_to_single_batch_in_tensor_list_ops = 42
+      [default = false];
+
+  // Disable per_channel quantization for dynamic range quantization.
+  // Note: This is an experimental feature
+  optional bool disable_per_channel_quantization = 43 [default = false];
+
+  // If false, the old TOCO dynamic range quantization is used.
+  // Note: This is an experimental feature
+  optional bool enable_mlir_dynamic_range_quantizer = 44 [default = false];
+
+  // When the output model is used for TF Quantization, this flag indicates the
+  // mode of TF Quantization. Ex: DEFAULT, LEGACY_INTEGER,...
+  optional string tf_quantization_mode = 45;
 }

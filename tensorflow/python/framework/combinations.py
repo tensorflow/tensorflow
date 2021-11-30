@@ -18,10 +18,6 @@ Additionally it provides `generate()`, `combine()` and `times()` with Tensorflow
 customizations as a default.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from tensorflow.python import tf2
@@ -48,7 +44,8 @@ class EagerGraphCombination(test_combinations.TestCombination):
       return [ops.Graph().as_default(), context.graph_mode()]
     else:
       raise ValueError(
-          "'mode' has to be either 'eager' or 'graph' and not {}".format(mode))
+          "Argument 'mode' must be either 'eager' or 'graph'. "
+          f"Received: {mode}.")
 
   def parameter_modifiers(self):
     return [test_combinations.OptionalParameter("mode")]

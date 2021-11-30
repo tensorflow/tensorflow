@@ -144,9 +144,17 @@ cc_library(
 
 cc_library(
     name = "c_api_macros",
-    hdrs = ["c_api_macros.h"],
+    hdrs = [
+        "c_api_macros.h",
+        "c_api_macros_internal.h",
+    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
+    deps = [
+        ":tf_status",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
 tf_cuda_library(
@@ -200,7 +208,6 @@ tf_cuda_library(
     visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/python:__subpackages__",
-        "//third_party/llvm/llvm-project:__subpackages__",
     ],
     deps = [
         ":c_api_internal",
@@ -260,9 +267,8 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/c:__subpackages__",
-        # copybara:uncomment_begin(google-only)
-        # "//tensorflow/cc/experimental/libtf:__pkg__",
-        # copybara:uncomment_end
+        "//tensorflow/cc/experimental/libtf:__pkg__",
+        "//tensorflow/cc/experimental/libtf:__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
     ],
     deps = select({
@@ -273,6 +279,14 @@ tf_cuda_library(
             "//tensorflow/core:lib",
         ],
     }),
+)
+
+filegroup(
+    name = "tf_status_internal_headers",
+    srcs = ["tf_status_internal.h"],
+    visibility = [
+        "//tensorflow/python:__subpackages__",
+    ],
 )
 
 cc_library(
@@ -316,6 +330,18 @@ cc_library(
     }),
 )
 
+tf_cc_test(
+    name = "tf_status_test",
+    srcs = ["tf_status_test.cc"],
+    deps = [
+        ":tf_status",
+        ":tf_status_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "tf_status_headers",
     hdrs = ["tf_status.h"],
@@ -336,6 +362,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:tstring",
     ],
 )
@@ -553,7 +580,10 @@ tf_cuda_library(
 
 cc_library(
     name = "kernels_hdrs",
-    hdrs = ["kernels.h"],
+    hdrs = [
+        "kernels.h",
+        "kernels_experimental.h",
+    ],
     visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api_internal",
@@ -594,6 +624,32 @@ tf_cuda_library(
             "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         ],
     }),
+)
+
+cc_library(
+    name = "kernels_experimental_hdrs",
+    hdrs = ["kernels_experimental.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [":kernels_hdrs"],
+)
+
+tf_cuda_library(
+    name = "kernels_experimental",
+    srcs = ["kernels_experimental.cc"],
+    hdrs = ["kernels_experimental.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernels",
+        ":tf_status_helper",
+        ":tf_status_internal",
+        ":tf_tensor_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:refcount",
+    ],
 )
 
 tf_cuda_library(

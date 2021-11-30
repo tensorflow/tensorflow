@@ -52,6 +52,16 @@ struct ModifyIONodesPass : public PassWrapper<ModifyIONodesPass, FunctionPass> {
 
   void runOnFunction() override;
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-modify-io-nodes";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Modify the type of the model io nodes.";
+  }
+
  private:
   // Assign the io types from the command line flag. This is only required for
   // tests.
@@ -198,6 +208,13 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
 
 void ModifyIONodesPass::runOnFunction() {
   auto func = getFunction();
+  auto attrs = func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+
+  // Handle the entry functions only.
+  if (func.getName() != "main" && (!attrs || attrs.empty())) {
+    return;
+  }
+
   OpBuilder builder(func);
   FunctionType func_type = func.getType();
   llvm::SmallVector<Type, 4> new_input_types(func_type.getInputs().begin(),
@@ -229,8 +246,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateModifyIONodesPass(
   return std::make_unique<ModifyIONodesPass>(input_type, output_type);
 }
 
-static PassRegistration<ModifyIONodesPass> pass(
-    "tfl-modify-io-nodes", "Modify the type of the model io nodes.");
+static PassRegistration<ModifyIONodesPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

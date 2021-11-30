@@ -223,7 +223,7 @@ void PoolAllocator::EvictOne() {
   if (0 == evicted_count_ % kCheckInterval) {
     const double eviction_rate =
         evicted_count_ / static_cast<double>(put_count_);
-    const int64 alloc_request_count = allocated_count_ + get_from_pool_count_;
+    const int64_t alloc_request_count = allocated_count_ + get_from_pool_count_;
     const double alloc_rate =
         (alloc_request_count == 0)
             ? 0.0

@@ -385,8 +385,8 @@ void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
   }
 
 DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType, "type", type)
-DEFINE_TF_GETATTR(Int32, int32_t, tensorflow::int32, "int", i)
-DEFINE_TF_GETATTR(Int64, int64_t, tensorflow::int64, "int", i)
+DEFINE_TF_GETATTR(Int32, int32_t, int32_t, "int", i)
+DEFINE_TF_GETATTR(Int64, int64_t, int64_t, "int", i)
 DEFINE_TF_GETATTR(Float, float, float, "float", f)
 DEFINE_TF_GETATTR(Bool, TF_Bool, bool, "bool", b)
 
@@ -436,6 +436,38 @@ void TF_OpKernelConstruction_GetAttrStringList(TF_OpKernelConstruction* ctx,
   }
 }
 
+void TF_OpKernelConstruction_GetAttrTensor(TF_OpKernelConstruction* ctx,
+                                           const char* attr_name,
+                                           TF_Tensor** val, TF_Status* status) {
+  *val = nullptr;
+  ::tensorflow::Tensor t;
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &t);
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
+
+  if (!status->status.ok()) return;
+
+  *val = TF_TensorFromTensor(t, &status->status);
+}
+
+void TF_OpKernelConstruction_GetAttrTensorList(TF_OpKernelConstruction* ctx,
+                                               const char* attr_name,
+                                               TF_Tensor** vals, int max_values,
+                                               TF_Status* status) {
+  std::vector<::tensorflow::Tensor> v;
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
+
+  if (!status->status.ok()) return;
+
+  const auto len = std::min(max_values, static_cast<int>(v.size()));
+  for (int i = 0; i < len; ++i) {
+    vals[i] = TF_TensorFromTensor(v[i], &status->status);
+    if (!status->status.ok()) return;
+  }
+}
+
 bool TF_OpKernelConstruction_HasAttr(TF_OpKernelConstruction* ctx,
                                      const char* attr_name, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
@@ -460,14 +492,14 @@ int64_t TF_StepId(TF_OpKernelContext* ctx) {
 }
 
 TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
-                             TF_DataType dtype, int64_t* dims, int num_dims,
-                             size_t len, TF_Status* status) {
+                             TF_DataType dtype, const int64_t* dims,
+                             int num_dims, size_t len, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+  static_assert(sizeof(int64_t) == sizeof(int64_t),
                 "64-bit int types should match in size");
-  tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
-      reinterpret_cast<tensorflow::int64*>(dims), num_dims);
+  tensorflow::gtl::ArraySlice<const int64_t> dimarray(
+      reinterpret_cast<const int64_t*>(dims), num_dims);
   tensorflow::Tensor* tensor;
   tensorflow::Status s = cc_ctx->allocate_output(
       index, tensorflow::TensorShape(dimarray), &tensor);
@@ -485,17 +517,18 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
 
 TF_Tensor* TF_ForwardInputOrAllocateOutput(
     TF_OpKernelContext* context, int* candidate_input_indices,
-    int num_candidate_input_indices, int output_index, int64_t* output_dims,
-    int output_num_dims, int* forwarded_input, TF_Status* status) {
+    int num_candidate_input_indices, int output_index,
+    const int64_t* output_dims, int output_num_dims, int* forwarded_input,
+    TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
 
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+  static_assert(sizeof(int64_t) == sizeof(int64_t),
                 "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<int> input_indices_array(
       candidate_input_indices, num_candidate_input_indices);
-  tensorflow::gtl::ArraySlice<tensorflow::int64> output_dimarray(
-      reinterpret_cast<tensorflow::int64*>(output_dims), output_num_dims);
+  tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
+      reinterpret_cast<const int64_t*>(output_dims), output_num_dims);
   tensorflow::Tensor* output_tensor_pointer;
   tensorflow::Status s = cc_ctx->forward_input_or_allocate_output(
       input_indices_array, output_index,
@@ -514,15 +547,15 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
 }
 
 TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
-                           int64_t* dims, int num_dims,
+                           const int64_t* dims, int num_dims,
                            TF_AllocatorAttributes* attributes,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, "");
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+  static_assert(sizeof(int64_t) == sizeof(int64_t),
                 "64-bit int types should match in size");
-  tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
-      reinterpret_cast<tensorflow::int64*>(dims), num_dims);
+  tensorflow::gtl::ArraySlice<const int64_t> dimarray(
+      reinterpret_cast<const int64_t*>(dims), num_dims);
   if (attributes && !attributes->struct_size) {
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,

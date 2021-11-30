@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -487,7 +488,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
       )");
 }
 
-TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToFloat) {
+// Disabled per b/190854862 or nvbugs/3326122.
+TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestFusedConvInt8ToFloat) {
   // max(0, convert<float>(conv<int32>(int8_x),
   // conv<int32>(int8_w))+float_bias)); int8 to float via bias.
   TestClamp(

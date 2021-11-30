@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
@@ -53,21 +54,10 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
 
   se::StreamExecutor* stream_exec = stream->parent();
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
-
-  absl::optional<CudaComputeCapability> cuda_compute_capability =
-      [&]() -> absl::optional<CudaComputeCapability> {
-    CudaComputeCapability cuda_compute_capability;
-    stream_exec->GetDeviceDescription().cuda_compute_capability(
-        &cuda_compute_capability.cc_major, &cuda_compute_capability.cc_minor);
-    if (cuda_compute_capability.cc_major == -1) {
-      return absl::nullopt;
-    }
-    return cuda_compute_capability;
-  }();
-
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr,
-      backend_->platform()->Name(), gpu_device_info, cuda_compute_capability,
+      backend_->platform()->Name(), gpu_device_info,
+      stream_exec->GetDeviceDescription().cuda_compute_capability(),
       /*profile_index_map=*/nullptr, /*mlir_context=*/nullptr,
       llvm_module.get());
 
@@ -87,12 +77,14 @@ StatusOr<ExecutionOutput> MlirGpuTestBase::RunMlirModule(
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_stream(stream);
   executable_run_options.set_allocator(backend_->memory_allocator());
-  ServiceExecutableRunOptions run_options(executable_run_options);
+  ServiceExecutableRunOptions run_options(executable_run_options,
+                                          backend_->StreamBorrower());
   std::vector<ExecutionInput> execution_inputs;
+  execution_inputs.reserve(arguments.size());
 
   for (auto arg : arguments) {
     Shape shape =
-        ShapeUtil::MakeShape(xla::U8, {static_cast<int64>(arg.size())});
+        ShapeUtil::MakeShape(xla::U8, {static_cast<int64_t>(arg.size())});
     execution_inputs.emplace_back(shape);
     execution_inputs.back().SetBuffer({}, MaybeOwningDeviceMemory(arg));
   }
@@ -144,9 +136,10 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
 
 StatusOr<mlir::OwningModuleRef> MlirGpuTestBase::ParseMlirModule(
     absl::string_view module_text, mlir::MLIRContext& context) {
-  context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                      mlir::StandardOpsDialect,
-                      mlir::lmhlo_gpu::LmhloGpuDialect>();
+  context
+      .loadDialect<mlir::arith::ArithmeticDialect, mlir::lmhlo::LmhloDialect,
+                   mlir::mhlo::MhloDialect, mlir::StandardOpsDialect,
+                   mlir::gpu::GPUDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
   llvm::SourceMgr source_mgr;
   std::string diagnostic_str;
   llvm::raw_string_ostream os(diagnostic_str);

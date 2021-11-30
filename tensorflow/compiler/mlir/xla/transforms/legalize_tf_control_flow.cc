@@ -169,8 +169,11 @@ void LowerWhile(TF::WhileOp op) {
   ImportXlaRegion(op.cond_function(), &while_op.cond(), loc,
                   /*tuple_return=*/false);
 
-  // De-tuple the results of the `mhlo.while`.
-  Detuple(while_op.getResult(), op.getResults(), &builder);
+  // De-tuple the results of the `mhlo.while` if needed.
+  if (while_op.getNumResults() == 1 && while_op.getType(0).isa<TupleType>())
+    Detuple(while_op.getResult(0), op.getResults(), &builder);
+  else
+    op->replaceAllUsesWith(while_op);
   op.erase();
 }
 
@@ -362,7 +365,10 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 
   // De-tuple the results of the `mhlo.while`.
   builder.setInsertionPoint(op);
-  Detuple(while_op.getResult(), op.getResults(), &builder);
+  if (while_op.getNumResults() == 1 && while_op.getType(0).isa<TupleType>())
+    Detuple(while_op.getResult(0), op.getResults(), &builder);
+  else
+    op->replaceAllUsesWith(while_op);
   op.erase();
 }
 }  // namespace
@@ -397,4 +403,3 @@ void LegalizeTFControlFlow::runOnOperation() {
 }
 }  // namespace mhlo
 }  // namespace mlir
-

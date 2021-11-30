@@ -36,10 +36,13 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
+#include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
@@ -55,6 +58,10 @@ namespace test_utils {
 class TestDelegation;  // Class for friend declarations.
 }  // namespace test_utils
 }  // namespace delegates
+
+namespace interpreter_wrapper {
+class InterpreterWrapper;  // Class for friend declarations.
+}  // namespace interpreter_wrapper
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -83,7 +90,7 @@ class TestDelegation;  // Class for friend declarations.
 /// for (int i = 0; i < input_size; i++) {
 ///   input[i] = ...;
 //  }
-/// interpreter.Invoke();
+/// interpreter->Invoke();
 /// </code></pre>
 ///
 /// Note: For nearly all practical use cases, one should not directly construct
@@ -249,11 +256,18 @@ class Interpreter {
     return primary_subgraph().tensor(tensor_index);
   }
 
-  /// Get a pointer to an operation and registration data structure if in
-  /// bounds.
+  /// Returns a pointer to an operation and registration data structure if in
+  /// bounds from the primary subgraph(subgraph_[0]).
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
     return primary_subgraph().node_and_registration(node_index);
+  }
+
+  /// Returns a pointer to an operation and registration data structure if in
+  /// bounds.
+  const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
+      int subgraph_index, int node_index) const {
+    return subgraph(subgraph_index)->node_and_registration(node_index);
   }
 
   /// Perform a checked cast to the appropriate tensor type (mutable pointer
@@ -281,26 +295,50 @@ class Interpreter {
   }
 
   /// WARNING: Experimental interface, subject to change
-  /// Returns list of all names of different method signatures defined
-  /// in the model.
+  /// Returns list of all keys of different method signatures defined in the
+  /// model.
   /// Note, pointers returned have lifetime same as the Interpreter object.
-  std::vector<const std::string*> signature_def_names() const {
-    std::vector<const std::string*> method_names;
-    method_names.reserve(signature_defs_.size());
+  std::vector<const std::string*> signature_keys() const {
+    std::vector<const std::string*> signature_keys;
+    signature_keys.reserve(signature_defs_.size());
     for (const auto& sig_def : signature_defs_) {
-      method_names.emplace_back(&sig_def.method_name);
+      signature_keys.emplace_back(&sig_def.signature_key);
     }
-    return method_names;
+    return signature_keys;
+  }
+
+  /// WARNING: Experimental interface, subject to change
+  /// Returns a pointer to the SignatureRunner instance to run the part of the
+  /// graph identified by a SignatureDef. The nullptr is returned if the given
+  /// signature key is not valid.
+  /// If you need to specify delegates, you have to do that before calling this
+  /// function. This function will additionally apply default delegates. Thus,
+  /// applying delegates after that might lead to undesirable behaviors.
+  /// Note, the pointed instance has lifetime same as the Interpreter object
+  /// and the SignatureRunner class is *not* thread-safe.
+  SignatureRunner* GetSignatureRunner(const char* signature_key);
+
+  /// WARNING: Experimental interface, subject to change
+  /// Return the subgraph index that corresponds to a SignatureDef, defined by
+  /// 'signature_key'.
+  /// If invalid name passed, -1 will be returned.
+  int GetSubgraphIndexFromSignature(const char* signature_key) const {
+    for (const auto& signature : signature_defs_) {
+      if (signature.signature_key == signature_key) {
+        return signature.subgraph_index;
+      }
+    }
+    return -1;
   }
 
   /// WARNING: Experimental interface, subject to change
   /// Returns the mapping of inputs to tensor index in the signature
-  /// specified through 'method_name'.
+  /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
   const std::map<std::string, uint32_t>& signature_inputs(
-      const char* method_name) const {
+      const char* signature_key) const {
     for (const auto& sig_def : signature_defs_) {
-      if (sig_def.method_name == method_name) return sig_def.inputs;
+      if (sig_def.signature_key == signature_key) return sig_def.inputs;
     }
     static const std::map<std::string, uint32_t>* default_empty_list =
         new std::map<std::string, uint32_t>();
@@ -309,12 +347,12 @@ class Interpreter {
 
   /// WARNING: Experimental interface, subject to change
   /// Returns the mapping of outputs to tensor index in the signature
-  /// specified through 'method_name'.
+  /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
   const std::map<std::string, uint32_t>& signature_outputs(
-      const char* method_name) const {
+      const char* signature_key) const {
     for (const auto& sig_def : signature_defs_) {
-      if (sig_def.method_name == method_name) return sig_def.outputs;
+      if (sig_def.signature_key == signature_key) return sig_def.outputs;
     }
     static const std::map<std::string, uint32_t>* default_empty_list =
         new std::map<std::string, uint32_t>();
@@ -323,25 +361,30 @@ class Interpreter {
 
   /// WARNING: Experimental interface, subject to change
   /// Returns the input tensor identified by 'signature_input_name' in the
-  /// signature identified by 'signature_method_name'.
+  /// signature identified by 'signature_key'.
   /// Returns nullptr if not found.
-  TfLiteTensor* input_tensor_by_signature_name(
-      const char* signature_input_name, const char* signature_method_name) {
-    const int tensor_index = GetTensorIndexFromSignatureDefName(
-        signature_input_name, signature_method_name, /*is_input=*/true);
-    return tensor_index == -1 ? nullptr : tensor(tensor_index);
+  TfLiteTensor* input_tensor_by_signature(const char* signature_input_name,
+                                          const char* signature_key) {
+    const int subgraph_index = GetSubgraphIndexFromSignature(signature_key);
+    if (subgraph_index == -1) return nullptr;
+    const int tensor_index = GetTensorIndexFromSignature(
+        signature_input_name, signature_key, /*is_input=*/true);
+    if (tensor_index == -1) return nullptr;
+    return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
   /// WARNING: Experimental interface, subject to change
   /// Returns the output tensor identified by 'signature_output_name' in the
-  /// signature identified by 'signature_method_name'.
+  /// signature identified by 'signature_key'.
   /// Returns nullptr if not found.
-  const TfLiteTensor* output_tensor_by_signature_name(
-      const char* signature_output_name,
-      const char* signature_method_name) const {
-    const int tensor_index = GetTensorIndexFromSignatureDefName(
-        signature_output_name, signature_method_name, /*is_input=*/false);
-    return tensor_index == -1 ? nullptr : tensor(tensor_index);
+  const TfLiteTensor* output_tensor_by_signature(
+      const char* signature_output_name, const char* signature_key) const {
+    const int subgraph_index = GetSubgraphIndexFromSignature(signature_key);
+    if (subgraph_index == -1) return nullptr;
+    const int tensor_index = GetTensorIndexFromSignature(
+        signature_output_name, signature_key, /*is_input=*/false);
+    if (tensor_index == -1) return nullptr;
+    return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
   /// Return a mutable pointer to the given input tensor. The given index must
@@ -400,30 +443,37 @@ class Interpreter {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
-  // WARNING: Experimental interface, subject to change
-  // Change the dimensionality of a given tensor. This is only acceptable for
-  // tensor indices that are inputs or variables. Only unknown dimensions can be
-  // resized with this function. Unknown dimensions are indicated as `-1` in the
-  // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
-  // or success.  Note that this doesn't actually resize any existing buffers.
-  /// A call to AllocateTensors() is required to change the tensor input buffer.
+  /// Change the dimensionality of a given tensor. This is only acceptable for
+  /// tensor indices that are inputs or variables. Only unknown dimensions can
+  /// be resized with this function. Unknown dimensions are indicated as `-1` in
+  /// the `dims_signature` attribute of a `TfLiteTensor`. Returns status of
+  /// failure or success.  Note that this doesn't actually resize any existing
+  /// buffers. A call to AllocateTensors() is required to change the tensor
+  /// input buffer.
   TfLiteStatus ResizeInputTensorStrict(int tensor_index,
                                        const std::vector<int>& dims);
 
-  // This releases memory held by non-persistent tensors. It does NOT re-perform
-  // memory planning.
-  // AllocateTensors needs to be called before next invocation.
-  /// WARNING: Experimental interface, subject to change
+  /// This releases memory held by non-persistent tensors. It does NOT
+  /// re-perform memory planning. AllocateTensors needs to be called before next
+  /// invocation. WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
-  // Update allocations for all tensors. This will redim dependent tensors
-  // using the input tensor dimensionality as given. This is relatively
-  // expensive. This *must be* called after the interpreter has been created
-  // and before running inference (and accessing tensor buffers), and *must be*
-  // called again if (and only if) an input tensor is resized. Returns status of
-  // success or failure.  Will fail if any of the ops in the model (other than
-  // those which were rewritten by delegates, if any) are not supported by the
-  // Interpreter's OpResolver.
+  /// WARNING: This is an experimental API and subject to change.
+  /// Force all intermediate dynamic tensors to be released once they are not
+  /// used by the model. Please use this configuration with caution, since it
+  /// might reduce the peak memory usage of the model at the cost of a slower
+  /// inference speed. `AllocateTensors` needs to be called right after this
+  /// API.
+  void EnsureDynamicTensorsAreReleased();
+
+  /// Update allocations for all tensors. This will redim dependent tensors
+  /// using the input tensor dimensionality as given. This is relatively
+  /// expensive. This *must be* called after the interpreter has been created
+  /// and before running inference (and accessing tensor buffers), and *must be*
+  /// called again if (and only if) an input tensor is resized. Returns status
+  /// of success or failure.  Will fail if any of the ops in the model (other
+  /// than those which were rewritten by delegates, if any) are not supported by
+  /// the Interpreter's OpResolver.
   TfLiteStatus AllocateTensors();
 
   /// Invoke the interpreter (run the whole graph in dependency order).
@@ -436,10 +486,22 @@ class Interpreter {
 
   /// Set the number of threads available to the interpreter.
   ///
-  /// NOTE: num_threads should be >= -1. Setting num_threads to 0 has the effect
-  /// to disable multithreading, which is equivalent to setting num_threads
-  /// to 1. If set to the value -1, the number of threads used will be
-  /// implementation-defined and platform-dependent.
+  /// NOTE: `num_threads` should be >= -1. Setting `num_threads` to 0 has the
+  /// effect to disable multithreading, which is equivalent to setting
+  /// `num_threads` to 1. If set to the value -1, the number of threads used
+  /// will be implementation-defined and platform-dependent.
+  ///
+  /// As TfLite interpreter could internally apply a TfLite delegate by default
+  /// (i.e. XNNPACK), the number of threads that are available to the default
+  /// delegate *should be* set via InterpreterBuilder APIs as follows:
+  ///
+  ///     std::unique_ptr<tflite::Interpreter> interpreter;
+  ///     tflite::InterpreterBuilder builder(tflite model, op resolver);
+  ///     builder.SetNumThreads(...)
+  ///     ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ///
+  /// WARNING: This API is deprecated: prefer using
+  /// `InterpreterBuilder::SetNumThreads`, as documented above.
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
@@ -470,7 +532,7 @@ class Interpreter {
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
-  /// Returns one of the following four status codes:
+  /// Returns one of the following status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
   /// delegate, or the delegate parameter was null. The Interpreter has been
@@ -480,7 +542,10 @@ class Interpreter {
   /// incompatibility with the TfLite runtime, e.g., the model graph is already
   /// immutable when applying the delegate. However, the interpreter could still
   /// be invoked.
-  /// 4. kTfLiteError: Unexpected/runtime failure.
+  /// 4. kTfLiteUnresolvedOps: Delegation failed because the model has an
+  /// operator that cannot be resolved. This can happen when the op is not
+  /// registered or built with the TF Lite framework.
+  /// 5. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
@@ -563,13 +628,13 @@ class Interpreter {
   static constexpr int kTensorsCapacityHeadroom = 16;
 
   /// Set if buffer handle output is allowed.
-  //
+  ///
   /// When using hardware delegation, Interpreter will make the data of output
   /// tensors available in `tensor->data` by default. If the application can
   /// consume the buffer handle directly (e.g. reading output from OpenGL
   /// texture), it can set this flag to false, so Interpreter won't copy the
-  /// data from buffer handle to CPU memory. WARNING: This is an experimental
-  /// API and subject to change.
+  /// data from buffer handle to CPU memory.
+  /// WARNING: This is an experimental API and subject to change.
   void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
@@ -594,40 +659,33 @@ class Interpreter {
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
-  // Assigns (or reassigns) a custom memory allocation for the given tensor.
-  // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
-  // The runtime does NOT take ownership of the underlying memory.
-  //
-  // NOTE: User needs to call AllocateTensors() after this. In case of input
-  // resizing, buffers will be checked for required data size during
-  // AllocateTensors().
-  //
-  // Parameters should satisfy the following conditions:
-  // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
-  //    In general, this is true for I/O tensors & variable tensors.
-  // 2. allocation->data has the appropriate permissions for runtime access
-  //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
-  // 3. allocation->bytes >= tensor->bytes.
-  //    This condition is checked again if any tensors are resized.
-  // 4. allocation->data should be aligned to kDefaultTensorAlignment
-  //    defined in lite/util.h. (Currently 64 bytes)
-  //    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
-  //    set through `flags`.
-  //
-  // WARNING: This is an experimental interface that is subject to change.
+  /// Assigns (or reassigns) a custom memory allocation for the given tensor.
+  /// `flags` is a bitmask, see TfLiteCustomAllocationFlags.
+  /// The runtime does NOT take ownership of the underlying memory.
+  ///
+  /// NOTE: User needs to call AllocateTensors() after this.
+  /// Invalid/insufficient buffers will cause an error during AllocateTensors or
+  /// Invoke (in case of dynamic shapes in the graph).
+  ///
+  /// Parameters should satisfy the following conditions:
+  /// 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+  ///    In general, this is true for I/O tensors & variable tensors.
+  /// 2. allocation->data has the appropriate permissions for runtime access
+  ///    (Read-only for inputs, Read-Write for others), and outlives
+  ///    Interpreter.
+  /// 3. allocation->bytes >= tensor->bytes.
+  ///    This condition is checked again if any tensors are resized.
+  /// 4. allocation->data should be aligned to kDefaultTensorAlignment
+  ///    defined in lite/util.h. (Currently 64 bytes)
+  ///    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  ///    set through `flags`.
+  ///
+  /// WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus SetCustomAllocationForTensor(
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
 #ifndef DOXYGEN_SKIP
-  /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
-  /// entries. The value pointed to by `first_new_subgraph_index` will be set to
-  /// the index of the first new subgraph if `first_new_subgraph_index` is
-  /// non-null.
-  /// WARNING: This is an experimental API and subject to change.
-  void AddSubgraphs(int subgraphs_to_add,
-                    int* first_new_subgraph_index = nullptr);
-
   /// Return the number of subgraphs in the model.
   /// WARNING: This is an experimental API and subject to change.
   size_t subgraphs_size() const { return subgraphs_.size(); }
@@ -665,21 +723,11 @@ class Interpreter {
 #endif  // DOXYGEN_SKIP
 
  private:
-  // Structure representing SignatureDef inputs/outputs.
-  struct SignatureDef {
-    // Maps name in signature def as key to index of the tensor in the model.
-    std::map<std::string, uint32_t> inputs;
-    // Maps name in signature def as key to index of the tensor in the model.
-    std::map<std::string, uint32_t> outputs;
-    // The method name for this signature.
-    std::string method_name;
-    // The key of this SignatureDef in the SavedModel signature def map.
-    std::string signature_def_key;
-  };
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;
+  friend class tflite::interpreter_wrapper::InterpreterWrapper;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -687,17 +735,17 @@ class Interpreter {
                                  TfLiteExternalContext* ctx);
 
   // Helper method that return the tensor index that corresponds to
-  // a name in a SignatureDef. Defined by 'signature_method_name', and
+  // a name in a SignatureDef. Defined by 'signature_key', and
   // 'signature_tensor_name'.
   // If 'is_input' is true then the tensor is checked in input tensors,
   // otherwise it will be checked in output tensors.
   // Returns -1 if the tensor is not found.
-  int GetTensorIndexFromSignatureDefName(const char* signature_tensor_name,
-                                         const char* signature_method_name,
-                                         bool is_input) const {
+  int GetTensorIndexFromSignature(const char* signature_tensor_name,
+                                  const char* signature_key,
+                                  bool is_input) const {
     // Iterate directly and don't use other methods to avoid extra allocation.
     for (const auto& signature : signature_defs_) {
-      if (signature.method_name != signature_method_name) continue;
+      if (signature.signature_key != signature_key) continue;
       auto& signature_list = (is_input ? signature.inputs : signature.outputs);
       auto tensor_iter = signature_list.find(signature_tensor_name);
       if (tensor_iter == signature_list.end()) return -1;
@@ -705,6 +753,9 @@ class Interpreter {
     }
     return -1;
   }
+
+  // Applies TFLite default delegates.
+  TfLiteStatus ApplyLazyDelegateProviders();
 
   // Overrides execution plan. This bounds checks indices sent in.
   // Note: Only used during initialization.
@@ -720,17 +771,31 @@ class Interpreter {
   // Returns true if delegates have been applied.
   bool HasDelegates();
 
+  // Returns true if the model has been fully delegated.
+  bool IsFullyDelegated() const;
+
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
   // Sets the list of signature defs in the model.
-  void SetSignatureDef(std::vector<SignatureDef> signature_defs) {
+  void SetSignatureDef(std::vector<internal::SignatureDef> signature_defs) {
     signature_defs_ = std::move(signature_defs);
   }
 
   // Enables preserving intermediates for debugging.  Should only be set by
   // InterpreterBuilder before allocating any tensors.
   TfLiteStatus PreserveAllTensorsExperimental();
+
+  // Sets model metadata as a mapping of name (key) and buffer (value) strings.
+  // Used by InterpreterBuilder, should be called after setting up subgraphs.
+  TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
+
+  /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
+  /// entries. The value pointed to by `first_new_subgraph_index` will be set to
+  /// the index of the first new subgraph if `first_new_subgraph_index` is
+  /// non-null.
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr);
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
@@ -774,14 +839,34 @@ class Interpreter {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
 
+  // A map of resource Ids. Owned by interpreter and shared by multiple
+  // subgraphs.
+  resource::ResourceIDMap resource_ids_;
+
+  // A map of intialization statuses, that indicate whether the intialization
+  // subgraph invocation is done or not. Owned by interpreter and shared by
+  // multiple subgraphs.
+  resource::InitializationStatusMap initialization_status_map_;
+
   // Indicating delegates that the TFLite interpreter will apply by default.
   // An empty one means there's no delegate to be applied by default or
   // delegates have been applied and doesn't need to be applied again.
-  std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
+  using TfLiteDelegateCreator =
+      std::function<TfLiteDelegatePtr(int /*num_threads*/)>;
+  using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
+  TfLiteDelegateCreators lazy_delegate_providers_;
 
-  // List of signature def mapping inputs/output to tensor ids.
-  // We just keep track of tensor index.
-  std::vector<SignatureDef> signature_defs_;
+  // List of SignatureDefs obtained from the model.
+  std::vector<internal::SignatureDef> signature_defs_;
+
+  // Map of signature key to its corresponding SignatureRunner object.
+  // A SignatureRunner is basically a wrapper of the Subgraph corresponding to
+  // its SignatureDef.
+  std::map<std::string, SignatureRunner> signature_runner_map_;
+
+  // Model metadata stored as mapping of name (key) to buffer (value).
+  // Data is mapped from the Metadata in TFLite flatbuffer model.
+  std::map<std::string, std::string> metadata_;
 };
 
 }  // namespace tflite

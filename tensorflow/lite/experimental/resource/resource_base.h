@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_BASE_H_
 
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 namespace tflite {
@@ -36,6 +38,8 @@ class ResourceBase {
 /// WARNING: Experimental interface, subject to change.
 using ResourceMap =
     std::unordered_map<std::int32_t, std::unique_ptr<ResourceBase>>;
+
+using ResourceIDMap = std::map<std::pair<std::string, std::string>, int>;
 
 }  // namespace resource
 }  // namespace tflite

@@ -40,7 +40,7 @@ namespace experimental {
 
 class SamplingDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, float rate, int64 seed, int64 seed2,
+  Dataset(OpKernelContext* ctx, float rate, int64_t seed, int64_t seed2,
           const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)),
         rate_(rate),
@@ -99,7 +99,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64 seed, int64 seed2)
+    explicit Iterator(const Params& params, int64_t seed, int64_t seed2)
         : DatasetIterator<Dataset>(params),
           seeds_(MaybeOverrideSeeds({seed, seed2})),
           parent_generator_(seeds_.first, seeds_.second),
@@ -176,9 +176,9 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
       // Restore the random number generators.
       TF_RETURN_IF_ERROR(reader->ReadScalar(
           this->full_name("num_random_samples"), &num_random_samples_));
-      int64 seed;
+      int64_t seed;
       TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name("seed"), &seed));
-      int64 seed2;
+      int64_t seed2;
       TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name("seed2"), &seed2));
       seeds_ = {seed, seed2};
       ResetRngs();
@@ -192,7 +192,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    std::pair<int64, int64> seeds_ TF_GUARDED_BY(mu_);
+    std::pair<int64_t, int64_t> seeds_ TF_GUARDED_BY(mu_);
 
    private:
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
@@ -211,11 +211,11 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
         TF_GUARDED_BY(mu_);
-    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+    int64_t num_random_samples_ TF_GUARDED_BY(mu_) = 0;
   };
 
   const float rate_;
-  const std::pair<int64, int64> seeds_;
+  const std::pair<int64_t, int64_t> seeds_;
   const DatasetBase* const input_;
 };  // SamplingDatasetOp::Dataset
 
@@ -226,11 +226,11 @@ SamplingDatasetOp::SamplingDatasetOp(OpKernelConstruction* ctx)
 void SamplingDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
   float rate;
-  int64 seed;
-  int64 seed2;
+  int64_t seed;
+  int64_t seed2;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<float>(ctx, kRate, &rate));
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
 
   *output = new Dataset(ctx, rate, seed, seed2, input);
 }

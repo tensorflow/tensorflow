@@ -41,7 +41,7 @@ void TF_DeleteDir(const char* dirname, TF_Status* status) {
 
 void TF_DeleteRecursively(const char* dirname, int64_t* undeleted_file_count,
                           int64_t* undeleted_dir_count, TF_Status* status) {
-  ::tensorflow::int64 f, d;
+  ::int64_t f, d;
 
   TF_SetStatus(status, TF_OK, "");
   ::tensorflow::Set_TF_Status_from_Status(

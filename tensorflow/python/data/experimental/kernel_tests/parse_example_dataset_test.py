@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for `tf.data.experimental.parse_example_dataset()."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 
 from absl.testing import parameterized
@@ -30,6 +26,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -1138,8 +1135,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
             num_parallel_calls=10,
             deterministic=local_determinism))
 
-    opts = dataset_ops.Options()
-    opts.experimental_deterministic = global_determinism
+    opts = options_lib.Options()
+    opts.deterministic = global_determinism
     dataset = dataset.with_options(opts)
 
     expected = list(range(num_elements))
@@ -1165,14 +1162,16 @@ class ParseExampleDatasetCheckpointTest(tf_record_test_base.FeaturesTestBase,
         reader_num_threads=5,
         parser_num_threads=10)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCheckpointCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     num_repeat = 5
     batch_size = 2
     num_outputs = self._num_records * self._num_files * num_repeat // batch_size
     # pylint: disable=g-long-lambda
-    self.run_core_tests(
-        lambda: self._parse_example_dataset(
+    verify_fn(
+        self, lambda: self._parse_example_dataset(
             num_repeat=num_repeat, batch_size=batch_size), num_outputs)
 
 

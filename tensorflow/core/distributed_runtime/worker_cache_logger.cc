@@ -28,7 +28,7 @@ namespace tensorflow {
 namespace {
 // Maximum number of step_ids for which RPC logs can be maintained.
 // TODO(mrry): Make this configurable if necessary.
-const int32 kWorkerCacheLoggerLimit = 1 << 10;
+const int32_t kWorkerCacheLoggerLimit = 1 << 10;
 }  // namespace
 
 void WorkerCacheLogger::SetLogging(bool v) {
@@ -56,7 +56,7 @@ void WorkerCacheLogger::ClearLogsWithLock() {
   log_map_.clear();
 }
 
-bool WorkerCacheLogger::RetrieveLogs(int64 step_id, StepStats* ss) {
+bool WorkerCacheLogger::RetrieveLogs(int64_t step_id, StepStats* ss) {
   mutex_lock l(mu_);
   LogMap::iterator iter = log_map_.find(step_id);
   if (iter != log_map_.end()) {
@@ -68,7 +68,7 @@ bool WorkerCacheLogger::RetrieveLogs(int64 step_id, StepStats* ss) {
   return false;
 }
 
-void WorkerCacheLogger::Save(const string& device, int64 step_id,
+void WorkerCacheLogger::Save(const string& device, int64_t step_id,
                              NodeExecStats* ns) {
   mutex_lock l(mu_);
   StepLog* sl = &log_map_[step_id];
@@ -82,26 +82,26 @@ void WorkerCacheLogger::Save(const string& device, int64 step_id,
   }
 }
 
-void WorkerCacheLogger::RecordRecvTensor(int64 step_id, int64 start_usecs,
-                                         int64 end_usecs,
+void WorkerCacheLogger::RecordRecvTensor(int64_t step_id, int64_t start_usecs,
+                                         int64_t end_usecs,
                                          const string& tensor_name,
                                          const string& src_device,
                                          const string& dst_device,
-                                         int64 bytes) {
+                                         int64_t bytes) {
   RecordDataTransfer(step_id, start_usecs, end_usecs, tensor_name, src_device,
                      dst_device, bytes, "", "RecvTensor");
 }
 
-void WorkerCacheLogger::RecordDataTransfer(int64 step_id, int64 start_usecs,
-                                           int64 end_usecs,
+void WorkerCacheLogger::RecordDataTransfer(int64_t step_id, int64_t start_usecs,
+                                           int64_t end_usecs,
                                            const string& tensor_name,
                                            const string& src_device,
                                            const string& dst_device,
-                                           int64 bytes, const string& details,
+                                           int64_t bytes, const string& details,
                                            const string& transfer_method_name) {
   NodeExecStats* ns = new NodeExecStats;
   ns->set_node_name(transfer_method_name);
-  int64 elapsed_usecs = end_usecs - start_usecs;
+  int64_t elapsed_usecs = end_usecs - start_usecs;
   if (details.empty()) {
     auto byte_string = strings::StrCat("[", bytes, "B] ");
     if (bytes >= 0.1 * 1048576.0) {

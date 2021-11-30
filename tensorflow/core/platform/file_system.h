@@ -70,7 +70,7 @@ class FileSystem {
   virtual tensorflow::Status NewRandomAccessFile(
       const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
     return NewRandomAccessFile(fname, nullptr, result);
-  };
+  }
 
   virtual tensorflow::Status NewRandomAccessFile(
       const std::string& fname, TransactionToken* token,
@@ -95,7 +95,7 @@ class FileSystem {
   virtual tensorflow::Status NewWritableFile(
       const std::string& fname, std::unique_ptr<WritableFile>* result) {
     return NewWritableFile(fname, nullptr, result);
-  };
+  }
 
   virtual tensorflow::Status NewWritableFile(
       const std::string& fname, TransactionToken* token,
@@ -117,7 +117,7 @@ class FileSystem {
   virtual tensorflow::Status NewAppendableFile(
       const std::string& fname, std::unique_ptr<WritableFile>* result) {
     return NewAppendableFile(fname, nullptr, result);
-  };
+  }
 
   virtual tensorflow::Status NewAppendableFile(
       const std::string& fname, TransactionToken* token,
@@ -149,7 +149,7 @@ class FileSystem {
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
   virtual tensorflow::Status FileExists(const std::string& fname) {
     return FileExists(fname, nullptr);
-  };
+  }
 
   virtual tensorflow::Status FileExists(const std::string& fname,
                                         TransactionToken* token) {
@@ -273,7 +273,7 @@ class FileSystem {
   /// \brief Deletes the specified directory.
   virtual tensorflow::Status DeleteDir(const std::string& dirname) {
     return DeleteDir(dirname, nullptr);
-  };
+  }
 
   virtual tensorflow::Status DeleteDir(const std::string& dirname,
                                        TransactionToken* token) {
@@ -305,15 +305,15 @@ class FileSystem {
   ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
   ///                    implemented
   virtual tensorflow::Status DeleteRecursively(const std::string& dirname,
-                                               int64* undeleted_files,
-                                               int64* undeleted_dirs) {
+                                               int64_t* undeleted_files,
+                                               int64_t* undeleted_dirs) {
     return DeleteRecursively(dirname, nullptr, undeleted_files, undeleted_dirs);
   }
 
   virtual tensorflow::Status DeleteRecursively(const std::string& dirname,
                                                TransactionToken* token,
-                                               int64* undeleted_files,
-                                               int64* undeleted_dirs);
+                                               int64_t* undeleted_files,
+                                               int64_t* undeleted_dirs);
 
   /// \brief Stores the size of `fname` in `*file_size`.
   virtual tensorflow::Status GetFileSize(const std::string& fname,
@@ -516,6 +516,29 @@ class FileSystem {
   /// \brief Decode transaction to human readable string.
   virtual std::string DecodeTransaction(const TransactionToken* token);
 
+  /// \brief Set File System Configuration Options
+  virtual Status SetOption(const string& key, const string& value) {
+    return errors::Unimplemented("SetOption");
+  }
+
+  /// \brief Set File System Configuration Option
+  virtual tensorflow::Status SetOption(const std::string& name,
+                                       const std::vector<string>& values) {
+    return errors::Unimplemented("SetOption");
+  }
+
+  /// \brief Set File System Configuration Option
+  virtual tensorflow::Status SetOption(const std::string& name,
+                                       const std::vector<int64_t>& values) {
+    return errors::Unimplemented("SetOption");
+  }
+
+  /// \brief Set File System Configuration Option
+  virtual tensorflow::Status SetOption(const std::string& name,
+                                       const std::vector<double>& values) {
+    return errors::Unimplemented("SetOption");
+  }
+
   FileSystem() {}
 
   virtual ~FileSystem() = default;
@@ -635,8 +658,8 @@ class WrappedFileSystem : public FileSystem {
 
   tensorflow::Status DeleteRecursively(const std::string& dirname,
                                        TransactionToken* token,
-                                       int64* undeleted_files,
-                                       int64* undeleted_dirs) override {
+                                       int64_t* undeleted_files,
+                                       int64_t* undeleted_dirs) override {
     return fs_->DeleteRecursively(dirname, (token ? token : token_),
                                   undeleted_files, undeleted_dirs);
   }
@@ -829,7 +852,7 @@ class WritableFile {
   ///
   /// This is an optional operation, subclasses may choose to return
   /// errors::Unimplemented.
-  virtual tensorflow::Status Tell(int64* position) {
+  virtual tensorflow::Status Tell(int64_t* position) {
     *position = -1;
     return errors::Unimplemented("This filesystem does not support Tell()");
   }

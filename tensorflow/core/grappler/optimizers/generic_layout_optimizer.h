@@ -43,9 +43,6 @@ class GenericLayoutOptimizer : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override;
-
  private:
   RewriterConfig::Toggle opt_level_;
   RewriterConfig::CpuLayout cpu_layout_conversion_;

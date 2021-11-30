@@ -23,6 +23,11 @@ tpu_module = [
     "distribute.cluster_resolver.tpu_oss",
 ]
 
+keras_module = [
+    # TODO(scottzhu): Move the Keras docstring test to Keras repo.
+    "keras.",
+]
+
 # tf.distribute docstring often uses GPU, so they're only covered in
 # tf_doctest_gpu.
 distribute_module = [
@@ -45,7 +50,7 @@ py_library(
 py_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
-    args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module)],
+    args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
     python_version = "PY3",
     tags = [
         "no_oss_py2",
@@ -59,6 +64,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -70,6 +77,7 @@ tpu_py_test(
     srcs = ["tf_doctest.py"],
     args = ["--module=" + ",".join(tpu_module)],
     disable_experimental = True,
+    disable_tfrt = True,
     disable_v3 = True,
     main = "tf_doctest.py",
     python_version = "PY3",
@@ -108,6 +116,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -127,6 +137,33 @@ py_test(
     ],
     deps = [
         ":tf_doctest_lib",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "fenced_doctest_lib",
+    srcs = ["fenced_doctest_lib.py"],
+    deps = [
+        ":tf_doctest_lib",
+        "@astor_archive//:astor",
+    ],
+)
+
+py_test(
+    name = "fenced_doctest_test",
+    srcs = ["fenced_doctest_test.py"],
+    data = glob(["**/create_model.md"]),
+    tags = [
+        "no_oss",
+        "no_pip",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":fenced_doctest_lib",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],

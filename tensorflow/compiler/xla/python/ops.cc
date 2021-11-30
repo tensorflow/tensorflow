@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/client/lib/approx_topk.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/lu_decomposition.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
@@ -60,6 +61,11 @@ void BuildOpsSubmodule(py::module* m) {
       .value("SCHEDULE_LATEST", CustomCallSchedule::SCHEDULE_LATEST)
       .value("SCHEDULE_EARLIEST", CustomCallSchedule::SCHEDULE_EARLIEST);
 
+  py::enum_<CustomCallApiVersion>(ops, "CustomCallApiVersion")
+      .value("API_VERSION_ORIGINAL", CustomCallApiVersion::API_VERSION_ORIGINAL)
+      .value("API_VERSION_STATUS_RETURNING",
+             CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
+
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def("AllGather", &AllGather, py::arg("operand"),
           py::arg("all_gather_dimension"), py::arg("shard_count"),
@@ -77,10 +83,25 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("replica_groups") = py::list(),
       py::arg("channel_id") = absl::nullopt,
       py::arg("shape_with_layout") = absl::nullopt);
+  ops.def("ReduceScatter", &ReduceScatter, py::arg("operand"),
+          py::arg("computation"), py::arg("scatter_dimension"),
+          py::arg("shard_count"), py::arg("replica_groups") = py::list(),
+          py::arg("channel_id") = absl::nullopt,
+          py::arg("layout") = absl::nullopt,
+          py::arg("use_global_device_ids") = absl::nullopt);
   ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),
           py::arg("layout") = absl::nullopt);
+  ops.def("ApproxTopK", &ApproxTopK, py::arg("builder"), py::arg("operands"),
+          py::arg("init_values"), py::arg("top_k"), py::arg("reduction_dim"),
+          py::arg("comparator"), py::arg("recall_target") = 0.9,
+          py::arg("aggregate_to_topk") = true,
+          py::arg("reduction_input_size_override") = -1);
+  ops.def("ApproxTopKReductionOutputSize", &ApproxTopKReductionOutputSize,
+          py::arg("input_size"), py::arg("rank"), py::arg("top_k"),
+          py::arg("recall_target"), py::arg("aggregate_to_topk") = true,
+          py::arg("input_size_override") = -1);
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
@@ -128,67 +149,72 @@ void BuildOpsSubmodule(py::module* m) {
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape,
          const py::bytes& opaque, bool has_side_effect,
-         CustomCallSchedule schedule) -> XlaOp {
+         CustomCallSchedule schedule,
+         CustomCallApiVersion api_version) -> XlaOp {
         return CustomCall(builder, call_target_name, operands, shape, opaque,
                           has_side_effect, /*output_operand_aliasing=*/{},
-                          /*literal=*/nullptr, schedule);
+                          /*literal=*/nullptr, schedule, api_version);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape"), py::arg("opaque") = py::bytes(""),
       py::arg("has_side_effect") = false,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE);
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def(
       "CustomCallWithLayout",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
          absl::Span<const Shape> operand_shapes_with_layout,
          const py::bytes& opaque, bool has_side_effect,
-         CustomCallSchedule schedule) -> XlaOp {
+         CustomCallSchedule schedule,
+         CustomCallApiVersion api_version) -> XlaOp {
         return CustomCallWithLayout(
             builder, call_target_name, operands, shape_with_layout,
             operand_shapes_with_layout, opaque, has_side_effect,
             /*output_operand_aliasing=*/{},
-            /*literal=*/nullptr, schedule);
+            /*literal=*/nullptr, schedule, api_version);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
       py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE);
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def(
       "CustomCallWithAliasing",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
          absl::Span<const Shape> operand_shapes_with_layout,
          const py::bytes& opaque, bool has_side_effect,
-         absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+         absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
              output_operand_aliasing,
-         const Literal* literal, CustomCallSchedule schedule) -> XlaOp {
+         const Literal* literal, CustomCallSchedule schedule,
+         CustomCallApiVersion api_version) -> XlaOp {
         return CustomCallWithLayout(
             builder, call_target_name, operands, shape_with_layout,
             operand_shapes_with_layout, opaque, has_side_effect,
-            output_operand_aliasing, literal, schedule);
+            output_operand_aliasing, literal, schedule, api_version);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
       py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
       py::arg("output_operand_aliasing"), py::arg("literal") = nullptr,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE);
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr,
           py::arg("preferred_element_type") = absl::nullopt);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
           py::arg("dimension_numbers"), py::arg("precision_config") = nullptr,
           py::arg("preferred_element_type") = absl::nullopt);
-  ops.def(
-      "DynamicReshape",
-      static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
-                            absl::Span<const int64>, const std::vector<bool>&)>(
-          &DynamicReshape),
-      py::arg("operand"), py::arg("dim_sizes"), py::arg("new_size_bounds"),
-      py::arg("dims_are_dynamic"));
+  ops.def("DynamicReshape",
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
+                                absl::Span<const int64_t>,
+                                const std::vector<bool>&)>(&DynamicReshape),
+          py::arg("operand"), py::arg("dim_sizes"), py::arg("new_size_bounds"),
+          py::arg("dims_are_dynamic"));
   ops.def("DynamicSlice",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
-                                absl::Span<const int64>)>(&DynamicSlice),
+                                absl::Span<const int64_t>)>(&DynamicSlice),
           py::arg("operand"), py::arg("start_indices"), py::arg("slice_sizes"));
   ops.def("DynamicUpdateSlice",
           static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
@@ -196,7 +222,7 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("operand"), py::arg("update"), py::arg("start_indices"));
   ops.def(
       "Eigh",
-      [](XlaOp a, bool lower, int64 max_iter, float epsilon,
+      [](XlaOp a, bool lower, int64_t max_iter, float epsilon,
          bool sort_eigenvalues) -> std::pair<XlaOp, XlaOp> {
         auto eigh =
             SelfAdjointEig(a, lower, max_iter, epsilon, sort_eigenvalues);
@@ -216,10 +242,10 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
           py::arg("shape"), py::arg("config") = "");
   ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota),
+          static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64_t)>(&Iota),
           py::arg("builder"), py::arg("shape"), py::arg("iota_dimension"));
   ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota),
+          static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64_t)>(&Iota),
           py::arg("builder"), py::arg("type"), py::arg("size"));
   ops.def(
       "LU",
@@ -238,7 +264,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("Pad", &Pad, py::arg("operand"), py::arg("padding_value"),
           py::arg("padding_config"));
   ops.def("Parameter",
-          static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
+          static_cast<XlaOp (*)(XlaBuilder*, int64_t, const Shape&,
                                 const std::string&, const std::vector<bool>&)>(
               &Parameter),
           py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
@@ -255,43 +281,43 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("Reduce",
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
-                                absl::Span<const int64>)>(&Reduce),
+                                absl::Span<const int64_t>)>(&Reduce),
           py::arg("builder"), py::arg("operands"), py::arg("init_values"),
           py::arg("computation"), py::arg("dimensions_to_reduce"));
   ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
           py::arg("exponent_bits"), py::arg("mantissa_bits"));
-  ops.def(
-      "ReduceWindowWithGeneralPadding",
-      static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&,
-                            absl::Span<const int64>, absl::Span<const int64>,
-                            absl::Span<const int64>, absl::Span<const int64>,
-                            absl::Span<const std::pair<int64, int64>>)>(
-          &ReduceWindowWithGeneralPadding),
-      py::arg("operand"), py::arg("init_value"), py::arg("computation"),
-      py::arg("window_dimensions"), py::arg("window_strides"),
-      py::arg("base_dilations"), py::arg("window_dilations"),
-      py::arg("padding"));
-  ops.def(
-      "ReduceWindowWithGeneralPadding",
-      static_cast<XlaOp (*)(absl::Span<const XlaOp>, absl::Span<const XlaOp>,
-                            const XlaComputation&, absl::Span<const int64>,
-                            absl::Span<const int64>, absl::Span<const int64>,
-                            absl::Span<const int64>,
-                            absl::Span<const std::pair<int64, int64>>)>(
-          &ReduceWindowWithGeneralPadding),
-      py::arg("operands"), py::arg("init_values"), py::arg("computation"),
-      py::arg("window_dimensions"), py::arg("window_strides"),
-      py::arg("base_dilations"), py::arg("window_dilations"),
-      py::arg("padding"));
+  ops.def("ReduceWindowWithGeneralPadding",
+          static_cast<XlaOp (*)(
+              XlaOp, XlaOp, const XlaComputation&, absl::Span<const int64_t>,
+              absl::Span<const int64_t>, absl::Span<const int64_t>,
+              absl::Span<const int64_t>,
+              absl::Span<const std::pair<int64_t, int64_t>>)>(
+              &ReduceWindowWithGeneralPadding),
+          py::arg("operand"), py::arg("init_value"), py::arg("computation"),
+          py::arg("window_dimensions"), py::arg("window_strides"),
+          py::arg("base_dilations"), py::arg("window_dilations"),
+          py::arg("padding"));
+  ops.def("ReduceWindowWithGeneralPadding",
+          static_cast<XlaOp (*)(
+              absl::Span<const XlaOp>, absl::Span<const XlaOp>,
+              const XlaComputation&, absl::Span<const int64_t>,
+              absl::Span<const int64_t>, absl::Span<const int64_t>,
+              absl::Span<const int64_t>,
+              absl::Span<const std::pair<int64_t, int64_t>>)>(
+              &ReduceWindowWithGeneralPadding),
+          py::arg("operands"), py::arg("init_values"), py::arg("computation"),
+          py::arg("window_dimensions"), py::arg("window_strides"),
+          py::arg("base_dilations"), py::arg("window_dilations"),
+          py::arg("padding"));
   ops.def("RemoveDynamicDimension", &RemoveDynamicDimension, py::arg("operand"),
           py::arg("dimension"));
   ops.def("ReplicaId", &ReplicaId, py::arg("builder"));
   ops.def("Reshape",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
-                                absl::Span<const int64>)>(&Reshape),
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64_t>,
+                                absl::Span<const int64_t>)>(&Reshape),
           py::arg("operand"), py::arg("dimensions"), py::arg("new_sizes"));
   ops.def("Reshape",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape),
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64_t>)>(&Reshape),
           py::arg("operand"), py::arg("new_sizes"));
   ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
   ops.def("RngBitGenerator", &RngBitGenerator, py::arg("algorithm"),
@@ -320,10 +346,11 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def(
       "Sort",
       [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
-         absl::optional<const XlaComputation*> comparator, int64 dimension,
+         absl::optional<const XlaComputation*> comparator, int64_t dimension,
          bool is_stable) -> XlaOp {
         return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
           std::vector<PrimitiveType> operand_types;
+          operand_types.reserve(operands.size());
           for (const auto& operand : operands) {
             TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
             operand_types.push_back(operand_shape.element_type());
@@ -343,7 +370,7 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("is_stable") = false);
   ops.def(
       "SVD",
-      [](XlaOp a, int64 max_iter,
+      [](XlaOp a, int64_t max_iter,
          float epsilon) -> std::tuple<XlaOp, XlaOp, XlaOp> {
         auto svd = SVD(a, max_iter, epsilon);
         return std::make_tuple(svd.u, svd.d, svd.v);
@@ -366,13 +393,13 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("b"), py::arg("x"));
   ops.def("Zeta", &Zeta, py::arg("x"), py::arg("q"));
 
-#define BINARY_OP(op)                                                 \
-  ops.def(                                                            \
-      #op,                                                            \
-      [](XlaOp a, XlaOp b, absl::optional<std::vector<int64>> dims) { \
-        return dims ? op(a, b, *dims) : op(a, b);                     \
-      },                                                              \
-      py::arg("lhs"), py::arg("rhs"),                                 \
+#define BINARY_OP(op)                                                   \
+  ops.def(                                                              \
+      #op,                                                              \
+      [](XlaOp a, XlaOp b, absl::optional<std::vector<int64_t>> dims) { \
+        return dims ? op(a, b, *dims) : op(a, b);                       \
+      },                                                                \
+      py::arg("lhs"), py::arg("rhs"),                                   \
       py::arg("broadcast_dimensions") = absl::nullopt)
   BINARY_OP(Eq);
   BINARY_OP(Ne);
@@ -418,6 +445,7 @@ void BuildOpsSubmodule(py::module* m) {
   UNARY_OP(Neg);
   UNARY_OP(Sqrt);
   UNARY_OP(Rsqrt);
+  UNARY_OP(Cbrt);
   UNARY_OP(Square);
   UNARY_OP(Reciprocal);
   UNARY_OP(Erfc);

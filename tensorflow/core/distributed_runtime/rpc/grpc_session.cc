@@ -96,7 +96,8 @@ void ReEncodeConsts(GraphDef* gdef) {
 }
 }  // namespace
 
-void GrpcSession::SetHandleAndGraphVersion(string handle, int64 graph_version) {
+void GrpcSession::SetHandleAndGraphVersion(string handle,
+                                           int64_t graph_version) {
   mutex_lock l(mu_);
   handle_ = std::move(handle);
   current_graph_version_ = graph_version;
@@ -245,7 +246,7 @@ Status GrpcSession::RunHelper(
 
   // Look for an extended error returned in the response body.
   if (resp->status_code() != error::Code::OK) {
-    return Status(resp->status_code(), resp->status_error_message());
+    return resp->status();
   }
 
   if (!output_tensor_names.empty()) {

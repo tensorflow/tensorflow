@@ -18,24 +18,27 @@ load(
     "tf_additional_binary_deps",
 )
 load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl_ml",
+)
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+# copybara:comment_begin(oss-only)
+load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
-    "gen_api_init_files",  # @unused
+    "gen_api_init_files",
     "get_compat_files",
     "get_nested_compat_files",
 )
 load(
     "//tensorflow/python/tools/api/generator:api_init_files.bzl",
-    "TENSORFLOW_API_INIT_FILES",  # @unused
+    "TENSORFLOW_API_INIT_FILES",
 )
 load(
     "//tensorflow/python/tools/api/generator:api_init_files_v1.bzl",
-    "TENSORFLOW_API_INIT_FILES_V1",  # @unused
+    "TENSORFLOW_API_INIT_FILES_V1",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
-)
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+# copybara:comment_end
 
 package(default_visibility = [":internal"])
 
@@ -43,7 +46,6 @@ licenses(["notice"])
 
 exports_files([
     "LICENSE",
-    "ACKNOWLEDGMENTS",
     # The leakr files are used by //third_party/cloud_tpu and
     # //third_party/tensorboard/google:copybara_config_test.
     "leakr_badwords.dic",
@@ -51,7 +53,7 @@ exports_files([
     "leakr_file_type_recipe.ftrcp",
 ])
 
-# @unused
+# copybara:comment_begin(oss-only)
 TENSORFLOW_API_INIT_FILES_V2 = (
     TENSORFLOW_API_INIT_FILES +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
@@ -61,7 +63,6 @@ TENSORFLOW_API_INIT_FILES_V2 = (
     ])
 )
 
-# @unused
 TENSORFLOW_API_INIT_FILES_V1 = (
     TENSORFLOW_API_INIT_FILES_V1 +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
@@ -70,6 +71,7 @@ TENSORFLOW_API_INIT_FILES_V1 = (
         2,
     ])
 )
+# copybara:comment_end
 
 # Config setting used when building for products
 # which requires restricted licenses to be avoided.
@@ -255,15 +257,6 @@ config_setting(
 )
 
 config_setting(
-    name = "msvc_cl_debug",
-    values = {
-        "compiler": "msvc-cl",
-        "compilation_mode": "dbg",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_tensorflow_py_deps",
     define_values = {"no_tensorflow_py_deps": "true"},
     visibility = ["//visibility:public"],
@@ -328,6 +321,18 @@ config_setting(
         {"cpu": "fuchsia"},
         {},
     ),
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "fuchsia_x86_64",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "fuchsia"},
+        {},
+    ),
+    values = {
+        "cpu": "x86_64",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -462,20 +467,8 @@ config_setting(
 # Features that are default ON are handled differently below.
 #
 config_setting(
-    name = "no_aws_support",
-    define_values = {"no_aws_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_gcp_support",
     define_values = {"no_gcp_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "no_hdfs_support",
-    define_values = {"no_hdfs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -794,6 +787,7 @@ package_group(
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/py/envlogger/...",
         "//third_party/yggdrasil_decision_forests/...",
     ],
 )
@@ -807,8 +801,9 @@ package_group(name = "types_whitelist")
 
 # Packages that use StructuredTensors.
 # TODO(b/159007891) Remove this package once StructuredTensor is exported.
-# If this is modified, then copy.bara.sky must also be modified.
+# LINT.IfChange
 package_group(name = "structured_tensor_whitelist")
+# LINT.ThenChange(copy.bara.sky)
 
 filegroup(
     name = "intel_binary_blob",
@@ -827,6 +822,8 @@ bzl_library(
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
+        "//tensorflow/core/platform/default:experimental_cc_shared_library_bzl",  # copybara:comment(oss only)
+        "//third_party/llvm_openmp:openmp_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
         "@bazel_skylib//lib:new_sets",
@@ -837,6 +834,7 @@ bzl_library(
     ],
 )
 
+# copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
@@ -854,6 +852,7 @@ cc_library(
         "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
     }),
 )
+# copybara:comment_end
 
 # A shared object which includes registration mechanisms for ops and
 # kernels. Does not include the implementations of any ops or kernels. Instead,
@@ -891,7 +890,7 @@ cc_library(
 # statically linked in global, and one by the global which comes in from
 # libtensorflow_framework.so.
 # Even worse, global objects which need to be singletons for semantical
-# correctness (e.g. registers) might get dupliacted.
+# correctness (e.g. registers) might get duplicated.
 #
 # In order to avoid these HARD TO DEBUG CRASHES, it is sufficient to follow
 # these rules:
@@ -910,13 +909,14 @@ cc_library(
 #    -> The dependency is guarded by `if_static`. This is discouraged,
 #       as it diverges dependency topology between static and dynamic TF.
 #
-# TODO(cheshire): write tests to check for rule violations
+# TODO(cheshire): Write tests to check for rule violations.
 tf_cc_shared_object(
     name = "tensorflow_framework",
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text",
+            "-Wl,-unexported_symbols_list,$(location //tensorflow:tf_private_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//tensorflow:freebsd": [
@@ -932,13 +932,16 @@ tf_cc_shared_object(
     soversion = VERSION,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow:tf_private_symbols.lds",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:env",
         "//tensorflow/c:kernels",
+        "//tensorflow/c:kernels_experimental",
         "//tensorflow/c:logging",
         "//tensorflow/c:ops",
         "//tensorflow/cc/saved_model:loader_lite_impl",
+        "//tensorflow/cc/saved_model:metrics_impl",
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
@@ -946,6 +949,8 @@ tf_cc_shared_object(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/profiler:profiler_impl",
+        "//tensorflow/core/util:determinism",
+        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/stream_executor:stream_executor_impl",
         "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
@@ -1033,11 +1038,6 @@ tf_cc_shared_object(
             "-z defs",
             "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
-    }) + select({
-        "//tensorflow:msvc_cl_debug": [
-            "/DEBUG:FASTLINK",
-        ],
-        "//conditions:default": [],
     }),
     per_os_targets = True,
     soversion = VERSION,
@@ -1050,6 +1050,7 @@ tf_cc_shared_object(
     # copybara:comment_end
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
+        "//tensorflow:tf_private_symbols.lds",
         "//tensorflow:tf_version_script.lds",
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
@@ -1150,6 +1151,7 @@ exports_files(
     [
         "tf_version_script.lds",
         "tf_exported_symbols.lds",
+        "tf_private_symbols.lds",
     ],
 )
 
@@ -1192,6 +1194,7 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
+# copybara:comment_begin(oss-only)
 genrule(
     name = "root_init_gen",
     srcs = select({
@@ -1265,10 +1268,12 @@ py_library(
     name = "tensorflow_py",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = select({
-        "api_version_2": [],
-        "//conditions:default": [],
-    }) + [
+    deps = select(
+        {
+            "api_version_2": [],
+            "//conditions:default": [],
+        },
+    ) + [
         ":tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",
     ],
@@ -1281,11 +1286,9 @@ py_library(
         "//conditions:default": [":tf_python_api_gen_v1"],
     }) + [
         ":root_init_gen",
-        "//tensorflow/python/keras/api:keras_python_api_gen",
-        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
-        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )
+# copybara:comment_end

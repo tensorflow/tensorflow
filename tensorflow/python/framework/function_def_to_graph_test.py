@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.function_def_to_graph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

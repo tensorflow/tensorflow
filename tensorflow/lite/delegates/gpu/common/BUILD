@@ -27,7 +27,6 @@ exports_files(
         "custom_parsers.h",
         "custom_transformations.h",
     ],
-    visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
 cc_library(
@@ -81,6 +80,7 @@ cc_library(
         ":shape",
         ":status",
         ":types",
+        ":util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -142,7 +142,10 @@ cc_library(
 cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
-    hdrs = ["model_builder.h"],
+    hdrs = [
+        "model_builder.h",
+        "model_builder_internal.h",
+    ],
     deps = [
         ":data_type",
         ":lstm_parser",
@@ -157,6 +160,7 @@ cc_library(
         ":tensor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/core/api",
@@ -165,6 +169,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/tools/versioning:gpu_compatibility",
         "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
@@ -183,6 +188,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -240,7 +246,8 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "@FP16",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -318,7 +325,10 @@ cc_test(
 cc_library(
     name = "status",
     hdrs = ["status.h"],
-    deps = ["@com_google_absl//absl/status"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/google:status_macros",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(
@@ -389,6 +399,18 @@ cc_library(
         "//tensorflow/lite/c:common",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "unimplemented_operation_parser",
+    hdrs = ["unimplemented_operation_parser.h"],
+    deps = [
+        ":operation_parser",
+        ":status",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
     ],
 )
 

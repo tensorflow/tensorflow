@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -36,12 +37,23 @@ namespace xla {
 // represent the runtime real size of those dynamic dimensions.
 class DynamicDimensionInference {
  public:
+  enum ShapeCheckMode {
+    kInvalid = 0,
+    // At compile time, pessimisticly assumes runtime shape checks may fail and
+    // returns a compile-time error.
+    kCompileTime,
+    // Insert runtime checks as Hlo ops.
+    kRuntimeTime,
+    // Ignore shape check.
+    kIgnore,
+  };
   using CustomCallInferenceHandler =
       std::function<Status(HloInstruction*, DynamicDimensionInference*)>;
 
   static StatusOr<DynamicDimensionInference> Run(
       HloModule* module,
-      CustomCallInferenceHandler custom_call_handler = nullptr);
+      CustomCallInferenceHandler custom_call_handler = nullptr,
+      ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore);
 
   string ToString() const;
 
@@ -49,16 +61,17 @@ class DynamicDimensionInference {
   // returns a scalar HloInstruction that represents the runtime size of that
   // dimension. Otherwise returns nullptr.
   HloInstruction* GetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
-                                 int64 dim) const;
+                                 int64_t dim) const;
 
   // Returns dynamic sizes of all dimensions of `inst`'s leaf node at `index`.
   // Static sizes are represented by nullptr.
   std::vector<HloInstruction*> GetDynamicSizes(HloInstruction* inst,
                                                const ShapeIndex& index) const;
 
-  // Returns if current instruction contains any dynamic dimension.
+  // Returns if `index` at `inst` contains any dynamic dimension.
   // Recursively go into tuples.
-  bool HasDynamicDimension(HloInstruction* inst) const;
+  bool HasDynamicDimension(HloInstruction* inst,
+                           ShapeIndexView index = {}) const;
 
   // Forward dynamic dimension size at `dim` from `inst` to `new_inst`.
   Status ForwardDynamicSize(HloInstruction* inst, HloInstruction* new_inst,
@@ -67,19 +80,24 @@ class DynamicDimensionInference {
   // Update the dynamic mapping so that we know dimension `dim` of instruction
   // `inst` at `index` has a dynamic size, and its runtime size is represented
   // by a scalar instruction `size`.
-  void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index, int64 dim,
-                      HloInstruction* size);
+  void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
+                      int64_t dim, HloInstruction* size);
 
   // For all tensors whose dynamic dimension is `replace`, replace them with
   // `with`.
   void ReplaceAllDynamicDimensionUsesWith(HloInstruction* replace,
                                           HloInstruction* with);
 
+  // Update dynamic dimension inference to analyze `inst`. Useful to
+  // incrementally track new instructions added after initial run.
+  Status Update(HloInstruction* inst);
+
   friend class DynamicDimensionInferenceVisitor;
 
  private:
   explicit DynamicDimensionInference(
-      HloModule* module, CustomCallInferenceHandler custom_call_handler);
+      HloModule* module, CustomCallInferenceHandler custom_call_handler,
+      ShapeCheckMode shape_check_mode);
 
   // DynamicDimension is used as a key in the dynamic key-value mapping. It
   // unambiguously represents a dynamic dimension of a instruction at a given
@@ -91,7 +109,7 @@ class DynamicDimensionInference {
     ShapeIndex index;
     // The dimension number of the dynamic dimension at given index of a given
     // instruction.
-    int64 dim;
+    int64_t dim;
 
     // Artifacts needed to make this struct able to be used as a `key` in absl
     // maps. "friend" keywords are added so these functions can be found through
@@ -135,6 +153,9 @@ class DynamicDimensionInference {
 
   // A handler for custom calls.
   CustomCallInferenceHandler custom_call_handler_;
+
+  // Indicates what to do at places where shape check is needed.
+  ShapeCheckMode shape_check_mode_;
 };
 
 }  // namespace xla

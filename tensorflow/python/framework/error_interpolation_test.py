@@ -14,24 +14,28 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.errors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 import re
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import traceable_stack
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 # A mock for ``tf_stack.FrameSummary``.
 FrameSummary = collections.namedtuple(
     "StackFrame", ["filename", "lineno", "name", "line"])
+
+# TODO(feyu): convert the tests to use def_function.function, when appropriate.
 
 
 def _make_frame_with_filename(op, idx, filename):
@@ -221,16 +225,31 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       normal_string = "This is just a normal string"
       interpolated_string = error_interpolation.interpolate(
           normal_string, ops.get_default_graph())
-      self.assertEqual(interpolated_string, normal_string)
+      self.assertIn(normal_string, interpolated_string)
 
   def testOneTagWithAFakeNameResultsInPlaceholders(self):
     with ops.Graph().as_default():
       one_tag_string = "{{node MinusOne}}"
       interpolated_string = error_interpolation.interpolate(
           one_tag_string, ops.get_default_graph())
-      self.assertEqual(one_tag_string, interpolated_string)
+      self.assertIn(one_tag_string, interpolated_string)
+
+  def testOneTagWithAFakeFunctionTag(self):
+    defined_at = r"defined at.*error_interpolation_test\.py"
+    with ops.Graph().as_default():
+      constant_op.constant(1, name="One")
+      constant_op.constant(2, name="Two")
+      one_tag_with_a_fake_function_tag = "{{function_node fake}}{{node One}}"
+      interpolated_string = error_interpolation.interpolate(
+          one_tag_with_a_fake_function_tag, ops.get_default_graph())
+      # Fragments the expression to avoid matching the pattern itself.
+      expected_regex = re.compile(rf"node 'One'.*{defined_at}", re.DOTALL)
+      self.assertRegex(interpolated_string, expected_regex)
+      self.assertNotIn("function_node", interpolated_string)
+      self.assertNotIn("node 'Two'", interpolated_string)
 
   def testTwoTagsNoSeps(self):
+    defined_at = r"defined at.*error_interpolation_test\.py"
     with ops.Graph().as_default():
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
@@ -238,11 +257,13 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       two_tags_no_seps = "{{node One}}{{node Three}}"
       interpolated_string = error_interpolation.interpolate(
           two_tags_no_seps, ops.get_default_graph())
-      self.assertRegex(
-          interpolated_string, r"error_interpolation_test\.py:[0-9]+."
-          r"*error_interpolation_test\.py:[0-9]+")
+      # Fragments the expression to avoid matching the pattern itself.
+      expected_regex = re.compile(
+          rf"node 'One'.*{defined_at}.*node 'Three'.*{defined_at}", re.DOTALL)
+      self.assertRegex(interpolated_string, expected_regex)
 
   def testTwoTagsWithSeps(self):
+    defined_at = r"defined at.*error_interpolation_test\.py"
     with ops.Graph().as_default():
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
@@ -250,146 +271,93 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       two_tags_with_seps = ";;;{{node Two}},,,{{node Three}};;;"
       interpolated_string = error_interpolation.interpolate(
           two_tags_with_seps, ops.get_default_graph())
-      expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
-                        r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
+      # Fragments the expression to avoid matching the pattern itself.
+      expected_regex = re.compile(
+          rf"node 'Two'.*{defined_at}.*node 'Three'.*{defined_at}", re.DOTALL)
       self.assertRegex(interpolated_string, expected_regex)
 
   def testNewLine(self):
+    defined_at = r"defined at.*error_interpolation_test\.py"
     with ops.Graph().as_default():
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
-      newline = "\n\n{{node One}}"
+      newline = "\n\n;;;{{node One}};;;"
       interpolated_string = error_interpolation.interpolate(
           newline, ops.get_default_graph())
-      self.assertRegex(interpolated_string,
-                       r"error_interpolation_test\.py:[0-9]+.*")
-
-
-class InputNodesTest(test.TestCase):
-
-  def testNoInputs(self):
-    with ops.Graph().as_default():
-      one = constant_op.constant(1, name="One")
-      two = constant_op.constant(2, name="Two")
-      _ = math_ops.add(one, two, name="Three")
-      two_tags_with_seps = ";;;{{node One}},,,{{node Two}};;;"
-      interpolated_string = error_interpolation.interpolate(
-          two_tags_with_seps, ops.get_default_graph())
-      expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
-                        r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
-      self.assertRegex(interpolated_string, expected_regex)
-
-  def testBasicInputs(self):
-    with ops.Graph().as_default():
-      one = constant_op.constant(1, name="One")
-      two = constant_op.constant(2, name="Two")
-      _ = math_ops.add(one, two, name="Three")
-      tag = ";;;{{node Three}};;;"
-      interpolated_string = error_interpolation.interpolate(
-          tag, ops.get_default_graph())
-      expected_regex = re.compile(
-          r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
-          r";;;.*Input.*error_interpolation_test\.py:[0-9]+\)", re.DOTALL)
+      expected_regex = re.compile(rf"node 'One'.*{defined_at}", re.DOTALL)
       self.assertRegex(interpolated_string, expected_regex)
 
 
-class InterpolateDeviceSummaryTest(test.TestCase):
+class OperationDefinedAtTraceTest(test.TestCase):
 
-  def _fancy_device_function(self, unused_op):
-    return "/cpu:*"
+  @test_util.run_v2_only
+  def testSimpleCall(self):
 
-  def testNodeZeroHasNoDeviceSummaryInfo(self):
-    with ops.Graph().as_default():
-      self.zero = constant_op.constant([0.0], name="zero")
-      message = "{{colocation_node zero}}"
-      result = error_interpolation.interpolate(message, ops.get_default_graph())
-      self.assertIn("No device assignments were active", result)
+    @def_function.function
+    def func():
+      x = constant_op.constant([[1, 2, 3]])
+      y = script_ops.eager_py_func(lambda: [[1, 2, 3]], (), dtypes.int32)
+      return math_ops.matmul(x, y)
 
-  def testNodeOneHasExactlyOneInterpolatedDevice(self):
-    with ops.Graph().as_default():
-      with ops.device("/cpu"):
-        self.one = constant_op.constant([1.0], name="one")
-      message = "{{colocation_node one}}"
-      result = error_interpolation.interpolate(message, ops.get_default_graph())
-      self.assertEqual(2, result.count("tf.device(/cpu)"))
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        re.compile(r"defined at.*"
+                   r"in testSimpleCall.*"
+                   r"in func", re.DOTALL)):
+      func()
 
-  def testNodeTwoHasTwoInterpolatedDevice(self):
-    with ops.Graph().as_default():
-      with ops.device("/cpu"):
-        with ops.device("/cpu:0"):
-          self.two = constant_op.constant([2.0], name="two")
-      message = "{{colocation_node two}}"
-      result = error_interpolation.interpolate(message, ops.get_default_graph())
-      self.assertEqual(2, result.count("tf.device(/cpu)"))
-      self.assertEqual(2, result.count("tf.device(/cpu:0)"))
+  @test_util.run_v2_only
+  def testNestedCall(self):
 
-  def testNodeThreeHasFancyFunctionDisplayNameForInterpolatedDevice(self):
-    with ops.Graph().as_default():
-      with ops.device(self._fancy_device_function):
-        self.three = constant_op.constant(3.0, name="three")
-      message = "{{colocation_node three}}"
-      result = error_interpolation.interpolate(message, ops.get_default_graph())
-      num_devices = result.count("tf.device")
-      self.assertEqual(2, num_devices)
-      name_re = r"_fancy_device_function<.*error_interpolation_test.py, [0-9]+>"
-      expected_re = r"with tf.device\(.*%s\)" % name_re
-      self.assertRegex(result, expected_re)
+    def inner():
+      x = constant_op.constant([[1, 2, 3]])
+      y = script_ops.eager_py_func(lambda: [[1, 2, 3]], (), dtypes.int32)
+      return math_ops.matmul(x, y)
 
+    @def_function.function
+    def func():
+      return inner()
 
-class InterpolateColocationSummaryTest(test.TestCase):
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        re.compile(r"defined at.*"
+                   r"in testNestedCall.*"
+                   r"in func.*"
+                   r"in inner", re.DOTALL)):
+      func()
 
-  def _set_up_graph(self):
-    # Add nodes to the graph for retrieval by name later.
-    node_one = constant_op.constant(1, name="One")
-    node_two = constant_op.constant(2, name="Two")
+  @test_util.run_v2_only
+  def testAssert(self):
+    @def_function.function
+    def func():
+      control_flow_ops.Assert(False, [False])
+      return
 
-    # node_three has one colocation group, obviously.
-    with ops.colocate_with(node_one):
-      node_three = constant_op.constant(3, name="Three_with_one")
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        re.compile(r"defined at.*"
+                   r"in testAssert.*"
+                   r"in func", re.DOTALL)):
+      func()
 
-    # node_four has one colocation group even though three is (transitively)
-    # colocated with one.
-    with ops.colocate_with(node_three):
-      constant_op.constant(4, name="Four_with_three")
+  @test_util.run_v2_only
+  def testControlFlow(self):
+    @def_function.function
+    def func():
+      if constant_op.constant(False):
+        return constant_op.constant(1)
 
-    # node_five has two colocation groups because one and two are not colocated.
-    with ops.colocate_with(node_two):
-      with ops.colocate_with(node_one):
-        constant_op.constant(5, name="Five_with_one_with_two")
+      else:
+        x = constant_op.constant([[1, 2, 3]])
+        y = script_ops.eager_py_func(lambda: [[1, 2, 3]], (), dtypes.int32)
+        return math_ops.matmul(x, y)
 
-  def testNodeThreeHasColocationInterpolation(self):
-    with ops.Graph().as_default():
-      self._set_up_graph()
-      message = "{{colocation_node Three_with_one}}"
-      result = error_interpolation.interpolate(message, ops.get_default_graph())
-      self.assertIn("colocate_with(One)", result)
-
-  def testNodeFourHasColocationInterpolationForNodeThreeOnly(self):
-    with ops.Graph().as_default():
-      self._set_up_graph()
-      message = "{{colocation_node Four_with_three}}"
-      result = error_interpolation.interpolate(message, ops.get_default_graph())
-      self.assertIn("colocate_with(Three_with_one)", result)
-      self.assertNotIn(
-          "One", result,
-          "Node One should not appear in Four_with_three's summary:\n%s" %
-          result)
-
-  def testNodeFiveHasColocationInterpolationForNodeOneAndTwo(self):
-    with ops.Graph().as_default():
-      self._set_up_graph()
-      message = "{{colocation_node Five_with_one_with_two}}"
-      result = error_interpolation.interpolate(message, ops.get_default_graph())
-      self.assertIn("colocate_with(One)", result)
-      self.assertIn("colocate_with(Two)", result)
-
-  def testColocationInterpolationForNodeLackingColocation(self):
-    with ops.Graph().as_default():
-      self._set_up_graph()
-      message = "{{colocation_node One}}"
-      result = error_interpolation.interpolate(message, ops.get_default_graph())
-      self.assertIn("No node-device colocations", result)
-      self.assertNotIn("Two", result)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        re.compile(r"defined at.*"
+                   r"in testControlFlow.*"
+                   r"in func", re.DOTALL)):
+      func()
 
 
 class IsFrameworkFilenameTest(test.TestCase):

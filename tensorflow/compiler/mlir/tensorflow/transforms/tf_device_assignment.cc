@@ -18,13 +18,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 namespace {
 
 class SimpleTFDeviceAssignmentPass
-    : public PassWrapper<SimpleTFDeviceAssignmentPass, FunctionPass> {
+    : public SimpleTFDeviceAssignmentPassBase<SimpleTFDeviceAssignmentPass> {
  public:
   SimpleTFDeviceAssignmentPass() = default;
   SimpleTFDeviceAssignmentPass(const SimpleTFDeviceAssignmentPass&) {}
@@ -48,22 +49,13 @@ class SimpleTFDeviceAssignmentPass
       }
     });
   }
-
- private:
-  Option<std::string> default_device_{
-      *this, "default-device", llvm::cl::desc("The default device to assign."),
-      llvm::cl::init("cpu")};
 };
-
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device) {
   return std::make_unique<SimpleTFDeviceAssignmentPass>(default_device);
 }
-
-static PassRegistration<SimpleTFDeviceAssignmentPass> pass(
-    "tf-simple-device-assignment", "Simple device assignment in TF dialect.");
 
 }  // namespace TF
 }  // namespace mlir

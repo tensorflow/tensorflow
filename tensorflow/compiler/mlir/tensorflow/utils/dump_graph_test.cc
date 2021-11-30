@@ -52,7 +52,7 @@ class StringWritableFile : public WritableFile {
 
   Status Sync() override { return Status::OK(); }
 
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     return errors::Unimplemented("Stream not seekable");
   }
 
@@ -88,7 +88,7 @@ TEST(Dump, TexualIrWithOptions) {
   TF_ASSERT_OK(DumpTextualIRToFile(MlirDumpConfig().emit_location_information(),
                                    graph, /*flib_def=*/nullptr, &file));
 
-  string expected_substr = R"(loc("A"))";
+  string expected_substr = R"(loc(fused["Placeholder:", "A"]))";
   ExpectHasSubstr(actual, expected_substr);
 }
 

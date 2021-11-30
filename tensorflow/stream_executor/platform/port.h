@@ -23,15 +23,14 @@ limitations under the License.
 
 namespace stream_executor {
 
-using tensorflow::int8;
 using tensorflow::int16;
 using tensorflow::int32;
-using tensorflow::int64;
+using tensorflow::int8;
 
-using tensorflow::uint8;
 using tensorflow::uint16;
 using tensorflow::uint32;
 using tensorflow::uint64;
+using tensorflow::uint8;
 
 #if !defined(PLATFORM_GOOGLE)
 using std::string;

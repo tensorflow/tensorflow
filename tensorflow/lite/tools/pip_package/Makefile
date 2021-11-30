@@ -27,7 +27,11 @@ help:
 	@echo "make clean        -- remove wheel and deb files"
 
 docker-image:
+ifeq ($(BASE_IMAGE),ubuntu:16.04)
+	docker build -t $(TAG_IMAGE) --build-arg IMAGE=$(BASE_IMAGE) --build-arg PYTHON_VERSION=3.8 -f Dockerfile.py3 .
+else
 	docker build -t $(TAG_IMAGE) --build-arg IMAGE=$(BASE_IMAGE) .
+endif
 
 docker-shell: docker-image
 	docker run --rm --interactive --tty \
@@ -46,7 +50,7 @@ docker-build: docker-image
 		--volume $(TENSORFLOW_DIR):/tensorflow \
 		--volume $(OUT_DIR):/out \
 		$(TAG_IMAGE) \
-		/bin/bash -c "/tensorflow/tensorflow/lite/tools/pip_package/build_pip_package.sh && \
+		/bin/bash -c "/tensorflow/tensorflow/lite/tools/pip_package/build_pip_package_with_cmake.sh && \
 		              (cp /tensorflow/tensorflow/lite/tools/pip_package/gen/tflite_pip/*.deb \
 		                  /tensorflow/tensorflow/lite/tools/pip_package/gen/tflite_pip/${PYTHON}/dist/{*.whl,*.tar.gz} \
 		                  /out 2>/dev/null || true)"

@@ -170,7 +170,7 @@ class RefSelectOp : public OpKernel {
                                         "but it has shape ",
                                         index_tensor.shape().DebugString()));
 
-    int32 index = index_tensor.scalar<int32>()();
+    int32_t index = index_tensor.scalar<int32>()();
 
     OP_REQUIRES(context, index >= 0 && index < num_ref_inputs_,
                 errors::InvalidArgument("Index must be in the range [0, ",

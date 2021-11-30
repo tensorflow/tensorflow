@@ -19,6 +19,8 @@
 // Version 3: Move buffer data from Model.Subgraph.Tensors to Model.Buffers.
 // Version 3a: Add new builtin op code field. Has backward compatibility with
 //             version 3.
+// Version 3b: Rename fields in SignatureDef. Has backward compatibility with
+//             version 3 and 3a.
 
 namespace tflite;
 
@@ -372,6 +374,15 @@ enum BuiltinOperator : int32 {
   HASHTABLE_IMPORT = 138,
   HASHTABLE_SIZE = 139,
   REDUCE_ALL = 140,
+  CONV_3D_TRANSPOSE = 141,
+  VAR_HANDLE = 142,
+  READ_VARIABLE = 143,
+  ASSIGN_VARIABLE = 144,
+  BROADCAST_ARGS = 145,
+  RANDOM_STANDARD_NORMAL = 146,
+  BUCKETIZE = 147,
+  RANDOM_UNIFORM = 148,
+  MULTINOMIAL = 149,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -487,6 +498,11 @@ union BuiltinOptions {
   HashtableFindOptions,
   HashtableImportOptions,
   HashtableSizeOptions,
+  VarHandleOptions,
+  ReadVariableOptions,
+  AssignVariableOptions,
+  RandomOptions,
+  BucketizeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -509,6 +525,7 @@ table Conv2DOptions {
   dilation_h_factor:int = 1;
 }
 
+// Options for both Conv3D and Conv3DTranspose.
 table Conv3DOptions {
   padding:Padding;
   stride_d:int;
@@ -1060,6 +1077,26 @@ table HashtableImportOptions {
 table HashtableSizeOptions {
 }
 
+table VarHandleOptions {
+  container:string;
+  shared_name:string;
+}
+
+table ReadVariableOptions {
+}
+
+table AssignVariableOptions {
+}
+
+table RandomOptions {
+  seed: long;
+  seed2: long;
+}
+
+table BucketizeOptions {
+  boundaries: [float];  // The bucket boundaries.
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -1175,11 +1212,14 @@ table SignatureDef {
   // Named outputs for this signature.
   outputs:[TensorMap];
 
-  // Exported method name for this signature.
-  method_name:string;
-
   // Key value which was in the Tensorflow SavedModel SignatureDef map.
-  key:string;
+  signature_key:string;
+
+  // Model tag, deprecated.
+  deprecated_tag:string (deprecated);
+
+  // Index of subgraphs that corresponds to the exported method.
+  subgraph_index:uint;
 }
 
 table Model {

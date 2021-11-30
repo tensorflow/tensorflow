@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Ops for GPU collective operations implemented using NVIDIA nccl."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 from tensorflow.python.eager import context
@@ -62,7 +58,8 @@ def _all_sum_grad(op, grad):
     LookupError: If `reduction` is not `sum`.
   """
   if op.get_attr('reduction') != b'sum':
-    raise LookupError('No gradient defined for NcclAllReduce except sum.')
+    raise LookupError('No gradient defined for NcclAllReduce except for '
+                      'reduction="sum".')
 
   _check_device(grad, expected=op.device)
   num_devices = op.get_attr('num_devices')
@@ -161,7 +158,8 @@ def _reduce_sum_grad(op, grad):
     LookupError: If the reduction attribute of op is not `sum`.
   """
   if op.get_attr('reduction') != b'sum':
-    raise LookupError('No gradient defined for NcclReduce except sum.')
+    raise LookupError('No gradient defined for NcclAllReduce except for '
+                      'reduction="sum".')
   _check_device(grad, expected=op.device)
 
   with ops.device(op.device):
@@ -262,6 +260,8 @@ def _get_shared_name():
 
 def _check_device(tensor, expected=None):
   if not device.canonical_name(tensor.device):
-    raise ValueError('Device assignment required for nccl collective ops')
+    raise ValueError(f'Device assignment for tensor={tensor} required for nccl '
+                     'collective ops')
   if expected and expected != tensor.device:
-    raise ValueError('Expected device %s, got %s' % (expected, tensor.device))
+    raise ValueError(f'Expected device {expected}, got {tensor.device} for '
+                     f'tensor={tensor}.')

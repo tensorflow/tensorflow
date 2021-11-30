@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -30,31 +31,9 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
-// This pass wraps ops with the same `_xla_outside_compilation`
-// attribute value in a tf_device.launch op with host device assignment.
-//
-// A simple example:
-//   "tf_device.cluster"() ( {
-//     "tf.A"()
-//     "tf.B"() {_xla_outside_compilation = "cluster1"}
-//     "tf.C"()
-//     tf_device.return
-//   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-//
-// Would become the following ops (unimportant attribute, type are omitted):
-//   "tf_device.cluster"() ( {
-//     "tf.A"()
-//     "tf_device.launch"() {
-//       "tf.B"() {_xla_outside_compilation = "cluster1"}
-//       tf_device.return
-//     } {device = "TPU_REPLICATED_HOST"} : () -> ()
-//     "tf.C"()
-//     tf_device.return
-//   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-//
-
-struct OutsideCompiledToHostLaunch
-    : public PassWrapper<OutsideCompiledToHostLaunch, OperationPass<ModuleOp>> {
+struct OutsideCompiledToHostLaunchPass
+    : public TF::OutsideCompiledToHostLaunchPassBase<
+          OutsideCompiledToHostLaunchPass> {
   void runOnOperation() override;
 };
 
@@ -78,7 +57,7 @@ void WrapOpInLaunch(Operation* host_op, llvm::StringRef host_device) {
   host_op->moveBefore(return_op);
 }
 
-void OutsideCompiledToHostLaunch::runOnOperation() {
+void OutsideCompiledToHostLaunchPass::runOnOperation() {
   // Get runtime devices information from the closest parent module.
   auto module = getOperation();
   mlir::TF::RuntimeDevices devices;
@@ -115,13 +94,8 @@ void OutsideCompiledToHostLaunch::runOnOperation() {
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateOutsideCompiledToHostLaunchPass() {
-  return std::make_unique<OutsideCompiledToHostLaunch>();
+  return std::make_unique<OutsideCompiledToHostLaunchPass>();
 }
-
-static PassRegistration<OutsideCompiledToHostLaunch> pass(
-    "tf-outside-compiled-to-host-launch",
-    "Wraps each op with the _xla_outside_compiled attribute in "
-    "a separate tf_device.launch on replicated host device.");
 
 }  // namespace TFTPU
 }  // namespace mlir

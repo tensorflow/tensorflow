@@ -49,7 +49,7 @@ class SavedConcreteFunctionLoadingTest : public ::testing::Test {
 
 class DummyCapture : public TensorHandleConvertible {
  public:
-  DummyCapture(ImmediateExecutionContext* ctx, int8 value)
+  DummyCapture(ImmediateExecutionContext* ctx, int8_t value)
       : TensorHandleConvertible(
             testing::CreateTensorHandle(ctx, DT_FLOAT, {2, 4}, value)) {}
 };

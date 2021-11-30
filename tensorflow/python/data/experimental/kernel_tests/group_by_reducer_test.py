@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.group_by_reducer()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -144,9 +140,7 @@ class GroupByReducerTest(test_base.DatasetTestBase, parameterized.TestCase):
         finalize_func=lambda x: x)
 
     dataset = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegex(
-        TypeError,
-        "The element types for the new state must match the initial state."):
+    with self.assertRaises(TypeError):
       dataset.apply(
           grouping.group_by_reducer(lambda _: np.int64(0), reducer))
 
@@ -159,8 +153,7 @@ class GroupByReducerTest(test_base.DatasetTestBase, parameterized.TestCase):
         finalize_func=lambda x: x)
 
     dataset = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegex(
-        ValueError, "`key_func` must return a single tf.int64 tensor."):
+    with self.assertRaises(ValueError):
       dataset.apply(
           grouping.group_by_reducer(lambda _: np.int64((0, 0)), reducer))
 
@@ -173,8 +166,7 @@ class GroupByReducerTest(test_base.DatasetTestBase, parameterized.TestCase):
         finalize_func=lambda x: x)
 
     dataset = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegex(
-        ValueError, "`key_func` must return a single tf.int64 tensor."):
+    with self.assertRaises(ValueError):
       dataset.apply(
           grouping.group_by_reducer(lambda _: "wrong", reducer))
 
@@ -213,15 +205,15 @@ class GroupByReducerCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     return dataset_ops.Dataset.from_tensor_slices(components).apply(
         grouping.group_by_reducer(lambda x: x % 5, reducer))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     components = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=np.int64)
-    self.verify_unused_iterator(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    self.verify_multiple_breaks(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    self.verify_reset_restored_iterator(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
+    verify_fn(
+        self,
+        lambda: self._build_dataset(components),
+        num_outputs=5)
 
 
 if __name__ == "__main__":

@@ -29,6 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace parallel_device {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 TEST(PARALLEL_DEVICE_LIB, TestOpWithError) {
@@ -253,8 +254,8 @@ TEST(PARALLEL_DEVICE_LIB, TestDifferentShapes) {
           parallel_device, std::move(vector_handles), status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   const std::vector<int64_t>* shape;
-  Status s = unknown_length_vector->Shape(&shape);
-  EXPECT_FALSE(s.ok());
+  TF_ASSERT_OK(unknown_length_vector->Shape(&shape));
+  EXPECT_THAT(*shape, ElementsAre(-1));
 
   TensorHandlePtr scalar = FloatTensorHandle(2., status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
@@ -270,16 +271,15 @@ TEST(PARALLEL_DEVICE_LIB, TestDifferentShapes) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK);
   // Can't take the shape of a parallel tensor with varying numbers of axes, but
   // running operations on them is OK.
-  s = unknown_length_vector->Shape(&shape);
-  EXPECT_FALSE(s.ok());
+  TF_ASSERT_OK(unknown_length_vector->Shape(&shape));
+  EXPECT_THAT(*shape, ElementsAre(-1));
   std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> size_op(
       TFE_NewOp(context.get(), "Size", status.get()), TFE_DeleteOp);
   auto result = parallel_device.Execute(
       context.get(), {unknown_dims_vector.get()}, "Size",
       TFE_OpGetAttrs(size_op.get()), 1, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK);
-  s = (*result)[0]->Shape(&shape);
-  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK);
+  TF_ASSERT_OK((*result)[0]->Shape(&shape));
   EXPECT_EQ(0, shape->size());
 }
 

@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <unordered_set>
 
-#include "tensorflow/cc/experimental/libexport/metrics.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
+#include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/cc/saved_model/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -41,8 +42,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-
-namespace metrics = libexport::metrics;
 
 auto* load_attempt_count = monitoring::Counter<2>::New(
     "/tensorflow/cc/saved_model/load_attempt_count",
@@ -67,7 +66,7 @@ auto* load_latency_by_stage = monitoring::Sampler<2>::New(
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 // `tensorflow::LoadSavedModel` API label.
-constexpr char kCCLoadV1Label[] = "cc_load";
+constexpr char kCCLoadLabel[] = "cc_load";
 
 uint64 GetLatencyMicroseconds(const uint64 start_microseconds) {
   const uint64 end_microseconds = EnvTime::NowMicros();
@@ -274,7 +273,8 @@ Status LoadSavedModel(const SessionOptions& session_options,
                       const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
                       SavedModelBundle* const bundle) {
-  metrics::ReadApi(kCCLoadV1Label).IncrementBy(1);
+  metrics::SavedModelReadApi(kCCLoadLabel).IncrementBy(1);
+
   // TODO(robson): Add tests for the counters.
   const uint64 start_microseconds = Env::Default()->NowMicros();
   const Status status = LoadSavedModelInternal(session_options, run_options,
@@ -292,7 +292,6 @@ Status LoadSavedModel(const SessionOptions& session_options,
   }
   load_latency->GetCell(export_dir)
       ->IncrementBy(GetLatencyMicroseconds(start_microseconds));
-  metrics::Read().IncrementBy(1);
   return status;
 }
 

@@ -14,16 +14,12 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
-from __future__ import absolute_import as _absolute_import
-from __future__ import division as _division
-from __future__ import print_function as _print_function
-
 import distutils as _distutils
 import inspect as _inspect
 import os as _os
 import site as _site
-import six as _six
 import sys as _sys
+import typing as _typing
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -67,6 +63,13 @@ elif _tf_api_dir not in __path__:
 # lazy loading.
 _current_module.compat.v2  # pylint: disable=pointless-statement
 
+# Load tensorflow-io-gcs-filesystem if enabled
+# pylint: disable=g-import-not-at-top
+if (_os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == 'true' or
+    _os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == '1'):
+  import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
+# pylint: enable=g-import-not-at-top
+
 # Lazy-load estimator.
 _estimator_module = "tensorflow_estimator.python.estimator.api._v1.estimator"
 estimator = _LazyLoader("estimator", globals(), _estimator_module)
@@ -75,28 +78,17 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-if _os.environ.get("_PREFER_OSS_KERAS", False):
-  _keras_module = "keras.api._v1.keras"
-  keras = _LazyLoader("keras", globals(), _keras_module)
-  _module_dir = _module_util.get_parent_dir_for_name(_keras_module)
-  if _module_dir:
-    _current_module.__path__ = [_module_dir] + _current_module.__path__
-  setattr(_current_module, "keras", keras)
-else:
-  try:
-    from .python.keras.api._v1 import keras
-    _current_module.__path__ = (
-        [_module_util.get_parent_dir(keras)] + _current_module.__path__)
-    setattr(_current_module, "keras", keras)
-  except ImportError:
-    pass
+_keras_module = "keras.api._v1.keras"
+keras = _LazyLoader("keras", globals(), _keras_module)
+_module_dir = _module_util.get_parent_dir_for_name(_keras_module)
+if _module_dir:
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
+setattr(_current_module, "keras", keras)
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top
-if not _six.PY2:
-  import typing as _typing
-  if _typing.TYPE_CHECKING:
-    from tensorflow_estimator.python.estimator.api._v1 import estimator
+if _typing.TYPE_CHECKING:
+  from tensorflow_estimator.python.estimator.api._v1 import estimator
 # pylint: enable=g-import-not-at-top
 
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
@@ -126,19 +118,33 @@ _major_api_version = 1
 
 # Add module aliases from Keras to TF.
 # Some tf endpoints actually lives under Keras.
-if (hasattr(_current_module, "keras") and
-    _os.environ.get("_PREFER_OSS_KERAS", False)):
+if hasattr(_current_module, "keras"):
   # It is possible that keras is a lazily loaded module, which might break when
   # actually trying to import it. Have a Try-Catch to make sure it doesn't break
   # when it doing some very initial loading, like tf.compat.v2, etc.
   try:
     _layer_package = "keras.api._v1.keras.__internal__.legacy.layers"
     layers = _LazyLoader("layers", globals(), _layer_package)
+    _module_dir = _module_util.get_parent_dir_for_name(_layer_package)
+    if _module_dir:
+      _current_module.__path__ = [_module_dir] + _current_module.__path__
     setattr(_current_module, "layers", layers)
 
     _legacy_rnn_package = "keras.api._v1.keras.__internal__.legacy.rnn_cell"
-    legacy_rnn = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
-    _current_module.nn.rnn_cell = legacy_rnn
+    _rnn_cell = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
+    _module_dir = _module_util.get_parent_dir_for_name(_legacy_rnn_package)
+    if _module_dir:
+      _current_module.nn.__path__ = [_module_dir] + _current_module.nn.__path__
+    _current_module.nn.rnn_cell = _rnn_cell
+  except ImportError:
+    pass
+
+# Do an eager load for Keras' code so that any function/method that needs to
+# happen at load time will trigger, eg registration of optimizers in the
+# SavedModel registry.
+if hasattr(_current_module, "keras"):
+  try:
+    keras._load()
   except ImportError:
     pass
 
@@ -171,13 +177,15 @@ def _running_from_pip_package():
 
 if _running_from_pip_package():
   # TODO(gunan): Add sanity checks to loaded modules here.
-  for _s in _site_packages_dirs:
-    # Load first party dynamic kernels.
-    _main_dir = _os.path.join(_s, 'tensorflow/core/kernels')
-    if _os.path.exists(_main_dir):
-      _ll.load_library(_main_dir)
 
-    # Load third party dynamic kernels.
+  # Load first party dynamic kernels.
+  _tf_dir = _os.path.dirname(_current_file_location)
+  _kernel_dir = _os.path.join(_tf_dir, 'core', 'kernels')
+  if _os.path.exists(_kernel_dir):
+    _ll.load_library(_kernel_dir)
+
+  # Load third party dynamic kernels.
+  for _s in _site_packages_dirs:
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
     if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)

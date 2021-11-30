@@ -41,13 +41,13 @@ struct ComputationInstructionOrdering {
   }
 
   int32 NodeIdForInstruction(const HloInstruction& instr) {
-    int32 instruction_id = instr.unique_id();
+    int32_t instruction_id = instr.unique_id();
     auto it = node_id_to_graph_id.find(instruction_id);
 
     if (it != node_id_to_graph_id.end()) {
       return it->second;
     }
-    int32 node_id = graph_cycles.NewNode();
+    int32_t node_id = graph_cycles.NewNode();
     node_id_to_graph_id[instruction_id] = node_id;
     return node_id;
   }
@@ -55,8 +55,8 @@ struct ComputationInstructionOrdering {
   // Returns `false` if adding an edge would have introduced a cycle. Does not
   // add an edge in that case. Returns `true` otherwise.
   bool InsertEdge(const HloInstruction& source, const HloInstruction& dest) {
-    int32 source_id = NodeIdForInstruction(source);
-    int32 dest_id = NodeIdForInstruction(dest);
+    int32_t source_id = NodeIdForInstruction(source);
+    int32_t dest_id = NodeIdForInstruction(dest);
     return graph_cycles.InsertEdge(source_id, dest_id);
   }
 

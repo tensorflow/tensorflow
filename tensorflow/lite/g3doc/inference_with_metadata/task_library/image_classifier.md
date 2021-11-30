@@ -3,7 +3,7 @@
 Image classification is a common use of machine learning to identify what an
 image represents. For example, we might want to know what type of animal appears
 in a given picture. The task of predicting what an image represents is called
-_image classification_. An image classifier is trained to recognize various
+*image classification*. An image classifier is trained to recognize various
 classes of images. For example, a model might be trained to recognize photos
 representing three different types of animals: rabbits, hamsters, and dogs. See
 the
@@ -74,8 +74,10 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.2.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
 
@@ -83,8 +85,14 @@ dependencies {
 
 ```java
 // Initialization
-ImageClassifierOptions options = ImageClassifierOptions.builder().setMaxResults(1).build();
-ImageClassifier imageClassifier = ImageClassifier.createFromFileAndOptions(context, modelFile, options);
+ImageClassifierOptions options =
+    ImageClassifierOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setMaxResults(1)
+        .build();
+ImageClassifier imageClassifier =
+    ImageClassifier.createFromFileAndOptions(
+        context, modelFile, options);
 
 // Run inference
 List<Classifications> results = imageClassifier.classify(image);
@@ -162,10 +170,11 @@ The compatible image classifier models should meet the following requirements:
     -   with `N` classes and either 2 or 4 dimensions, i.e. `[1 x N]` or `[1 x 1
         x 1 x N]`
     -   optional (but recommended) label map(s) as AssociatedFile-s with type
-        TENSOR_AXIS_LABELS, containing one label per line. The first such
-        AssociatedFile (if any) is used to fill the `label` field (named as
-        `class_name` in C++) of the results. The `display_name` field is filled
-        from the AssociatedFile (if any) whose locale matches the
+        TENSOR_AXIS_LABELS, containing one label per line. See the
+        [example label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/image_classifier/labels.txt).
+        The first such AssociatedFile (if any) is used to fill the `label` field
+        (named as `class_name` in C++) of the results. The `display_name` field
+        is filled from the AssociatedFile (if any) whose locale matches the
         `display_names_locale` field of the `ImageClassifierOptions` used at
         creation time ("en" by default, i.e. English). If none of these are
         available, only the `index` field of the results will be filled.

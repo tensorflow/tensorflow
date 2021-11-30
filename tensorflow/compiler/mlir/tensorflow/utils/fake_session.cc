@@ -51,8 +51,15 @@ FakeSessionOptions* kSessionOptions = []() { return new FakeSessionOptions; }();
 }  // namespace
 
 FakeSession::FakeSession() {
+  // We don't initialize devices in constructor as it causes some
+  // global initialization fiasco between tests and code in TF.
+}
+
+void FakeSession::Initialize() {
+  if (initialized_) return;
   BuildDeviceManager();
   InitVariables();
+  initialized_ = true;
 }
 
 void FakeSession::BuildDeviceManager() {
@@ -93,6 +100,7 @@ Status FakeSession::ListDevices(
 
 Status FakeSession::LocalDeviceManager(
     const tensorflow::DeviceMgr** deviceMgrPtr) {
+  Initialize();
   if (kSessionOptions->fail_to_fetch_local_device_manager)
     return Status(tensorflow::error::UNKNOWN, "No Local Device Manager");
   *deviceMgrPtr = device_mgr_.get();
@@ -126,6 +134,7 @@ Status FakeSession::Run(
     const std::vector<std::string>& target_nodes, std::vector<Tensor>* outputs,
     tensorflow::RunMetadata* run_metadata,
     const tensorflow::thread::ThreadPoolOptions& thread_pool_options) {
+  Initialize();
   for (const std::string& output_name : output_names) {
     Tensor output;
     if (output_name == "dense/bias") {

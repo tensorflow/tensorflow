@@ -18,10 +18,8 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-
-// This pass eliminate `_tpu_replicate` and `device` attribute on operations
-// that are contained in a tf_device.cluster op.
 
 namespace mlir {
 namespace TFTPU {
@@ -30,16 +28,21 @@ namespace {
 
 constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
+constexpr char kClassAttr[] = "_class";
 
 class TPUCleanupClusterAttributesPass
-    : public PassWrapper<TPUCleanupClusterAttributesPass,
-                         OperationPass<ModuleOp>> {
+    : public TF::TPUCleanupClusterAttributesPassBase<
+          TPUCleanupClusterAttributesPass> {
  public:
   void runOnOperation() override {
     getOperation().walk([](tf_device::ClusterOp cluster) {
       cluster.walk([](Operation *op) {
         if (isa<tf_device::ClusterOp>(op)) return;
         op->removeAttr(kTPUReplicateAttr);
+        // This attribute is used for op colocation. Since all ops are located
+        // on a single device cluster, this private attribute is no longer
+        // needed.
+        op->removeAttr(kClassAttr);
         if (auto attr = op->getAttrOfType<StringAttr>(kDeviceAttr)) {
           // Preserve device attribute if the op is placed on a replicated core
           // device. Device attribute is used to infer the appropriate sharding
@@ -56,10 +59,6 @@ class TPUCleanupClusterAttributesPass
     });
   }
 };
-
-PassRegistration<TPUCleanupClusterAttributesPass> pass(
-    "tf-tpu-cleanup-cluster-attributes",
-    "Eliminate _tpu_replicate and other attributes from ops in a cluster");
 
 }  // namespace
 

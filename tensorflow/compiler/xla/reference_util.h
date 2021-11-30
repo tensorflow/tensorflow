@@ -45,8 +45,8 @@ class ReferenceUtil {
       const Array2D<T>& operand) {
     auto result =
         absl::make_unique<Array2D<T>>(operand.width(), operand.height());
-    for (int64 w = 0; w < operand.width(); ++w) {
-      for (int64 h = 0; h < operand.height(); ++h) {
+    for (int64_t w = 0; w < operand.width(); ++w) {
+      for (int64_t h = 0; h < operand.height(); ++h) {
         (*result)(w, h) = operand(h, w);
       }
     }
@@ -70,36 +70,37 @@ class ReferenceUtil {
   // ComputationBuilder::CreateDefaultConvDimensionNumbers().
   static std::unique_ptr<Array4D<float>> ConvArray4D(
       const Array4D<float>& lhs, const Array4D<float>& rhs,
-      std::pair<int64, int64> kernel_stride, Padding padding);
+      std::pair<int64_t, int64_t> kernel_stride, Padding padding);
 
   // Returns the result of a convolution `lhs <conv> rhs`, with the given
   // convolution dimension numbers.
   static std::unique_ptr<Array4D<float>> ConvArray4DGeneralDimensions(
       const Array4D<float>& lhs, const Array4D<float>& rhs,
-      std::pair<int64, int64> kernel_stride, Padding padding,
+      std::pair<int64_t, int64_t> kernel_stride, Padding padding,
       ConvolutionDimensionNumbers dimension_numbers);
 
   // Returns the result of a convolution `lhs <conv> rhs`, with the given
   // dilation factors.
   static std::unique_ptr<Array4D<float>> ConvArray4DGeneralDimensionsDilated(
       const Array4D<float>& lhs, const Array4D<float>& rhs,
-      std::pair<int64, int64> kernel_stride, Padding padding,
-      std::pair<int64, int64> lhs_dilation,
-      std::pair<int64, int64> rhs_dilation, ConvolutionDimensionNumbers dnums);
+      std::pair<int64_t, int64_t> kernel_stride, Padding padding,
+      std::pair<int64_t, int64_t> lhs_dilation,
+      std::pair<int64_t, int64_t> rhs_dilation,
+      ConvolutionDimensionNumbers dnums);
 
   // Returns the result of a convolution `lhs <conv> rhs`, with the default
   // convolution dimension numbers returned from
   // ComputationBuilder::CreateDefaultConvDimensionNumbers().
   static std::unique_ptr<Array3D<float>> ConvArray3D(const Array3D<float>& lhs,
                                                      const Array3D<float>& rhs,
-                                                     int64 kernel_stride,
+                                                     int64_t kernel_stride,
                                                      Padding padding);
 
   // Returns the result of a convolution `lhs <conv> rhs`.
   static std::unique_ptr<Array3D<float>> ConvArray3DGeneralDimensionsDilated(
-      const Array3D<float>& lhs, const Array3D<float>& rhs, int64 kernel_stride,
-      Padding padding, int64 lhs_dilation, int64 rhs_dilation,
-      const ConvolutionDimensionNumbers& dnums);
+      const Array3D<float>& lhs, const Array3D<float>& rhs,
+      int64_t kernel_stride, Padding padding, int64_t lhs_dilation,
+      int64_t rhs_dilation, const ConvolutionDimensionNumbers& dnums);
 
   // Returns the result of a separable  convolution with the given parameters.
   // kernel_stride and padding applies to the depthwise convolution during
@@ -108,7 +109,7 @@ class ReferenceUtil {
   static std::unique_ptr<Array4D<float>> SeparableConvArray4D(
       const Array4D<float>& input, const Array4D<float>& depthwise_weights,
       const Array4D<float>& pointwise_weights,
-      std::pair<int64, int64> kernel_stride, Padding padding);
+      std::pair<int64_t, int64_t> kernel_stride, Padding padding);
 
   // Returns the result of reducing a matrix to a column vector. init is the
   // initial value for the reduce operation, and reduce_function is the function
@@ -144,18 +145,18 @@ class ReferenceUtil {
   // Returns the result of reducing the 4D array to a vector, reducing away
   // the dimensions specified in dims.
   static std::vector<float> Reduce4DTo1D(
-      const Array4D<float>& array, float init, absl::Span<const int64> dims,
+      const Array4D<float>& array, float init, absl::Span<const int64_t> dims,
       const std::function<float(float, float)>& reduce_function);
 
   // Broadcast 1D dimension to 4D, from the dimension `broadcast_from_dim`.
   static std::unique_ptr<Array4D<float>> Broadcast1DTo4D(
-      const std::vector<float>& array, const std::vector<int64>& bounds,
-      int64 broadcast_from_dim);
+      const std::vector<float>& array, const std::vector<int64_t>& bounds,
+      int64_t broadcast_from_dim);
 
   // Returns the result of reducing the 3D array to a 2D array, reducing away
   // the dimensions specified in dims.
   static std::unique_ptr<Array2D<float>> Reduce3DTo2D(
-      const Array3D<float>& array, float init, absl::Span<const int64> dims,
+      const Array3D<float>& array, float init, absl::Span<const int64_t> dims,
       const std::function<float(float, float)>& reduce_function);
 
   // Applies map_function to each element in the input (2D array) and returns
@@ -172,38 +173,40 @@ class ReferenceUtil {
 
   // Number of windows in a given dimension. Calculation taken from
   // xla::MakePadding().
-  static int64 WindowCount(int64 unpadded_width, int64 window_len, int64 stride,
-                           Padding padding);
+  static int64_t WindowCount(int64_t unpadded_width, int64_t window_len,
+                             int64_t stride, Padding padding);
 
   // Windowed reductions with Add as the function to apply.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DAdd(
       absl::Span<const float> operand, float init,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
       Padding padding);
   static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
-      const Array3D<float>& operand, float init, absl::Span<const int64> window,
-      absl::Span<const int64> stride, Padding padding);
+      const Array3D<float>& operand, float init,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+      Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
-      const Array4D<float>& operand, float init, absl::Span<const int64> window,
-      absl::Span<const int64> stride, Padding padding);
+      const Array4D<float>& operand, float init,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+      Padding padding);
 
   // Windowed reductions with a generic reduce function.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
       absl::Span<const float> operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
-      absl::Span<const std::pair<int64, int64>> padding);
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+      absl::Span<const std::pair<int64_t, int64_t>> padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
       Padding padding);
   // With arbitrary padding.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
-      absl::Span<const std::pair<int64, int64>> padding);
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+      absl::Span<const std::pair<int64_t, int64_t>> padding);
 
   // Batch normalize data.
   static std::unique_ptr<Array4D<float>> BatchNorm4D(
@@ -216,7 +219,7 @@ class ReferenceUtil {
   // TODO(b/74533103) Switch tests to evaluator and remove this implementation.
   static std::unique_ptr<Array4D<float>> SelectAndScatter4DGePlus(
       const Array4D<float>& operand, const Array4D<float>& source, float init,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
       bool same_padding);
 
   // Concatenates the lhs and rhs arrays along the concatenate_dimension.
@@ -230,8 +233,8 @@ class ReferenceUtil {
     auto result = absl::make_unique<Array2D<T>>(
         concatenate_dimension == 0 ? lhs.n1() + rhs.n1() : lhs.n1(),
         concatenate_dimension == 1 ? lhs.n2() + rhs.n2() : lhs.n2());
-    for (int64 i0 = 0; i0 < result->n1(); ++i0) {
-      for (int64 i1 = 0; i1 < result->n2(); ++i1) {
+    for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
+      for (int64_t i1 = 0; i1 < result->n2(); ++i1) {
         // If we exceed the bounds of the LHS, draw from the RHS, where the
         // result index is adjusted by the number of values present in the LHS.
         (*result)(i0, i1) = i0 < lhs.n1() && i1 < lhs.n2()
@@ -250,9 +253,9 @@ class ReferenceUtil {
                                               const Array3D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 3);
-    const int64 lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3()};
-    const int64 rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
-    int64 out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
+    const int64_t lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3()};
+    const int64_t rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
+    int64_t out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
     for (int i = 0; i < 3; ++i) {
       if (i != concatenate_dimension) {
         out_dims[i] = lhs_dims[i];
@@ -263,9 +266,9 @@ class ReferenceUtil {
     }
     auto result =
         absl::make_unique<Array3D<T>>(out_dims[0], out_dims[1], out_dims[2]);
-    for (int64 i0 = 0; i0 < result->n1(); ++i0) {
-      for (int64 i1 = 0; i1 < result->n2(); ++i1) {
-        for (int64 i2 = 0; i2 < result->n3(); ++i2) {
+    for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
+      for (int64_t i1 = 0; i1 < result->n2(); ++i1) {
+        for (int64_t i2 = 0; i2 < result->n3(); ++i2) {
           (*result)(i0, i1, i2) =
               i0 < lhs.n1() && i1 < lhs.n2() && i2 < lhs.n3()
                   ? lhs(i0, i1, i2)
@@ -285,9 +288,9 @@ class ReferenceUtil {
                                               const Array4D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 4);
-    const int64 lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3(), lhs.n4()};
-    const int64 rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
-    int64 out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
+    const int64_t lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3(), lhs.n4()};
+    const int64_t rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
+    int64_t out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
     for (int i = 0; i < 4; ++i) {
       if (i != concatenate_dimension) {
         out_dims[i] = lhs_dims[i];
@@ -298,10 +301,10 @@ class ReferenceUtil {
     }
     auto result = absl::make_unique<Array4D<T>>(out_dims[0], out_dims[1],
                                                 out_dims[2], out_dims[3]);
-    for (int64 i0 = 0; i0 < result->n1(); ++i0) {
-      for (int64 i1 = 0; i1 < result->n2(); ++i1) {
-        for (int64 i2 = 0; i2 < result->n3(); ++i2) {
-          for (int64 i3 = 0; i3 < result->n4(); ++i3) {
+    for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
+      for (int64_t i1 = 0; i1 < result->n2(); ++i1) {
+        for (int64_t i2 = 0; i2 < result->n3(); ++i2) {
+          for (int64_t i3 = 0; i3 < result->n4(); ++i3) {
             (*result)(i0, i1, i2, i3) =
                 i0 < lhs.n1() && i1 < lhs.n2() && i2 < lhs.n3() && i3 < lhs.n4()
                     ? lhs(i0, i1, i2, i3)
@@ -318,11 +321,11 @@ class ReferenceUtil {
 
   // Slices with index clamping
   template <typename T>
-  static std::vector<T> ClampSlice1D(absl::Span<const T> input, int64 start,
-                                     int64 size) {
-    start = std::min<int64>(std::max<int64>(0, start), input.size() - size);
+  static std::vector<T> ClampSlice1D(absl::Span<const T> input, int64_t start,
+                                     int64_t size) {
+    start = std::min<int64_t>(std::max<int64_t>(0, start), input.size() - size);
     std::vector<T> result;
-    for (int64 i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       result.push_back(input[(start + i)]);
     }
     return result;
@@ -332,9 +335,9 @@ class ReferenceUtil {
   // in each dimension.
   template <typename T>
   static std::unique_ptr<Array2D<T>> Slice2D(const Array2D<T>& input,
-                                             std::array<int64, 2> starts,
-                                             std::array<int64, 2> limits,
-                                             std::array<int64, 2> strides) {
+                                             std::array<int64_t, 2> starts,
+                                             std::array<int64_t, 2> limits,
+                                             std::array<int64_t, 2> strides) {
     CHECK_LE(starts[0], input.n1());
     CHECK_LE(starts[1], input.n2());
     CHECK_LE(limits[0], input.n1());
@@ -344,8 +347,8 @@ class ReferenceUtil {
     auto result = absl::make_unique<Array2D<T>>(
         CeilOfRatio(limits[0] - starts[0], strides[0]),
         CeilOfRatio(limits[1] - starts[1], strides[1]));
-    for (int64 i0 = 0; i0 < result->n1(); ++i0) {
-      for (int64 i1 = 0; i1 < result->n2(); ++i1) {
+    for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
+      for (int64_t i1 = 0; i1 < result->n2(); ++i1) {
         (*result)(i0, i1) =
             input(starts[0] + i0 * strides[0], starts[1] + i1 * strides[1]);
       }
@@ -355,9 +358,9 @@ class ReferenceUtil {
 
   template <typename T>
   static std::unique_ptr<Array3D<T>> Slice3D(const Array3D<T>& input,
-                                             std::array<int64, 3> starts,
-                                             std::array<int64, 3> limits,
-                                             std::array<int64, 3> strides) {
+                                             std::array<int64_t, 3> starts,
+                                             std::array<int64_t, 3> limits,
+                                             std::array<int64_t, 3> strides) {
     CHECK_LE(starts[0], input.n1());
     CHECK_LE(starts[1], input.n2());
     CHECK_LE(starts[2], input.n3());
@@ -372,9 +375,9 @@ class ReferenceUtil {
         CeilOfRatio(limits[1] - starts[1], strides[1]),
         CeilOfRatio(limits[2] - starts[2], strides[2]));
 
-    for (int64 i0 = 0; i0 < result->n1(); ++i0) {
-      for (int64 i1 = 0; i1 < result->n2(); ++i1) {
-        for (int64 i2 = 0; i2 < result->n3(); ++i2) {
+    for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
+      for (int64_t i1 = 0; i1 < result->n2(); ++i1) {
+        for (int64_t i2 = 0; i2 < result->n3(); ++i2) {
           (*result)(i0, i1, i2) =
               input(starts[0] + i0 * strides[0], starts[1] + i1 * strides[1],
                     starts[2] + i2 * strides[2]);
@@ -386,9 +389,9 @@ class ReferenceUtil {
 
   template <typename T>
   static std::unique_ptr<Array4D<T>> Slice4D(const Array4D<T>& input,
-                                             std::array<int64, 4> starts,
-                                             std::array<int64, 4> limits,
-                                             std::array<int64, 4> strides) {
+                                             std::array<int64_t, 4> starts,
+                                             std::array<int64_t, 4> limits,
+                                             std::array<int64_t, 4> strides) {
     CHECK_LE(starts[0], input.n1());
     CHECK_LE(starts[1], input.n2());
     CHECK_LE(starts[2], input.n3());
@@ -406,10 +409,10 @@ class ReferenceUtil {
         CeilOfRatio(limits[1] - starts[1], strides[1]),
         CeilOfRatio(limits[2] - starts[2], strides[2]),
         CeilOfRatio(limits[3] - starts[3], strides[3]));
-    for (int64 i0 = 0; i0 < result->n1(); ++i0) {
-      for (int64 i1 = 0; i1 < result->n2(); ++i1) {
-        for (int64 i2 = 0; i2 < result->n3(); ++i2) {
-          for (int64 i3 = 0; i3 < result->n4(); ++i3) {
+    for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
+      for (int64_t i1 = 0; i1 < result->n2(); ++i1) {
+        for (int64_t i2 = 0; i2 < result->n3(); ++i2) {
+          for (int64_t i3 = 0; i3 < result->n4(); ++i3) {
             (*result)(i0, i1, i2, i3) =
                 input(starts[0] + i0 * strides[0], starts[1] + i1 * strides[1],
                       starts[2] + i2 * strides[2], starts[3] + i3 * strides[3]);
@@ -426,17 +429,17 @@ class ReferenceUtil {
   // map_function.
   static std::unique_ptr<Array2D<float>> MapWithIndexArray2D(
       const Array2D<float>& matrix,
-      const std::function<float(float, int64, int64)>& map_function);
+      const std::function<float(float, int64_t, int64_t)>& map_function);
 
   // Applies map_function to each element in the input (4D array) and returns
   // the result.
   template <typename F>
   static std::unique_ptr<Array4D<float>> MapArray4D(const Array4D<float>& input,
                                                     F&& map_function) {
-    return MapWithIndexArray4D(input,
-                               [&](float value, int64, int64, int64, int64) {
-                                 return map_function(value);
-                               });
+    return MapWithIndexArray4D(
+        input, [&](float value, int64_t, int64_t, int64_t, int64_t) {
+          return map_function(value);
+        });
   }
 
   // Applies map_function to each element in the input (4D array) and returns
@@ -448,10 +451,10 @@ class ReferenceUtil {
       const Array4D<float>& input, F&& map_function) {
     auto result = absl::make_unique<Array4D<float>>(
         input.planes(), input.depth(), input.height(), input.width());
-    for (int64 plane = 0; plane < input.planes(); ++plane) {
-      for (int64 depth = 0; depth < input.depth(); ++depth) {
-        for (int64 height = 0; height < input.height(); ++height) {
-          for (int64 width = 0; width < input.width(); ++width) {
+    for (int64_t plane = 0; plane < input.planes(); ++plane) {
+      for (int64_t depth = 0; depth < input.depth(); ++depth) {
+        for (int64_t height = 0; height < input.height(); ++height) {
+          for (int64_t width = 0; width < input.width(); ++width) {
             (*result)(plane, depth, height, width) =
                 map_function(input(plane, depth, height, width), plane, depth,
                              height, width);
@@ -469,7 +472,8 @@ class ReferenceUtil {
                                                     const Array4D<float>& rhs,
                                                     F&& map_function) {
     return MapWithIndexArray4D(
-        lhs, rhs, [&](float lhs, float rhs, int64, int64, int64, int64) {
+        lhs, rhs,
+        [&](float lhs, float rhs, int64_t, int64_t, int64_t, int64_t) {
           return map_function(lhs, rhs);
         });
   }
@@ -483,10 +487,10 @@ class ReferenceUtil {
       const Array4D<float>& lhs, const Array4D<float>& rhs, F&& map_function) {
     auto result = absl::make_unique<Array4D<float>>(lhs.planes(), lhs.depth(),
                                                     lhs.height(), lhs.width());
-    for (int64 plane = 0; plane < lhs.planes(); ++plane) {
-      for (int64 depth = 0; depth < lhs.depth(); ++depth) {
-        for (int64 height = 0; height < lhs.height(); ++height) {
-          for (int64 width = 0; width < lhs.width(); ++width) {
+    for (int64_t plane = 0; plane < lhs.planes(); ++plane) {
+      for (int64_t depth = 0; depth < lhs.depth(); ++depth) {
+        for (int64_t height = 0; height < lhs.height(); ++height) {
+          for (int64_t width = 0; width < lhs.width(); ++width) {
             (*result)(plane, depth, height, width) = map_function(
                 lhs(plane, depth, height, width),
                 rhs(plane, depth, height, width), plane, depth, height, width);
@@ -502,26 +506,26 @@ class ReferenceUtil {
   static std::unique_ptr<Array2D<NativeT>> PadArray2D(
       const Array2D<NativeT>& operand, const PaddingConfig& padding,
       const NativeT pad) {
-    int64 in0 = operand.n1();
-    int64 high_padding0 = padding.dimensions(0).edge_padding_high();
-    int64 low_padding0 = padding.dimensions(0).edge_padding_low();
-    int64 interior_padding0 = padding.dimensions(0).interior_padding();
-    int64 out0 =
+    int64_t in0 = operand.n1();
+    int64_t high_padding0 = padding.dimensions(0).edge_padding_high();
+    int64_t low_padding0 = padding.dimensions(0).edge_padding_low();
+    int64_t interior_padding0 = padding.dimensions(0).interior_padding();
+    int64_t out0 =
         in0 + low_padding0 + high_padding0 + (in0 - 1) * interior_padding0;
 
-    int64 in1 = operand.n2();
-    int64 high_padding1 = padding.dimensions(1).edge_padding_high();
-    int64 low_padding1 = padding.dimensions(1).edge_padding_low();
-    int64 interior_padding1 = padding.dimensions(1).interior_padding();
-    int64 out1 =
+    int64_t in1 = operand.n2();
+    int64_t high_padding1 = padding.dimensions(1).edge_padding_high();
+    int64_t low_padding1 = padding.dimensions(1).edge_padding_low();
+    int64_t interior_padding1 = padding.dimensions(1).interior_padding();
+    int64_t out1 =
         in1 + low_padding1 + high_padding1 + (in1 - 1) * interior_padding1;
 
     auto result = absl::make_unique<Array2D<NativeT>>(out0, out1);
     result->Fill(pad);
-    int64 o0 = low_padding0;
-    for (int64 i0 = 0; i0 < in0; ++i0) {
-      int64 o1 = low_padding1;
-      for (int64 i1 = 0; i1 < in1; ++i1) {
+    int64_t o0 = low_padding0;
+    for (int64_t i0 = 0; i0 < in0; ++i0) {
+      int64_t o1 = low_padding1;
+      for (int64_t i1 = 0; i1 < in1; ++i1) {
         if (o0 >= 0 && o1 >= 0 && o0 < out0 && o1 < out1) {
           (*result)(o0, o1) = operand(i0, i1);
         }
@@ -539,12 +543,12 @@ class ReferenceUtil {
                                      const NativeT pad) {
     CHECK_EQ(padding.dimensions_size(), 3);
 
-    const int64 input_bounds[] = {operand.n1(), operand.n2(), operand.n3()};
-    int64 pad_low[3];
-    int64 pad_high[3];
-    int64 pad_interior[3];
-    int64 output_bounds[3];
-    for (int64 i = 0; i < 3; ++i) {
+    const int64_t input_bounds[] = {operand.n1(), operand.n2(), operand.n3()};
+    int64_t pad_low[3];
+    int64_t pad_high[3];
+    int64_t pad_interior[3];
+    int64_t output_bounds[3];
+    for (int64_t i = 0; i < 3; ++i) {
       pad_low[i] = padding.dimensions(i).edge_padding_low();
       pad_high[i] = padding.dimensions(i).edge_padding_high();
       CHECK_LE(0, pad_low[i]);
@@ -597,13 +601,13 @@ class ReferenceUtil {
                                      const NativeT pad) {
     CHECK_EQ(padding.dimensions_size(), 4);
 
-    const int64 input_bounds[] = {operand.n1(), operand.n2(), operand.n3(),
-                                  operand.n4()};
-    int64 pad_low[4];
-    int64 pad_high[4];
-    int64 pad_interior[4];
-    int64 output_bounds[4];
-    for (int64 i = 0; i < 4; ++i) {
+    const int64_t input_bounds[] = {operand.n1(), operand.n2(), operand.n3(),
+                                    operand.n4()};
+    int64_t pad_low[4];
+    int64_t pad_high[4];
+    int64_t pad_interior[4];
+    int64_t output_bounds[4];
+    for (int64_t i = 0; i < 4; ++i) {
       pad_low[i] = padding.dimensions(i).edge_padding_low();
       pad_high[i] = padding.dimensions(i).edge_padding_high();
       CHECK_LE(0, padding.dimensions(i).interior_padding())
@@ -617,7 +621,7 @@ class ReferenceUtil {
     Array4D<NativeT> result(output_bounds[0], output_bounds[1],
                             output_bounds[2], output_bounds[3]);
     result.Each(
-        [&](absl::Span<const int64> indices, NativeT* value) {
+        [&](absl::Span<const int64_t> indices, NativeT* value) {
           for (int i = 0; i < 4; ++i) {
             bool in_low_padding = indices[i] < pad_low[i];
             bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
@@ -656,8 +660,8 @@ class ReferenceUtil {
       F&& f, const Array2D<T1>& array1, const Array2D<Ts>&... arrays) {
     AssertSameSize2D(array1, arrays...);
     auto result = absl::make_unique<Array2D<T1>>(array1.n1(), array1.n2());
-    for (int64 i = 0; i < array1.n1(); ++i) {
-      for (int64 j = 0; j < array1.n2(); ++j) {
+    for (int64_t i = 0; i < array1.n1(); ++i) {
+      for (int64_t j = 0; j < array1.n2(); ++j) {
         (*result)(i, j) = f(array1(i, j), arrays(i, j)...);
       }
     }

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for export utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 import time
@@ -185,8 +181,8 @@ class ExportTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError) as e:
       export_utils.build_all_signature_defs(receiver_tensor, None)
 
-    self.assertTrue(str(e.exception).startswith(
-        "export_outputs must be a dict"))
+    self.assertTrue(
+        str(e.exception).startswith("`export_outputs` must be a dict"))
 
   def test_get_timestamped_export_dir(self):
     export_dir_base = tempfile.mkdtemp() + "export/"

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
@@ -83,10 +84,10 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
   llvm::Function* function =
       module->getFunction(llvm_ir::AsStringRef(kernel_name));
 
-  int64 null_arg_idx = -1;
+  int64_t null_arg_idx = -1;
   std::vector<llvm::Value*> sanitized_args;
   sanitized_args.reserve(arguments.size());
-  for (int64 i = 0, e = arguments.size(); i < e; i++) {
+  for (int64_t i = 0, e = arguments.size(); i < e; i++) {
     if (arguments[i]) {
       sanitized_args.push_back(arguments[i]);
     } else {

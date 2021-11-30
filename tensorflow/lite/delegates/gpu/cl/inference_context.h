@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -59,12 +60,34 @@ struct CLNode {
   CLNode& operator=(const CLNode&) = delete;
 };
 
+struct GpuNode {
+  std::unique_ptr<GPUOperation> gpu_operation;
+  std::vector<ValueId> inputs;
+  std::vector<ValueId> outputs;
+  std::string name;
+
+  GpuNode() = default;
+  GpuNode(GpuNode&& node) = default;
+  GpuNode& operator=(GpuNode&& node) = default;
+  GpuNode(const GpuNode&) = delete;
+  GpuNode& operator=(const GpuNode&) = delete;
+};
+
 class InferenceContext {
  public:
   struct CreateInferenceInfo {
     CalculationsPrecision precision;
     TensorStorageType storage_type;
     ModelHints hints;
+  };
+
+  struct GpuModel {
+    std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> output_ids_and_refs;
+    std::vector<GpuNode> nodes;
+    absl::flat_hash_map<ValueId, TensorDescriptor> tensors;
+    absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
   };
 
   absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
@@ -103,19 +126,14 @@ class InferenceContext {
   enum class TensorMemoryType { kStrongShape, kBuffer, kVariable, kConst };
 
   friend flatbuffers::Offset<data::InferenceContext> Encode(
-      const InferenceContext& inference, const std::vector<int64_t>& in_refs,
+      const CLDevice& device, const InferenceContext& inference,
+      const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
       std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(const data::InferenceContext* fb_inference,
+  friend absl::Status Decode(const CLContext& context, const CLDevice& device,
+                             ProgramCache* program_cache,
+                             const data::InferenceContext* fb_inference,
                              InferenceContext* inference);
 
-  void CopyInAndOutIds(const GraphFloat32& graph);
-  absl::Status ConvertOperations(const GpuInfo& gpu_info,
-                                 const GraphFloat32& graph, ModelHints hints);
-  void CreateLinks();
-  absl::Status ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                                   const GpuInfo& gpu_info,
-                                   const GraphFloat32& graph);
-  absl::Status Merge();
   absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
 
   absl::Status AllocateMemoryForConstTensors(CLContext* context);
@@ -144,21 +162,23 @@ class InferenceContext {
 
   void ReleaseCPURepresentation();
 
-  // performance hacks
-  bool need_flush_ = false;
+  struct ExecutionHints {
+    bool need_flush = false;
 
-  bool flush_periodically_ = false;
-  int flush_period_ = 1;
+    bool flush_periodically = false;
+    int flush_period = 1;
 
-  // In order to reduce memory leak on Mali a pipeline needs to be synchronized
-  // with CPU to prevent growing internal global OpenCL kernel pool. One trick
-  // is to enqueue an event from a previous run. Most of the time is should
-  // already be executed on GPU and should not stall the pipeline.
-  bool need_manual_release_ = false;
-  CLEvent prev_enqueue_start_point_;
+    // In order to reduce memory leak on Mali a pipeline needs to be
+    // synchronized with CPU to prevent growing internal global OpenCL kernel
+    // pool. One trick is to enqueue an event from a previous run. Most of the
+    // time is should already be executed on GPU and should not stall the
+    // pipeline.
+    bool need_manual_release = false;
+    CLEvent prev_enqueue_start_point;
 
-  CalculationsPrecision precision_;
-  TensorStorageType storage_type_;
+    void Init(const GpuInfo& gpu_info);
+  };
+  ExecutionHints execution_hints_;
 
   // Directly mapped nodes from graph, but some of them "inactive" due
   //  to fusion (inactive = fused).
@@ -166,64 +186,12 @@ class InferenceContext {
   //  anywhere.
   std::vector<CLNode> nodes_;
 
-  struct DummyTensor {
-    BHWC shape;
-    TensorDescriptor descriptor;
-
-    bool operator==(const DummyTensor& b) const {
-      return shape == b.shape && descriptor == b.descriptor;
-    }
-  };
-
-  class TensorReserver {
-   public:
-    TensorReserver() : next_(0) {}
-    ValueId Add(const DummyTensor& dummy) {
-      reservations_[next_] = dummy;
-      return next_++;
-    }
-    void Add(ValueId id, const DummyTensor& dummy) {
-      reservations_[id] = dummy;
-    }
-    void SetNext(ValueId id) { next_ = id; }
-    DummyTensor Get(ValueId id) { return reservations_[id]; }
-
-    std::vector<std::pair<ValueId, TensorDescriptor>> GetTensorDescs() const {
-      std::vector<std::pair<ValueId, TensorDescriptor>> result;
-      for (auto& v : reservations_) {
-        TensorDescriptor desc = v.second.descriptor;
-        desc.shape.b = v.second.shape.b;
-        desc.shape.h = v.second.shape.h;
-        desc.shape.w = v.second.shape.w;
-        desc.shape.d = 1;
-        desc.shape.c = v.second.shape.c;
-        result.push_back({v.first, desc});
-      }
-      return result;
-    }
-
-    void Add(const std::vector<std::pair<ValueId, TensorDescriptor>>& tensors) {
-      for (auto& v : tensors) {
-        DummyTensor dummy;
-        dummy.descriptor = v.second;
-        dummy.shape.b = v.second.shape.b;
-        dummy.shape.h = v.second.shape.h;
-        dummy.shape.w = v.second.shape.w;
-        dummy.shape.c = v.second.shape.c;
-        Add(v.first, dummy);
-      }
-    }
-
-   private:
-    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
-    ValueId next_;
-  };
-  TensorReserver tensor_reserver_;
-
+  absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
   absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
   std::map<ValueId, Tensor> const_tensors_;
 
   std::map<ValueId, Tensor> variable_tensors_;
+  Buffer shared_buffers_parent_;
   std::vector<Buffer> shared_buffers_;
   std::vector<Tensor>
       shared_buffer_tensors_;  // use references to memory from shared_buffers_

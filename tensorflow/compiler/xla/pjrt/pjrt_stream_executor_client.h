@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
@@ -170,10 +171,24 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
+  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   StatusOr<absl::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const override {
     return absl::optional<std::string>();
+  }
+
+  StatusOr<std::string> SerializeExecutable(
+      const PjRtExecutable& executable) const override {
+    return Unimplemented("SerializeExecutable not implemented on %s",
+                         platform_name());
+  }
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized, CompileOptions options) override {
+    return Unimplemented("DeserializeExecutable not implemented on %s",
+                         platform_name());
   }
 
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
@@ -195,7 +210,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   };
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, const Shape& shape,
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      absl::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
       PjRtDevice* device) override;
@@ -206,6 +222,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   void MakeCrossHostReceiveBuffers(
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) override;
+
+  void MakeCrossHostReceiveBuffersForGather(
+      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
+      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
@@ -222,8 +242,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   // TODO(zhangqiaorjc): Experimental. Will be removed.
-  Status Defragment(absl::Span<PjRtBuffer* const> buffers,
-                    absl::Span<PjRtExecutable* const> executables) override {
+  Status Defragment() override {
     return Unimplemented("Defragment not implemented");
   }
 
@@ -253,7 +272,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier&& notifier) const {
+      PjRtCrossHostRecvNotifier&& notifier,
+      absl::optional<std::vector<GatherDetails>> gather_details) const {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
 
@@ -262,11 +282,27 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return Unimplemented("Cross host sends not implemented.");
   }
 
+  virtual Status CopyToRemoteDeviceScattered(
+      PjRtBuffer* buffer, absl::Span<const std::string> serialized_descriptors,
+      const PjRtBuffer::ScatterDetails& scatter_details) const {
+    return Unimplemented("Scattered cross host sends not implemented.");
+  }
+
   virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
-                                        int64 offset, int64 transfer_size,
+                                        int64_t offset, int64_t transfer_size,
                                         std::function<void(Status)> on_ready) {
     return Unimplemented("Raw copies to host not implemented.");
   }
+
+  // Helper function for creating PjRtStreamExecutorExecutables. Modifies
+  // `options` in-place.
+  struct ExecutableExtras {
+    std::shared_ptr<DeviceAssignment> device_assignment;
+    std::vector<PjRtExecutable::LogicalDeviceIds>
+        addressable_device_logical_ids;
+    std::vector<PjRtDevice*> addressable_devices;
+  };
+  StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -299,6 +335,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
   tensorflow::thread::ThreadPool thread_pool_;
+
+  absl::Mutex transpose_mu_;
+  TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
 };
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an
@@ -515,7 +554,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
                        std::function<void(Status)> on_ready) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
@@ -549,6 +588,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       PjRtDevice* dst_device) override;
 
   Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override;
+
+  Status CopyToRemoteDeviceScattered(
+      absl::Span<const std::string> serialized_descriptors,
+      const ScatterDetails& scatter_details) override;
 
   Status BlockHostUntilReady() override;
 
@@ -654,8 +697,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
     return executables_[0]->build_options().num_partitions();
   }
 
-  int64 SizeOfGeneratedCodeInBytes() const override {
-    int64 size = 0;
+  int64_t SizeOfGeneratedCodeInBytes() const override {
+    int64_t size = 0;
     for (auto& executable : executables_) {
       size += executable->executable()->SizeOfGeneratedCodeInBytes();
     }
@@ -693,6 +736,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
   void Delete() override { executables_.clear(); }
 
+  bool IsDeleted() override { return executables_.empty(); }
+
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
@@ -704,11 +749,16 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
  private:
   friend class PjRtStreamExecutorClient;
+  friend class PjRtTpuClient;
+  friend class InternalPjRtTpuClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(bool tuple_inputs);
 
-  virtual bool MustDonateParameter(int executable_idx, int parameter) const;
+  // Returns a sorted list of the parameters that must be donated. Derived
+  // classes may use custom logic.
+  virtual absl::Span<int const> ParametersThatMustBeDonated(
+      int executable_idx) const;
 
   virtual StatusOr<std::vector<ExecutionInput>>
   MakeExecutionInputsAndWaitForEvents(
@@ -747,9 +797,9 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   std::vector<std::shared_ptr<LocalExecutable>> executables_;
   // On device shapes of the executable parameters.
   std::vector<std::vector<Shape>> on_device_executable_parameter_shapes_;
-  // Per-executable set of parameters that have any aliased buffers and thus
-  // must be donated when executing the computation.
-  std::vector<absl::flat_hash_set<int>> parameters_that_must_be_donated_;
+  // Per-executable sorted vector of parameters that have any aliased buffers
+  // and thus must be donated when executing the computation.
+  std::vector<std::vector<int>> parameters_that_must_be_donated_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   // True if the executables were compiled expecting arguments in a single
@@ -768,13 +818,6 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
 };
-
-// Executables can donate buffers so that buffers can be aliased from inputs
-// to outputs. This function returns the list of parameters that must be
-// donated when executable is run. tuple_inputs reflects the option that
-// executable was compiled with.
-StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
-    const HloModule& hlo_module, bool tuple_inputs);
 
 }  // namespace xla
 

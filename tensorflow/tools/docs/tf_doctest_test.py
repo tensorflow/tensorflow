@@ -15,10 +15,6 @@
 # ==============================================================================
 """Tests for tf_doctest."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import doctest
 
 from absl.testing import absltest

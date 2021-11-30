@@ -28,7 +28,7 @@ class L2LossOp : public XlaOpKernel {
   explicit L2LossOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    std::vector<int64> dims(ctx->InputShape(0).dims());
+    std::vector<int64_t> dims(ctx->InputShape(0).dims());
     std::iota(dims.begin(), dims.end(), 0);
 
     DataType dtype = ctx->input_type(0);

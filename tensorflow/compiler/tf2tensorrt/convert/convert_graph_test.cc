@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_testutils.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -39,17 +40,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
-
-// TODO(laigd): put this into some test utils file.
-void ExpectStatus(Status status, error::Code code = error::OK,
-                  const char* substr = nullptr) {
-  EXPECT_EQ(code, status.code())
-      << status << " vs expected error code \"" << error::Code_Name(code)
-      << "\" and message \"" << substr << "\"";
-  if (substr) {
-    EXPECT_THAT(status.error_message(), ::testing::HasSubstr(substr)) << status;
-  }
-}
 
 class FakeCluster : public grappler::Cluster {
  public:
@@ -160,9 +150,9 @@ class ConvertAfterShapesTest : public ::testing::Test {
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
     // Construct ConversionParams.
-    const std::vector<string> output_names{"output"};
+    const std::vector<string> input_output_names{"output"};
     ConversionParams params;
-    params.output_names = &output_names;
+    params.input_output_names = &input_output_names;
     params.max_batch_size = maximum_batch_size;
     params.max_workspace_size_bytes = 8 << 20;
     params.output_graph_def = output_graph_def;

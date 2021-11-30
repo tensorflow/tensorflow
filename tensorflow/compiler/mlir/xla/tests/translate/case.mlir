@@ -1,10 +1,10 @@
 // RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FILECHECK_OPTS="" FileCheck %s
 
 func @main() -> tensor<f32> {
-  %cst = constant dense<1> : tensor<i32>
-  %cst_0 = constant dense<5.600000e+01> : tensor<f32>
-  %cst_1 = constant dense<1.200000e+01> : tensor<f32>
-  %cst_2 = constant dense<1.300000e+01> : tensor<f32>
+  %cst = arith.constant dense<1> : tensor<i32>
+  %cst_0 = arith.constant dense<5.600000e+01> : tensor<f32>
+  %cst_1 = arith.constant dense<1.200000e+01> : tensor<f32>
+  %cst_2 = arith.constant dense<1.300000e+01> : tensor<f32>
   %0 = "mhlo.case"(%cst, %cst_0, %cst_1, %cst_2) ( {
   ^bb0(%arg0: tensor<f32>):
     %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -48,10 +48,10 @@ func @main() -> tensor<f32> {
 // -----
 
 func @main() -> (tensor<f32>, tensor<f32>) {
-  %cst = constant dense<1> : tensor<i32>
-  %cst_0 = constant dense<5.600000e+01> : tensor<f32>
-  %cst_1 = constant dense<1.200000e+01> : tensor<f32>
-  %cst_2 = constant dense<1.300000e+01> : tensor<f32>
+  %cst = arith.constant dense<1> : tensor<i32>
+  %cst_0 = arith.constant dense<5.600000e+01> : tensor<f32>
+  %cst_1 = arith.constant dense<1.200000e+01> : tensor<f32>
+  %cst_2 = arith.constant dense<1.300000e+01> : tensor<f32>
   %0:2 = "mhlo.case"(%cst, %cst_0, %cst_1, %cst_2) ( {
   ^bb0(%arg0: tensor<f32>):
     %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>

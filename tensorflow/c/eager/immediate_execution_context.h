@@ -65,9 +65,9 @@ enum ContextDevicePlacementPolicy {
 class ImmediateExecutionContext : public AbstractContext {
  public:
   // Optimized scalar creation functions
-  virtual AbstractTensorInterface* CreateInt64Scalar(int64 value) = 0;
+  virtual AbstractTensorInterface* CreateInt64Scalar(int64_t value) = 0;
   virtual AbstractTensorInterface* CreateUint64Scalar(uint64 value) = 0;
-  virtual AbstractTensorInterface* CreateInt32Scalar(int32 value) = 0;
+  virtual AbstractTensorInterface* CreateInt32Scalar(int32_t value) = 0;
   virtual AbstractTensorInterface* CreateFloatScalar(float value) = 0;
   virtual AbstractTensorInterface* CreateDoubleScalar(double value) = 0;
   virtual AbstractTensorInterface* CreateHalfScalar(Eigen::half value) = 0;
@@ -77,7 +77,7 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Tensor creation functions
   virtual AbstractTensorInterface* CreateTensor(
-      DataType dtype, absl::Span<const int64> dim_sizes) = 0;
+      DataType dtype, absl::Span<const int64_t> dim_sizes) = 0;
 
   typedef void (*MemoryReleaser)(void* data, size_t len, void* arg);
 
@@ -138,6 +138,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // Configure device placement policy logging.
   virtual void SetLogDevicePlacement(bool enable) = 0;
 
+  // Enables running eager ops as functions.
+  virtual void SetRunEagerOpAsFunction(bool enable) = 0;
+
   // Sets the device placement policy for the current thread.
   virtual void SetThreadLocalDevicePlacementPolicy(
       ContextDevicePlacementPolicy policy) = 0;
@@ -179,6 +182,9 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual void SetReuseRendezvousForFunctions(
       bool reuse_rendezvous_for_functions) = 0;
 
+  // Resets the global rendezvous used for functions.
+  virtual void ResetGlobalRendezvousForFunction() = 0;
+
   //===--------------------------------------------------------------------===//
   // Following are features in current TF Eager Runtime.
   // TODO(tfrt-devs): Figure out a way to deprecate following features after
@@ -202,6 +208,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // Return a list of local tensorflow::Device*.
   // TODO(tfrt-devs): We shouldn't expose legacy device in this API.
   virtual std::vector<tensorflow::Device*> ListLocalTfDevices() = 0;
+
+  // Return a list of all tensorflow::Device*.
+  virtual std::vector<tensorflow::Device*> ListAllTfDevices() = 0;
 
   //===--------------------------------------------------------------------===//
   // Following are helper functions to assist integrating TFRT with current

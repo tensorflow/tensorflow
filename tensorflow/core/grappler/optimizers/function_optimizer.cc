@@ -834,7 +834,7 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        "CollectiveGather", "CollectiveGatherV2", "CollectiveReduce",
        "CollectiveReduceV2", "CollectiveBcastSend", "CollectiveBcastRecv",
        "CollectiveBcastSendV2", "CollectiveBcastRecvV2", "NcclAllReduce",
-       "Send", "Recv",
+       "Send", "Recv", "CollectiveInitializeCommunicator",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -857,10 +857,17 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
        "EnqueueTPUEmbeddingSparseTensorBatch",
        "EnqueueTPUEmbeddingRaggedTensorBatch",
+       "EnqueueTPUEmbeddingArbitraryTensorBatch"
 
        // SaveV2 and RestoreV2 should be allowed to operate in parallel on
        // multiple hosts.
-       "SaveV2", "RestoreV2"});
+       "SaveV2",
+       "RestoreV2"
+
+       // InfeedEnqueue are stateful but should not be serialized for the
+       // input pipeline
+       "InfeedEnqueue",
+       "InfeedEnqueueTuple"});
   // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
   return exemption->contains(op);
 }
@@ -1515,12 +1522,6 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
   TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(item, optimized_graph));
 
   return Status::OK();
-}
-
-void FunctionOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                 const GraphDef& optimized_graph,
-                                 double result) {
-  // Nothing to do for FunctionOptimizer.
 }
 
 }  // end namespace grappler

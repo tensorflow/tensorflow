@@ -26,8 +26,8 @@ int main(int argc, char* argv[]) {
   // other than inception_v3, then you'll need to update these.
   tensorflow::string input_wav =
       "tensorflow/core/kernels/spectrogram_test_data/short_test_segment.wav";
-  tensorflow::int32 window_size = 256;
-  tensorflow::int32 stride = 128;
+  int32_t window_size = 256;
+  int32_t stride = 128;
   float brightness = 64.0f;
   tensorflow::string output_image = "spectrogram.png";
   std::vector<tensorflow::Flag> flag_list = {

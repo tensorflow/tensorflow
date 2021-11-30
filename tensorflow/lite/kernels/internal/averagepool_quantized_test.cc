@@ -40,12 +40,14 @@ void RunOneAveragePoolTest(const PoolParams& params,
   std::vector<int8> optimized_averagePool_output(buffer_size);
   std::vector<int8> reference_averagePool_output(buffer_size);
 
-  reference_integer_ops::AveragePool(params, input_shape, input_data,
-                                     output_shape,
-                                     reference_averagePool_output.data());
-  optimized_integer_ops::AveragePool(params, input_shape, input_data,
-                                     output_shape,
-                                     optimized_averagePool_output.data());
+  bool reference_success = reference_integer_ops::AveragePool(
+      params, input_shape, input_data, output_shape,
+      reference_averagePool_output.data());
+  bool optimized_success = optimized_integer_ops::AveragePool(
+      params, input_shape, input_data, output_shape,
+      optimized_averagePool_output.data());
+  EXPECT_TRUE(reference_success);
+  EXPECT_TRUE(optimized_success);
 
   for (int i = 0; i < buffer_size; i++) {
     EXPECT_TRUE(reference_averagePool_output[i] ==

@@ -32,28 +32,28 @@ namespace xla {
 
 /* static */ StatusOr<HloSchedule> HloSchedule::CreateFromProto(
     const HloModule* module, const HloScheduleProto& proto) {
-  absl::flat_hash_map<int64, const HloComputation*> id_to_computation;
+  absl::flat_hash_map<int64_t, const HloComputation*> id_to_computation;
   for (const HloComputation* computation : module->computations()) {
     id_to_computation[computation->unique_id()] = computation;
   }
 
   HloSchedule schedule(module);
   for (const auto& id_sequence : proto.sequences()) {
-    int64 computation_id = id_sequence.first;
+    int64_t computation_id = id_sequence.first;
 
     auto comp_it = id_to_computation.find(computation_id);
     TF_RET_CHECK(comp_it != id_to_computation.end())
         << "No computation exists in HLO module with id " << computation_id;
     const HloComputation* computation = comp_it->second;
 
-    absl::flat_hash_map<int64, HloInstruction*> id_to_instruction;
+    absl::flat_hash_map<int64_t, HloInstruction*> id_to_instruction;
     for (HloInstruction* instruction : computation->instructions()) {
       id_to_instruction[instruction->unique_id()] = instruction;
     }
 
     HloInstructionSequence& sequence =
         schedule.GetOrCreateSequence(computation);
-    for (const int64 instruction_id : id_sequence.second.instruction_ids()) {
+    for (const int64_t instruction_id : id_sequence.second.instruction_ids()) {
       auto instr_it = id_to_instruction.find(instruction_id);
       TF_RET_CHECK(instr_it != id_to_instruction.end())
           << "No instruction exists in HLO computation " << computation->name()
@@ -69,12 +69,12 @@ StatusOr<HloScheduleProto> HloSchedule::ToProto() const {
   TF_RETURN_IF_ERROR(Verify());
   HloScheduleProto proto;
   for (const auto& id_sequence : sequences_) {
-    int64 computation_id = id_sequence.first;
+    int64_t computation_id = id_sequence.first;
     const HloInstructionSequence& sequence = id_sequence.second;
     HloScheduleProto::InstructionSequence& proto_sequence =
         (*proto.mutable_sequences())[computation_id];
     proto_sequence.mutable_instruction_ids()->Reserve(sequence.size());
-    for (const int64 id : sequence.ids()) {
+    for (const int64_t id : sequence.ids()) {
       proto_sequence.add_instruction_ids(id);
     }
   }
@@ -210,7 +210,7 @@ Status HloSchedule::Update() {
   if (sequences_.size() > nonfusion_computations.size()) {
     // Schedule contains some computations which have been removed from the
     // HloModule. Remove them from the schedule as well.
-    absl::flat_hash_set<int64> nonfusion_computations_ids;
+    absl::flat_hash_set<int64_t> nonfusion_computations_ids;
     for (const HloComputation* computation : nonfusion_computations) {
       nonfusion_computations_ids.insert(computation->unique_id());
     }
@@ -297,7 +297,7 @@ namespace {
 
 // Returns the computation in the given module with the given unique ID. Returns
 // nullptr if no such computation exists.
-const HloComputation* IdToComputation(const HloModule* module, int64 id) {
+const HloComputation* IdToComputation(const HloModule* module, int64_t id) {
   for (const HloComputation* computation : module->computations()) {
     if (computation->unique_id() == id) {
       return computation;

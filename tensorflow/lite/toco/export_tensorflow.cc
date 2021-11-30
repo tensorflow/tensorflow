@@ -833,7 +833,7 @@ void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
     (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
     const auto& input_shape = model.GetArray(src_op.inputs[0]).shape();
-    int32 flattened_size = 1;
+    int32_t flattened_size = 1;
     for (int i = 0; i < input_shape.dimensions_count() - 1; ++i) {
       flattened_size *= input_shape.dims(i);
     }
@@ -875,7 +875,7 @@ void ConvertLogSoftmaxOperator(const Model& model,
     (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
     const auto& input_shape = model.GetArray(src_op.inputs[0]).shape();
-    int32 flattened_size = 1;
+    int32_t flattened_size = 1;
     for (int i = 0; i < input_shape.dimensions_count() - 1; ++i) {
       flattened_size *= input_shape.dims(i);
     }

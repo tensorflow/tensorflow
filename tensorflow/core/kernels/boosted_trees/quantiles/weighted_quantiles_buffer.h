@@ -51,7 +51,7 @@ class WeightedQuantilesBuffer {
     WeightType weight;
   };
 
-  explicit WeightedQuantilesBuffer(int64 block_size, int64 max_elements)
+  explicit WeightedQuantilesBuffer(int64_t block_size, int64_t max_elements)
       : max_size_(std::min(block_size << 1, max_elements)) {
     QCHECK(max_size_ > 0) << "Invalid buffer specification: (" << block_size
                           << ", " << max_elements << ")";
@@ -106,7 +106,7 @@ class WeightedQuantilesBuffer {
     return ret;
   }
 
-  int64 Size() const { return vec_.size(); }
+  int64_t Size() const { return vec_.size(); }
   bool IsFull() const { return vec_.size() >= max_size_; }
   void Clear() { vec_.clear(); }
 

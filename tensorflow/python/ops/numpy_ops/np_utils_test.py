@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for utils.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.ops.numpy_ops import np_utils
@@ -139,7 +135,7 @@ f docstring.
         return
 
     with self.assertRaisesRegex(
-        TypeError, 'Parameter "y" should have a default value'):
+        TypeError, 'Parameter y should have a default value'):
       @np_utils.np_doc(None, np_fun=np_fun)
       def f3(x, y):
         return

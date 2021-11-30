@@ -38,6 +38,12 @@ REGISTER_KERNEL_BUILDER(Name("PreventGradient").Device(DEVICE_CPU), IdentityOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault").Device(DEVICE_CPU),
                         IdentityOp);
 
+// Used executing op-by-op to copy constants to the current device without
+// serializing tensors as TensorProtos, after a host tensor has been
+// created. Same behavior as Identity, but no gradient and potentially relaxed
+// copy semantics.
+REGISTER_KERNEL_BUILDER(Name("_EagerConst").Device(DEVICE_CPU), IdentityOp);
+
 REGISTER_KERNEL_BUILDER(Name("RefIdentity").Device(DEVICE_CPU), IdentityOp);
 
 // Identity op for gradients debugging in TensorFlow Debugger (hidden op in
@@ -67,7 +73,10 @@ REGISTER_KERNEL_BUILDER(Name("DebugGradientRefIdentity").Device(DEVICE_CPU),
   REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault")                    \
                               .Device(DEVICE_GPU)                           \
                               .TypeConstraint<type>("dtype"),               \
-                          IdentityOp)
+                          IdentityOp)                                       \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("_EagerConst").Device(DEVICE_GPU).TypeConstraint<type>("T"),     \
+      IdentityOp)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(Variant);
@@ -96,7 +105,10 @@ REGISTER_GPU_KERNEL(bool);
   REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault")                     \
                               .Device(DEVICE_DEFAULT)                        \
                               .TypeConstraint<type>("dtype"),                \
-                          IdentityOp)
+                          IdentityOp)                                        \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("_EagerConst").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"),  \
+      IdentityOp)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
 REGISTER_DEFAULT_KERNEL(Variant);
@@ -133,7 +145,13 @@ REGISTER_DEFAULT_KERNEL(bool);
                               .HostMemory("input")            \
                               .HostMemory("output")           \
                               .TypeConstraint<type>("dtype"), \
-                          IdentityOp)
+                          IdentityOp)                         \
+  REGISTER_KERNEL_BUILDER(Name("_EagerConst")                 \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("T"),     \
+                          IdentityOp);
 
 REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_KERNEL(tstring);
@@ -167,6 +185,12 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
                               .HostMemory("input")            \
                               .HostMemory("output")           \
                               .TypeConstraint<type>("dtype"), \
+                          IdentityOp)                         \
+  REGISTER_KERNEL_BUILDER(Name("_EagerConst")                 \
+                              .Device(DEVICE_DEFAULT)         \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("T"),     \
                           IdentityOp)
 
 REGISTER_DEFAULT_HOST_KERNEL(int32);

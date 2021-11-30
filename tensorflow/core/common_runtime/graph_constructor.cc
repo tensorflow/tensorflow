@@ -702,7 +702,7 @@ Status GraphConstructor::InitFromEdges() {
       // identified by an edge from a NextIteration node to a Merge node. For
       // such Merge nodes, only wait for one non-control input before
       // considering the node ready to process in Convert().
-      int32 num_control_edges = 0;
+      int32_t num_control_edges = 0;
       bool has_loop_back_edge = false;
       for (int i = 0; i < node_def.input_size(); ++i) {
         StringPiece input_name(node_def.input(i));
@@ -1065,7 +1065,7 @@ void GraphConstructor::DFS(int cur_node, std::vector<int>* cur_branch,
             std::find(cur_branch->begin(), cur_branch->end(), next_node);
         LOG(WARNING) << "Cycle detected:";
         while (iter != cur_branch->end()) {
-          LOG(WARNING) << SummarizeNodeDef(get_node_def(*iter));
+          LOG(WARNING) << *iter;
           ++iter;
         }
         LOG(WARNING) << "End of cycle";
@@ -1267,7 +1267,7 @@ Status GraphConstructor::Convert() {
   if (processed < node_def_count()) {
     LOG(WARNING) << "IN " << __func__ << " " << (node_def_count() - processed)
                  << " NODES IN A CYCLE";
-    for (int64 i = 0; i < node_def_count(); i++) {
+    for (int64_t i = 0; i < node_def_count(); i++) {
       if (pending_count_[i] != 0) {
         LOG(WARNING) << "PENDING: " << SummarizeNodeDef(get_node_def(i))
                      << " WITH PENDING COUNT = " << pending_count_[i];

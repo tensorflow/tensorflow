@@ -59,7 +59,7 @@ class DeviceMemoryBase {
   // Default constructor instantiates a null-pointed, zero-sized device memory
   // region. An opaque pointer may be provided -- see header for details on the
   // opacity of that pointer.
-  explicit DeviceMemoryBase(void *opaque = nullptr, uint64 size = 0)
+  explicit DeviceMemoryBase(void *opaque = nullptr, uint64_t size = 0)
       : opaque_(opaque), size_(size) {}
 
   // Returns whether the backing memory is the null pointer.
@@ -77,7 +77,7 @@ class DeviceMemoryBase {
   }
 
   // Returns the size, in bytes, for the backing memory.
-  uint64 size() const { return size_; }
+  uint64_t size() const { return size_; }
 
   // Warning: note that the pointer returned is not necessarily directly to
   // device virtual address space, but is platform-dependent.
@@ -85,10 +85,10 @@ class DeviceMemoryBase {
   const void *opaque() const { return opaque_; }
 
   // Returns the payload of this memory region.
-  uint64 payload() const { return payload_; }
+  uint64_t payload() const { return payload_; }
 
   // Sets payload to given value.
-  void SetPayload(uint64 payload) { payload_ = payload; }
+  void SetPayload(uint64_t payload) { payload_ = payload; }
 
   // Returns whether the two DeviceMemoryBase segments are identical (both in
   // their opaque pointer and size).
@@ -101,15 +101,15 @@ class DeviceMemoryBase {
 
   // Resets the internal values of the opaque pointer and number of bytes in the
   // memory region, just as in the constructor.
-  void Reset(void *opaque, uint64 bytes) {
+  void Reset(void *opaque, uint64_t bytes) {
     opaque_ = opaque;
     size_ = bytes;
   }
 
  private:
   void *opaque_;  // Platform-dependent value representing allocated memory.
-  uint64 size_;   // Size in bytes of this allocation.
-  uint64 payload_ = 0;  // Payload data associated with this allocation.
+  uint64_t size_;         // Size in bytes of this allocation.
+  uint64_t payload_ = 0;  // Payload data associated with this allocation.
 };
 
 // Typed wrapper around "void *"-like DeviceMemoryBase.
@@ -135,7 +135,7 @@ class DeviceMemory final : public DeviceMemoryBase {
 
   // Returns the number of elements of type ElemT that constitute this
   // allocation.
-  uint64 ElementCount() const { return size() / sizeof(ElemT); }
+  uint64_t ElementCount() const { return size() / sizeof(ElemT); }
 
   // Returns whether this is a single-element allocation.
   bool IsScalar() const { return ElementCount() == 1; }
@@ -143,13 +143,13 @@ class DeviceMemory final : public DeviceMemoryBase {
   // Create a typed area of DeviceMemory with a given opaque pointer and the
   // quantity of bytes in the allocation. This function is broken out to
   // distinguish bytes from an element count.
-  static DeviceMemory<ElemT> MakeFromByteSize(void *opaque, uint64 bytes) {
+  static DeviceMemory<ElemT> MakeFromByteSize(void *opaque, uint64_t bytes) {
     return DeviceMemory<ElemT>(opaque, bytes);
   }
 
   // Resets the DeviceMemory data, in MakeFromByteSize fashion.
   // This simply clobbers the prior values.
-  void ResetFromByteSize(void *opaque, uint64 bytes) {
+  void ResetFromByteSize(void *opaque, uint64_t bytes) {
     // TODO(leary) when NVCC is eliminated we can add this check (and the
     // logging include it requires).
     // CHECK_EQ(0, bytes % sizeof(ElemT));
@@ -165,7 +165,7 @@ class DeviceMemory final : public DeviceMemoryBase {
   //
   // In order to specify the desire to use byte size instead of element count
   // explicitly, use MakeFromByteSize.
-  DeviceMemory(void *opaque, uint64 size) : DeviceMemoryBase(opaque, size) {}
+  DeviceMemory(void *opaque, uint64_t size) : DeviceMemoryBase(opaque, size) {}
 };
 
 // A class to encapsulate the type and size of a dynamic shared memory
@@ -175,14 +175,14 @@ class DeviceMemory final : public DeviceMemoryBase {
 template <typename ElemT>
 class SharedDeviceMemory final : public DeviceMemoryBase {
  public:
-  explicit SharedDeviceMemory(uint64 elem_count)
+  explicit SharedDeviceMemory(uint64_t elem_count)
       : DeviceMemoryBase(nullptr, elem_count * kElemSize) {}
 
   static constexpr size_t kElemSize = sizeof(ElemT);
 
   // Returns the number of elements of type ElemT that constitute this
   // allocation.
-  uint64 ElementCount() const { return size() / kElemSize; }
+  uint64_t ElementCount() const { return size() / kElemSize; }
 
   // Returns whether this is a single-element allocation.
   bool IsScalar() const { return ElementCount() == 1; }

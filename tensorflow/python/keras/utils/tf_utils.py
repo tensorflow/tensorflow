@@ -23,6 +23,7 @@ from tensorflow.python.distribute.coordinator import cluster_coordinator as coor
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -387,6 +388,13 @@ def is_ragged(tensor):
   return isinstance(
       tensor,
       (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue))
+
+
+def is_sparse(tensor):
+  """Returns true if `tensor` is a sparse tensor or sparse tensor value."""
+  return isinstance(
+      tensor,
+      (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue))
 
 
 def is_tensor_or_variable(x):

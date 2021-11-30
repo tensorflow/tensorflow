@@ -327,12 +327,12 @@ class HloDotDumper {
  private:
   // Returns the dot graph identifier for the given instruction.
   string InstructionId(const HloInstruction* instruction) {
-    return StrCat(reinterpret_cast<uint64>(instruction));
+    return StrCat(reinterpret_cast<uint64_t>(instruction));
   }
 
   // Returns the dot graph identifier for the given computation.
   string SubcomputationId(const HloComputation* computation) {
-    return StrCat("cluster_", reinterpret_cast<uint64>(computation));
+    return StrCat("cluster_", reinterpret_cast<uint64_t>(computation));
   }
 
   // Generates graph header/footer.  These should be called *after* dumping all
@@ -374,7 +374,7 @@ class HloDotDumper {
   // the graph.
   //
   // In general when you want to draw an edge from A to B, you should actually
-  // draw an edge from GetNodeForEdge(A) to GetNodeForEdge(B).
+  // draw an edge from GetNodeForEdge(A).
   const HloInstruction* GetNodeForEdge(const HloInstruction* instr);
 
   // If instr has just one computation and it's trivial (e.g. "return param0 +
@@ -391,25 +391,25 @@ class HloDotDumper {
 
   // Each HloInstruction dumped gets a monotonically-increasing node ID.  This
   // must start at 1, because that's where graphviz's accounting starts.
-  int64 next_node_id_ = 1;
-  absl::flat_hash_map<const HloInstruction*, int64> node_ids_;
+  int64_t next_node_id_ = 1;
+  absl::flat_hash_map<const HloInstruction*, int64_t> node_ids_;
 
   // The "root" tag doesn't have an associated HloInstruction pointer, so we
   // need to store it outside the map.
-  int64 root_node_id_;
+  int64_t root_node_id_;
 
   // Each (from, to) edge gets a monotonically-increasing ID.  This is a
   // multimap because it's possible for the same edge to appear multiple times
   // in the graph (e.g. x^2 may be represented as mul(x, x)).
-  int64 next_edge_id_ = 1;
+  int64_t next_edge_id_ = 1;
   std::unordered_multimap<
-      std::pair<const HloInstruction*, const HloInstruction*>, int64,
+      std::pair<const HloInstruction*, const HloInstruction*>, int64_t,
       tensorflow::hash<std::pair<const HloInstruction*, const HloInstruction*>>>
       edge_ids_;
 
   // Each HloComputation that's emitted gets a monotonically-increasing ID.
-  int64 next_cluster_id_ = 1;
-  absl::flat_hash_map<const HloComputation*, int64> cluster_ids_;
+  int64_t next_cluster_id_ = 1;
+  absl::flat_hash_map<const HloComputation*, int64_t> cluster_ids_;
 
   // Edges to print from Footer().  Edges come at the end because graphviz is
   // unhappy if an edge from a subcomputation to a node in the outer computation
@@ -421,7 +421,7 @@ class HloDotDumper {
   // representation to color association, by round-robin the color schemes.
   absl::flat_hash_map<HloSharding, ColorScheme, HloSharding::Hasher>
       sharding_colors_;
-  int64 next_shard_color_ = 0;
+  int64_t next_shard_color_ = 0;
 };
 
 string HloDotDumper::Dump() {
@@ -491,9 +491,9 @@ stylesheet=<
   for (const auto& kv : edge_ids_) {
     const HloInstruction* from_node = kv.first.first;
     const HloInstruction* to_node = kv.first.second;
-    int64 edge_id = kv.second;
+    int64_t edge_id = kv.second;
 
-    auto add_hover_css_rule = [&](string elem_type, int64 elem_id,
+    auto add_hover_css_rule = [&](string elem_type, int64_t elem_id,
                                   const char* color) {
       // One could imagine other ways of writing this CSS rule that involve
       // less duplication, but this way seems to be relatively performant.
@@ -510,12 +510,12 @@ stylesheet=<
 
     // The "to_node" value may be a NULL, indicating that this points to the
     // "root" tag rather than a normal node.
-    int64 from_node_id =
+    int64_t from_node_id =
         tensorflow::gtl::FindWithDefault(node_ids_, from_node, -1);
     if (from_node_id == -1) {
       LOG(FATAL) << from_node->name() << " was added to edges but not to nodes";
     }
-    int64 to_node_id =
+    int64_t to_node_id =
         to_node ? tensorflow::gtl::FindWithDefault(node_ids_, to_node, -1)
                 : root_node_id_;
     if (to_node != nullptr && to_node_id == -1) {
@@ -538,11 +538,11 @@ stylesheet=<
     if (to_node) {
       if (from_node->IsFused() &&
           from_node->parent()->root_instruction() == from_node) {
-        int64 cluster_id = cluster_ids_.at(from_node->parent());
+        int64_t cluster_id = cluster_ids_.at(from_node->parent());
         add_hover_css_rule("clust", cluster_id, kBlue);
       }
       if (to_node->IsFused() && to_node->opcode() == HloOpcode::kParameter) {
-        int64 cluster_id = cluster_ids_.at(to_node->parent());
+        int64_t cluster_id = cluster_ids_.at(to_node->parent());
         add_hover_css_rule("clust", cluster_id, kRed);
       }
     }
@@ -736,20 +736,21 @@ static const HloConstantInstruction* TryGetFusionParameterConstant(
 bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
   // If a node:
   //
-  //  - is a parameter of a fusion node which is bound to a constant,
-  //
-  // or
-  //
-  //  - is a tuple-shaped parameter, and
-  //  - is not a parameter to a fusion node, and
-  //  - has at least kMinUsersToOmit users shown, and
-  //  - all of the shown users are get-tuple-elements,
+  //  - is a get-tuple-element that isn't the root of the computation, or
+  //  - is a parameter of a fusion node which is bound to a constant, or
+  //  - all of:
+  //    - is a tuple-shaped parameter, and
+  //    - is not a parameter to a fusion node, and
+  //    - has at least kMinUsersToOmit users shown, and
+  //    - all of the shown users are get-tuple-elements,
   //
   // then we omit it from the graph, merging it with its users.
   //
   // This helps us handle the common case where a while loop body has one big
   // tuple-shaped parameter.
-  if (TryGetFusionParameterConstant(instr) != nullptr) {
+  if ((instr->opcode() == HloOpcode::kGetTupleElement &&
+       instr != instr->parent()->root_instruction()) ||
+      TryGetFusionParameterConstant(instr) != nullptr) {
     return true;
   }
   const int kMinUsersToOmit = 3;
@@ -839,7 +840,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // Print the literal value of constants with <= K elements.  Note that we
     // use `constant->shape()` rather than `shape`, because if `constant` is a
     // scalar that's broadcasted into `shape`, we want to print the constant.
-    optional<int64> elem_count;
+    optional<int64_t> elem_count;
     if (shape.IsArray()) {
       elem_count = ShapeUtil::ElementsIn(constant->shape());
     }
@@ -862,7 +863,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
   };
 
   std::vector<string> lines;
-  for (int64 i = 0; i < instr->operand_count(); ++i) {
+  for (int64_t i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
     optional<string> operand_str;
     if (const auto* constant_operand =
@@ -885,6 +886,10 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
         } else {
           operand_str = StrFormat("Parameter %d", operand->parameter_number());
         }
+      } else if (operand->opcode() == HloOpcode::kGetTupleElement) {
+        operand_str =
+            StrFormat("tuple-element %d of %s", operand->tuple_index(),
+                      operand->operand(0)->name());
       } else {
         operand_str = operand->name();
       }
@@ -898,6 +903,20 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
       }
     }
   }
+
+  // Special case: fused parameter is fed from a get-tuple-element.  If
+  // so, name the tuple index.
+  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
+    const HloInstruction* param_input =
+        instr->parent()->FusionInstruction()->operand(
+            instr->parameter_number());
+    if (param_input->opcode() == HloOpcode::kGetTupleElement) {
+      lines.push_back(StrFormat("tuple-element %d of %s",
+                                param_input->tuple_index(),
+                                param_input->operand(0)->name()));
+    }
+  }
+
   return StrJoin(lines, "<br/>");
 }
 
@@ -1062,7 +1081,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSetDimensionSize:
       return kGray;
     case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
@@ -1155,13 +1177,14 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   for (const auto& line : instr->ExtraAttributesToString(
            HloPrintOptions().set_print_subcomputation_mode(
                HloPrintOptions::PrintSubcomputationMode::kOff))) {
-    // Some instructions have giant replica group fields, so truncate the
-    // replica group line length to 128.
-    constexpr int kMaxReplicaGroupLen = 128;
-    if (absl::StartsWith(line, "replica_groups=") &&
-        line.length() > kMaxReplicaGroupLen) {
+    // Some instructions have giant device identifier fields, so truncate their
+    // length to 128.
+    constexpr int kMaxDeviceIdFieldLen = 128;
+    if ((absl::StartsWith(line, "replica_groups=") ||
+         absl::StartsWith(line, "source_target_pairs=")) &&
+        line.length() > kMaxDeviceIdFieldLen) {
       lines.push_back(HtmlLikeStringSanitize(
-          StrCat(line.substr(0, kMaxReplicaGroupLen - 3), "...")));
+          StrCat(line.substr(0, kMaxDeviceIdFieldLen - 3), "...")));
     } else {
       lines.push_back(HtmlLikeStringSanitize(line));
     }
@@ -1213,7 +1236,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
 
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
-                      int64 operand_num, bool control_edge = false) {
+                      int64_t operand_num, bool control_edge = false) {
     from = GetNodeForEdge(from);
 
     if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant ||
@@ -1226,11 +1249,11 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     edge_ids_.insert({{from, to}, next_edge_id_++});
 
     string edge_label;
-    if (instr->operand_count() > 1 && !control_edge) {
+    if (control_edge) {
+      edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
+    } else if (instr->operand_count() > 1) {
       edge_label =
           StrFormat(R"( headlabel="%d", labeldistance=2)", operand_num);
-    } else if (control_edge) {
-      edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
     }
 
     // We print "small" arrays using a hollow arrowhead and "large" arrays using
@@ -1254,7 +1277,7 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
                /*operand_num=*/0);
     }
   } else {
-    for (int64 i = 0; i < instr->operand_count(); ++i) {
+    for (int64_t i = 0; i < instr->operand_count(); ++i) {
       add_edge(instr->operand(i), instr, i);
     }
     for (const HloInstruction* pred : instr->control_predecessors()) {
@@ -1273,7 +1296,7 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
   }
 
   std::vector<string> lines;
-  for (int64 i = 0; i < instr->called_computations().size(); ++i) {
+  for (int64_t i = 0; i < instr->called_computations().size(); ++i) {
     optional<string> computation_type =
         MatchTrivialComputation(instr->called_computations()[i]);
     if (!computation_type) {
@@ -1292,6 +1315,10 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
 
 const HloInstruction* HloDotDumper::GetNodeForEdge(
     const HloInstruction* instr) {
+  // Skip over get-tuple-element nodes.
+  if (instr->opcode() == HloOpcode::kGetTupleElement) {
+    instr = instr->operand(0);
+  }
   while (instr->opcode() == HloOpcode::kFusion &&
          ShouldShowFusionSubcomputation(instr)) {
     instr = instr->fused_expression_root();
@@ -1302,16 +1329,16 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
 NodeFilter MakeNodeRadiusAroundFilter(
-    const HloInstruction* root, int64 radius,
+    const HloInstruction* root, int64_t radius,
     const absl::flat_hash_set<const HloInstruction*>& boundary) {
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
   absl::flat_hash_map<const HloInstruction*, NodeFilterResult> nodes;
-  std::deque<std::pair<const HloInstruction*, /*depth*/ int64>> worklist;
+  std::deque<std::pair<const HloInstruction*, /*depth*/ int64_t>> worklist;
   worklist.push_back({root, 0});
   while (!worklist.empty()) {
     const HloInstruction* instr;
-    int64 depth;
+    int64_t depth;
     std::tie(instr, depth) = worklist.front();
     worklist.pop_front();
 
@@ -1415,7 +1442,7 @@ NodeFilter MakeNodeRadiusAroundFilter(
 // the all-paths set contains more than max_nodes elements, includes the nodes
 // on the shortest paths and sets hit_limit to true.
 NodeFilter MakeNodeFromToFilter(const HloInstruction* from,
-                                const HloInstruction* to, int64 max_nodes,
+                                const HloInstruction* to, int64_t max_nodes,
                                 bool* hit_limit) {
   *hit_limit = false;
 
@@ -1583,7 +1610,7 @@ std::function<StatusOr<string>(absl::string_view)>* url_renderer
 // dot dumps.
 tensorflow::mutex fusion_visualizer_state_mu(tensorflow::LINKER_INITIALIZED);
 static auto& fusion_visualizer_state TF_GUARDED_BY(fusion_visualizer_state_mu) =
-    *new absl::flat_hash_map<std::pair<int64, int64>,
+    *new absl::flat_hash_map<std::pair<int64_t, int64_t>,
                              std::vector<std::string>>();
 
 // Generates a key to the fusion visualizer state mapping.
@@ -1778,7 +1805,8 @@ StatusOr<string> RenderNeighborhoodAround(
 }
 
 StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
-                                      const HloInstruction& to, int64 max_nodes,
+                                      const HloInstruction& to,
+                                      int64_t max_nodes,
                                       RenderedGraphFormat format,
                                       HloRenderOptions hlo_render_options) {
   tensorflow::mutex_lock lock(url_renderer_mu);

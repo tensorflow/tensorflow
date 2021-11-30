@@ -47,7 +47,7 @@ std::unique_ptr<llvm::Module> MakeLLVMModule(mlir::OwningModuleRef module,
   manager.addPass(mlir::createLowerAffinePass());
   manager.addPass(mlir::createLowerToCFGPass());
   manager.addPass(mlir::createConvertVectorToLLVMPass(
-      mlir::LowerVectorToLLVMOptions().setReassociateFPReductions(
+      mlir::LowerVectorToLLVMOptions().enableReassociateFPReductions(
           kReassociateFPReductions)));
   CHECK(succeeded(manager.run(*module)));
   return mlir::translateModuleToLLVMIR(*module, *context);
@@ -69,19 +69,19 @@ void BuildViewForBuffer(llvm::SmallVectorImpl<llvm::Value *> *args,
   args->push_back(b->getInt64(0));  // Offset.
 
   // Sizes.
-  for (int64 dim : opShape.dimensions()) {
+  for (int64_t dim : opShape.dimensions()) {
     args->push_back(b->getInt64(dim));
   }
 
   int64_t accumulated_stride = 1;
   llvm::SmallVector<int64_t, 4> strides(opShape.rank(), 1);
-  for (int64 dim : LayoutUtil::MinorToMajor(opShape)) {
+  for (int64_t dim : LayoutUtil::MinorToMajor(opShape)) {
     strides[dim] = accumulated_stride;
     accumulated_stride *= opShape.dimensions(dim);
   }
 
   // Strides.
-  for (int64 stride : strides) {
+  for (int64_t stride : strides) {
     args->push_back(b->getInt64(stride));
   }
 }

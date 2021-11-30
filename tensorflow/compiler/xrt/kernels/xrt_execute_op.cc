@@ -78,7 +78,7 @@ std::vector<bool> GetDynamicInputInfo(
     const xla::ComputationLayout& computation_layout) {
   std::vector<bool> input_is_dynamic;
   input_is_dynamic.reserve(computation_layout.parameter_count());
-  for (int64 i = 0; i < computation_layout.parameter_count(); ++i) {
+  for (int64_t i = 0; i < computation_layout.parameter_count(); ++i) {
     input_is_dynamic.push_back(
         !computation_layout.parameter_shape(i).is_static());
   }
@@ -94,7 +94,7 @@ xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTuples(
 
   return GetInputTupleAllocations(
       input_coords, working_set, backend, computation_layout.parameter_count(),
-      [&](int64 i) { return computation_layout.parameter_shape(i); },
+      [&](int64_t i) { return computation_layout.parameter_shape(i); },
       release_inputs, allocator);
 }
 
@@ -128,7 +128,7 @@ std::vector<int32> PrepareMetadata(const xla::Shape& shape) {
   DCHECK(shape.IsArray());
   // Each dimension size is stored as a S32.
   std::vector<int32> result(shape.dimensions_size());
-  for (int64 i = 0; i < shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
     result[i] = shape.dimensions(i);
   }
   return result;
@@ -206,7 +206,7 @@ Status UpdateDynamicInputs(
   TF_ASSIGN_OR_RETURN(auto compiler, xla::Compiler::GetForPlatform(
                                          stream->parent()->platform()));
   auto shape_size_fn = compiler->ShapeSizeBytesFunction();
-  for (int64 i = 0; i < compile_time_shapes.size(); i++) {
+  for (int64_t i = 0; i < compile_time_shapes.size(); i++) {
     const xla::Shape& compile_time_shape = compile_time_shapes[i].shape();
     if (compile_time_shape.is_static()) {
       continue;
@@ -337,8 +337,10 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
   if (nccl_factory != nullptr) {
     auto uid_callback =
         [&](const xla::gpu::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
-      std::vector<xla::int64> replicas;
-      for (auto& device : key.devices()) {
+      std::vector<int64_t> replicas;
+      const auto key_devices = key.devices();
+      replicas.reserve(key_devices.size());
+      for (auto& device : key_devices) {
         replicas.push_back(device.value());
       }
       return nccl_factory->GetUniqueId(replicas);
@@ -443,7 +445,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
 
   const Tensor& execution_input = context->input(0);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_input.shape()));
-  int64 compilation_handle = execution_input.scalar<int64>()();
+  int64_t compilation_handle = execution_input.scalar<int64_t>()();
 
   const Tensor& execution_config = context->input(1);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));

@@ -36,14 +36,15 @@ namespace {
 template <int N, bool B2S>
 struct SpaceToBatchHelper {
   template <typename T>
-  static void run(T* space_tensor_ptr, const int64* space_tensor_shape,
-                  const int64* space_tensor_strides, const int64* block_shape,
-                  const int64* pad_start, const int64* block_offsets,
-                  const int64* batch_tensor_shape,
-                  const int64* batch_tensor_strides, T* batch_tensor_ptr) {
-    for (int64 batch_tensor_pos = 0; batch_tensor_pos < batch_tensor_shape[0];
+  static void run(T* space_tensor_ptr, const int64_t* space_tensor_shape,
+                  const int64_t* space_tensor_strides,
+                  const int64_t* block_shape, const int64_t* pad_start,
+                  const int64_t* block_offsets,
+                  const int64_t* batch_tensor_shape,
+                  const int64_t* batch_tensor_strides, T* batch_tensor_ptr) {
+    for (int64_t batch_tensor_pos = 0; batch_tensor_pos < batch_tensor_shape[0];
          ++batch_tensor_pos) {
-      const int64 space_tensor_pos =
+      const int64_t space_tensor_pos =
           batch_tensor_pos * block_shape[0] + block_offsets[0] - pad_start[0];
       if (space_tensor_pos >= 0 && space_tensor_pos < space_tensor_shape[0]) {
         SpaceToBatchHelper<N - 1, B2S>::run(
@@ -54,7 +55,7 @@ struct SpaceToBatchHelper {
       } else {
         if (B2S == false) {
           // Copy in padding.
-          for (int64 i = 0; i < batch_tensor_strides[0]; ++i) {
+          for (int64_t i = 0; i < batch_tensor_strides[0]; ++i) {
             batch_tensor_ptr[i] = static_cast<T>(0);
           }
         }
@@ -67,12 +68,13 @@ struct SpaceToBatchHelper {
 template <bool B2S>
 struct SpaceToBatchHelper<0, B2S> {
   template <typename T>
-  static void run(T* space_tensor_ptr, const int64* space_tensor_shape,
-                  const int64* space_tensor_strides, const int64* block_shape,
-                  const int64* pad_start, const int64* block_offsets,
-                  const int64* batch_tensor_shape,
-                  const int64* batch_tensor_strides, T* batch_tensor_ptr) {
-    for (int64 i = 0; i < batch_tensor_strides[-1]; ++i) {
+  static void run(T* space_tensor_ptr, const int64_t* space_tensor_shape,
+                  const int64_t* space_tensor_strides,
+                  const int64_t* block_shape, const int64_t* pad_start,
+                  const int64_t* block_offsets,
+                  const int64_t* batch_tensor_shape,
+                  const int64_t* batch_tensor_strides, T* batch_tensor_ptr) {
+    for (int64_t i = 0; i < batch_tensor_strides[-1]; ++i) {
       if (B2S == false) {
         batch_tensor_ptr[i] = space_tensor_ptr[i];
       } else {
@@ -91,18 +93,18 @@ struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, B2S> {
   Status operator()(
       const CPUDevice& d,
       typename TTypes<SpaceT, NUM_BLOCK_DIMS + 2>::Tensor space_tensor,
-      const int64 block_shape_tensor[NUM_BLOCK_DIMS],
-      const int64 paddings_tensor[NUM_BLOCK_DIMS * 2],
+      const int64_t block_shape_tensor[NUM_BLOCK_DIMS],
+      const int64_t paddings_tensor[NUM_BLOCK_DIMS * 2],
       typename TTypes<BatchT, NUM_BLOCK_DIMS + 2>::Tensor batch_tensor) {
-    const int64 batch_tensor_batch = batch_tensor.dimension(0);
+    const int64_t batch_tensor_batch = batch_tensor.dimension(0);
 
-    const int64 space_tensor_batch = space_tensor.dimension(0);
+    const int64_t space_tensor_batch = space_tensor.dimension(0);
 
     // Copy into local array so that the compiler is free to place in a
     // register.
-    int64 pad_start[NUM_BLOCK_DIMS];
-    int64 block_shape[NUM_BLOCK_DIMS];
-    int64 space_tensor_shape[NUM_BLOCK_DIMS],
+    int64_t pad_start[NUM_BLOCK_DIMS];
+    int64_t block_shape[NUM_BLOCK_DIMS];
+    int64_t space_tensor_shape[NUM_BLOCK_DIMS],
         batch_tensor_shape[NUM_BLOCK_DIMS];
     for (int block_dim = 0; block_dim < NUM_BLOCK_DIMS; ++block_dim) {
       pad_start[block_dim] = paddings_tensor[block_dim * 2];
@@ -111,7 +113,7 @@ struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, B2S> {
       batch_tensor_shape[block_dim] = batch_tensor.dimension(block_dim + 1);
     }
 
-    int64 space_tensor_strides[NUM_BLOCK_DIMS + 2],
+    int64_t space_tensor_strides[NUM_BLOCK_DIMS + 2],
         batch_tensor_strides[NUM_BLOCK_DIMS + 2];
     space_tensor_strides[NUM_BLOCK_DIMS + 1] =
         batch_tensor_strides[NUM_BLOCK_DIMS + 1] = 1;
@@ -127,11 +129,11 @@ struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, B2S> {
     T* space_tensor_ptr = const_cast<T*>(space_tensor.data());
     T* batch_tensor_ptr = const_cast<T*>(batch_tensor.data());
 
-    for (int64 batch_tensor_b = 0; batch_tensor_b < batch_tensor_batch;
+    for (int64_t batch_tensor_b = 0; batch_tensor_b < batch_tensor_batch;
          ++batch_tensor_b) {
-      const int64 space_tensor_b = batch_tensor_b % space_tensor_batch;
-      int64 block_index = batch_tensor_b / space_tensor_batch;
-      int64 block_offsets[NUM_BLOCK_DIMS];
+      const int64_t space_tensor_b = batch_tensor_b % space_tensor_batch;
+      int64_t block_index = batch_tensor_b / space_tensor_batch;
+      int64_t block_offsets[NUM_BLOCK_DIMS];
       for (int block_dim = NUM_BLOCK_DIMS - 1; block_dim >= 0; --block_dim) {
         // Skip unnecessary remainder operation for block_dim == 0.
         block_offsets[block_dim] =

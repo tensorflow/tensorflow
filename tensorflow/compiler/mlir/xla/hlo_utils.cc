@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
@@ -44,11 +44,18 @@ template <typename CppType>
       type, llvm::makeArrayRef(data_span.data(), data_span.size()));
 }
 
-StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
-    const Shape& shape, mlir::Builder builder) {
+StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
+                                              mlir::Builder builder) {
+  // N.B. IsMonotonicWithDim0Major ignores tiling, and I can't change it because
+  // some XLA code relies on it treating tiled layouts as equivalent to untiled
+  // layouts, so the check to rule out tiling has to come /before/ the
+  // early-return branch, or we'd miss tiled monotonic layouts.
+  if (!shape.layout().tiles().empty()) {
+    return tensorflow::errors::Internal("Tiled layouts are not yet supported");
+  }
   if (!shape.has_layout() ||
       LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-    return llvm::SmallVector<AffineMap, 1>{};
+    return AffineMap();
   }
   if (!shape.is_static()) {
     return tensorflow::errors::Internal(
@@ -56,15 +63,15 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
   }
   int64_t accumulated_stride = 1;
   llvm::SmallVector<int64_t, 4> strides(shape.rank(), 1);
-  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+  for (int64_t dim : LayoutUtil::MinorToMajor(shape)) {
     strides[dim] = accumulated_stride;
     accumulated_stride *= shape.dimensions(dim);
   }
   if (accumulated_stride == 0) {
-    return llvm::SmallVector<AffineMap, 1>{};
+    return AffineMap();
   }
-  return llvm::SmallVector<AffineMap, 1>{
-      makeStridedLinearLayoutMap(strides, /*offset=*/0, builder.getContext())};
+  return makeStridedLinearLayoutMap(strides, /*offset=*/0,
+                                    builder.getContext());
 }
 
 template <typename T>
@@ -121,7 +128,7 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     case PrimitiveType::S32:
       return CreateDenseAttrFromLiteral<int32>(type, literal);
     case PrimitiveType::S64:
-      return CreateDenseAttrFromLiteral<int64>(type, literal);
+      return CreateDenseAttrFromLiteral<int64_t>(type, literal);
     case PrimitiveType::U8:
       return CreateDenseAttrFromLiteral<uint8>(type, literal);
     case PrimitiveType::U16:
@@ -210,7 +217,7 @@ StatusOr<int> GetElementTypeBytes(mlir::Type type) {
 }
 
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64> vector, mlir::Builder builder,
+    const llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
     llvm::ArrayRef<int64_t> shape) {
   return mlir::DenseIntElementsAttr::get(
       mlir::RankedTensorType::get(shape.empty() ? vector.size() : shape,
@@ -258,27 +265,15 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
   }
 }
 
-mlir::mhlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder) {
-  auto offset_dims = CreateDenseIntElementsAttrFromVector(
-      llvm::SmallVector<int64, 4>{input.offset_dims().begin(),
-                                  input.offset_dims().end()},
-      builder);
-  auto collapsed_slice_dims = CreateDenseIntElementsAttrFromVector(
-      llvm::SmallVector<int64, 4>{input.collapsed_slice_dims().begin(),
-                                  input.collapsed_slice_dims().end()},
-      builder);
-  auto start_index_map = CreateDenseIntElementsAttrFromVector(
-      llvm::SmallVector<int64, 4>{input.start_index_map().begin(),
-                                  input.start_index_map().end()},
-      builder);
-
-  mlir::IntegerAttr index_vector_dim =
-      builder.getI64IntegerAttr(input.index_vector_dim());
-
-  return mlir::mhlo::GatherDimensionNumbers::get(
-      offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim,
-      builder.getContext());
+  auto get_i64_array = [](absl::Span<const int64_t> container) {
+    return llvm::ArrayRef<int64_t>{container.data(), container.size()};
+  };
+  return mlir::mhlo::GatherDimensionNumbersAttr::get(
+      builder.getContext(), get_i64_array(input.offset_dims()),
+      get_i64_array(input.collapsed_slice_dims()),
+      get_i64_array(input.start_index_map()), input.index_vector_dim());
 }
 
 StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {

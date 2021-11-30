@@ -15,10 +15,6 @@
 """Common array methods."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import functools
 import math
@@ -66,13 +62,8 @@ def zeros(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @np_utils.np_doc('zeros_like')
 def zeros_like(a, dtype=None):  # pylint: disable=missing-docstring
-  if dtype is None:
-    # We need to let np_utils.result_type decide the dtype, not tf.zeros_like
-    dtype = np_utils.result_type(a)
-  else:
-    # TF and numpy has different interpretations of Python types such as
-    # `float`, so we let `np_utils.result_type` decide.
-    dtype = np_utils.result_type(dtype)
+  dtype = np_utils.result_type_unary(a, dtype)
+
   dtype = dtypes.as_dtype(dtype)  # Work around b/149877262
   return array_ops.zeros_like(a, dtype)
 
@@ -86,10 +77,7 @@ def ones(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @np_utils.np_doc('ones_like')
 def ones_like(a, dtype=None):
-  if dtype is None:
-    dtype = np_utils.result_type(a)
-  else:
-    dtype = np_utils.result_type(dtype)
+  dtype = np_utils.result_type_unary(a, dtype)
   return array_ops.ones_like(a, dtype)
 
 
@@ -161,8 +149,7 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
   result_t = val
 
   if not isinstance(result_t, ops.Tensor):
-    if not dtype:
-      dtype = np_utils.result_type(result_t)
+    dtype = np_utils.result_type_unary(result_t, dtype)
     # We can't call `convert_to_tensor(result_t, dtype=dtype)` here because
     # convert_to_tensor doesn't allow incompatible arguments such as (5.5, int)
     # while np.array allows them. We need to convert-then-cast.
@@ -1392,7 +1379,7 @@ def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstrin
 
   x = asarray(x)
   dtype = x.dtype.as_numpy_dtype
-  if np.issubdtype(dtype, np.complex):
+  if np.issubdtype(dtype, np.complexfloating):
     result = math_ops.cast(math_ops.sign(math_ops.real(x)), dtype)
   else:
     result = math_ops.sign(x)
@@ -1801,7 +1788,7 @@ def _getitem(self, slice_spec):
   if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
                                        slice_spec.dtype == dtypes.bool) or
       (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool)):
+       slice_spec.dtype == np.bool_)):
     return array_ops.boolean_mask(tensor=self, mask=slice_spec)
 
   if not isinstance(slice_spec, tuple):
@@ -1816,7 +1803,7 @@ def _with_index_update_helper(update_method, a, slice_spec, updates):
   if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
                                        slice_spec.dtype == dtypes.bool) or
       (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool)):
+       slice_spec.dtype == np.bool_)):
     slice_spec = nonzero(slice_spec)
 
   if not isinstance(slice_spec, tuple):

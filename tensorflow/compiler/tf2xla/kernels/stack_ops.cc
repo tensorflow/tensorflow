@@ -96,7 +96,7 @@ class StackOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    int64 max_size;
+    int64_t max_size;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &max_size));
     OP_REQUIRES(
         ctx, max_size >= 0,
@@ -213,7 +213,8 @@ class StackPopOp : public XlaOpKernel {
     xla::XlaOp read = xla::DynamicSlice(ta, start_indices, slice_shape);
 
     // Remove the leading '1' dimension.
-    std::vector<int64> value_shape(slice_shape.begin() + 1, slice_shape.end());
+    std::vector<int64_t> value_shape(slice_shape.begin() + 1,
+                                     slice_shape.end());
     ctx->SetOutput(0, xla::Reshape(read, value_shape));
   }
 

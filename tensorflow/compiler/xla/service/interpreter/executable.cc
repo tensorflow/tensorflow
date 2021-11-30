@@ -60,7 +60,7 @@ StatusOr<Literal> InterpreterExecutable::Evaluate(
   return evaluator_->Evaluate(computation, arg_literals);
 }
 
-/*static*/ int64 InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {
+/*static*/ int64_t InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {
   if (shape.IsOpaque()) {
     return sizeof(void*);
   }

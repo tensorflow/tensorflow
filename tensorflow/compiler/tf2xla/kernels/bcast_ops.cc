@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -32,7 +33,6 @@ namespace {
 class BCastArgsOp : public XlaOpKernel {
  public:
   explicit BCastArgsOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->MatchSignature({DT_INT32, DT_INT32}, {DT_INT32}));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -45,8 +45,9 @@ class BCastArgsOp : public XlaOpKernel {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
-      std::vector<int64> shape;
-      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &shape));
+      std::vector<int64_t> shape;
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(
+                              i, &shape, xla::ValueInferenceMode::kUpperBound));
       shapes.push_back(BCast::Vec(shape.begin(), shape.end()));
     }
     BCast bcast(shapes[0], shapes[1]);
@@ -55,10 +56,15 @@ class BCastArgsOp : public XlaOpKernel {
                     "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
                     "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
 
-    const int64 len = bcast.output_shape().size();
-    Tensor output(DT_INT32, TensorShape({len}));
-    for (int64 i = 0; i < len; ++i) {
-      output.flat<int32>()(i) = static_cast<int32>(bcast.output_shape()[i]);
+    DataType val_type = ctx->expected_output_dtype(0);
+    const int64_t len = bcast.output_shape().size();
+    Tensor output(val_type, TensorShape({len}));
+    for (int64_t i = 0; i < len; ++i) {
+      if (val_type == DT_INT32) {
+        output.flat<int32>()(i) = static_cast<int32>(bcast.output_shape()[i]);
+      } else {
+        output.flat<int64>()(i) = static_cast<int64>(bcast.output_shape()[i]);
+      }
     }
     ctx->SetConstantOutput(0, output);
   }
@@ -79,8 +85,6 @@ REGISTER_XLA_OP(Name("BroadcastArgs")
 class BCastGradArgsOp : public XlaOpKernel {
  public:
   explicit BCastGradArgsOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(
-        ctx, ctx->MatchSignature({DT_INT32, DT_INT32}, {DT_INT32, DT_INT32}));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -94,8 +98,12 @@ class BCastGradArgsOp : public XlaOpKernel {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
-      std::vector<int64> vec;
-      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &vec));
+      std::vector<int64_t> vec;
+      // Technically we don't need to infer the upper-bound here. However the
+      // forward path uses the upperbound as bounded shape so we need backward
+      // path to use the same shape to decide the reduction indices.
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(
+                              i, &vec, xla::ValueInferenceMode::kUpperBound));
 
       shapes.push_back(BCast::Vec(vec.begin(), vec.end()));
     }
@@ -110,10 +118,15 @@ class BCastGradArgsOp : public XlaOpKernel {
 
  private:
   void Output(XlaOpKernelContext* ctx, int idx, const BCast::Vec& v) {
-    const int64 len = v.size();
-    Tensor constant(DT_INT32, TensorShape({len}));
-    for (int64 i = 0; i < len; ++i) {
-      constant.flat<int32>()(i) = static_cast<int32>(v[i]);
+    const int64_t len = v.size();
+    DataType val_type = ctx->expected_output_dtype(idx);
+    Tensor constant(val_type, TensorShape({len}));
+    for (int64_t i = 0; i < len; ++i) {
+      if (val_type == DT_INT32) {
+        constant.flat<int32>()(i) = static_cast<int32>(v[i]);
+      } else {
+        constant.flat<int64>()(i) = static_cast<int64>(v[i]);
+      }
     }
     ctx->SetConstantOutput(idx, constant);
   }

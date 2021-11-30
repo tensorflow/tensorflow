@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -38,11 +39,7 @@ namespace TFDevice {
 namespace {
 
 struct ClusterFormationPass
-    : public PassWrapper<ClusterFormationPass, FunctionPass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<tf_device::TensorFlowDeviceDialect>();
-  }
-
+    : public TF::ClusterFormationPassBase<ClusterFormationPass> {
   void runOnFunction() override;
 };
 
@@ -237,10 +234,6 @@ void ClusterFormationPass::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass() {
   return std::make_unique<ClusterFormationPass>();
 }
-
-static PassRegistration<ClusterFormationPass> pass(
-    "tf-device-cluster-formation",
-    "Form clusters from instructions assigned to same device");
 
 }  // namespace TFDevice
 }  // namespace mlir

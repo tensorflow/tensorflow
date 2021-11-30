@@ -55,7 +55,7 @@ struct GrapplerItem {
   // Initialization op(s).
   std::vector<string> init_ops;
   // Expected initialization time in seconds, or 0 if unknown
-  int64 expected_init_time = 0;
+  int64_t expected_init_time = 0;
 
   // Save/restore ops (if any)
   string save_op;

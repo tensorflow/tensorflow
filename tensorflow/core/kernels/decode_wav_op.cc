@@ -54,13 +54,13 @@ class DecodeWavOp : public OpKernel {
                        wav_string, &decoded_samples, &decoded_sample_count,
                        &decoded_channel_count, &decoded_sample_rate));
 
-    int32 output_sample_count;
+    int32_t output_sample_count;
     if (desired_samples_ == -1) {
       output_sample_count = decoded_sample_count;
     } else {
       output_sample_count = desired_samples_;
     }
-    int32 output_channel_count;
+    int32_t output_channel_count;
     if (desired_channels_ == -1) {
       output_channel_count = decoded_channel_count;
     } else {

@@ -50,4 +50,9 @@ message DeviceAttributes {
 
   // String representation of the physical device that this device maps to.
   string physical_device_desc = 7;
+
+  // A physical device ID for use in XLA DeviceAssignments, unique across
+  // clients in a multi-client setup. Set to -1 if unavailable, non-negative
+  // otherwise.
+  int64 xla_global_id = 8;
 }

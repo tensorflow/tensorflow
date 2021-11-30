@@ -78,11 +78,11 @@ Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
         tensorflow::CustomDeviceTensorHandle* previous =
             tensorflow::down_cast<tensorflow::CustomDeviceTensorHandle*>(
                 inputs[i]);
-        tensorflow::ImmediateExecutionTensorHandle* new_tesnor;
+        tensorflow::ImmediateExecutionTensorHandle* new_tensor;
         TF_RETURN_IF_ERROR(previous->device()->CopyTensorFromDevice(
-            previous, target_device, &new_tesnor));
-        Status s = op->SetInput(i, new_tesnor);
-        new_tesnor->Unref();
+            previous, target_device, &new_tensor));
+        Status s = op->SetInput(i, new_tensor);
+        new_tensor->Unref();
         TF_RETURN_IF_ERROR(s);
       }
     }

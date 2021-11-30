@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_dataset_ops.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -106,7 +110,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -173,7 +177,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       {
-        int64 temp;
+        int64_t temp;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kMode), &temp));
         mode_ = static_cast<Mode>(temp);
       }
@@ -342,7 +346,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        int64 temp;
+        int64_t temp;
         // TODO(b/78048575): Update this when saving size_t tensors directly
         // is supported.
         {
@@ -548,7 +552,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         {
           // TODO(b/78048575): Update this when saving size_t tensors directly
           // is supported.
-          int64 temp;
+          int64_t temp;
           TF_RETURN_IF_ERROR(
               iterator_state_reader->ReadScalar(full_name(kCurIndex), &temp));
           cur_index_ = static_cast<size_t>(temp);
@@ -690,7 +694,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -745,7 +749,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       if (reader->Contains(full_name(kCacheCompleted))) {
         std::vector<std::vector<Tensor>> temp_cache;
         TF_RETURN_IF_ERROR(
-            ReadElementsFromCheckpoint(reader, prefix(), &temp_cache));
+            ReadElementsFromCheckpoint(ctx, reader, prefix(), &temp_cache));
         cache_->Complete(std::move(temp_cache));
       }
       TF_RETURN_IF_ERROR(InitializeIterator(ctx));
@@ -816,7 +820,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name(kCacheCompleted))) {
           TF_RETURN_IF_ERROR(
-              ReadElementsFromCheckpoint(reader, prefix(), &temp_cache_));
+              ReadElementsFromCheckpoint(ctx, reader, prefix(), &temp_cache_));
         }
         return RestoreInput(ctx, reader, input_impl_);
       }
@@ -885,7 +889,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         {
           // kIndex will not be set if we are restoring from a checkpoint
           // written by a MemoryWriterIterator that has completed its cache.
-          int64 temp = cache_->size();
+          int64_t temp = cache_->size();
           if (reader->Contains(full_name(kIndex))) {
             TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
           }
@@ -1026,7 +1030,7 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   tstring filename;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kFileName, &filename));
   if (filename.empty()) {
-    static std::atomic<int64> resource_id_counter(0);
+    static std::atomic<int64_t> resource_id_counter(0);
     const string& container = ctx->resource_manager()->default_container();
     auto name = strings::StrCat(ctx->op_kernel().name(), "/", kMemoryCache, "_",
                                 resource_id_counter.fetch_add(1));

@@ -18,9 +18,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(duncanriach): use this to replace existing instances of
-// RequireDeterminism in various core/kernels.
 bool OpDeterminismRequired();
+bool OpOrderDeterminismRequired();
+void EnableOpDeterminism(bool enabled);
 
 }  // namespace tensorflow
 

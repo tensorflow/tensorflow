@@ -29,10 +29,10 @@ class TpuTimer : public ::stream_executor::internal::TimerInterface {
   ~TpuTimer() override {
     tensorflow::tpu::ExecutorApiFn()->TpuTimer_FreeFn(timer_);
   }
-  uint64 Microseconds() const override {
+  uint64_t Microseconds() const override {
     return tensorflow::tpu::ExecutorApiFn()->TpuTimer_MicrosecondsFn(timer_);
   }
-  uint64 Nanoseconds() const override {
+  uint64_t Nanoseconds() const override {
     return tensorflow::tpu::ExecutorApiFn()->TpuTimer_NanosecondsFn(timer_);
   }
 

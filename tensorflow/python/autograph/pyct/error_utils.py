@@ -14,13 +14,10 @@
 # ==============================================================================
 """Code transformation exceptions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from tensorflow.python.autograph.pyct import origin_info
+from tensorflow.python.util import traceback_utils
 
 
 class FrameInfo(
@@ -182,9 +179,13 @@ class ErrorMetadataBase(object):
     lines.append('')
 
     for frame_info in reversed(self.translated_stack):
-      formatted_line = '    {}:{} {}'.format(frame_info.filename,
-                                             frame_info.lineno,
-                                             frame_info.function_name)
+      if (traceback_utils.is_traceback_filtering_enabled() and
+          not traceback_utils.include_frame(frame_info.filename)):
+        continue
+
+      # Same format with Python traceback.
+      formatted_line = (f'    File "{frame_info.filename}", line '
+                        f'{frame_info.lineno}, in {frame_info.function_name}')
       if frame_info.is_converted:
         formatted_line += '  *'
       elif frame_info.is_allowlisted:

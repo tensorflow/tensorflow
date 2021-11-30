@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 
 // On mobile we do not provide model dataset op because not all of its
@@ -48,23 +49,21 @@ constexpr double kRamBudgetShare = 0.5;
 class ModelDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          model::AutotuneAlgorithm algorithm, int64 cpu_budget,
-          int64 ram_budget)
+          model::AutotuneAlgorithm algorithm, int64_t cpu_budget,
+          int64_t ram_budget)
       : Dataset(DatasetContext(ctx), input, algorithm, cpu_budget, ram_budget) {
   }
 
   Dataset(DatasetContext&& ctx, const DatasetBase* input,
-          model::AutotuneAlgorithm algorithm, int64 cpu_budget,
-          int64 ram_budget)
+          model::AutotuneAlgorithm algorithm, int64_t cpu_budget,
+          int64_t ram_budget)
       : DatasetBase(std::move(ctx)),
         input_(input),
         algorithm_(algorithm),
         cpu_budget_(cpu_budget),
         ram_budget_(ram_budget),
         traceme_metadata_(
-            {{"algorithm", algorithm == model::AutotuneAlgorithm::HILL_CLIMB
-                               ? "hill climb"
-                               : "gradient descent"},
+            {{"algorithm", model::AutotuneAlgorithm_Name(algorithm)},
              {"cpu_budget",
               strings::Printf("%lld", static_cast<long long>(cpu_budget))},
              {"ram_budget",
@@ -89,7 +88,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -106,9 +105,8 @@ class ModelDatasetOp::Dataset : public DatasetBase {
                             Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-    TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
     AttrValue algorithm_attr;
-    b->BuildAttrValue(static_cast<int64>(algorithm_), &algorithm_attr);
+    b->BuildAttrValue(static_cast<int64_t>(algorithm_), &algorithm_attr);
     AttrValue cpu_budget_attr;
     b->BuildAttrValue(cpu_budget_, &cpu_budget_attr);
     AttrValue ram_budget_attr;
@@ -128,7 +126,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          cpu_budget_(dataset()->cpu_budget_ == 0 ? port::NumSchedulableCPUs()
+          cpu_budget_(dataset()->cpu_budget_ == 0 ? GetCpuBudget()
                                                   : dataset()->cpu_budget_),
           ram_budget_(dataset()->ram_budget_ == 0
                           ? kRamBudgetShare * port::AvailableRam()
@@ -208,14 +206,14 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_;
-    const int64 cpu_budget_;
-    const int64 ram_budget_;
+    const int64_t cpu_budget_;
+    const int64_t ram_budget_;
   };
 
   const DatasetBase* input_;
   const model::AutotuneAlgorithm algorithm_;
-  const int64 cpu_budget_;
-  const int64 ram_budget_;
+  const int64_t cpu_budget_;
+  const int64_t ram_budget_;
   const TraceMeMetadata traceme_metadata_;
 };
 
@@ -223,7 +221,8 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 void ModelDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
                                             DatasetBase* input,
                                             model::AutotuneAlgorithm algorithm,
-                                            bool cpu_budget, bool ram_budget,
+                                            int64_t cpu_budget,
+                                            int64_t ram_budget,
                                             DatasetBase** output) {
   *output = new ModelDatasetOp::Dataset(
       DatasetContext(DatasetContext::Params(
@@ -234,7 +233,7 @@ void ModelDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
 ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
   if (ctx->HasAttr(kAlgorithm)) {
-    int64 algorithm;
+    int64_t algorithm;
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kAlgorithm, &algorithm));
     algorithm_ = model::AutotuneAlgorithm(algorithm);
   } else {

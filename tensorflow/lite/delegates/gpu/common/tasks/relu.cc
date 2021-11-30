@@ -15,39 +15,44 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 
 namespace tflite {
 namespace gpu {
 
+void CreateReLU(const ReLUAttributes& attr, CalculationsPrecision precision,
+                Arguments* args, std::string* code) {
+  std::string min_func;
+  if (attr.alpha != 0.0f) {
+    min_func = "min(in_out_value * args.alpha, INIT_FLT(0.0f))";
+    if (precision == CalculationsPrecision::F32) {
+      args->AddFloat("alpha", attr.alpha);
+    } else {
+      args->AddHalf("alpha", half(attr.alpha));
+    }
+  } else {
+    min_func = "INIT_FLT4(0.0f)";
+  }
+  if (attr.clip != 0.0f) {
+    if (precision == CalculationsPrecision::F32) {
+      args->AddFloat("clip", attr.clip);
+    } else {
+      args->AddHalf("clip", half(attr.clip));
+    }
+    *code = absl::StrCat("in_out_value = clamp(in_out_value, " + min_func +
+                         ", INIT_FLT4(args.clip));");
+  } else {
+    *code = absl::StrCat("in_out_value = max(in_out_value, ", min_func, ");");
+  }
+}
+
 GPUOperation CreateReLU(const OperationDef& definition,
                         const ReLUAttributes& attr) {
   GPUOperation op(definition);
   op.elementwise_ = true;
-
-  std::string min_func;
-  if (attr.alpha != 0.0f) {
-    min_func = "min(in_out_value * args.alpha, INIT_FLT(0.0f))";
-    if (definition.precision == CalculationsPrecision::F32) {
-      op.args_.AddFloat("alpha", attr.alpha);
-    } else {
-      op.args_.AddHalf("alpha", half(attr.alpha));
-    }
-  } else {
-    min_func = "INIT_FLT(0.0f)";
-  }
-  if (attr.clip != 0.0f) {
-    if (definition.precision == CalculationsPrecision::F32) {
-      op.args_.AddFloat("clip", attr.clip);
-    } else {
-      op.args_.AddHalf("clip", half(attr.clip));
-    }
-    op.code_ = absl::StrCat("in_out_value = clamp(in_out_value, " + min_func +
-                            ", args.clip);");
-  } else {
-    op.code_ =
-        absl::StrCat("in_out_value = max(in_out_value, ", min_func, ");");
-  }
+  CreateReLU(attr, definition.precision, &op.args_, &op.code_);
   return op;
 }
 

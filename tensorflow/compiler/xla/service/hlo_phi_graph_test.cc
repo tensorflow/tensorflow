@@ -23,7 +23,7 @@ namespace {
 class PhiGraphTest : public ::testing::Test {
  protected:
   HloValue NewHloValue(bool is_phi) {
-    static int64 id = 0;
+    static int64_t id = 0;
     return HloValue(id++, dummy_inst_.get(), {}, is_phi);
   }
 

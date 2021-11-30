@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_utils.h"
 
+#include <functional>
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -27,13 +31,12 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/util/determinism_test_util.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
-
-string full_name(string key) { return FullName("Iterator:", key); }
 
 TEST(DatasetUtilsTest, MatchesAnyVersion) {
   EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDataset"));
@@ -42,120 +45,6 @@ TEST(DatasetUtilsTest, MatchesAnyVersion) {
   EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "BatchDatasetXV3"));
   EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "BatchV2Dataset"));
   EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "PaddedBatchDataset"));
-}
-
-TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
-  VariantTensorDataWriter writer;
-  TF_ASSERT_OK(writer.WriteScalar(full_name("Int64"), 24));
-  Tensor input_tensor(DT_FLOAT, {1});
-  input_tensor.flat<float>()(0) = 2.0f;
-  TF_ASSERT_OK(writer.WriteTensor(full_name("Tensor"), input_tensor));
-  std::vector<const VariantTensorData*> data;
-  writer.GetData(&data);
-
-  VariantTensorDataReader reader(data);
-  int64 val_int64;
-  TF_ASSERT_OK(reader.ReadScalar(full_name("Int64"), &val_int64));
-  EXPECT_EQ(val_int64, 24);
-  Tensor val_tensor;
-  TF_ASSERT_OK(reader.ReadTensor(full_name("Tensor"), &val_tensor));
-  EXPECT_EQ(input_tensor.NumElements(), val_tensor.NumElements());
-  EXPECT_EQ(input_tensor.flat<float>()(0), val_tensor.flat<float>()(0));
-}
-
-TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
-  VariantTensorData data;
-  strings::StrAppend(&data.metadata_, "key1", "@@");
-  data.tensors_.push_back(Tensor(DT_INT64, {1}));
-  std::vector<const VariantTensorData*> reader_data;
-  reader_data.push_back(&data);
-  VariantTensorDataReader reader(reader_data);
-  int64 val_int64;
-  tstring val_string;
-  Tensor val_tensor;
-  EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadScalar(full_name("NonExistentKey"), &val_int64).code());
-  EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadScalar(full_name("NonExistentKey"), &val_string).code());
-  EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadTensor(full_name("NonExistentKey"), &val_tensor).code());
-}
-
-TEST(DatasetUtilsTest, VariantTensorDataRoundtripIteratorName) {
-  VariantTensorDataWriter writer;
-  TF_ASSERT_OK(writer.WriteScalar("Iterator", "Int64", 24));
-  Tensor input_tensor(DT_FLOAT, {1});
-  input_tensor.flat<float>()(0) = 2.0f;
-  TF_ASSERT_OK(writer.WriteTensor("Iterator", "Tensor", input_tensor));
-  std::vector<const VariantTensorData*> data;
-  writer.GetData(&data);
-
-  VariantTensorDataReader reader(data);
-  int64 val_int64;
-  TF_ASSERT_OK(reader.ReadScalar("Iterator", "Int64", &val_int64));
-  EXPECT_EQ(val_int64, 24);
-  Tensor val_tensor;
-  TF_ASSERT_OK(reader.ReadTensor("Iterator", "Tensor", &val_tensor));
-  EXPECT_EQ(input_tensor.NumElements(), val_tensor.NumElements());
-  EXPECT_EQ(input_tensor.flat<float>()(0), val_tensor.flat<float>()(0));
-}
-
-TEST(DatasetUtilsTest, VariantTensorDataNonExistentKeyIteratorName) {
-  VariantTensorData data;
-  strings::StrAppend(&data.metadata_, "key1", "@@");
-  data.tensors_.push_back(Tensor(DT_INT64, {1}));
-  std::vector<const VariantTensorData*> reader_data;
-  reader_data.push_back(&data);
-  VariantTensorDataReader reader(reader_data);
-  int64 val_int64;
-  tstring val_string;
-  Tensor val_tensor;
-  EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadScalar("Iterator", "NonExistentKey", &val_int64).code());
-  EXPECT_EQ(
-      error::NOT_FOUND,
-      reader.ReadScalar("Iterator", "NonExistentKey", &val_string).code());
-  EXPECT_EQ(
-      error::NOT_FOUND,
-      reader.ReadTensor("Iterator", "NonExistentKey", &val_tensor).code());
-}
-
-TEST(DatasetUtilsTest, VariantTensorDataWriteAfterFlushing) {
-  VariantTensorDataWriter writer;
-  TF_ASSERT_OK(writer.WriteScalar(full_name("Int64"), 24));
-  std::vector<const VariantTensorData*> data;
-  writer.GetData(&data);
-  Tensor input_tensor(DT_FLOAT, {1});
-  input_tensor.flat<float>()(0) = 2.0f;
-  EXPECT_EQ(error::FAILED_PRECONDITION,
-            writer.WriteTensor(full_name("Tensor"), input_tensor).code());
-}
-
-TEST(DatasetUtilsTest, CheckpointElementsRoundTrip) {
-  std::vector<std::vector<Tensor>> elements;
-  elements.push_back(CreateTensors<int32>(TensorShape({3}), {{1, 2, 3}}));
-  elements.push_back(CreateTensors<int32>(TensorShape({2}), {{4, 5}}));
-  VariantTensorDataWriter writer;
-  tstring test_prefix = full_name("test_prefix");
-  TF_ASSERT_OK(WriteElementsToCheckpoint(&writer, test_prefix, elements));
-  std::vector<const VariantTensorData*> data;
-  writer.GetData(&data);
-
-  VariantTensorDataReader reader(data);
-  std::vector<std::vector<Tensor>> read_elements;
-  TF_ASSERT_OK(
-      ReadElementsFromCheckpoint(&reader, test_prefix, &read_elements));
-  ASSERT_EQ(elements.size(), read_elements.size());
-  for (int i = 0; i < elements.size(); ++i) {
-    std::vector<Tensor>& original = elements[i];
-    std::vector<Tensor>& read = read_elements[i];
-
-    ASSERT_EQ(original.size(), read.size());
-    for (int j = 0; j < original.size(); ++j) {
-      EXPECT_EQ(original[j].NumElements(), read[j].NumElements());
-      EXPECT_EQ(original[j].flat<int32>()(0), read[j].flat<int32>()(0));
-    }
-  }
 }
 
 TEST(DatasetUtilsTest, AddToFunctionLibrary) {
@@ -592,12 +481,13 @@ struct GetOptimizationsTestCase {
 
 // Tests the default.
 GetOptimizationsTestCase GetOptimizationTestCase1() {
-  return {/*options=*/Options(),
-          /*expected_enabled=*/{},
-          /*expected_disabled=*/{},
-          /*expected_default=*/
-          {"noop_elimination", "map_and_batch_fusion",
-           "shuffle_and_repeat_fusion", "map_parallelization"}};
+  return {
+      /*options=*/Options(),
+      /*expected_enabled=*/{},
+      /*expected_disabled=*/{},
+      /*expected_default=*/
+      {"noop_elimination", "map_and_batch_fusion", "shuffle_and_repeat_fusion",
+       "map_parallelization", "parallel_batch"}};
 }
 
 // Tests disabling application of default optimizations.
@@ -627,31 +517,21 @@ GetOptimizationsTestCase GetOptimizationTestCase3() {
 GetOptimizationsTestCase GetOptimizationTestCase4() {
   Options options;
   options.set_deterministic(false);
-  options.mutable_optimization_options()
-      ->mutable_map_vectorization()
-      ->set_enabled(true);
-  options.mutable_optimization_options()->set_autotune_buffers(true);
   options.mutable_optimization_options()->set_filter_fusion(true);
-  options.mutable_optimization_options()->set_filter_with_random_uniform_fusion(
-      true);
-  options.mutable_optimization_options()->set_hoist_random_uniform(true);
   options.mutable_optimization_options()->set_map_and_batch_fusion(true);
   options.mutable_optimization_options()->set_map_and_filter_fusion(true);
   options.mutable_optimization_options()->set_map_fusion(true);
   options.mutable_optimization_options()->set_map_parallelization(true);
   options.mutable_optimization_options()->set_noop_elimination(true);
   options.mutable_optimization_options()->set_parallel_batch(true);
-  options.mutable_optimization_options()->set_reorder_data_discarding_ops(true);
   options.mutable_optimization_options()->set_shuffle_and_repeat_fusion(true);
   options.set_slack(true);
   return {options,
           /*expected_enabled=*/
-          {"autotune_buffer_sizes", "disable_prefetch_legacy_autotune",
-           "filter_fusion", "filter_with_random_uniform_fusion",
-           "hoist_random_uniform", "make_sloppy", "map_and_batch_fusion",
+          {"filter_fusion", "make_sloppy", "map_and_batch_fusion",
            "map_and_filter_fusion", "map_fusion", "map_parallelization",
-           "map_vectorization", "noop_elimination", "parallel_batch",
-           "reorder_data_discarding_ops", "shuffle_and_repeat_fusion", "slack"},
+           "noop_elimination", "parallel_batch", "shuffle_and_repeat_fusion",
+           "slack"},
           /*expected_disabled=*/{},
           /*expected_default=*/{}};
 }
@@ -681,41 +561,17 @@ INSTANTIATE_TEST_SUITE_P(Test, GetOptimizationsTest,
                                            GetOptimizationTestCase3(),
                                            GetOptimizationTestCase4()));
 
-struct SelectOptimizationsTestCase {
-  absl::flat_hash_set<string> experiments;
-  absl::flat_hash_set<tstring> optimizations_enabled;
-  absl::flat_hash_set<tstring> optimizations_disabled;
-  absl::flat_hash_set<tstring> optimizations_default;
-  std::vector<string> expected;
-};
-
-class SelectOptimizationsTest
-    : public ::testing::TestWithParam<SelectOptimizationsTestCase> {};
-
-TEST_P(SelectOptimizationsTest, DatasetUtils) {
-  const SelectOptimizationsTestCase test_case = GetParam();
-  auto optimizations = SelectOptimizations(
-      test_case.experiments, test_case.optimizations_enabled,
-      test_case.optimizations_disabled, test_case.optimizations_default);
-  EXPECT_THAT(std::vector<string>(optimizations.begin(), optimizations.end()),
-              ::testing::UnorderedElementsAreArray(test_case.expected));
+TEST(DeterministicOpsTest, GetOptimizations) {
+  test::DeterministicOpsScope det_scope;
+  Options options;
+  // options.deterministic should be ignored when deterministic ops are enabled.
+  options.set_deterministic(false);
+  absl::flat_hash_set<tstring> actual_enabled, actual_disabled, actual_default;
+  GetOptimizations(options, &actual_enabled, &actual_disabled, &actual_default);
+  EXPECT_THAT(std::vector<string>(actual_enabled.begin(), actual_enabled.end()),
+              ::testing::UnorderedElementsAreArray({"make_deterministic"}));
+  EXPECT_EQ(actual_disabled.size(), 0);
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    Test, SelectOptimizationsTest,
-    ::testing::Values(
-        SelectOptimizationsTestCase{
-            /*experiments=*/{}, /*optimizations_enabled=*/{},
-            /*optimizations_disabled=*/{}, /*optimizations_default=*/{},
-            /*expected=*/{}},
-        SelectOptimizationsTestCase{
-            /*experiments=*/{"foo"}, /*optimizations_enabled=*/{"bar"},
-            /*optimizations_disabled=*/{}, /*optimizations_default=*/{"baz"},
-            /*expected=*/{"foo", "bar", "baz"}},
-        SelectOptimizationsTestCase{
-            /*experiments=*/{"foo"}, /*optimizations_enabled=*/{"bar"},
-            /*optimizations_disabled=*/{"foo"},
-            /*optimizations_default=*/{"baz"}, /*expected=*/{"bar", "baz"}}));
 
 REGISTER_DATASET_EXPERIMENT("test_only_experiment", 42);
 

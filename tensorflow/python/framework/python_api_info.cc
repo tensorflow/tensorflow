@@ -272,7 +272,7 @@ Status PythonAPIInfo::InitializeAttribute(
   }
 
   if (attr.type == AttributeType::INT) {
-    int64 default_len =
+    int64_t default_len =
         attr_def.has_default_value() ? attr_def.default_value().i() : -1;
     inputs_with_number_attrs_.push_back({&attr, default_len});
   }

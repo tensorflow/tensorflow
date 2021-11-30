@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for 3d pooling operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test

@@ -83,7 +83,7 @@ class BucketizeOp : public OpKernel {
       BucketizeOp<CPUDevice, T>);
 
 REGISTER_KERNEL(int32);
-REGISTER_KERNEL(int64);
+REGISTER_KERNEL(int64_t);
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
@@ -95,7 +95,7 @@ REGISTER_KERNEL(double);
       BucketizeOp<GPUDevice, T>);
 
 REGISTER_KERNEL(int32);
-REGISTER_KERNEL(int64);
+REGISTER_KERNEL(int64_t);
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL

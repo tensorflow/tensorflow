@@ -75,8 +75,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass();
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
 
-// Performs checks that the whole module does not contain dynamic shapes.
-std::unique_ptr<OperationPass<FuncOp>> CreateTFEnsureStaticShapesPass();
+// Performs TF.data optimizations.
+std::unique_ptr<FunctionPass> CreateTFDataOptimizationPass();
+
+std::unique_ptr<FunctionPass> CreateMoveTransposesPass();
+std::unique_ptr<FunctionPass> CreateLayoutAssignmentPass();
 
 // Guarantee that all FuncOp's have a single use.
 std::unique_ptr<OperationPass<ModuleOp>> CreateGuaranteeAllFuncsOneUsePass();
@@ -87,8 +90,12 @@ std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass();
 // Optional pass which will map TF BatchMatMul to TF Einsum
 std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass();
 
+// Pass that transform Einsum to other TF Ops for the supported variants.
+std::unique_ptr<FunctionPass> CreateTransformEinsumPass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass();
+void RegisterTFOptimizePassPipeline();
 
 // Creates pass to rewrite RecvTPUEmbeddingActivationsOp and
 // SendTPUEmbeddingGradients ops to internal variants.
@@ -105,6 +112,11 @@ CreateTensorDeviceCopyConversionPass();
 // Returns a pass that folds tf.BroadcastTo nodes with subsequent nodes if they
 // have built in broadcasting support.
 std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
+
+void populateTfControlFlowToScfPatterns(MLIRContext* context,
+                                        OwningRewritePatternList* patterns);
+// Create a pass to convert TensorFlow control flow to SCF.
+std::unique_ptr<OperationPass<ModuleOp>> createConvertTfControlFlowToScfPass();
 
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
@@ -160,7 +172,7 @@ CreateConvertReadonlyReferenceVariablesToResourceVariablesPass();
 
 // Creates a simple device assignment pass on TF dialect for CoreRT use case.
 std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
-    llvm::StringRef default_device);
+    llvm::StringRef default_device = "cpu");
 
 // Performs resource lifting on the function body to hoist resource variable
 // accesses outside all control flow statements.
@@ -170,6 +182,10 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function);
 // removed by resource lifting. Requires known maximum sizes of stacks and
 // known element shapes of push ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateStackOpsDecompositionPass();
+
+// Creates a pass to strip the "tf._noinline" attribute from the functions in
+// the module.
+std::unique_ptr<OperationPass<ModuleOp>> CreateStripNoinlineAttributePass();
 
 // Converts tensor list operations into operations on buffers and sizes. Needs
 // static shapes and known max element count.
@@ -183,6 +199,9 @@ CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
+
+// Create a pass that legalize TFG to TF dialect.
+std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
 
 // Addds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
@@ -229,7 +248,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
 
 // Returns pass that prepares TPU computation to be legal for export to
 // TensorFlow.
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreatePrepareTpuComputationForTfExportPass();
 
 // Rewrites ops that require quantized inputs or outputs to ops that allow
@@ -238,6 +257,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLowerQuantizedPass();
 }  // namespace TF
 
 namespace tf_executor {
+
+// Creates a pass to chain control outputs of while loop body.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorConvertControlToDataOutputsPass();
+
 // Creates a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 
@@ -274,17 +298,15 @@ std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass();
 std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass(
     llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter = {});
 
-// Creates a pass that outlines regions of tf_device.launch operations.
+// Creates a pass that outlines regions of tf_device.cluster operations.
 std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
 
-// Creates a pass that clusters ops into tf_device::ClusterOp regions
-// according to a policy specified by the pass options.
-//
-// See the documentation for the pass options in `tf_passes.td`.
-std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass();
-std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
-    ArrayRef<std::string> oplist, int min_cluster_size, StringRef algorithm,
-    StringRef policy_name);
+// Creates a pass that outlines regions of tf_device.launch operations.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass();
+
+// Creates a pass that converts tf_device::LaunchFuncOp into
+// TF::PartitionedCallOp.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConvertLaunchFuncToTFCallPass();
 
 // A pass that decomposes composite resource operations into primitive ones like
 // ReadVariableOp, AssignVariableOp and other computations to facilitate
@@ -351,11 +373,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDeviceAttributeToLaunchPass();
 // attribute on the `tf_device.launch`.
 std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass();
 
-// Creates a pass that hoists a `tf_device.replicate` body and replicates each
-// TensorFlow dialect op in the body based on its `device` attribute and the
-// `devices` attribute on the `tf_device.replicate`.
-std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateTFDeviceReplicationPass();
-
 // Creates a pass that extracts ops in tf_device.launch op with host device
 // assignment and adds an `_xla_outside_compilation` attribute value.
 std::unique_ptr<OperationPass<ModuleOp>>
@@ -411,7 +428,8 @@ CreateTPUParallelExecuteSinkResourceWritePass();
 // Creates a pass that merges device variable reads/updates into the surrounded
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUMergeVariablesWithExecutePass();
 
 // Creates a pass that wraps ReadVariableOp/AssignVariable op that consumes a
 // packed tensor to have same device placement as underlying TPU device.
@@ -419,7 +437,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps();
 
 // Creates a pass that adds ops which perform formatting on variables at
 // run-time according to compilation result.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUVariableRuntimeReformattingPass();
 
 // Creates a pass that wraps ops with the same `_xla_outside_compilation`
 // attribute value in a tf_device.launch op with host device assignment.
@@ -463,10 +482,24 @@ void CreateTPUBridgePipelineV1(OpPassManager& pm);
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
 CreateTPUCompileOpReplicationPass();
 
+// Creates a pass that applies space to depth transform
+// for the first or frontier convolutions consume host inputs on TPU.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUSpaceToDepthPass();
+
 }  // namespace TFTPU
 
+// Define the registrations in a detail namespace, just so that we can overload
+// the main entry point `registerTensorFlowPasses` to inject
+// RegisterTFOptimizePassPipeline.
+namespace detail {
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+}  // namespace detail
+using namespace detail;  // NOLINT
+inline void registerTensorFlowPasses() {
+  detail::registerTensorFlowPasses();
+  TF::RegisterTFOptimizePassPipeline();
+}
 
 namespace TFDevice {
 #define GEN_PASS_REGISTRATION

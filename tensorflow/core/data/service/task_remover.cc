@@ -22,13 +22,14 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace {
-const int64 kWaitTimeoutUs = 10 * 1000 * 1000;  // 10 seconds.
-const int64 kInvalidRound = -1;
+const int64_t kWaitTimeoutUs = 10 * 1000 * 1000;  // 10 seconds.
+const int64_t kInvalidRound = -1;
 }  // namespace
 
-TaskRemover::TaskRemover(int64 num_consumers) : num_consumers_(num_consumers) {}
+TaskRemover::TaskRemover(int64_t num_consumers)
+    : num_consumers_(num_consumers) {}
 
-bool TaskRemover::RequestRemoval(int64 consumer_index, int64 round) {
+bool TaskRemover::RequestRemoval(int64_t consumer_index, int64_t round) {
   mutex_lock l(mu_);
   if (consumers_waiting_.empty()) {
     round_ = round;
@@ -42,7 +43,7 @@ bool TaskRemover::RequestRemoval(int64 consumer_index, int64 round) {
   auto cleanup = gtl::MakeCleanup([&]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     consumers_waiting_.erase(consumer_index);
   });
-  int64 deadline_us = Env::Default()->NowMicros() + kWaitTimeoutUs;
+  int64_t deadline_us = Env::Default()->NowMicros() + kWaitTimeoutUs;
   while (round == round_ && !removed_ &&
          consumers_waiting_.size() < num_consumers_ &&
          Env::Default()->NowMicros() < deadline_us) {

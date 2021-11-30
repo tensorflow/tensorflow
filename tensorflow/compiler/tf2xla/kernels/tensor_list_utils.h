@@ -60,21 +60,21 @@ Status SetTensorListPushIndex(xla::XlaOp list, xla::XlaOp push_index,
 
 // Returns an uninitialized TensorList.
 xla::XlaOp BuildUninitializedTensorList(xla::XlaBuilder* b,
-                                        int64 leading_dimension,
+                                        int64_t leading_dimension,
                                         bool leading_size_is_dynamic,
                                         xla::XlaOp leading_dim_size);
 
 // Returns leading dimension for the TensorList as well as a dynamic op
 // representing the dynamic size. Input can be initialized or uninitialized
 // TensorList. Non-nested and nested TensorLists are both supported.
-Status GetLeadingDimForTensorList(xla::XlaOp list, int64* leading_dim,
+Status GetLeadingDimForTensorList(xla::XlaOp list, int64_t* leading_dim,
                                   bool* leading_dim_is_dynamic,
                                   xla::XlaOp* leading_dim_dynamic_size);
 
 // Returns TensorList shape for the element shape.
 // Element shape must be a normal tensor shape.
 Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
-                                          int64 leading_dim,
+                                          int64_t leading_dim,
                                           bool leading_dim_is_dynamic,
                                           xla::Shape* tensor_list_shape);
 

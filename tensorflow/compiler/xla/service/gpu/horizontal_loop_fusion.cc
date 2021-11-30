@@ -132,8 +132,8 @@ bool IsFusibleCandidate(const HloInstruction& instr) {
 // instructions than `kInstrCountThreshold`, it is launch-latency-bound and
 // profitable by horizontal fusion.
 bool IsProfitableFusionCandidate(const HloInstruction& instr) {
-  constexpr int64 kShapeThreshold = 128 * 2048;
-  constexpr int64 kInstrCountThreshold = 30;
+  constexpr int64_t kShapeThreshold = 128 * 2048;
+  constexpr int64_t kInstrCountThreshold = 30;
   const HloInstruction* root = (instr.opcode() == HloOpcode::kFusion)
                                    ? instr.fused_expression_root()
                                    : &instr;
@@ -269,9 +269,9 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
 
   // Fusing too many computations at a time may not be easily profitable and
   // may increase compile time due to large kernels. Set a limit to it.
-  constexpr int64 kMaxFusionBatchSize = 32;
+  constexpr int64_t kMaxFusionBatchSize = 32;
   // CUDA has a parameter size limit of ~4k bytes.
-  constexpr int64 kMaxCudaParamSize = 4000;
+  constexpr int64_t kMaxCudaParamSize = 4000;
   size_t accum_io_size = 0;
   auto reach_max_fusion_batch_size = [&](size_t left, size_t right) -> bool {
     if (right - left >= kMaxFusionBatchSize) {
@@ -369,7 +369,9 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
         continue;
       }
       std::vector<HloInstruction*> new_opnds;
-      for (HloInstruction* old_opnd : old_instr->operands()) {
+      const auto& old_opnds = old_instr->operands();
+      new_opnds.reserve(old_opnds.size());
+      for (HloInstruction* old_opnd : old_opnds) {
         CHECK(clone_map.find(old_opnd) != clone_map.end());
         new_opnds.push_back(clone_map[old_opnd]);
       }
@@ -395,7 +397,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
           MakeReshapeHlo(ShapeUtil::MakeShapeWithLayout(
                              new_output->shape().element_type(),
                              {ShapeUtil::ElementsIn(new_output->shape())},
-                             /*minor_to_major=*/std::vector<int64>(1, 0)),
+                             /*minor_to_major=*/std::vector<int64_t>(1, 0)),
                          new_output));
     }
     TF_ASSIGN_OR_RETURN(HloInstruction * concated_output,
@@ -408,13 +410,13 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
                                              fused_fusion_instrs.size());
   for (size_t i = 0; i < concated_outputs.size(); ++i) {
     HloInstruction* concated_output = concated_outputs[i];
-    int64 slice_start = 0;
+    int64_t slice_start = 0;
     // Create a slice per fused computation.
     for (size_t j = 0; j < fused_fusion_instrs.size(); ++j) {
       const HloInstruction* old_output =
           GetOutputsOfFusible(*fused_fusion_instrs[j])[i];
       Shape shape = old_output->shape();
-      int64 slice_limit = slice_start + ShapeUtil::ElementsIn(shape);
+      int64_t slice_limit = slice_start + ShapeUtil::ElementsIn(shape);
       TF_ASSIGN_OR_RETURN(
           output_slices[concated_outputs.size() * j + i],
           MakeSliceHlo(concated_output, {slice_start}, {slice_limit},

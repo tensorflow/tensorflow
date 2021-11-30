@@ -1,0 +1,998 @@
+node {
+  name: "start"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "stop"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 100
+      }
+    }
+  }
+}
+node {
+  name: "step"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "RangeDataset"
+  op: "RangeDataset"
+  input: "start"
+  input: "stop"
+  input: "step"
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_INT64
+      }
+    }
+  }
+}
+node {
+  name: "ChooseFastestBranchDataset/ratio_numerator"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 10
+      }
+    }
+  }
+}
+node {
+  name: "ChooseFastestBranchDataset/ratio_denominator"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "ChooseFastestBranchDataset"
+  op: "ChooseFastestBranchDataset"
+  input: "RangeDataset"
+  input: "ChooseFastestBranchDataset/ratio_numerator"
+  input: "ChooseFastestBranchDataset/ratio_denominator"
+  attr {
+    key: "Targuments"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "branches"
+    value {
+      list {
+        func {
+          name: "__inference_ChooseFastest_branch_0_20"
+          attr {
+            key: "_tf_data_function"
+            value {
+              b: true
+            }
+          }
+        }
+        func {
+          name: "__inference_ChooseFastest_branch_1_32"
+          attr {
+            key: "_tf_data_function"
+            value {
+              b: true
+            }
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "num_elements_per_branch"
+    value {
+      i: 10
+    }
+  }
+  attr {
+    key: "other_arguments_lengths"
+    value {
+      list {
+        i: 0
+        i: 0
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_INT64
+      }
+    }
+  }
+}
+node {
+  name: "ModelDataset"
+  op: "ModelDataset"
+  input: "ChooseFastestBranchDataset"
+  attr {
+    key: "algorithm"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "cpu_budget"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    key: "ram_budget"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "IteratorV2"
+  op: "IteratorV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ChooseFastestBranchDataset"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "MakeIterator"
+  op: "MakeIterator"
+  input: "ModelDataset"
+  input: "IteratorV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ChooseFastestBranchDataset"
+      }
+    }
+  }
+}
+node {
+  name: "IteratorToStringHandle"
+  op: "IteratorToStringHandle"
+  input: "IteratorV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ChooseFastestBranchDataset"
+      }
+    }
+  }
+}
+node {
+  name: "SerializeIterator"
+  op: "SerializeIterator"
+  input: "IteratorV2"
+  attr {
+    key: "external_state_policy"
+    value {
+      i: 2
+    }
+  }
+}
+node {
+  name: "IteratorGetNext"
+  op: "IteratorGetNext"
+  input: "IteratorV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ChooseFastestBranchDataset"
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_INT64
+      }
+    }
+  }
+}
+node {
+  name: "save/filename/input"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+        string_val: "model"
+      }
+    }
+  }
+}
+node {
+  name: "save/filename"
+  op: "PlaceholderWithDefault"
+  input: "save/filename/input"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+}
+node {
+  name: "save/Const"
+  op: "PlaceholderWithDefault"
+  input: "save/filename"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+}
+node {
+  name: "save/SaveV2/tensor_names"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: "IteratorV2:0_STATE"
+      }
+    }
+  }
+}
+node {
+  name: "save/SaveV2/shape_and_slices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "save/SaveV2"
+  op: "SaveV2"
+  input: "save/Const"
+  input: "save/SaveV2/tensor_names"
+  input: "save/SaveV2/shape_and_slices"
+  input: "SerializeIterator"
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_VARIANT
+      }
+    }
+  }
+}
+node {
+  name: "save/control_dependency"
+  op: "Identity"
+  input: "save/Const"
+  input: "^save/SaveV2"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@save/Const"
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2/tensor_names"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: "IteratorV2:0_STATE"
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2/shape_and_slices"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2"
+  op: "RestoreV2"
+  input: "save/Const"
+  input: "save/RestoreV2/tensor_names"
+  input: "save/RestoreV2/shape_and_slices"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_VARIANT
+      }
+    }
+  }
+}
+node {
+  name: "save/DeserializeIterator"
+  op: "DeserializeIterator"
+  input: "IteratorV2"
+  input: "save/RestoreV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ChooseFastestBranchDataset"
+      }
+    }
+  }
+}
+node {
+  name: "save/restore_all"
+  op: "NoOp"
+  input: "^save/DeserializeIterator"
+}
+node {
+  name: "init"
+  op: "NoOp"
+}
+library {
+  function {
+    signature {
+      name: "__inference_ChooseFastest_branch_1_32"
+      input_arg {
+        name: "args_0"
+        type: DT_VARIANT
+      }
+      output_arg {
+        name: "identity"
+        type: DT_VARIANT
+      }
+    }
+    node_def {
+      name: "batch_size"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT64
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT64
+            tensor_shape {
+            }
+            int64_val: 10
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "batch_size"
+      }
+    }
+    node_def {
+      name: "drop_remainder"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_BOOL
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_BOOL
+            tensor_shape {
+            }
+            bool_val: false
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "drop_remainder"
+      }
+    }
+    node_def {
+      name: "BatchDatasetV2"
+      op: "BatchDatasetV2"
+      input: "args_0"
+      input: "batch_size:output:0"
+      input: "drop_remainder:output:0"
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "output_types"
+        value {
+          list {
+            type: DT_INT64
+          }
+        }
+      }
+      attr {
+        key: "parallel_copy"
+        value {
+          b: false
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "BatchDatasetV2"
+      }
+    }
+    node_def {
+      name: "MapDataset"
+      op: "MapDataset"
+      input: "BatchDatasetV2:handle:0"
+      attr {
+        key: "Targuments"
+        value {
+          list {
+          }
+        }
+      }
+      attr {
+        key: "f"
+        value {
+          func {
+            name: "__inference_Dataset_map_lambda_29"
+            attr {
+              key: "_tf_data_function"
+              value {
+                b: true
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "output_types"
+        value {
+          list {
+            type: DT_INT64
+          }
+        }
+      }
+      attr {
+        key: "preserve_cardinality"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "use_inter_op_parallelism"
+        value {
+          b: true
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "MapDataset"
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "MapDataset:handle:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_VARIANT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Identity"
+      }
+    }
+    ret {
+      key: "identity"
+      value: "Identity:output:0"
+    }
+    attr {
+      key: "_tf_data_function"
+      value {
+        b: true
+      }
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+              }
+            }
+          }
+        }
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "args_0"
+          }
+        }
+      }
+    }
+  }
+  function {
+    signature {
+      name: "__inference_ChooseFastest_branch_0_20"
+      input_arg {
+        name: "args_0"
+        type: DT_VARIANT
+      }
+      output_arg {
+        name: "identity"
+        type: DT_VARIANT
+      }
+    }
+    node_def {
+      name: "MapDataset"
+      op: "MapDataset"
+      input: "args_0"
+      attr {
+        key: "Targuments"
+        value {
+          list {
+          }
+        }
+      }
+      attr {
+        key: "f"
+        value {
+          func {
+            name: "__inference_Dataset_map_lambda_14"
+            attr {
+              key: "_tf_data_function"
+              value {
+                b: true
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "output_types"
+        value {
+          list {
+            type: DT_INT64
+          }
+        }
+      }
+      attr {
+        key: "preserve_cardinality"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "use_inter_op_parallelism"
+        value {
+          b: true
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "MapDataset"
+      }
+    }
+    node_def {
+      name: "batch_size"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT64
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT64
+            tensor_shape {
+            }
+            int64_val: 10
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "batch_size"
+      }
+    }
+    node_def {
+      name: "drop_remainder"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_BOOL
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_BOOL
+            tensor_shape {
+            }
+            bool_val: false
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "drop_remainder"
+      }
+    }
+    node_def {
+      name: "BatchDatasetV2"
+      op: "BatchDatasetV2"
+      input: "MapDataset:handle:0"
+      input: "batch_size:output:0"
+      input: "drop_remainder:output:0"
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "output_types"
+        value {
+          list {
+            type: DT_INT64
+          }
+        }
+      }
+      attr {
+        key: "parallel_copy"
+        value {
+          b: false
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "BatchDatasetV2"
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "BatchDatasetV2:handle:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_VARIANT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Identity"
+      }
+    }
+    ret {
+      key: "identity"
+      value: "Identity:output:0"
+    }
+    attr {
+      key: "_tf_data_function"
+      value {
+        b: true
+      }
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+              }
+            }
+          }
+        }
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "args_0"
+          }
+        }
+      }
+    }
+  }
+}
+versions {
+  producer: 730
+  min_consumer: 12
+}

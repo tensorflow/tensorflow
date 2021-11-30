@@ -1,6 +1,6 @@
 // RUN: tf-opt -split-input-file -verify-diagnostics -tf-resource-device-inference %s | FileCheck %s
 
-!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // Tests that the pass can correctly propagate device attributes inside the same
 // function.
@@ -37,7 +37,7 @@ func @propagate_in_function(
 }
 
 // -----
-!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // Tesets that the pass can propagate through tf.If's branches.
 
@@ -111,7 +111,7 @@ func @if_else(
 
 
 // -----
-!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // Tesets that the pass can propagate through tf.While's branches.
 // CHECK-LABEL: func @propagate_while_op
@@ -196,7 +196,7 @@ func @while_cond(
 }
 
 // -----
-!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // Tesets that the pass reports error on conflicting assignments from multiple
 // callers.
@@ -248,7 +248,7 @@ func @if_then_and_else(
 // -----
 
 // Test that the pass can propagate through calls
-!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // CHECK-LABEL: func @test_function
 // CHECK-SAME: {tf.device = "/TPU:0"}
@@ -257,7 +257,7 @@ func @test_function(%arg0: !tf_res) {
   // CHECK-SAME: {device = "/TPU:0"}
   %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
   %read = "tf.ReadVariableOp"(%id0) : (!tf_res) -> tensor<32xf32>
-  %cst = constant dense<3.0> : tensor<32xf32>
+  %cst = arith.constant dense<3.0> : tensor<32xf32>
   %add = "tf.AddV2"(%read, %cst) : (tensor<32xf32>, tensor<32xf32>) -> tensor<32xf32>
   "tf.AssignVariableOp"(%arg0, %add) : (!tf_res, tensor<32xf32>) -> ()
   return
@@ -446,9 +446,9 @@ func @propagate_while_region_inlined(
             // CHECK-SAME: {device = "/TPU:0"}
             %cid0 = "tf.Identity"(%carg1) : (!tf_res) -> !tf_res loc("cid0")
             %read = "tf.ReadVariableOp"(%cid0) : (!tf_res) -> tensor<32xf32>
-            %cst = constant dense<3.0> : tensor<32xf32>
+            %cst = arith.constant dense<3.0> : tensor<32xf32>
             %cmp = "tf.Less"(%read, %cst) : (tensor<32xf32>, tensor<32xf32>) -> tensor<32xi1>
-            %dims = constant dense<0> : tensor<1xi32>
+            %dims = arith.constant dense<0> : tensor<1xi32>
             %reduce = "tf.All"(%cmp, %dims) {keep_dims = false} : (tensor<32xi1>, tensor<1xi32>) -> tensor<i1>
             "tf.Yield"(%reduce) : (tensor<i1>) -> ()
         }, {
@@ -528,9 +528,9 @@ func @whileregion_cond(%arg0: tensor<i32>, %arg1: !tf_res, %arg2: !tf_res) -> te
       // CHECK-SAME: {device = "/TPU:0"}
       %id0 = "tf.Identity"(%arg1) : (!tf_res) -> !tf_res
       %read = "tf.ReadVariableOp"(%id0) : (!tf_res) -> tensor<32xf32>
-      %cst = constant dense<3.0> : tensor<32xf32>
+      %cst = arith.constant dense<3.0> : tensor<32xf32>
       %cmp = "tf.Less"(%read, %cst) : (tensor<32xf32>, tensor<32xf32>) -> tensor<32xi1>
-      %dims = constant dense<0> : tensor<1xi32>
+      %dims = arith.constant dense<0> : tensor<1xi32>
       %reduce = "tf.All"(%cmp, %dims) {keep_dims = false} : (tensor<32xi1>, tensor<1xi32>) -> tensor<i1>
       tf_executor.yield %reduce : tensor<i1>
     }

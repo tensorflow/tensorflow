@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/random_dataset_op.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -22,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -37,13 +42,24 @@ namespace experimental {
 
 class RandomDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 seed, int64 seed2)
+  Dataset(OpKernelContext* ctx, int64_t seed, int64_t seed2)
       : DatasetBase(DatasetContext(ctx)), seeds_(seed, seed2) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return absl::make_unique<Iterator>(
         Iterator::Params{this, strings::StrCat(prefix, "::Random")});
+  }
+
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    // We use kint64 to generate an effectively infinite number of "splits".
+    // These splits aren't actually used during iteration.
+    // TODO(aaudibert): Avoid sending dummy splits over RPC when using tf.data
+    // service with RandomDataset.
+    split_providers->push_back(
+        absl::make_unique<IndexSplitProvider>(kint64max));
+    return Status::OK();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -62,7 +78,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
                            seeds_.second, ")::Dataset");
   }
 
-  int64 Cardinality() const override { return kInfiniteCardinality; }
+  int64_t CardinalityInternal() const override { return kInfiniteCardinality; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();
@@ -97,7 +113,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       out_tensors->reserve(1);
       mutex_lock l(mu_);
       out_tensors->emplace_back(ctx->allocator({}), DT_INT64, TensorShape({}));
-      out_tensors->back().scalar<int64>()() = Random();
+      out_tensors->back().scalar<int64_t>()() = Random();
       *end_of_sequence = false;
       return Status::OK();
     }
@@ -135,26 +151,26 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       auto out = generator_();
       return out;
     }
-    const std::pair<int64, int64> seeds_;
+    const std::pair<int64_t, int64_t> seeds_;
     mutex mu_;
     random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
         TF_GUARDED_BY(mu_);
-    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+    int64_t num_random_samples_ TF_GUARDED_BY(mu_) = 0;
   };
 
-  const std::pair<int64, int64> seeds_;
+  const std::pair<int64_t, int64_t> seeds_;
 };  // RandomDatasetOp::Dataset
 
 RandomDatasetOp::RandomDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {}
 
 void RandomDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
-  int64 seed;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed", &seed));
+  int64_t seed;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "seed", &seed));
 
-  int64 seed2;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed2", &seed2));
+  int64_t seed2;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "seed2", &seed2));
 
   *output = new Dataset(ctx, seed, seed2);
 }

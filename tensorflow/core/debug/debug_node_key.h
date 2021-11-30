@@ -28,7 +28,7 @@ struct DebugNodeKey {
   static const char* const kDeviceTag;
 
   DebugNodeKey(const string& device_name, const string& node_name,
-               const int32 output_slot, const string& debug_op);
+               const int32_t output_slot, const string& debug_op);
 
   // Converts a device name string to a device path string.
   // E.g., /job:localhost/replica:0/task:0/cpu:0 will be converted to

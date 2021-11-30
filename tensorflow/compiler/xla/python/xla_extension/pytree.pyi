@@ -13,9 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Callable, Iterable, List, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, Callable, Hashable, Iterable, List, Optional, Sequence, Tuple, Type, TypeVar
 
-_T = TypeVar("T")
+_T = TypeVar("_T")
 
 def flatten(
     tree: Any,
@@ -30,7 +30,7 @@ class PyTreeDef:
   def compose(self, __inner: PyTreeDef) -> PyTreeDef: ...
   def walk(self,
            __f_node: Callable[[Any], Any],
-           __f_leaf: Callable[[_T], Any],
+           __f_leaf: Optional[Callable[[_T], Any]],
            leaves: Iterable[Any]) -> Any: ...
   def from_iterable_tree(self, __xs: Any): ...
   def children(self) -> Sequence[PyTreeDef]: ...
@@ -41,7 +41,10 @@ class PyTreeDef:
   def __ne__(self, __other: PyTreeDef) -> bool: ...
   def __hash__(self) -> int: ...
 
+_Children = TypeVar("_Children", bound=Iterable[Any])
+_AuxData = TypeVar("_AuxData", bound=Hashable)
+
 def register_node(
     __type: Type[_T],
-    to_iterable: Callable[[_T], Tuple[Iterable[Any], Any]],
-    from_iterable: Callable[[Any, Iterable[Any]], _T]) -> Any: ...
+    to_iterable: Callable[[_T], Tuple[_Children, _AuxData]],
+    from_iterable: Callable[[_AuxData, _Children], _T]) -> Any: ...

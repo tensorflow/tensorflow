@@ -15,19 +15,50 @@ limitations under the License.
 
 #include "tensorflow/core/util/determinism.h"
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
-bool OpDeterminismRequired() {
-  static bool op_determinism_required = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    return deterministic_ops;
-  }();
-  return op_determinism_required;
-}
+namespace {
+
+class DeterminismState {
+ public:
+  explicit DeterminismState(absl::string_view env_var) : env_var_(env_var) {}
+  bool Required() {
+    mutex_lock l(*mutex_);
+
+    if (state_ == Value::NOT_SET) {
+      bool env_var_set = false;
+      TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(env_var_,
+                                                 /*default_val=*/false,
+                                                 &env_var_set));
+      state_ = env_var_set ? Value::ENABLED : Value::DISABLED;
+    }
+
+    return state_ == Value::ENABLED;
+  }
+  void Enable(bool enabled) {
+    mutex_lock l(*mutex_);
+    state_ = enabled ? Value::ENABLED : Value::DISABLED;
+  }
+
+ private:
+  absl::string_view env_var_;
+  enum class Value { DISABLED, ENABLED, NOT_SET };
+  mutex* mutex_ = new mutex;
+  Value state_ = Value::NOT_SET;
+};
+
+}  // namespace
+
+DeterminismState OpDeterminismState = DeterminismState("TF_DETERMINISTIC_OPS");
+DeterminismState OpOrderDeterminismState =
+    DeterminismState("TF_DETERMINISTIC_ORDER");
+
+bool OpDeterminismRequired() { return OpDeterminismState.Required(); }
+void EnableOpDeterminism(bool enabled) { OpDeterminismState.Enable(enabled); }
+bool OpOrderDeterminismRequired() { return OpOrderDeterminismState.Required(); }
 
 }  // namespace tensorflow

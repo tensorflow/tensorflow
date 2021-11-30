@@ -1,7 +1,0 @@
-path: "tensorflow.keras.datasets.mnist"
-tf_module {
-  member_method {
-    name: "load_data"
-    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=[\'mnist.npz\'], "
-  }
-}

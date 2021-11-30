@@ -32,6 +32,21 @@ bool IsSupportedTFLiteResourceOp(Operation* op) {
                    TF::LookupTableFindV2Op, TF::LookupTableImportV2Op,
                    TF::LookupTableSizeV2Op>(op);
 }
+
+// Returns true if 'op' is TF/TFLite control flow op that can accept resource
+// type. Usually these ops are just pass through, they call another subgraph and
+// pass the operands to.
+bool IsSupportedTFLiteControlFlow(Operation* op) {
+  return llvm::isa<TFL::WhileOp, TFL::IfOp, TFL::CallOnceOp>(op);
+}
+
+// Returns true if the 'op' is one of the supported TF control flow ops or
+// dataset ops. Those ops just forward the operands to other subgraphs.
+bool IsSupportedTFDataForwardingOp(Operation* op) {
+  return llvm::isa<TF::MapDatasetOp, TF::ReduceDatasetOp, TF::IfOp,
+                   TF::WhileOp>(op);
+}
+
 }  // namespace
 
 // Pass which analyzes the variables in the graph and add an attribute whether
@@ -44,6 +59,16 @@ class AnalyzeVariablesPass
   AnalyzeVariablesPass() = default;
   AnalyzeVariablesPass(const AnalyzeVariablesPass&) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-analyze-variables-pass";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Analyze variables in the graph.";
+  }
+
   void runOnOperation() override {
     auto* context = &getContext();
     auto module = getOperation();
@@ -52,10 +77,17 @@ class AnalyzeVariablesPass
     module.walk([&](Operation* op) {
       // Skip ops that are supported natively by TFLite.
       if (IsSupportedTFLiteResourceOp(op)) return WalkResult::advance();
-      // Check for ops that are not legalized to TFLite.
-      if (op->getDialect()->getNamespace() != "tf") {
+      if (IsSupportedTFLiteControlFlow(op)) return WalkResult::advance();
+
+      // Check for ops that are legalized to TFLite.
+      if (op->getDialect()->getNamespace() == "tfl") {
         return WalkResult::advance();
       }
+      // Check for ops that are not legalized to TFLite.
+      if (IsSupportedTFDataForwardingOp(op)) {
+        return WalkResult::advance();
+      }
+
       // If any of the operands is a resource type, then we break
       // and mark the module as not valid for TFLite legalization.
       // Note: this might disable native variables in more than needed cases.
@@ -77,8 +109,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateAnalyzeVariablesPass() {
   return std::make_unique<AnalyzeVariablesPass>();
 }
 
-static PassRegistration<AnalyzeVariablesPass> pass(
-    "tfl-analyze-variables-pass", "Analyze variables in the graph.");
+static PassRegistration<AnalyzeVariablesPass> pass([] {
+  return CreateAnalyzeVariablesPass();
+});
 
 }  // namespace TFL
 }  // namespace mlir

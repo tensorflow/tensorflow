@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/core/platform/path.h"
 
 namespace mlir {
@@ -34,18 +35,17 @@ namespace {
 // This pass will replace a func's saved model asset bound inputs which are
 // bound to tf.InitializeTableFromTextFileV2Op ops with tf.Const ops inside the
 // func's body.
-struct FreezeAssetsPass
-    : public PassWrapper<FreezeAssetsPass, OperationPass<ModuleOp>> {
+struct FreezeAssetsPass : public FreezeAssetsPassBase<FreezeAssetsPass> {
   FreezeAssetsPass() = default;
 
   FreezeAssetsPass(const FreezeAssetsPass& pass) {}
   explicit FreezeAssetsPass(std::string saved_model_dir) {
     this->saved_model_dir = saved_model_dir;
   }
-
   void runOnOperation() override;
 
  private:
+  // TODO(team): should be a pass option.
   std::string saved_model_dir;
 };
 
@@ -109,11 +109,6 @@ void FreezeAssetsPass::runOnOperation() {
 }
 
 }  // namespace
-
-// For "opt" to pick up this pass.
-static PassRegistration<FreezeAssetsPass> freeze_assets_pass(
-    "tf-saved-model-freeze-assets",
-    "Freeze tf_saved_model.asset's in func bodies.");
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeAssetsPass(
     std::string saved_model_dir) {

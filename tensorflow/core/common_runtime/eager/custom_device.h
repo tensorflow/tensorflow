@@ -84,7 +84,7 @@ class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
 
   tensorflow::DataType DataType() const override { return dtype_; }
   Status Shape(PartialTensorShape* shape) const override;
-  Status NumElements(int64* num_elements) const override;
+  Status NumElements(int64_t* num_elements) const override;
 
   const char* DeviceName(Status* status) const override {
     return device_->name().c_str();

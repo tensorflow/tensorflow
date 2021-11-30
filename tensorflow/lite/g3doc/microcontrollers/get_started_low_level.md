@@ -6,7 +6,7 @@ microcontroller.
 ## The Hello World example
 
 The
-[Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world)
+[Hello World](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world)
 example is designed to demonstrate the absolute basics of using TensorFlow Lite
 for Microcontrollers. We train and run a model that replicates a sine function,
 i.e, it takes a single number as its input, and outputs the number's
@@ -16,9 +16,9 @@ animation.
 
 The end-to-end workflow involves the following steps:
 
-1.  [Train a model](#train-a-model) (in Python): A jupyter notebook to train,
+1.  [Train a model](#train_a_model) (in Python): A jupyter notebook to train,
     convert and optimize a model for on-device use.
-2.  [Run inference](#run-inference) (in C++ 11): An end-to-end unit test that
+2.  [Run inference](#run_inference) (in C++ 11): An end-to-end unit test that
     runs inference on the model using the [C++ library](library.md).
 
 ## Get a supported device
@@ -50,11 +50,11 @@ Learn more about supported platforms in
 Note: You can skip this section and use the trained model included in the
 example code.
 
-Use Google colaboratory to
-[train your own model](https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb).
+Use Google Colaboratory to
+[train your own model](https://colab.research.google.com/github/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb).
 For more details, refer to the `README.md`:
 
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world/train/README.md">Hello
+<a class="button button-primary" href="https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world/train/README.md">Hello
 World Training README.md</a>
 
 ## Run inference
@@ -62,11 +62,11 @@ World Training README.md</a>
 To run the model on your device, we will walk through the instructions in the
 `README.md`:
 
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world/README.md">Hello
+<a class="button button-primary" href="https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world/README.md">Hello
 World README.md</a>
 
 The following sections walk through the example's
-[`hello_world_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/hello_world_test.cc),
+[`hello_world_test.cc`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world/hello_world_test.cc),
 unit test which demonstrates how to run inference using TensorFlow Lite for
 Microcontrollers. It loads the model and runs inference several times.
 
@@ -83,16 +83,16 @@ following header files:
 #include "tensorflow/lite/version.h"
 ```
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.h)
+-   [`all_ops_resolver.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/all_ops_resolver.h)
     provides the operations used by the interpreter to run the model.
--   [`micro_error_reporter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_error_reporter.h)
+-   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_error_reporter.h)
     outputs debug information.
--   [`micro_interpreter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_interpreter.h)
+-   [`micro_interpreter.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_interpreter.h)
     contains code to load and run models.
--   [`schema_generated.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema_generated.h)
+-   [`schema_generated.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/schema/schema_generated.h)
     contains the schema for the TensorFlow Lite
     [`FlatBuffer`](https://google.github.io/flatbuffers/) model file format.
--   [`version.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/version.h)
+-   [`version.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/version.h)
     provides versioning information for the TensorFlow Lite schema.
 
 ### 2. Include the model header
@@ -163,7 +163,7 @@ if (model->version() != TFLITE_SCHEMA_VERSION) {
 ### 6. Instantiate operations resolver
 
 An
-[`AllOpsResolver`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.h)
+[`AllOpsResolver`](github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/all_ops_resolver.h)
 instance is declared. This will be used by the interpreter to access the
 operations that are used by the model:
 
@@ -178,7 +178,7 @@ load only the operations that are needed.
 
 This is done using a different class, `MicroMutableOpResolver`. You can see how
 to use it in the *Micro speech* example's
-[`micro_speech_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/micro_speech/micro_speech_test.cc).
+[`micro_speech_test.cc`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/micro_speech/micro_speech_test.cc).
 
 ### 7. Allocate memory
 
@@ -245,7 +245,7 @@ TF_LITE_MICRO_EXPECT_EQ(kTfLiteFloat32, input->type);
 
 The enum value `kTfLiteFloat32` is a reference to one of the TensorFlow Lite
 data types, and is defined in
-[`common.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h).
+[`common.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/c/common.h).
 
 ### 11. Provide an input value
 
@@ -272,7 +272,7 @@ if (invoke_status != kTfLiteOk) {
 
 We can check the return value, a `TfLiteStatus`, to determine if the run was
 successful. The possible values of `TfLiteStatus`, defined in
-[`common.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h),
+[`common.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/c/common.h),
 are `kTfLiteOk` and `kTfLiteError`.
 
 The following code asserts that the value is `kTfLiteOk`, meaning inference was
@@ -336,7 +336,7 @@ TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
 
 Once you have walked through this unit test, you should be able to understand
 the example's application code, located in
-[`main_functions.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/main_functions.cc).
+[`main_functions.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/main_functions.cc).
 It follows a similar process, but generates an input value based on how many
 inferences have been run, and calls a device-specific function that displays the
 model's output to the user.

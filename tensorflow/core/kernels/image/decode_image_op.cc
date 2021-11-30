@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "tensorflow/core/lib/gtl/cleanup.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/strings/escaping.h"
@@ -166,7 +168,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   // Helper for decoding BMP.
-  inline int32 ByteSwapInt32ForBigEndian(int32 x) {
+  inline int32 ByteSwapInt32ForBigEndian(int32_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_32(x);
     } else {
@@ -175,7 +177,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   // Helper for decoding BMP.
-  inline int16 ByteSwapInt16ForBigEndian(int16 x) {
+  inline int16 ByteSwapInt16ForBigEndian(int16_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_16(x);
     } else {
@@ -326,6 +328,15 @@ class DecodeImageV2Op : public OpKernel {
         context, png::CommonInitDecode(input, channels_, channel_bits, &decode),
         errors::InvalidArgument("Invalid PNG. Failed to initialize decoder."));
 
+    // If we reach this point, then there is data in `decode` which must be
+    // freed by the time we end execution in this function. We cannot call
+    // `png::CommonFreeDecode()` before an `OP_REQUIRES` because if
+    // `OP_REQUIRES` constraint is satisfied then the data would be freed
+    // prematurely. Instead, let's use a `Cleanup` object.
+    auto cleanup = gtl::MakeCleanup([&decode]() {
+      png::CommonFreeDecode(&decode);
+    });
+
     // Verify that width and height are not too large:
     // - verify width and height don't overflow int.
     // - width can later be multiplied by channels_ and sizeof(uint16), so
@@ -334,27 +345,29 @@ class DecodeImageV2Op : public OpKernel {
     //   bits to spare as well.
     const int width = static_cast<int>(decode.width);
     const int height = static_cast<int>(decode.height);
-    const int64 total_size =
-        static_cast<int64>(width) * static_cast<int64>(height);
-    if (width != static_cast<int64>(decode.width) || width <= 0 ||
-        width >= (1LL << 27) || height != static_cast<int64>(decode.height) ||
+    const int64_t total_size =
+        static_cast<int64_t>(width) * static_cast<int64_t>(height);
+    if (width != static_cast<int64_t>(decode.width) || width <= 0 ||
+        width >= (1LL << 27) || height != static_cast<int64_t>(decode.height) ||
         height <= 0 || height >= (1LL << 27) || total_size >= (1LL << 29)) {
-      png::CommonFreeDecode(&decode);
       OP_REQUIRES(context, false,
                   errors::InvalidArgument("PNG size too large for int: ",
                                           decode.width, " by ", decode.height));
     }
 
     Tensor* output = nullptr;
-    Status status;
     // By the existing API, we support decoding PNG with `DecodeGif` op.
     // We need to make sure to return 4-D shapes when using `DecodeGif`.
     if (op_type_ == "DecodeGif") {
-      status = context->allocate_output(
-          0, TensorShape({1, height, width, decode.channels}), &output);
+      OP_REQUIRES_OK(
+          context,
+          context->allocate_output(
+              0, TensorShape({1, height, width, decode.channels}), &output));
     } else {
-      status = context->allocate_output(
-          0, TensorShape({height, width, decode.channels}), &output);
+      OP_REQUIRES_OK(
+          context,
+          context->allocate_output(
+              0, TensorShape({height, width, decode.channels}), &output));
     }
 
     if (op_type_ == "DecodeBmp") {
@@ -373,9 +386,6 @@ class DecodeImageV2Op : public OpKernel {
                       "DecodeAndCropJpeg operation can run on JPEG only, but "
                       "detected PNG."));
     }
-
-    if (!status.ok()) png::CommonFreeDecode(&decode);
-    OP_REQUIRES_OK(context, status);
 
     if (data_type_ == DataType::DT_UINT8) {
       OP_REQUIRES(
@@ -491,7 +501,7 @@ class DecodeImageV2Op : public OpKernel {
                 errors::InvalidArgument("Invalid GIF data (size ", input.size(),
                                         "), ", error_string));
 
-    // For when desired data type is unit8, the output buffer is already
+    // For when desired data type is uint8, the output buffer is already
     // allocated during the `gif::Decode` call above; return.
     if (data_type_ == DataType::DT_UINT8) {
       return;
@@ -544,18 +554,18 @@ class DecodeImageV2Op : public OpKernel {
                                         input.size(), " bytes"));
 
     const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
-    int32 header_size_ = internal::SubtleMustCopy(
+    int32_t header_size_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 10)));
-    const int32 header_size = ByteSwapInt32ForBigEndian(header_size_);
-    int32 width_ = internal::SubtleMustCopy(
+    const int32_t header_size = ByteSwapInt32ForBigEndian(header_size_);
+    int32_t width_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 18)));
-    const int32 width = ByteSwapInt32ForBigEndian(width_);
-    int32 height_ = internal::SubtleMustCopy(
+    const int32_t width = ByteSwapInt32ForBigEndian(width_);
+    int32_t height_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 22)));
-    const int32 height = ByteSwapInt32ForBigEndian(height_);
-    int16 bpp_ = internal::SubtleMustCopy(
+    const int32_t height = ByteSwapInt32ForBigEndian(height_);
+    int16_t bpp_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int16*>(img_bytes + 28)));
-    const int16 bpp = ByteSwapInt16ForBigEndian(bpp_);
+    const int16_t bpp = ByteSwapInt16ForBigEndian(bpp_);
 
     // `channels_` is desired number of channels. `img_channels` is number of
     // channels inherent in the image.
@@ -578,12 +588,12 @@ class DecodeImageV2Op : public OpKernel {
     // so rounding down to something that's still ridiculously big.
     OP_REQUIRES(
         context,
-        (static_cast<int64>(width) * std::abs(static_cast<int64>(height))) <
-            static_cast<int64>(std::numeric_limits<int32_t>::max() / 8),
+        (static_cast<int64_t>(width) * std::abs(static_cast<int64_t>(height))) <
+            static_cast<int64_t>(std::numeric_limits<int32_t>::max() / 8),
         errors::InvalidArgument(
             "Total possible pixel bytes must be less than 2^30"));
 
-    const int32 abs_height = abs(height);
+    const int32_t abs_height = abs(height);
 
     // there may be padding bytes when the width is not a multiple of 4 bytes
     const int row_size = (img_channels * width + 3) / 4 * 4;
@@ -598,12 +608,12 @@ class DecodeImageV2Op : public OpKernel {
             "they differ by ",
             size_diff));
 
-    const int64 last_pixel_offset = static_cast<int64>(header_size) +
-                                    (abs_height - 1) * row_size +
-                                    (width - 1) * img_channels;
+    const int64_t last_pixel_offset = static_cast<int64_t>(header_size) +
+                                      (abs_height - 1) * row_size +
+                                      (width - 1) * img_channels;
 
     // [expected file size] = [last pixel offset] + [last pixel size=channels]
-    const int64 expected_file_size = last_pixel_offset + img_channels;
+    const int64_t expected_file_size = last_pixel_offset + img_channels;
 
     OP_REQUIRES(
         context, (expected_file_size <= input.size()),

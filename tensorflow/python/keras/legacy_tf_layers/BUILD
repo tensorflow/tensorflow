@@ -2,7 +2,6 @@
 #   Contains the legacy TF layers (internal TensorFlow version).
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = [
@@ -23,6 +22,7 @@ py_library(
     srcs = [
         "__init__.py",
         "base.py",
+        "variable_scope_shim.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -60,18 +60,6 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/keras/layers",
-    ],
-)
-
-py_library(
-    name = "normalization",
-    srcs = ["normalization.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":layers_base",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras/layers/normalization",
     ],
 )
 
@@ -183,29 +171,33 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "normalization_test",
-    size = "medium",
-    srcs = ["normalization_test.py"],
-    main = "normalization_test.py",
+tf_py_test(
+    name = "variable_scope_shim_test",
+    size = "small",
+    srcs = ["variable_scope_shim_test.py"],
+    main = "variable_scope_shim_test.py",
     python_version = "PY3",
-    shard_count = 10,
+    tags = ["no_windows"],
     deps = [
-        ":convolutional",
-        ":normalization",
-        "//tensorflow/core:protos_all_py",
+        ":core",
+        ":layers_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:saver",
-        "//tensorflow/python:training_lib",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras/engine:base_layer",
+        "//tensorflow/python/keras/engine:input_spec",
     ],
 )

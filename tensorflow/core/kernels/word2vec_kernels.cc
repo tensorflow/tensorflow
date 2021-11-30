@@ -90,9 +90,9 @@ class SkipgramOp : public OpKernel {
           }
         }
       }
-      words_per_epoch.scalar<int64>()() = corpus_size_;
+      words_per_epoch.scalar<int64_t>()() = corpus_size_;
       current_epoch.scalar<int32>()() = current_epoch_;
-      total_words_processed.scalar<int64>()() = total_words_processed_;
+      total_words_processed.scalar<int64_t>()() = total_words_processed_;
     }
     ctx->set_output(0, word_);
     ctx->set_output(1, freq_);
@@ -116,7 +116,7 @@ class SkipgramOp : public OpKernel {
   int32 vocab_size_ = 0;
   Tensor word_;
   Tensor freq_;
-  int64 corpus_size_ = 0;
+  int64_t corpus_size_ = 0;
   std::vector<int32> corpus_;
   std::vector<Example> precalc_examples_;
   int precalc_index_ = 0;
@@ -127,7 +127,7 @@ class SkipgramOp : public OpKernel {
   random::PhiloxRandom philox_ TF_GUARDED_BY(mu_);
   random::SimplePhilox rng_ TF_GUARDED_BY(mu_);
   int32 current_epoch_ TF_GUARDED_BY(mu_) = -1;
-  int64 total_words_processed_ TF_GUARDED_BY(mu_) = 0;
+  int64_t total_words_processed_ TF_GUARDED_BY(mu_) = 0;
   int32 example_pos_ TF_GUARDED_BY(mu_);
   int32 label_pos_ TF_GUARDED_BY(mu_);
   int32 label_limit_ TF_GUARDED_BY(mu_);
@@ -150,7 +150,7 @@ class SkipgramOp : public OpKernel {
               example_pos_ = 0;
             }
             if (subsample_ > 0) {
-              int32 word_freq = freq_.flat<int32>()(corpus_[example_pos_]);
+              int32_t word_freq = freq_.flat<int32>()(corpus_[example_pos_]);
               // See Eq. 5 in http://arxiv.org/abs/1310.4546
               float keep_prob =
                   (std::sqrt(word_freq / (subsample_ * corpus_size_)) + 1) *
@@ -163,7 +163,7 @@ class SkipgramOp : public OpKernel {
             sentence_[i] = corpus_[example_pos_];
           }
         }
-        const int32 skip = 1 + rng_.Uniform(window_size_);
+        const int32_t skip = 1 + rng_.Uniform(window_size_);
         label_pos_ = std::max<int32>(0, sentence_index_ - skip);
         label_limit_ =
             std::min<int32>(kSentenceSize, sentence_index_ + skip + 1);
@@ -211,9 +211,9 @@ class SkipgramOp : public OpKernel {
     Tensor word(DT_STRING, TensorShape({vocab_size_}));
     Tensor freq(DT_INT32, TensorShape({vocab_size_}));
     word.flat<tstring>()(0) = "UNK";
-    static const int32 kUnkId = 0;
+    static const int32_t kUnkId = 0;
     std::unordered_map<string, int32> word_id;
-    int64 total_counted = 0;
+    int64_t total_counted = 0;
     for (std::size_t i = 0; i < ordered.size(); ++i) {
       const auto& w = ordered[i].first;
       auto id = i + 1;
@@ -282,9 +282,9 @@ class NegTrainOp : public OpKernel {
     auto Texamples = examples.flat<int32>();
     auto Tlabels = labels.flat<int32>();
     auto lr = learning_rate.scalar<float>()();
-    const int64 vocab_size = w_in.dim_size(0);
-    const int64 dims = w_in.dim_size(1);
-    const int64 batch_size = examples.dim_size(0);
+    const int64_t vocab_size = w_in.dim_size(0);
+    const int64_t dims = w_in.dim_size(1);
+    const int64_t batch_size = examples.dim_size(0);
     OP_REQUIRES(ctx, vocab_size == sampler_->num(),
                 errors::InvalidArgument("vocab_size mismatches: ", vocab_size,
                                         " vs. ", sampler_->num()));
@@ -303,10 +303,10 @@ class NegTrainOp : public OpKernel {
     auto rnd = base_.ReserveSamples32(batch_size * num_samples_ * 8);
     random::SimplePhilox srnd(&rnd);
 
-    for (int64 i = 0; i < batch_size; ++i) {
-      const int32 example = Texamples(i);
+    for (int64_t i = 0; i < batch_size; ++i) {
+      const int32_t example = Texamples(i);
       DCHECK(0 <= example && example < vocab_size) << example;
-      const int32 label = Tlabels(i);
+      const int32_t label = Tlabels(i);
       DCHECK(0 <= label && label < vocab_size) << label;
       auto v_in = Tw_in.chip<0>(example);
 

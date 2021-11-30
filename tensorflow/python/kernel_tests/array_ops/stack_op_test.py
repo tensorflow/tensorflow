@@ -14,18 +14,18 @@
 # ==============================================================================
 """Functional tests for Stack and ParallelStack Ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
@@ -43,7 +43,7 @@ class StackOpTest(test.TestCase):
 
   def randn(self, shape, dtype):
     data = np.random.randn(*shape)
-    if dtype == np.bool:
+    if dtype == np.bool_:
       return data < 0  # Naive casting yields True with P(1)!
     else:
       return data.astype(dtype)
@@ -53,7 +53,7 @@ class StackOpTest(test.TestCase):
     for shape in (2,), (3,), (2, 3), (3, 2), (8, 2, 10):
       rank = len(shape)
       for axis in range(-rank, rank):
-        for dtype in [np.bool, np.float32, np.int32, np.int64]:
+        for dtype in [np.bool_, np.float32, np.int32, np.int64]:
           data = self.randn(shape, dtype)
           xs = np_split_squeeze(data, axis)
           # Stack back into a single tensorflow tensor
@@ -72,6 +72,19 @@ class StackOpTest(test.TestCase):
             xs = list(map(constant_op.constant, data))
             c = array_ops.parallel_stack(xs)
             self.assertAllEqual(c, data)
+
+  def testParallelConcatShapeZero(self):
+    if not tf2.enabled():
+      self.skipTest("only fails in TF2")
+
+    @def_function.function
+    def f():
+      y = gen_array_ops.parallel_concat(values=[["tf"]], shape=0)
+      return y
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"0th dimension of value .* is less than"):
+      f()
 
   def testSimpleParallelGPU(self):
     # tf.parallel_stack is only supported in graph mode.
@@ -94,7 +107,7 @@ class StackOpTest(test.TestCase):
 
       # Check on a variety of shapes and types
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (8, 2, 10):
-        for dtype in [np.bool, np.float32, np.int16, np.int32, np.int64]:
+        for dtype in [np.bool_, np.float32, np.int16, np.int32, np.int64]:
           with self.subTest(shape=shape, dtype=dtype):
             data = self.randn(shape, dtype)
             # Stack back into a single tensorflow tensor directly using np array
@@ -235,7 +248,7 @@ class StackOpTest(test.TestCase):
     for shape in (3,), (2, 2, 3), (4, 1, 2, 2), (8, 2, 10):
       rank = len(shape)
       expected = self.randn(shape, np.float32)
-      for dtype in [np.bool, np.float32, np.int32, np.int64]:
+      for dtype in [np.bool_, np.float32, np.int32, np.int64]:
         # For all the possible axis to split it, including negative indices.
         for axis in range(-rank, rank):
           test_arrays = np_split_squeeze(expected, axis)
@@ -254,12 +267,14 @@ class StackOpTest(test.TestCase):
 
   def testDimOutOfRange(self):
     t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-    with self.assertRaisesRegex(ValueError, r"axis = 2 not in \[-2, 2\)"):
+    with self.assertRaisesRegex(ValueError,
+                                r"Argument `axis` = 2 not in range \[-2, 2\)"):
       array_ops.stack(t, axis=2)
 
   def testDimOutOfNegativeRange(self):
     t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-    with self.assertRaisesRegex(ValueError, r"axis = -3 not in \[-2, 2\)"):
+    with self.assertRaisesRegex(ValueError,
+                                r"Argument `axis` = -3 not in range \[-2, 2\)"):
       array_ops.stack(t, axis=-3)
 
   def testComplex(self):

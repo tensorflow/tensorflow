@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_RANDOM_OPS_UTIL_H_
 
 #include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

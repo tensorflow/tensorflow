@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
@@ -84,7 +85,8 @@ struct ReifyReturnTypeShapesPattern : public RewritePattern {
 };
 
 struct TestInferShapedTypeMethodsPass
-    : public PassWrapper<TestInferShapedTypeMethodsPass, FunctionPass> {
+    : public TestInferShapedTypeMethodsPassBase<
+          TestInferShapedTypeMethodsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect>();
   }

@@ -53,18 +53,63 @@ LogicalResult VerifyCollectivePermuteSourceTargetPairs(
   return success();
 }
 
+LogicalResult VerifyReduceScatter(Operation *op, TypeRange operand_types,
+                                  TypeRange result_types,
+                                  uint64_t scatter_dimension) {
+  // If operand and result are both ranked, then the size of the scatter
+  // dimension in the operand should be a multiple of the size of the scatter
+  // dimension in the result.
+  for (auto it : llvm::zip(operand_types, result_types)) {
+    auto operand_type = std::get<0>(it).cast<ShapedType>();
+    auto result_type = std::get<1>(it).cast<ShapedType>();
+    if (!operand_type.hasRank() || !result_type.hasRank()) continue;
+    if (operand_type.getRank() != result_type.getRank())
+      return op->emitOpError() << "operand and result should have same rank";
+    if (scatter_dimension >= operand_type.getRank())
+      return op->emitOpError()
+             << "scatter dim should be less than operand/result rank";
+    if (operand_type.isDynamicDim(scatter_dimension) ||
+        result_type.isDynamicDim(scatter_dimension))
+      continue;
+    if (operand_type.getDimSize(scatter_dimension) == 0)
+      return op->emitOpError() << "operand scatter dimension cannot be zero";
+    if (result_type.getDimSize(scatter_dimension) == 0)
+      return op->emitOpError() << "result scatter dimension cannot be zero";
+    if ((operand_type.getDimSize(scatter_dimension) %
+         result_type.getDimSize(scatter_dimension)) != 0)
+      return op->emitOpError()
+             << "operand scatter dimension has size "
+             << operand_type.getDimSize(scatter_dimension)
+             << ", expected to be a multiple of result scatter dimension size "
+             << result_type.getDimSize(scatter_dimension);
+
+    // Non scatter dimensions should be equal.
+    for (uint64_t index : llvm::seq<uint64_t>(0, operand_type.getRank())) {
+      if (index == scatter_dimension || operand_type.isDynamicDim(index) ||
+          result_type.isDynamicDim(index))
+        continue;
+      if (operand_type.getDimSize(index) != result_type.getDimSize(index))
+        return op->emitOpError()
+               << "non scatter dimensions should be same for operand ("
+               << operand_type.getDimSize(index) << ") and result ("
+               << result_type.getDimSize(index) << ")";
+    }
+  }
+  return success();
+}
+
 namespace {
 // Custom formatting for convolution window attributes.
 void printWindowAttribute(OpAsmPrinter &p, DenseElementsAttr attribute) {
-  if (attribute.getType().getElementType().isInteger(/*width=*/1)) {
+  if (attribute.getElementType().isInteger(/*width=*/1)) {
     // boolean attribute.
-    llvm::interleaveComma(attribute.getBoolValues(), p,
+    llvm::interleaveComma(attribute.getValues<bool>(), p,
                           [&](bool b) { p << (b ? 1 : 0); });
     return;
   }
   if (attribute.getType().getRank() == 2) {
     // Padding is Nx2 attribute.
-    auto it = attribute.getValues<int64_t>().begin();
+    auto it = attribute.value_begin<int64_t>();
     std::vector<std::pair<int64_t, int64_t>> values(attribute.getNumElements() /
                                                     2);
     for (auto &item : values) {
@@ -119,32 +164,6 @@ ParseResult parseWindowAttributes(OpAsmParser &parser,
                                   DenseElementsAttr &window_reversal) {
   StringRef attribute_name;
 
-  // Helper to parse an array of the form [ e0, e1, .. ]
-  auto parse_array = [&](std::function<ParseResult(void)> parse_element,
-                         llvm::Optional<size_t> expected_size =
-                             llvm::None) -> ParseResult {
-    if (parser.parseLSquare()) {
-      return failure();
-    }
-    size_t size = 0;
-    do {
-      if (parse_element()) {
-        return failure();
-      }
-      size++;
-    } while (parser.parseOptionalComma().succeeded());
-    if (parser.parseRSquare()) {
-      return failure();
-    }
-    if (expected_size && size != *expected_size) {
-      return parser.emitError(parser.getCurrentLocation(),
-                              "Expected array with")
-             << *expected_size << " elements, got " << size
-             << " elements instead";
-    }
-    return success();
-  };
-
   llvm::StringSet<> allowed_attribute_names{
       {"stride", "pad", "lhs_dilate", "rhs_dilate", "reverse"}};
 
@@ -168,21 +187,37 @@ ParseResult parseWindowAttributes(OpAsmParser &parser,
     };
 
     if (attribute_name == "pad") {
-      // Parse a 2D array of integers.
-      auto inner_parser = [&]() {
-        return parse_array(int64_parser, /*expected_size=*/2);
+      // Parse 2D array of integers.
+      // Helper to parse an array of two integer elements such as [e0, e1].
+      auto inner_parser = [&]() -> ParseResult {
+        size_t num_old_elements = values.size();
+        if (parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::Square,
+                                           int64_parser))
+          return failure();
+        size_t num_parsed_elements = values.size() - num_old_elements;
+        constexpr size_t kExpectedElements = 2;
+        if (num_parsed_elements != kExpectedElements)
+          return parser.emitError(parser.getCurrentLocation())
+                 << "Expected array with " << kExpectedElements
+                 << " elements, got " << num_parsed_elements
+                 << " elements instead";
+        return success();
       };
-      if (parse_array(inner_parser)) {
+
+      if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                         inner_parser)) {
         return failure();
       }
       const int64_t size = static_cast<int64_t>(values.size());
       // values should be filled with the Nx2 padding values.
+      assert(size % 2 == 0);
       auto ty = RankedTensorType::get({size / 2, 2},
                                       parser.getBuilder().getIntegerType(64));
       padding = DenseIntElementsAttr::get(ty, values);
     } else {
       // Parse 1D array of integers.
-      if (parse_array(int64_parser)) {
+      if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                         int64_parser)) {
         return failure();
       }
       const int64_t size = static_cast<int64_t>(values.size());

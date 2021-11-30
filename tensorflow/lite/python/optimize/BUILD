@@ -24,6 +24,7 @@ cc_library(
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -54,6 +55,7 @@ py_library(
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
         "//tensorflow/lite/python:convert_phase",
+        "//tensorflow/lite/python:interpreter",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:util",
         "//third_party/py/numpy",

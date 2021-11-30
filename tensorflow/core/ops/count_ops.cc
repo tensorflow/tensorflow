@@ -41,6 +41,8 @@ Status DenseCountSparseOutputShapeFn(InferenceContext *c) {
 }
 
 Status SparseCountSparseOutputShapeFn(InferenceContext *c) {
+  ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));
   auto rank = c->Dim(c->input(0), 1);
   auto nvals = c->UnknownDim();
   c->set_output(0, c->Matrix(nvals, rank));  // out.indices
@@ -50,7 +52,7 @@ Status SparseCountSparseOutputShapeFn(InferenceContext *c) {
 }
 
 Status RaggedCountSparseOutputShapeFn(InferenceContext *c) {
-  int32 rank = c->Rank(c->input(1));
+  int32_t rank = c->Rank(c->input(1));
   if (rank != c->kUnknownRank) {
     ++rank;  // Add the ragged dimension
   }

@@ -179,7 +179,7 @@ class ConditionalAccumulatorBaseApplyGradientOp
     }
 
     // Actually try to apply gradient now
-    accumulator->TryApplyGrad(local_step_tensor->scalar<int64>()(), ctx);
+    accumulator->TryApplyGrad(local_step_tensor->scalar<int64_t>()(), ctx);
   }
 };
 

@@ -90,9 +90,9 @@ static void ReduceToScalar(::testing::benchmark::State& state,
   test::Benchmark(device, ToScalar<T>(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y * sizeof(T));
 }
 
@@ -102,9 +102,9 @@ static void DoRowReduce(::testing::benchmark::State& state,
   test::Benchmark(device, RowReduce(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y * sizeof(float));
 }
 
@@ -114,9 +114,9 @@ static void DoColReduce(::testing::benchmark::State& state,
   test::Benchmark(device, ColReduce(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y * sizeof(float));
 }
 
@@ -126,9 +126,9 @@ static void Do3DYReduce(::testing::benchmark::State& state,
   test::Benchmark(device, ThreeDYReduce(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y * sizeof(float));
 }
 
@@ -138,9 +138,9 @@ static void Do3DXZReduce(::testing::benchmark::State& state,
   test::Benchmark(device, ThreeDXZReduce(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y * sizeof(float));
 }
 

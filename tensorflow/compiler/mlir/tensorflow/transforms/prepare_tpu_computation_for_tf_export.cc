@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 
@@ -51,8 +52,8 @@ bool SupportsCommunicationComputation(Operation* op) {
 }
 
 class PrepareTpuComputationForTfExportPass
-    : public PassWrapper<PrepareTpuComputationForTfExportPass,
-                         OperationPass<ModuleOp>> {
+    : public PrepareTpuComputationForTfExportPassBase<
+          PrepareTpuComputationForTfExportPass> {
   void runOnOperation() override;
 };
 
@@ -115,7 +116,7 @@ class RewriteXlaHostComputeMlir
         /*ancestors=*/rewriter.getArrayAttr({}),
         rewriter.getArrayAttr(shape_attrs),
         /*shape_inference_graph=*/
-        cloned_func ? rewriter.getSymbolRefAttr(cloned_func) : SymbolRefAttr(),
+        cloned_func ? SymbolRefAttr::get(cloned_func) : SymbolRefAttr(),
         /*key=*/rewriter.getStringAttr(""), op.send_keyAttr(),
         op.recv_keyAttr(),
         /*cost_estimate_ns=*/rewriter.getI64IntegerAttr(kDefaultCostEstimate),

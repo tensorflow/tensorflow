@@ -36,6 +36,8 @@ class NoopStats : public CompilationStats {
   void EndPass(absl::string_view pass_name) override {}
 
   void CompilationReport() override {}
+
+  int GetPassesSize() override { return 0; }
 };
 
 class Stats : public CompilationStats {
@@ -48,12 +50,14 @@ class Stats : public CompilationStats {
 
   void CompilationReport() override;
 
+  int GetPassesSize() override;
+
  private:
   struct PassInfo {
     PassInfo(absl::string_view name, double duration)
         : name(name), duration_ms(duration) {}
 
-    absl::string_view name;
+    std::string name;
     int num_runs = 1;
     double duration_ms;
   };
@@ -62,7 +66,7 @@ class Stats : public CompilationStats {
   std::vector<PassInfo> passes_;
   // Used to avoid nested calls to StartPass.
   bool pass_running_ = false;
-  absl::string_view current_pass_;
+  std::string current_pass_;
   // The start time of the currently running pass.
   uint64 start_micros_;
 };
@@ -81,13 +85,13 @@ void Stats::StartPass(absl::string_view pass_name) {
   CHECK(!pass_running_) << "Can't start " << pass_name << " while running "
                         << current_pass_;
   pass_running_ = true;
-  current_pass_ = pass_name;
+  current_pass_ = std::string(pass_name);
   start_micros_ = tensorflow::Env::Default()->NowMicros();
 }
 
 void Stats::EndPass(absl::string_view pass_name) {
   CHECK(pass_running_);
-  CHECK_EQ(current_pass_, pass_name);
+  CHECK_EQ(current_pass_, std::string(pass_name));
   pass_running_ = false;
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
   double duration_ms = (end_micros - start_micros_) / 1000.0;
@@ -96,7 +100,7 @@ void Stats::EndPass(absl::string_view pass_name) {
 
 void Stats::CompilationReport() {
   CHECK(!pass_running_) << "EndPass never called for " << current_pass_;
-  absl::flat_hash_map<absl::string_view, PassInfo> summary;
+  absl::flat_hash_map<std::string, PassInfo> summary;
   double total_duration = 0;
 
   for (auto& pass_run : passes_) {
@@ -128,5 +132,7 @@ void Stats::CompilationReport() {
               << pass_info.duration_ms;
   }
 }
+
+int Stats::GetPassesSize() { return passes_.size(); }
 
 }  // namespace xla

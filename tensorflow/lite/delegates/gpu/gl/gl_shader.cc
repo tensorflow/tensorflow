@@ -55,6 +55,10 @@ absl::Status GlShader::CompileShader(GLenum shader_type,
       TFLITE_GPU_CALL_GL(glShaderSource, shader.id(), 1, &src, nullptr));
 
   glCompileShader(shader.id());
+
+#ifndef __EMSCRIPTEN__
+  // This check is not recommended on WebGL, since it will force a wait on the
+  // GPU process.
   // Didn't check for opengl errors here because we want to get better logs
   // if it didn't compile.
   GLint compiled = GL_FALSE;
@@ -67,6 +71,7 @@ absl::Status GlShader::CompileShader(GLenum shader_type,
     return absl::InternalError("Shader compilation failed: " + errors +
                                "\nProblem shader is:\n" + shader_source);
   }
+#endif  // !__EMSCRIPTEN__
 
   *gl_shader = std::move(shader);
   return absl::OkStatus();

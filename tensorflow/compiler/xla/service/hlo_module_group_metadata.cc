@@ -97,8 +97,9 @@ Status HloModuleGroupMetadata::Build() {
       for (HloComputation* peer_computation : peers) {
         const TrackedInstruction* peer_tracked =
             GetTrackedInstruction(peer_computation);
-        TF_RET_CHECK(peer_tracked != nullptr)
-            << "Peer instruction is not a possible companion";
+        if (peer_tracked == nullptr) {
+          continue;
+        }
         TF_RET_CHECK(*tracked == *peer_tracked)
             << "Peer instruction does not match the computation kind";
         TF_RETURN_IF_ERROR(
@@ -133,7 +134,7 @@ Status HloModuleGroupMetadata::Build() {
   // While building the companion sets, initial sets may be removed by inserting
   // nullptr in companion_sets_. Prune those removed sets to compact.
   std::vector<std::unique_ptr<std::vector<HloInstruction*>>> sets;
-  for (int64 i = 0; i < companion_sets_.size(); ++i) {
+  for (int64_t i = 0; i < companion_sets_.size(); ++i) {
     if (companion_sets_[i] == nullptr) {
       continue;
     }
@@ -162,7 +163,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
   for (const auto& companions : companion_sets_) {
     // A companion set must be composed at most of an instruction per
     // device/module.
-    std::unordered_set<int64> devices;
+    std::unordered_set<int64_t> devices;
     for (HloInstruction* instruction : *companions) {
       // Go through all the communicating instructions (send, recv) of the given
       // companion, and record their device.
@@ -172,14 +173,14 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
         // instructions, if they are parent of companions.
         continue;
       }
-      std::unordered_set<int64> comm_devices;
+      std::unordered_set<int64_t> comm_devices;
       for (HloInstruction* comm_instruction : it->second) {
         auto device = GetInstructionDevice(*comm_instruction);
         TF_RET_CHECK(device) << "Instruction " << comm_instruction->ToString()
                              << " does not have a device";
         comm_devices.insert(*device);
       }
-      for (int64 device : comm_devices) {
+      for (int64_t device : comm_devices) {
         if (!devices.insert(device).second) {
           std::stringstream ss;
           ss << "Companion set:" << std::endl;
@@ -223,12 +224,12 @@ bool HloModuleGroupMetadata::InstructionCommunicates(
 }
 
 const HloModuleGroupMetadata::Channel& HloModuleGroupMetadata::GetChannel(
-    int64 channel_id) const {
+    int64_t channel_id) const {
   CHECK(channel_id_map_.find(channel_id) != channel_id_map_.end());
   return channels_[channel_id_map_.at(channel_id)];
 }
 
-bool HloModuleGroupMetadata::HasChannel(int64 channel_id) const {
+bool HloModuleGroupMetadata::HasChannel(int64_t channel_id) const {
   return channel_id_map_.find(channel_id) != channel_id_map_.end();
 }
 
@@ -249,7 +250,7 @@ HloComputation* HloModuleGroupMetadata::PeerComputation(
 }
 
 const std::vector<HloInstruction*>& HloModuleGroupMetadata::GetAllReduceGroup(
-    int64 channel_id) const {
+    int64_t channel_id) const {
   auto it = all_reduce_map_.find(channel_id);
   CHECK(it != all_reduce_map_.end());
   return it->second;
@@ -275,7 +276,7 @@ bool HloModuleGroupMetadata::CheckCompanionPathsCompatibility(
             << " != " << path1.size();
     return false;
   }
-  for (int64 i = 0; i < path0.size(); ++i) {
+  for (int64_t i = 0; i < path0.size(); ++i) {
     if (path0[i] != path1[i]) {
       VLOG(5) << "Companion instructions at path index " << i
               << " do not have the same opcode: " << path0[i].ToString()
@@ -286,8 +287,8 @@ bool HloModuleGroupMetadata::CheckCompanionPathsCompatibility(
   return true;
 }
 
-int64 HloModuleGroupMetadata::GetModuleId(const HloModule* module) const {
-  for (int64 i = 0; i < modules_.size(); ++i) {
+int64_t HloModuleGroupMetadata::GetModuleId(const HloModule* module) const {
+  for (int64_t i = 0; i < modules_.size(); ++i) {
     if (modules_[i] == module) {
       return i;
     }
@@ -295,21 +296,21 @@ int64 HloModuleGroupMetadata::GetModuleId(const HloModule* module) const {
   LOG(FATAL) << "unknown module";
 }
 
-absl::optional<int64> HloModuleGroupMetadata::GetInstructionDevice(
+absl::optional<int64_t> HloModuleGroupMetadata::GetInstructionDevice(
     const HloInstruction& instruction) const {
   // The module group metadata can be created in both "single module, multiple
   // devices" and "multiple modules, no explicit devices" fashions.
   // The API returns an optional even though the current implementation always
   // returns a device, to account for cases where we cannot guess a device.
   // In such cases the VerifyChannelInstructions() will return proper errors.
-  absl::optional<int64> device = instruction.sharding_unique_device();
+  absl::optional<int64_t> device = instruction.sharding_unique_device();
   if (!device) {
     device = GetModuleId(instruction.parent()->parent());
   }
   return device;
 }
 
-int64 HloModuleGroupMetadata::GetDeviceModulesCount() const {
+int64_t HloModuleGroupMetadata::GetDeviceModulesCount() const {
   return modules_.size();
 }
 
@@ -431,7 +432,7 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
     absl::c_copy(Companions(instruction2),
                  std::back_inserter(
                      *companion_sets_[companion_set_index_[instruction1]]));
-    int64 index_to_remove = companion_set_index_[instruction2];
+    int64_t index_to_remove = companion_set_index_[instruction2];
     for (HloInstruction* hlo : Companions(instruction2)) {
       companion_set_index_[hlo] = companion_set_index_[instruction1];
     }
@@ -536,7 +537,7 @@ Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
 }
 
 void HloModuleGroupMetadata::DumpCollectedStats() const {
-  std::map<std::pair<int64, int64>, int64> communication_histogram;
+  std::map<std::pair<int64_t, int64_t>, int64_t> communication_histogram;
   for (auto& channel : channels_) {
     auto from_device = GetInstructionDevice(*channel.send);
     auto to_device = GetInstructionDevice(*channel.recv);
@@ -545,8 +546,8 @@ void HloModuleGroupMetadata::DumpCollectedStats() const {
               << " send_done=" << channel.send_done->name()
               << " recv=" << channel.recv->name()
               << " recv_done=" << channel.recv_done->name();
-    communication_histogram[std::pair<int64, int64>(*from_device,
-                                                    *to_device)] += 1;
+    communication_histogram[std::pair<int64_t, int64_t>(*from_device,
+                                                        *to_device)] += 1;
   }
   for (auto& fromto_count : communication_histogram) {
     LOG(INFO) << "From " << fromto_count.first.first << " to "

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
-
 // Reads the SavedModel proto from saved_model.pb(txt) in the given directory,
 // finds the MetaGraphDef that matches the given set of tags and writes it to
 // the `meta_graph_def` parameter. Returns a failure status when the SavedModel

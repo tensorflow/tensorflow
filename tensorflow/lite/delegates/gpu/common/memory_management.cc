@@ -158,9 +158,10 @@ absl::Status AssignObjectsToTensors(
 absl::Status AssignOffsetsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     const MemoryStrategy& strategy, OffsetsAssignment* assignment,
-    const UsageGraph* reallocation_graph) {
+    size_t base_addr_align_bytes, const UsageGraph* reallocation_graph) {
   if (strategy == MemoryStrategy::GREEDY_BY_SIZE) {
-    return GreedyBySizeAssignment(usage_records, assignment);
+    return GreedyBySizeAssignment(usage_records, base_addr_align_bytes,
+                                  assignment);
   }
   ObjectsAssignment<size_t> objects_assignment;
   RETURN_IF_ERROR(AssignObjectsToTensors(

@@ -68,9 +68,9 @@ struct SequentialBandedTriangularSolveKernel {
     int num_bands = in_x.dim_size(1);
     int matrix_size = in_x.dim_size(2);
 
-    for (int64 i = start; i < limit; ++i) {
-      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+    for (int64_t i = start; i < limit; ++i) {
+      const int64_t x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64_t y_batch_index = should_bcast ? y_batch_indices[i] : i;
       auto matrix = ConstTensorSliceToEigenMatrix(in_x, x_batch_index);
       auto rhs = ConstTensorSliceToEigenMatrix(in_y, y_batch_index);
       auto output = TensorSliceToEigenMatrix(out, i);
@@ -169,8 +169,8 @@ struct LaunchBatchBandedTriangularSolve {
                      const Tensor& in_y, bool adjoint, bool lower,
                      const MatMulBCast& bcast, Tensor* out) {
     // Number of banded matrix triangular solves i.e. size of the batch.
-    const int64 batch_size = bcast.output_batch_size();
-    const int64 cost_per_unit =
+    const int64_t batch_size = bcast.output_batch_size();
+    const int64_t cost_per_unit =
         in_x.dim_size(1) * in_x.dim_size(2) * in_y.dim_size(2);
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
 
@@ -193,8 +193,8 @@ struct LaunchBatchBandedTriangularSolve {
 
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
           cost_per_unit,
-          [&in_x, &in_y, adjoint, lower, &bcast, out](int64 start,
-                                                      int64 limit) {
+          [&in_x, &in_y, adjoint, lower, &bcast, out](int64_t start,
+                                                      int64_t limit) {
             SequentialBandedTriangularSolveKernel<Scalar>::Run(
                 in_x, in_y, lower, adjoint, bcast, out, start, limit);
           });

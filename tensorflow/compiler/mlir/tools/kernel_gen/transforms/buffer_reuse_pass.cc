@@ -28,17 +28,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
-
-// Needed to build `llvm::EquivalenceClasses` of `mlir::Value`s.
-namespace mlir {
-static bool operator<(const Value &lhs, const Value &rhs) {
-  return lhs.getAsOpaquePointer() < rhs.getAsOpaquePointer();
-}
-}  // namespace mlir
 
 constexpr llvm::StringRef
     mlir::kernel_gen::tf_framework::TFAllocOp::kReuseOutputAttrName;
@@ -193,14 +186,19 @@ class BufferReuseAnalysis {
     auto old_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
     auto new_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
     if (!old_buffer_ty || !new_buffer_ty ||
-        old_buffer_ty.getAffineMaps() != new_buffer_ty.getAffineMaps())
+        old_buffer_ty.getLayout() != new_buffer_ty.getLayout())
       return false;
 
     if (auto generic_op = dyn_cast<linalg::GenericOp>(op)) {
-      assert(llvm::find(op->getOperands(), old_buffer) !=
-                 op->getOperands().end() &&
-             llvm::find(op->getOperands(), new_buffer) !=
-                 op->getOperands().end() &&
+      SmallVector<OpOperand *> op_operands =
+          generic_op.getInputAndOutputOperands();
+      auto old_it = llvm::find_if(op_operands, [&](OpOperand *op_operand) {
+        return op_operand->get() == old_buffer;
+      });
+      auto new_it = llvm::find_if(op_operands, [&](OpOperand *op_operand) {
+        return op_operand->get() == new_buffer;
+      });
+      assert(old_it != op_operands.end() && new_it != op_operands.end() &&
              "Expect `old/new_buffer` to be operand of `op`.");
 
       auto is_projection = [](AffineMap map) {
@@ -220,13 +218,8 @@ class BufferReuseAnalysis {
       // have the same size we also know that when one side has an identity map
       // and the other side only drops dimensions, these dimensions have to be
       // of size 1.
-      auto operand_buffers = generic_op.getShapedOperands();
-      int old_index =
-          llvm::find(operand_buffers, old_buffer) - operand_buffers.begin();
-      int new_index =
-          llvm::find(operand_buffers, new_buffer) - operand_buffers.begin();
-      AffineMap old_indexing_map = generic_op.getIndexingMap(old_index);
-      AffineMap new_indexing_map = generic_op.getIndexingMap(new_index);
+      AffineMap old_indexing_map = generic_op.getTiedIndexingMap(*old_it);
+      AffineMap new_indexing_map = generic_op.getTiedIndexingMap(*new_it);
       return (old_indexing_map == new_indexing_map &&
               old_indexing_map.isProjectedPermutation()) ||
              (old_indexing_map.isIdentity() &&

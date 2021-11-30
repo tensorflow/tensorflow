@@ -21,6 +21,9 @@ limitations under the License.
 #ifdef __SSE4_1__
 #include <smmintrin.h>  // SSE4.1
 #endif
+#ifdef __AVX2__
+#include <immintrin.h>
+#endif
 
 #include <cstdint>
 
@@ -33,6 +36,28 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 namespace {
+
+#if defined(__SSE2__)
+// Note: this part is copied from XNNPACK/src/xnnpack/intrinsics-polyfill.h
+// w.r.t the defition of '_mm_loadu_si32' intrinsic.
+// GCC any, Clang pre-8, Android NDK Clang pre-8.0.7, Apple Clang pre-11, and
+// ICC pre-16
+#if (defined(__GNUC__) && !defined(__clang__) &&                             \
+     !defined(__INTEL_COMPILER)) ||                                          \
+    (defined(__clang__) && !defined(__apple_build_version__) &&              \
+     (__clang_major__ < 8)) ||                                               \
+    (defined(__clang__) && defined(__ANDROID__) && (__clang_major__ == 8) && \
+     (__clang_minor__ == 0) && (__clang_patchlevel__ < 7)) ||                \
+    (defined(__clang__) && defined(__apple_build_version__) &&               \
+     (__apple_build_version__ < 11000000)) ||                                \
+    (defined(__INTEL_COMPILER) && (__INTEL_COMPILER < 1600))
+
+static inline __m128i _mm_loadu_si32(const void* address) {
+  return _mm_cvtsi32_si128(*((const int*)address));
+}
+#endif  // GCC any, Clang pre-8, Android NDK Clang pre-8.0.7, Apple Clang pre-11
+        // and ICC pre-16
+#endif  // __SSE2__
 
 // Dot product of four int8 vectors of 4 elements packed into a XMM register.
 // Result is four int32 scalars packed into a XMM register.
@@ -60,6 +85,24 @@ static inline int32_t ReduceInt32x4(__m128i acc) {
   // Return lowest element as int32_t.
   return _mm_cvtsi128_si32(acc);
 }
+
+#ifdef __AVX2__
+// Horizontally add 4 float values stored in a single XMM register to float.
+static inline float ReduceFloat32x4(__m128 acc) {
+  __m128 shuffle = _mm_movehdup_ps(acc);
+  acc = _mm_add_ps(acc, shuffle);
+  shuffle = _mm_movehl_ps(shuffle, acc);
+  acc = _mm_add_ss(acc, shuffle);
+  return _mm_cvtss_f32(acc);
+}
+
+// Horizontally add 8 float values stored in a single XMM register to float.
+static inline float ReduceFloat32x8(__m256 acc) {
+  __m128 low = _mm256_extractf128_ps(acc, 0);
+  __m128 high = _mm256_extractf128_ps(acc, 1);
+  return ReduceFloat32x4(_mm_add_ps(low, high));
+}
+#endif  // __AVX2__
 
 // Horizontally add each of 4 XMM registers with 4 int32 values, pack result
 // into a single XMM register. Similar to ReduceInt32x4, but with 4x inputs.
@@ -92,6 +135,54 @@ float GetFloatVectorElement(__m128 v) {
 }
 
 }  // namespace
+
+#ifdef __AVX2__
+constexpr int kFloatValuesPerAvx2Vector = 8;
+template <int PerVectorSize>
+inline int RoundDownVectors(int size) {
+  return size & ~(PerVectorSize - 1);
+}
+
+void Avx2MatrixBatchVectorMultiplyAccumulateImpl(
+    const float* __restrict__ matrix, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
+  // If v_size is not divisible by the vector size, then we need to process the
+  // final few elements sequentially. postamble_start shows the start index
+  // where this should happen.
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerAvx2Vector>(m_cols);
+
+  for (int b = 0; b < n_batch; ++b) {
+    float* result_in_batch = result + b * m_rows;
+    const float* vector_in_batch = vector + b * m_cols;
+    const float* matrix_row = matrix;
+
+    // Main matrix by vector multiplication loop
+    for (int r = 0; r < m_rows; ++r) {
+      __m256 acc_32x8 = _mm256_setzero_ps();
+      int c = 0;
+      for (; c < postamble_start; c += kFloatValuesPerAvx2Vector) {
+        // Load 8 float values from vector and matrix row.
+        __m256 vector_f32x8 = _mm256_loadu_ps(vector_in_batch + c);
+        __m256 matrix_f32x8 = _mm256_loadu_ps(matrix_row + c);
+
+        // Multiply the vector and matrix row and add to accumulator.
+        __m256 res = _mm256_mul_ps(vector_f32x8, matrix_f32x8);
+        acc_32x8 = _mm256_add_ps(acc_32x8, res);
+      }
+      // Add the 8 intermediate sum values to get the final dot-prod value for
+      // this column.
+      float sum = ReduceFloat32x8(acc_32x8);
+      for (; (c < m_cols); c++) {
+        sum += matrix_row[c] * vector_in_batch[c];
+      }
+      *result_in_batch += sum;
+      ++result_in_batch;
+      matrix_row += m_cols;
+    }
+  }
+}
+#endif  // __AVX2__
 
 void SseMatrixBatchVectorMultiplyAccumulateImpl(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
@@ -140,9 +231,9 @@ void SseMatrixBatchVectorMultiplyAccumulateImpl(
       // Postamble for 4x 8-bit inputs.
       if (col < (m_cols & ~3)) {
         const __m128i vec_32x4 = _mm_cvtepi8_epi32(
-            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(vectors + col)));
+            _mm_loadu_si32(reinterpret_cast<const __m128i*>(vectors + col)));
         const __m128i row_32x4 = _mm_cvtepi8_epi32(
-            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(row_ptr + col)));
+            _mm_loadu_si32(reinterpret_cast<const __m128i*>(row_ptr + col)));
         // dotprod += vec · row
         dotprod_32x4 =
             _mm_add_epi32(dotprod_32x4, _mm_mullo_epi32(vec_32x4, row_32x4));
@@ -361,10 +452,10 @@ inline void SseSparseMatrix4VectorsMultiplyAccumulate(
           _mm_loadu_si128(reinterpret_cast<const __m128i*>(matrix));
       // dp += vec · row
       // dpN are for different batches
-      dp0_32x4 = _mm_add_epi32(dp0_32x4, DotProdInt8x4x4(row_8x16, vec0_8x16));
-      dp1_32x4 = _mm_add_epi32(dp1_32x4, DotProdInt8x4x4(row_8x16, vec1_8x16));
-      dp2_32x4 = _mm_add_epi32(dp2_32x4, DotProdInt8x4x4(row_8x16, vec2_8x16));
-      dp3_32x4 = _mm_add_epi32(dp3_32x4, DotProdInt8x4x4(row_8x16, vec3_8x16));
+      dp0_32x4 = _mm_add_epi32(dp0_32x4, DotProdInt8x4x4(vec0_8x16, row_8x16));
+      dp1_32x4 = _mm_add_epi32(dp1_32x4, DotProdInt8x4x4(vec1_8x16, row_8x16));
+      dp2_32x4 = _mm_add_epi32(dp2_32x4, DotProdInt8x4x4(vec2_8x16, row_8x16));
+      dp3_32x4 = _mm_add_epi32(dp3_32x4, DotProdInt8x4x4(vec3_8x16, row_8x16));
       matrix += kBlockSize;
     }  // for col
 

@@ -175,7 +175,7 @@ bool GetElementUnexhaustive(const Tensor& t, int i, const std::set<int>& dtypes,
       *element = complex128(t.flat<int32>()(i));
       return true;
     case DT_INT64:
-      *element = complex128(t.flat<int64>()(i));
+      *element = complex128(t.flat<int64_t>()(i));
       return true;
     case DT_FLOAT:
       *element = complex128(t.flat<float>()(i));
@@ -1195,7 +1195,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     if (!IsConstant(*node_perm)) {
       return Status::OK();
     }
-    std::vector<int64> node_perm_values;
+    std::vector<int64_t> node_perm_values;
     TF_RETURN_IF_ERROR(GetPermutation(*node_perm, &node_perm_values));
     if (first_transpose->op() == node->op()) {
       // Remove pairs of transposes that cancel each other.
@@ -1205,7 +1205,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
       if (!IsConstant(*first_transpose_perm)) {
         return Status::OK();
       }
-      std::vector<int64> first_transpose_perm_values;
+      std::vector<int64_t> first_transpose_perm_values;
       TF_RETURN_IF_ERROR(
           GetPermutation(*first_transpose_perm, &first_transpose_perm_values));
       if (AreInversePermutations(node_perm_values,
@@ -1245,12 +1245,12 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
 
  private:
   Status GetPermutation(const NodeDef& node_perm,
-                        std::vector<int64>* perm64) const {
+                        std::vector<int64_t>* perm64) const {
     std::vector<int> perm32;
     if (ValuesFromConstNode(node_perm, &perm32)) {
       perm64->reserve(perm32.size());
       for (int val : perm32) {
-        perm64->push_back(static_cast<int64>(val));
+        perm64->push_back(static_cast<int64_t>(val));
       }
       return Status::OK();
     }
@@ -1261,8 +1261,8 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
                                    node_perm.name());
   }
 
-  bool AreInversePermutations(const std::vector<int64>& a,
-                              const std::vector<int64>& b) {
+  bool AreInversePermutations(const std::vector<int64_t>& a,
+                              const std::vector<int64_t>& b) {
     if (a.size() != b.size()) {
       return false;
     }
@@ -1274,8 +1274,8 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     return true;
   }
 
-  bool IsIdentityPermutation(const std::vector<int64>& perm) {
-    for (int64 i = 0, end = perm.size(); i < end; ++i) {
+  bool IsIdentityPermutation(const std::vector<int64_t>& perm) {
+    for (int64_t i = 0, end = perm.size(); i < end; ++i) {
       if (i != perm[i]) {
         return false;
       }
@@ -2467,7 +2467,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     if (ValuesFromConstNode(*perm_node, &perm32)) {
       return IsInnerMatrixTranspose(perm32);
     }
-    std::vector<int64> perm64;
+    std::vector<int64_t> perm64;
     if (ValuesFromConstNode(*perm_node, &perm64)) {
       return IsInnerMatrixTranspose(perm64);
     }
@@ -2627,7 +2627,7 @@ class ReplaceMulWithBroadcastByTile : public ArithmeticOptimizerStage {
     // 1. Create constant node with correct tile multiples
     Tensor multiples(DT_INT32, TensorShape({output_shape.dim_size()}));
     for (int i = 0; i < output_shape.dim_size(); ++i) {
-      int64 size = output_shape.dim(i).size() / input_shape.dim(i).size();
+      int64_t size = output_shape.dim(i).size() / input_shape.dim(i).size();
       if (TF_PREDICT_FALSE(size >= INT_MAX)) {
         return Status(error::OUT_OF_RANGE, "int32 overflow");
       }
@@ -2713,8 +2713,8 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
 
     if (NumNonControlOutputs(*tile, *ctx().node_map) != 1) {
       // Optimization is only worthwile when there is a single output from Tile.
-      // Otherwise, we need to insert addtional Reshape ops that can't be easily
-      // removed.
+      // Otherwise, we need to insert additional Reshape ops that can't be
+      // easily removed.
       return Status::OK();
     }
 
@@ -2757,7 +2757,7 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
     }
 
     // At this point the graph is validated and can be updated
-    // Note: We can assume shape/multiples are DT_INT32 ony at this point since
+    // Note: We can assume shape/multiples are DT_INT32 only at this point since
     // they're checked in CreateUpdated*Proto()
 
     // 1. Create the constant nodes used by the new Reshape/Tile nodes
@@ -3032,7 +3032,7 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
 
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
       AttrSlice attrs(**it);
-      int64 axis, n;
+      int64_t axis, n;
       TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "axis", &axis));
       TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &n));
 
@@ -3042,7 +3042,7 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
         return Status(error::OUT_OF_RANGE, "axis value out of range of dims");
       }
 
-      int64 m = multiples->flat<int32>()(dims[axis]) * n;
+      int64_t m = multiples->flat<int32>()(dims[axis]) * n;
       if (TF_PREDICT_FALSE(m > INT_MAX)) {
         return Status(error::OUT_OF_RANGE, "int32 overflow");
       }
@@ -3276,7 +3276,7 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
         t->flat<int32>()(i) = 1;
         return Status::OK();
       case DT_INT64:
-        t->flat<int64>()(i) = 1L;
+        t->flat<int64_t>()(i) = 1L;
         return Status::OK();
       case DT_FLOAT:
         t->flat<float>()(i) = 1.0f;
@@ -3753,7 +3753,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
         CheckInputs(node, pack, &pack_output_shape, &pack_axis, &return_early));
     if (return_early) return Status::OK();
 
-    int64 slice_start_value;
+    int64_t slice_start_value;
     bool found;
     bool must_expand_dims;
     TF_RETURN_IF_ERROR(GetSliceAxis(node, pack, pack_output_shape, pack_axis,
@@ -3795,7 +3795,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
   Status GetSliceAxis(const NodeDef* node, const NodeDef* pack,
                       const PartialTensorShape& pack_output_shape,
-                      int pack_axis, int64* slice_start_value, bool* found,
+                      int pack_axis, int64_t* slice_start_value, bool* found,
                       bool* must_expand_dims) {
     *found = false;
     if (IsSlice(*node)) {
@@ -3810,7 +3810,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
   Status GetSimpleSliceAxis(const NodeDef* node, const NodeDef* pack,
                             const PartialTensorShape& pack_output_shape,
-                            int pack_axis, int64* slice_start_value,
+                            int pack_axis, int64_t* slice_start_value,
                             bool* found) {
     NodeDef* slice_begin;
     NodeDef* slice_size;
@@ -3837,7 +3837,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
             auto t_flat = t.flat<int32>();
             vec->assign(&t_flat(0), &t_flat(t.NumElements()));
           } else if (t.dtype() == DT_INT64) {
-            auto t_flat = t.flat<int64>();
+            auto t_flat = t.flat<int64_t>();
             vec->assign(&t_flat(0), &t_flat(t.NumElements()));
           } else {
             return errors::InvalidArgument("Node ", node->name(),
@@ -3847,8 +3847,8 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
           return Status::OK();
         };
 
-    gtl::InlinedVector<int64, 4> slice_begin_vec;
-    gtl::InlinedVector<int64, 4> slice_size_vec;
+    gtl::InlinedVector<int64_t, 4> slice_begin_vec;
+    gtl::InlinedVector<int64_t, 4> slice_size_vec;
     TF_RETURN_IF_ERROR(
         copy_tensor_values_to_vector(slice_begin_t, &slice_begin_vec));
     TF_RETURN_IF_ERROR(
@@ -3901,7 +3901,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
   Status GetStridedSliceAxis(const NodeDef* node, const NodeDef* pack,
                              const PartialTensorShape& pack_output_shape,
-                             int pack_axis, int64* slice_start_value,
+                             int pack_axis, int64_t* slice_start_value,
                              bool* found, bool* must_expand_dims) {
     TF_RETURN_IF_ERROR(
         CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask",
@@ -3952,9 +3952,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     bool is_identity;
     bool is_simple_slice;
     bool slice_dim0;
-    gtl::InlinedVector<int64, 4> slice_begin_vec;
-    gtl::InlinedVector<int64, 4> slice_end_vec;
-    gtl::InlinedVector<int64, 4> slice_strides_vec;
+    gtl::InlinedVector<int64_t, 4> slice_begin_vec;
+    gtl::InlinedVector<int64_t, 4> slice_end_vec;
+    gtl::InlinedVector<int64_t, 4> slice_strides_vec;
     TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
         &slice_begin_t, &slice_end_t, slice_strides_t, pack_output_shape,
         begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
@@ -3964,9 +3964,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     if (!is_simple_slice) return Status::OK();
 
     int begin_index = -1;
-    int64 begin_value = 0;
+    int64_t begin_value = 0;
     for (int i = 0, end = slice_begin_vec.size(); i < end; ++i) {
-      const int64 v = slice_begin_vec[i];
+      const int64_t v = slice_begin_vec[i];
       if (v != 0) {
         if (begin_index != -1) {
           // At least two start values that are nonzero.
@@ -3978,9 +3978,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     }
 
     int end_index = -1;
-    int64 end_value = 0;
+    int64_t end_value = 0;
     for (int i = 0, end = slice_begin_vec.size(); i < end; ++i) {
-      const int64 v = slice_end_vec[i];
+      const int64_t v = slice_end_vec[i];
       if (v != pack_output_shape.dim_size(i)) {
         if (end_index != -1) {
           // At least two end values that are nonzero.
@@ -4002,7 +4002,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
       return Status::OK();
     }
     *slice_start_value = (begin_index == -1) ? 0 : begin_value;
-    const int64 slice_end_value =
+    const int64_t slice_end_value =
         (end_index == -1) ? pack_output_shape.dim_size(slice_axis) : end_value;
     if (slice_end_value != *slice_start_value + 1) {
       // Not slicing a single value out.
@@ -4030,7 +4030,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
   }
 
   Status RewriteGraph(const NodeDef* node, const NodeDef* pack,
-                      int64 slice_start_value, int pack_axis,
+                      int64_t slice_start_value, int pack_axis,
                       bool must_expand_dims, string* simplified_node_name) {
     const string& input_slice = pack->input(slice_start_value);
 
@@ -4218,7 +4218,7 @@ class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
     if (axis_tensor.dtype() == DT_INT32) {
       return axis_tensor.flat<int32>()(0) == 0;
     } else if (axis_tensor.dtype() == DT_INT64) {
-      return axis_tensor.flat<int64>()(0) == 0;
+      return axis_tensor.flat<int64_t>()(0) == 0;
     } else {
       return false;
     }
@@ -4456,13 +4456,6 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   TF_RETURN_IF_ERROR(SimplifyArithmeticOps(can_use_shapes));
   *optimized_graph = std::move(*optimized_graph_);
   return Status::OK();
-}
-
-void ArithmeticOptimizer::Feedback(Cluster* /*cluster*/,
-                                   const GrapplerItem& /*item*/,
-                                   const GraphDef& /*optimized_graph*/,
-                                   double /*result*/) {
-  // Nothing to do for ArithmeticOptimizer.
 }
 
 }  // namespace grappler

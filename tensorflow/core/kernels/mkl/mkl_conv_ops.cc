@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -568,7 +568,9 @@ class MklConvOp : public OpKernel {
 
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     is_filter_const_ = false;
-    if (context->HasAttr("is_filter_const")) {
+    if (AreWeightsFrozen()) {
+      is_filter_const_ = true;
+    } else if (context->HasAttr("is_filter_const")) {
       OP_REQUIRES_OK(context,
                      context->GetAttr("is_filter_const", &is_filter_const_));
     }
@@ -612,6 +614,12 @@ class MklConvOp : public OpKernel {
       // Input tensors
       const Tensor& src_tensor = MklGetInput(context, kInputIndex_Src);
       const Tensor& filter_tensor = MklGetInput(context, kInputIndex_Filter);
+
+      OP_REQUIRES(
+          context, filter_tensor.NumElements() > 0,
+          errors::InvalidArgument("filter must not have zero elements "
+                                  "(i.e. all dimensions must be non-zero)"));
+
       MklDnnShape src_mkl_shape, filter_mkl_shape;
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape, native_format);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape,
@@ -650,10 +658,12 @@ class MklConvOp : public OpKernel {
       auto src_tf_shape = GetTfShape(context, kInputIndex_Src, native_format);
       auto filter_tf_shape =
           GetTfShape(context, kInputIndex_Filter, native_format);
+      bool is_grouped_convolution = false;
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &src_dims, &filter_dims, &strides,
           &dilations, &dst_dims_tf_order, &dst_dims_mkl_order, &padding_left,
-          &padding_right, (fuse_pad_ || pad_attr_enabled), is_depthwise);
+          &padding_right, &is_grouped_convolution,
+          (fuse_pad_ || pad_attr_enabled), is_depthwise);
 
       if (!context->status().ok()) return;
 
@@ -730,8 +740,9 @@ class MklConvOp : public OpKernel {
       // Although filter shape (filter_dims) required is in MKL-DNN order,
       // the layout is Tensorflow's layout (HWIO) and (HWIGO) for
       // depthwise/group convolutions.
-      auto filter_format = is_conv2d ? (is_depthwise ? memory::format_tag::hwigo
-                                                     : memory::format_tag::hwio)
+      auto filter_format = is_conv2d ? ((is_depthwise || is_grouped_convolution)
+                                            ? memory::format_tag::hwigo
+                                            : memory::format_tag::hwio)
                                      : memory::format_tag::dhwio;
 
       DCHECK(!filter_mkl_shape.IsMklTensor());
@@ -1162,7 +1173,8 @@ class MklConvOp : public OpKernel {
   // descriptor (data format)
   void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,
                       Tensor** filter_tensor,
-                      const MklDnnShape* filter_mkl_shape) {
+                      const MklDnnShape* filter_mkl_shape)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     DCHECK(filter_tensor);
     TensorShape filter_tf_shape;
     filter_tf_shape.AddDim(
@@ -1305,7 +1317,7 @@ class MklConvOp : public OpKernel {
     auto filter_md_data = filter_md.data;
     const char* filter_data = reinterpret_cast<const char*>(&filter_md_data);
 
-    auto cached_filter_md_data = cached_filter_md.scalar<int64>()();
+    auto cached_filter_md_data = cached_filter_md.scalar<int64_t>()();
     const char* cached_filter_data =
         reinterpret_cast<const char*>(&cached_filter_md_data);
 
@@ -2095,6 +2107,96 @@ class MklQuantizedConv2DSumReluOp
   std::shared_ptr<mkldnn::memory> dst_;
 };
 
+// Base class for fused convolution forward operations
+template <typename Device, typename Tinput, typename Tfilter, typename Tbias,
+          typename Toutput, typename Ttemp_output, typename Tpadding,
+          bool pad_enabled, bool native_format>
+class MklFusedConv3DOp
+    : public MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput, Ttemp_output,
+                       Tpadding, false, false, false, native_format> {
+ public:
+  explicit MklFusedConv3DOp(OpKernelConstruction* context)
+      : MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput, Ttemp_output,
+                  Tpadding, false, false, false, native_format>(context) {
+    // Since we came here through the registration of _MklFusedConv3D, get
+    // all information from 'fused_ops' and 'num_args'
+    std::vector<string> fused_ops;
+    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
+
+    int num_args;
+    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
+    OP_REQUIRES(context, !fused_ops.empty(),
+                errors::InvalidArgument(
+                    "Fused Conv3D must have at least one fused op."));
+    if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
+        fused_ops.end()) {
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv3D must have one extra argument: bias."));
+    } else if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
+                   fused_ops.end() &&
+               std::find(fused_ops.begin(), fused_ops.end(), "Add") ==
+                   fused_ops.end()) {
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv3D must have two extra arguments: bias and add."));
+    }
+
+    if (fused_ops == std::vector<string>{"BiasAdd"}) {
+      this->set_fuse_biasadd(true);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "LeakyRelu"}) {
+      this->set_fuse_biasadd(true);
+      float leakyrelu_alpha;
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu,
+                                leakyrelu_alpha);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_bounded_relu,
+                                6.0);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_elu, 1.0);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_bounded_relu,
+                                6.0);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_elu, 1.0);
+    } else if (fused_ops ==
+               std::vector<string>{"BiasAdd", "Add", "LeakyRelu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      float leakyrelu_alpha;
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu,
+                                leakyrelu_alpha);
+    } else {
+      OP_REQUIRES(context, false,
+                  errors::Unimplemented("Fusion is not implemented: [",
+                                        absl::StrJoin(fused_ops, ","), "]"));
+    }
+  }
+
+  virtual ~MklFusedConv3DOp() {}
+};
+
 #define REGISTER_MKL_KERNEL(op, kernel, input_type, bias_type, output_type, \
                             accu_type, has_bias, is_depthwise, is_native)   \
   REGISTER_KERNEL_BUILDER(                                                  \
@@ -2281,7 +2383,7 @@ TF_CALL_bfloat16(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
       Name("_MklPadWithConv2D")                                                \
           .Device(DEVICE_CPU)                                                  \
           .TypeConstraint<T>("T")                                              \
-          .TypeConstraint<int64>("Tpaddings")                                  \
+          .TypeConstraint<int64_t>("Tpaddings")                                \
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),                 \
       MklConvOp<CPUDevice, T, T, T, T, T, int64, false, true, false, false>);  \
   REGISTER_KERNEL_BUILDER(                                                     \
@@ -2314,7 +2416,7 @@ TF_CALL_bfloat16(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
       Name("_MklNativePadWithConv2D")                                          \
           .Device(DEVICE_CPU)                                                  \
           .TypeConstraint<T>("T")                                              \
-          .TypeConstraint<int64>("Tpaddings")                                  \
+          .TypeConstraint<int64_t>("Tpaddings")                                \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),                      \
       MklConvOp<CPUDevice, T, T, T, T, T, int64, false, true, false, true>);
 
@@ -2372,7 +2474,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
       Name("_MklPadWithFusedConv2D")                                  \
           .Device(DEVICE_CPU)                                         \
           .TypeConstraint<T>("T")                                     \
-          .TypeConstraint<int64>("Tpaddings")                         \
+          .TypeConstraint<int64_t>("Tpaddings")                       \
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),        \
       MklFusedConvOp<CPUDevice, T, T, T, T, T, int64, true, false>);  \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -2399,7 +2501,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
       Name("_MklNativePadWithFusedConv2D")                            \
           .Device(DEVICE_CPU)                                         \
           .TypeConstraint<T>("T")                                     \
-          .TypeConstraint<int64>("Tpaddings")                         \
+          .TypeConstraint<int64_t>("Tpaddings")                       \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),             \
       MklFusedConvOp<CPUDevice, T, T, T, T, T, int64, true, true>);
 
@@ -2419,9 +2521,20 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_FUSED);
           .Device(DEVICE_CPU)                                                  \
           .TypeConstraint<T>("T")                                              \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),                      \
-      MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, false, true>);
+      MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, false, true>);  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("_MklNativeFusedConv3D")                                            \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<T>("T")                                              \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),                      \
+      MklFusedConv3DOp<CPUDevice, T, T, T, T, T, int32, false, true>);
 TF_CALL_float(REGISTER_MKL_CPU_3D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_3D);
 
+REGISTER_KERNEL_BUILDER(
+    Name("_FusedConv3D").Device(DEVICE_CPU).TypeConstraint<float>("T"), NoOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_FusedConv3D").Device(DEVICE_CPU).TypeConstraint<bfloat16>("T"),
+    NoOp);
 }  // namespace tensorflow
 #endif  // INTEL_MKL

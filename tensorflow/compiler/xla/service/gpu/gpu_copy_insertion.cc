@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -48,7 +48,8 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
       if (!IsCustomCallToDnnBatchNorm(*hlo)) {
         continue;
       }
-      for (int64 i = hlo->operand_count() - 2; i < hlo->operand_count(); ++i) {
+      for (int64_t i = hlo->operand_count() - 2; i < hlo->operand_count();
+           ++i) {
         CHECK_EQ(hlo->operand(i)->opcode(), HloOpcode::kConstant);
       }
     }

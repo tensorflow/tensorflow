@@ -30,11 +30,110 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+absl::Status RunSerializedTest(const std::string& model_name) {
+  auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
+  GraphFloat32 graph_cl;
+  ops::builtin::BuiltinOpResolver op_resolver;
+  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, op_resolver, &graph_cl,
+                                      /*allow_quant_ops*/ true));
+
+  Environment env;
+  RETURN_IF_ERROR(CreateEnvironment(&env));
+
+  InferenceContext::CreateInferenceInfo create_info;
+  create_info.precision = env.IsSupported(CalculationsPrecision::F16)
+                              ? CalculationsPrecision::F16
+                              : CalculationsPrecision::F32;
+  create_info.storage_type = GetFastestStorageType(env.device().GetInfo());
+  create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+
+  {  // calculating time without building serialized model
+    InferenceContext test_context;
+    const auto start = std::chrono::high_resolution_clock::now();
+    RETURN_IF_ERROR(
+        test_context.InitFromGraphWithTransforms(create_info, &graph_cl, &env));
+    const auto end = std::chrono::high_resolution_clock::now();
+    const double total_time_ms = (end - start).count() * 1e-6f;
+    std::cout << "Inference context initialization total time - "
+              << total_time_ms << "ms" << std::endl;
+  }
+  InferenceContext context;
+  std::vector<uint8_t> serialized_model;
+  RETURN_IF_ERROR(context.InitFromGraphWithTransforms(create_info, &graph_cl,
+                                                      &env, &serialized_model));
+
+  std::vector<TensorFloat32> src_tensors(graph_cl.inputs().size());
+  for (int i = 0; i < graph_cl.inputs().size(); ++i) {
+    src_tensors[i].id = graph_cl.inputs()[i]->id;
+    src_tensors[i].shape = graph_cl.inputs()[i]->tensor.shape;
+    src_tensors[i].data.resize(src_tensors[i].shape.DimensionsProduct());
+    for (int j = 0; j < src_tensors[i].data.size(); ++j) {
+      src_tensors[i].data[j] = std::sin(j);
+    }
+  }
+  for (int i = 0; i < graph_cl.inputs().size(); ++i) {
+    RETURN_IF_ERROR(context.SetInputTensor(graph_cl.inputs()[i]->id,
+                                           src_tensors[i], env.queue()));
+  }
+  RETURN_IF_ERROR(context.AddToQueue(env.queue()));
+  RETURN_IF_ERROR(env.queue()->WaitForCompletion());
+
+  std::vector<TensorFloat32> dst_tensors(graph_cl.outputs().size());
+  for (int i = 0; i < graph_cl.outputs().size(); ++i) {
+    RETURN_IF_ERROR(context.GetOutputTensor(graph_cl.outputs()[i]->id,
+                                            env.queue(), &dst_tensors[i]));
+  }
+
+  Environment env_v2;
+  RETURN_IF_ERROR(CreateEnvironment(&env_v2));
+  InferenceContext serialized_context;
+  {
+    const auto start = std::chrono::high_resolution_clock::now();
+    RETURN_IF_ERROR(
+        serialized_context.RestoreDeserialized(serialized_model, &env_v2));
+    const auto end = std::chrono::high_resolution_clock::now();
+    const double total_time_ms = (end - start).count() * 1e-6f;
+    std::cout << "Serialized inference context initialization total time - "
+              << total_time_ms << "ms" << std::endl;
+  }
+  for (int i = 0; i < graph_cl.inputs().size(); ++i) {
+    RETURN_IF_ERROR(serialized_context.SetInputTensor(
+        graph_cl.inputs()[i]->id, src_tensors[i], env_v2.queue()));
+  }
+
+  RETURN_IF_ERROR(serialized_context.AddToQueue(env_v2.queue()));
+  RETURN_IF_ERROR(env_v2.queue()->WaitForCompletion());
+
+  std::vector<TensorFloat32> dst_tensors_v2(graph_cl.outputs().size());
+  for (int i = 0; i < graph_cl.outputs().size(); ++i) {
+    RETURN_IF_ERROR(serialized_context.GetOutputTensor(
+        graph_cl.outputs()[i]->id, env_v2.queue(), &dst_tensors_v2[i]));
+  }
+
+  for (int i = 0; i < graph_cl.outputs().size(); ++i) {
+    if (dst_tensors[i].data.size() != dst_tensors_v2[i].data.size()) {
+      std::cout << "Different sizes for " << i << " output tensor" << std::endl;
+      break;
+    }
+    for (int j = 0; j < dst_tensors[i].data.size(); ++j) {
+      if (dst_tensors[i].data[j] != dst_tensors_v2[i].data[j]) {
+        std::cout << "Different elements for " << j << " element in " << i
+                  << " tensor: " << dst_tensors[i].data[j] << " - "
+                  << dst_tensors_v2[i].data[j] << std::endl;
+        break;
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status RunModelSample(const std::string& model_name) {
   auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
   GraphFloat32 graph_cl;
   ops::builtin::BuiltinOpResolver op_resolver;
-  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, op_resolver, &graph_cl));
+  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, op_resolver, &graph_cl,
+                                      /*allow_quant_ops*/ true));
 
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));
@@ -100,6 +199,15 @@ int main(int argc, char** argv) {
   if (!run_status.ok()) {
     std::cerr << run_status.message();
     return -1;
+  }
+
+  bool run_serialized_test = false;
+  if (run_serialized_test) {
+    run_status = tflite::gpu::cl::RunSerializedTest(argv[1]);
+    if (!run_status.ok()) {
+      std::cerr << run_status.message();
+      return -1;
+    }
   }
 
   return EXIT_SUCCESS;

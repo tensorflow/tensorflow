@@ -31,14 +31,14 @@ namespace xla {
 string GetFloatDataType(bool use_bfloat16);
 
 struct DepthwiseConvolution2DSpec {
-  int64 output_feature = -1, window = -1, stride = -1, pad = -1,
-        lhs_dilate = -1;
-  std::vector<int64> activation_dims;
-  std::vector<int64> activation_layout;
-  std::vector<int64> kernel_dims;
-  std::vector<int64> kernel_layout;
-  std::vector<int64> output_dims;
-  std::vector<int64> output_layout;
+  int64_t output_feature = -1, window = -1, stride = -1, pad = -1,
+          lhs_dilate = -1;
+  std::vector<int64_t> activation_dims;
+  std::vector<int64_t> activation_layout;
+  std::vector<int64_t> kernel_dims;
+  std::vector<int64_t> kernel_layout;
+  std::vector<int64_t> output_dims;
+  std::vector<int64_t> output_layout;
 };
 
 string DepthwiseConvolution2DTestDataToString(

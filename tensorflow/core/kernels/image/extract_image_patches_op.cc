@@ -86,8 +86,8 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
     const int ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
     const int ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
 
-    int64 out_rows = 0, out_cols = 0;
-    int64 pad_rows = 0, pad_cols = 0;
+    int64_t out_rows = 0, out_cols = 0;
+    int64_t pad_rows = 0, pad_cols = 0;
     OP_REQUIRES_OK(context,
                    GetWindowedOutputSize(in_rows, ksize_rows_eff, stride_rows,
                                          padding_, &out_rows, &pad_rows));
@@ -95,8 +95,8 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
                    GetWindowedOutputSize(in_cols, ksize_cols_eff, stride_cols,
                                          padding_, &out_cols, &pad_cols));
 
-    const std::vector<int64> out_sizes = {batch, out_rows, out_cols,
-                                          ksize_rows * ksize_cols * depth};
+    const std::vector<int64_t> out_sizes = {batch, out_rows, out_cols,
+                                            ksize_rows * ksize_cols * depth};
     TensorShape out_shape(out_sizes);
 
     Tensor* output = nullptr;

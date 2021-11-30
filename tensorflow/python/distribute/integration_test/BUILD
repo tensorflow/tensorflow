@@ -1,5 +1,6 @@
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -11,6 +12,7 @@ distribute_py_test(
     srcs = ["saved_model_test.py"],
     tags = [
         "no_windows",  # TODO(b/171350360)
+        "notsan",  # b/195248428
     ],
     deps = [
         "//tensorflow:tensorflow_py",
@@ -36,6 +38,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "notsan",  # b/195248428
     ],
     deps = [
         "//tensorflow:tensorflow_py",
@@ -45,5 +48,23 @@ cuda_py_test(
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:test_util",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_memory_test",
+    size = "medium",
+    srcs = ["tpu_memory_test.py"],
+    disable_experimental = True,
+    disable_mlir_bridge = True,
+    disable_tfrt = False,
+    disable_v2 = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
     ],
 )

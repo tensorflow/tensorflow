@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,7 +34,9 @@ limitations under the License.
 namespace tensorflow {
 
 XlaOpKernelContext::XlaOpKernelContext(OpKernelContext* context)
-    : context_(context), dynamic_dimension_is_minus_one_(false) {}
+    : context_(context),
+      dynamic_dimension_is_minus_one_(false),
+      value_inference_(xla_context()->builder()) {}
 
 bool XlaOpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
   return context_->ValidateInputsAreSameShape(op);
@@ -44,6 +48,10 @@ XlaContext* XlaOpKernelContext::xla_context() const {
 
 xla::XlaBuilder* XlaOpKernelContext::builder() const {
   return xla_context()->builder();
+}
+
+xla::ValueInference& XlaOpKernelContext::value_inference() {
+  return value_inference_;
 }
 
 XlaCompiler* XlaOpKernelContext::compiler() const {
@@ -154,6 +162,18 @@ static StatusOr<int> InputIndex(XlaOpKernelContext* context,
   return start;
 }
 
+Status XlaOpKernelContext::ResolveInputDynamism(
+    int index, xla::Literal* dynamism_literal) {
+  return ResolveInputDynamismReshaped(
+      index, context_->input(index).shape().dim_sizes(), dynamism_literal);
+}
+
+Status XlaOpKernelContext::ResolveInputDynamism(
+    absl::string_view name, xla::Literal* dynamism_literal) {
+  TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
+  return ResolveInputDynamism(index, dynamism_literal);
+}
+
 Status XlaOpKernelContext::ConstantInput(absl::string_view name,
                                          xla::Literal* constant_literal,
                                          xla::ValueInferenceMode mode) {
@@ -162,38 +182,14 @@ Status XlaOpKernelContext::ConstantInput(absl::string_view name,
 }
 
 Status XlaOpKernelContext::ConstantInputReshaped(
-    int index, absl::Span<const int64> new_dims, xla::Literal* constant_literal,
-    xla::ValueInferenceMode mode) {
-  XlaExpression e = InputExpression(index);
-  auto* client = compiler() ? compiler()->client() : nullptr;
-  StatusOr<absl::optional<Tensor>> constant_or_status =
-      e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
-  if (!constant_or_status.ok()) {
-    Status status = constant_or_status.status();
-    errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
-                            context_->op_kernel().type_string(),
-                            " operator as a compile-time constant.");
-    return status;
-  }
-  absl::optional<Tensor> constant = constant_or_status.ValueOrDie();
-  if (!constant.has_value()) {
-    return errors::InvalidArgument(
-        "Input ", index, " to node `", context_->op_kernel().name(),
-        "` with op ", context_->op_kernel().type_string(),
-        " must be a compile-time constant.\n\n"
-        "XLA compilation requires that operator arguments that represent "
-        "shapes or dimensions be evaluated to concrete values at compile time. "
-        "This error means that a shape or dimension argument could not be "
-        "evaluated at compile time, usually because the value of the argument "
-        "depends on a parameter to the computation, on a variable, or on a "
-        "stateful operation such as a random number generator.");
-  }
-
-  Tensor temp(constant->dtype());
-  if (!temp.CopyFrom(*constant, TensorShape(new_dims))) {
+    int index, absl::Span<const int64_t> new_dims,
+    xla::Literal* constant_literal, xla::ValueInferenceMode mode) {
+  TF_ASSIGN_OR_RETURN(Tensor constant, ConstantInputTensor(index, mode));
+  Tensor temp(constant.dtype());
+  if (!temp.CopyFrom(constant, TensorShape(new_dims))) {
     return errors::InvalidArgument(
         context_->op_kernel().name(), " input ", index, " has shape ",
-        constant->shape().DebugString(),
+        constant.shape().DebugString(),
         " but was asked to be reshaped to incompatible shape ",
         TensorShape(new_dims).DebugString());
   }
@@ -204,14 +200,14 @@ Status XlaOpKernelContext::ConstantInputReshaped(
 
 // Converts an int32 or int64 scalar literal to an int64.
 static Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
-                                   int64* out) {
+                                   int64_t* out) {
   if (literal.shape().rank() != 0) {
     return errors::InvalidArgument("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::S32) {
     *out = literal.Get<int32>({});
   } else if (literal.shape().element_type() == xla::S64) {
-    *out = literal.Get<int64>({});
+    *out = literal.Get<int64_t>({});
   } else {
     return errors::InvalidArgument("value must be either int32 or int64");
   }
@@ -235,14 +231,14 @@ static Status LiteralToFloat64Scalar(const xla::LiteralSlice& literal,
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntScalar(
-    int index, int64* out, xla::ValueInferenceMode mode) {
+    int index, int64_t* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   return LiteralToInt64Scalar(literal, out);
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntScalar(
-    absl::string_view name, int64* out, xla::ValueInferenceMode mode) {
+    absl::string_view name, int64_t* out, xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
   return ConstantInputAsIntScalar(index, out, mode);
 }
@@ -257,14 +253,14 @@ Status XlaOpKernelContext::ConstantInputAsFloatScalar(
 static Status LiteralToPredVector(const xla::LiteralSlice& literal,
                                   std::vector<bool>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
-  int64 size = xla::ShapeUtil::ElementsIn(literal.shape());
+  int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() != xla::PRED) {
     return errors::InvalidArgument("value is not PRED");
   }
-  for (int64 i = 0; i < size; ++i) {
+  for (int64_t i = 0; i < size; ++i) {
     out->push_back(literal.Get<bool>({i}));
   }
   return Status::OK();
@@ -301,50 +297,74 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
 }
 
 Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
-    int index, std::vector<bool>* out) {
-  xla::Literal literal;
+    absl::string_view name, std::vector<bool>* out) {
+  TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
+  return ResolveInputDynamismIntoPredVector(index, out);
+}
+
+Status XlaOpKernelContext::ResolveInputDynamismIntoPred(absl::string_view name,
+                                                        bool* out) {
+  TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
+  return ResolveInputDynamismIntoPred(index, out);
+}
+
+Status XlaOpKernelContext::ResolveInputDynamismReshaped(
+    int index, absl::Span<const int64_t> new_dims,
+    xla::Literal* dynamism_literal) {
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
   StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
+    xla::Literal true_literal = xla::LiteralUtil::CreateR0<bool>(true);
     // When failed to resolve dynamism, conservatively consider the value
     // dynamic. This could happen if the input depends on some ops like
     // custom-call that is not supported generally for dynamism computation.
-    //
-    // TODO(b/176993339): Support resolving dynamism across computations so
-    // resolving dynamism will not fail in those cases.
-    out->resize(InputShape(index).num_elements(), true);
+    *dynamism_literal =
+        true_literal
+            .Broadcast(xla::ShapeUtil::MakeShape(xla::PRED, new_dims), {})
+            .ValueOrDie();
+
     return Status::OK();
   }
   Tensor dynamism = dynamism_or_status.ValueOrDie();
 
   Tensor temp(dynamism.dtype());
-  TensorShape tensor_shape({InputShape(index).num_elements()});
-  if (!temp.CopyFrom(dynamism, tensor_shape)) {
+  if (!temp.CopyFrom(dynamism, TensorShape(new_dims))) {
     return errors::InvalidArgument(
         context_->op_kernel().name(), " input ", index, " has shape ",
-        dynamism.shape().DebugString(), " which is not a R1 ", tensor_shape);
+        dynamism.shape().DebugString(),
+        " but was asked to be reshaped to incompatible shape ",
+        TensorShape(new_dims).DebugString());
   }
 
-  TF_ASSIGN_OR_RETURN(literal, HostTensorToLiteral(temp));
+  TF_ASSIGN_OR_RETURN(*dynamism_literal, HostTensorToLiteral(temp));
+  return Status::OK();
+}
+
+Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
+    int index, std::vector<bool>* out) {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(ResolveInputDynamismReshaped(
+      index, {InputShape(index).num_elements()}, &literal));
+
   return LiteralToPredVector(literal, out);
 }
 
 // Converts an int32 or int64 1D literal to an int64 vector.
 static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
-                                   std::vector<int64>* out) {
+                                   std::vector<int64_t>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
-  int64 size = xla::ShapeUtil::ElementsIn(literal.shape());
+  int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {
-    for (int64 i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       out->push_back(literal.Get<int32>({i}));
     }
   } else if (literal.shape().element_type() == xla::S64) {
-    for (int64 i = 0; i < size; ++i) {
-      out->push_back(literal.Get<int64>({i}));
+    for (int64_t i = 0; i < size; ++i) {
+      out->push_back(literal.Get<int64_t>({i}));
     }
   } else {
     return errors::InvalidArgument("value must be either int32 or int64");
@@ -353,21 +373,21 @@ static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntVector(
-    int index, std::vector<int64>* out, xla::ValueInferenceMode mode) {
+    int index, std::vector<int64_t>* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   return LiteralToInt64Vector(literal, out);
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntVector(
-    absl::string_view name, std::vector<int64>* out,
+    absl::string_view name, std::vector<int64_t>* out,
     xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
-  return ConstantInputAsIntVector(index, out);
+  return ConstantInputAsIntVector(index, out, mode);
 }
 
 Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
-    int index, std::vector<int64>* out, xla::ValueInferenceMode mode) {
+    int index, std::vector<int64_t>* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInputReshaped(
       index, {InputShape(index).num_elements()}, &literal, mode));
@@ -375,7 +395,7 @@ Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
 }
 
 Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
-    absl::string_view name, std::vector<int64>* out,
+    absl::string_view name, std::vector<int64_t>* out,
     xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
   xla::Literal literal;
@@ -393,8 +413,8 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(
       *out = xla::Literal(
           xla::ShapeUtil::ChangeElementType(literal.shape(), xla::S64));
       auto src_data = literal.data<int32>();
-      for (int64 i = 0; i < src_data.size(); ++i) {
-        out->data<int64>()[i] = src_data[i];
+      for (int64_t i = 0; i < src_data.size(); ++i) {
+        out->data<int64_t>()[i] = src_data[i];
       }
       return Status::OK();
     }
@@ -421,7 +441,7 @@ Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape,
                                                 xla::ValueInferenceMode mode) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
-  std::vector<int64> dims;
+  std::vector<int64_t> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
   *shape = TensorShape(dims);
   return Status::OK();
@@ -433,7 +453,7 @@ Status XlaOpKernelContext::ConstantInputAsPartialShape(
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
   // If `literal` is a scalar it's value must be -1.
   if (literal.shape().rank() == 0) {
-    int64 shape_val;
+    int64_t shape_val;
     TF_RETURN_IF_ERROR(LiteralToInt64Scalar(literal, &shape_val));
     if (shape_val != -1) {
       return errors::InvalidArgument(
@@ -442,7 +462,7 @@ Status XlaOpKernelContext::ConstantInputAsPartialShape(
     *shape = PartialTensorShape();  // Shape with unknown rank.
     return Status::OK();
   }
-  std::vector<int64> dims;
+  std::vector<int64_t> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
   *shape = PartialTensorShape(dims);
   return Status::OK();
@@ -475,6 +495,35 @@ Status XlaOpKernelContext::ConstantInputList(absl::string_view name,
   return Status::OK();
 }
 
+StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
+    int index, xla::ValueInferenceMode mode) {
+  XlaExpression e = InputExpression(index);
+  auto* client = compiler() ? compiler()->client() : nullptr;
+  StatusOr<absl::optional<Tensor>> constant_or_status =
+      e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
+  if (!constant_or_status.ok()) {
+    Status status = constant_or_status.status();
+    errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
+                            context_->op_kernel().type_string(),
+                            " operator as a compile-time constant.");
+    return status;
+  }
+  absl::optional<Tensor> constant = constant_or_status.ValueOrDie();
+  if (!constant.has_value()) {
+    return errors::InvalidArgument(
+        "Input ", index, " to node `", context_->op_kernel().name(),
+        "` with op ", context_->op_kernel().type_string(),
+        " must be a compile-time constant.\n\n"
+        "XLA compilation requires that operator arguments that represent "
+        "shapes or dimensions be evaluated to concrete values at compile time. "
+        "This error means that a shape or dimension argument could not be "
+        "evaluated at compile time, usually because the value of the argument "
+        "depends on a parameter to the computation, on a variable, or on a "
+        "stateful operation such as a random number generator.");
+  }
+  return *constant;
+}
+
 namespace {
 
 Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
@@ -493,8 +542,8 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   }
   if (variable->type() != type) {
     return errors::InvalidArgument(
-        "Type mismatch for read of variable ", variable->name(), ". Expected ",
-        DataTypeString(type), "; got ", DataTypeString(variable->type()));
+        "Trying to read variable with wrong dtype. Expected ",
+        DataTypeString(type), " got ", DataTypeString(variable->type()));
   }
   if (shape) {
     *shape = variable->shape();
@@ -507,10 +556,11 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
     return Status::OK();
   }
 
-  TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
-                      ctx->compiler()->options().shape_representation_fn(
-                          variable->shape(), variable->type(),
-                          /*use_fast_memory=*/false));
+  TF_ASSIGN_OR_RETURN(
+      xla::Shape representation_shape,
+      ctx->compiler()->options().shape_representation_fn(
+          variable->shape(), variable->type(),
+          /*use_fast_memory=*/false, XlaLayoutPreference::kNoPreference));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       TensorShapeToXLAShape(variable->type(), variable->shape(), &xla_shape));
@@ -650,10 +700,11 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
 
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
 
-  TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
-                      ctx->compiler()->options().shape_representation_fn(
-                          shape, type,
-                          /*use_fast_memory=*/false));
+  TF_ASSIGN_OR_RETURN(
+      xla::Shape representation_shape,
+      ctx->compiler()->options().shape_representation_fn(
+          shape, type,
+          /*use_fast_memory=*/false, XlaLayoutPreference::kNoPreference));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
   if (!xla::ShapeUtil::Compatible(xla_shape, representation_shape)) {

@@ -27,6 +27,12 @@ def TosaLegalizeTFLPass : FunctionPass<"tosa-legalize-tfl"> {
   let dependentDialects = ["TosaDialect"];
 }
 
+def TosaLegalizeTFTFLPass : FunctionPass<"tosa-legalize-tf-tfl"> {
+  let summary = "Legalize from TensorFlow / TensorFlow Lite to TOSA";
+  let constructor = "createLegalizeTFTFLPass()";
+  let dependentDialects = ["TosaDialect"];
+}
+
 def TosaFusebiasTFPass : FunctionPass<"tosa-fuse-bias-tf"> {
   let summary = "Fuse tf.Op + tf.BiasAdd and legalized to TOSA";
   let constructor = "createFuseBiasTFPass()";
@@ -36,5 +42,11 @@ def TosaFusebiasTFPass : FunctionPass<"tosa-fuse-bias-tf"> {
 def TosaConvertTFLUint8Pass : FunctionPass<"tosa-convert-tfl-uint8"> {
   let summary = "Convert uint8 graph to int8 graph";
   let constructor = "createConvertTFLUint8Pass()";
+  let dependentDialects = ["TosaDialect"];
+}
+
+def TosaStripQuantTypesPass : FunctionPass<"tosa-strip-quant-types"> {
+  let summary = "Convert all quant types to their storage type.";
+  let constructor = "createStripQuantTypesPass()";
   let dependentDialects = ["TosaDialect"];
 }

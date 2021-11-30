@@ -126,16 +126,29 @@ An n-way switch statement, implementing the following:
     int num_branches() { return branches().size(); }
 
     // Gets function corresponding branch # `index`.
-    FuncOp branch_function(int index) {
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveBranchFunction(::mlir::SymbolTableCollection* table, int index) {
       auto flat_sym_ref = branches()[index].cast<FlatSymbolRefAttr>();
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, flat_sym_ref);
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, flat_sym_ref);
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp branch_function(int index) { return ResolveBranchFunction(nullptr, index); }
 
-    // Gets all branch functions.
-    void get_branch_functions(SmallVectorImpl<FuncOp> &functions) {
+    // Resolve all branch functions.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    void ResolveBranchFunctions(::mlir::SymbolTableCollection* table,
+        SmallVectorImpl<FuncOp> &functions) {
       functions.reserve(num_branches());
       for (int idx : llvm::seq<int>(0, num_branches()))
-        functions.push_back(branch_function(idx));
+        functions.push_back(ResolveBranchFunction(table, idx));
+    }
+    // TODO(b/204997177): Deprecate and remove.
+    void get_branch_functions(SmallVectorImpl<FuncOp> &functions) {
+      return ResolveBranchFunctions(nullptr, functions);
     }
   }];
 }
@@ -191,7 +204,7 @@ An n-way switch statement, implementing the following:
 // its type encoding the tensor's shape and data type.
 def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins
@@ -216,22 +229,6 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
       return BroadcastCompatible(l, r);
     }
   }];
-}
-
-def TF_XlaAllReduceOp : TF_Op<"XlaAllReduce", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
-  let summary = "An Op to reduce inputs across replicated TPU instances.";
-
-  let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$input,
-    TF_Int32Tensor:$group_assignment,
-    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_EmptyTensorListOp : TF_TensorListInitOp<"EmptyTensorList"> {
@@ -294,14 +291,32 @@ else_branch: A function that takes 'inputs' and returns a list of
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
-    // Get the then branch function.
-    FuncOp then_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, then_branch());
+    // Resolve the then branch function.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveThenFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, then_branchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+        *this, then_branchAttr());
+    }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp then_function(::mlir::SymbolTableCollection* table = nullptr) {
+      return ResolveThenFunction(table);
     }
 
-    // Get the else branch function.
-    FuncOp else_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, else_branch());
+    // Resolve the else branch function.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveElseFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, else_branchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+        *this, else_branchAttr());
+    }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp else_function(::mlir::SymbolTableCollection* table = nullptr) {
+      return ResolveElseFunction(table);
     }
   }];
 }
@@ -409,10 +424,16 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
-    // returns the callee of this operation.
-    FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+    // Returns the resolved callee function of this operation.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 }
 
@@ -566,10 +587,16 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
-    // returns the callee of this operation.
-    FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+    // Returns the resolved callee function of this operation.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 
   let verifier = [{ return VerifyPartitionedCall(*this); }];
@@ -630,14 +657,26 @@ body: A function that takes a list of tensors and returns another
 
   let extraClassDeclaration = [{
     // Get the condition function.
-    FuncOp cond_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, cond());
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveCondFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp cond_function() { return ResolveCondFunction(nullptr); }
 
     // Get the body function.
-    FuncOp body_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, body());
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveBodyFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp body_function() { return ResolveBodyFunction(nullptr); }
   }];
 }
 
@@ -721,7 +760,7 @@ element_dtype: the desired type of elements in the list.
   );
 }
 
-def TF_VarHandleOp : TF_Op<"VarHandleOp", [TF_ResourceHandleAllocatorInterface]> {
+def TF_VarHandleOp : TF_Op<"VarHandleOp", [DeclareOpInterfaceMethods<TF_ResourceHandleAllocatorInterface>]> {
   let summary = "Creates a handle to a Variable resource from its name.";
 
   let description = [{
@@ -738,8 +777,8 @@ Example:
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name
+    DefaultValuedStrAttr<StrAttr, "">:$container,
+    DefaultValuedStrAttr<StrAttr, "">:$shared_name
   );
 
   let results = (outs
@@ -765,11 +804,6 @@ Example:
       [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
   let extraClassDeclaration = [{
-    // TF_ResourceHandleAllocatorInterface:
-    ResourceHandleValueAndId GetResourceHandleValueAndId(
-      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
-      int64_t &next_id);
-
     TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
 
     ResourceType resource_type() {
@@ -786,7 +820,7 @@ An op which shards the input based on the given sharding attribute.
   let arguments = (ins
     TF_Tensor:$input,
 
-    DefaultValuedAttr<StrAttr, "">:$sharding,
+    DefaultValuedStrAttr<StrAttr, "">:$sharding,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -843,8 +877,8 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
   let arguments = (ins
     Variadic<TF_Tensor>:$inputs,
 
-    DefaultValuedAttr<StrAttr, "%s">:$strtemplate,
-    DefaultValuedAttr<StrAttr, "%s">:$placeholder,
+    DefaultValuedStrAttr<StrAttr, "%s">:$strtemplate,
+    DefaultValuedStrAttr<StrAttr, "%s">:$placeholder,
     DefaultValuedAttr<I64Attr, "3">:$summarize
   );
 
@@ -882,8 +916,8 @@ def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
   );
 }
 
-// Manually defined to restrict result type to `0DTensorOf<[I1]>`.
-def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
+// Manually defined to restrict result type to `I1Tensor`.
+def TF_ToBoolOp : TF_Op<"ToBool", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
   let summary = "Converts a tensor to a scalar predicate.";
 
   let description = [{
@@ -906,19 +940,19 @@ as true/false for a branch condition.
   );
 
   let results = (outs
-    0DTensorOf<[I1]>:$output
+    I1Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
-  let builders = [
-    OpBuilder<(ins "Value":$value),
-    [{
-      build($_builder, $_state, RankedTensorType::get({}, $_builder.getI1Type()),
-            value);
-    }]>];
-
   let hasCanonicalizer = 1;
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, SameOperandsAndResultType]> {
@@ -988,10 +1022,16 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
-    // returns the callee of this operation.
-    FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+    // Returns the resolved callee function of this operation.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 
   let verifier = [{ return VerifyPartitionedCall(*this); }];
@@ -1157,7 +1197,7 @@ event: A string containing a binary-encoded tf.Event proto.
   let results = (outs);
 }
 
-def TF_SummaryWriterOp : TF_Op<"SummaryWriter", [TF_ResourceHandleAllocatorInterface]> {
+def TF_SummaryWriterOp : TF_Op<"SummaryWriter", [DeclareOpInterfaceMethods<TF_ResourceHandleAllocatorInterface>]> {
   let summary = "Returns a handle to be used to access a summary writer.";
 
   let description = [{
@@ -1175,13 +1215,6 @@ writer: the summary writer resource. Scalar handle.
   let results = (outs
     Res<TF_ResourceTensor, "", [TF_SummaryAlloc]>:$writer
   );
-
-  let extraClassDeclaration = [{
-    // TF_ResourceHandleAllocatorInterface:
-    ResourceHandleValueAndId GetResourceHandleValueAndId(
-      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
-      int64_t &next_id);
-  }];
 }
 
 def TF_WriteAudioSummaryOp : TF_Op<"WriteAudioSummary", []> {
@@ -1396,7 +1429,7 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", []> {
+def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", [NoSideEffect]> {
   let summary = [{
 Placeholder device ordinal that represents device ordinal of a replicated op.
   }];
@@ -1463,7 +1496,7 @@ outputs outside the XLA computation.
 // Declares symbol reference attribute `shape_inference_graph` to be optional
 // unlike the TensorFlow definition. This is required to support ops that use
 // empty string value for the attribute to signify missing.
-def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", []> {
+def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", [TF_SendRecvSideEffect]> {
   let summary = [{
 A pseudo-op to represent host-side computation in an XLA program.
   }];
@@ -1475,8 +1508,8 @@ A pseudo-op to represent host-side computation in an XLA program.
     TF_ShapeAttrArray:$shapes,
     OptionalAttr<SymbolRefAttr>:$shape_inference_graph,
     StrAttr:$key,
-    DefaultValuedAttr<StrAttr, "">:$send_key,
-    DefaultValuedAttr<StrAttr, "">:$recv_key,
+    DefaultValuedStrAttr<StrAttr, "">:$send_key,
+    DefaultValuedStrAttr<StrAttr, "">:$recv_key,
     DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
     DefaultValuedAttr<I64Attr, "0">:$tpu_core
   );
@@ -1508,6 +1541,17 @@ InitializeHostForDistributedTpuOp, and outputs the latter's result.
   );
 }
 
+def TF_ShutdownTPUSystemOp : TF_Op<"ShutdownTPUSystem", []> {
+  let summary = [{
+An op that shuts down the TPU system.
+  }];
+
+  let arguments = (ins);
+  let results = (outs
+    TF_BoolTensor:$success
+  );
+}
+
 // Internal op for testing value-based side-effects for non-resource values.
 // TODO(mgester) We should have an extension of TF dialect only for testing so
 // TF dialect is not polluted with test ops.
@@ -1518,6 +1562,84 @@ def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResour
     Arg<TF_StrTensor,"", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$key
   );
   let results = (outs);
+}
+
+def TF_SetStaticDimensionBoundsOp : TF_Op<"SetStaticDimensionBounds", []> {
+  let summary = "Op used to indicate to the compiler and runtime the static bounds of a tensor.";
+  let description = [{
+The information passed through this op can possibly be used by the compiler and
+runtime to perform certain optimizations such as more efficient DMAs. The
+bounds passed via this op should be considered advisory only, and depending on
+the implementation, might do nothing and simply be an identity
+
+`input`: The tensor that has dynamic dimensions.
+`static_shape`: The static shape of the tensor, corresponds to the maximum bounds of each dimension.
+`output` is the input tensor with no changes done to it.
+
+Example usage:
+
+def tpu_call(args):
+  def model_fn(args):
+    # do something with dynamic tensor
+
+  @function.Defun(capture_resource_var_by_value=False)
+  def tpu_subgraph():
+      return tf.tpu.rewrite(model_fn, args)
+
+  return tf.raw_ops.TPUPartitionedCall(
+      args=tpu_subgraph.captured_inputs,
+      Tout=[o.type for o in tpu_subgraph.definition.signature.output_arg],
+      f=tpu_subgraph,
+      device_ordinal=[0])
+
+static_shape = tf.placeholder(tf.int32, shape=([3]), name='static_size')
+
+w = tf.Variable(tf.constant([[1.0], [2.0], [3.0]]), name='w')
+
+w_dyn = tf.SetDynamicDimensionBounds(w, static_size])
+tpu_call([w_dyn])
+}];
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$static_shape
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+}
+
+def TF_TPUCompileMlirAndExecuteOp : TF_Op<"TPUCompileMlirAndExecute", [AttrSizedOperandSegments]> {
+  let summary = "Op that compiles a computation in MLIR into a TPU program, and loads and executes it on a TPU device.";
+
+  let description = [{
+For the internal use of the TPU compiler.
+
+'static_shapes' are tensors specifying the maximum dimension sizes for the tensors specified in `dynamic_operands`.
+'args' are inputs to the TPU computation.
+'operands_with_static_shape' are the indices of the operands that have a maximal static shape specified.
+'mlir_module' is a serialized MLIR module with a `main` function that contains
+target computation.
+'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
+types of the inputs to the computation, as well as a mapping onto the TPU pod
+topology.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    Variadic<TF_I32OrI64Tensor>:$static_shapes,
+    OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
+    DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
+    StrAttr:$metadata
+  );
+
+  let results = (outs
+    TF_Tensor:$rendezvous_key_base,
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
 }
 
 #endif // TF_OPS

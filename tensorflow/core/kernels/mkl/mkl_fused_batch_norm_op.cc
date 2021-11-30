@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
-#include "mkldnn.hpp"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -45,16 +45,19 @@ struct MklBatchNormFwdParams {
   int depth;
   float eps;
   bool training;
+  TensorFormat data_format;
   FusedBNActivationMode activation_mode;
   memory::desc src_md;
 
   MklBatchNormFwdParams(const memory::dims& src_dims, int depth, float eps,
-                        bool training, memory::desc src_md,
+                        bool training, TensorFormat data_format,
+                        memory::desc src_md,
                         FusedBNActivationMode activation_mode)
       : src_dims(src_dims),
         depth(depth),
         eps(eps),
         training(training),
+        data_format(data_format),
         activation_mode(activation_mode),
         src_md(src_md) {}
 };
@@ -234,7 +237,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     // BatchNorm forward primitive.
     // TODO(intel-tf): Merge all the #ifdefs and simplify code
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
-      if ((IS_SET(use_scale_shift)) && mkldnn_use_scaleshift) {
+      if (IS_SET(use_scale_shift)) {
         context_.net_args.push_back(
             {{MKLDNN_ARG_SRC, *context_.src_mem},
              {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
@@ -245,7 +248,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
     } else if (IS_SET(use_global_stats)) {
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+      if (IS_SET(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
               {{MKLDNN_ARG_SRC, *context_.src_mem},
@@ -280,7 +283,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
     } else {
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+      if (IS_SET(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
               {{MKLDNN_ARG_SRC, *context_.src_mem},
@@ -356,6 +359,7 @@ class MklFusedBatchNormFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey<int>(fwdParams.depth);
     key_creator.AddAsKey<float>(fwdParams.eps);
     key_creator.AddAsKey<bool>(fwdParams.training);
+    key_creator.AddAsKey<TensorFormat>(fwdParams.data_format);
     key_creator.AddAsKey<FusedBNActivationMode>(fwdParams.activation_mode);
     key_creator.AddAsKey(typeid(T).name());
     key_creator.AddAsKey(typeid(U).name());
@@ -380,18 +384,20 @@ struct MklBatchNormBwdParams {
   int depth;
   float eps;
   bool training;
-
+  TensorFormat data_format;
   memory::desc src_md;
   memory::desc diff_dst_md;
 
   MklBatchNormBwdParams(memory::dims src_dims, memory::dims diff_dst_dims,
                         int depth, float eps, bool training,
-                        memory::desc src_md, memory::desc diff_dst_md)
+                        TensorFormat data_format, memory::desc src_md,
+                        memory::desc diff_dst_md)
       : src_dims(src_dims),
         diff_dst_dims(diff_dst_dims),
         depth(depth),
         eps(eps),
         training(training),
+        data_format(data_format),
         src_md(src_md),
         diff_dst_md(diff_dst_md) {}
 };
@@ -614,6 +620,7 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey<int>(bwdParams.depth);
     key_creator.AddAsKey<float>(bwdParams.eps);
     key_creator.AddAsKey<bool>(bwdParams.training);
+    key_creator.AddAsKey<TensorFormat>(bwdParams.data_format);
     key_creator.AddAsKey(typeid(T).name());
     key_creator.AddAsKey(typeid(U).name());
     return key_creator.GetKey();
@@ -718,6 +725,43 @@ class MklFusedBatchNormOp : public OpKernel {
           errors::InvalidArgument("estimated_variance must be 1-dimensional",
                                   est_variance_tensor.shape().DebugString()));
 
+      int num_channels;
+      if (dnn_shape_src.IsMklTensor()) {
+        num_channels = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
+      } else {
+        num_channels = GetTensorDim(src_tensor, tensor_format_, 'C');
+      }
+
+      OP_REQUIRES(context, scale_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "scale must have the same number of elements "
+                      "as the channels of x, got ",
+                      scale_tensor.NumElements(), " and ", num_channels));
+
+      OP_REQUIRES(context, shift_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "offset must have the same number of elements "
+                      "as the channels of x, got ",
+                      shift_tensor.NumElements(), " and ", num_channels));
+      if (!is_training_ || exponential_avg_factor_ != 1.) {
+        std::string prefix_msg = is_training_
+                                     ? "When exponential_avg_factor != 1"
+                                     : "When is_training=false";
+        OP_REQUIRES(context, est_mean_tensor.NumElements() == num_channels,
+                    errors::InvalidArgument(
+                        prefix_msg,
+                        ", mean must have the same number "
+                        "of elements as the channels of x, got ",
+                        est_mean_tensor.NumElements(), " and ", num_channels));
+        OP_REQUIRES(
+            context, est_variance_tensor.NumElements() == num_channels,
+            errors::InvalidArgument(
+                prefix_msg,
+                ", variance must have the same "
+                "number of elements as the channels of x, got ",
+                est_variance_tensor.NumElements(), " and ", num_channels));
+      }
+
       // Handle the special case: input with 0 element and 0 batch size.
       Tensor* dst_tensor = nullptr;
       TensorShape workspace_tf_shape;
@@ -774,7 +818,7 @@ class MklFusedBatchNormOp : public OpKernel {
                         : memory::desc(src_dims, MklDnnType<T>(), dnn_fmt);
 
       MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_,
-                                      src_md, activation_mode_);
+                                      tensor_format_, src_md, activation_mode_);
 
       // Get forward batch-normalization op from the primitive caching pool.
       MklFusedBatchNormFwdPrimitive<T, U>* bn_fwd =
@@ -1121,6 +1165,34 @@ class MklFusedBatchNormGradOp : public OpKernel {
           context, saved_variance_tensor.dims() == 1,
           errors::InvalidArgument("saved variance must be 1-dimensional",
                                   saved_variance_tensor.shape().DebugString()));
+      OP_REQUIRES(context, tf_shape_src == tf_shape_diff_dst,
+                  errors::InvalidArgument(
+                      "x and y_backprop must have same shape, but x has shape ",
+                      src_tensor.shape(), " and y_backprop has shape ",
+                      diff_dst_tensor.shape()));
+
+      int num_channels;
+      if (dnn_shape_src.IsMklTensor()) {
+        num_channels = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
+      } else {
+        num_channels = GetTensorDim(src_tensor, tensor_format_, 'C');
+      }
+      OP_REQUIRES(context, scale_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "scale must have the same number of elements "
+                      "as the channels of x, got ",
+                      scale_tensor.NumElements(), " and ", num_channels));
+      OP_REQUIRES(context, saved_mean_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "reserve_space_1 must have the same number of "
+                      "elements as the channels of x, got ",
+                      saved_mean_tensor.NumElements(), " and ", num_channels));
+      OP_REQUIRES(
+          context, saved_variance_tensor.NumElements() == num_channels,
+          errors::InvalidArgument(
+              "reserve_space_2 must have the same number of "
+              "elements as the channels of x, got ",
+              saved_variance_tensor.NumElements(), " and ", num_channels));
 
       // Handle the special case: input with 0 element and 0 batch size.
       Tensor* diff_src_tensor = nullptr;
@@ -1219,7 +1291,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
       diff_weights.AllocateBuffer(2 * depth_ * sizeof(U));
 
       MklBatchNormBwdParams bwdParams(src_dims, diff_dst_dims, depth_, epsilon_,
-                                      is_training_, src_md, diff_dst_md);
+                                      is_training_, tensor_format_, src_md,
+                                      diff_dst_md);
       MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =
           MklFusedBatchNormBwdPrimitiveFactory<T, U>::Get(bwdParams);
 

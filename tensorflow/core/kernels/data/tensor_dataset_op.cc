@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tensor_dataset_op.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
@@ -52,6 +56,12 @@ class TensorDatasetOp::Dataset : public DatasetBase {
         this, name_utils::IteratorPrefix(kFromTensor, prefix)});
   }
 
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    split_providers->push_back(absl::make_unique<IndexSplitProvider>(1));
+    return Status::OK();
+  }
+
   const DataTypeVector& output_dtypes() const override { return dtypes_; }
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
@@ -62,13 +72,20 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return 1LL; }
+  int64_t CardinalityInternal() const override { return 1LL; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();
   }
 
   Status CheckExternalState() const override { return Status::OK(); }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    *out_tensors = tensors_;
+    return Status::OK();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -78,7 +95,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     components.reserve(tensors_.size());
     for (const Tensor& t : tensors_) {
       Node* node;
-      if (ctx->serialize_data_tensors()) {
+      if (!ctx->is_graph_rewrite()) {
         TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
       } else {
         TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
@@ -100,10 +117,26 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params), produced_(false) {}
 
+    Status Initialize(IteratorContext* ctx) override {
+      if (!ctx->split_providers().empty()) {
+        TF_ASSIGN_OR_RETURN(split_provider_,
+                            GetSingleSplitProvider(ctx, dataset()));
+      }
+      return Status::OK();
+    }
+
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
+      if (split_provider_) {
+        bool end_of_splits;
+        Tensor split;
+        TF_RETURN_IF_ERROR(split_provider_->GetNext(&split, &end_of_splits));
+        if (end_of_splits) {
+          produced_ = true;
+        }
+      }
       if (!produced_) {
         *out_tensors = dataset()->tensors_;
         produced_ = true;
@@ -138,6 +171,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
+    std::shared_ptr<SplitProvider> split_provider_;
     bool produced_ TF_GUARDED_BY(mu_);
   };
 

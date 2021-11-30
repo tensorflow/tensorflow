@@ -40,9 +40,9 @@ using ::testing::_;
 // RematerializationTestBase for more.
 class HloRematerializationTest : public RematerializationTestBase {
  protected:
-  StatusOr<bool> RunHloRematerialization(int64 memory_limit_bytes,
+  StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                          HloModule* module,
-                                         int64 min_remat_size = 0) {
+                                         int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     HloMemoryScheduler scheduler(
         [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
@@ -293,7 +293,7 @@ TEST_F(HloRematerializationTest, RngNotRematerialized) {
       module->AddEntryComputation(builder.Build());
 
   auto count_rngs = [](const HloComputation* computation) {
-    int64 rng_count = 0;
+    int64_t rng_count = 0;
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kRng) {
         ++rng_count;
@@ -304,7 +304,7 @@ TEST_F(HloRematerializationTest, RngNotRematerialized) {
   // Before rematerialization there should be a single broadcast rng in
   // the graph.
   ASSERT_EQ(count_rngs(entry_computation), 1);
-  const int64 original_instruction_count =
+  const int64_t original_instruction_count =
       entry_computation->instruction_count();
   // Pick a memory limit some where between 24KB (initial peak memory including
   // parameter and output) and 20KB (peak memory possible with
@@ -381,7 +381,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
       module->AddEntryComputation(builder.Build());
 
   auto count_broadcasts = [](const HloComputation* computation) {
-    int64 bcast_count = 0;
+    int64_t bcast_count = 0;
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kBroadcast) {
         bcast_count++;
@@ -454,7 +454,7 @@ TEST_F(HloRematerializationTest, CopyNotRematerialized) {
                               /*memory_limit_bytes=*/1 * 1024, module.get()));
 
   auto count_copies = [](const HloComputation* computation) {
-    int64 copy_count = 0;
+    int64_t copy_count = 0;
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kCopy) {
         copy_count++;
@@ -560,19 +560,19 @@ INSTANTIATE_TEST_SUITE_P(IndirectUseTestInstantiation, IndirectUseTest,
 class CompressingRematerializationTest : public RematerializationTestBase {
  protected:
   // A special shape size function, which pads the most minor dimension to 64.
-  static int64 ShapeSizePadMinorTo64(const Shape& shape) {
+  static int64_t ShapeSizePadMinorTo64(const Shape& shape) {
     if (shape.IsTuple()) {
       // Size of a tuple is 4 bytes.
       return 4;
     }
     Shape descending_shape =
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
-    int64 size =
+    int64_t size =
         ShapeUtil::ByteSizeOfPrimitiveType(descending_shape.element_type());
-    for (int64 i = 0; i < descending_shape.rank(); ++i) {
-      int64 dim = descending_shape.dimensions(i);
+    for (int64_t i = 0; i < descending_shape.rank(); ++i) {
+      int64_t dim = descending_shape.dimensions(i);
       if (i == descending_shape.rank() - 1) {
-        dim = RoundUpToNearest<int64>(dim, 64);
+        dim = RoundUpToNearest<int64_t>(dim, 64);
       }
       size *= dim;
     }
@@ -584,10 +584,10 @@ class CompressingRematerializationTest : public RematerializationTestBase {
   static StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
     Shape result = shape;
     Layout layout = result.layout();
-    int64 most_minor_index = layout.minor_to_major()[0];
-    int64 second_minor_index = layout.minor_to_major()[1];
-    int64 most_minor = result.dimensions(most_minor_index);
-    int64 second_minor = result.dimensions(second_minor_index);
+    int64_t most_minor_index = layout.minor_to_major()[0];
+    int64_t second_minor_index = layout.minor_to_major()[1];
+    int64_t most_minor = result.dimensions(most_minor_index);
+    int64_t second_minor = result.dimensions(second_minor_index);
     if (most_minor < second_minor) {
       Layout new_layout = layout;
       new_layout.set_minor_to_major(0, second_minor_index);
@@ -597,9 +597,9 @@ class CompressingRematerializationTest : public RematerializationTestBase {
     return result;
   }
 
-  StatusOr<bool> RunHloRematerialization(int64 memory_limit_bytes,
+  StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                          HloModule* module,
-                                         int64 min_remat_size = 0) {
+                                         int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     HloRematerialization remat(
         ShapeSizePadMinorTo64, memory_limit_bytes,
@@ -1039,6 +1039,62 @@ ENTRY %entry {
                                              ::testing::Ne(fusion))),
                    op::Add()));
 }
+
+// Make sure when rematerializing all-gathers we increment channel_ids properly.
+TEST_F(HloRematerializationTest, AllGatherChannelId) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+ENTRY %mycomp (param: f32[1]) -> f32[1] {
+  %param = f32[1]{0} parameter(0)
+  %reshape = f32[] reshape(f32[1]{0} %param)
+  %broadcast = f32[256,1]{1,0} broadcast(f32[] %reshape), dimensions={}
+  %ag = f32[1024,1]{1,0} all-gather(f32[256,1]{1,0} %broadcast), dimensions={0},
+    channel_id=1, replica_groups={{0,1,2,3}}, use_global_device_ids=true
+  %bitcast = f32[1024]{0} bitcast(f32[1024,1]{1,0} %ag)
+  %negate = f32[1024,1]{1,0} negate(f32[1024,1]{1,0} %ag)
+  %concatenate = f32[2048,1]{1,0} concatenate(f32[1024,1]{1,0} %negate,
+    f32[1024,1]{1,0} %negate), dimensions={0}
+  %slice = f32[1,1]{1,0} slice(f32[2048,1]{1,0} %concatenate),
+    slice={[0:1], [0:1]}
+  %bitcast.1 = f32[1]{0} bitcast(f32[1,1]{1,0} %slice)
+  %concatenate.1 = f32[1025]{0} concatenate(f32[1024]{0} %bitcast,
+    f32[1]{0} %bitcast.1), dimensions={0}
+  ROOT %slice.1 = f32[1]{0} slice(f32[1025]{0} %concatenate.1), slice={[0:1]}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto* computation = module->entry_computation();
+  // Find and save the original broadcast instruction which should be
+  // rematerialized.
+  const HloInstruction* slice = computation->root_instruction();
+  ASSERT_THAT(slice, op::Slice(op::Concatenate(
+                         op::Bitcast(op::AllGather(op::Broadcast(_))), _)));
+
+  // Computation requires 16KB without rematerialization, but uses only 12KB
+  // with rematerialization so pick a memory limit between these values (14KB).
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/14 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+
+  // Root should not have changed.
+  EXPECT_EQ(computation->root_instruction(), slice);
+
+  // Original all-gather.
+  const HloInstruction* original_ag = FindInstruction(module.get(), "ag");
+  // The all-gather should have been rematerialized
+  const HloInstruction* remat_ag = FindInstruction(module.get(), "ag.remat");
+
+  EXPECT_NE(remat_ag, nullptr);
+  EXPECT_TRUE(original_ag->channel_id().has_value());
+  EXPECT_TRUE(remat_ag->channel_id().has_value());
+  EXPECT_EQ(*remat_ag->channel_id(), *original_ag->channel_id() + 1);
+}
+
 }  // namespace
 
 }  // namespace xla

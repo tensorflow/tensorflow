@@ -21,8 +21,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// A simple TensorBuffer implementation that allows us to create Tensors that
-// take ownership of pre-allocated memory.
+/// A simple TensorBuffer implementation that allows us to create Tensors that
+/// take ownership of pre-allocated memory.
 class MlirTensorBuffer : public TensorBuffer {
  public:
   MlirTensorBuffer(const void* ptr, size_t size, Allocator* allocator)
@@ -41,13 +41,13 @@ class MlirTensorBuffer : public TensorBuffer {
   TensorBuffer* root_buffer() override { return this; }
 
   void FillAllocationDescription(AllocationDescription* proto) const override {
-    proto->set_requested_bytes(static_cast<int64>(size_));
+    proto->set_requested_bytes(static_cast<int64_t>(size_));
     proto->set_allocator_name(allocator_->Name());
     proto->set_ptr(reinterpret_cast<uintptr_t>(data()));
     if (allocator_->TracksAllocationSizes()) {
-      auto ab = static_cast<int64>(allocator_->AllocatedSize(data()));
+      auto ab = static_cast<int64_t>(allocator_->AllocatedSize(data()));
       proto->set_allocated_bytes(ab);
-      int64 id = allocator_->AllocationId(data());
+      int64_t id = allocator_->AllocationId(data());
       if (id > 0) {
         proto->set_allocation_id(id);
       }
@@ -67,6 +67,50 @@ class MlirTensorBuffer : public TensorBuffer {
 TensorBuffer* GetMlirTensorBuffer(const void* ptr, size_t size,
                                   Allocator* allocator) {
   return new MlirTensorBuffer(ptr, size, allocator);
+}
+
+/// Convert tensors to memory descriptors and back.
+
+UnrankedMemRef ConvertTensorToDescriptor(const Tensor& tensor,
+                                         DescriptorBuffer& buffer) {
+  UnrankedMemRef result;
+  result.rank = tensor.dims();
+
+  // Resize the descriptor buffer to the needed size to make sure the pointer
+  // does not move afterwards.
+  size_t descriptor_size_in_bytes = GetSizeOfDescriptor(tensor.dims());
+  buffer.resize_for_overwrite(descriptor_size_in_bytes);
+  result.descriptor = buffer.data();
+
+  // Fill the descriptor.
+  void** pointers = static_cast<void**>(result.descriptor);
+  pointers[0] = tensor.data();
+  pointers[1] = tensor.data();
+  intptr_t* int_pointers = static_cast<intptr_t*>(result.descriptor);
+  int_pointers[2] = 0;
+
+  // Fill size.
+  for (int i = 0; i < result.rank; ++i) {
+    int_pointers[3 + i] = tensor.dim_size(i);
+  }
+
+  // Fill strides.
+  int64_t stride = 1;
+  for (int i = result.rank - 1; i >= 0; --i) {
+    int_pointers[i + result.rank + 3] = stride;
+    stride *= tensor.dim_size(i);
+  }
+
+  return result;
+}
+
+TensorShape ExtractShapeFromDescriptor(UnrankedMemRef unranked_descriptor) {
+  TensorShape shape;
+  intptr_t* pointers = static_cast<intptr_t*>(unranked_descriptor.descriptor);
+  for (int i = 0; i < unranked_descriptor.rank; ++i) {
+    shape.AddDim(pointers[3 + i]);
+  }
+  return shape;
 }
 
 }  // namespace tensorflow

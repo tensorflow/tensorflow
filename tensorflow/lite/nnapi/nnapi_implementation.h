@@ -19,6 +19,8 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <memory>
+
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 
 struct NnApi {
@@ -1321,7 +1323,7 @@ struct NnApi {
    */
   int (*ANeuralNetworksMemoryDesc_addInputRole)(
       ANeuralNetworksMemoryDesc* desc,
-      const ANeuralNetworksCompilation* compilation, int32_t index,
+      const ANeuralNetworksCompilation* compilation, uint32_t index,
       float frequency);
 
   /**
@@ -1782,6 +1784,326 @@ struct NnApi {
    * Available since NNAPI feature level 5.
    */
   int64_t (*ANeuralNetworks_getRuntimeFeatureLevel)();
+
+  /**
+   * Gets the ID that identifies a single session of client interacting with
+   * NNAPI runtime.
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Session info id.
+   */
+  int32_t (*SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Gets NNAPI version.
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return NNAPI version.
+   */
+  int64_t (*SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Gets the hash of the model architecture (without weights).
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Model hash.
+   */
+  const uint8_t* (
+      *SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Gets the device IDs as a comma-concatenated string.
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Device ID.
+   */
+  const char* (*SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Gets the error code.
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Error code.
+   */
+  int32_t (*SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Gets the type of tensors used for inputs.
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Input data class.
+   */
+  ANeuralNetworksDiagnosticDataClass (
+      *SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Gets the type of tensors used for outputs.
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Output data class.
+   */
+  ANeuralNetworksDiagnosticDataClass (
+      *SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Gets how many nanoseconds elapsed when compiling the model.
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Time to compile the model in nanoseconds. UINT64_MAX indicates that
+   * timing information is not available.
+   */
+  uint64_t (
+      *SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Is caching enabled?
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Whether caching is enabled.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Is control flow used?
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Whether control flow was used.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Are dynamic tensors used?
+   *
+   * @param diagnosticCompilationInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Whether dynamic tensors were used.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * Gets the ID that identifies a single session of client interacting with
+   * NNAPI runtime.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Session info id.
+   */
+  int32_t (*SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets NNAPI version.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return NNAPI version.
+   */
+  int64_t (*SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets the hash of the model architecture (without weights).
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Model hash.
+   */
+  const uint8_t* (*SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets the device IDs as a comma-concatenated string.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Device ID.
+   */
+  const char* (*SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets the execution mode.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Execution mode.
+   */
+  ANeuralNetworksDiagnosticExecutionMode (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets the input data class.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Input data class.
+   */
+  ANeuralNetworksDiagnosticDataClass (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets the output data class.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Output data class.
+   */
+  ANeuralNetworksDiagnosticDataClass (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets the error code.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Error code.
+   */
+  uint32_t (*SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets the time taken to execute from runtime, including runtime/ipc
+   * overhead.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Time taken to execute as measured by the runtime in nanoseconds.
+   * UINT64_MAX indicates that timing information is not available.
+   */
+  uint64_t (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets the time taken to execute in the driver, excluding runtime/ipc
+   * overhead.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Time taken to execute on the driver in nanoseconds. UINT64_MAX
+   * indicates that timing information is not available.
+   */
+  uint64_t (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Gets the time taken to execute on the hardware, excluding driver overhead.
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Time taken to execute on the hardware in nanoseconds. UINT64_MAX
+   * indicates that timing information is not available.
+   */
+  uint64_t (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Is caching enabled?
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Whether caching is enabled.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Is control flow used?
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Whether control flow was used.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Are dynamic tensors used?
+   *
+   * @param diagnosticExecutionInfo The NNAPI diagnostic compilation info
+   * object.
+   * @return Whether dynamic tensors were used.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * Sets the callbacks to be called when compilations or executions finish.
+   *
+   * Example usage:
+   *
+   * // Callback to be invoked whenever a compilation has completed.
+   * void compilationCallback(void* context,
+   * ANeuralNetworksDiagnosticCompilationInfo* info) {
+   *     // The context object can be used to store state without the use of a
+   * global variable. ExampleLoggerObject* logger =
+   * static_cast<ExampleLoggerObject*>(context);
+   *
+   *     // Calls to getters to get the details...
+   *     const int32_t sessionId =
+   * ANeuralNetworksDiagnosticCompilationInfo_getSessionId(info);
+   *
+   *     ...
+   *
+   *     logger->write(...);
+   * }
+   *
+   * void executionCallback(void* context,
+   * ANeuralNetworksDiagnosticExecutionInfo* info) {
+   *      ...
+   * }
+   *
+   * ExampleLoggerObject exampleLoggerObject;
+   * ANeuralNetworksDiagnostic_registerCallbacks(&compilationCallback,
+   * &executionCallback, static_cast<void*>(&exampleLoggerObject));
+   *
+   * @param compilationCallback The compilation callback to set.
+   * @param executionCallback The execution callback to set.
+   * @param callbackContext The context to be passed to the callbacks when they
+   * are invoked. The context object may be used by multiple threads
+   * simulatenously, so it must be thread-safe.
+   */
+  void (*SL_ANeuralNetworksDiagnostic_registerCallbacks)(
+      ANeuralNetworksDiagnosticCompilationFinishedCallback compilationCallback,
+      ANeuralNetworksDiagnosticExecutionFinishedCallback executionCallback,
+      void* callbackContext);
 };
 
 /**
@@ -1790,5 +2112,23 @@ struct NnApi {
  * exist, a null pointer is stored.
  */
 const NnApi* NnApiImplementation();
+
+// Forward declaration for CreateNnApiFromSupportLibrary below.
+struct NnApiSLDriverImplFL5;
+
+/**
+ * Allocate a new NnApi structure instance and fill it with function pointers
+ * from NnApiSLDriverImplFL5 instance. Functions that are not present in the
+ * support library are assigned null pointers.
+ *
+ * The NN API Support Library Driver must support at least NNAPI Feature Level 5
+ * (introduced in SDK level 31), but this might point to a compatible struct
+ * that also supports a higher NNAPI Feature Level. These cases can be
+ * distinguished by examining the base.implFeatureLevel field, which should be
+ * set to the supported feature level (which must be >=
+ * ANEURALNETWORKS_FEATURE_LEVEL_5).
+ */
+std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver);
 
 #endif  // TENSORFLOW_LITE_NNAPI_NNAPI_IMPLEMENTATION_H_

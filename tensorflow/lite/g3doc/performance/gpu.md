@@ -43,6 +43,14 @@ git clone https://github.com/tensorflow/tensorflow
 
 #### Step 2. Edit `app/build.gradle` to use the nightly GPU AAR
 
+Note: You can now target **Android S+** with `targetSdkVersion="S"` in your
+manifest, or `targetSdkVersion "S"` in your Gradle `defaultConfig` (API level
+TBD). In this case, you should merge the contents of
+[`AndroidManifestGpu.xml`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/java/AndroidManifestGpu.xml)
+into your Android application's manifest. Without this change, the GPU delegate
+cannot access OpenCL libraries for acceleration. *AGP 4.2.0 or above is required
+for this to work.*
+
 Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
 package in the existing `dependencies` block.
 
@@ -356,20 +364,31 @@ network to run on the delegate.
 
 ## Tips for optimization
 
-Some operations that are trivial on the CPU may have a high cost for the GPU.
-One class of such operation is various forms of reshape operations, including
-`BATCH_TO_SPACE`, `SPACE_TO_BATCH`, `SPACE_TO_DEPTH`, and so forth. If those ops
-are inserted into the network just for the network architect's logical thinking,
-it is worth removing them for performance.
+### Optimizing for mobile devices
+
+Some operations that are trivial on the CPU may have a high cost for the GPU on
+mobile devices. Reshape operations are particularly expensive to run, including
+`BATCH_TO_SPACE`, `SPACE_TO_BATCH`, `SPACE_TO_DEPTH`, and so forth. You should
+closely examine use of reshape operations, and consider that may have been
+applied only for exploring data or for early iterations of your model. Removing
+them can significantly improve performance.
 
 On GPU, tensor data is sliced into 4-channels. Thus, a computation on a tensor
 of shape `[B,H,W,5]` will perform about the same on a tensor of shape
-`[B,H,W,8]` but significantly worse than `[B,H,W,4]`.
+`[B,H,W,8]` but significantly worse than `[B,H,W,4]`. In that sense, if the
+camera hardware supports image frames in RGBA, feeding that 4-channel input is
+significantly faster as a memory copy (from 3-channel RGB to 4-channel RGBX) can
+be avoided.
 
-In that sense, if the camera hardware supports image frames in RGBA, feeding
-that 4-channel input is significantly faster as a memory copy (from 3-channel
-RGB to 4-channel RGBX) can be avoided.
+For best performance, you should consider retraining the classifier with a
+mobile-optimized network architecture. Optimization for on-device inferencing
+can dramatically reduce latency and power consumption by taking advantage of
+mobile hardware features.
 
-For best performance, do not hesitate to retrain your classifier with a
-mobile-optimized network architecture. That is a significant part of
-optimization for on-device inference.
+### Reducing initialization time with serialization
+
+The GPU delegate feature allows you to load from pre-compiled kernel code and
+model data serialized and saved on disk from previous runs. This approach avoids
+re-compilation and reduces startup time by up to 90%. For instructions on how to
+apply serialization to your project, see
+[GPU Delegate Serialization](gpu_advanced.md#gpu_delegate_serialization).

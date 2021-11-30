@@ -106,14 +106,11 @@ struct Options {
       : Options(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", {}, {}, {}, {}, {},
                 false, {}, "", {}) {}
 
-  Options(int max_depth, tensorflow::int64 min_bytes,
-          tensorflow::int64 min_peak_bytes,
-          tensorflow::int64 min_residual_bytes,
-          tensorflow::int64 min_output_bytes, tensorflow::int64 min_micros,
-          tensorflow::int64 min_accelerator_micros,
-          tensorflow::int64 min_cpu_micros, tensorflow::int64 min_params,
-          tensorflow::int64 min_float_ops, tensorflow::int64 min_occurrence,
-          tensorflow::int64 step, const string& order_by,
+  Options(int max_depth, int64_t min_bytes, int64_t min_peak_bytes,
+          int64_t min_residual_bytes, int64_t min_output_bytes,
+          int64_t min_micros, int64_t min_accelerator_micros,
+          int64_t min_cpu_micros, int64_t min_params, int64_t min_float_ops,
+          int64_t min_occurrence, int64_t step, const string& order_by,
           const std::vector<string>& account_type_regexes,
           const std::vector<string>& start_name_regexes,
           const std::vector<string>& trim_name_regexes,
@@ -148,17 +145,17 @@ struct Options {
   string ToString() const;
 
   int max_depth;
-  tensorflow::int64 min_bytes;
-  tensorflow::int64 min_peak_bytes;
-  tensorflow::int64 min_residual_bytes;
-  tensorflow::int64 min_output_bytes;
-  tensorflow::int64 min_micros;
-  tensorflow::int64 min_accelerator_micros;
-  tensorflow::int64 min_cpu_micros;
-  tensorflow::int64 min_params;
-  tensorflow::int64 min_float_ops;
-  tensorflow::int64 min_occurrence;
-  tensorflow::int64 step;
+  int64_t min_bytes;
+  int64_t min_peak_bytes;
+  int64_t min_residual_bytes;
+  int64_t min_output_bytes;
+  int64_t min_micros;
+  int64_t min_accelerator_micros;
+  int64_t min_cpu_micros;
+  int64_t min_params;
+  int64_t min_float_ops;
+  int64_t min_occurrence;
+  int64_t step;
   string order_by;
 
   std::vector<string> account_type_regexes;

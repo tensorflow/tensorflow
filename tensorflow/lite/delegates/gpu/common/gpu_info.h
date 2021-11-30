@@ -95,6 +95,15 @@ enum class AdrenoGpu {
   kUnknown
 };
 
+struct AMDInfo {
+  AMDInfo() = default;
+  int shader_engines;
+  int compute_units_per_shader_engine;
+  int GetComputeUnitsCount() const {
+    return shader_engines * compute_units_per_shader_engine;
+  }
+};
+
 struct AdrenoInfo {
   AdrenoInfo() = default;
   explicit AdrenoInfo(const std::string& device_version);
@@ -123,6 +132,8 @@ struct AdrenoInfo {
 
   int GetWaveSize(bool full_wave) const;
 
+  int GetComputeUnitsCount() const;
+
   // Not supported on some Adreno devices with specific driver version.
   // b/131099086
   bool support_one_layer_texture_array = true;
@@ -145,6 +156,7 @@ enum class AppleGpu {
   kA12Z,
   kA13,
   kA14,
+  kA15,
 };
 
 struct AppleInfo {
@@ -152,6 +164,8 @@ struct AppleInfo {
   explicit AppleInfo(const std::string& gpu_description);
   AppleGpu gpu_type;
 
+  bool IsA7GenerationGpu() const;
+  bool IsA8GenerationGpu() const;
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
@@ -160,6 +174,12 @@ struct AppleInfo {
   bool IsRoundToNearestSupported() const;
 
   int GetComputeUnitsCount() const;
+
+  // do not use, for internal usage
+  void SetComputeUnits(int compute_units_count);
+
+ private:
+  int compute_units = -1;
 };
 
 enum class MaliGpu {
@@ -186,6 +206,10 @@ enum class MaliGpu {
   kG77,
   kG68,
   kG78,
+  kG310,
+  kG510,
+  kG610,
+  kG710,
 };
 
 struct MaliInfo {
@@ -201,6 +225,9 @@ struct MaliInfo {
   bool IsBifrostGen2() const;
   bool IsBifrostGen3() const;
   bool IsBifrost() const;
+  bool IsValhallGen1() const;
+  bool IsValhallGen2() const;
+  bool IsValhallGen3() const;
   bool IsValhall() const;
 };
 
@@ -264,6 +291,11 @@ enum class OpenClVersion {
 std::string OpenClVersionToString(OpenClVersion version);
 
 struct OpenClInfo {
+  std::string device_name;
+  std::string vendor_name;
+  std::string opencl_c_version;
+  std::string platform_version;
+
   OpenClVersion cl_version;
 
   std::vector<std::string> extensions;
@@ -284,7 +316,11 @@ struct OpenClInfo {
   int max_work_group_size_y;
   int max_work_group_size_z;
   int max_work_group_total_size;
+
+  // The row pitch alignment size in pixels for 2D images created from a buffer.
+  // The value returned must be a power of 2.
   uint64_t image_pitch_alignment;
+  uint64_t base_addr_align_in_bits;
 
   // rtn is ROUND_TO_NEAREST
   // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
@@ -326,6 +362,13 @@ struct MetalInfo {
   int max_work_group_size_z;
 
   uint64_t buffer_max_size;
+
+  uint64_t image2d_max_width;
+  uint64_t image2d_max_height;
+  uint64_t image_array_max_layers;
+  uint64_t image3d_max_width;
+  uint64_t image3d_max_height;
+  uint64_t image3d_max_depth;
 };
 
 struct GpuInfo {
@@ -337,6 +380,8 @@ struct GpuInfo {
   bool IsAMD() const;
   bool IsIntel() const;
 
+  bool IsGlsl() const;
+
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
 
@@ -346,6 +391,8 @@ struct GpuInfo {
   bool SupportsTextureArray() const;
   bool SupportsImageBuffer() const;
   bool SupportsImage3D() const;
+
+  bool SupportsPointersInKernels() const;
 
   // returns true if device have fixed wave size equal to 32
   bool IsWaveSizeEqualTo32() const;
@@ -379,6 +426,7 @@ struct GpuInfo {
   std::vector<int> supported_subgroup_sizes;
 
   AdrenoInfo adreno_info;
+  AMDInfo amd_info;
   AppleInfo apple_info;
   MaliInfo mali_info;
 
@@ -396,6 +444,7 @@ struct GpuInfo {
 
   OpenClInfo opencl_info;
   bool IsApiOpenCl() const;
+  bool IsCL11OrHigher() const;
   bool IsCL20OrHigher() const;
   bool IsCL30OrHigher() const;
 };

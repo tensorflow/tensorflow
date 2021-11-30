@@ -136,8 +136,8 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
   }
 
   // Tear down temporary file and directories.
-  int64 undeleted_files = 0;
-  int64 undeleted_dirs = 0;
+  int64_t undeleted_files = 0;
+  int64_t undeleted_dirs = 0;
   ASSERT_TRUE(
       env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs)
           .ok());
@@ -187,8 +187,8 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
   }
 
   // Tear down temporary file and directories.
-  int64 undeleted_files = 0;
-  int64 undeleted_dirs = 0;
+  int64_t undeleted_files = 0;
+  int64_t undeleted_dirs = 0;
   ASSERT_TRUE(
       env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs)
           .ok());
@@ -233,8 +233,8 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   ASSERT_FALSE(s.ok());
 
   // Tear down temporary file and directories.
-  int64 undeleted_files = 0;
-  int64 undeleted_dirs = 0;
+  int64_t undeleted_files = 0;
+  int64_t undeleted_dirs = 0;
   ASSERT_TRUE(
       env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs)
           .ok());
@@ -302,8 +302,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
 
   // Tear down temporary file and directories.
   for (int i = 0; i < kNumDumpRoots; ++i) {
-    int64 undeleted_files = 0;
-    int64 undeleted_dirs = 0;
+    int64_t undeleted_files = 0;
+    int64_t undeleted_dirs = 0;
     ASSERT_TRUE(env_->DeleteRecursively(dump_roots[i], &undeleted_files,
                                         &undeleted_dirs)
                     .ok());
@@ -446,8 +446,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
     }
 
     // Tear down temporary file and directories.
-    int64 undeleted_files = 0;
-    int64 undeleted_dirs = 0;
+    int64_t undeleted_files = 0;
+    int64_t undeleted_dirs = 0;
     ASSERT_TRUE(env_->DeleteRecursively(dump_root_base, &undeleted_files,
                                         &undeleted_dirs)
                     .ok());

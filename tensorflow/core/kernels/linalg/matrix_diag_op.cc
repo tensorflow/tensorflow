@@ -60,8 +60,8 @@ class MatrixDiagPartOp : public OpKernel {
     // MatrixDiagPart and MatrixDiagPartV2 both use this OpKernel.
     // MatrixDiagPart only has one input, so we have to check the number of
     // inputs before reading additional parameters in MatrixDiagV2.
-    int32 lower_diag_index = 0;
-    int32 upper_diag_index = 0;
+    int32_t lower_diag_index = 0;
+    int32_t upper_diag_index = 0;
     T padding_value(0);
 
     // MatrixDiagPartV2-specific.
@@ -73,6 +73,9 @@ class MatrixDiagPartOp : public OpKernel {
                   errors::InvalidArgument(
                       "diag_index must be a scalar or vector, received shape: ",
                       diag_index.shape().DebugString()));
+      OP_REQUIRES(context, diag_index.NumElements() > 0,
+                  errors::InvalidArgument(
+                      "Expected diag_index to have at least 1 element"));
       lower_diag_index = diag_index.flat<int32>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {
@@ -86,7 +89,10 @@ class MatrixDiagPartOp : public OpKernel {
           upper_diag_index = diag_index.flat<int32>()(1);
         }
       }
-      padding_value = context->input(2).flat<T>()(0);
+      const Tensor& padding_in = context->input(2);
+      OP_REQUIRES(context, padding_in.NumElements() == 1,
+                  errors::InvalidArgument("Padding must be scalar."));
+      padding_value = padding_in.flat<T>()(0);
     }
     const TensorShape& input_shape = input.shape();
 
@@ -125,7 +131,7 @@ class MatrixDiagPartOp : public OpKernel {
     }
     const Eigen::Index num_diags = upper_diag_index - lower_diag_index + 1;
     if (num_diags > 1) output_shape.AddDim(num_diags);
-    const int32 max_diag_len =
+    const int32_t max_diag_len =
         std::min(num_rows + std::min(upper_diag_index, 0),
                  num_cols - std::max(lower_diag_index, 0));
     output_shape.AddDim(max_diag_len);
@@ -164,10 +170,10 @@ class MatrixDiagOp : public OpKernel {
     // MatrixDiag and MatrixDiagV2 both use this OpKernel. MatrixDiag only has
     // one input, so we have to check the number of inputs before reading
     // additional parameters in MatrixDiagV2.
-    int32 lower_diag_index = 0;
-    int32 upper_diag_index = 0;
-    int32 num_rows = -1;
-    int32 num_cols = -1;
+    int32_t lower_diag_index = 0;
+    int32_t upper_diag_index = 0;
+    int32_t num_rows = -1;
+    int32_t num_cols = -1;
     T padding_value(0);
 
     // MatrixDiagOpV2-specific.
@@ -179,6 +185,9 @@ class MatrixDiagOp : public OpKernel {
                   errors::InvalidArgument(
                       "diag_index must be a scalar or vector, received shape: ",
                       diag_index.shape().DebugString()));
+      OP_REQUIRES(context, diag_index.NumElements() > 0,
+                  errors::InvalidArgument(
+                      "Expected diag_index to have at least 1 element"));
       lower_diag_index = diag_index.flat<int32>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {
@@ -231,8 +240,8 @@ class MatrixDiagOp : public OpKernel {
                     "match the lower_diag_index and upper_diag_index range."));
 
     const Eigen::Index max_diag_len = diagonal_shape.dim_size(diag_rank - 1);
-    const int32 min_num_rows = max_diag_len - std::min(upper_diag_index, 0);
-    const int32 min_num_cols = max_diag_len + std::max(lower_diag_index, 0);
+    const int32_t min_num_rows = max_diag_len - std::min(upper_diag_index, 0);
+    const int32_t min_num_cols = max_diag_len + std::max(lower_diag_index, 0);
     OP_REQUIRES(context, num_rows == -1 || num_rows >= min_num_rows,
                 errors::InvalidArgument("The number of rows is too small."));
     OP_REQUIRES(context, num_cols == -1 || num_cols >= min_num_cols,

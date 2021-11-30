@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64 dim) {
+StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
   xla::XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
 
@@ -31,23 +31,25 @@ StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64 dim) {
   }
 
   // Transpose the input so C is directly followed by VECT_C.
-  std::vector<int64> permutation;
-  for (int64 i = 0; i != input_shape.rank() - 1; ++i) {
+  std::vector<int64_t> permutation;
+  auto rank = input_shape.rank();
+  permutation.reserve(rank);
+  for (int64_t i = 0; i != rank - 1; ++i) {
     permutation.push_back(i);
     if (i == dim) {
-      permutation.push_back(input_shape.rank() - 1);
+      permutation.push_back(rank - 1);
     }
   }
 
   // Now merge the adjacent dimensions with a reshape.
-  std::vector<int64> contracted_shape(input_shape.dimensions().begin(),
-                                      input_shape.dimensions().end() - 1);
+  std::vector<int64_t> contracted_shape(input_shape.dimensions().begin(),
+                                        input_shape.dimensions().end() - 1);
   contracted_shape[dim] *= 4;
 
   return xla::Reshape(xla::Transpose(input, permutation), contracted_shape);
 }
 
-StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64 dim) {
+StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64_t dim) {
   xla::XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
 
@@ -59,14 +61,16 @@ StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64 dim) {
 
   // Split the `dim` into two dimensions with a reshape. The size of the new
   // dimension is always 4.
-  std::vector<int64> expanded_shape =
+  std::vector<int64_t> expanded_shape =
       xla::SpanToVector(input_shape.dimensions());
   expanded_shape[dim] /= 4;
   expanded_shape.insert(expanded_shape.begin() + dim + 1, 4);
 
   // Move the newly created dimension to the end with a transpose.
-  std::vector<int64> permutation;
-  for (int64 i = 0, end = expanded_shape.size(); i != end; ++i) {
+  std::vector<int64_t> permutation;
+  const int64_t expanded_shape_size = expanded_shape.size();
+  permutation.reserve(expanded_shape_size);
+  for (int64_t i = 0; i != expanded_shape_size; ++i) {
     permutation.push_back(i);
     if (i == dim) {
       ++i;

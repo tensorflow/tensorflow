@@ -52,12 +52,12 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-using ShapeVec = gtl::InlinedVector<int64, 8>;
+using ShapeVec = gtl::InlinedVector<int64_t, 8>;
 using Labels = gtl::InlinedVector<int, 8>;
 using OperandLabels = gtl::InlinedVector<Labels, 2>;
 using LabelCounts = gtl::InlinedVector<int, 8>;
 using OperandLabelCounts = gtl::InlinedVector<LabelCounts, 2>;
-using LabelToDimSizes = gtl::InlinedVector<int64, 8>;
+using LabelToDimSizes = gtl::InlinedVector<int64_t, 8>;
 
 // Dummy axis label used to denote an ellipsis in an input or output subscript.
 constexpr int kEllipsisLabel = -1;
@@ -153,6 +153,7 @@ struct EinsumHelper {
     input_has_ellipsis->resize(num_inputs);
     for (int i = 0; i < num_inputs; ++i) {
       input_label_counts->at(i).resize(num_labels);
+      input_has_ellipsis->at(i) = false;
       for (const int label : input_labels->at(i)) {
         if (label != kEllipsisLabel)
           input_label_counts->at(i)[label] += 1;
@@ -161,6 +162,7 @@ struct EinsumHelper {
       }
     }
     output_label_counts->resize(num_labels);
+    *output_has_ellipsis = false;
     for (const int label : *output_labels) {
       if (label != kEllipsisLabel)
         output_label_counts->at(label) += 1;
@@ -200,7 +202,7 @@ struct EinsumHelper {
   static Status RecordLabelToDimension(const int label, const int axis,
                                        const Tensor& input,
                                        LabelToDimSizes* label_to_dim_sizes) {
-    const int64 input_dim = input.dim_size(axis);
+    const int64_t input_dim = input.dim_size(axis);
     // We know that label_to_dim_sizes has the size to accommodate named labels.
     if (label_to_dim_sizes->at(label) != 0 &&
         label_to_dim_sizes->at(label) != input_dim) {
@@ -381,15 +383,15 @@ struct EinsumHelper {
       const int count = label_counts[label];
       const int current_axis =
           should_inflate ? strided_shape.size() : inflated_shape.size();
-      const int64 dim = input.dim_size(current_axis);
+      const int64_t dim = input.dim_size(current_axis);
       strided_shape.push_back(dim);
       inflated_shape.insert(inflated_shape.end(), count, dim);
-      const int64 reshape_dim = MathUtil::IPow(dim, count);
+      const int64_t reshape_dim = MathUtil::IPow(dim, count);
       reshape.push_back(reshape_dim);
       // While taking the d-diagonal in a rank k Tensor, we take d
       // equally-spaced elements including the first and last element. Then, (k
       // - 1) * stride = d^k - 1, or, stride = (d^k - 1)/(d - 1).
-      const int64 stride =
+      const int64_t stride =
           (dim > 1 && count > 1) ? (reshape_dim - 1) / (dim - 1) : 1;
       strides.push_back(stride);
     }
@@ -489,7 +491,7 @@ struct EinsumHelper {
 
     // Reshape denotes the rank-5 shape [broadcast, batch, free, contract,
     // reduce] where we've compacted the dimensions of each DimensionType.
-    gtl::InlinedVector<int64, 5> reshape(5, 1);
+    gtl::InlinedVector<int64_t, 5> reshape(5, 1);
     // The output shape is [batch shape] + [free size, contract size]
     // That is, the batch shape is preserved (for broadcasting while
     // contracting) while the free dims and contract dims are compressed to one
@@ -497,7 +499,7 @@ struct EinsumHelper {
     TensorShape output_shape;
     for (int label_idx = 0; label_idx < labels->size(); ++label_idx) {
       const int label = labels->at(label_idx);
-      int64 dim = input_deduped.dim_size(label_idx);
+      int64_t dim = input_deduped.dim_size(label_idx);
       if (label_types[label] == kBroadcasting || label_types[label] == kBatch) {
         output_shape.AddDim(dim);
       } else if (label_types[label] == kFree) {
@@ -517,8 +519,8 @@ struct EinsumHelper {
     using Reducer = Eigen::internal::SumReducer<T>;
     using Index = typename TTypes<T>::Tensor::Index;
     // Reduce along the last axis (i.e axis 1) of the rank-2 Tensor.
-    const int64 output_size = reshape[kBroadcasting] * reshape[kBatch] *
-                              reshape[kFree] * reshape[kContract];
+    const int64_t output_size = reshape[kBroadcasting] * reshape[kBatch] *
+                                reshape[kFree] * reshape[kContract];
     functor::ReduceFunctor<Device, Reducer>::Reduce(
         ctx, output->shaped<T, 1>({output_size}),
         const_cast<const Tensor&>(input_deduped)
@@ -563,7 +565,7 @@ struct EinsumHelper {
     TF_RETURN_IF_ERROR(ReshapeToRank3(inputs[1], bcast.y_batch_size(), &rhs));
     TensorShape output_shape = bcast.output_batch_shape();
     for (int i = 0; i < inputs.size(); ++i) {
-      const int64 free_axis =
+      const int64_t free_axis =
           inputs[i].dims() - (swap_free_and_contract[i] ? 1 : 2);
       output_shape.AddDim(inputs[i].dim_size(free_axis));
     }

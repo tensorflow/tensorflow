@@ -112,7 +112,7 @@ class PythonAPIInfo {
   // single `int` attribute.
   struct InputsWithNumberAttr {
     Attribute* number_attr;                      // not owned.
-    int64 default_length;                        // -1 for no default.
+    int64_t default_length;                      // -1 for no default.
     std::vector<ParamIndex> tensor_list_params;  // list(tensor) inputs.
   };
 
@@ -123,7 +123,7 @@ class PythonAPIInfo {
   struct InferredAttributes {
     std::vector<DataType> types;
     std::vector<std::vector<DataType>> type_lists;
-    std::vector<int64> lengths;
+    std::vector<int64_t> lengths;
   };
 
   // Constructs a new PythonAPIInfo.
@@ -259,7 +259,7 @@ class PythonAPIInfo {
 
   ABSL_MUST_USE_RESULT
   bool InferLengthAttributes(const absl::Span<PyObject*> params,
-                             std::vector<int64>& inferred_length_attrs) const;
+                             std::vector<int64_t>& inferred_length_attrs) const;
 
   // ==========================================================================
   // Member Variables

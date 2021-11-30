@@ -135,6 +135,8 @@ inline void execute_primitives(
   }
 }
 
+bool AreWeightsFrozen();
+
 // In MKL-DNN v1.x, the format (ex. NCHW) used to initialize a memory descriptor
 // (md) structure will no longer be recorded in its `format` field. Instead, it
 // will be set to a canonical `blocked` format for every fully described md.
@@ -955,7 +957,7 @@ inline Tensor GetMklMetaTensor() {
   MklDnnShape non_mkl_shape;
   non_mkl_shape.SetMklTensor(false);
 
-  auto size = static_cast<int64>(non_mkl_shape.GetSerializeBufferSize());
+  auto size = static_cast<int64_t>(non_mkl_shape.GetSerializeBufferSize());
   Tensor tensor(DT_UINT8, {size});
 
   non_mkl_shape.SerializeMklDnnShape(tensor.flat<uint8>().data(),
@@ -1828,15 +1830,20 @@ class MklPrimitiveFactory {
   /// For those legacy device(w/o AVX512 and AVX2),
   /// MKL-DNN GEMM will be used.
   static inline bool IsLegacyPlatform() {
-    return (!port::TestCPUFeature(port::CPUFeature::AVX512F) &&
-            !port::TestCPUFeature(port::CPUFeature::AVX2));
+    static const bool is_legacy_platform =
+        (!port::TestCPUFeature(port::CPUFeature::AVX512F) &&
+         !port::TestCPUFeature(port::CPUFeature::AVX2));
+    return is_legacy_platform;
   }
 
   /// Function to check whether primitive memory optimization is enabled
   static inline bool IsPrimitiveMemOptEnabled() {
-    bool is_primitive_mem_opt_enabled = true;
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true,
-                                   &is_primitive_mem_opt_enabled));
+    static const bool is_primitive_mem_opt_enabled = [] {
+      bool value = true;
+      TF_CHECK_OK(
+          ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true, &value));
+      return value;
+    }();
     return is_primitive_mem_opt_enabled;
   }
 

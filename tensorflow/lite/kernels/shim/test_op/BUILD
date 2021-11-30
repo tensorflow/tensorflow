@@ -68,6 +68,7 @@ cc_test(
     srcs = ["simple_tflite_op_test.cc"],
     deps = [
         ":simple_tflite_op",
+        "//tensorflow/core/platform:tstring",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",

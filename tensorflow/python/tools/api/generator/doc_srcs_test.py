@@ -14,10 +14,6 @@
 # =============================================================================
 """Tests for tensorflow.python.tools.api.generator.doc_srcs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import importlib
 import sys

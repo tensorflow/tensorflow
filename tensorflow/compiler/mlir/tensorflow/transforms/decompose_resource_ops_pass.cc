@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decompose_resource_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -30,8 +31,12 @@ namespace {
 
 constexpr char kBadDecompositionMessage[] =
     "Resource ops decomposition did not converge";
-// TODO(prakalps): This can probably be reduced to much smaller number.
-constexpr int kMaxIterations = 100;
+
+// Decomposing resource ops should not take more than a few iterations (2-3) to
+// converge as only a few patterns create new resource ops that can be further
+// decomposed. The rest of the iterations are enough to clean up any dead ops
+// created by decomposition.
+constexpr int kMaxIterations = 10;
 
 // Populates `reachable_functions` with all functions that can be reached from
 // device cluster ops.
@@ -145,24 +150,8 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
   return success();
 }
 
-// A pass that decomposes composite resource operations into primitive ones like
-// ReadVariableOp, AssignVariableOp and other computations to facilitate
-// transformations like resource op lifting.
-//
-// For example:
-//
-// tf.AssignAddVariableOp(%res, %0)
-//
-// Becomes
-//
-// %res_val = tf.ReadVariableOp(%res)
-// %1 = tf.AddV2(%res_val, %0)
-// tf.AssignVariableOp(%res, %1)
-// NOTE: This pass does not support `use_locking=true` for a lot of resource
-// operations. So decomposition may not be correct outside of backends like XLA,
-// which automatically locks all resource variables.
-struct DecomposeResourceOps
-    : public PassWrapper<DecomposeResourceOps, FunctionPass> {
+struct DecomposeResourceOpsPass
+    : public DecomposeResourceOpsPassBase<DecomposeResourceOpsPass> {
   void runOnFunction() override {
     // Add lowering patterns to the list.
     OwningRewritePatternList patterns(&getContext());
@@ -176,12 +165,9 @@ struct DecomposeResourceOps
   }
 };
 
-// This is a variation of DecomposeResourceOps pass. It operates on a module and
-// only decomposes ops within a device cluster (tf_device.cluster op) and any
-// functions reachable from the cluster.
-struct DecomposeResourceOpsInCluster
-    : public PassWrapper<DecomposeResourceOpsInCluster,
-                         OperationPass<ModuleOp>> {
+struct DecomposeResourceOpsInClusterPass
+    : public DecomposeResourceOpsInClusterPassBase<
+          DecomposeResourceOpsInClusterPass> {
   void runOnOperation() override {
     // Add lowering patterns to the list.
     OwningRewritePatternList patterns(&getContext());
@@ -197,25 +183,13 @@ struct DecomposeResourceOpsInCluster
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeResourceOpsPass() {
-  return std::make_unique<DecomposeResourceOps>();
+  return std::make_unique<DecomposeResourceOpsPass>();
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateDecomposeResourceOpsInClusterPass() {
-  return std::make_unique<DecomposeResourceOpsInCluster>();
+  return std::make_unique<DecomposeResourceOpsInClusterPass>();
 }
 
 }  // namespace TFDevice
 }  // namespace mlir
-
-static mlir::PassRegistration<mlir::TFDevice::DecomposeResourceOps> pass(
-    "tf-device-decompose-resource-ops",
-    "Decompose composite resource variable operations into primitive "
-    "Read/AssignVariableOp and raw computation");
-
-static mlir::PassRegistration<mlir::TFDevice::DecomposeResourceOpsInCluster>
-    cluster_pass(
-        "tf-device-decompose-resource-ops-in-cluster",
-        "Decompose composite resource variable operations into primitive "
-        "Read/AssignVariableOp and raw computation within device cluster and "
-        "reachable functions");

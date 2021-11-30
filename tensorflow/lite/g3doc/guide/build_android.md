@@ -13,11 +13,13 @@ To use nightly snapshots, add the following repo to your root Gradle build
 config.
 
 ```build
-allprojects {     // should be already there
-    mavenCentral  // should be already there
-    maven {       // add this repo to use snapshots
-      name 'ossrh-snapshot'
-      url 'http://oss.sonatype.org/content/repositories/snapshots'
+allprojects {
+    repositories {      // should be already there
+        mavenCentral()  // should be already there
+        maven {         // add this repo to use snapshots
+          name 'ossrh-snapshot'
+          url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
     }
 }
 ```
@@ -78,9 +80,10 @@ directory instead (-v hostDir:/host_dir).
 android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}
 ```
 
-You can now proceed to the "Build and Install" section. After you are finished
-building the libraries, you can copy them to /host_dir inside the container so
-that you can access them on the host.
+Now you should proceed to the [Configure WORKSPACE and .bazelrc](#configure_workspace_and_bazelrc) section to configure the build settings.
+
+After you finish building the libraries, you can copy them to /host_dir
+inside the container so that you can access them on the host.
 
 ### Set up build environment without Docker
 
@@ -99,10 +102,11 @@ have it and the Android NDK and SDK installed on your system.
     [Android Studio](https://developer.android.com/studio/index.html). Build
     tools API >= 23 is the recommended version for building TensorFlow Lite.
 
-#### Configure WORKSPACE and .bazelrc
+### Configure WORKSPACE and .bazelrc
 
-Run the `./configure` script in the root TensorFlow checkout directory, and
-answer "Yes" when the script asks to interactively configure the `./WORKSPACE`
+This is a one-time configuration step that is required to build the TF Lite
+libraries. Run the `./configure` script in the root TensorFlow checkout
+directory, and answer "Yes" when the script asks to interactively configure the `./WORKSPACE`
 for Android builds. The script will attempt to configure settings using the
 following environment variables:
 
@@ -138,8 +142,7 @@ This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. Note
 that this builds a "fat" AAR with several different architectures; if you don't
 need all of them, use the subset appropriate for your deployment environment.
 
-Caution: Following feature is experimental and only available at HEAD. You can
-build smaller AAR files targeting only a set of models as follows:
+You can build smaller AAR files targeting only a set of models as follows:
 
 ```sh
 bash tensorflow/lite/tools/build_aar.sh \

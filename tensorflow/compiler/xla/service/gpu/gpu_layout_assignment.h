@@ -31,12 +31,9 @@ class GpuLayoutAssignment : public LayoutAssignment {
  public:
   explicit GpuLayoutAssignment(
       ComputationLayout* entry_computation_layout,
-      std::function<bool(const HloInstruction*)>
-          instruction_can_change_layout_func,
       se::StreamExecutor* stream_executor,
       ChannelLayoutConstraints* channel_constraints = nullptr)
       : LayoutAssignment(entry_computation_layout,
-                         std::move(instruction_can_change_layout_func),
                          channel_constraints),
         stream_executor_(stream_executor) {}
   ~GpuLayoutAssignment() override {}

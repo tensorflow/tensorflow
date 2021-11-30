@@ -24,11 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -223,6 +225,12 @@ void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
                                             values_t.shape().DebugString()),
                     done);
   OP_REQUIRES_ASYNC(
+      context, indices_t.dim_size(0) == values_t.dim_size(0),
+      errors::InvalidArgument("The length of `values` (", values_t.dim_size(0),
+                              ") must match the first dimension of `indices` (",
+                              indices_t.dim_size(0), ")."),
+      done);
+  OP_REQUIRES_ASYNC(
       context, TensorShapeUtils::IsScalar(default_value_t.shape()),
       errors::InvalidArgument("default_value must be a scalar, saw: ",
                               default_value_t.shape().DebugString()),
@@ -266,7 +274,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_KERNELS
 
-#if 0 && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // The GPU implementation is async because it requires waiting for a
 // host->device memcpy before the output is allocated (similar to
@@ -298,7 +306,7 @@ namespace functor {
       const Tensor& indices_t, const Tensor& values_t,                         \
       const Tensor& dense_shape_t, typename AsyncOpKernel::DoneCallback done); \
   extern template struct SparseFillEmptyRows<GPUDevice, T, Tindex>;
-#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64)
+#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64_t)
 TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64)
 #undef DECLARE_GPU_SPEC_INT64
 #undef DECLARE_GPU_SPEC
@@ -338,7 +346,7 @@ struct SparseFillEmptyRowsGrad<CPUDevice, T, Tindex> {
       // Locate the index of the output of the forward prop associated
       // with this location in the input of the forward prop.  Copy
       // the gradient into it.  Mark it as visited.
-      int64 reverse_index = reverse_index_map(i);
+      int64_t reverse_index = reverse_index_map(i);
       if (reverse_index < 0 || reverse_index >= N_full) {
         return errors::InvalidArgument(
             "Elements in reverse index must be in [0, ", N_full, ") but got ",
@@ -414,7 +422,7 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if 0 && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -427,7 +435,7 @@ namespace functor {
       typename TTypes<T>::Vec d_values,                             \
       typename TTypes<T>::Scalar d_default_value);                  \
   extern template struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex>;
-#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64)
+#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64_t)
 TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_SPEC_INT64);
 #undef DECLARE_GPU_SPEC_INT64
 #undef DECLARE_GPU_SPEC

@@ -17,14 +17,23 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Support/MlirOptMain.h"  // from @llvm-project
+#include "tensorflow//compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
+#include "tensorflow/compiler/mlir/tosa/tf_passes.h"
+#include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
+#include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/core/platform/init_main.h"
 
 int main(int argc, char **argv) {
@@ -33,11 +42,22 @@ int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::registerTensorFlowPasses();
   mlir::TFDevice::registerTensorFlowDevicePasses();
+  mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
+  mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerXlaPasses();
-  mlir::mhlo::registerLegalizeTfPasses();
+  mlir::mhlo::registerLegalizeTFPass();
+  mlir::mhlo::registerLegalizeTFControlFlowPass();
+  mlir::mhlo::registerLegalizeTfTypesPassPass();
+  mlir::tosa::registerLegalizeTosaPasses();
+  mlir::tosa::registerTFtoTOSALegalizationPipeline();
+  mlir::tosa::registerTFLtoTOSALegalizationPipeline();
+  mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
+  mlir::tf_test::registerTensorFlowTestPasses();
+  tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
+  tensorflow::RegisterGraphOptimizationPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_data_optimization.h"
 
 namespace mlir {
@@ -24,7 +27,7 @@ namespace {
 
 // Perform tf.data optimizations.
 struct TFDataOptimization
-    : public PassWrapper<TFDataOptimization, FunctionPass> {
+    : public TFDataOptimizationPassBase<TFDataOptimization> {
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());
     mlir::TF::PopulateTFDataOptimizationPatterns(&getContext(), &patterns);
@@ -34,8 +37,10 @@ struct TFDataOptimization
 };
 
 }  // namespace
+
+std::unique_ptr<FunctionPass> CreateTFDataOptimizationPass() {
+  return std::make_unique<TFDataOptimization>();
+}
+
 }  // namespace TF
 }  // namespace mlir
-
-static mlir::PassRegistration<mlir::TF::TFDataOptimization> pass(
-    "tf-data-optimization", "Performs tf.data optimizations");

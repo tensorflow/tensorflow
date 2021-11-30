@@ -133,11 +133,6 @@ Status Slack::OptimizeAndCollectStats(Cluster* cluster,
   return RecursivelyHandleOp(graph, dataset_node);
 }
 
-void Slack::Feedback(Cluster* cluster, const GrapplerItem& item,
-                     const GraphDef& optimize_output, double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(Slack, "slack");
 
 }  // namespace grappler

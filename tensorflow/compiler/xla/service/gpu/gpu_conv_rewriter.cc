@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -37,11 +37,11 @@ namespace gpu {
 
 namespace {
 
-HloInstruction* CreateGpuConv(const char* call_target, const Shape& shape,
+HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
                               HloInstruction* lhs, HloInstruction* rhs,
                               const Window& window,
                               const ConvolutionDimensionNumbers& dnums,
-                              int64 feature_group_count,
+                              int64_t feature_group_count,
                               const OpMetadata& metadata) {
   HloComputation* computation = lhs->parent();
 
@@ -62,29 +62,45 @@ HloInstruction* CreateGpuConv(const char* call_target, const Shape& shape,
   custom_call->set_convolution_dimension_numbers(dnums);
   custom_call->set_feature_group_count(feature_group_count);
   custom_call->set_metadata(metadata);
+
+  // Give the customcall a user-friendly name.
+  absl::optional<std::string> name;
+  if (call_target == kCudnnConvForwardCallTarget) {
+    name = "cudnn-conv";
+  } else if (call_target == kCudnnConvBackwardInputCallTarget) {
+    name = "cudnn-conv-bw-input";
+  } else if (call_target == kCudnnConvBackwardFilterCallTarget) {
+    name = "cudnn-conv-bw-filter";
+  } else if (call_target == kCudnnConvBiasActivationForwardCallTarget) {
+    name = "cudnn-conv-bias-activation";
+  }
+  if (name.has_value()) {
+    computation->parent()->SetAndUniquifyInstrName(custom_call, *name);
+  }
+
   return custom_call;
 }
 
 HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
     HloInstruction* conv) {
   CHECK_EQ(conv->feature_group_count(), 1);
-  int64 num_groups = conv->batch_group_count();
+  int64_t num_groups = conv->batch_group_count();
   auto dim_numbers = conv->convolution_dimension_numbers();
   auto lhs = conv->mutable_operand(0);
   auto rhs = conv->mutable_operand(1);
 
-  int64 input_batch_dimension = dim_numbers.input_batch_dimension();
+  int64_t input_batch_dimension = dim_numbers.input_batch_dimension();
 
   Shape output_shape = conv->shape();
-  int64 input_feature_dimension = dim_numbers.input_feature_dimension();
-  int64 input_feature = lhs->shape().dimensions(input_feature_dimension);
+  int64_t input_feature_dimension = dim_numbers.input_feature_dimension();
+  int64_t input_feature = lhs->shape().dimensions(input_feature_dimension);
 
   HloComputation* computation = lhs->parent();
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     return computation->AddInstruction(std::move(inst));
   };
   // Reshape batch_dim N -> [G, N/G]
-  std::vector<int64> reshape_dims = SpanToVector(lhs->shape().dimensions());
+  std::vector<int64_t> reshape_dims = SpanToVector(lhs->shape().dimensions());
   reshape_dims[input_batch_dimension] =
       reshape_dims[input_batch_dimension] / num_groups;
   reshape_dims.insert(reshape_dims.begin() + input_batch_dimension, num_groups);
@@ -93,12 +109,12 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
 
   // Transpose G to the axis before C, For eg: [G, N/G, H, W, C ] -> [N/G, H,
   // W, G, C]
-  std::vector<int64> transpose_dims(lhs->shape().dimensions_size());
+  std::vector<int64_t> transpose_dims(lhs->shape().dimensions_size());
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   transpose_dims.erase(transpose_dims.begin() + input_batch_dimension);
   transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
                         input_batch_dimension);
-  std::vector<int64> transpose_reshape_dims =
+  std::vector<int64_t> transpose_reshape_dims =
       ComposePermutations(lhs->shape().dimensions(), transpose_dims);
   lhs = add(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(lhs->shape().element_type(), transpose_reshape_dims),
@@ -242,7 +258,7 @@ MatchBackwardFilter(HloInstruction* conv) {
     WindowDimension* dim = backward_conv_window.add_dimensions();
     // The window size of the backward convolution equals the output size of the
     // forward convolution.
-    int64 filter_size = conv->shape().dimensions(output_spatial_dims[i]);
+    int64_t filter_size = conv->shape().dimensions(output_spatial_dims[i]);
     dim->set_size(filter_size);
     // The window stride equals the window dilation of the forward convolution.
     dim->set_stride(conv->window().dimensions(i).window_dilation());
@@ -252,9 +268,9 @@ MatchBackwardFilter(HloInstruction* conv) {
     dim->set_base_dilation(1);
     dim->set_window_dilation(1);
 
-    int64 input_size =
+    int64_t input_size =
         conv->operand(0)->shape().dimensions(input_spatial_dims[i]);
-    int64 output_size = conv->window().dimensions(i).size();
+    int64_t output_size = conv->window().dimensions(i).size();
     // Compute the range of the amount of valid high padding. We first compute
     // min_padding_high, the amount of padding on the right/bottom to ensure the
     // last patch ends at the border, i.e.,
@@ -265,10 +281,10 @@ MatchBackwardFilter(HloInstruction* conv) {
     // Because convolution ignores trailing incomplete windows, any amount of
     // padding high from min_padding_high to min_padding_high+stride-1
     // (max_padding_high) has the same effect.
-    int64 padded_input_size = filter_size + (output_size - 1) * dim->stride();
-    int64 min_padding_high =
+    int64_t padded_input_size = filter_size + (output_size - 1) * dim->stride();
+    int64_t min_padding_high =
         padded_input_size - input_size - dim->padding_low();
-    int64 max_padding_high = min_padding_high + dim->stride() - 1;
+    int64_t max_padding_high = min_padding_high + dim->stride() - 1;
     CHECK_GE(dim->padding_low(), 0);
     // In practice, since cuDNN convolution only supports even padding, we make
     // the amount of high padding the same as the amount of low padding as long
@@ -338,10 +354,37 @@ MatchBackwardInput(HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
+  // TODO(timshen) Theoretically cuDNN supports grouped convolutions also
+  // for the backward input convolution, but based on the cudnn's current state
+  // there is not much performance improvement when using the
+  // cudnn backward input API for grouped conv.
+  // This needs to be re-evaluated for future cuDNN versions.
+  // Note that we already have the necessary code down below, the only thing to
+  // enable it is to remove the following early return.
+  if (conv->feature_group_count() > 1) {
+    return no_match_result;
+  }
+
   // Match instruction pattern.
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
   HloInstruction* reverse_filter = conv->mutable_operand(1);
   ConvolutionDimensionNumbers dnums = conv->convolution_dimension_numbers();
+
+  // Match BackwardInput for a depthwise convolution and thunk it to forward
+  // convolution Output feature dimension and input feature dimension has been
+  // swapped in the bridge. Hence to get the actual input features we need to
+  // query the output feature dimension
+  auto kernel_out_feature_dim = dnums.kernel_output_feature_dimension();
+  auto kernel_out_features =
+      reverse_filter->shape().dimensions(kernel_out_feature_dim);
+
+  // For a depthwise convolution, the input features must be equal to the
+  // feature_group_count. We can leverage this property to match a depthwise
+  // convolution and thunk it to forward conv
+  if (conv->feature_group_count() > 1 &&
+      kernel_out_features == conv->feature_group_count()) {
+    return no_match_result;
+  }
 
   // We pattern-match to a backwards input conv if:
   //
@@ -551,20 +594,20 @@ MatchBackwardInput(HloInstruction* conv) {
   // dimensions, we need to divide the new 'kernel_input_feature_dimension' by
   // 'feature_group_count' and multiply the new
   // 'kernel_output_feature_dimension' by 'feature_group_count'.
-  int64 input_feature_dimension = dnums.kernel_input_feature_dimension();
-  int64 output_feature_dimension = dnums.kernel_output_feature_dimension();
+  int64_t input_feature_dimension = dnums.kernel_input_feature_dimension();
+  int64_t output_feature_dimension = dnums.kernel_output_feature_dimension();
   // The following code assumes that input_feature_dimension and
   // output_feature_dimension are adjacent.
   if (std::abs(input_feature_dimension - output_feature_dimension) != 1) {
     return no_match_result;
   }
 
-  int64 input_features = rhs->shape().dimensions(input_feature_dimension);
-  int64 output_features = rhs->shape().dimensions(output_feature_dimension);
+  int64_t input_features = rhs->shape().dimensions(input_feature_dimension);
+  int64_t output_features = rhs->shape().dimensions(output_feature_dimension);
 
   // Reshape [H, W, ..., in_depth, out_depth / G] -> [H, W, ..., G, in_depth/G,
   // out_depth / G]
-  std::vector<int64> reshape_dims = SpanToVector(rhs->shape().dimensions());
+  std::vector<int64_t> reshape_dims = SpanToVector(rhs->shape().dimensions());
   auto num_groups = conv->feature_group_count();
   CHECK_EQ(input_features % num_groups, 0)
       << "Input feature count should be an exact multiple of feature group "
@@ -580,12 +623,12 @@ MatchBackwardInput(HloInstruction* conv) {
 
   // Transpose [H, W, ..., G, in_depth/G, out_depth / G] -> [H, W, ...,
   // in_depth/G, G, out_depth / G]
-  std::vector<int64> transpose_dims(rhs->shape().dimensions_size());
+  std::vector<int64_t> transpose_dims(rhs->shape().dimensions_size());
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   transpose_dims.erase(transpose_dims.begin() + input_feature_dimension);
   transpose_dims.insert(transpose_dims.begin() + output_feature_dimension,
                         input_feature_dimension);
-  std::vector<int64> transpose_reshape_dims =
+  std::vector<int64_t> transpose_reshape_dims =
       SpanToVector(rhs->shape().dimensions());
   transpose_reshape_dims.erase(transpose_reshape_dims.begin() +
                                input_feature_dimension);

@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
@@ -37,9 +36,24 @@ namespace tensorrt {
 using absl::StrCat;
 
 ExecutionContext ExecutionContext::Create(nvinfer1::ICudaEngine* cuda_engine) {
+  bool has_int32_output = false;
+  for (int i = 0; i < cuda_engine->getNbBindings(); i++) {
+    if (!cuda_engine->bindingIsInput(i) &&
+        cuda_engine->getBindingDataType(i) == nvinfer1::DataType::kINT32) {
+      has_int32_output = true;
+      break;
+    }
+  }
+  if (!IS_TRT_VERSION_GE(8, 0, 0, 0) && has_int32_output) {
+    // TODO(nvbugs/3390469): Remove this workaround when the bug is fixed.
+    nvinfer1::IExecutionContext* execution_context =
+        cuda_engine->createExecutionContext();
+    return ExecutionContext(execution_context, true);
+  }
+
   nvinfer1::IExecutionContext* execution_context =
       cuda_engine->createExecutionContextWithoutDeviceMemory();
-  return ExecutionContext(execution_context);
+  return ExecutionContext(execution_context, false);
 }
 
 Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
@@ -50,7 +64,6 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
   if (use_implicit_batch) {
     dims = cuda_engine->getBindingDimensions(binding_index);
   } else {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     // Get dims from context instead of engine in explicit batch mode because
     // the engine might have dynamic shapes.
     dims = execution_context->getBindingDimensions(binding_index);
@@ -62,43 +75,10 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
           "Binding index out of range. This can happen if profile is not set, "
           "or the network is invalid for the current profile.");
     }
-#else
-    return errors::Internal(
-        "Explicit batch mode is only supported with TensorRT 6 and above.");
-#endif
   }
   TF_RETURN_IF_ERROR(TrtDimsToTensorShape(
       dims, &shape,
       use_implicit_batch ? absl::optional<int>(batch_size) : absl::nullopt));
-  return Status::OK();
-}
-
-Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
-                          const nvinfer1::ICudaEngine* cuda_engine,
-                          int* binding_index) {
-  // If the engine has been built for K profiles, the first getNbBindings() / K
-  // bindings are used by profile number 0, the following getNbBindings() / K
-  // bindings are used by profile number 1 etc.
-  //
-  // GetBindingIndex(tensor_name) returns the binding index for the progile 0.
-  // We can also consider it as a "binding_index_within_profile".
-  *binding_index = cuda_engine->getBindingIndex(tensor_name);
-  if (*binding_index == -1) {
-    const string msg = StrCat("Input node ", tensor_name, " not found");
-    LOG(ERROR) << msg;
-    return errors::NotFound(msg);
-  }
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  int n_profiles = cuda_engine->getNbOptimizationProfiles();
-#else
-  int n_profiles = 1;
-#endif
-  // If we have more then one optimization profile, then we need to shift the
-  // binding index according to the following formula:
-  // binding_index_within_engine = binding_index_within_profile +
-  //                               profile_index * bindings_per_profile
-  const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
-  *binding_index = *binding_index + profile_index * bindings_per_profile;
   return Status::OK();
 }
 
@@ -115,8 +95,17 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     const string input_name =
         ctx ? StrCat(IONamePrefixes::kInputPHName, i) : input_vec->at(i).name;
     int binding_index;
-    TF_RETURN_IF_ERROR(GetTrtBindingIndex(input_name.c_str(), trt_profile_idx,
-                                          cuda_engine, &binding_index));
+    Status status = GetTrtBindingIndex(input_name.c_str(), trt_profile_idx,
+                                       cuda_engine, &binding_index);
+    if (IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+      TF_RETURN_IF_ERROR(status);
+    } else if (!status.ok()) {
+      // Before TRT 8, an input tensor can be pruned if it is not used by the
+      // network (e.g. only its shape is used, but the shape is already defined
+      // by the optimization profile by setting min=max). nvbugs/3153064
+      VLOG(2) << "Skipping pruned input " << input_name;
+      continue;
+    }
     const Tensor& input_tensor = ctx ? ctx->input(i) : input_vec->at(i).tensor;
     const TensorShape& input_shape = input_tensor.shape();
 
@@ -129,7 +118,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
         return errors::NotFound(msg);
       }
     }
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     // Set known input dimensions. This is necessary because TRT network
     // could be made with dynamic dimensions.
     if (!use_implicit_batch) {
@@ -150,7 +138,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
         }
       }
     }
-#endif
     // Setup input bindings.
     auto dtype = cuda_engine->getBindingDataType(binding_index);
     switch (dtype) {
@@ -174,7 +161,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     }
   }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Ensure all network dynamic dimensions (if any) are set in execution
   // context.
   if (!execution_context->allInputDimensionsSpecified()) {
@@ -185,7 +171,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     return errors::Internal(
         "Failed to set dimensions for all shape input tensors.");
   }
-#endif
   return Status::OK();
 }
 
@@ -261,13 +246,8 @@ Status TrtEnqueue(nvinfer1::IExecutionContext* execution_context,
     ret = execution_context->enqueue(batch_size, &buffers[0], stream, nullptr);
     VLOG(1) << "Called IExecutionContext::enqueue";
   } else {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     ret = execution_context->enqueueV2(&buffers[0], stream, nullptr);
     VLOG(1) << "Called IExecutionContext::enqueueV2";
-#else
-    return errors::Internal(
-        "Explicit batch mode is only supported with TensorRT 6 and above.");
-#endif
   }
   if (!ret) {
     return errors::Internal("Failed to enqueue batch for TRT engine");

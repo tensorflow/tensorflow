@@ -14,10 +14,6 @@
 # ==============================================================================
 """CodeLab for displaying error stack trace w/ MLIR-based converter."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 from absl import app
@@ -67,7 +63,7 @@ def test_from_concrete_function():
     return y + y
 
   func = model.get_concrete_function()
-  converter = tf.lite.TFLiteConverter.from_concrete_functions([func])
+  converter = tf.lite.TFLiteConverter.from_concrete_functions([func], model)
   converter.convert()
 
 

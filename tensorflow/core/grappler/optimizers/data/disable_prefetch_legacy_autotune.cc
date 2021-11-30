@@ -61,13 +61,6 @@ Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
   return Status::OK();
 }
 
-void DisablePrefetchLegacyAutotune::Feedback(Cluster* cluster,
-                                             const GrapplerItem& item,
-                                             const GraphDef& optimize_output,
-                                             double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(DisablePrefetchLegacyAutotune,
                             "disable_prefetch_legacy_autotune");
 

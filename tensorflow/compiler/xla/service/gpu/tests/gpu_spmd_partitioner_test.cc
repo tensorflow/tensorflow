@@ -37,7 +37,7 @@ namespace {
 class GpuSpmdPartitionerTest : public HloTestBase {
  public:
   StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
-      absl::string_view hlo_module, int64 num_partitions,
+      absl::string_view hlo_module, int64_t num_partitions,
       std::function<void(HloPassPipeline &pipeline)> add_passes = nullptr) {
     TF_ASSIGN_OR_RETURN(
         auto module, ParseAndReturnVerifiedModule(

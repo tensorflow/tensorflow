@@ -65,6 +65,8 @@ namespace tensorflow {
 
 namespace {
 
+constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
+
 bool HasResourceInput(const Node& node) {
   return absl::c_count(node.input_types(), DT_RESOURCE) != 0;
 }
@@ -73,6 +75,10 @@ void LogNotCompilable(const Node& node, absl::string_view reason = "") {
   VLOG(3) << "Found uncompilable node " << node.name() << " (op "
           << node.type_string() << ")" << (reason.empty() ? "" : ": ")
           << reason;
+}
+
+bool IsInOutsideCompilationCluster(const Node& n) {
+  return n.attrs().Find(kXlaOutsideCompilationAttr) != nullptr;
 }
 
 Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
@@ -91,6 +97,7 @@ StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &attr_lists));
 
   std::vector<NodeDef> out;
+  out.reserve(attr_lists.size());
   for (int i = 0; i < attr_lists.size(); i++) {
     out.emplace_back();
     NodeDef& inserted = out.back();
@@ -378,6 +385,10 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
     const {
   auto stack_depth = stack_trace->size();
+
+  if (op_filter_.allow_outside_compiled && IsInOutsideCompilationCluster(node))
+    return true;
+
   if (node.IsSource() || node.IsSink()) {
     absl::string_view uncompilable_reason = "source or sink node";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
@@ -695,6 +706,7 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaReduce",
                                          "XlaReduceWindow",
                                          "XlaReplicaId",
+                                         "XlaRngBitGenerator",
                                          "XlaScatter",
                                          "XlaSelectAndScatter",
                                          "XlaSelfAdjointEig",
@@ -704,6 +716,8 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaSpmdFullToShardShape",
                                          "XlaSpmdShardToFullShape",
                                          "XlaSvd",
+                                         "XlaVariadicReduceV2",
+                                         "XlaVariadicSort",
                                          "XlaWhile"};
 
 static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {

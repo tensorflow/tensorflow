@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -78,6 +80,14 @@ class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
 class StepStatsCollectorInterface;
+class CoordinationServiceAgent;
+
+// A label that is added to kernels that are JIT compiled. These labels will be
+// removed before kernels are looked up, so they can be used without specifying
+// the label. This label is a temporary measure to allow JIT kernels to be
+// disabled if needed.
+extern const char* kJitKernelLabel;
+extern const char* kDisableJitKernelsEnvVar;
 
 class OpKernel {
  public:
@@ -552,7 +562,13 @@ class OpKernelContext {
     ~Params() { delete eigen_gpu_device; }
 
     // The step being executed.
-    int64 step_id = 0;
+    int64_t step_id = 0;
+
+    // Timestamp for the start of graph execution. Used for latency metrics.
+    int64_t start_time_usecs = 0;
+
+    // The deadline for the session to complete by. Empty if unspecified.
+    absl::optional<absl::Time> deadline;
 
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
@@ -663,6 +679,9 @@ class OpKernelContext {
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
     bool* outputs_required_array = nullptr;
+
+    // For access to distributed coordination service.
+    CoordinationServiceAgent* coordination_service_agent = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -672,7 +691,13 @@ class OpKernelContext {
 
   Env* env() const { return params_->device->env(); }
 
-  int64 step_id() const { return params_->step_id; }
+  int64_t step_id() const { return params_->step_id; }
+
+  int64_t start_time_usecs() const { return params_->start_time_usecs; }
+
+  // The deadline for the session to complete by. Empty if unspecified in
+  // RunOptions.
+  absl::optional<absl::Time> deadline() const { return params_->deadline; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
@@ -1132,6 +1157,11 @@ class OpKernelContext {
     return params_->step_container;
   }
 
+  // Access to distributed coordination service.
+  CoordinationServiceAgent* coordination_service_agent() const {
+    return params_->coordination_service_agent;
+  }
+
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(const Status& s);
   void CtxFailureWithWarning(const Status& s);
@@ -1153,23 +1183,23 @@ class OpKernelContext {
 
   // Records temp memory allocation. Tensor object is recorded to identify the
   // case where temp memory is used as output memory.
-  void record_temp_memory_allocation(int64 size, const Tensor& t)
+  void record_temp_memory_allocation(int64_t size, const Tensor& t)
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size of temporary memory;
-  int64 temp_memory_allocated() const
+  int64_t temp_memory_allocated() const
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
-  void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1)
+  void record_persistent_memory_allocation(int64_t size, int64_t alloc_id = -1)
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size and ids of persistent memory.
-  int64 persistent_memory_allocated() const
+  int64_t persistent_memory_allocated() const
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
-  std::vector<int64> persistent_alloc_ids() const
+  std::vector<int64_t> persistent_alloc_ids() const
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Resets counters for temp and persistent memory and recorded ids.
@@ -1252,12 +1282,12 @@ class OpKernelContext {
         TF_GUARDED_BY(mu);
 
     mutable mutex stats_mu;
-    int64 temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
+    int64_t temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
 
-    int64 persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
-    gtl::InlinedVector<std::pair<const void*, int64>, 2>
+    int64_t persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
+    gtl::InlinedVector<std::pair<const void*, int64_t>, 2>
         temp_tensor_buffer_and_size TF_GUARDED_BY(stats_mu);
-    gtl::InlinedVector<int64, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
+    gtl::InlinedVector<int64_t, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
   };
   std::unique_ptr<TrackingState> tracking_state_;
 

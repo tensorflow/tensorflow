@@ -63,9 +63,9 @@ static const int kFastToBufferSize = 32;
 // Returns the number of characters written.
 // ----------------------------------------------------------------------
 
-size_t FastInt32ToBufferLeft(int32 i, char* buffer);    // at least 12 bytes
+size_t FastInt32ToBufferLeft(int32_t i, char* buffer);  // at least 12 bytes
 size_t FastUInt32ToBufferLeft(uint32 i, char* buffer);  // at least 12 bytes
-size_t FastInt64ToBufferLeft(int64 i, char* buffer);    // at least 22 bytes
+size_t FastInt64ToBufferLeft(int64_t i, char* buffer);  // at least 22 bytes
 size_t FastUInt64ToBufferLeft(uint64 i, char* buffer);  // at least 22 bytes
 
 // Required buffer size for DoubleToBuffer is kFastToBufferSize.
@@ -104,7 +104,7 @@ bool safe_strtou32(StringPiece str, uint32* value);
 // Convert strings to 64bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto64(StringPiece str, int64* value);
+bool safe_strto64(StringPiece str, int64_t* value);
 
 // Convert strings to unsigned 64bit integer values.
 // Leading and trailing spaces are allowed.
@@ -131,7 +131,7 @@ inline bool ProtoParseNumeric(StringPiece s, uint32* value) {
   return safe_strtou32(s, value);
 }
 
-inline bool ProtoParseNumeric(StringPiece s, int64* value) {
+inline bool ProtoParseNumeric(StringPiece s, int64_t* value) {
   return safe_strto64(s, value);
 }
 
@@ -157,12 +157,12 @@ bool SafeStringToNumeric(StringPiece s, T* value) {
 
 // Converts from an int64 to a human readable string representing the
 // same number, using decimal powers.  e.g. 1200000 -> "1.20M".
-std::string HumanReadableNum(int64 value);
+std::string HumanReadableNum(int64_t value);
 
 // Converts from an int64 representing a number of bytes to a
 // human readable string representing the same number.
 // e.g. 12345678 -> "11.77MiB".
-std::string HumanReadableNumBytes(int64 num_bytes);
+std::string HumanReadableNumBytes(int64_t num_bytes);
 
 // Converts a time interval as double to a human readable
 // string. For example:

@@ -13,25 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
-import inspect
-from typing import Any, Callable, Sequence, Tuple
+from typing import Any, Callable, Optional, Sequence, Tuple
 
 import numpy as np
 from tensorflow.compiler.xla.python import xla_extension
 
 Client = xla_extension.Client
 
-class CompiledFunctionCache:
-  def __init__(self, capacity): ...
-  def size(self) -> int: ...
-  def capacity(self) -> int: ...
-  def clear(self): ...
-
-class CompiledFunction:
-  def __call__(self, *args, **kwargs) -> Any: ...
-  __signature__: inspect.Signature
-  def _cache_size(self) -> int: ...
-  def _clear_cache(self) -> None: ...
+CompiledFunctionCache = xla_extension.CompiledFunctionCache
+CompiledFunction = xla_extension.CompiledFunction
 
 class GlobalJitState:
   disable_jit: bool

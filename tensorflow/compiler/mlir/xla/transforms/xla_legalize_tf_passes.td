@@ -48,7 +48,27 @@ def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
-  let dependentDialects = ["chlo::HloClientDialect", "mhlo::MhloDialect",
+  let dependentDialects = ["arith::ArithmeticDialect, chlo::HloClientDialect",
+                           "memref::MemRefDialect", "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "StandardOpsDialect"];
+}
+
+def LegalizeTFNoFallback : FunctionPass<"xla-legalize-tf-no-fallback"> {
+  let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
+
+  let description = [{
+    Legalizes from TF dialect to HLO dialect. When allow_partial_conversion is
+    false, emits an error if there is any operation that can't be legalized.
+  }];
+  let options = [
+    Option<"allow_partial_conversion_", "allow-partial-conversion", "bool",
+        /*default=*/"false",
+        "Allow operations that can't be legalized.">
+  ];
+
+  let constructor = "mlir::mhlo::createLegalizeTFNoFallbackPass()";
+  let dependentDialects = ["arith::ArithmeticDialect", "chlo::HloClientDialect",
+                           "memref::MemRefDialect", "mhlo::MhloDialect",
                            "shape::ShapeDialect", "StandardOpsDialect"];
 }
 

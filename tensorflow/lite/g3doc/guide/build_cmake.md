@@ -7,8 +7,7 @@ The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
 , macOS Catalina (x86_64), Windows 10 and TensorFlow devel Docker image
 [tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
-**Note:** This feature is currently experimental and available since version 2.4
-and may change.
+**Note:** This feature is available since version 2.4.
 
 ### Step 1. Install CMake tool
 
@@ -58,16 +57,70 @@ provide `-DCMAKE_BUILD_TYPE=Debug` option.
 cmake ../tensorflow_src/tensorflow/lite -DCMAKE_BUILD_TYPE=Debug
 ```
 
-#### Cross-compilation for Android
+#### Build with kernel unit tests
 
-You can use CMake to build Android binaries. You need to install
+In order to be able to run kernel tests, you need to provide
+'-DTFLITE_KERNEL_TEST=on' flag. Unit test cross-compilation specifics can be
+found in the next subsection.
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite -DTFLITE_KERNEL_TEST=on
+```
+
+#### Cross-compilation
+
+You can use CMake to build binaries for ARM64 or Android target architectures.
+
+In order to cross-compile the TF Lite, you namely need to provide the path to
+the SDK (e.g. ARM64 SDK or NDK in Android's case) with `-DCMAKE_TOOLCHAIN_FILE`
+flag.
+
+```sh
+cmake -DCMAKE_TOOLCHAIN_FILE=<CMakeToolchainFileLoc> ../tensorflow/lite/
+```
+
+##### Specifics of Android cross-compilation
+
+For Android cross-compilation, you need to install
 [Android NDK](https://developer.android.com/ndk) and provide the NDK path with
-`-DDCMAKE_TOOLCHAIN_FILE` flag. You also need to set target ABI with
-`-DANDROID_ABI` flag.
+`-DCMAKE_TOOLCHAIN_FILE` flag mentioned above. You also need to set target ABI
+with`-DANDROID_ABI` flag.
 
 ```sh
 cmake -DCMAKE_TOOLCHAIN_FILE=<NDK path>/build/cmake/android.toolchain.cmake \
   -DANDROID_ABI=arm64-v8a ../tensorflow_src/tensorflow/lite
+```
+
+##### Specifics of kernel (unit) tests cross-compilation
+
+Cross-compilation of the unit tests requires flatc compiler for the host
+architecture. For this purpose, there is a CMakeLists located in
+`tensorflow/lite/tools/cmake/native_tools/flatbuffers` to build the flatc
+compiler with CMake in advance in a separate build directory using the host
+toolchain.
+
+```sh
+mkdir flatc-native-build && cd flatc-native-build
+cmake ../tensorflow_src/tensorflow/lite/tools/cmake/native_tools/flatbuffers
+cmake --build .
+```
+
+It is also possible **to install** the *flatc* to a custom installation location
+(e.g. to a directory containing other natively-built tools instead of the CMake
+build directory):
+
+```sh
+cmake -DCMAKE_INSTALL_PREFIX=<native_tools_dir> ../tensorflow_src/tensorflow/lite/tools/cmake/native_tools/flatbuffers
+cmake --build .
+```
+
+For the TF Lite cross-compilation itself, additional parameter
+`-DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path>` pointing to the directory containing
+the native *flatc* binary needs to be provided along with the
+`-DTFLITE_KERNEL_TEST=on` flag mentioned above.
+
+```sh
+cmake -DCMAKE_TOOLCHAIN_FILE=${OE_CMAKE_TOOLCHAIN_FILE} -DTFLITE_KERNEL_TEST=on -DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path> ../tensorflow/lite/
 ```
 
 #### OpenCL GPU delegate
@@ -82,7 +135,7 @@ To configure OpenCL GPU delegate support:
 cmake ../tensorflow_src/tensorflow/lite -DTFLITE_ENABLE_GPU=ON
 ```
 
-**Note:** It's experimental and available only on master(r2.5) branch. There
+**Note:** It's experimental and available starting from TensorFlow 2.5. There
 could be compatibility issues. It's only verified with Android devices and
 NVidia CUDA OpenCL 1.2.
 
@@ -119,13 +172,19 @@ Here is the list of available options. You can override it with
 `-D<option_name>=[ON|OFF]`. For example, `-DTFLITE_ENABLE_XNNPACK=OFF` to
 disable XNNPACK which is enabled by default.
 
-Option Name           | Feature                                  | Default
---------------------- | ---------------------------------------- | ------------
-TFLITE_ENABLE_RUY     | Enable RUY matrix multiplication library | OFF
-TFLITE_ENABLE_NNAPI   | Enable NNAPI delegate                    | ON (Android)
-TFLITE_ENABLE_GPU     | Enable GPU delegate                      | OFF
-TFLITE_ENABLE_XNNPACK | Enable XNNPACK delegate                  | ON
-TFLITE_ENABLE_MMAP    | Enable MMAP (unsupported on Windows)     | ON
+| Option Name           | Feature        | Android | Linux | macOS | Windows |
+| --------------------- | -------------- | ------- | ----- | ----- | ------- |
+| TFLITE_ENABLE_RUY     | Enable RUY     | ON      | OFF   | OFF   | OFF     |
+:                       : matrix         :         :       :       :         :
+:                       : multiplication :         :       :       :         :
+:                       : library        :         :       :       :         :
+| TFLITE_ENABLE_NNAPI   | Enable NNAPI   | ON      | OFF   | N/A   | N/A     |
+:                       : delegate       :         :       :       :         :
+| TFLITE_ENABLE_GPU     | Enable GPU     | OFF     | OFF   | N/A   | N/A     |
+:                       : delegate       :         :       :       :         :
+| TFLITE_ENABLE_XNNPACK | Enable XNNPACK | ON      | ON    | ON    | ON      |
+:                       : delegate       :         :       :       :         :
+| TFLITE_ENABLE_MMAP    | Enable MMAP    | ON      | ON    | ON    | N/A     |
 
 ## Create a CMake project which uses TensorFlow Lite
 

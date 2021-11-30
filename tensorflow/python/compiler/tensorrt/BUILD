@@ -43,6 +43,7 @@ py_library(
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:graph_util",
+        "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/eager:context",

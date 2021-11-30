@@ -301,7 +301,7 @@ do_external_licenses_check(){
   TMP_FILE="$(mktemp)_tmp.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel cquery "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
+ bazel cquery --experimental_cc_shared_library "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -312,7 +312,7 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel cquery "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
+  bazel cquery --experimental_cc_shared_library "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -331,6 +331,7 @@ do_external_licenses_check(){
   # Denylist
   echo ${MISSING_LICENSES_FILE}
   grep \
+    -e "@absl_py//absl" \
     -e "@bazel_tools//platforms" \
     -e "@bazel_tools//third_party/" \
     -e "@bazel_tools//tools" \
@@ -349,6 +350,7 @@ do_external_licenses_check(){
   grep \
     -e "//third_party/mkl" \
     -e "//third_party/mkl_dnn" \
+    -e "@absl_py//" \
     -e "@bazel_tools//src" \
     -e "@bazel_tools//platforms" \
     -e "@bazel_tools//tools/" \
@@ -437,7 +439,7 @@ cmd_status(){
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
-  BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
+  BUILD_CMD="bazel build --experimental_cc_shared_library --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
 
@@ -556,7 +558,7 @@ _check_no_deps() {
 
   TMP_FILE="$(mktemp)_tmp.log"
   echo "Checking ${TARGET} does not depend on ${DISALLOWED_DEP} ..."
-  bazel cquery ${EXTRA_FLAG} "somepath(${TARGET}, ${DISALLOWED_DEP})" --keep_going> "${TMP_FILE}" 2>&1
+  bazel cquery --experimental_cc_shared_library ${EXTRA_FLAG} "somepath(${TARGET}, ${DISALLOWED_DEP})" --keep_going> "${TMP_FILE}" 2>&1
   if cat "${TMP_FILE}" | grep "Empty query results"; then
       echo "Success."
   else
@@ -615,8 +617,8 @@ do_configure_test() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_configure_test" "do_pylint" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
-SANITY_STEPS_DESC=("Run ./configure" "Python 3 pylint" "buildifier check" "bazel nobuild" "bazel query" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
+SANITY_STEPS=("do_configure_test" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
+SANITY_STEPS_DESC=("Run ./configure" "buildifier check" "bazel nobuild" "bazel query" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS=""
 

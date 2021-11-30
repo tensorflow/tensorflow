@@ -15,10 +15,6 @@
 # ==============================================================================
 """Utilities for collectives."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import enum
 
@@ -69,7 +65,7 @@ class _OptionsExported(object):
   ```python
   options = tf.distribute.experimental.CommunicationOptions(
       bytes_per_pack=50 * 1024 * 1024,
-      timeout_seconds=120,
+      timeout_seconds=120.0,
       implementation=tf.distribute.experimental.CommunicationImplementation.NCCL
   )
   grads = tf.distribute.get_replica_context().all_reduce(
@@ -126,12 +122,14 @@ class Options(object):
                timeout_seconds=None,
                implementation=CommunicationImplementation.AUTO):
     if bytes_per_pack < 0:
-      raise ValueError("bytes_per_pack must be non-negative")
+      raise ValueError(
+          f"Argument `bytes_per_pack` must be >=0, Received {bytes_per_pack}.")
     if isinstance(implementation, str):
       implementation = CommunicationImplementation(implementation.upper())
     if not isinstance(implementation, CommunicationImplementation):
-      raise ValueError("implementation should be a "
-                       "tf.distribute.experimental.CommunicationImplementation")
+      raise ValueError(
+          "Argument `implementation` must be instance of "
+          "`tf.distribute.experimental.CommunicationImplementation`.")
     self.bytes_per_pack = bytes_per_pack
     self.timeout_seconds = timeout_seconds
     self.implementation = implementation
@@ -193,7 +191,7 @@ class Hints(object):
   ```python
   strategy = tf.distribute.MirroredStrategy()
   hints = tf.distribute.experimental.CollectiveHints(
-      timeout_seconds=120)
+      timeout_seconds=120.0)
   try:
     strategy.reduce("sum", v, axis=None, experimental_hints=hints)
   except tf.errors.DeadlineExceededError:

@@ -5,7 +5,7 @@ HloModule TestModule
 // CHECK-LABEL: func @TestComputation
 
 FusedComputation {
-  // CHECK: tensor_load %arg0 {minor_to_major = dense<[0, 1]> : tensor<2xindex>}
+  // CHECK: to_tensor {{.*}} {xla_shape = "f32[3,2]{0,1}"}
   x = f32[3, 2]{0,1} parameter(0)
   ROOT y = f32[3, 2]{0,1} add(x, x)
 }
@@ -29,10 +29,10 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 // CHECK: ^bb0(%[[ARG5:.*]]: tensor<i32>, %[[ARG6:.*]]: tensor<i32>):
 // CHECK:  "mhlo.return"(%[[ARG6]])
 // CHECK: indices_are_sorted = false
-// CHECK: index_vector_dim = 1 : i64
-// CHECK: inserted_window_dims = dense<0> : tensor<1xi64>
-// CHECK: scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>
-// CHECK: update_window_dims = dense<1> : tensor<1xi64>
+// CHECK: update_window_dims = [1]
+// CHECK: inserted_window_dims = [0]
+// CHECK: scatter_dims_to_operand_dims = [0]
+// CHECK: index_vector_dim = 1
 // CHECK: unique_indices = false
 // CHECK: (memref<3x3xi32>, memref<2xi32>, memref<2x3xi32>, memref<3x3xi32>) -> ()
 ENTRY main {
@@ -132,10 +132,10 @@ HloModule Gemm
 // CHECK-SAME: alpha_imag = 0.000000e+00 : f64
 // CHECK-SAME: alpha_real = 1.000000e+00 : f64
 // CHECK-SAME: batch_size = 1 : i64
-// CHECK-SAME: lhs_batching_dimensions = dense<> : tensor<0xi64>
-// CHECK-SAME: lhs_contracting_dimensions = dense<1> : tensor<1xi64>
-// CHECK-SAME: rhs_batching_dimensions = dense<> : tensor<0xi64>
-// CHECK-SAME: rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+// CHECK-NOT: lhs_batching_dimensions
+// CHECK-NOT: rhs_batching_dimensions
+// CHECK-SAME: lhs_contracting_dimensions = [1]
+// CHECK-SAME: rhs_contracting_dimensions = [0]
 // CHECK: (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 ENTRY main {
   %A = f32[2,2]{1,0} parameter(0)
@@ -156,10 +156,10 @@ HloModule GemmBias
 // CHECK-SAME: alpha_real = 1.000000e+00 : f64
 // CHECK-SAME: batch_size = 1 : i64
 // CHECK-SAME: beta = 1.000000e+00 : f64
-// CHECK-SAME: lhs_batching_dimensions = dense<> : tensor<0xi64>
-// CHECK-SAME: lhs_contracting_dimensions = dense<1> : tensor<1xi64>
-// CHECK-SAME: rhs_batching_dimensions = dense<> : tensor<0xi64>
-// CHECK-SAME: rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+// CHECK-NOT: lhs_batching_dimensions
+// CHECK-NOT: rhs_batching_dimensions
+// CHECK-SAME: lhs_contracting_dimensions = [1]
+// CHECK-SAME: rhs_contracting_dimensions = [0]
 // CHECK: (memref<1x1xf32>, memref<1x4xf32>, memref<1x4xf32>, memref<1x4xf32>)
 ENTRY main {
   %A = f32[1,1]{1,0} parameter(0)
@@ -181,10 +181,10 @@ HloModule GemmBias
 // CHECK-SAME: alpha_real = 1.000000e+00 : f64
 // CHECK-SAME: batch_size = 1 : i64
 // CHECK-SAME: beta = 1.000000e+00 : f64
-// CHECK-SAME: lhs_batching_dimensions = dense<> : tensor<0xi64>
-// CHECK-SAME: lhs_contracting_dimensions = dense<1> : tensor<1xi64>
-// CHECK-SAME: rhs_batching_dimensions = dense<> : tensor<0xi64>
-// CHECK-SAME: rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+// CHECK-NOT: lhs_batching_dimensions
+// CHECK-NOT: rhs_batching_dimensions
+// CHECK-SAME: lhs_contracting_dimensions = [1]
+// CHECK-SAME: rhs_contracting_dimensions = [0]
 // CHECK: (memref<1x1xf32>, memref<1x4xf32>, memref<1x4xf32>, memref<1x4xf32>)
 ENTRY main {
   %A = f32[1,1]{1,0} parameter(0)
@@ -207,10 +207,11 @@ add {
 }
 
 // CHECK-LABEL: func @test_all_reduce
-// CHECK-SAME:  ([[INPUT:%.*]]: memref<8xf32>
+// CHECK-SAME:  ([[INPUT:%.*]]: memref<32xi8> {lmhlo.params = 0
 %test_all_reduce {
   input = f32[8] parameter(0)
-  // CHECK:  "lmhlo.all_reduce"([[INPUT]], {{.*}})
+  // CHECK:  [[VIEW0:%.*]] = memref.view [[INPUT]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  "lmhlo.all_reduce"([[VIEW0]], {{.*}})
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
@@ -257,10 +258,11 @@ add {
 }
 
 // CHECK-LABEL: func @test_all_reduce
-// CHECK-SAME:  ([[INPUT:%.*]]: memref<8xf32>
+// CHECK-SAME:  ([[INPUT:%.*]]: memref<32xi8> {lmhlo.params = 0
 %test_all_reduce {
   input = f32[8] parameter(0)
-  // CHECK:  "lmhlo.all_reduce"([[INPUT]], {{.*}})
+  // CHECK:  [[VIEW0:%.*]] = memref.view [[INPUT]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  "lmhlo.all_reduce"([[VIEW0]], {{.*}})
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
@@ -268,6 +270,70 @@ add {
   // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, -1], [3, 4, 5, 6]]> : tensor<2x4xi64>
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2}, {3,4,5,6}}, to_apply=add
+}
+
+// -----
+
+HloModule AsyncAllReduce
+
+// Test all-reduce
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL: func @test_async_all_reduce
+// CHECK-SAME: [[BUFFER:%.*]]: memref<32xi8>
+%test_async_all_reduce {
+  param0 = f32[8] parameter(0)
+  // CHECK:  [[INPUT:%.*]] = memref.view [[BUFFER]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[OUTPUT:%.*]] = memref.view [[BUFFER]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[INPUT]], [[OUTPUT]])
+  // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+  // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+  // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:  }) {
+  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
+  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT]])
+  start = f32[8] all-reduce-start(param0),
+      channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
+  ROOT done = f32[8] all-reduce-done(start)
+}
+
+// -----
+
+HloModule AsyncAllReduceTwoOperands
+
+// Test all-reduce
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL: func @test_async_all_reduce_two_operands
+// CHECK-SAME: [[BUFFER0:%.*]]: memref<32xi8>
+// CHECK-SAME: [[BUFFER1:%.*]]: memref<36xi8>
+%test_async_all_reduce_two_operands {
+  param0 = f32[8] parameter(0)
+  param1 = f32[9] parameter(1)
+  // CHECK:  [[INPUT0:%.*]] = memref.view [[BUFFER0]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[INPUT1:%.*]] = memref.view [[BUFFER1]]{{.*}} : memref<36xi8> to memref<9xf32>
+  // CHECK:  [[OUTPUT0:%.*]] = memref.view [[BUFFER0]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[OUTPUT1:%.*]] = memref.view [[BUFFER1]]{{.*}} : memref<36xi8> to memref<9xf32>
+  // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[INPUT0]], [[INPUT1]], [[OUTPUT0]], [[OUTPUT1]])
+  // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+  // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+  // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:  }) {
+  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
+  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT0]], [[OUTPUT1]])
+  start = (f32[8], f32[9]) all-reduce-start(param0, param1),
+      channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
+  ROOT done = (f32[8], f32[9]) all-reduce-done(start)
 }
 
 // -----
@@ -293,7 +359,7 @@ ENTRY main {
   ROOT %custom-call.1 = (f32[4,256,2,2]{3,2, 1,0}, u8[65536]{0}) custom-call(f32[4,256,3,3]{3,2,1,0} %input, f32[256,256,2,2]{3,2,1,0} %filter),
                         window={size=2x2 rhs_reversal=1x1}, dim_labels=bf01_oi01->bf01,
                         custom_call_target="__cudnn$convForward",
-                        backend_config="{\"algorithm\":\"2\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"0\",\"side_input_scale\":0}"
+                        backend_config="{\"algorithm\": {\"algo_id\":\"2\",\"math_type\":\"DEFAULT_MATH\"},\"conv_result_scale\":1,\"activation_mode\":\"0\",\"side_input_scale\":0}"
 }
 
 // -----
@@ -320,7 +386,7 @@ ENTRY main {
   %input = f16[1,17,9,9]{1,3,2,0} parameter(0)
   %filter = f16[3,3,17,32]{2,1,0,3} parameter(1)
   %bias = f16[32]{0} parameter(2)
-  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"algorithm\":\"0\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":0}"
+  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"algorithm\": {\"algo_id\":\"0\",\"math_type\":\"DEFAULT_MATH\"},\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":0}"
 }
 
 // -----
@@ -349,7 +415,7 @@ ENTRY main {
   %filter = f16[3,3,17,32]{2,1,0,3} parameter(1)
   %bias = f16[32]{0} parameter(2)
   %side = f16[32]{0} parameter(3)
-  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias, f16[32]{0} %side), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"algorithm\":\"0\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":1}"
+  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias, f16[32]{0} %side), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"algorithm\":{\"algo_id\":\"0\",\"math_type\":\"DEFAULT_MATH\"},\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":1}"
 }
 
 // -----
@@ -464,14 +530,15 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.dot"(%arg0, %arg1, %{{.*}}) {
-// CHECK-SAME: dot_dimension_numbers = {
-// CHECK-SAME:   lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-// CHECK-SAME:   lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
-// CHECK-SAME:   rhs_batching_dimensions = dense<0> : tensor<1xi64>,
-// CHECK-SAME:   rhs_contracting_dimensions = dense<1> : tensor<1xi64>},
-// CHECK-SAME:   precision_config = ["DEFAULT", "DEFAULT"]}
-// CHECK-SAME:   : (memref<1x3x4xf32>, memref<1x4x5xf32>, memref<1x4x5xf32>) -> ()
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.dot_general"(%{{.*}}, %{{.*}}) {
+// CHECK-SAME: dot_dimension_numbers =
+// CHECK-SAME:   lhs_batching_dimensions = [0]
+// CHECK-SAME:   rhs_batching_dimensions = [0]
+// CHECK-SAME:   lhs_contracting_dimensions = [2]
+// CHECK-SAME:   rhs_contracting_dimensions = [1]
+// CHECK-SAME: precision_config = ["DEFAULT", "DEFAULT"]
+// CHECK-SAME:   : (tensor<1x3x4xf32>, tensor<1x4x5xf32>) -> tensor<1x4x5xf32>
 ENTRY main {
   %arg0 = f32[1,3,4]{2,1,0} parameter(0)
   %arg1 = f32[1,4,5]{2,1,0} parameter(1)
@@ -483,7 +550,8 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.reshape"(%arg0, %{{.*}}) : (memref<2xf32>, memref<1x2xf32>) -> ()
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.reshape"(%{{.*}}) : (tensor<2xf32>) -> tensor<1x2xf32>
 ENTRY main {
   %arg0 = f32[2]{0} parameter(0)
   ROOT %out = f32[1,2]{1,0} reshape(%arg0)
@@ -500,16 +568,17 @@ max {
 }
 
 // CHECK: func @main
-// CHECK: "lmhlo.reduce_window"(%arg0, %{{.*}}, %{{.*}}) ( {
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.reduce_window"(%{{.*}}, %{{.*}}) ( {
 // CHECK:   ^bb0(%[[ARG6:.*]]: tensor<f32>, %[[ARG7:.*]]: tensor<f32>):
-// CHECK:   %2 = mhlo.maximum %[[ARG6]], %[[ARG7]] : tensor<f32>
-// CHECK:   "mhlo.return"(%2) : (tensor<f32>) -> ()
+// CHECK:   %[[RET:.*]] = mhlo.maximum %[[ARG6]], %[[ARG7]] : tensor<f32>
+// CHECK:   "mhlo.return"(%[[RET]]) : (tensor<f32>) -> ()
 // CHECK: }) {
 // CHECK-SAME: padding = dense<{{\[}}[0, 0], [2, 0], [0, 2], [0, 0]{{\]}}> : tensor<4x2xi64>,
 // CHECK-SAME: window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>,
 // CHECK-SAME: window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
 // CHECK-SAME: window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>}
-// CHECK-SAME: : (memref<2x17x31x7xf32>, memref<f32>, memref<2x5x8x7xf32>) -> ()
+// CHECK-SAME: : (tensor<2x17x31x7xf32>, tensor<f32>) -> tensor<2x5x8x7xf32>
 ENTRY main {
   %arg0 = f32[2,17,31,7] parameter(0)
   %c = f32[] constant(0)
@@ -521,11 +590,12 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.pad"(%arg0, %arg1, %{{.*}}) {
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.pad"(%{{.*}}, %{{.*}}) {
 // CHECK-SAME: edge_padding_high = dense<[4, 5]> : tensor<2xi64>,
 // CHECK-SAME: edge_padding_low = dense<[2, 3]> : tensor<2xi64>,
 // CHECK-SAME: interior_padding = dense<1> : tensor<2xi64>}
-// CHECK-SAME: : (memref<4x6xf32>, memref<f32>, memref<13x19xf32>) -> ()
+// CHECK-SAME: : (tensor<4x6xf32>, tensor<f32>) -> tensor<13x19xf32>
 ENTRY main {
   %arg0 = f32[4,6] parameter(0)
   %arg1 = f32[] parameter(1)
@@ -537,7 +607,8 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.transpose"(%arg0, %{{.*}}) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (memref<1x2x3x4xf32>, memref<2x1x4x3xf32>) -> ()
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.transpose"(%{{.*}}) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xf32>) -> tensor<2x1x4x3xf32>
 ENTRY main {
   %arg0 = f32[1,2,3,4] parameter(0)
   %out = f32[2,1,4,3] transpose(%arg0), dimensions={1,0,3,2}
@@ -548,7 +619,8 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.broadcast_in_dim"(%arg0, %{{.*}}) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (memref<1xf32>, memref<10xf32>) -> ()
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.broadcast_in_dim"(%{{.*}}) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<10xf32>
 ENTRY main {
   %arg0 = f32[1] parameter(0)
   %out = f32[10] broadcast(%arg0), dimensions={0}
@@ -716,4 +788,47 @@ ENTRY main {
   ROOT %call = (token[], f32[3]{0}, token[], token[]) custom-call (%input),
                                       custom_call_target="foo",
                                       backend_config=""
+}
+
+// -----
+
+// CHECK: func @main
+// CHECK: "lmhlo.reduce_scatter"
+// CHECK{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+// CHECK-SAME: scatter_dimension = 0 : i64
+HloModule ReduceScatter
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  input = f32[8]{0} parameter(0)
+  ROOT ars = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+}
+
+// -----
+// CHECK: func @main
+// CHECK: "lmhlo.while"(%{{.*}}) ( {
+HloModule WhileConstantCondition
+
+%body {
+  %parameter.5 = (f32[5]{0}) parameter(0)
+  %constant_8 = f32[] constant(0)
+  %broadcast.9 = f32[5]{0} broadcast(f32[] %constant_8), dimensions={}
+  ROOT %tuple.2 = (f32[5]{0}) tuple(f32[5]{0} %broadcast.9)
+}
+
+%cond {
+  %parameter.12 = (f32[5]{0}) parameter(0)
+  ROOT %constant_1 = pred[] constant(false)
+}
+
+ENTRY %main (parameter.1: f32[5]) -> (f32[5]) {
+  %parameter.1 = f32[5]{0} parameter(0)
+  %copy.3 = f32[5]{0} copy(f32[5]{0} %parameter.1)
+  %tuple = (f32[5]{0}) tuple(f32[5]{0} %copy.3)
+  ROOT %while.19 = (f32[5]{0}) while((f32[5]{0}) %tuple), condition=%cond, body=%body
 }

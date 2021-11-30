@@ -202,8 +202,7 @@ preferred_element_type: The type of the tensor.
 static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle lhs_shape_handle = c->input(0);
   shape_inference::ShapeHandle rhs_shape_handle = c->input(1);
-  if (!c->FullyDefined(lhs_shape_handle) ||
-      !c->FullyDefined(rhs_shape_handle)) {
+  if (!c->RankKnown(lhs_shape_handle) || !c->RankKnown(rhs_shape_handle)) {
     return shape_inference::UnknownShape(c);
   }
 
@@ -224,26 +223,20 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
         dimension_numbers.rhs_contracting_dimensions_size());
 
   // Check that contracting dimension sizes match.
-  for (int64 i = 0; i < dimension_numbers.lhs_contracting_dimensions_size();
+  for (int64_t i = 0; i < dimension_numbers.lhs_contracting_dimensions_size();
        ++i) {
-    const int64 lhs_contracting_dimension =
+    const int64_t lhs_contracting_dimension =
         dimension_numbers.lhs_contracting_dimensions(i);
-    const int64 rhs_contracting_dimension =
+    const int64_t rhs_contracting_dimension =
         dimension_numbers.rhs_contracting_dimensions(i);
-    shape_inference::DimensionOrConstant lhs_contracting_dimension_or_constant(
-        c->DimKnownRank(lhs_shape_handle, lhs_contracting_dimension));
-    shape_inference::DimensionOrConstant rhs_contracting_dimension_or_constant(
-        c->DimKnownRank(rhs_shape_handle, rhs_contracting_dimension));
-    const int64 lhs_contracting_dimension_size =
-        c->Value(lhs_contracting_dimension_or_constant);
-    const int64 rhs_contracting_dimension_size =
-        c->Value(rhs_contracting_dimension_or_constant);
-    if (lhs_contracting_dimension_size != rhs_contracting_dimension_size) {
-      return errors::InvalidArgument(
-          "Contracting dimension sizes do not match. Got: ",
-          lhs_contracting_dimension_size, " and ",
-          rhs_contracting_dimension_size);
-    }
+    shape_inference::DimensionHandle unused;
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        c->Merge(c->DimKnownRank(lhs_shape_handle, lhs_contracting_dimension),
+                 c->DimKnownRank(rhs_shape_handle, rhs_contracting_dimension),
+                 &unused),
+        "For contracting dimension ", i, " which is lhs dimension ",
+        lhs_contracting_dimension, " and rhs dimension ",
+        rhs_contracting_dimension);
   }
 
   // Check that number of batch dimensions match.
@@ -255,36 +248,30 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
         dimension_numbers.lhs_batch_dimensions_size(), " and ",
         dimension_numbers.rhs_batch_dimensions_size());
 
-  // Check that batch dimension sizes match.
-  for (int64 i = 0; i < dimension_numbers.lhs_batch_dimensions_size(); ++i) {
-    const int64 lhs_batch_dimension = dimension_numbers.lhs_batch_dimensions(i);
-    const int64 rhs_batch_dimension = dimension_numbers.rhs_batch_dimensions(i);
-    shape_inference::DimensionOrConstant lhs_batch_dimension_or_constant(
-        c->DimKnownRank(lhs_shape_handle, lhs_batch_dimension));
-    shape_inference::DimensionOrConstant rhs_batch_dimension_or_constant(
-        c->DimKnownRank(rhs_shape_handle, rhs_batch_dimension));
-    const int64 lhs_batch_dimension_size =
-        c->Value(lhs_batch_dimension_or_constant);
-    const int64 rhs_batch_dimension_size =
-        c->Value(rhs_batch_dimension_or_constant);
-    if (lhs_batch_dimension_size != rhs_batch_dimension_size) {
-      return errors::InvalidArgument(
-          "Batch dimension sizes do not match. Got: ", lhs_batch_dimension_size,
-          " and ", rhs_batch_dimension_size);
-    }
+  // The ranks of lhs and rhs are decremented by the number of contractions,
+  // and added for the rank of the result. When an input tensor
+  // is a scalar, its contribution to the rank of the result is 0. Generate
+  // the result dimensions in order, batch dimensions, then the
+  // non-contracted and non-batch lhs and rhs dimensions.
+  std::vector<shape_inference::DimensionHandle> output_dims;
+
+  // Check that batch dimension sizes match, and add them to output_dims.
+  for (int64_t i = 0; i < dimension_numbers.lhs_batch_dimensions_size(); ++i) {
+    const int64_t lhs_batch_dimension =
+        dimension_numbers.lhs_batch_dimensions(i);
+    const int64_t rhs_batch_dimension =
+        dimension_numbers.rhs_batch_dimensions(i);
+    shape_inference::DimensionHandle out;
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        c->Merge(c->DimKnownRank(lhs_shape_handle, lhs_batch_dimension),
+                 c->DimKnownRank(rhs_shape_handle, rhs_batch_dimension), &out),
+        "For batch dimension ", i, " which is lhs dimension ",
+        lhs_batch_dimension, " and rhs dimension ", rhs_batch_dimension);
+    output_dims.emplace_back(out);
   }
 
-  // The ranks of lhs and rhs are decremented by 1 respectively due to the
-  // contraction, and added for the rank of the result. When an input tensor
-  // is a scalar, its contribution to the rank of the result is 0. Generate
-  // the result dimensions in order, rhs dimensions followed by lhs
-  // dimensions except the contracted and batch dimensions.
-  std::vector<shape_inference::DimensionHandle> output_dims;
-  for (int64 lhs_dim : dimension_numbers.lhs_batch_dimensions()) {
-    output_dims.emplace_back(c->Dim(lhs_shape_handle, lhs_dim));
-  }
-  const int32 lhs_rank = c->Rank(lhs_shape_handle);
-  for (int64 i = 0; i < lhs_rank; ++i) {
+  const int32_t lhs_rank = c->Rank(lhs_shape_handle);
+  for (int64_t i = 0; i < lhs_rank; ++i) {
     if (absl::c_linear_search(dimension_numbers.lhs_contracting_dimensions(),
                               i) ||
         absl::c_linear_search(dimension_numbers.lhs_batch_dimensions(), i)) {
@@ -293,8 +280,8 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
     output_dims.emplace_back(c->Dim(lhs_shape_handle, i));
   }
 
-  const int32 rhs_rank = c->Rank(rhs_shape_handle);
-  for (int64 i = 0; i < rhs_rank; ++i) {
+  const int32_t rhs_rank = c->Rank(rhs_shape_handle);
+  for (int64_t i = 0; i < rhs_rank; ++i) {
     if (absl::c_linear_search(dimension_numbers.rhs_contracting_dimensions(),
                               i) ||
         absl::c_linear_search(dimension_numbers.rhs_batch_dimensions(), i)) {
@@ -371,6 +358,20 @@ REGISTER_OP("XlaSetDynamicDimensionSize")
         The current static dimension size will become the bound and the second
         operand becomes the dynamic size of the dimension.)doc");
 
+REGISTER_OP("XlaRemoveDynamicDimensionSize")
+    .Input("input: T")
+    .Input("dim_index: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    // Use unknown shape to prevent constant folding.
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Inverse of XlaSetDynamicDimensionSize.
+
+Make an xla bounded dynamic dimension into a static dimension. The bound of the
+size of dimension `dim_index` becomes the static dimension size.
+)doc");
+
 REGISTER_OP("XlaDynamicSlice")
     .Input("input: T")
     .Input("start_indices: Tindices")
@@ -378,7 +379,24 @@ REGISTER_OP("XlaDynamicSlice")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+      shape_inference::ShapeHandle size_indices_shape = c->input(2);
+      if (!c->RankKnown(size_indices_shape)) {
+        return UnchangedRank(c);
+      }
+      if (c->Rank(size_indices_shape) != 1) {
+        return errors::InvalidArgument("size_indices must be a 1D tensor");
+      }
+      shape_inference::ShapeHandle size_indices_value;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &size_indices_value));
+      if (!c->RankKnown(size_indices_value)) {
+        // If we cannot tell the rank of the output from the value of
+        // size_indices, perhaps we can find it from the rank of first operand.
+        return UnchangedRank(c);
+      }
+      c->set_output(0, size_indices_value);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Wraps the XLA DynamicSlice operator, documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#dynamicslice
@@ -469,7 +487,7 @@ REGISTER_OP("XlaPad")
       if (!c->RankKnown(input_shape_handle)) {
         return UnchangedRank(c);
       }
-      const int32 op_rank = c->Rank(input_shape_handle);
+      const int32_t op_rank = c->Rank(input_shape_handle);
 
       shape_inference::ShapeHandle padding_shape_handle = c->input(1);
       if (c->RankKnown(padding_shape_handle) &&
@@ -503,8 +521,8 @@ REGISTER_OP("XlaPad")
       }
       std::vector<shape_inference::DimensionHandle> output_dims;
       output_dims.reserve(op_rank);
-      for (int64 i = 0; i < op_rank; ++i) {
-        int64 low, high, interior;
+      for (int64_t i = 0; i < op_rank; ++i) {
+        int64_t low, high, interior;
         TF_RETURN_IF_ERROR(c->GetScalarFromTensor(padding_low_tensor, i, &low));
         TF_RETURN_IF_ERROR(
             c->GetScalarFromTensor(padding_high_tensor, i, &high));
@@ -520,7 +538,7 @@ REGISTER_OP("XlaPad")
             c->Dim(input_shape_handle, i);
         if (c->ValueKnown(orig_size_handle)) {
           auto orig_dim = c->Value(orig_size_handle);
-          int64 new_dim = orig_dim + low + high;
+          int64_t new_dim = orig_dim + low + high;
           if (orig_dim > 0) {
             new_dim += interior * (orig_dim - 1);
           }
@@ -582,19 +600,19 @@ shape: The shape of the tensor.
 REGISTER_OP("XlaReduce")
     .Input("input: T")
     .Input("init_value: T")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("dimensions_to_reduce: list(int)")
     .Attr("reducer: func")
     .Output("output: T")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       if (c->RankKnown(c->input(0))) {
         int rank = c->Rank(c->input(0));
-        std::vector<int64> dimensions_to_reduce;
+        std::vector<int64_t> dimensions_to_reduce;
         TF_RETURN_IF_ERROR(
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
-        std::set<int64> dims_set(dimensions_to_reduce.begin(),
-                                 dimensions_to_reduce.end());
-        auto dim_in_range = [rank](int64 dim) {
+        std::set<int64_t> dims_set(dimensions_to_reduce.begin(),
+                                   dimensions_to_reduce.end());
+        auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
         };
         const int dimensions_to_reduce_size = dimensions_to_reduce.size();
@@ -625,7 +643,7 @@ REGISTER_OP("XlaVariadicReduce")
     .Input("input: N * T")
     .Input("init_value: N * T")
     .Attr("N: int >= 1")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("dimensions_to_reduce: list(int)")
     .Attr("reducer: func")
     .Output("output: N * T")
@@ -639,12 +657,12 @@ REGISTER_OP("XlaVariadicReduce")
       }
       if (c->RankKnown(c->input(0))) {
         int rank = c->Rank(c->input(0));
-        std::vector<int64> dimensions_to_reduce;
+        std::vector<int64_t> dimensions_to_reduce;
         TF_RETURN_IF_ERROR(
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
-        std::set<int64> dims_set(dimensions_to_reduce.begin(),
-                                 dimensions_to_reduce.end());
-        auto dim_in_range = [rank](int64 dim) {
+        std::set<int64_t> dims_set(dimensions_to_reduce.begin(),
+                                   dimensions_to_reduce.end());
+        auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
         };
         const int dimensions_to_reduce_size = dimensions_to_reduce.size();
@@ -671,8 +689,95 @@ Wraps the variadic XLA Reduce operator.
 Semantics are documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
 
+This version is limited to operands of the same dtype.
+XlaVariadicReduceV2 is a version that supports heterogeneous operands.
+
 input: the input tensor(s)
 init_value: scalar initial value(s) for the reduction
+reducer: a reducer function to apply
+dimensions_to_reduce: dimension numbers over which to reduce
+)doc");
+
+REGISTER_OP("XlaVariadicReduceV2")
+    .Input("inputs: T")
+    .Input("init_values: T")
+    .Attr("T: list(type) >= 1")
+    .Attr("dimensions_to_reduce: list(int)")
+    .Attr("reducer: func")
+    .Output("outputs: T")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<shape_inference::ShapeHandle> input_shapes;
+      TF_RETURN_IF_ERROR(c->input("inputs", &input_shapes));
+      std::vector<shape_inference::ShapeHandle> init_values_shapes;
+      TF_RETURN_IF_ERROR(c->input("init_values", &init_values_shapes));
+      const int nr_inputs = input_shapes.size();
+      if (nr_inputs != init_values_shapes.size()) {
+        return errors::InvalidArgument(
+            "Must specify the same number of inputs and init_values. ", "Got ",
+            nr_inputs, " and ", init_values_shapes.size());
+      }
+      if (nr_inputs == 0) {
+        return errors::InvalidArgument("Must specify at least one input");
+      }
+
+      shape_inference::ShapeHandle input_shape = input_shapes[0];
+      for (int i = 1; i < nr_inputs; ++i) {
+        shape_inference::ShapeHandle merged;
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            c->Merge(input_shape, input_shapes[i], &merged),
+            "All inputs must have the same shape. Input ", i,
+            " (zero-based) has shape ", c->DebugString(input_shapes[i]),
+            " incompatible with the shape ", "inferred from previous inputs ",
+            c->DebugString(input_shape));
+        input_shape = merged;
+      }
+      // All outputs have the same shape
+      shape_inference::ShapeHandle output_shape = c->UnknownShape();
+
+      if (c->RankKnown(input_shape)) {
+        int rank = c->Rank(input_shape);
+
+        std::vector<int64_t> dimensions_to_reduce;
+        TF_RETURN_IF_ERROR(
+            c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
+        std::set<int64_t> dims_set(dimensions_to_reduce.begin(),
+                                   dimensions_to_reduce.end());
+
+        auto dim_in_range = [rank](int64_t dim) {
+          return dim >= 0 && dim < rank;
+        };
+        const int dimensions_to_reduce_size = dimensions_to_reduce.size();
+        if (rank < dimensions_to_reduce_size ||
+            dims_set.size() != dimensions_to_reduce.size() ||
+            !absl::c_all_of(dimensions_to_reduce, dim_in_range)) {
+          return errors::InvalidArgument(
+              "Invalid dimensions_to_reduce argument to XlaVariadicReduceV2");
+        }
+
+        std::vector<shape_inference::DimensionHandle> output_dims;
+        for (int64_t i = 0; i < rank; ++i) {
+          if (dims_set.find(i) == dims_set.end()) {
+            output_dims.emplace_back(c->Dim(input_shape, i));
+          }
+        }
+        output_shape = c->MakeShape(output_dims);
+      }
+      for (int i = 0; i < nr_inputs; ++i) {
+        c->set_output(i, output_shape);
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Wraps the variadic XLA Reduce operator.
+
+Semantics are documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
+
+This is an expanded version of XlaVariadicReduce, with support for
+operands of different dtypes, and improved shape inference.
+
+inputs: the input tensor(s)
+init_values: scalar initial value(s) for the reduction
 reducer: a reducer function to apply
 dimensions_to_reduce: dimension numbers over which to reduce
 )doc");
@@ -685,7 +790,7 @@ REGISTER_OP("XlaReduceWindow")
     .Input("base_dilations: Tindices")
     .Input("window_dilations: Tindices")
     .Input("padding: Tindices")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .Attr("computation: func")
     .Output("output: T")
@@ -700,6 +805,39 @@ computation: a reducer function to apply
 window_dimensions: the shape of the window
 window_strides: the inter-window strides
 padding: the padding to apply at the start and end of each input dimensions
+)doc");
+
+REGISTER_OP("XlaRngBitGenerator")
+    .Input("algorithm: int32")
+    .Input("initial_state: uint64")
+    .Input("shape: Tshape")
+    .Output("output_key: uint64")
+    .Output("output: dtype")
+    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle algorithm;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &algorithm));
+      shape_inference::ShapeHandle initial_state;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &initial_state));
+
+      c->set_output(0, initial_state);
+      shape_inference::ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output));
+      c->set_output(1, output);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Stateless PRNG bit generator.
+Wraps the XLA RngBitGenerator operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#rngbitgenerator.
+
+algorithm: The PRNG algorithm to use, one of
+  tf.random.Algorithm.{PHILOX, THREEFRY, AUTO_SELECT}.
+initial_state: Initial state for the PRNG algorithm. For THREEFRY, it should be
+  a u64[2] and for PHILOX a u64[3].
+shape: The output shape of the generated data.
+dtype: The type of the tensor.
 )doc");
 
 REGISTER_OP("XlaSelectAndScatter")
@@ -896,6 +1034,8 @@ REGISTER_OP("XlaSpmdFullToShardShape")
     .Output("output: T")
     .Attr("T: type")
     .Attr("manual_sharding: string")
+    .Attr("dim: int = -1")
+    .Attr("unspecified_dims: list(int) = []")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       auto input_handle = c->input(0);
       if (!c->RankKnown(input_handle)) {
@@ -903,18 +1043,22 @@ REGISTER_OP("XlaSpmdFullToShardShape")
       }
       string sharding_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("manual_sharding", &sharding_attr));
+      int32 single_dim;
+      TF_RETURN_IF_ERROR(c->GetAttr("dim", &single_dim));
       xla::OpSharding sharding;
       sharding.ParseFromString(sharding_attr);
       if (sharding.type() != xla::OpSharding::OTHER) {
         return shape_inference::UnchangedShape(c);
       }
       std::vector<shape_inference::DimensionHandle> dims;
-      for (int64 i = 0; i < c->Rank(input_handle); ++i) {
+      for (int64_t i = 0; i < c->Rank(input_handle); ++i) {
         auto dim = c->Value(c->Dim(input_handle, i));
-        int64 partitions_i = sharding.tile_assignment_dimensions(i);
-        if (dim != shape_inference::InferenceContext::kUnknownDim &&
-            partitions_i != 1) {
-          dim = (dim + partitions_i - 1) / partitions_i;
+        if (single_dim < 0 || single_dim == i) {
+          int64_t partitions_i = sharding.tile_assignment_dimensions(i);
+          if (dim != shape_inference::InferenceContext::kUnknownDim &&
+              partitions_i != 1) {
+            dim = (dim + partitions_i - 1) / partitions_i;
+          }
         }
         dims.push_back(c->MakeDim(dim));
       }
@@ -927,6 +1071,8 @@ manual partitioning. It annotates the input (full-shape, to be automatically
 partitioned) with the same sharding used by manual partitioning, and outputs a
 shard-shaped tensor to be consumed by later manually-partitioned ops. If the
 shape is not evenly partitionable, the padding region will be masked with 0s.
+The conversion can happen partially in subgroups, by specifying the dim
+attribute, where only that dim will be converted.
 )doc");
 
 REGISTER_OP("XlaSpmdShardToFullShape")
@@ -935,6 +1081,8 @@ REGISTER_OP("XlaSpmdShardToFullShape")
     .Attr("T: type")
     .Attr("manual_sharding: string")
     .Attr("full_shape: shape")
+    .Attr("dim: int = -1")
+    .Attr("unspecified_dims: list(int) = []")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       TensorShape shape_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("full_shape", &shape_attr));
@@ -947,7 +1095,8 @@ REGISTER_OP("XlaSpmdShardToFullShape")
 An op used by XLA SPMD partitioner to switch from manual partitioning to
 automatic partitioning. It converts the shard-shaped, manually partitioned input
 into full-shaped tensor to be partitioned automatically with the same sharding
-used by manual partitioning.
+used by manual partitioning. The conversion can happen partially in subgroups,
+by specifying the dim attribute, where only that dim will be converted.
 )doc");
 
 REGISTER_OP("XlaSharding")
@@ -955,9 +1104,12 @@ REGISTER_OP("XlaSharding")
     .Output("output: T")
     .Attr("T: type")
     .Attr("sharding: string = ''")
+    .Attr("unspecified_dims: list(int) = []")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
-An op which shards the input based on the given sharding attribute.
+An op which shards the input based on the given sharding attribute. It can
+selectively annotate a subset of tensor dimensions by skipping unspecified_dims,
+and the sharding annotation should be replicated in those dims.
 )doc");
 
 REGISTER_OP("XlaReplicaId")
@@ -1011,6 +1163,46 @@ update_computation: Computation to be used for combining the existing values in
   the input array and the updates during scatter.
 dimension_numbers: A serialized xla::ScatterDimensionNumbers proto.
 indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
+
+REGISTER_OP("XlaAllReduce")
+    .Input("input: T")
+    .Input("group_assignment: int32")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, int32, uint32}")
+    .Attr("reduce_op: {'Min', 'Max', 'Mul', 'Add', 'Mean'}")
+    .Attr("mode: {'CrossReplica', 'CrossReplicaAndPartition'}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Wraps the XLA AllReduce operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
+
+input: Array or a non-empty tuple of arrays to reduce across replicas.
+group_assignment: Groups between which the reductions are performed.
+reduce_op: Reduction computation.
+mode: group mode.
+  CrossReplica: group_assignment contains replica_id. Each group contains the
+    replicas for the current partition.
+  CrossReplicaAndPartition: group_assignment contains replica_id. Each group
+    contains the replicas for all partitions.
+)doc");
+
+REGISTER_OP("XlaReduceScatter")
+    .Input("input: T")
+    .Input("group_assignment: int32")
+    .Input("scatter_dimension: int32")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, int32, uint32}")
+    .Attr("reduce_op: {'Min', 'Max', 'Mul', 'Add', 'Mean'}")
+    .SetShapeFn(shape_inference::ReduceScatterShape)
+    .Doc(R"doc(
+Wraps the XLA ReduceScatter operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#reducescatter.
+
+input: Array or a non-empty tuple of arrays to reduce across replicas.
+group_assignment: Groups between which the reductions are performed.
+scatter_dimension: Dimension to scatter.
+reduce_op: Reduction computation.
 )doc");
 
 }  // namespace

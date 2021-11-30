@@ -60,12 +60,12 @@ class EncodePngOp : public OpKernel {
         context,
         FastBoundsCheck(image.NumElements(), std::numeric_limits<int32>::max()),
         errors::InvalidArgument("image cannot have >= int32 max elements"));
-    const int32 height = static_cast<int32>(image.dim_size(0));
-    const int32 width = static_cast<int32>(image.dim_size(1));
-    const int32 channels = static_cast<int32>(image.dim_size(2));
+    const int32_t height = static_cast<int32>(image.dim_size(0));
+    const int32_t width = static_cast<int32>(image.dim_size(1));
+    const int32_t channels = static_cast<int32>(image.dim_size(2));
 
     // In some cases, we pass width*channels*2 to png.
-    const int32 max_row_width = std::numeric_limits<int32>::max() / 2;
+    const int32_t max_row_width = std::numeric_limits<int32>::max() / 2;
 
     OP_REQUIRES(context, FastBoundsCheck(width * channels, max_row_width),
                 errors::InvalidArgument("image too wide to encode"));

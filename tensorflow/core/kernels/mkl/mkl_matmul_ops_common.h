@@ -32,18 +32,19 @@ using mkldnn::prop_kind;
 using mkldnn::stream;
 
 namespace tensorflow {
+static Eigen::internal::CacheSizes cache_sizes = Eigen::internal::CacheSizes();
 
-#define L1_SIZE 32 * 1024
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
-inline bool ExecuteSingleThreadedGemm(int m, int n, int k) {
+inline bool ExecuteSingleThreadedGemm(int m, int n, int k, int bytes) {
   // Ideally we would like to determine blocking and then come up with
   // a heuristic but what we are targeting are very small models whose
-  // total size is < few L1's. So we will do this simple calculation
+  // total size is < L2. So we will do this simple calculation
   // to determine if the matrix multiplication should be run on a single thread.
-  constexpr int kHeuristicMultiplier = 8;
-  return ((sizeof(float) * (m * n + k * (m + n))) <
-          L1_SIZE * kHeuristicMultiplier);
+  ptrdiff_t l2_size = cache_sizes.m_l2;
+  constexpr int kHeuristicMultiplier = 1;
+  const int mul_size = bytes * (m * n + k * (m + n));
+  const int l2_heur = l2_size * kHeuristicMultiplier;
+  return mul_size < l2_heur;
 }
 
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
@@ -56,6 +57,9 @@ struct MklDnnMatMulFwdParams {
   memory::format_tag weight_format;
   memory::format_tag dst_format;
   string dtypes = string("");
+#ifdef DNNL_AARCH64_USE_ACL
+  void* weight_address = nullptr;
+#endif
   struct PostOpParam {
     string name;
     std::vector<float> param;
@@ -231,12 +235,34 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           float op_beta = post_op_param.param[2];
           post_ops.append_eltwise(op_scale, mkldnn::algorithm::eltwise_elu,
                                   op_alpha, op_beta);
+        } else if (post_op_param.name == "gelu_approximate") {
+          DCHECK_EQ(post_op_param.param.size(), 3);
+          float op_scale = post_op_param.param[0];
+          float op_alpha = post_op_param.param[1];
+          float op_beta = post_op_param.param[2];
+          post_ops.append_eltwise(op_scale,
+                                  mkldnn::algorithm::eltwise_gelu_tanh,
+                                  op_alpha, op_beta);
+        } else if (post_op_param.name == "gelu_exact") {
+          DCHECK_EQ(post_op_param.param.size(), 3);
+          float op_scale = post_op_param.param[0];
+          float op_alpha = post_op_param.param[1];
+          float op_beta = post_op_param.param[2];
+          post_ops.append_eltwise(op_scale, mkldnn::algorithm::eltwise_gelu_erf,
+                                  op_alpha, op_beta);
         } else if (post_op_param.name == "tanh") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
           post_ops.append_eltwise(op_scale, mkldnn::algorithm::eltwise_tanh,
+                                  op_alpha, op_beta);
+        } else if (post_op_param.name == "logistic") {
+          DCHECK_EQ(post_op_param.param.size(), 3);
+          float op_scale = post_op_param.param[0];
+          float op_alpha = post_op_param.param[1];
+          float op_beta = post_op_param.param[2];
+          post_ops.append_eltwise(op_scale, mkldnn::algorithm::eltwise_logistic,
                                   op_alpha, op_beta);
         } else if (post_op_param.name == "output_scale") {
           DCHECK_EQ(post_op_param.param.size(), 1);
@@ -253,6 +279,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
                  (post_op_param.name == "relu6") ||
                  (post_op_param.name == "elu") ||
                  (post_op_param.name == "tanh") ||
+                 (post_op_param.name == "logistic") ||
                  (post_op_param.name == "sum") ||
                  (post_op_param.name == "leakyrelu") ||
                  (post_op_param.name == "output_scale"));
@@ -344,12 +371,18 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.dst_dims);
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.dtypes);
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_format);
+#ifdef DNNL_AARCH64_USE_ACL
+    key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_address);
+#endif
 
     // Generate keys for post-ops
     for (auto const& post_op_param : mkldnn_matmul_fwd_dims.post_op_params) {
       if (post_op_param.name == "relu" || post_op_param.name == "relu6" ||
           post_op_param.name == "elu" || post_op_param.name == "tanh" ||
-          post_op_param.name == "leakyrelu") {
+          post_op_param.name == "logistic" ||
+          post_op_param.name == "leakyrelu" ||
+          post_op_param.name == "gelu_approximate" ||
+          post_op_param.name == "gelu_exact") {
         DCHECK_EQ(post_op_param.param.size(), 3);
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
@@ -520,6 +553,9 @@ struct MklMatMulParams {
   memory::dims a_strides;
   memory::dims b_strides;
   memory::dims c_strides;
+#ifdef DNNL_AARCH64_USE_ACL
+  int aarch64_counter;
+#endif
 
   MklMatMulParams(memory::dims a_dims, memory::dims b_dims, memory::dims c_dims,
                   memory::dims a_strides, memory::dims b_strides,
@@ -681,7 +717,9 @@ class MklMatMulPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(params.b_strides);
     key_creator.AddAsKey(params.c_strides);
     key_creator.AddAsKey(typeid(T).name());
-
+#ifdef DNNL_AARCH64_USE_ACL
+    key_creator.AddAsKey(params.aarch64_counter);
+#endif
     return key_creator.GetKey();
   }
 

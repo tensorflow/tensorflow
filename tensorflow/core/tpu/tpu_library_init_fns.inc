@@ -31,6 +31,10 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuMeshState_Free);
   TFTPU_SET_FN(ops_api_fn, TpuMeshState_MeshCommonState);
 
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngineState_Create);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngineState_Free);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngineState_GetState);
+
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CompileAndBuild);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_XrtCompileAndBuild);
 
@@ -39,6 +43,7 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_ShapeSize);
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_ShapeSizeCompact);
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_ShapeSizeCompactRaw);
+
   TFTPU_SET_FN(ops_api_fn, TpuExecute_RuntimeInputToPaddedData);
 
   TFTPU_SET_FN(ops_api_fn, TpuProgram_New);
@@ -89,6 +94,9 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_GetOrdinal);
   TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_DequeueFromCoreSelector);
   TFTPU_SET_FN(ops_api_fn, TfTpu_GetTpuPartitionedCallParams);
+  
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ExecutePartitioner);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ConfigureMemory);
 
   return tensorflow::Status::OK();
 }

@@ -107,7 +107,7 @@ class ScopedTracer {
   StreamExecutor *stream_exec_;
   CompleteCallT complete_call_;
   const ReturnT *result_;
-  int64 correlation_id_;
+  int64_t correlation_id_;
 };
 
 template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
@@ -129,8 +129,8 @@ MakeScopedTracer(StreamExecutor *stream_exec, BeginCallT begin_call,
 
 // Get per-device memory limit in bytes. Returns 0 if
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
-static int64 GetMemoryLimitBytes() {
-  int64 value;
+static int64_t GetMemoryLimitBytes() {
+  int64_t value;
   SE_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_PER_DEVICE_MEMORY_LIMIT_MB",
                                               0, &value));
   return value * (1ll << 20);
@@ -241,7 +241,7 @@ const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
   return *device_description_;
 }
 
-int64 StreamExecutor::GetDeviceLoad() const {
+int64_t StreamExecutor::GetDeviceLoad() const {
   return implementation_->GetDeviceLoad();
 }
 
@@ -262,54 +262,108 @@ bool StreamExecutor::SupportsDnn() const {
 }
 
 bool StreamExecutor::GetConvolveAlgorithms(
-    bool with_winograd_nonfused,
+    dnn::ConvolutionKind kind,
     std::vector<dnn::AlgorithmDesc> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  int cc_major, cc_minor;
-  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
-  return dnn_support->GetConvolveAlgorithms(with_winograd_nonfused, cc_major,
-                                            cc_minor, out_algorithms);
+  switch (kind) {
+    default:
+      return false;
+    case dnn::ConvolutionKind::FORWARD:
+    case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
+      return dnn_support->GetConvolveAlgorithms(
+          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+    case dnn::ConvolutionKind::BACKWARD_DATA:
+      return dnn_support->GetConvolveBackwardDataAlgorithms(
+          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+    case dnn::ConvolutionKind::BACKWARD_FILTER:
+      return dnn_support->GetConvolveBackwardFilterAlgorithms(
+          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+  }
 }
 
-bool StreamExecutor::GetConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
+port::Status StreamExecutor::GetConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType output_type, Stream *stream,
+    const dnn::BatchDescriptor &input_descriptor, DeviceMemoryBase input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemoryBase output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor, bool use_fallback,
+    ScratchAllocator *scratch_allocator,
+    std::vector<std::unique_ptr<const dnn::ConvRunner>> *out_exec_plans) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::UnimplementedError("DNN library is not found.");
+  }
+  return dnn_support->GetConvolveRunners(
+      use_cudnn_frontend, kind, input_type, output_type, stream,
+      input_descriptor, input_data, filter_descriptor, filter_data,
+      output_descriptor, output_data, convolution_descriptor, use_fallback,
+      scratch_allocator, out_exec_plans);
+}
+
+port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+StreamExecutor::ConvolveRunnerFromDesc(
+    const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
+    dnn::DataType element_type, dnn::DataType output_type,
     const dnn::BatchDescriptor &input_descriptor,
     const dnn::FilterDescriptor &filter_descriptor,
     const dnn::BatchDescriptor &output_descriptor,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>> *out_exec_plans) {
+    const dnn::ConvolutionDescriptor &convolution_descriptor) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
-    return false;
+    return port::UnimplementedError("DNN library is not found.");
   }
-  return dnn_support->GetConvolveExecutionPlans(
-      kind, element_type, stream, input_descriptor, filter_descriptor,
-      output_descriptor, convolution_descriptor, out_exec_plans);
+  return dnn_support->ConvolveRunnerFromDesc(
+      algorithm_desc, kind, element_type, output_type, input_descriptor,
+      filter_descriptor, output_descriptor, convolution_descriptor);
 }
 
-port::Status StreamExecutor::GetFusedConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
+port::Status StreamExecutor::GetFusedConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType bias_type,
+    dnn::DataType output_type, double conv_input_scale, double side_input_scale,
+    Stream *stream, const dnn::BatchDescriptor &input_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const dnn::BatchDescriptor &bias_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor, bool use_fallback,
+    dnn::ActivationMode activation_mode,
+    std::vector<std::unique_ptr<const dnn::FusedConvRunner>> *out_exec_plans) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::UnimplementedError("DNN library is not found.");
+  }
+  return dnn_support->GetFusedConvolveRunners(
+      use_cudnn_frontend, kind, input_type, bias_type, output_type,
+      conv_input_scale, side_input_scale, stream, input_descriptor,
+      filter_descriptor, bias_descriptor, output_descriptor,
+      convolution_descriptor, use_fallback, activation_mode, out_exec_plans);
+}
+
+port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+StreamExecutor::FusedConvolveRunnerFromDesc(
+    const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
+    dnn::DataType element_type, dnn::DataType bias_type,
+    dnn::DataType output_type, double conv_input_scale, double side_input_scale,
     const dnn::BatchDescriptor &input_descriptor,
     const dnn::FilterDescriptor &filter_descriptor,
     const dnn::BatchDescriptor &bias_descriptor,
     const dnn::BatchDescriptor &output_descriptor,
     const dnn::ConvolutionDescriptor &convolution_descriptor,
-    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>> *out_exec_plans) {
+    dnn::ActivationMode activation_mode) {
   dnn::DnnSupport *dnn_support = AsDnn();
-  if (dnn_support) {
-#if GOOGLE_CUDA
-    gpu::CudnnSupport *cudnn_dnn =
-        dynamic_cast<gpu::CudnnSupport *>(dnn_support);
-    return cudnn_dnn->GetFusedConvolveExecutionPlans(
-        kind, element_type, stream, input_descriptor, filter_descriptor,
-        bias_descriptor, output_descriptor, convolution_descriptor,
-        out_exec_plans);
-#endif  // GOOGLE_CUDA
+  if (!dnn_support) {
+    return port::UnimplementedError("DNN library is not found.");
   }
-  return port::UnimplementedError("DNN library is not found.");
+  return dnn_support->FusedConvolveRunnerFromDesc(
+      algorithm_desc, kind, element_type, bias_type, output_type,
+      conv_input_scale, side_input_scale, input_descriptor, filter_descriptor,
+      bias_descriptor, output_descriptor, convolution_descriptor,
+      activation_mode);
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
@@ -338,32 +392,6 @@ bool StreamExecutor::GetRnnAlgorithms(
     return false;
   }
   return dnn_support->GetRnnAlgorithms(out_algorithms);
-}
-
-bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
-  dnn::DnnSupport *dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  int cc_major, cc_minor;
-  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
-  return dnn_support->GetConvolveBackwardDataAlgorithms(
-      with_winograd_nonfused, cc_major, cc_minor, out_algorithms);
-}
-
-bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
-  dnn::DnnSupport *dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  int cc_major, cc_minor;
-  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
-  return dnn_support->GetConvolveBackwardFilterAlgorithms(
-      with_winograd_nonfused, cc_major, cc_minor, out_algorithms);
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(
@@ -405,7 +433,7 @@ StreamExecutor::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig &algorithm_config,
-    float dropout, uint64 seed, ScratchAllocator *state_allocator,
+    float dropout, uint64_t seed, ScratchAllocator *state_allocator,
     bool use_padded_io) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
@@ -522,9 +550,9 @@ port::Status StreamExecutor::GetStatus(Stream *stream) {
   return implementation_->GetStatus(stream);
 }
 
-DeviceMemoryBase StreamExecutor::Allocate(uint64 size, int64 memory_space) {
+DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_limit_bytes_ > 0 &&
-      static_cast<int64>(mem_alloc_bytes_ + size) > memory_limit_bytes_) {
+      static_cast<int64_t>(mem_alloc_bytes_ + size) > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
                  << device_ordinal_
                  << " within provided limit. [used=" << mem_alloc_bytes_
@@ -570,7 +598,7 @@ bool StreamExecutor::GetSymbol(const std::string &symbol_name,
   return implementation_->GetSymbol(symbol_name, module_handle, mem, bytes);
 }
 
-void *StreamExecutor::UnifiedMemoryAllocate(uint64 bytes) {
+void *StreamExecutor::UnifiedMemoryAllocate(uint64_t bytes) {
   void *buffer = implementation_->UnifiedMemoryAllocate(bytes);
   VLOG(1) << "Called StreamExecutor::UnifiedMemoryAllocate(size=" << bytes
           << ") returns " << buffer << StackTraceIfVLOG10();
@@ -584,7 +612,7 @@ void StreamExecutor::UnifiedMemoryDeallocate(void *location) {
   return implementation_->UnifiedMemoryDeallocate(location);
 }
 
-void *StreamExecutor::HostMemoryAllocate(uint64 size) {
+void *StreamExecutor::HostMemoryAllocate(uint64_t size) {
   void *buffer = implementation_->HostMemoryAllocate(size);
   VLOG(1) << "Called StreamExecutor::HostMemoryAllocate(size=" << size
           << ") returns " << buffer << StackTraceIfVLOG10();
@@ -598,7 +626,7 @@ void StreamExecutor::HostMemoryDeallocate(void *location) {
   return implementation_->HostMemoryDeallocate(location);
 }
 
-bool StreamExecutor::HostMemoryRegister(void *location, uint64 size) {
+bool StreamExecutor::HostMemoryRegister(void *location, uint64_t size) {
   VLOG(1) << "Called StreamExecutor::HostMemoryRegister(location=" << location
           << ", size=" << size << ")" << StackTraceIfVLOG10();
   if (location == nullptr || size == 0) {
@@ -627,7 +655,7 @@ bool StreamExecutor::SynchronizeAllActivity() {
 }
 
 port::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase *location,
-                                                uint64 size) {
+                                                uint64_t size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemZero(location=" << location
           << ", size=" << size << ")" << StackTraceIfVLOG10();
 
@@ -635,7 +663,7 @@ port::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase *location,
 }
 
 port::Status StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location,
-                                               int value, uint64 size) {
+                                               int value, uint64_t size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemSet(location=" << location
           << ", value=" << value << ", size=" << size << ")"
           << StackTraceIfVLOG10();
@@ -644,7 +672,7 @@ port::Status StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location,
 }
 
 bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *device_dst,
-                                       const void *host_src, uint64 size) {
+                                       const void *host_src, uint64_t size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(device_dst="
           << device_dst->opaque() << ", host_src=" << host_src
           << ", size=" << size << ") H2D" << StackTraceIfVLOG10();
@@ -662,7 +690,7 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *device_dst,
 
 bool StreamExecutor::SynchronousMemcpy(void *host_dst,
                                        const DeviceMemoryBase &device_src,
-                                       uint64 size) {
+                                       uint64_t size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(host_dst=" << host_dst
           << ", device_src=" << device_src.opaque() << ", size=" << size
           << ") D2H" << StackTraceIfVLOG10();
@@ -677,7 +705,7 @@ bool StreamExecutor::SynchronousMemcpy(void *host_dst,
 
 bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *device_dst,
                                        const DeviceMemoryBase &device_src,
-                                       uint64 size) {
+                                       uint64_t size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(device_dst="
           << device_dst->opaque() << ", device_src=" << device_src.opaque()
           << ", size=" << size << ") D2D" << StackTraceIfVLOG10();
@@ -691,7 +719,7 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *device_dst,
 }
 
 port::Status StreamExecutor::SynchronousMemcpyD2H(
-    const DeviceMemoryBase &device_src, int64 size, void *host_dst) {
+    const DeviceMemoryBase &device_src, int64_t size, void *host_dst) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpyD2H(device_src="
           << device_src.opaque() << ", size=" << size
           << ", host_dst=" << host_dst << ")" << StackTraceIfVLOG10();
@@ -714,7 +742,7 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
 }
 
 port::Status StreamExecutor::SynchronousMemcpyH2D(
-    const void *host_src, int64 size, DeviceMemoryBase *device_dst) {
+    const void *host_src, int64_t size, DeviceMemoryBase *device_dst) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpyH2D(host_src=" << host_src
           << ", size=" << size << ", device_dst=" << device_dst->opaque() << ")"
           << StackTraceIfVLOG10();
@@ -737,31 +765,31 @@ port::Status StreamExecutor::SynchronousMemcpyH2D(
 }
 
 bool StreamExecutor::Memcpy(Stream *stream, void *host_dst,
-                            const DeviceMemoryBase &device_src, uint64 size) {
+                            const DeviceMemoryBase &device_src, uint64_t size) {
   return implementation_->Memcpy(stream, host_dst, device_src, size);
 }
 
 bool StreamExecutor::Memcpy(Stream *stream, DeviceMemoryBase *device_dst,
-                            const void *host_src, uint64 size) {
+                            const void *host_src, uint64_t size) {
   return implementation_->Memcpy(stream, device_dst, host_src, size);
 }
 
 bool StreamExecutor::MemcpyDeviceToDevice(Stream *stream,
                                           DeviceMemoryBase *device_dst,
                                           const DeviceMemoryBase &device_src,
-                                          uint64 size) {
+                                          uint64_t size) {
   return implementation_->MemcpyDeviceToDevice(stream, device_dst, device_src,
                                                size);
 }
 
 port::Status StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                                     uint64 size) {
+                                     uint64_t size) {
   return implementation_->MemZero(stream, location, size);
 }
 
 port::Status StreamExecutor::Memset32(Stream *stream,
                                       DeviceMemoryBase *location,
-                                      uint32 pattern, uint64 size) {
+                                      uint32 pattern, uint64_t size) {
   CHECK_EQ(0, size % 4)
       << "need 32-bit multiple size to fill with 32-bit pattern";
   return implementation_->Memset32(stream, location, pattern, size);
@@ -841,7 +869,7 @@ std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()
   return desc_status.ConsumeValueOrDie();
 }
 
-bool StreamExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
+bool StreamExecutor::DeviceMemoryUsage(int64_t *free, int64_t *total) const {
   return implementation_->DeviceMemoryUsage(free, total);
 }
 
@@ -849,7 +877,7 @@ void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
   background_threads_->Schedule(std::move(task));
 }
 
-void StreamExecutor::CreateAllocRecord(void *opaque, uint64 bytes) {
+void StreamExecutor::CreateAllocRecord(void *opaque, uint64_t bytes) {
   if (FLAGS_check_device_leaks && opaque != nullptr && bytes != 0) {
     absl::MutexLock lock(&mu_);
     mem_allocs_[opaque] = AllocRecord{bytes, ""};
@@ -903,6 +931,10 @@ absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
   return implementation_->GetAllocatorStats();
 }
 
+bool StreamExecutor::ClearAllocatorStats() {
+  return implementation_->ClearAllocatorStats();
+}
+
 template <typename TraceCallT, typename... ArgsT>
 void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&...args) {
   if (tracing_enabled_) {
@@ -933,8 +965,8 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
 port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
-    int device_ordinal, uint64 size, bool retry_on_failure,
-    int64 memory_space) {
+    int device_ordinal, uint64_t size, bool retry_on_failure,
+    int64_t memory_space) {
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
   DeviceMemoryBase result = executor->AllocateArray<uint8>(size, memory_space);

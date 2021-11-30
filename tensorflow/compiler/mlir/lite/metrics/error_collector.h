@@ -19,55 +19,18 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
-#include "tensorflow/lite/python/metrics_wrapper/converter_error_data.pb.h"
+#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 
 namespace mlir {
 namespace TFL {
-
-// Collects errors when running the pass manager.
-class ErrorCollectorInstrumentation : public PassInstrumentation {
-  using ConverterErrorData = tflite::metrics::ConverterErrorData;
-
- public:
-  explicit ErrorCollectorInstrumentation(MLIRContext *context);
-
- private:
-  // Instrumentation hooks. These hooks don't need to be thread-safe. The pass
-  // manager runs each pass for the entire module, then it walks through
-  // each op in the module and runs the pass on them, may be in async mode.
-  void runBeforePass(Pass *pass, Operation *module) override;
-  void runAfterPass(Pass *pass, Operation *module) override;
-  void runAfterPassFailed(Pass *pass, Operation *module) override;
-
-  // Helper method to creat a new error.
-  void AppendNewError(const std ::string &pass_name,
-                      const std::string &error_message,
-                      const std::string &error_code,
-                      const std::string &op_name) {
-    errors_.push_back(
-        NewConverterErrorData(pass_name, error_message, error_code, op_name));
-  }
-
-  // The handler to capture error messages.
-  std::unique_ptr<ScopedDiagnosticHandler> handler_;
-  // A map from location to op name.
-  std::unordered_map<Location, std::string, LocationHash> loc_to_name_;
-  // Collected errors.
-  std::vector<ConverterErrorData> errors_;
-  // Stores the error message for errors without op name and error code.
-  std::string common_error_message_;
-};
 
 // A singleton to store errors collected by the instrumentation.
 class ErrorCollector {
   using ConverterErrorData = tflite::metrics::ConverterErrorData;
   using ConverterErrorDataSet =
       std::unordered_set<ConverterErrorData, ConverterErrorDataHash,
-                         ConverterErrorDataComparision>;
+                         ConverterErrorDataComparison>;
 
  public:
   const ConverterErrorDataSet &CollectedErrors() { return collected_errors_; }
@@ -76,15 +39,19 @@ class ErrorCollector {
     collected_errors_.insert(error);
   }
 
+  // Clear the set of collected errors.
+  void Clear() { collected_errors_.clear(); }
+
+  // Returns the global instance of ErrorCollector.
+  static ErrorCollector* GetErrorCollector();
+
  private:
   ErrorCollector() {}
-  friend ErrorCollector *GetErrorCollector();
 
   ConverterErrorDataSet collected_errors_;
-};
 
-// Returns the global instance of ErrorCollector.
-ErrorCollector *GetErrorCollector();
+  static ErrorCollector* error_collector_instance_;
+};
 
 }  // namespace TFL
 }  // namespace mlir

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -32,13 +33,13 @@ constexpr char kInputImplEmpty[] = "input_impl_empty";
 constexpr char kEmptyTake[] = "EmptyTake";
 constexpr char kFiniteTake[] = "FiniteTake";
 
-TakeDataset::TakeDataset(OpKernelContext* ctx, int64 count,
+TakeDataset::TakeDataset(OpKernelContext* ctx, int64_t count,
                          const DatasetBase* input)
     : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
   input_->Ref();
 }
 
-TakeDataset::TakeDataset(DatasetContext::Params params, int64 count,
+TakeDataset::TakeDataset(DatasetContext::Params params, int64_t count,
                          const DatasetBase* input)
     : DatasetBase(DatasetContext(std::move(params))),
       count_(count),
@@ -60,8 +61,8 @@ string TakeDataset::DebugString() const {
   return name_utils::DatasetDebugString(TakeDatasetOp::kDatasetType);
 }
 
-int64 TakeDataset::Cardinality() const {
-  int64 n = input_->Cardinality();
+int64_t TakeDataset::CardinalityInternal() const {
+  int64_t n = input_->Cardinality();
   if (n == kUnknownCardinality) {
     return kUnknownCardinality;
   }
@@ -82,6 +83,12 @@ Status TakeDataset::InputDatasets(
 
 Status TakeDataset::CheckExternalState() const {
   return input_->CheckExternalState();
+}
+
+Status TakeDataset::Get(OpKernelContext* ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
+  TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+  return input_->Get(ctx, index, out_tensors);
 }
 
 class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
@@ -175,7 +182,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 
  private:
   mutex mu_;
-  int64 i_ TF_GUARDED_BY(mu_);
+  int64_t i_ TF_GUARDED_BY(mu_);
   std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 };
 
@@ -209,8 +216,8 @@ TakeDatasetOp::TakeDatasetOp(OpKernelConstruction* ctx)
 void TakeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                 DatasetBase** output) {
   // Create a new TakeDatasetOp::Dataset, and return it as the output.
-  int64 count;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
+  int64_t count;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kCount, &count));
   *output = new TakeDataset(ctx, count, input);
 }
 

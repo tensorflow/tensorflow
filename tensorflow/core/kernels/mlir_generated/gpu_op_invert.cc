@@ -21,8 +21,16 @@ limitations under the License.
 namespace tensorflow {
 
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Invert, DT_INT8);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL3(Invert, DT_INT8, DT_INT8, DT_UINT8,
+                                        DT_UINT8);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Invert, DT_INT16);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL3(Invert, DT_INT16, DT_INT16, DT_UINT16,
+                                        DT_UINT16);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Invert, DT_INT32);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL3(Invert, DT_INT32, DT_INT32, DT_UINT32,
+                                        DT_UINT32);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Invert, DT_INT64);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL3(Invert, DT_INT64, DT_INT64, DT_UINT64,
+                                        DT_UINT64);
 
 }  // namespace tensorflow

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests tf.random.Generator with distribution strategies."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import os
 
@@ -26,9 +22,10 @@ from absl.testing import parameterized
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
@@ -52,8 +49,26 @@ def get_num_local_replicas(strat, values=None):
     return strat.num_replicas_in_sync
 
 
+ps_strategies = [
+    strategy_combinations.parameter_server_strategy_3worker_2ps_cpu,
+    strategy_combinations.parameter_server_strategy_1worker_2ps_cpu,
+    strategy_combinations.parameter_server_strategy_3worker_2ps_1gpu,
+    strategy_combinations.parameter_server_strategy_1worker_2ps_1gpu,
+]
 all_strategies = (strategy_combinations.all_strategies +
-                  strategy_combinations.multiworker_strategies)
+                  strategy_combinations.multiworker_strategies +
+                  ps_strategies)
+
+
+def run_on_strategy(replica_fn, strat, coord):
+  def distributed_fn():
+    return strat.run(replica_fn)
+  if coord is not None:
+    results = coord.schedule(
+        def_function.function(distributed_fn)).fetch()
+  else:
+    results = distributed_fn()
+  return results
 
 
 class GeneratorTest(test.TestCase, parameterized.TestCase):
@@ -61,7 +76,6 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
   def setUp(self):
     super(GeneratorTest, self).setUp()
     v2_compat.enable_v2_behavior()
-    config.set_soft_device_placement(False)
 
   def assertAllDifferent(self, tensors):
     """Checks that there are no duplicate elements anywhere among the tensors.
@@ -81,9 +95,6 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]))
   def testCrossReplica(self, strat):
     """Tests that RNG can be properly advanced in cross-replica context."""
-    strat_name = type(strat).__name__
-    if "CentralStorage" in strat_name:
-      self.skipTest("Does not work with CentralStorageStrategy yet.")
     def read_values(dv):
       return [v.read_value() for v in strat.experimental_local_results(dv)]
     with strat.scope():
@@ -102,12 +113,18 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           strat=all_strategies,
           mode=["eager"],
-          seeded=[True, False]))
-  def testDistStrat(self, strat, seeded):
+          jit_replica_fn=[False, True],
+          seeded=[True, False],))
+  def testDistStrat(self, strat, jit_replica_fn, seeded):
     """Tests RNG with distribution strategies."""
     strat_name = type(strat).__name__
-    if "CentralStorage" in strat_name:
-      self.skipTest("Does not work with CentralStorageStrategy yet.")
+    if "TPU" in strat_name and not jit_replica_fn:
+      self.skipTest(
+          "TPUStrategy requires the replica function (the function passed to "
+          "strategy.run) to be decorated with tf.function")
+    coord = None
+    if "ParameterServer" in strat_name:
+      coord = coordinator_lib.ClusterCoordinator(strat)
     creators = {
         True: functools.partial(rng.Generator.from_seed, 1234),
         False: rng.Generator.from_non_deterministic_state,
@@ -117,13 +134,13 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
     creator = creators[seeded]
     with strat.scope():
       gen = creator()
-      @def_function.function
       def f():
         t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
         t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
         t = array_ops.stack([t1, t2])
         return t
-      results = strat.run(f)
+      replica_fn = def_function.function(f) if jit_replica_fn else f
+      results = run_on_strategy(replica_fn, strat, coord)
       values = strat.experimental_local_results(results)
       n = get_num_local_replicas(strat, values)
       self.assertAllEqual(n, len(values))
@@ -131,13 +148,41 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
 
   @ds_combinations.generate(
       combinations.combine(
-          strat=all_strategies,
+          strat=[
+              strategy_combinations.parameter_server_strategy_fn(
+                  "ParameterServer1Worker2PSCPUFixedShards",
+                  num_workers=1, num_ps=2,
+                  variable_partitioner=(
+                      sharded_variable.FixedShardsPartitioner(2)))
+          ],
           mode=["eager"]))
-  def testDistVarAsTFFunArg(self, strat):
+  def testShardedError(self, strat):
+    """Tests error about sharding is raised."""
+    with strat.scope():
+      with self.assertRaisesRegex(
+          ValueError, "state is sharded, which is not allowed"):
+        rng.Generator.from_seed(1234)
+
+  @ds_combinations.generate(
+      combinations.combine(
+          strat=all_strategies,
+          mode=["eager"],
+          jit_replica_fn=[False, True]))
+  def testDistVarAsTFFunArg(self, strat, jit_replica_fn):
     """Tests that RNG with dist variables can be used as tf.function's arg."""
     strat_name = type(strat).__name__
     if "CentralStorage" in strat_name:
-      self.skipTest("Does not work with CentralStorageStrategy yet.")
+      self.skipTest(
+          "CentralStorageStrategy wraps variable updates in merge_call which "
+          "can't be called inside a tf.function that doesn't cover the entire "
+          "replica function (the function passed to strategy.run).")
+    if "TPU" in strat_name and not jit_replica_fn:
+      self.skipTest(
+          "TPUStrategy requires the replica function (the function passed to "
+          "strategy.run) to be decorated with tf.function")
+    coord = None
+    if "ParameterServer" in strat_name:
+      coord = coordinator_lib.ClusterCoordinator(strat)
     shape = [3, 4]
     dtype = dtypes.int32
     with strat.scope():
@@ -148,11 +193,11 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
         t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
         t = array_ops.stack([t1, t2])
         return t
-      @def_function.function  # required by TPUStrategy.run
       def g():
         return f(gen)
+      replica_fn = def_function.function(g) if jit_replica_fn else g
       for _ in range(2):
-        results = strat.run(g)
+        results = run_on_strategy(replica_fn, strat, coord)
         values = strat.experimental_local_results(results)
         n = get_num_local_replicas(strat, values)
         self.assertAllEqual(n, len(values))
@@ -162,28 +207,38 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           strat1=strategy_combinations.all_strategies,
           strat2=strategy_combinations.all_strategies,
+          jit_replica_fn=[False, True],
           mode=["eager"]) +
       combinations.combine(
-          strat1=strategy_combinations.multiworker_strategies,
+          strat1=strategy_combinations.multiworker_strategies + ps_strategies,
           strat2=[None],
+          jit_replica_fn=[False, True],
           mode=["eager"]))
-  def testDistStratRestore(self, strat1, strat2):
+  def testDistStratRestore(self, strat1, strat2, jit_replica_fn):
     """Tests checkpointing and restoring (to possibly different #replicas)."""
     if strat2 is None:
       strat2 = strat1
     strat1_name = type(strat1).__name__
     strat2_name = type(strat2).__name__
-    if "CentralStorage" in strat1_name or "CentralStorage" in strat2_name:
-      self.skipTest("Does not work with CentralStorageStrategy yet.")
     if "Default" in strat1_name or "Default" in strat2_name:
       self.skipTest(
           "We don't guarantee consistency between strategy and no-strategy.")
+    if ("TPU" in strat1_name or "TPU" in strat2_name) and not jit_replica_fn:
+      self.skipTest(
+          "TPUStrategy requires the replica function (the function passed to "
+          "strategy.run) to be decorated with tf.function")
+    coord1 = None
+    if "ParameterServer" in strat1_name:
+      coord1 = coordinator_lib.ClusterCoordinator(strat1)
+    coord2 = None
+    if "ParameterServer" in strat2_name:
+      coord2 = coordinator_lib.ClusterCoordinator(strat2)
     fname = os.path.join(self.get_temp_dir(), "checkpoint")
-    def uniform(strat, g):
-      @def_function.function
+    def uniform(strat, coord, g):
       def f():
         return g.uniform_full_int([3], dtype=dtypes.int32)
-      result = strat.run(f)
+      replica_fn = def_function.function(f) if jit_replica_fn else f
+      result = run_on_strategy(replica_fn, strat, coord)
       return strat.experimental_local_results(result)
     with strat1.scope():
       g1 = rng.Generator.from_seed(1)
@@ -193,9 +248,9 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
     cp2 = tracking_util.Checkpoint(g=g2)
     def write_restore_compare():
       cp1.write(fname)
-      r1 = uniform(strat1, g1)
+      r1 = uniform(strat1, coord1, g1)
       cp2.restore(fname)
-      r2 = uniform(strat2, g2)
+      r2 = uniform(strat2, coord2, g2)
       # Tests that overlapping replicas are properly restored.
       n1 = get_num_local_replicas(strat1)
       n2 = get_num_local_replicas(strat2)
@@ -207,13 +262,10 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
 
   @ds_combinations.generate(
       combinations.combine(
-          strat=strategy_combinations.all_strategies,
+          strat=all_strategies,
           mode=["eager"],
           is_save_in_scope=[True, False]))
   def testSavedModel(self, strat, is_save_in_scope):
-    strat_name = type(strat).__name__
-    if "CentralStorage" in strat_name:
-      self.skipTest("Does not work with CentralStorageStrategy yet.")
 
     class CustomModule(module.Module):
 

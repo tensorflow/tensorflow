@@ -197,7 +197,7 @@ bool ShouldMoveOpAfterCluster(
 
 // Collects ops that are before ops in the cluster but are users of other ops
 // in the cluster. This may happen because users of individual ops in the
-// cluster may be interleaved with other ops in the cluster. Resource id's are
+// cluster may be interleaved with other ops in the cluster. Resource IDs are
 // also captured, to keep track of resource usage before, in, or after the
 // cluster.
 // TODO(b/175701589): Extend this to handle all side effecting ops while

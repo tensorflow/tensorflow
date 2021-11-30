@@ -1623,7 +1623,7 @@ TEST(XlaCompilationTest, IterationIncrementAndGroupDeps) {
 
   ops::AssignAddVariableOp increment_op(
       scope.WithOpName("IncrementIteration"), iter,
-      ops::Const(scope.WithOpName("one"), static_cast<int64>(1)));
+      ops::Const(scope.WithOpName("one"), static_cast<int64_t>(1)));
 
   ops::AssignAddVariableOp weights_0_update_op(
       scope.WithOpName("weights_0_update"), weights_0, delta);

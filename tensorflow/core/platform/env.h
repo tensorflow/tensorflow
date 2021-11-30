@@ -93,6 +93,18 @@ class Env {
   virtual Status RegisterFileSystem(const std::string& scheme,
                                     std::unique_ptr<FileSystem> filesystem);
 
+  Status SetOption(const std::string& scheme, const std::string& key,
+                   const std::string& value);
+
+  Status SetOption(const std::string& scheme, const std::string& key,
+                   const std::vector<string>& values);
+
+  Status SetOption(const std::string& scheme, const std::string& key,
+                   const std::vector<int64_t>& values);
+
+  Status SetOption(const std::string& scheme, const std::string& key,
+                   const std::vector<double>& values);
+
   /// \brief Flush filesystem caches for all registered filesystems.
   Status FlushFileSystemCaches();
 
@@ -256,11 +268,11 @@ class Env {
   ///  * PERMISSION_DENIED - dirname or some descendant is not writable
   ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
   ///                    implemented
-  Status DeleteRecursively(const std::string& dirname, int64* undeleted_files,
-                           int64* undeleted_dirs);
+  Status DeleteRecursively(const std::string& dirname, int64_t* undeleted_files,
+                           int64_t* undeleted_dirs);
 
   Status DeleteRecursively(const std::string& dirname, TransactionToken* token,
-                           int64* undeleted_files, int64* undeleted_dirs) {
+                           int64_t* undeleted_files, int64_t* undeleted_dirs) {
     return Status::OK();
   }
 
@@ -406,7 +418,7 @@ class Env {
   virtual uint64 NowSeconds() const { return EnvTime::NowSeconds(); }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
-  virtual void SleepForMicroseconds(int64 micros) = 0;
+  virtual void SleepForMicroseconds(int64_t micros) = 0;
 
   /// Returns the process ID of the calling process.
   int32 GetProcessId();
@@ -438,7 +450,7 @@ class Env {
   // of microseconds.
   //
   // NOTE(mrry): This closure must not block.
-  virtual void SchedClosureAfter(int64 micros,
+  virtual void SchedClosureAfter(int64_t micros,
                                  std::function<void()> closure) = 0;
 
   // \brief Load a dynamic library.
@@ -511,7 +523,7 @@ class EnvWrapper : public Env {
   }
 
   uint64 NowMicros() const override { return target_->NowMicros(); }
-  void SleepForMicroseconds(int64 micros) override {
+  void SleepForMicroseconds(int64_t micros) override {
     target_->SleepForMicroseconds(micros);
   }
   Thread* StartThread(const ThreadOptions& thread_options,
@@ -526,7 +538,8 @@ class EnvWrapper : public Env {
   void SchedClosure(std::function<void()> closure) override {
     target_->SchedClosure(closure);
   }
-  void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
+  void SchedClosureAfter(int64_t micros,
+                         std::function<void()> closure) override {
     target_->SchedClosureAfter(micros, closure);
   }
   Status LoadDynamicLibrary(const char* library_filename,

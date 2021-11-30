@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-void ProfilerServer::StartProfilerServer(int32 port) {
+void ProfilerServer::StartProfilerServer(int32_t port) {
   VLOG(1) << "Starting profiler server.";
   std::string server_address = absl::StrCat("[::]:", port);
   service_ = CreateProfilerService();

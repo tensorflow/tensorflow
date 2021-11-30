@@ -49,7 +49,7 @@ class StatsAggregatorImpl : public StatsAggregator {
   StatsAggregatorImpl() {}
 
   void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
-                      const int64 steps) override {
+                      const int64_t steps) override {
     mutex_lock l(mu_);
     histogram::Histogram& histogram = histograms_[name];
     for (double value : values) {
@@ -57,7 +57,8 @@ class StatsAggregatorImpl : public StatsAggregator {
     }
   }
 
-  void AddScalar(const string& name, float value, const int64 steps) override {
+  void AddScalar(const string& name, float value,
+                 const int64_t steps) override {
     mutex_lock l(mu_);
     scalars_[name] = value;
   }
@@ -88,7 +89,7 @@ class StatsAggregatorImpl : public StatsAggregator {
   }
 
   void IncrementCounter(const string& name, const string& label,
-                        int64 val) override {
+                        int64_t val) override {
     mutex_lock l(*get_counters_map_lock());
     auto counters_map = get_counters_map();
     if (counters_map->find(name) == counters_map->end()) {
@@ -137,7 +138,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
   }
 
   void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
-                      const int64 steps) override {
+                      const int64_t steps) override {
     mutex_lock l(mu_);
     histogram::Histogram& histogram = histograms_[name];
     for (double value : values) {
@@ -146,7 +147,8 @@ class StatsAggregatorImplV2 : public StatsAggregator {
     AddToEvents(name, steps, histogram);
   }
 
-  void AddScalar(const string& name, float value, const int64 steps) override {
+  void AddScalar(const string& name, float value,
+                 const int64_t steps) override {
     mutex_lock l(mu_);
     AddToEvents(name, steps, value);
   }
@@ -160,7 +162,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
   }
 
   void IncrementCounter(const string& name, const string& label,
-                        int64 val) override {
+                        int64_t val) override {
     mutex_lock l(*get_counters_map_lock());
     auto counters_map = get_counters_map();
     if (counters_map->find(name) == counters_map->end()) {
@@ -195,7 +197,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
   }
 
  private:
-  void AddToEvents(const string& name, const int64 steps,
+  void AddToEvents(const string& name, const int64_t steps,
                    const float scalar_value) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (summary_writer_interface_ == nullptr) {
       return;
@@ -210,7 +212,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
     TF_CHECK_OK(summary_writer_interface_->WriteEvent(std::move(e)));
   }
 
-  void AddToEvents(const string& name, const int64 steps,
+  void AddToEvents(const string& name, const int64_t steps,
                    const histogram::Histogram& histogram)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (summary_writer_interface_ == nullptr) {

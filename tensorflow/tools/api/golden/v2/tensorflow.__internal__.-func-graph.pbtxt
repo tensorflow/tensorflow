@@ -81,7 +81,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'collections\', \'capture_by_value\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'collections\', \'capture_by_value\', \'structured_input_signature\', \'structured_outputs\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_capture"
@@ -113,7 +113,7 @@ tf_class {
   }
   member_method {
     name: "capture_call_time_value"
-    argspec: "args=[\'self\', \'closure\', \'spec\', \'key\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'closure\', \'spec\', \'key\', \'default_value\', \'placeholder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "capture_distributed_variable"
@@ -222,6 +222,10 @@ tf_class {
   member_method {
     name: "replace_capture"
     argspec: "args=[\'self\', \'tensor\', \'placeholder\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "replace_capture_with_deferred_capture"
+    argspec: "args=[\'self\', \'tensor\', \'closure\', \'spec\', \'placeholder\', \'default_value\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "reset_captures"

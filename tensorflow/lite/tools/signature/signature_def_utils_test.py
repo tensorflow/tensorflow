@@ -17,10 +17,6 @@
    - Tests adding a SignatureDef to TFLite metadata.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.lite.tools.signature import signature_def_utils

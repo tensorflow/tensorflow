@@ -14,13 +14,11 @@
 # ==============================================================================
 """Support for ragged tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import typing
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -28,6 +26,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import segment_id_ops
@@ -262,7 +261,11 @@ def _ragged_segment_aggregate(unsorted_segment_op,
         output_values, output_splits, validate=False)
 
 
-def segment_sum(data, segment_ids, num_segments, name=None):
+@dispatch.dispatch_for_api(math_ops.unsorted_segment_sum)
+def segment_sum(data: ragged_tensor.RaggedOrDense,
+                segment_ids: ragged_tensor.RaggedOrDense,
+                num_segments,
+                name=None):
   # For docs, see: _RAGGED_SEGMENT_DOCSTRING
   return _ragged_segment_aggregate(
       math_ops.unsorted_segment_sum,
@@ -272,7 +275,11 @@ def segment_sum(data, segment_ids, num_segments, name=None):
       name=(name or 'RaggedSegmentSum'))
 
 
-def segment_prod(data, segment_ids, num_segments, name=None):
+@dispatch.dispatch_for_api(math_ops.unsorted_segment_prod)
+def segment_prod(data: ragged_tensor.RaggedOrDense,
+                 segment_ids: ragged_tensor.RaggedOrDense,
+                 num_segments,
+                 name=None):
   # For docs, see: _RAGGED_SEGMENT_DOCSTRING
   return _ragged_segment_aggregate(
       math_ops.unsorted_segment_prod,
@@ -282,7 +289,11 @@ def segment_prod(data, segment_ids, num_segments, name=None):
       name=(name or 'RaggedSegmentProd'))
 
 
-def segment_min(data, segment_ids, num_segments, name=None):
+@dispatch.dispatch_for_api(math_ops.unsorted_segment_min)
+def segment_min(data: ragged_tensor.RaggedOrDense,
+                segment_ids: ragged_tensor.RaggedOrDense,
+                num_segments,
+                name=None):
   # For docs, see: _RAGGED_SEGMENT_DOCSTRING
   return _ragged_segment_aggregate(
       math_ops.unsorted_segment_min,
@@ -292,7 +303,11 @@ def segment_min(data, segment_ids, num_segments, name=None):
       name=(name or 'RaggedSegmentMin'))
 
 
-def segment_max(data, segment_ids, num_segments, name=None):
+@dispatch.dispatch_for_api(math_ops.unsorted_segment_max)
+def segment_max(data: ragged_tensor.RaggedOrDense,
+                segment_ids: ragged_tensor.RaggedOrDense,
+                num_segments,
+                name=None):
   # For docs, see: _RAGGED_SEGMENT_DOCSTRING
   return _ragged_segment_aggregate(
       math_ops.unsorted_segment_max,
@@ -302,7 +317,11 @@ def segment_max(data, segment_ids, num_segments, name=None):
       name=(name or 'RaggedSegmentMax'))
 
 
-def segment_mean(data, segment_ids, num_segments, name=None):
+@dispatch.dispatch_for_api(math_ops.unsorted_segment_mean)
+def segment_mean(data: ragged_tensor.RaggedOrDense,
+                 segment_ids: ragged_tensor.RaggedOrDense,
+                 num_segments,
+                 name=None):
   """For docs, see: _RAGGED_SEGMENT_DOCSTRING."""
   with ops.name_scope(name, 'RaggedSegmentMean',
                       [data, segment_ids, num_segments]):
@@ -318,7 +337,11 @@ def segment_mean(data, segment_ids, num_segments, name=None):
       return total / count
 
 
-def segment_sqrt_n(data, segment_ids, num_segments, name=None):
+@dispatch.dispatch_for_api(math_ops.unsorted_segment_sqrt_n)
+def segment_sqrt_n(data: ragged_tensor.RaggedOrDense,
+                   segment_ids: ragged_tensor.RaggedOrDense,
+                   num_segments,
+                   name=None):
   """For docs, see: _RAGGED_SEGMENT_DOCSTRING."""
   with ops.name_scope(name, 'RaggedSegmentSqrtN',
                       [data, segment_ids, num_segments]):
@@ -419,8 +442,18 @@ _RAGGED_REDUCE_MEAN_EXAMPLE = """
 _RAGGED_REDUCE_VARIANCE_EXAMPLE = """
     >>> rt = tf.ragged.constant([[1, 1, 4], [2, 1], [3], [4, 1]],
     ...                         dtype=tf.float64)
+    >>> tf.math.reduce_variance(rt, axis=0).numpy()
+    array([1.25, 0., 0.])
     >>> tf.math.reduce_variance(rt, axis=1).numpy()
     array([2., 0.25, 0., 2.25])
+"""
+_RAGGED_REDUCE_STD_EXAMPLE = """
+    >>> rt = tf.ragged.constant([[1, 0], [2, 1], [3], [4, 1]],
+    ...                         dtype=tf.float64)
+    >>> tf.math.reduce_std(rt, axis=0).numpy()
+    array([1.11803399, 0.47140452])
+    >>> tf.math.reduce_std(rt, axis=1).numpy()
+    array([0.5, 0.5, 0., 1.5])
 """
 _RAGGED_REDUCE_ALL_EXAMPLE = """
     >>> rt = tf.ragged.constant([[True, True], [True, True, False, True], [False, True]])
@@ -571,7 +604,11 @@ def ragged_reduce_aggregate(reduce_op,
                                   separator))
 
 
-def reduce_sum(input_tensor, axis=None, keepdims=None, name=None):
+@dispatch.dispatch_for_api(math_ops.reduce_sum)
+def reduce_sum(input_tensor: ragged_tensor.Ragged,
+               axis=None,
+               keepdims=None,
+               name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
 
   return ragged_reduce_aggregate(
@@ -583,7 +620,11 @@ def reduce_sum(input_tensor, axis=None, keepdims=None, name=None):
       name=(name or 'RaggedReduceSum'))
 
 
-def reduce_prod(input_tensor, axis=None, keepdims=None, name=None):
+@dispatch.dispatch_for_api(math_ops.reduce_prod)
+def reduce_prod(input_tensor: ragged_tensor.Ragged,
+                axis=None,
+                keepdims=None,
+                name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   return ragged_reduce_aggregate(
       reduce_op=math_ops.reduce_prod,
@@ -594,7 +635,11 @@ def reduce_prod(input_tensor, axis=None, keepdims=None, name=None):
       name=(name or 'RaggedReduceProd'))
 
 
-def reduce_min(input_tensor, axis=None, keepdims=None, name=None):
+@dispatch.dispatch_for_api(math_ops.reduce_min)
+def reduce_min(input_tensor: ragged_tensor.Ragged,
+               axis=None,
+               keepdims=None,
+               name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   return ragged_reduce_aggregate(
       reduce_op=math_ops.reduce_min,
@@ -605,7 +650,11 @@ def reduce_min(input_tensor, axis=None, keepdims=None, name=None):
       name=(name or 'RaggedReduceMin'))
 
 
-def reduce_max(input_tensor, axis=None, keepdims=None, name=None):
+@dispatch.dispatch_for_api(math_ops.reduce_max)
+def reduce_max(input_tensor: ragged_tensor.Ragged,
+               axis=None,
+               keepdims=None,
+               name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   return ragged_reduce_aggregate(
       reduce_op=math_ops.reduce_max,
@@ -616,7 +665,11 @@ def reduce_max(input_tensor, axis=None, keepdims=None, name=None):
       name=(name or 'RaggedReduceMax'))
 
 
-def reduce_mean(input_tensor, axis=None, keepdims=None, name=None):
+@dispatch.dispatch_for_api(math_ops.reduce_mean)
+def reduce_mean(input_tensor: ragged_tensor.Ragged,
+                axis=None,
+                keepdims=None,
+                name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   with ops.name_scope(name, 'RaggedReduceMean', [input_tensor, axis]):
     total = reduce_sum(input_tensor, axis, keepdims)
@@ -637,7 +690,11 @@ def reduce_mean(input_tensor, axis=None, keepdims=None, name=None):
       return total / count
 
 
-def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
+@dispatch.dispatch_for_api(math_ops.reduce_variance)
+def reduce_variance(input_tensor: ragged_tensor.Ragged,
+                    axis=None,
+                    keepdims=False,
+                    name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   with ops.name_scope(name, 'RaggedReduceVariance', [input_tensor, axis]):
     square_of_input = math_ops.square(input_tensor)
@@ -647,12 +704,27 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
     return mean_of_square - square_of_mean
 
 
+@dispatch.dispatch_for_api(math_ops.reduce_std)
+def reduce_std(input_tensor: ragged_tensor.Ragged,
+               axis=None,
+               keepdims=False,
+               name=None):
+  """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
+  with ops.name_scope(name, 'RaggedReduceStd', [input_tensor, axis]):
+    variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
+    return math_ops.sqrt(variance)
+
+
 def _cast(input_tensor, dtype):
   return ragged_functional_ops.map_flat_values(math_ops.cast, input_tensor,
                                                dtype)
 
 
-def reduce_all(input_tensor, axis=None, keepdims=None, name=None):
+@dispatch.dispatch_for_api(math_ops.reduce_all)
+def reduce_all(input_tensor: ragged_tensor.Ragged,
+               axis=None,
+               keepdims=None,
+               name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   with ops.name_scope(name, 'RaggedReduceAll', [input_tensor, axis]):
     return _cast(
@@ -660,7 +732,11 @@ def reduce_all(input_tensor, axis=None, keepdims=None, name=None):
         dtypes.bool)
 
 
-def reduce_any(input_tensor, axis=None, keepdims=None, name=None):
+@dispatch.dispatch_for_api(math_ops.reduce_any)
+def reduce_any(input_tensor: ragged_tensor.Ragged,
+               axis=None,
+               keepdims=None,
+               name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   with ops.name_scope(name, 'RaggedReduceAny', [input_tensor, axis]):
     return _cast(
@@ -690,6 +766,8 @@ _set_ragged_reduce_docstring(reduce_mean, 'mean', 'averaged', 'NaN',
                              _RAGGED_REDUCE_MEAN_EXAMPLE)
 _set_ragged_reduce_docstring(reduce_variance, 'variance', 'averaged', 'NaN',
                              _RAGGED_REDUCE_VARIANCE_EXAMPLE)
+_set_ragged_reduce_docstring(reduce_std, 'std', 'averaged', 'NaN',
+                             _RAGGED_REDUCE_STD_EXAMPLE)
 _set_ragged_reduce_docstring(reduce_all, 'logical and', 'and-ed', 'True',
                              _RAGGED_REDUCE_ALL_EXAMPLE)
 _set_ragged_reduce_docstring(reduce_any, 'logical or', 'or-ed', 'False',
@@ -699,8 +777,9 @@ _set_ragged_reduce_docstring(reduce_any, 'logical or', 'or-ed', 'False',
 #===============================================================================
 # ragged.matmul
 #===============================================================================
-def matmul(a,
-           b,
+@dispatch.dispatch_for_api(math_ops.matmul)
+def matmul(a: ragged_tensor.RaggedOrDense,
+           b: ragged_tensor.RaggedOrDense,
            transpose_a=False,
            transpose_b=False,
            adjoint_a=False,
@@ -860,8 +939,8 @@ def _matmul_3d_with_map_fn(a, b, **kwargs):
   Args:
     a: A 3D Tensor or RaggedTensor with `shape=[B, I, J]`, where dimensions `I`
       and `J` may be ragged.
-    b: A 3D Tensor or RaggedTensor with `shape=[B, J, K]`, where dimensions
-      `J` and `K` may be ragged.
+    b: A 3D Tensor or RaggedTensor with `shape=[B, J, K]`, where dimensions `J`
+      and `K` may be ragged.
     **kwargs: Additional arguments for `tf.matmul` (e.g. transpose_a).
 
   Returns:
@@ -927,3 +1006,136 @@ def _matmul_3d_with_batch_dim_folding(a, b, **kwargs):
   flat_result = math_ops.matmul(reshaped_a, reshaped_b, **kwargs)
   # result.shape = [B, (I), K]
   return a.with_values(array_ops.squeeze(flat_result, axis=1))
+
+
+#===============================================================================
+# ragged.softmax
+#===============================================================================
+@dispatch.dispatch_for_api(nn_ops.softmax_v2)
+def softmax(logits: ragged_tensor.Ragged, axis=None, name=None):
+  """Computes softmax activations.
+
+  Used for multi-class predictions. The sum of all outputs generated by softmax
+  is 1.
+
+  This function performs the equivalent of
+
+      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
+
+  Example usage:
+
+  >>> softmax = tf.nn.softmax([-1, 0., 1.])
+  >>> softmax
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([0.09003057, 0.24472848, 0.66524094], dtype=float32)>
+  >>> sum(softmax)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
+
+  Args:
+    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    axis: The dimension softmax would be performed on. The default is -1 which
+      indicates the last dimension.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type and shape as `logits`.
+
+  Raises:
+    InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
+      dimension of `logits`.
+  """
+  if axis is None:
+    axis = -1
+
+  with ops.name_scope(name, 'RaggedSoftmax', [logits]) as name:
+    logits_exp = math_ops.exp(logits)
+    denominator = reduce_sum(logits_exp, axis=axis, keepdims=True)
+    return math_ops.divide(logits_exp, denominator)
+
+
+#===============================================================================
+# ragged.add_n
+#===============================================================================
+@dispatch.dispatch_for_api(math_ops.add_n)
+def add_n(inputs: typing.List[ragged_tensor.RaggedOrDense], name=None):
+  """RaggedTensor implementation for tf.math.add_n."""
+  if len(inputs) < 0:
+    raise ValueError('tf.add_n: expected at least one input.')
+  with ops.name_scope(name, 'RaggedAddN', inputs):
+    return ragged_functional_ops.map_flat_values(math_ops.add_n, inputs)
+
+
+#===============================================================================
+# Ragged version of nn_ops.dropout
+#===============================================================================
+@dispatch.dispatch_for_api(nn_ops.dropout)
+def dropout_v1(x: ragged_tensor.Ragged,
+               keep_prob=None,
+               noise_shape=None,
+               seed=None,
+               name=None,
+               rate=None):
+  """Ragged dispatch target for tf.nn.dropout."""
+  if noise_shape is not None:
+    raise ValueError('noise_shape is not supported yet for RaggedTensor x')
+  with ops.name_scope(name, 'RaggedNNDropout', [x, rate]):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
+    return x.with_flat_values(
+        nn_ops.dropout(
+            x.flat_values, keep_prob=keep_prob, seed=seed, rate=rate))
+
+
+@dispatch.dispatch_for_api(nn_ops.dropout_v2)
+def dropout_v2(x: ragged_tensor.Ragged,
+               rate,
+               noise_shape=None,
+               seed=None,
+               name=None):
+  """Ragged dispatch target for tf.nn.dropout."""
+  if noise_shape is not None:
+    raise ValueError('noise_shape is not supported yet for RaggedTensor x')
+  with ops.name_scope(name, 'RaggedNNDropout', [x, rate]):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
+    return x.with_flat_values(
+        nn_ops.dropout_v2(x.flat_values, rate=rate, seed=seed))
+
+
+#===============================================================================
+# Ragged version of Tensor.__eq__ and Tensor.__ne__
+#===============================================================================
+@dispatch.dispatch_for_api(math_ops.tensor_equals)
+def tensor_equals(self: ragged_tensor.RaggedOrDense,
+                  other: ragged_tensor.RaggedOrDense):
+  """Ragged version of the operation invoked by `Tensor.__eq__`."""
+  if other is None:
+    return False
+  elif _use_legacy_mode_for_tensor_equality(self):
+    return self is other
+  else:
+    try:
+      return math_ops.equal(self, other)
+    except (errors.InvalidArgumentError, ValueError):
+      return False  # values are not broadcast-compatbile.
+
+
+@dispatch.dispatch_for_api(math_ops.tensor_not_equals)
+def tensor_not_equals(self: ragged_tensor.RaggedOrDense,
+                      other: ragged_tensor.RaggedOrDense):
+  """Ragged version of the operation invoked by `Tensor.__ne__`."""
+  if other is None:
+    return False
+  elif _use_legacy_mode_for_tensor_equality(self):
+    return self is not other
+  else:
+    try:
+      return math_ops.not_equal(self, other)
+    except (errors.InvalidArgumentError, ValueError):
+      return True  # values are not broadcast-compatbile.
+
+
+def _use_legacy_mode_for_tensor_equality(self):
+  g = getattr(self, 'graph', None)
+  return not (ops.Tensor._USE_EQUALITY and  # pylint: disable=protected-access
+              ops.executing_eagerly_outside_functions() and
+              (g is None or g.building_function))
