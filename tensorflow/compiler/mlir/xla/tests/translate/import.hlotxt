@@ -756,6 +756,46 @@ add {
   ROOT %tuple.6 = ((f32[], f32[]), f32[]) tuple(%reduce.1, %sub.5)
 }
 
+// Test reduce-scatter
+
+%reduce_helper_add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL:  func private @test_reduce_scatter
+// CHECK-SAME: ([[ARG0:%.*]]: tensor<4x8xf32>)
+%test_reduce_scatter {
+  input = f32[4,8] parameter(0)
+  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ( {
+  // CHECK-NEXT:   ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>):  // no predecessors
+  // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add [[BARG0]], [[BARG1]] : tensor<f32>
+  // CHECK-NEXT:     "mhlo.return"([[ADD]])
+  // CHECK-NEXT:   }) {
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  // CHECK-SAME:           scatter_dimension = 1 : i64
+  // CHECK-SAME: } : (tensor<4x8xf32>) -> tensor<4x4xf32>
+  ROOT ars = f32[4,4] reduce-scatter(input), replica_groups={{0,1}}, dimensions={1}, to_apply=reduce_helper_add
+}
+
+// CHECK-LABEL:  func private @test_reduce_scatter_with_channel
+// CHECK-SAME: ([[ARG0:%.*]]: tensor<4x8xf32>)
+%test_reduce_scatter_with_channel {
+  input = f32[4,8] parameter(0)
+  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ( {
+  // CHECK-NEXT:   ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>):  // no predecessors
+  // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add [[BARG0]], [[BARG1]] : tensor<f32>
+  // CHECK-NEXT:     "mhlo.return"([[ADD]])
+  // CHECK-NEXT:   }) {
+  // CHECK-SAME:           channel_handle = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  // CHECK-SAME:           scatter_dimension = 1 : i64
+  // CHECK-SAME: } : (tensor<4x8xf32>) -> tensor<4x4xf32>
+  ROOT ars = f32[4,4] reduce-scatter(input), channel_id=1, replica_groups={{0,1}}, dimensions={1}, to_apply=reduce_helper_add
+}
+
+
 // CHECK-LABEL:  func private @test_reduce_window
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<2x17x31x7xf32>, [[ARG1:%.*]]: tensor<f32>)
 %test_reduce_window (Arg_0.1: f32[2,17,31,7], Arg_1.2: f32[]) -> f32[2,5,8,7] {
