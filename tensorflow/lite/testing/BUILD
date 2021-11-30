@@ -36,19 +36,12 @@ exports_files([
     "init_tensorflow.cc",
 ])
 
-_test_size_override = {
-    # copybara:comment_begin(oss-only)
-    "merged_models_with-flex_6": "large",
-    "merged_models_with-flex_9": "large",
-    # copybara:comment_end
-}
-
 [gen_zip_test(
     name = "zip_test_%s%s" % (
         test_name,
         delegate_suffix(delegate),
     ),
-    size = _test_size_override.get(test_name, "medium"),
+    size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
     args = args + select({
         "//tensorflow:android": [],
