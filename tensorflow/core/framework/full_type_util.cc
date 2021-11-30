@@ -15,17 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/full_type_util.h"
 
-#include <sys/param.h>
-
-#include <string>
-
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -135,92 +130,6 @@ StatusOr<FullTypeDef> SpecializeType(const AttrSlice& attrs,
   }
 
   return ft;
-}
-
-const FullTypeDef& GetArgDefaultUnset(const FullTypeDef& t, int i) {
-  static FullTypeDef* unset_type = []() {
-    FullTypeDef* t = new FullTypeDef();
-    return t;
-  }();
-
-  if (i < t.args_size()) {
-    return t.args(i);
-  }
-  return *unset_type;
-}
-
-const FullTypeDef& GetArgDefaultAny(const FullTypeDef& t, int i) {
-  static FullTypeDef* any_type = []() {
-    FullTypeDef* t = new FullTypeDef();
-    t->set_type_id(TFT_ANY);
-    return t;
-  }();
-
-  if (i < t.args_size()) {
-    const FullTypeDef& f_val = t.args(i);
-    if (f_val.type_id() == TFT_UNSET) {
-      return *any_type;
-    }
-    return f_val;
-  }
-  return *any_type;
-}
-
-bool IsEqual(const FullTypeDef& lhs, const FullTypeDef& rhs) {
-  if (lhs.type_id() != rhs.type_id()) {
-    return false;
-  }
-  const auto& lhs_s = lhs.s();
-  const auto& rhs_s = rhs.s();
-  if (lhs_s.empty()) {
-    if (!rhs_s.empty()) {
-      return false;
-    }
-  } else if (rhs_s != lhs_s) {
-    return false;
-  }
-  for (int i = 0; i < MAX(lhs.args_size(), rhs.args_size()); i++) {
-    const FullTypeDef& lhs_arg = GetArgDefaultAny(lhs, i);
-    const FullTypeDef& rhs_arg = GetArgDefaultAny(rhs, i);
-
-    if (!IsEqual(lhs_arg, rhs_arg)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs, bool covariant) {
-  // Rule: ANY is a supertype of all types.
-  if (rhs.type_id() == TFT_ANY) {
-    return true;
-  }
-  // Compatibility rule: UNSET is treated as ANY for the purpose of subtyping.
-  if (rhs.type_id() == TFT_UNSET) {
-    return true;
-  }
-  // Default rule: type IDs must match.
-  if (lhs.type_id() != rhs.type_id()) {
-    return false;
-  }
-
-  for (int i = 0; i < MAX(lhs.args_size(), rhs.args_size()); i++) {
-    const FullTypeDef& lhs_arg = GetArgDefaultAny(lhs, i);
-    const FullTypeDef& rhs_arg = GetArgDefaultAny(rhs, i);
-
-    if (covariant) {
-      if (!IsSubtype(lhs_arg, rhs_arg)) {
-        return false;
-      }
-    } else {
-      if (!IsSubtype(rhs_arg, lhs_arg)) {
-        return false;
-      }
-    }
-  }
-
-  // Invariant: type IDs are eaqual, and all args are subtype of one another.
-  return true;
 }
 
 }  // namespace full_type
