@@ -50,6 +50,21 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT ag = f32[128,128] all-gather(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}
 }
 
+// Test all-to-all
+
+// CHECK-LABEL:  func private @test_all_to_all
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<2x2xi32>)
+%test_all_to_all {
+  %parameter = s32[2,2]{1,0} parameter(0)
+  // CHECK-NEXT: "mhlo.all_to_all"([[ARG]]) {
+  // CHECK-SAME:   concat_dimension = 1 : i64,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[1, 2], [3, 0]]> : tensor<2x2xi64>,
+  // CHECK-SAME:   split_count = 2 : i64,
+  // CHECK-SAME:   split_dimension = 1 : i64
+  // CHECK-SAME: } : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  ROOT %all-to-all = s32[2,2]{1,0} all-to-all(s32[2,2]{1,0} %parameter), replica_groups={{1,2}, {3,0}}, dimensions={1}
+}
+
 // Test all-reduce
 add {
   lhs = f32[] parameter(0)
