@@ -1248,6 +1248,7 @@ cc_library(
         ":tensorflow_analysis",
         ":tensorflow_ops",
         ":tensorflow_optimize_inc_gen",
+        ":tensorflow_side_effects",
         ":tensorflow_types",
         ":tf_data_optimization",
         ":tf_legalize_hlo",
