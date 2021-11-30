@@ -70,7 +70,12 @@ public:
   std::vector<AllocBufferOffset> allocBufferOffsets;
 };
 
-/// Contains the important informations about a buffer allocation.
+/// Contains the informations about a buffer allocation. It provides the
+/// information to sort the buffers and to check if it fits into other buffer
+/// and vise versa.
+/// This structure contains the allocation value, the first and last userangeid
+/// of a buffer, the window id, the number of alligned 64 byte segments and all
+/// userange intervals.
 struct AllocationInfo {
 public:
   using SizedGap = std::pair<UseInterval, size_t>;
@@ -137,7 +142,7 @@ public:
 
 // Comparator to sort allocation informations by window id, userange and by
 // number of memory segments.
-class AllocInfoWinIdCompare {
+class AllocInfoWinIdComparator {
 public:
   bool operator()(const AllocationInfo &a, const AllocationInfo &b) {
     if (a.windowId == b.windowId) {
@@ -164,7 +169,6 @@ public:
 template <typename CompareT> class SortedPackingStrategy {
 public:
   using AllocInfoList = std::vector<AllocationInfo>;
-  using SizedGap = std::pair<UseInterval, size_t>;
 
 public:
   /// Constructs the Sorted Packing Strategy. The window size is used as sliding
@@ -234,9 +238,7 @@ private:
     for (auto gapIter = gaps.begin(); gapIter != gaps.end();) {
 
       // The list is sorted, so we can break here.
-      if ((gapIter->first.start >= allocToPack.firstUse &&
-           gapIter->first.end < allocToPack.lastUse) ||
-          gapIter->first.start > allocToPack.lastUse)
+      if (gapIter->first.start > allocToPack.firstUse)
         break;
 
       // Checks if enough contiguous memory segments are free or if the current
@@ -327,7 +329,7 @@ private:
     if (windowSize == 0)
       return maxUserangeId;
     // Sorts the allocation informations to compute the window id. The window id
-    // is used to blure the userange starting position of an allocation.
+    // is used to blur the userange starting position of an allocation.
     std::sort(allocInfos.begin(), allocInfos.end(),
               [](const AllocationInfo &a, const AllocationInfo &b) {
                 return a.allocUserangeId < b.allocUserangeId;
@@ -387,12 +389,12 @@ public:
         SmallVector<Value, 4> newOperands{targetBuffer};
         newOperands.push_back(constantOp);
 
-        ShapedType shape = currentAlloc.getType().cast<ShapedType>();
+        ShapedType shape = currentAlloc.getType().cast<MemRefType>();
 
         // Create a ViewOp with the shape of the old alloc and use the created
         // packed alloc and the constant for the operands.
         Value viewOp = viewBuilder.create<memref::ViewOp>(
-            loc, shape.cast<MemRefType>(), newOperands);
+            loc, shape, newOperands);
 
         // Replace all old allocs references with the created ViewOp and
         // afterwards remove the old allocs.
@@ -438,8 +440,8 @@ struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
           window_size_, AllocInfoMemSizeCompare());
       BufferPacking packing(getFunction(), strategy);
     } else {
-      SortedPackingStrategy<AllocInfoWinIdCompare> strategy(
-          window_size_, AllocInfoWinIdCompare());
+      SortedPackingStrategy<AllocInfoWinIdComparator> strategy(
+          window_size_, AllocInfoWinIdComparator());
       BufferPacking packing(getFunction(), strategy);
     }
   }
