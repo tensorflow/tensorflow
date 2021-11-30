@@ -918,6 +918,32 @@ bool IsGenericFunction(FunctionDef fdef) {
   return false;
 }
 
+}  // namespace
+
+// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
+// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
+// and a ShapeAttr
+tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
+    Builder builder,
+    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
+  // Two entries: a type and a shape.
+  SmallVector<Attribute> dtype_and_shape;
+  for (const auto& handle : handle_data) {
+    Type dtype;
+    if (handle.dtype() != tensorflow::DT_INVALID)
+      TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
+    TF_ASSIGN_OR_RETURN(
+        Attribute shape,
+        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
+
+    dtype_and_shape.push_back(
+        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
+  }
+  return builder.getArrayAttr(dtype_and_shape);
+}
+
+// Convert a Graph and function libs to a MLIR module containing the graph and
+// expressed in TFG dialect.
 tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
     MLIRContext* context, const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
@@ -951,30 +977,8 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
   return module;
 }
 
-}  // namespace
-
-// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
-// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
-// and a ShapeAttr
-tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
-    Builder builder,
-    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
-  // Two entries: a type and a shape.
-  SmallVector<Attribute> dtype_and_shape;
-  for (const auto& handle : handle_data) {
-    Type dtype;
-    if (handle.dtype() != tensorflow::DT_INVALID)
-      TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
-    TF_ASSIGN_OR_RETURN(
-        Attribute shape,
-        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
-
-    dtype_and_shape.push_back(
-        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
-  }
-  return builder.getArrayAttr(dtype_and_shape);
-}
-
+// Convert a GraphDef to a MLIR module containing the graph and expressed in TFG
+// dialect.
 tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
     MLIRContext* context, const GraphDebugInfo& debug_info,
     const GraphDef& graphdef) {
