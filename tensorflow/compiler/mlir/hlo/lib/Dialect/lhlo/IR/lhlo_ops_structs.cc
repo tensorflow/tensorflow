@@ -13,6 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.h"
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.cc.inc"

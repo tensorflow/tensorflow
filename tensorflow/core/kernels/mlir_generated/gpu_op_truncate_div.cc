@@ -13,18 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines structures used in LMHLO dialect.
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_STRUCTS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_STRUCTS_H_
+namespace tensorflow {
 
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Identifier.h"
-#include "mlir/IR/Types.h"
+// These kernels are JIT-compiled.
+GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_INT8);
+GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_UINT32);
+GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_UINT64);
 
-// Order matters, this .inc header is not self-contained, and relies on the
-// #includes above.
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc"
-
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_STRUCTS_H_
+}  // namespace tensorflow

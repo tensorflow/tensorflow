@@ -112,6 +112,8 @@ MemrefDesc TensorToMemrefDesc(const Tensor& tensor) {
   tfrt::DType dtype;
   if (tensor.dtype() == DT_FLOAT)
     dtype = tfrt::GetDType<float>();
+  else if (tensor.dtype() == DT_INT64)
+    dtype = tfrt::GetDType<int64_t>();
   else
     LOG(FATAL) << "Unsupported tensor dtype: " << tensor.dtype();
 

@@ -49,6 +49,33 @@ class XlaShapeLayoutHelpers {
 // Return a LayoutPreferenceFn that always uses kNoPreference layout.
 XlaShapeLayoutHelpers::LayoutPreferenceFn UseNoPreferenceLayoutFn();
 
+// Rewrites the layout of xla_shape if there is tiled sharding.
+Status RewriteLayoutWithShardedShape(
+    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    xla::Shape* xla_shape);
+
+// TODO(b/203254951): remove after migration is done.
+// Same as above but use kNoPreference layout.
+Status RewriteLayoutWithShardedShape(
+    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* xla_shape);
+
+// Adds reshapes to fix the layout of an output, if a shape_representation_fn or
+// sharding is present.
+StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    absl::optional<xla::OpSharding> sharding, bool fast_mem);
+
+// TODO(b/203254951): remove after migration is done.
+// Same as above but use kNoPreference layout.
+StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    absl::optional<xla::OpSharding> sharding, bool fast_mem);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_SHAPE_UTIL_H_

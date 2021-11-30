@@ -119,12 +119,14 @@ TfDriver::TfDriver(const std::vector<string>& input_layer,
     input_tensors_[input_layer[i]] = {};
     CHECK(DataTypeFromString(input_layer_type[i], &input_types_[i]));
     input_shapes_[i] = Split<int64_t>(input_layer_shape[i], ",");
+    input_name_to_id_[input_layer[i]] = i;
   }
 
   output_ids_.resize(output_layer.size());
   output_tensors_.reserve(output_layer.size());
   for (int i = 0; i < output_layer.size(); i++) {
     output_ids_[i] = i;
+    output_name_to_id_[output_layer[i]] = i;
   }
 }
 
@@ -148,6 +150,22 @@ void TfDriver::LoadModel(const string& bin_file_path) {
   if (!status.ok()) {
     Invalidate("Failed to create session. " + status.error_message());
   }
+}
+
+void TfDriver::ReshapeTensor(const string& name, const string& csv_values) {
+  ReshapeTensor(input_name_to_id_[name], csv_values);
+}
+void TfDriver::ResetTensor(const std::string& name) {
+  ResetTensor(input_name_to_id_[name]);
+}
+string TfDriver::ReadOutput(const string& name) {
+  return ReadOutput(output_name_to_id_[name]);
+}
+void TfDriver::Invoke(const std::vector<std::pair<string, string>>& inputs) {
+  for (const auto& input : inputs) {
+    SetInput(input_name_to_id_[input.first], input.second);
+  }
+  Invoke();
 }
 
 void TfDriver::SetInput(const string& values_as_string,

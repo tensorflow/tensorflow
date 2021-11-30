@@ -359,6 +359,17 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   }
+  // Filter must have zero zero-points in per-channel quantization.
+  if (input_type == kTfLiteInt16 || input_type == kTfLiteInt8) {
+    TF_LITE_ENSURE_EQ(context, filter->quantization.type,
+                      kTfLiteAffineQuantization);
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    for (int i = 0; i < affine_quantization->zero_point->size; ++i) {
+      TF_LITE_ENSURE_EQ(context, affine_quantization->zero_point->data[i], 0);
+    }
+  }
 
   const TfLiteTensor* bias = nullptr;
 

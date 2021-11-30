@@ -181,6 +181,15 @@ void RecordUnusedOutput(const string& op_name);
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
 void UpdateGraphBuildTime(const uint64 running_time_usecs);
 
+// Records the status of a graph passing through various states/stages of
+// TfMlirGraphOptimizationPass processing using
+// tf_metadata.tf_mlir_update_graph_optimization_pass_state_counter metric.
+// 'pass_state' identifies the state of the pass
+// (or "PassState" metric field) and 'processing_state' refers to the stage
+// in the process the graph is at (or "ProcessingState" metric field).
+void UpdateTfMlirGraphOptimizationPassStateCounter(
+    const std::string& pass_state, const std::string& processing_state);
+
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>
 class ScopedCounter final {

@@ -40,15 +40,19 @@ namespace tensorrt {
 
 static constexpr char kCastOutputTypeAttrName[] = "DstT";
 
+#if !IS_TRT_VERSION_GE(8, 2, 0, 0)
 template <typename T>
 struct TrtDestroyer {
   void operator()(T* t) {
     if (t) t->destroy();
   }
 };
-
 template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
+#else
+template <typename T>
+using TrtUniquePtrType = std::unique_ptr<T>;
+#endif
 
 // Define a hash function for vector<TensorShape> because it is used as the key
 // for the engine cache.

@@ -103,10 +103,12 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
   explicit PrepareTFPass(bool unfold_batch_matmul,
-                         bool allow_bf16_and_f16_type_legalization) {
+                         bool allow_bf16_and_f16_type_legalization,
+                         bool use_fake_quant_num_bits = false) {
     unfold_batch_matmul_ = unfold_batch_matmul;
     allow_bf16_and_f16_type_legalization_ =
         allow_bf16_and_f16_type_legalization;
+    use_fake_quant_num_bits_ = use_fake_quant_num_bits;
   }
 
   StringRef getArgument() const final {
@@ -135,6 +137,11 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
   Option<bool> allow_bf16_and_f16_type_legalization_{
       *this, "tfl-allow-bf16-and-f16-type-legalization",
       llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
+
+  Option<bool> use_fake_quant_num_bits_{
+      *this, "tfl-use-fake-quant-num-bits",
+      llvm::cl::desc("Use quantization calculated from fake quant attributes."),
+      llvm::cl::init(false)};
 };
 
 // Transient state for preserving data from match to rewrite
@@ -1358,7 +1365,7 @@ void PrepareTFPass::runOnFunction() {
   // min/max operands of the tf.FakeQuant* are constants to be matched. The
   // following round of optimization will folding the unwrapped
   // tf.FakeQuant* ops with the weight constants.
-  if (failed(ConvertFakeQuantOps(func, ctx))) {
+  if (failed(ConvertFakeQuantOps(func, ctx, use_fake_quant_num_bits_))) {
     signalPassFailure();
     return;
   }
@@ -1381,9 +1388,11 @@ void PrepareTFPass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul, bool allow_bf16_type_legalization) {
+    bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization,
+    bool use_fake_quant_num_bits) {
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul,
-                                         allow_bf16_type_legalization);
+                                         allow_bf16_and_f16_type_legalization,
+                                         use_fake_quant_num_bits);
 }
 
 static PassRegistration<PrepareTFPass> pass;

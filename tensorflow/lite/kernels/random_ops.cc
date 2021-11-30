@@ -124,12 +124,9 @@ void GenerateMultinomialNumbers(Generator& rng, const float* logits,
   size_t current_size = 0;
   size_t rng_size = Generator::kResultElementCount;
 
-  // Number of skipped 128-bits samples (i.e, number of generator calls)
-  int num_samples_skipped = 0;
   while (current_size < num_samples) {
     const int update_size = std::min(rng_size / 2, num_samples - current_size);
     typename Generator::ResultType samples = rng();
-    num_samples_skipped += 1;
     for (int i = 0; i < update_size; i += 1) {
       const double value = tensorflow::random::Uint64ToDouble(
                                samples[i * 2], samples[i * 2 + 1]) *
@@ -139,6 +136,14 @@ void GenerateMultinomialNumbers(Generator& rng, const float* logits,
     }
     current_size += update_size;
   }
+}
+
+// For the multinomial op, compute the number of samples to skip in the
+// generator between each invoke to ensure that outputs don't overlap.
+int ComputeMultinomialSamplesToSkip(int num_samples) {
+  // Number of skipped 128-bits samples (i.e, number of generator calls)
+  int num_samples_skipped = (num_samples + 1) / 2;
+
   // Skip enough 128-bits samples to ensure that the output is always unique.
   // Round to a multiple of 4 (+3 ensures a different state in every batch)
   int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
@@ -146,7 +151,7 @@ void GenerateMultinomialNumbers(Generator& rng, const float* logits,
   int num_samples_to_skip_total = num_samples_ceil_4 * 2 * 256;
   // Compute the number of 128-bits samples to skip.
   int num_samples_to_skip = num_samples_to_skip_total - num_samples_skipped;
-  rng.Skip(num_samples_to_skip);
+  return num_samples_to_skip;
 }
 }  // namespace
 
@@ -192,20 +197,11 @@ TfLiteStatus PrepareMultinomial(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* logits;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &logits));
   TF_LITE_ENSURE(context, logits->type == kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(logits), 2);
-  const int batch_size = SizeOfDimension(logits, 0);
-  const int num_classes = SizeOfDimension(logits, 1);
-  TF_LITE_ENSURE(context, num_classes > 0);
-  // Ensure logits shape isn't too large for int
-  TF_LITE_ENSURE(context, static_cast<int>(batch_size) == batch_size);
-  TF_LITE_ENSURE(context, static_cast<int>(num_classes) == num_classes);
 
   // 'num_samples' is a 0-D input int scalar
   const TfLiteTensor* num_samples;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &num_samples));
   TF_LITE_ENSURE_EQ(context, num_samples->type, kTfLiteInt32);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(num_samples), 0);
-  TF_LITE_ENSURE(context, *num_samples->data.i32 >= 0);
 
   // Initialize the random number generator
   InitializeOpData(node);
@@ -275,13 +271,17 @@ TfLiteStatus EvalMultinomial(TfLiteContext* context, TfLiteNode* node) {
 
   // 'logits' is a 2-D float matrix with shape [batch_size, num_classes]
   const TfLiteTensor* logits_tensor = GetInput(context, node, 0);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(logits_tensor), 2);
   const float* logits = GetTensorData<float>(logits_tensor);
-  int batch_size = SizeOfDimension(logits_tensor, 0);
-  int num_classes = SizeOfDimension(logits_tensor, 1);
+  const int batch_size = SizeOfDimension(logits_tensor, 0);
+  const int num_classes = SizeOfDimension(logits_tensor, 1);
+  TF_LITE_ENSURE(context, num_classes > 0);
 
   // 'num_samples' is an int scalar
   const TfLiteTensor* num_samples = GetInput(context, node, 1);
-  int num_samples_ = *num_samples->data.i32;
+  TF_LITE_ENSURE_EQ(context, NumDimensions(num_samples), 0);
+  const int num_samples_ = *num_samples->data.i32;
+  TF_LITE_ENSURE(context, num_samples_ >= 0);
 
   TfLiteTensor* output_tensor = GetOutput(context, node, 0);
   if (IsDynamicTensor(output_tensor)) {
@@ -312,6 +312,7 @@ TfLiteStatus EvalMultinomial(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
     }
   }
+  data->rng.Skip(ComputeMultinomialSamplesToSkip(num_samples_));
   return kTfLiteOk;
 }
 

@@ -71,6 +71,7 @@ def configure_virtual_cpus():
   ])
 
 
+@test_util.with_eager_op_as_function
 class TFETest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -300,8 +301,12 @@ class TFETest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         bool(tf_a == tf_d)
       self.assertAllEqual(tf_a == tf_d, [[True, False], [True, False]])
-      self.assertFalse(bool(tf_a == tf_e))
-      self.assertTrue(bool(tf_a != tf_e))
+
+      # TODO(b/207402791): re-enable once incompatible shapes supported by XLA.
+      if not test_util.is_xla_enabled():
+        self.assertFalse(bool(tf_a == tf_e))
+        self.assertTrue(bool(tf_a != tf_e))
+
       self.assertNotAllEqual(tf_a, tf_e)
 
       with self.assertRaises(ValueError):

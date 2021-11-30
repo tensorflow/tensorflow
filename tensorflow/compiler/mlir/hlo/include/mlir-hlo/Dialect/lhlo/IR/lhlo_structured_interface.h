@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H_
 
-namespace mlir {
-namespace lmhlo {
+#include "mlir/IR/OpDefinition.h"
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.cpp.inc"
+/// Include the generated interface declarations.
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.h.inc"
 
-}  // namespace lmhlo
-}  // namespace mlir
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H_

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -1534,7 +1535,8 @@ const UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
 StatusOr<int64_t> RematerializeInstructions(
     MemoryUsageTracker* memory_tracker, std::vector<Item*>* best_items,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
-    InstructionList* instruction_list) {
+    InstructionList* instruction_list,
+    HloRematerialization* rematerialization) {
   int64_t net_instructions_added = 0;
   int64_t total_memory_saved =
       memory_tracker->MemoryReducedIfRematerialized(*best_items);
@@ -1556,6 +1558,11 @@ StatusOr<int64_t> RematerializeInstructions(
 
     HloInstruction* remat =
         computation->AddInstruction(best->Clone(/*suffix=*/"remat"));
+    // Increment channel_id on channel instructions.
+    if (HloChannelInstruction* channel_instr =
+            DynCast<HloChannelInstruction>(remat)) {
+      remat->set_channel_id(rematerialization->NextChannelId());
+    }
 
     // Add control dependencies to the new operation.
     for (auto successor : best->control_successors()) {
@@ -1762,7 +1769,8 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
     int min_block_size, int max_block_size, MemoryUsageTracker* memory_tracker,
     InstructionList* instruction_list, int64_t memory_limit_bytes,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
-    absl::flat_hash_set<const HloInstruction*>* remat_move_instructions) {
+    absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
+    HloRematerialization* rematerialization) {
   CHECK(min_block_size > 0) << "Negative block size.";
 
   std::vector<Item*> best_items;
@@ -1797,7 +1805,8 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
     TF_ASSIGN_OR_RETURN(
         num_instructions_added.net_instructions_added,
         RematerializeInstructions(memory_tracker, &best_items,
-                                  remat_move_instructions, instruction_list));
+                                  remat_move_instructions, instruction_list,
+                                  rematerialization));
   }
   return num_instructions_added;
 }
@@ -1926,7 +1935,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
             RematerializeBestBlock(min_block_size, max_block_size,
                                    &memory_tracker, &instruction_list,
                                    memory_limit_bytes, &rematerializable_map,
-                                   &remat_move_instructions));
+                                   &remat_move_instructions, this));
         net_instructions_added += instructions_added.net_instructions_added;
         remat_count += instructions_added.remat_count;
         if (is_first_phase) {
@@ -2044,6 +2053,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
 
   TF_RET_CHECK(module->has_schedule());
   TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
+  next_channel_id_ = hlo_query::NextChannelId(*module);
 
   // Adjust memory limit to account for the output of the entry
   // computation. This is necessary because the per-computation accounting in

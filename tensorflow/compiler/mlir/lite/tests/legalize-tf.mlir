@@ -2239,3 +2239,11 @@ func @random_standard_normal_f32(%arg0: tensor<3xi32>) -> tensor<?x?x?xf32> {
 // CHECK-LABEL:random_standard_normal_f32
 // CHECK:  "tfl.random_standard_normal"(%arg0) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
 }
+
+func @multinomial_i64(%arg0: tensor<2xf32>, %arg1: tensor<1xi32>) -> tensor<10xi64> {
+  %0 = "tf.Multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0: i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi64>
+  return %0 : tensor<10xi64>
+
+// CHECK-LABEL:multinomial_i64
+// CHECK: "tfl.multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi64>
+}

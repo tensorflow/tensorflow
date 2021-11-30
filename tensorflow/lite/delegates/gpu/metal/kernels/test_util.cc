@@ -88,6 +88,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     RETURN_IF_ERROR(CreateTensor(device_.device(), dst_shape,
                                  op_def.dst_tensors[i], &dst[i]));
   }
+  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
 
   ComputeTask gpu_task;
   gpu_task.Init(std::move(operation));
@@ -145,6 +146,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     RETURN_IF_ERROR(CreateTensor(device_.device(), dst_shape,
                                  op_def.dst_tensors[i], &dst[i]));
   }
+  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
 
   ComputeTask gpu_task;
   gpu_task.Init(std::move(operation));

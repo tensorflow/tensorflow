@@ -222,6 +222,7 @@ def _create_local_python_repository(repository_ctx):
     # To build Python C/C++ extension on Windows, we need to link to python import library pythonXY.lib
     # See https://docs.python.org/3/extending/windows.html
     if is_windows(repository_ctx):
+        python_bin = python_bin.replace("\\", "/")
         python_include = _norm_path(python_include)
         python_import_lib_name = _get_python_import_lib_name(repository_ctx, python_bin)
         python_import_lib_src = python_include.rsplit("/", 1)[0] + "/libs/" + python_import_lib_name

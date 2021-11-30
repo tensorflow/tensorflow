@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Pattern to lower lmhlo.triangular_solve op to tfrt_gpu dialect.
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"

@@ -18,8 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -28,7 +27,7 @@ namespace gpu {
 
 TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
   mlir::DialectRegistry registry;
-  mlir::mhlo::registerAllMhloDialects(registry);
+  registry.insert<mlir::lmhlo::LmhloDialect>();
   mlir::MLIRContext context(registry);
 
   auto module = mlir::parseSourceString(R"(
@@ -45,7 +44,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
 
 TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
   mlir::DialectRegistry registry;
-  mlir::mhlo::registerAllMhloDialects(registry);
+  registry.insert<mlir::lmhlo::LmhloDialect>();
   mlir::MLIRContext context(registry);
 
   auto module = mlir::parseSourceString(R"(
@@ -62,7 +61,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
 
 TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
   mlir::DialectRegistry registry;
-  mlir::mhlo::registerAllMhloDialects(registry);
+  registry.insert<mlir::lmhlo::LmhloDialect>();
   mlir::MLIRContext context(registry);
 
   auto module = mlir::parseSourceString(R"(

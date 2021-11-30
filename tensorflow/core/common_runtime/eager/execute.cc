@@ -987,6 +987,7 @@ Status GetOrCreateKernelAndDevice(
     // jit compiled. Ideally we would run this via the jit compiled path and
     // expect unsupported ops to be outside compiled but that is not supported
     // on GPUs right now.
+    bool allow_small_function_optimizations = false;
     if (ctx.RunEagerOpAsFunction() && !op->is_function()) {
       EagerOperation* wrapped_op = nullptr;
       TF_RETURN_IF_ERROR(WrapInCallOp(op, &wrapped_op));
@@ -995,6 +996,7 @@ Status GetOrCreateKernelAndDevice(
       wrapped_op_releaser.reset(wrapped_op);
       op = wrapped_op;
       run_function_with_flr = true;
+      allow_small_function_optimizations = true;
     }
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
 
@@ -1038,8 +1040,8 @@ Status GetOrCreateKernelAndDevice(
           std::move(composite_devices),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
-          function_outputs_on_op_device, std::move(rendezvous_creator),
-          get_op_id));
+          function_outputs_on_op_device, allow_small_function_optimizations,
+          std::move(rendezvous_creator), get_op_id));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << ". Full node_def=" << ndef.DebugString();

@@ -194,7 +194,7 @@ add_mlir_library(MhloLhloToLinalg
 add_mlir_library(LmhloPasses
   fusion_utils.cc
   input_inline_fusion_pass.cc
-  legalize_tensor_load_op.cc
+  legalize_to_tensor_op.cc
   lhlo_elemental_utils.cc
   lhlo_fuse_linalg.cc
   lhlo_fusion.cc

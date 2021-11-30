@@ -234,6 +234,7 @@ cc_library(
         ":tpu_defs",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

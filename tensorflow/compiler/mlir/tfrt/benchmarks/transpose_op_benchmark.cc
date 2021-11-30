@@ -19,9 +19,12 @@ namespace tensorflow {
 
 static const char* mlir_input = R"(
 func @compute(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
-    %0 = "tf.Const"() {value = dense<[0, 2, 1]> : tensor<3xi64>}
+    %0 = "tf.Const"()
+         {value = dense<[0, 2, 1]> : tensor<3xi64>,
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : () -> tensor<3xi64>
     %1 = "tf.Transpose"(%arg0, %0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
     return %1 : tensor<?x?x?xf32>
   }
@@ -50,12 +53,11 @@ static llvm::SmallVector<InputTensorSpec> Inputs(ssize_t dim) {
   return {InputTensorSpec(DT_FLOAT, {dim, dim, dim})};
 }
 
-BM_Mlir(Transpose, mlir_input, "compute", Inputs(256))
-    ->Arg(0)
-    ->Arg(4)
-    ->Arg(16)
-    ->Arg(32);
+#define BM(FN) BM_##FN->Arg(0)->Arg(4)->Arg(8);
 
-BM_Eigen(Transpose, Shuffle, Inputs(256))->Arg(0)->Arg(4)->Arg(16)->Arg(32);
+BM(Cpurt(Transpose, mlir_input, "compute", Inputs(256)));
+BM(CpurtVectorized(Transpose, mlir_input, "compute", Inputs(256)));
+BM(Tfrt(Transpose, mlir_input, "compute", Inputs(256)));
+BM(Eigen(Transpose, Shuffle, Inputs(256)));
 
 }  // namespace tensorflow

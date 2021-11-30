@@ -206,6 +206,10 @@ enum class MaliGpu {
   kG77,
   kG68,
   kG78,
+  kG310,
+  kG510,
+  kG610,
+  kG710,
 };
 
 struct MaliInfo {
@@ -223,6 +227,7 @@ struct MaliInfo {
   bool IsBifrost() const;
   bool IsValhallGen1() const;
   bool IsValhallGen2() const;
+  bool IsValhallGen3() const;
   bool IsValhall() const;
 };
 

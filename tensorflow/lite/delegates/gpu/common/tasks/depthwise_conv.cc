@@ -231,13 +231,22 @@ std::string GenerateDepthwiseConvolutionCode(
   c += "}\n";
   return c;
 }
+
+bool UseBuffersForWeights(const GpuInfo& gpu_info) {
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsA7GenerationGpu() ||
+        gpu_info.apple_info.IsA8GenerationGpu()) {
+      return false;
+    }
+  }
+  return !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple();
+}
 }  // namespace
 
 GPUOperation CreateDepthwiseConvolution2D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  bool weights_are_buffer =
-      !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple();
+  const bool weights_are_buffer = UseBuffersForWeights(gpu_info);
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);
@@ -300,8 +309,7 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
 GPUOperation CreateDepthwiseConvolution3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr) {
-  bool weights_are_buffer =
-      !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple();
+  const bool weights_are_buffer = UseBuffersForWeights(gpu_info);
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);

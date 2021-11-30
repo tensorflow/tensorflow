@@ -40,10 +40,10 @@ include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
-include "mlir-hlo/Dialect/mhlo/IR/lhlo_dialect.td"
-include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td"
-include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.td"
-include "mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.td"
+include "mlir-hlo/Dialect/lhlo/IR/lhlo_dialect.td"
+include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_base.td"
+include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.td"
+include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.td"
 
 //===----------------------------------------------------------------------===//
 // LMHLO nullary op definitions.
@@ -1363,7 +1363,7 @@ def FusionOp : LHLO_Op<"fusion", [
   let extraClassDeclaration = [{
     SmallVector<Value> getInputBuffers() {
       SmallVector<Value> buffers;
-      for (auto load : region().front().getOps<memref::TensorLoadOp>()) {
+      for (auto load : region().front().getOps<bufferization::ToTensorOp>()) {
         buffers.push_back(load.memref());
       }
       return buffers;
@@ -1379,7 +1379,7 @@ def FusionOp : LHLO_Op<"fusion", [
 
     SmallVector<Value> getFusionParameters() {
       SmallVector<Value> buffers;
-      for (auto load : region().front().getOps<memref::TensorLoadOp>()) {
+      for (auto load : region().front().getOps<bufferization::ToTensorOp>()) {
         buffers.push_back(load);
       }
       return buffers;

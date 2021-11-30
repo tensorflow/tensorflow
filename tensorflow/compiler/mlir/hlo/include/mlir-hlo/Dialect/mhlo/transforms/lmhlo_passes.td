@@ -51,9 +51,9 @@ def LhloLegalizeToParallelLoopsPass : FunctionPass<"lhlo-legalize-to-parallel-lo
   let constructor = "createLegalizeLhloToParallelLoopsPass()";
 }
 
-def LegalizeTensorLoadOpPass : FunctionPass<"lhlo-legalize-tensor-load-op"> {
-  let summary = "Legalize tensor load ops that are inserted during mhlo to lmhlo conversion.";
-  let constructor = "createLegalizeTensorLoadOpPass()";
+def LegalizeToTensorOpPass : FunctionPass<"lhlo-legalize-to-tensor-op"> {
+  let summary = "Legalize bufferization.to_tensor ops inserted during mhlo to lmhlo conversion.";
+  let constructor = "createLegalizeToTensorOpPass()";
 }
 
 def LhloFusionPass : FunctionPass<"lhlo-fusion"> {

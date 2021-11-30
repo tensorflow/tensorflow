@@ -153,7 +153,7 @@ void PythonAPIDispatcher::Unregister(PyObject* func) {
 
 std::string PythonAPIDispatcher::DebugString() const {
   DCheckPyGilState();
-  std::string out = absl::StrCat("<Disptach(", api_name_, "): ");
+  std::string out = absl::StrCat("<Dispatch(", api_name_, "): ");
 
   const char* sep = "";
   for (const auto& target : targets_) {

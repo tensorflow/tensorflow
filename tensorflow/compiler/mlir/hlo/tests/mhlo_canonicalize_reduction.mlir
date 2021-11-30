@@ -34,7 +34,7 @@ func @test_rank2_row_reduction(%arg0: tensor<?x?xf32>) -> tensor<?xf32> {
 // CHECK-LABEL: @test_rank3_column_reduction
 // CHECK: [[R1:%[a-zA-Z0-9]+]] = "mhlo.dynamic_reshape"
 // CHECK-SAME: (tensor<?x?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
-// CHECK-NEXT: [[R2:%[a-zA-Z0-9]+]] = "mhlo.reduce"
+// CHECK-NEXT: [[R2:%[a-zA-Z0-9]+]] = mhlo.reduce
 // CHECK-SAME: [[R1]]
 // CHECK: dimensions = dense<0> : tensor<1xi64>
 // CHECK: "mhlo.dynamic_reshape"
@@ -55,7 +55,7 @@ func @test_rank3_column_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
 // CHECK-LABEL: @test_rank3_row_reduction
 // CHECK: [[R1:%[a-zA-Z0-9]+]] = "mhlo.dynamic_reshape"
 // CHECK-SAME: (tensor<?x?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
-// CHECK-NEXT: [[R2:%[a-zA-Z0-9]+]] = "mhlo.reduce"
+// CHECK-NEXT: [[R2:%[a-zA-Z0-9]+]] = mhlo.reduce
 // CHECK-SAME: [[R1]]
 // CHECK: dimensions = dense<1> : tensor<1xi64>
 // CHECK: "mhlo.dynamic_reshape"
@@ -76,7 +76,7 @@ func @test_rank3_row_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
 // CHECK-LABEL: @test_reduce_to_scalar
 // CHECK: [[R1:%[a-zA-Z0-9]+]] = "mhlo.dynamic_reshape"
 // CHECK-SAME: (tensor<?x?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
-// CHECK-NEXT: [[R2:%[a-zA-Z0-9]+]] = "mhlo.reduce"
+// CHECK-NEXT: [[R2:%[a-zA-Z0-9]+]] = mhlo.reduce
 // CHECK-SAME: [[R1]]
 // CHECK: dimensions = dense<0> : tensor<1xi64>
 // CHECK: "mhlo.reshape"

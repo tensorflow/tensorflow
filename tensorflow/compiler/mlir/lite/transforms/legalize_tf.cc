@@ -903,7 +903,7 @@ void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
                   LegalizeUnidirectionalSequenceRnn>(context);
 }
 
-void applyPatterns(FuncOp func, ConversionTarget& target,
+bool applyPatterns(FuncOp func, ConversionTarget& target,
                    FrozenRewritePatternSet& frozenPatterns) {
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.
@@ -912,9 +912,10 @@ void applyPatterns(FuncOp func, ConversionTarget& target,
   const int max_iterations = 15;
   for (int i = 0; i < max_iterations; ++i) {
     if (failed(applyPartialConversion(func, target, frozenPatterns))) {
-      return;
+      return false;
     }
   }
+  return true;
 }
 
 void LegalizeTF::runOnFunction() {
@@ -928,36 +929,26 @@ void LegalizeTF::runOnFunction() {
   target.addLegalOp<mlir::arith::ConstantOp>();
   target.addLegalOp<mlir::ConstantOp>();
   target.addLegalOp<ConstOp>();
+  target.addLegalOp<DequantizeOp>();
+  target.addLegalOp<QConstOp>();
   if (run_tfl_runtime_verification_) {
     target.addDynamicallyLegalDialect<TensorFlowLiteDialect>([](Operation* op) {
       auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
       if (!tfl_op) return false;
-      return succeeded(tfl_op.VerifyTflRuntimeConstraints(op));
+      return succeeded(tfl_op.VerifyTflRuntimeConstraints(
+          op, /*emit_error_on_verify_fail=*/false));
     });
   } else {
     target.addLegalDialect<TensorFlowLiteDialect>();
   }
-
-  // Ignore transient errors by registering an no-op handler.
-  // Applying legalization patterns will emit unwanted, transient errors when
-  // the replaced TFLite ops do not meet the sanity checks. In order to ignore
-  // the transient errors, the following lines override a diagnostic handler
-  // with an no-op handler only while this pass runs.
-  uint64_t current_thread_id = llvm::get_threadid();
-  ScopedDiagnosticHandler scoped_diag_handler(
-      context, [&current_thread_id](Diagnostic&) -> LogicalResult {
-        // Consume only errors that are coming from the same thread in order not
-        // to ignore errors from other passes that are running. Things running
-        // in the pass manager can be multi-threaded.
-        return success(current_thread_id == llvm::get_threadid());
-      });
 
   OwningRewritePatternList stage1Patterns(&getContext());
 
   addPatterns(context, stage1Patterns);
 
   FrozenRewritePatternSet stage1FrozenPatterns(std::move(stage1Patterns));
-  applyPatterns(func, target, stage1FrozenPatterns);
+  if (!applyPatterns(func, target, stage1FrozenPatterns))
+    return signalPassFailure();
 
   // Explict BroadcastTo addition for left-over broadcast-able ops.
   // The following pattern matchings should be done after the other legalization
@@ -987,7 +978,8 @@ void LegalizeTF::runOnFunction() {
                         ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
 
   FrozenRewritePatternSet stage2FrozenPatterns(std::move(stage2Patterns));
-  applyPatterns(func, target, stage2FrozenPatterns);
+  if (!applyPatterns(func, target, stage2FrozenPatterns))
+    return signalPassFailure();
 }
 
 }  // namespace

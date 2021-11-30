@@ -366,6 +366,32 @@ TEST(MultinomialTest, ValidateTFLiteOutputisTheSameAsTFOutput_3Classes) {
   }
 }
 
+TEST(MultinomialTest, ValidateTFLiteOutputisTheSameAsTFOutput_MultiBatch) {
+  const std::vector<float> kProb = {0.1f, 0.2f, 0.7f, 0.2f, 0.3f,
+                                    0.5f, 0.1f, 0.1f, 0.8f};
+  const std::initializer_list<float> kLogits = {
+      log(0.1f), log(0.2f), log(0.7f), log(0.2f), log(0.3f),
+      log(0.5f), log(0.1f), log(0.1f), log(0.8f)};
+  const int kNumBatches = 3;
+  const int kNumClasses = 3;
+  const int kNumSamples = 30;
+
+  MultinomialOpModel m(/*input_type=*/InputType::kConst, kLogits, kNumBatches,
+                       kNumClasses, kNumSamples, /*seed=*/1234, /*seed2=*/5678);
+  m.Invoke();
+  auto output = m.GetOutput();
+  EXPECT_EQ(output.size(), kNumBatches * kNumSamples);
+
+  const std::vector<int64_t> expected_output = {
+      {2, 1, 2, 1, 2, 2, 2, 2, 2, 2, 2, 2, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1,
+       2, 2, 1, 2, 2, 2, 2, 0, 1, 2, 1, 2, 2, 2, 0, 1, 1, 2, 0, 0, 0, 2, 1,
+       2, 2, 2, 0, 2, 1, 2, 1, 2, 0, 2, 1, 0, 1, 2, 2, 2, 0, 2, 0, 2, 2, 2,
+       2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 1, 1, 0, 1, 2, 2, 2, 2, 2, 2, 2}};
+
+  // Validate output.
+  EXPECT_EQ(expected_output, output);
+}
+
 TEST(MultinomialTest, ValidateMultiBatchOutput) {
   const std::vector<float> kProb = {0.1f, 0.9f, 0.2f, 0.8f, 0.3f,
                                     0.7f, 0.4f, 0.6f, 0.5f, 0.5f};

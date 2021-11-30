@@ -969,56 +969,79 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       bool use_mkl_dnn =
           hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
 
+      auto valid_num_dims = [](absl::Span<const int64_t> xs) {
+        return xs.size() >= 2 && xs.size() <= 3;
+      };
+      TF_RET_CHECK(valid_num_dims(input_dims));
+      TF_RET_CHECK(valid_num_dims(kernel_dims));
+      TF_RET_CHECK(valid_num_dims(output_dims));
+      TF_RET_CHECK(valid_num_dims(strides));
+      TF_RET_CHECK(padding.size() >= 2 && padding.size() <= 3);
+      TF_RET_CHECK(valid_num_dims(base_dilation));
+      TF_RET_CHECK(valid_num_dims(window_dilation));
+
       // TODO(b/78639006) Singlethread MKL conv2d is not implemented due to the
       // potential race condition by setting the omp_num_threads.
-      const char* fn_name =
-          primitive_type == F16
-              ? (multi_threaded
-                     ? runtime::kEigenConvF16SymbolName
-                     : runtime::kEigenSingleThreadedConvF16SymbolName)
-              : (multi_threaded
-                     ? (use_mkl_dnn ? runtime::kMKLConvF32SymbolName
-                                    : runtime::kEigenConvF32SymbolName)
-                     : runtime::kEigenSingleThreadedConvF32SymbolName);
+      const char* fn_name;
+      if (input_dims.size() == 2) {
+        fn_name =
+            primitive_type == F16
+                ? (multi_threaded
+                       ? runtime::kEigenConv2DF16SymbolName
+                       : runtime::kEigenSingleThreadedConv2DF16SymbolName)
+                : (multi_threaded
+                       ? (use_mkl_dnn ? runtime::kMKLConv2DF32SymbolName
+                                      : runtime::kEigenConv2DF32SymbolName)
+                       : runtime::kEigenSingleThreadedConv2DF32SymbolName);
+      } else if (input_dims.size() == 3) {
+        fn_name =
+            primitive_type == F16
+                ? (multi_threaded
+                       ? runtime::kEigenConv3DF16SymbolName
+                       : runtime::kEigenSingleThreadedConv3DF16SymbolName)
+                : (multi_threaded
+                       ? runtime::kEigenConv3DF32SymbolName
+                       : runtime::kEigenSingleThreadedConv3DF32SymbolName);
+      } else {
+        LOG(FATAL) << "Invalid number of dimensions " << input_dims.size();
+      }
       if (!multi_threaded && use_mkl_dnn) {
         LOG(WARNING) << "Using Eigen instead of MKL-DNN for single-threaded "
-                        "conv2d function.";
+                        "convolution.";
       }
-      TF_RET_CHECK(input_dims.size() == 2);
-      TF_RET_CHECK(kernel_dims.size() == 2);
-      TF_RET_CHECK(output_dims.size() == 2);
-      TF_RET_CHECK(strides.size() == 2);
-      TF_RET_CHECK(padding.size() == 2);
-      TF_RET_CHECK(base_dilation.size() == 2);
-      TF_RET_CHECK(window_dilation.size() == 2);
-      EmitCallToFunc(fn_name,
-                     {
-                         GetExecutableRunOptionsArgument(),
-                         BitCast(GetEmittedValueFor(convolution), ir_ptr_type),
-                         BitCast(lhs_address, ir_ptr_type),
-                         BitCast(rhs_address, ir_ptr_type),
-                         b_.getInt64(input_batch),
-                         b_.getInt64(input_dims[0]),
-                         b_.getInt64(input_dims[1]),
-                         b_.getInt64(input_channels),
-                         b_.getInt64(kernel_dims[0]),
-                         b_.getInt64(kernel_dims[1]),
-                         b_.getInt64(kernel_channels),
-                         b_.getInt64(kernel_filters),
-                         b_.getInt64(output_dims[0]),
-                         b_.getInt64(output_dims[1]),
-                         b_.getInt64(strides[0]),
-                         b_.getInt64(strides[1]),
-                         b_.getInt64(padding[0].first),
-                         b_.getInt64(padding[0].second),
-                         b_.getInt64(padding[1].first),
-                         b_.getInt64(padding[1].second),
-                         b_.getInt64(base_dilation[0]),
-                         b_.getInt64(base_dilation[1]),
-                         b_.getInt64(window_dilation[0]),
-                         b_.getInt64(window_dilation[1]),
-                     },
-                     b_.getVoidTy(), /*does_not_throw=*/true,
+      std::vector<llvm::Value*> args = {
+          GetExecutableRunOptionsArgument(),
+          BitCast(GetEmittedValueFor(convolution), ir_ptr_type),
+          BitCast(lhs_address, ir_ptr_type),
+          BitCast(rhs_address, ir_ptr_type),
+          b_.getInt64(input_batch),
+      };
+      for (int64_t d : input_dims) {
+        args.push_back(b_.getInt64(d));
+      }
+      args.push_back(b_.getInt64(input_channels));
+      for (int64_t d : kernel_dims) {
+        args.push_back(b_.getInt64(d));
+      }
+      args.push_back(b_.getInt64(kernel_channels));
+      args.push_back(b_.getInt64(kernel_filters));
+      for (int64_t d : output_dims) {
+        args.push_back(b_.getInt64(d));
+      }
+      for (int64_t d : strides) {
+        args.push_back(b_.getInt64(d));
+      }
+      for (const auto& p : padding) {
+        args.push_back(b_.getInt64(p.first));
+        args.push_back(b_.getInt64(p.second));
+      }
+      for (int64_t d : base_dilation) {
+        args.push_back(b_.getInt64(d));
+      }
+      for (int64_t d : window_dilation) {
+        args.push_back(b_.getInt64(d));
+      }
+      EmitCallToFunc(fn_name, args, b_.getVoidTy(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
 
       return Status::OK();

@@ -398,8 +398,10 @@ StatusOr<Literal> HloEvaluator::EvaluateElementwiseUnaryOp(
   std::unique_ptr<HloInstruction> operand_instr =
       HloInstruction::CreateConstant(operand.Clone());
 
+  TF_ASSIGN_OR_RETURN(Shape inferred_shape, ShapeInference::InferUnaryOpShape(
+                                                opcode, operand.shape()));
   std::unique_ptr<HloInstruction> cloned_instruction =
-      HloInstruction::CreateUnary(operand.shape(), opcode, operand_instr.get());
+      HloInstruction::CreateUnary(inferred_shape, opcode, operand_instr.get());
   auto result = Evaluate(cloned_instruction.get());
 
   return result;
