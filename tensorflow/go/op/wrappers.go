@@ -15491,6 +15491,19 @@ func DebugNumericSummaryV2(scope *Scope, input tf.Output, optional ...DebugNumer
 	return op.Output(0)
 }
 
+// XlaConvV2Attr is an optional argument to XlaConvV2.
+type XlaConvV2Attr func(optionalAttr)
+
+// XlaConvV2BatchGroupCount sets the optional batch_group_count attribute to value.
+//
+// value: number of batch groups or grouped filters.
+// If not specified, defaults to 1
+func XlaConvV2BatchGroupCount(value int64) XlaConvV2Attr {
+	return func(m optionalAttr) {
+		m["batch_group_count"] = value
+	}
+}
+
 // Wraps the XLA ConvGeneralDilated operator, documented at
 //
 //  https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
@@ -15507,11 +15520,14 @@ func DebugNumericSummaryV2(scope *Scope, input tf.Output, optional ...DebugNumer
 //	dimension_numbers: a serialized xla::ConvolutionDimensionNumbers proto.
 //	precision_config: a serialized xla::PrecisionConfig proto.
 //	preferred_element_type: The type of the tensor.
-func XlaConvV2(scope *Scope, lhs tf.Output, rhs tf.Output, window_strides tf.Output, padding tf.Output, lhs_dilation tf.Output, rhs_dilation tf.Output, feature_group_count tf.Output, dimension_numbers string, precision_config string, preferred_element_type tf.DataType) (output tf.Output) {
+func XlaConvV2(scope *Scope, lhs tf.Output, rhs tf.Output, window_strides tf.Output, padding tf.Output, lhs_dilation tf.Output, rhs_dilation tf.Output, feature_group_count tf.Output, dimension_numbers string, precision_config string, preferred_element_type tf.DataType, optional ...XlaConvV2Attr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "precision_config": precision_config, "preferred_element_type": preferred_element_type}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "XlaConvV2",
 		Input: []tf.Input{
