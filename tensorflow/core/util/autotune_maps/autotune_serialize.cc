@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 
 #include <map>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
