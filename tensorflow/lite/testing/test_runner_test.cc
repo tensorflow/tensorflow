@@ -50,6 +50,7 @@ class ConcreteTestRunner : public TestRunner {
       override {
     return true;
   }
+  std::vector<string> GetOutputNames() override { return {}; }
 
  private:
   std::vector<int> ids_;

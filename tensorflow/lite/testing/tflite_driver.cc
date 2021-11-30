@@ -555,6 +555,15 @@ bool TfLiteDriver::CheckResults(
   return CheckResults();
 }
 
+std::vector<string> TfLiteDriver::GetOutputNames() {
+  if (!(IsValid() && signature_runner_)) return {};
+  std::vector<string> names;
+  for (const auto* name : signature_runner_->output_names()) {
+    names.push_back(name);
+  }
+  return names;
+}
+
 void TfLiteDriver::ResetTensor(int id) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);

@@ -62,8 +62,10 @@ TEST(TfliteDriverTest, SimpleTestWithSignature) {
   std::unique_ptr<TestRunner> runner(new TfLiteDriver);
 
   runner->SetModelBaseDir("tensorflow/lite");
-  runner->LoadModel("testdata/multi_add_signature.bin", "serving_default");
+  runner->LoadModel("testdata/multi_add.bin", "serving_default");
   ASSERT_TRUE(runner->IsValid());
+
+  ASSERT_THAT(runner->GetOutputNames(), ElementsAre("x", "y"));
 
   for (const auto& i : {"a", "b", "c", "d"}) {
     runner->ReshapeTensor(i, "1,2,2,1");

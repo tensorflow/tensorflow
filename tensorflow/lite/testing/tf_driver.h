@@ -58,6 +58,7 @@ class TfDriver : public TestRunner {
       override {
     return true;
   }
+  std::vector<string> GetOutputNames() override { return output_names_; }
 
   void SetInput(int id, const string& values_as_string) override;
   void Invoke() override;

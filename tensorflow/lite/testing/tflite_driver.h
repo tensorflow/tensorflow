@@ -67,6 +67,7 @@ class TfLiteDriver : public TestRunner {
       const std::vector<std::pair<string, string>>& expected_outputs,
       const std::vector<std::pair<string, string>>& expected_output_shapes)
       override;
+  std::vector<string> GetOutputNames() override;
 
   const std::vector<int>& GetInputs() override { return inputs_; }
   const std::vector<int>& GetOutputs() override { return outputs_; }
