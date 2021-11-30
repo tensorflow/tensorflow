@@ -247,7 +247,6 @@ def conv(lhs,
          rhs_dilation,
          dimension_numbers,
          feature_group_count=1,
-         batch_group_count=1,
          precision_config=None,
          preferred_element_type=None,
          name=None,
@@ -267,7 +266,6 @@ def conv(lhs,
     rhs_dilation: dilation to apply between kernel elements
     dimension_numbers: a `ConvolutionDimensionNumbers` proto.
     feature_group_count: number of feature groups for grouped convolution.
-    batch_group_count: number of batch groups or grouped filters.
     precision_config: a `xla.PrecisionConfig` proto.
     preferred_element_type: the result `dtype`.
     name: an optional name for the operator.
@@ -279,9 +277,7 @@ def conv(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
-  needs_v2 = (
-      preferred_element_type or (lhs.dtype != rhs.dtype) or
-      batch_group_count > 1)
+  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
   if needs_v2 or use_v2:
@@ -293,7 +289,6 @@ def conv(lhs,
         lhs_dilation=lhs_dilation,
         rhs_dilation=rhs_dilation,
         feature_group_count=feature_group_count,
-        batch_group_count=batch_group_count,
         dimension_numbers=dimension_numbers.SerializeToString(),
         precision_config=precision_config_proto,
         preferred_element_type=preferred_element_type,
