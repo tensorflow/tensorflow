@@ -930,7 +930,23 @@ cc_library(
     deps = [
         ":hlo",
         ":lhlo",
-        ":map_hlo_to_lhlo_op",
+        ":map_lhlo_to_hlo_op",
+        ":map_mhlo_to_scalar_op",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ComplexDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "map_mhlo_to_scalar_op",
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"],
+    deps = [
+        ":hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ComplexDialect",
@@ -953,6 +969,15 @@ cc_library(
 cc_library(
     name = "map_hlo_to_lhlo_op",
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+    ],
+)
+
+cc_library(
+    name = "map_lhlo_to_hlo_op",
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_lhlo_to_hlo_op.h"],
     deps = [
         ":hlo",
         ":lhlo",
@@ -1115,8 +1140,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        ":lhlo",
-        ":map_lmhlo_to_scalar_op",
+        ":map_mhlo_to_scalar_op",
         ":pass_details",
         ":type_conversion",
         "@llvm-project//llvm:Support",
