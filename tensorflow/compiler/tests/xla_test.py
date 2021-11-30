@@ -173,6 +173,7 @@ class XLATestCase(test.TestCase):
 
     if FLAGS.disabled_manifest is not None:
       with open(FLAGS.disabled_manifest, 'r') as manifest_file:
+        logging.info("Data Load Logging")
         disabled_regex, self._method_types_filter = (
             parse_disabled_manifest(manifest_file.read()))
         if disabled_regex:
