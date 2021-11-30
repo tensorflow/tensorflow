@@ -368,9 +368,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     output_node_name = output_node_names[0]
 
     file_path_nodes = {}
-    # TODO(b/188455028): Remove this check when
-    # `CapturableResource._map_resources` take an argument to provide the
-    # re-mapped asset tensor object instead of the original eager one.
+    # When building a tf.function, track files as `saved_model.Asset`s.
     if ops.get_default_graph().building_function:
       asset_tracker = self._maybe_track_assets(graph_def)
       for key in asset_tracker:
@@ -4430,10 +4428,9 @@ class TensorSliceDataset(DatasetSource):
               tensor_shape.dimension_value(t.get_shape()[0])))
 
     kwargs = {
-        "output_shapes": structure.get_flat_tensor_shapes(self._structure)
+        "output_shapes": structure.get_flat_tensor_shapes(self._structure),
+        "is_files": is_files
     }
-    if compat.forward_compatible(2021, 9, 20):
-      kwargs["is_files"] = is_files
     if name or compat.forward_compatible(2021, 9, 30):
       kwargs["metadata"] = self._metadata.SerializeToString()
     variant_tensor = gen_dataset_ops.tensor_slice_dataset(

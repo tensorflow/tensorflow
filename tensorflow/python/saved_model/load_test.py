@@ -29,7 +29,6 @@ import numpy as np
 
 
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import backprop
@@ -2380,15 +2379,14 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
     file_io.delete_file(os.path.join(temp_dir, file_name))
     asset_path = os.path.join(save_dir, "assets/{}".format(file_name))
-    if compat.forward_compatible(2021, 9, 20):
-      self.assertTrue(file_io.file_exists(asset_path))
-      load_dir = os.path.join(self.get_temp_dir(), "load_dir")
-      file_io.rename(save_dir, load_dir)
+    self.assertTrue(file_io.file_exists(asset_path))
+    load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+    file_io.rename(save_dir, load_dir)
 
-      loaded = load.load(load_dir)
-      self.assertEqual(
-          18,  # 3 * (1 + 2 + 3)
-          loaded(constant_op.constant(3, dtype=dtypes.int32)).numpy())
+    loaded = load.load(load_dir)
+    self.assertEqual(
+        18,  # 3 * (1 + 2 + 3)
+        loaded(constant_op.constant(3, dtype=dtypes.int32)).numpy())
 
 
 class DeferredInitModuleVariablesTest(test.TestCase):
