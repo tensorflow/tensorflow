@@ -31,6 +31,7 @@ from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
+from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metdata_fb
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import convert_jax_hlo as _convert_jax_hlo
@@ -62,12 +63,14 @@ from tensorflow.lite.python.util import convert_debug_info_func as _convert_debu
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
 from tensorflow.lite.python.util import get_debug_info as _get_debug_info
 from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
+from tensorflow.lite.python.util import get_sparsity_modes as _get_sparsity_modes
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
 from tensorflow.lite.python.util import get_tf_type_name as _get_tf_type_name
 from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
 from tensorflow.lite.python.util import model_input_signature as _model_input_signature
 from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io_type
+from tensorflow.lite.python.util import populate_conversion_metadata as _populate_conversion_metadata
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.lite.python.util import trace_model_call as _trace_model_call
@@ -81,6 +84,7 @@ from tensorflow.python.eager import function as _function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.framework import versions
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.platform import gfile
@@ -457,6 +461,10 @@ class QuantizationMode(object):
 class TFLiteConverterBase(object):
   """Converter subclass to share functionality between V1 and V2 converters."""
 
+  # Stores the original model type temporarily to transmit the information
+  # from the factory class methods to TFLiteConverterBase init function.
+  _original_model_type = conversion_metdata_fb.ModelType.NONE
+
   def __init__(self):
     self.optimizations = set()
     self.representative_dataset = None
@@ -481,6 +489,13 @@ class TFLiteConverterBase(object):
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
     self._experimental_tf_quantization_mode = None
+    # Initializes conversion metadata.
+    self.exclude_conversion_metadata = False
+    self._metadata = conversion_metdata_fb.ConversionMetadataT()
+    self._metadata.environment = conversion_metdata_fb.EnvironmentT()
+    self._metadata.options = conversion_metdata_fb.ConversionOptionsT()
+    self._metadata.environment.tensorflowVersion = versions.__version__
+    self._metadata.environment.modelType = self._get_original_model_type()
 
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old TOCO quantizer. Used only if
@@ -656,6 +671,19 @@ class TFLiteConverterBase(object):
   def _increase_conversion_success_metric(self):
     self._tflite_metrics.increase_counter_converter_success()
 
+  @classmethod
+  def _set_original_model_type(cls, model_type):
+    """Stores the original model type."""
+    if model_type == conversion_metdata_fb.ModelType.NONE:
+      raise ValueError("The original model type should be specified.")
+    cls._original_model_type = model_type
+
+  def _get_original_model_type(self):
+    """One-time getter to return original model type and set it to NONE."""
+    model_type = TFLiteConverterBase._original_model_type
+    TFLiteConverterBase._original_model_type = conversion_metdata_fb.ModelType.NONE
+    return model_type
+
   def _save_conversion_params_metric(self,
                                      graph_def=None,
                                      inference_type=None,
@@ -670,6 +698,12 @@ class TFLiteConverterBase(object):
         graph_def, self._experimental_disable_per_channel,
         self._experimental_new_dynamic_range_quantizer)
     converter_kwargs.update({
+        "tf_version":
+            self._metadata.environment.tensorflowVersion,
+        "api_version":
+            self._metadata.environment.apiVersion,
+        "original_model_format":
+            self._metadata.environment.modelType,
         "optimization_default":
             quant_mode.any_optimization_enabled(),
         "optimization_post_training_dynamic_range":
@@ -712,6 +746,35 @@ class TFLiteConverterBase(object):
     for key, value in converter_kwargs.items():
       self._tflite_metrics.set_converter_param(key, format_param(value))
     self._tflite_metrics.set_export_required()
+
+    # Set conversion option metadata.
+    self._metadata.options.allowCustomOps = self.allow_custom_ops
+    self._metadata.options.enableSelectTfOps = (
+        OpsSet.SELECT_TF_OPS in self.target_spec.supported_ops)
+    self._metadata.options.forceSelectTfOps = (
+        set([OpsSet.SELECT_TF_OPS]) == set(self.target_spec.supported_ops))
+    self._metadata.options.modelOptimizationModes = []
+
+    if quant_mode.post_training_fp16():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode.PTQ_FLOAT16)
+
+    if quant_mode.post_training_dynamic_range_int8():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode.PTQ_DYNAMIC_RANGE)
+
+    if quant_mode.is_post_training_integer_quantize_8():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER)
+
+    if quant_mode.is_post_training_integer_quantize_16x8():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode.PTQ_INT16)
+
+    if quant_mode.is_training_time_int8_allow_float():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode
+          .QUANTIZATION_AWARE_TRAINING)
 
   def _set_conversion_latency_metric(self, value):
     self._tflite_metrics.set_converter_latency(value)
@@ -774,6 +837,12 @@ class TFLiteConverterBase(object):
       self._increase_conversion_success_metric()
     self._set_conversion_latency_metric(round(elapsed_time_ms))
     self._tflite_metrics.export_metrics()
+    # Populates the conversion metadata.
+    # TODO(b/202090541): Collects sparsity block size information.
+    sparsity_modes = _get_sparsity_modes(result)
+    self._metadata.options.modelOptimizationModes.extend(sparsity_modes)
+    if not self.exclude_conversion_metadata:
+      result = _populate_conversion_metadata(result, self._metadata)
     return result
 
 
@@ -796,7 +865,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     super(TFLiteConverterBaseV2, self).__init__()
     self.inference_input_type = _dtypes.float32
     self.inference_output_type = _dtypes.float32
-    self._collected_converter_params.update({"api_version": 2})
+    self._metadata.environment.apiVersion = 2
 
   def _validate_inference_input_output_types(self, quant_mode):
     """Validate inference_input_type and inference_output_type flags."""
@@ -1496,6 +1565,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       When False, any unknown operation is an error. When True, custom ops are
       created for any op that is unknown. The developer needs to provide these
       to the TensorFlow Lite runtime with a custom resolver. (default False)
+    exclude_conversion_metadata: Whether not to embed the conversion metadata
+      into the converted model. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion instead of TOCO conversion. (default True)
     experimental_new_quantizer: Experimental flag, subject to change. Enables
@@ -1561,6 +1632,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Raises:
       Invalid input type.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_CONCRETE_FUNCTIONS)
+    # pylint: enable=protected-access
     if trackable_obj is None:
       logging.warning(
           "Please consider providing the trackable_obj argument in the "
@@ -1596,6 +1671,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Raises:
       Invalid signature keys.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_SAVED_MODEL)
+    # pylint: enable=protected-access
     # When run without eager enabled, this will return the legacy
     # TFLiteConverter.
     if not context.executing_eagerly():
@@ -1648,6 +1727,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Returns:
       TFLiteConverter object.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.KERAS_MODEL)
+    # pylint: enable=protected-access
     return TFLiteKerasModelConverterV2(model)
 
   @classmethod
@@ -1666,6 +1749,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Returns:
       TFLiteConverter object.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.JAX)
+    # pylint: enable=protected-access
     return TFLiteJaxConverterV2(serving_funcs, inputs)
 
   # pylint: disable=useless-super-delegation
@@ -1710,6 +1797,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
     self._experimental_allow_all_select_tf_ops = False
+    self._metadata.environment.apiVersion = 1
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
@@ -1982,7 +2070,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
         "conversion_summary_dir": self.conversion_summary_dir,
-        "api_version": 1,
     })
     super(TFLiteConverterBaseV1,
           self)._save_conversion_params_metric(self._graph_def,
@@ -2334,6 +2421,8 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
       flag to be specified. (default False)
     conversion_summary_dir: Full path of the directory to store conversion logs.
       (default None)
+    exclude_conversion_metadata: Whether not to embed the conversion metadata
+      into the converted model. (default False)
     target_ops: Deprecated. Please use `target_spec.supported_ops` instead.
     post_training_quantize: Deprecated. Please use `optimizations` instead and
       set it to `{tf.lite.Optimize.DEFAULT}`. (default False)
@@ -2419,6 +2508,10 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     Returns:
       TFLiteConverter class.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_SESSION)
+    # pylint: enable=protected-access
     graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(
         graph_def,
@@ -2455,6 +2548,10 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
         input_arrays or output_arrays contains an invalid tensor name.
         input_shapes is not correctly defined when required
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_GRAPH_DEF)
+    # pylint: enable=protected-access
     with _ops.Graph().as_default():
       with _session.Session() as sess:
         # Read GraphDef from file.
@@ -2548,6 +2645,10 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     Returns:
       TFLiteConverter class.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_SAVED_MODEL)
+    # pylint: enable=protected-access
     if tag_set is None:
       tag_set = set([_tag_constants.SERVING])
     if signature_key is None:
@@ -2592,6 +2693,10 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     Returns:
       TFLiteConverter class.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.KERAS_MODEL)
+    # pylint: enable=protected-access
     return TFLiteKerasModelConverter(model_file, input_arrays, input_shapes,
                                      output_arrays, custom_objects)
 

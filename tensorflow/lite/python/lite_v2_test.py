@@ -33,6 +33,7 @@ import tensorflow as tf
 if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
+from tensorflow.lite.python import conversion_metadata_schema_py_generated as metadata_fb
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
@@ -45,10 +46,12 @@ from tensorflow.lite.python.interpreter import InterpreterWithCustomOps
 from tensorflow.lite.python.interpreter import OpResolverType
 from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
 from tensorflow.lite.python.testdata import double_op
+from tensorflow.lite.python.util import get_conversion_metadata
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import map_ops
 from tensorflow.python.ops import rnn
@@ -202,6 +205,14 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertTrue(([1] == output_details['output_0']['shape']).all())
     self.assertEqual((0.0, 0), output_details['output_0']['quantization'])
 
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertEqual(metadata.environment.apiVersion, 2)
+    self.assertEqual(metadata.environment.modelType,
+                     metadata_fb.ModelType.TF_CONCRETE_FUNCTIONS)
+    self.assertAllEqual([], metadata.options.modelOptimizationModes)
+
   def _getIntegerQuantizeModel(self, num_filters=16):
     np.random.seed(0)
 
@@ -244,6 +255,20 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.experimental_new_quantizer = mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(quantized_tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertEqual(
+        metadata.environment.tensorflowVersion.decode('utf-8'),
+        versions.__version__)
+    self.assertEqual(metadata.environment.apiVersion, 2)
+    self.assertEqual(metadata.environment.modelType,
+                     metadata_fb.ModelType.TF_CONCRETE_FUNCTIONS)
+    self.assertEqual(metadata.options.allowCustomOps, False)
+    self.assertEqual(metadata.options.enableSelectTfOps, False)
+    self.assertEqual(metadata.options.forceSelectTfOps, False)
+    self.assertAllEqual([metadata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER],
+                        metadata.options.modelOptimizationModes)
 
     # The default input and output types should be float.
     interpreter = Interpreter(model_content=quantized_tflite_model)
@@ -353,6 +378,14 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.inference_output_type = inference_input_output_type
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(quantized_tflite_model)
+    self.assertIsNotNone(metadata)
+    expected_opt_options = [metadata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER]
+    if is_int16_quantize:
+      expected_opt_options = [metadata_fb.ModelOptimizationMode.PTQ_INT16]
+    self.assertAllEqual(expected_opt_options,
+                        metadata.options.modelOptimizationModes)
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
@@ -565,6 +598,12 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.inference_output_type = inference_input_output_type
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(quantized_tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertAllEqual(
+        [metadata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING],
+        metadata.options.modelOptimizationModes)
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
@@ -739,6 +778,15 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.inference_output_type = inference_input_output_type
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(quantized_tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertEqual(metadata.options.enableSelectTfOps, True)
+    expected_opt_options = [metadata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER]
+    if is_int16_quantize:
+      expected_opt_options = [metadata_fb.ModelOptimizationMode.PTQ_INT16]
+    self.assertAllEqual(expected_opt_options,
+                        metadata.options.modelOptimizationModes)
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
@@ -1166,6 +1214,72 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         self.assertEqual(operator.version, 3)
         break
 
+  @parameterized.named_parameters(
+      ('EnableMlirConverter', True),  # enable mlir
+      ('DisableMlirConverter', False))  # disable mlir
+  @test_util.run_v2_only
+  def testForceSelectTFOps(self, enable_mlir_converter):
+    root = self._getSimpleVariableModel()
+    input_data = tf.constant(1., shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    converter.experimental_new_converter = enable_mlir_converter
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertEqual(metadata.options.forceSelectTfOps, True)
+
+    # Check output value from converted model.
+    expected_value = root.f(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value.numpy(), actual_value)
+
+  def testExcludeConversionMetadata(self):
+    root = self._getSimpleVariableModel()
+    input_data = tf.constant(1., shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    converter.exclude_conversion_metadata = True
+    tflite_model = converter.convert()
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(tflite_model)
+    self.assertIsNone(metadata)
+
+  def testConversionMetadataForDynamicRange(self):
+    func, _ = self._getSqrtModel()
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [func.get_concrete_function()])
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_model = converter.convert()
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(quantized_model)
+    self.assertIsNotNone(metadata)
+    self.assertAllEqual([metadata_fb.ModelOptimizationMode.PTQ_DYNAMIC_RANGE],
+                        metadata.options.modelOptimizationModes)
+
+  def testConversionMetadataForFloat16(self):
+    root, func, calibration_gen = self._getIntegerQuantizeModel()
+    converter = lite.TFLiteConverterV2.from_concrete_functions([func], root)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    converter.target_spec.supported_types = [dtypes.float16]
+    quantized_model = converter.convert()
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(quantized_model)
+    self.assertIsNotNone(metadata)
+    self.assertAllEqual([metadata_fb.ModelOptimizationMode.PTQ_FLOAT16],
+                        metadata.options.modelOptimizationModes)
+
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
@@ -1501,6 +1615,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
     tflite_model = converter.convert()
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertEqual(metadata.environment.modelType,
+                     metadata_fb.ModelType.TF_SAVED_MODEL)
 
     # Check values from converted model.
     expected_value = root.f(input_data)
@@ -2107,7 +2226,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       ('_PerChannelDynamicRange', False, False, True),
       ('_PerTensorDynamicRange', True, False, True))
   @test_util.run_v2_only
-  def testDisablePerChannelQuantization(self, disable_per_channel=False,
+  def testDisablePerChannelQuantization(self,
+                                        disable_per_channel=False,
                                         enable_mlir_quantizer=False,
                                         representative_dataset=True):
     # Dynamic range quant requires total num elements of filters > 1024.
@@ -2213,6 +2333,11 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
     tflite_model = converter.convert()
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertEqual(metadata.environment.modelType,
+                     metadata_fb.ModelType.KERAS_MODEL)
 
     # Check values from converted model.
     expected_value = model.predict(input_data)
@@ -2469,6 +2594,10 @@ class FromJaxModelTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.experimental_from_jax(
         [single_input], [[('input_tensor', input_tensor)]])
     tflite_model = converter.convert()
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertEqual(metadata.environment.modelType, metadata_fb.ModelType.JAX)
 
     # Check values from converted_model
     input_data = np.random.random_sample((10, 10))
@@ -3480,6 +3609,10 @@ class CalibrateAndQuantizeWithCustomOpTest(lite_v2_test_util.ModelTest):
     self.assertTrue(tflite_model)
     self.assertGreater(test_registerer.get_num_test_registerer_calls(), 0)
     self.assertIn('Double', tflite_test_util.get_ops_list(tflite_model))
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertEqual(metadata.options.allowCustomOps, True)
 
     # Check the model works with custom ops.
     interpreter = InterpreterWithCustomOps(
@@ -3630,6 +3763,60 @@ class DatasetOpsTest(lite_v2_test_util.ModelTest):
     interpreter.invoke()
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual(10, actual_value)
+
+
+class SparsityTest(lite_v2_test_util.ModelTest):
+
+  def _getSparsificableModel(self, matrix_b_values):
+    np.random.seed(0)
+    root = tracking.AutoTrackable()
+
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[16, 4], dtype=tf.float32)])
+    def func(inp):
+      matrix_b = tf.constant(matrix_b_values, dtype=tf.float32)
+      matrix_b = tf.reshape(matrix_b, [4, 8])
+      matmul = tf.matmul(inp, matrix_b, transpose_a=False, transpose_b=False)
+      output = tf.nn.relu(matmul, name='output')
+      return output
+
+    root.f = func
+    to_save = root.f.get_concrete_function()
+    return (root, to_save)
+
+  def testRandomSparsity(self):
+    matrix_b_values = [
+        0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 1
+    ]
+    root, func = self._getSparsificableModel(matrix_b_values)
+    float_converter = lite.TFLiteConverterV2.from_concrete_functions([func],
+                                                                     root)
+    float_converter.optimizations = [lite.Optimize.EXPERIMENTAL_SPARSITY]
+    float_tflite_model = float_converter.convert()
+    self.assertIsNotNone(float_tflite_model)
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(float_tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertAllEqual([metadata_fb.ModelOptimizationMode.RANDOM_SPARSITY],
+                        metadata.options.modelOptimizationModes)
+
+  def testBlockSparsity(self):
+    matrix_b_values = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0
+    ]
+    root, func = self._getSparsificableModel(matrix_b_values)
+    float_converter = lite.TFLiteConverterV2.from_concrete_functions([func],
+                                                                     root)
+    float_converter.optimizations = [lite.Optimize.EXPERIMENTAL_SPARSITY]
+    float_tflite_model = float_converter.convert()
+    self.assertIsNotNone(float_tflite_model)
+    # Check the conversion metadata.
+    metadata = get_conversion_metadata(float_tflite_model)
+    self.assertIsNotNone(metadata)
+    self.assertAllEqual([metadata_fb.ModelOptimizationMode.BLOCK_SPARSITY],
+                        metadata.options.modelOptimizationModes)
 
 
 if __name__ == '__main__':
