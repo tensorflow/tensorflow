@@ -202,6 +202,36 @@ def write_examples(fp, examples):
       write_tensor(fp, name, value)
 
 
+class TextFormatWriter(object):
+  """Utility class for writing ProtoBuf like messages."""
+
+  def __init__(self, fp, name=None, parent=None):
+    self.fp = fp
+    self.indent = parent.indent if parent else 0
+    self.name = name
+
+  def __enter__(self):
+    if self.name:
+      self.write(self.name + " {")
+      self.indent += 2
+    return self
+
+  def __exit__(self, *exc_info):
+    if self.name:
+      self.indent -= 2
+      self.write("}")
+    return True
+
+  def write(self, data):
+    self.fp.write(" " * self.indent + data + "\n")
+
+  def write_field(self, key, val):
+    self.write(key + ": \"" + val + "\"")
+
+  def sub_message(self, name):
+    return TextFormatWriter(self.fp, name, self)
+
+
 def write_test_cases(fp, model_name, examples):
   """Given a dictionary of `examples`, write a text format representation.
 
@@ -212,25 +242,47 @@ def write_test_cases(fp, model_name, examples):
     fp: File-like object to write to.
     model_name: Filename where the model was written to, relative to filename.
     examples: Example dictionary consisting of keys "inputs" and "outputs"
+
+  Raises:
+    RuntimeError: Example dictionary does not have input / output names.
   """
 
-  fp.write("load_model: %s\n" % os.path.basename(model_name))
+  writer = TextFormatWriter(fp)
+  writer.write_field("load_model", os.path.basename(model_name))
   for example in examples:
-    fp.write("reshape {\n")
-    for _, value in example["inputs"].items():
-      if value is not None:
-        fp.write("  input: \"" + ",".join(map(str, value.shape)) + "\"\n")
-    fp.write("}\n")
+    inputs = []
+    for name in example["inputs"].keys():
+      if name:
+        inputs.append(name)
+    outputs = []
+    for name in example["outputs"].keys():
+      if name:
+        outputs.append(name)
+    if not (inputs and outputs):
+      raise RuntimeError("Empty input / output names.")
 
-    fp.write("invoke {\n")
-    for _, value in example["inputs"].items():
-      if value is not None:
-        fp.write("  input: \"" + format_result(value) + "\"\n")
-    for _, value in example["outputs"].items():
-      fp.write("  output: \"" + format_result(value) + "\"\n")
-      fp.write("  output_shape: \"" +
-               ",".join([str(dim) for dim in value.shape]) + "\"\n")
-    fp.write("}\n")
+    # Reshape message
+    with writer.sub_message("reshape") as reshape:
+      for name, value in example["inputs"].items():
+        with reshape.sub_message("input") as input_msg:
+          input_msg.write_field("key", name)
+          input_msg.write_field("value", ",".join(map(str, value.shape)))
+
+    # Invoke message
+    with writer.sub_message("invoke") as invoke:
+      for name, value in example["inputs"].items():
+        with invoke.sub_message("input") as input_msg:
+          input_msg.write_field("key", name)
+          input_msg.write_field("value", format_result(value))
+      # Expectations
+      for name, value in example["outputs"].items():
+        with invoke.sub_message("output") as output_msg:
+          output_msg.write_field("key", name)
+          output_msg.write_field("value", format_result(value))
+        with invoke.sub_message("output_shape") as output_shape:
+          output_shape.write_field("key", name)
+          output_shape.write_field("value",
+                                   ",".join([str(dim) for dim in value.shape]))
 
 
 def get_input_shapes_map(input_tensors):
