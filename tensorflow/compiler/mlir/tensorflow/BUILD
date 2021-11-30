@@ -2279,6 +2279,9 @@ tf_cc_test(
     name = "dump_graph_test",
     size = "small",
     srcs = ["utils/dump_graph_test.cc"],
+    tags = [
+        "no_windows",  # b/208469759
+    ],
     deps = [
         ":dump_graph",
         "//tensorflow/core:framework",
