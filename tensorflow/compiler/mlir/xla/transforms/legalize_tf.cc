@@ -6355,7 +6355,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
                                       &rewriter);
 
     auto reduce = rewriter.create<ReduceWindowOp>(
-        op.getLoc(), input_type, input, init,
+        op.getLoc(), input.getType(), input, init,
         GetI64ElementsAttr(rewriter.getI64ArrayAttr(window_dims)),
         GetI64ElementsAttr(rewriter.getI64ArrayAttr(window_strides)),
         /*base_dilations=*/DenseIntElementsAttr(),
@@ -6374,7 +6374,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
       low_padding[axis] = 1;
       high_padding[axis] = -1;
       result = rewriter.create<PadOp>(
-          op.getLoc(), op.getType(), result, init,
+          op.getLoc(), result.getType(), result, init,
           GetI64ElementsAttr(low_padding, &rewriter),
           GetI64ElementsAttr(high_padding, &rewriter),
           GetI64ElementsAttr(interior_padding, &rewriter));
