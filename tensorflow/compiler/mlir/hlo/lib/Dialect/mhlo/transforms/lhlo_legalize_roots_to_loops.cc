@@ -66,7 +66,7 @@ LogicalResult elemwiseLowerHelper(
         loc, &b, operand_memref, multidim_index, b.saveInsertionPoint());
     operand_values.push_back(operand_data);
   }
-  auto res = HloOpToStdScalarOp::map<LHLO_OpTy>(
+  auto res = LhloOpToStdScalarOp::map<LHLO_OpTy>(
       llvm::cast<LHLO_OpTy>(op),
       result_memref.getType().cast<MemRefType>().getElementType(),
       operand_values, &b);

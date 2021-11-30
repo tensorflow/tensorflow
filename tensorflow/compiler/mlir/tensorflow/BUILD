@@ -1248,6 +1248,7 @@ cc_library(
         ":tensorflow_analysis",
         ":tensorflow_ops",
         ":tensorflow_optimize_inc_gen",
+        ":tensorflow_side_effects",
         ":tensorflow_types",
         ":tf_data_optimization",
         ":tf_legalize_hlo",
@@ -2264,6 +2265,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core/ir/importexport:import",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -2277,6 +2279,9 @@ tf_cc_test(
     name = "dump_graph_test",
     size = "small",
     srcs = ["utils/dump_graph_test.cc"],
+    tags = [
+        "no_windows",  # b/208469759
+    ],
     deps = [
         ":dump_graph",
         "//tensorflow/core:framework",

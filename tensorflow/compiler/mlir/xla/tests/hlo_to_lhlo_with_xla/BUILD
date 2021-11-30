@@ -17,18 +17,7 @@ glob_lit_tests(
             "noubsan",
             "no_cuda_asan",
             "no_oss",
-        ],  # b/171751580
-        "ops.mlir": tf_cuda_tests_tags() + [
-            "nomsan",
-            "no_cuda_asan",
-            "no_oss",
-        ],  # b/191025174, b/192521861
-        "passthrough.mlir": tf_cuda_tests_tags() + [
-            "nomsan",
-            "no_cuda_asan",
-            "no_cuda_asan",
-            "no_oss",
-        ],  # b/191025174, b/192521861
+        ],
     },
     test_file_exts = [
         "mlir",

@@ -2759,12 +2759,21 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinAbs:
     case kTfLiteBuiltinExp:
     case kTfLiteBuiltinLog:
-    case kTfLiteBuiltinRsqrt:
     case kTfLiteBuiltinPow: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       ExpectIsFloatOperator(context, node, &val_ctx);
+    } break;
+    case kTfLiteBuiltinRsqrt: {
+      ExpectOpVersion(version, 2, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
+                                 &val_ctx);
+      if (android_sdk_version < kNNAPIRuntimeFeatureLevel7) {
+        ExpectIsFloatOperator(context, node, &val_ctx);
+      } else {
+        ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinSlice: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
@@ -3388,6 +3397,31 @@ bool NNAPIDelegateKernel::Validate(
       Expect(!IsBroadcastBatchMatMul(context, node),
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI does not support broadcast batch matmul", &val_ctx);
+    } break;
+    case kTfLiteBuiltinMirrorPad: {
+      ExpectMaxOpVersion(version, 2, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version,
+                                 kNNAPIRuntimeFeatureLevel7, &val_ctx);
+      ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
+
+      const TfLiteIntArrayView input_shape(
+          context->tensors[node->inputs->data[0]].dims);
+      Expect(!HasZeroes(input_shape),
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NN API pad ops do not support input tensors with no elements",
+             &val_ctx);
+      Expect(node->inputs->size == 2,
+             NNAPIValidationFailureType::kUnsupportedOperatorVariant,
+             "Expecting 2 inputs", &val_ctx);
+    } break;
+    case kTfLiteBuiltinReverseV2: {
+      ExpectMaxOpVersion(version, 3, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version,
+                                 kNNAPIRuntimeFeatureLevel7, &val_ctx);
+      ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
+      Expect(node->inputs->size == 2,
+             NNAPIValidationFailureType::kUnsupportedOperatorVariant,
+             "Expecting 2 inputs", &val_ctx);
     } break;
     default:
       // All other operators are not mapped.
@@ -4264,6 +4298,15 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     } break;
     case kTfLiteBuiltinPack: {
       *nn_op_type = ANEURALNETWORKS_PACK;
+    } break;
+    case kTfLiteBuiltinMirrorPad: {
+      auto builtin = reinterpret_cast<TfLiteMirrorPaddingParams*>(
+          mapping_args.node->builtin_data);
+      mapping_args.builder->AddScalarInt32Operand(builtin->mode);
+      *nn_op_type = ANEURALNETWORKS_MIRROR_PAD;
+    } break;
+    case kTfLiteBuiltinReverseV2: {
+      *nn_op_type = ANEURALNETWORKS_REVERSE;
     } break;
     default:
       // All other operators are not mapped.

@@ -37,6 +37,7 @@ constexpr int32_t kMinSdkVersionForNNAPI13 = 30;
 // kNNAPIRuntimeFeatureLevel*.
 constexpr int32_t kNNAPIRuntimeFeatureLevel5 = 31;
 constexpr int32_t kNNAPIRuntimeFeatureLevel6 = 1000006;
+constexpr int32_t kNNAPIRuntimeFeatureLevel7 = 1000007;
 
 class NNAPIOpBuilder;
 

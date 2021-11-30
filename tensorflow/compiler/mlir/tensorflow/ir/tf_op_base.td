@@ -165,6 +165,8 @@ def TF_TPUEmbeddingResource : TF_ResourceBase<"TPUEmbedding">;
 def TF_GeneratorOpResource : TF_ResourceBase<"GeneratorOp">;
 def TF_SendRecvResource : TF_ResourceBase<"SendRecv">;
 def TF_TPUCompileExecuteResource : TF_ResourceBase<"TPUCompileExecute">;
+// Fake resource, see `TF_MustExecute` below.
+def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
 
 // Value-based side effects
 //
@@ -214,16 +216,20 @@ def TF_DatasetIteratorFree : MemFree<TF_DatasetIteratorResource>;
 // effecting ops. Note that for `read` effects ops might be pruned if nothing
 // depends on them.
 def TF_GeneratorOpSideEffect : MemoryEffects<[MemWrite<TF_GeneratorOpResource>]>;
-// Note: We actually want a `read` effect here but then some ops with this
-// effect are considered dead and are deleted which is not desired (see
-// b/195782952).
-// Therefore, we use a `write` effect + special handling in side effect
-// analysis. Once we have proper dependencies that avoid deletion (see
-// b/196857154), or once MLIR supports a trait to mark an op as not dead, this
-// hack can be removed.
-def TF_TPUEmbeddingSideEffect : MemoryEffects<[MemWrite<TF_TPUEmbeddingResource>]>;
+
+def TF_TPUEmbeddingWriteEffect : MemoryEffects<[MemWrite<TF_TPUEmbeddingResource>]>;
+def TF_TPUEmbeddingReadEffect : MemoryEffects<[MemRead<TF_TPUEmbeddingResource>]>;
+
 def TF_SendRecvSideEffect : MemoryEffects<[MemWrite<TF_SendRecvResource>]>;
 def TF_TPUCompileExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUCompileExecuteResource>]>;
+
+// Trait for enforcing that a side-effecting op is executed, even if it would be
+// considered dead by MLIR (see b/195782952).
+// The trait is implemented as a write effect for a fake resource which is
+// ignored by side effect analysis, so it does not affect execution order
+// constraints and control dependencies at all (for example, multiple ops with
+// this trait do not have to execute in order).
+def TF_MustExecute : MemoryEffects<[MemWrite<TF_MustExecuteResource>]>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions

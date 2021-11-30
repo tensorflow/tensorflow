@@ -65,6 +65,9 @@ class TestRunner {
       const std::vector<std::pair<string, string>>& expected_outputs,
       const std::vector<std::pair<string, string>>& expected_output_shapes) = 0;
 
+  // Returns the list of output names in the loaded model for given signature.
+  virtual std::vector<string> GetOutputNames() = 0;
+
   // The following methods access tensors by index.
   // DEPRECATED: use methods with signature instead.
   // TODO(b/205171855): Clean up the functions after no usages.

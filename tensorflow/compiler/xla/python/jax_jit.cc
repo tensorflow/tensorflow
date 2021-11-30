@@ -1087,6 +1087,9 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
   } catch (std::invalid_argument& e) {
     PyErr_SetString(PyExc_ValueError, e.what());
     return nullptr;
+  } catch (std::runtime_error& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
   }
 }
 

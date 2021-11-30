@@ -31,6 +31,11 @@ void ExpectHasSubstr(const string& s, const string& expected) {
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
+void ExpectHasNoSubstr(const string& s, const string& expected) {
+  EXPECT_FALSE(absl::StrContains(s, expected))
+      << "'" << s << "' should not contain '" << expected << "'";
+}
+
 // WritableFile that simply concats into string.
 class StringWritableFile : public WritableFile {
  public:
@@ -90,6 +95,25 @@ TEST(Dump, TexualIrWithOptions) {
 
   string expected_substr = R"(loc(fused["Placeholder:", "A"]))";
   ExpectHasSubstr(actual, expected_substr);
+}
+
+TEST(Dump, DumpToTFG) {
+  Graph graph(OpRegistry::Global());
+  Node* node;
+  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+
+  string actual;
+  StringWritableFile file(&actual);
+
+  TF_ASSERT_OK(DumpTextualIRToFile(
+      MlirDumpConfig().emit_dialect(MlirDumpConfig::Dialect::kTFG), graph,
+      /*flib_def=*/nullptr, &file));
+
+  string expected_substr("tfg.graph");
+  ExpectHasSubstr(actual, expected_substr);
+
+  string not_expected_substr("tf_executor.island");
+  ExpectHasNoSubstr(actual, not_expected_substr);
 }
 
 }  // namespace

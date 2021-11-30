@@ -624,7 +624,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getI64IntegerAttr(all_gather->all_gather_dimension())));
       attributes.push_back(
           ConvertReplicaGroups(all_gather->replica_groups(), builder_));
-      attributes.push_back(ConvertChannelHandle(all_gather->channel_id()));
+      if (all_gather->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(all_gather->channel_id().value()));
       return func_builder
           ->create<mlir::mhlo::AllGatherOp>(loc, result_type, operands,
                                             attributes)
@@ -634,7 +636,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
       attributes.push_back(
           ConvertReplicaGroups(all_reduce->replica_groups(), builder_));
-      attributes.push_back(ConvertChannelHandle(all_reduce->channel_id()));
+      if (all_reduce->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(all_reduce->channel_id().value()));
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
@@ -757,6 +761,24 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ->create<mlir::mhlo::TriangularSolveOp>(loc, result_type, operands,
                                                   attributes)
           .getOperation();
+    }
+    case HloOpcode::kReduceScatter: {
+      auto reduce_scatter = Cast<HloReduceScatterInstruction>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "scatter_dimension",
+          builder_->getI64IntegerAttr(reduce_scatter->scatter_dimension())));
+      attributes.push_back(
+          ConvertReplicaGroups(reduce_scatter->replica_groups(), builder_));
+      if (reduce_scatter->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(reduce_scatter->channel_id().value()));
+      auto reduce_scatter_op =
+          func_builder->create<mlir::mhlo::ReduceScatterOp>(
+              loc, result_type, operands, attributes);
+      TF_RETURN_IF_ERROR(ImportAsRegion(*reduce_scatter->to_apply(),
+                                        &reduce_scatter_op.computation()));
+
+      return reduce_scatter_op.getOperation();
     }
     case HloOpcode::kReduceWindow: {
       llvm::SmallVector<Type, 4> return_types = {result_type};

@@ -15,12 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LhloLegalizeToLinalgPass : FunctionPass<"lhlo-legalize-to-linalg"> {
-  let summary = "Legalize from LHLO dialect to Linalg dialect.";
-  let constructor = "createLegalizeLhloToLinalgPass()";
-}
-
-
 def LhloFuseLinalgPass : FunctionPass<"lhlo-fuse-linalg"> {
   let summary = "Greedily fuse linalg ops obtained after LHLO lowering.";
   let constructor = "createLhloFuseLinalgPass()";
@@ -32,7 +26,6 @@ def LhloFuseLinalgPass : FunctionPass<"lhlo-fuse-linalg"> {
            "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
   ];
 }
-
 
 def LhloLegalizeToAffinePass : FunctionPass<"lhlo-legalize-to-affine"> {
   let summary = "Legalize from LHLO dialect to affine dialect.";

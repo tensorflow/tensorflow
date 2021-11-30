@@ -236,7 +236,7 @@ Below is the list of currently supported floating-point operators:
 
 #### `MEAN`
 
-* The first input and the output must be a 4D tensors in 32-bit
+* The first input and the output must be 4D tensors in 32-bit
   floating-point format.
 * The second input (the input with the axes specification) must be static
   (use `kTfLiteMmapRo` allocation type).
@@ -400,6 +400,15 @@ Below is the list of currently supported quantized operators:
 * 1x1 pooling with non-unit stride is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `MEAN`
+
+* The first input and the output must be 4D tensors in 8-bit quantized format.
+* The second input (the input with the axes specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* Only [1, 2] or [2, 1] axes specification (i.e. reduction across spatial
+  dimensions) is supported.
+* Only `keep_dims = True` parameter value is supported.
 
 #### `MUL`
 

@@ -221,8 +221,7 @@ void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
 Status SessionMgr::UpdateSession(
     const string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
-        cluster_device_attributes,
-    bool isolate_session_state) {
+        cluster_device_attributes) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
