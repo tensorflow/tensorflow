@@ -497,6 +497,7 @@ xla_test(
         # Hlo profiles are not supported on the interpreter backend.
         "interpreter",
     ],
+    tags = ["no_aarch64"],
     deps = [
         ":client_library_test_base",
         ":test_macros_header",
@@ -2273,6 +2274,7 @@ xla_test(
         # Hlo profiles are not supported on the interpreter backend.
         "interpreter",
     ],
+    tags = ["no_aarch64"],
     deps = [
         ":client_library_test_base",
         ":test_macros_header",
