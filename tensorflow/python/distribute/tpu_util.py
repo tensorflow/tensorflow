@@ -29,6 +29,10 @@ def enclosing_tpu_context():
 
 def enclosing_tpu_context_and_graph():
   """Returns the TPUReplicateContext which exists inside a tpu.rewrite(), and its associated graph."""
+  if context.executing_eagerly():
+    # When in eager mode, we don't have a graph. It can seem like we do if we
+    # are inside an init_scope within a call to TPUStrategy.run().
+    return None, None
   graph = ops.get_default_graph()
   while graph is not None:
     ctx = graph._get_control_flow_context()  # pylint: disable=protected-access
