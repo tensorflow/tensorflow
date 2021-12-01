@@ -491,14 +491,6 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
-  if (!op_filter_.allow_where_op && node.type_string() == "Where") {
-    absl::string_view uncompilable_reason = "Where op";
-    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
-                              encapsulating_function, uncompilable_nodes);
-    LogNotCompilable(node, uncompilable_reason);
-    return false;
-  }
-
   if (!op_filter_.allow_ops_producing_or_consuming_variant &&
       OpProducesOrConsumesVariant(node)) {
     absl::string_view uncompilable_reason = "DT_VARIANT producer/consumer";

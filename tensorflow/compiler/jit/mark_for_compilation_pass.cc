@@ -1203,7 +1203,6 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
     filter.allow_collective_reduce_v2 = false;
-    filter.allow_where_op = false;
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
