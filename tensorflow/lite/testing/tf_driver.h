@@ -60,24 +60,8 @@ class TfDriver : public TestRunner {
   }
   std::vector<string> GetOutputNames() override { return output_names_; }
 
-  void SetInput(int id, const string& values_as_string) override;
-  void Invoke() override;
-  string ReadOutput(int id) override;
-
-  const std::vector<int>& GetInputs() override { return input_ids_; }
-  const std::vector<int>& GetOutputs() override { return output_ids_; }
-  void ReshapeTensor(int id, const string& values_as_string) override;
-  // Note: ResetTensor only works for input tensor.
-  void ResetTensor(int id) override;
-
   // no-op. SetInput will overwrite existing data .
   void AllocateTensors() override {}
-  // no-op. Tf driver is not supposed to check the results.
-  void SetExpectation(int id, const string& values_as_string) override {}
-  // no-op. Tf driver is not supposed to check the results.
-  void SetShapeExpectation(int id, const string& values_as_string) override {}
-  // tf driver is not supposed to check the results.
-  bool CheckResults() override { return false; }
 
  protected:
   void SetInput(const string& values_as_string, tensorflow::Tensor*);

@@ -68,54 +68,8 @@ class TestRunner {
   // Returns the list of output names in the loaded model for given signature.
   virtual std::vector<string> GetOutputNames() = 0;
 
-  // The following methods access tensors by index.
-  // DEPRECATED: use methods with signature instead.
-  // TODO(b/205171855): Clean up the functions after no usages.
-  //
-  // Returns the list of input tensors in the loaded model.
-  virtual const std::vector<int>& GetInputs() = 0;
-
-  // Returns the list of output tensors in the loaded model.
-  virtual const std::vector<int>& GetOutputs() = 0;
-
-  // Prepares for a run by resize the given tensor. The given 'id' is
-  // guaranteed to be one of the ids returned by GetInputs().
-  virtual void ReshapeTensor(int id, const string& csv_values) = 0;
-
   // Reserves memory for all tensors.
   virtual void AllocateTensors() = 0;
-
-  // Sets the given tensor to some initial state, usually zero. This is
-  // used to reset persistent buffers in a model.
-  virtual void ResetTensor(int id) = 0;
-
-  // Defines the contents of the given input tensor. The given 'id' is
-  // guaranteed to be one of the ids returned by GetInputs().
-  virtual void SetInput(int id, const string& values_as_string) = 0;
-
-  // Defines what should be expected data for an output tensor after Invoke()
-  // runs.
-  // The given 'id' is guaranteed to be one of the ids returned by
-  // GetOutputs().
-  virtual void SetExpectation(int id, const string& values_as_string) = 0;
-
-  // Defines what should be expected shape for an output tensor after Invoke()
-  // runs.
-  // The given 'id' is guaranteed to be one of the ids returned by
-  // GetOutputs().
-  virtual void SetShapeExpectation(int id, const string& values_as_string) = 0;
-
-  // Runs the model.
-  virtual void Invoke() = 0;
-
-  // Verifies that the contents of all outputs conform to the existing
-  // expectations. Return true if there are no expectations or they are all
-  // satisfied.
-  virtual bool CheckResults() = 0;
-
-  // Reads the value of the output tensor and format it into a csv string.
-  // The given 'id' is guaranteed to be one of the ids returned by GetOutputs().
-  virtual string ReadOutput(int id) = 0;
 
   // Sets the base path for loading models.
   void SetModelBaseDir(const string& path) {
