@@ -2385,12 +2385,29 @@ StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
   auto permute_dims = instr_to_dim_permute_map_[new_instr];
   const int64_t batch_dim = DimLookUp(permute_dims, old_batch_dim);
   const int64_t space_dim = DimLookUp(permute_dims, old_space_dim);
-  const int64_t batch_size = new_instr->shape().dimensions(batch_dim);
+
+  const int64_t spatial_dim_size = new_instr->shape().dimensions(space_dim);
+
+  std::vector<int64_t> split_spatial_dimensions(
+      ctrl_.count_of_dimensions_to_convert);
+  absl::c_iota(split_spatial_dimensions, space_dim);
+
+  TF_ASSIGN_OR_RETURN(new_instr, SplitAndTransposeMergedBatch(
+                                     new_instr, batch_dim, old_batch_size,
+                                     split_spatial_dimensions));
 
   std::vector<int64_t> new_dimensions(new_instr->shape().dimensions().begin(),
                                       new_instr->shape().dimensions().end());
-  new_dimensions[space_dim] *= (batch_size / old_batch_size);
-  new_dimensions[batch_dim] = old_batch_size;
+
+  new_dimensions.erase(new_dimensions.begin() + split_spatial_dimensions[0],
+                       new_dimensions.begin() + split_spatial_dimensions[0] +
+                           ctrl_.count_of_dimensions_to_convert);
+
+  for (auto spatial_dimension : split_spatial_dimensions) {
+    new_dimensions[spatial_dimension] =
+        spatial_dim_size * ctrl_.number_of_splits;
+  }
+
   // Reshape the output of the new conv into the old convolutions shape.
   TF_ASSIGN_OR_RETURN(HloInstruction * reshape,
                       MakeReshapeHlo(new_dimensions, new_instr));
@@ -2400,7 +2417,11 @@ StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
   std::vector<int64_t> start_indices(rank, 0),
       end_indices(new_dimensions.begin(), new_dimensions.end()),
       strides(rank, 1);
-  end_indices[space_dim] = old_instr->shape().dimensions(old_space_dim);
+
+  for (auto spatial_dimension : split_spatial_dimensions) {
+    end_indices[spatial_dimension] =
+        old_instr->shape().dimensions(old_space_dim);
+  }
 
   // This slicing is getting rid of the padding we added to evenly divide space.
   TF_ASSIGN_OR_RETURN(
