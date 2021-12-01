@@ -85,7 +85,7 @@ class WhereOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Where").Device(DEVICE_TPU_XLA_JIT), WhereOp);
+REGISTER_XLA_OP(Name("Where"), WhereOp);
 
 }  // namespace
 }  // namespace tensorflow

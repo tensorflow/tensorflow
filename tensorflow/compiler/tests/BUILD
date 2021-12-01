@@ -2083,17 +2083,12 @@ tf_xla_py_test(
     name = "repeat_op_test",
     size = "medium",
     srcs = ["repeat_op_test.py"],
-    # Where op doesn't yet support these backends.
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
     enable_mlir_bridge = True,
     shard_count = 5,
     tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",  # TODO(hinsu): Fix the issue, file the bug.
+        "no_oss",
+        "no_pip",
+        "notap",  # TODO(b/208452143): Fix the test.
         "optonly",
     ],
     deps = [
@@ -2126,16 +2121,13 @@ tf_xla_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
     enable_mlir_bridge = False,
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
