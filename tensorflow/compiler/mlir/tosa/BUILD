@@ -171,6 +171,7 @@ cc_library(
     hdrs = [
         "tfl_passes.h",
         "transforms/passes.h",
+        "transforms/legalize_tfl.h"
     ],
     compatible_with = get_compatible_with_cloud(),
     visibility = [":friends"],
