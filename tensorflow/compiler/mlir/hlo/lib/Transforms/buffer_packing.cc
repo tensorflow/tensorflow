@@ -70,9 +70,8 @@ public:
   std::vector<AllocBufferOffset> allocBufferOffsets;
 };
 
-/// Contains the informations about a buffer allocation. It provides the
-/// information to sort the buffers and to check if it fits into other buffer
-/// and vise versa.
+/// Contains the information about a buffers allocation for sorting and checking
+/// if it fits into other buffers and vise versa.
 /// This structure contains the allocation value, the first and last userangeid
 /// of a buffer, the window id, the number of alligned 64 byte segments and all
 /// userange intervals.
@@ -172,7 +171,7 @@ public:
 
 public:
   /// Constructs the Sorted Packing Strategy. The window size is used as sliding
-  /// window size. Allocation userangepoitions that are in the same range are
+  /// window size. Allocation userangepositions that are in the same range are
   /// mapped to the same window id. So the information of the allocation
   /// starting position is blured.
   SortedPackingStrategy(size_t windowSize, CompareT compare)
@@ -389,7 +388,7 @@ public:
         SmallVector<Value, 4> newOperands{targetBuffer};
         newOperands.push_back(constantOp);
 
-        ShapedType shape = currentAlloc.getType().cast<MemRefType>();
+        auto shape = currentAlloc.getType().cast<MemRefType>();
 
         // Create a ViewOp with the shape of the old alloc and use the created
         // packed alloc and the constant for the operands.

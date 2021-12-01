@@ -22,7 +22,7 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
-const size_t sixtyFourBytePadding= 64;
+static constexpr size_t kPaddingSize= 64;
 
 DenseIntElementsAttr getBroadcastDimensionsAttr(Builder* b, Value x, Value y,
                                                 bool allow_empty) {
@@ -172,8 +172,8 @@ std::pair<size_t, size_t> computeMemory(const std::vector<Value> &allocs){
   for (const Value alloc : allocs) {
     auto shape = alloc.getType().cast<ShapedType>();
     size_t shapeBytes = llvm::divideCeil(shape.getSizeInBits(), 8);
-    size_t alignFactor = llvm::divideCeil(shapeBytes, sixtyFourBytePadding);
-    size_t size = alignFactor * sixtyFourBytePadding;
+    size_t alignFactor = llvm::divideCeil(shapeBytes, kPaddingSize);
+    size_t size = alignFactor * kPaddingSize;
     totalSize += size;
     allocCounter++;
   }
