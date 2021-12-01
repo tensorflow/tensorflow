@@ -563,8 +563,18 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   // Get an executable that might be specialized to the operands.
   DebugListener debug_listener;
 
+  // TODO(b/208618010): Overwrite the number of worker threads based on the
+  // current information about the underlying runtime. Remove this once
+  // AsyncParallelFor can dynamically obtain the number of threads from the
+  // runtime.
+  Expected<Eigen::ThreadPoolInterface*> worker_threads =
+      GetWorkerThreads(exec_ctx);
+  if (auto err = worker_threads.takeError())
+    return EmitErrors(results, std::move(err), exec_ctx);
+
   Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
-      memrefs, exec_ctx, debug ? &debug_listener : nullptr);
+      memrefs, exec_ctx, debug ? &debug_listener : nullptr,
+      (*worker_threads)->NumThreads());
   if (auto err = executable.takeError())
     return EmitErrors(results, std::move(err), exec_ctx);
 
