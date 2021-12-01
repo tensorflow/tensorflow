@@ -2441,6 +2441,9 @@ tf_kernel_library(
 tf_cc_test(
     name = "while_op_test",
     srcs = ["while_op_test.cc"],
+    tags = [
+        "no_windows",
+    ],  # TODO(b/208697533): Re-enable after fixing.
     deps = [
         ":control_flow_ops",
         "//tensorflow/c/experimental/stream_executor",
