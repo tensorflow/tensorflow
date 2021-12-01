@@ -15,7 +15,7 @@
 """Mid level API for TPU Embeddings."""
 
 import functools
-from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Text, Tuple, Union
 
 from absl import logging
 
@@ -33,9 +33,11 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numpy_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
@@ -155,11 +157,26 @@ class TPUEmbedding(tracking.AutoTrackable):
   dataset_iterator = iter(distributed_dataset)
   ```
 
-  NOTE: All batches passed to the layer must have the same batch size for each
-  input, more over once you have called the layer with one batch size all
-  subsequent calls must use the same batch_size. In the event that the batch
-  size cannot be automatically determined by the enqueue method, you must call
-  the build method with the batch size to initialize the layer.
+  Different feature inputs can have different shapes. For dense and sparse
+  tensor, rank 2 and above is supported. For ragged tensor, although only rank 2
+  is supported, you can specify the output shape to be rank 2 and above. The
+  output shape specified in the FeatureConfig has the first priority. The input
+  shape passed in build method has second priority and the input shapes
+  auto detected from input feature has the lowest priority. The latter two will
+  be converted to output shapes by omitting the last dimension. If the lower
+  priority one has output shapes which don't match the former one. A ValueError
+  will be raised. Only when the former one has undefined output shapes, the
+  latter one can override.
+
+  NOTE: All batches passed to the layer can have different input shapes. But
+  these input shapes need to match with the output shapes set by either
+  `FeatureConfig` or build method except for ragged tensor. Only 2D
+  ragged tensor with output shape set to higher dimensions is allowed as
+  long as the total number of elements matches. All subsequent calls must have
+  the same input shapes. In the event that the input shapes cannot be
+  automatically determined by the enqueue method, you must call
+  the build method with the input shapes or provide output shapes in the
+  `FeatureConfig` to initialize the layer.
 
   To use this API on TPU you should use a custom training loop. Below is an
   example of a training and evaluation step:
@@ -277,6 +294,9 @@ class TPUEmbedding(tracking.AutoTrackable):
         pipeline_execution_with_tensor_core)
 
     self._feature_config = feature_config
+    self._output_shapes = []
+    for feature in nest.flatten(feature_config):
+      self._output_shapes.append(feature.output_shape)
 
     # The TPU embedding ops are slightly inconsistent with how they refer to
     # tables:
@@ -336,11 +356,9 @@ class TPUEmbedding(tracking.AutoTrackable):
       self._hosts = get_list_of_hosts(self._strategy)
 
     self._built = False
-    # If batch size checking for every `enqueue` is pretty slow, this flag can
-    # be disabled in subclasses. It could happen in performance critical cases.
-    self._verify_batch_size_on_enqueue = True
+    self._verify_output_shapes_on_enqueue = True
 
-  def build(self, per_replica_batch_size: Optional[int] = None):
+  def build(self, per_replica_input_shapes=None, per_replica_batch_size=None):  # pylint:disable=g-bare-generic
     """Create the underlying variables and initializes the TPU for embeddings.
 
     This method creates the underlying variables (including slot variables). If
@@ -348,29 +366,34 @@ class TPUEmbedding(tracking.AutoTrackable):
     embeddings.
 
     This function will automatically get called by enqueue, which will try to
-    determine your batch size automatically. If this fails, you must manually
+    determine your output shapes. If this fails, you must manually
     call this method before you call enqueue.
 
     Args:
-      per_replica_batch_size: The per replica batch size that you intend to use.
-        Note that is fixed and the same batch size must be used for both
-        training and evaluation. If you want to calculate this from the global
-        batch size, you can use `num_replicas_in_sync` property of your strategy
-        object. May be set to None if not created under a TPUStrategy.
+      per_replica_input_shapes: A nested structure of The per replica input
+        shapes that matches the structure of the feature config. The input
+        shapes should be the same as the input shape of the feature (except for
+        ragged tensor) Note that it is fixed and the same per replica input
+        shapes must be used for both training and evaluation. If you want to
+        calculate this from the global input shapes, you can use
+        `num_replicas_in_sync` property of your strategy object. May be set to
+        None if not created under a TPUStrategy.
+      per_replica_batch_size: (Deprecated) The per replica batch size that you
+        intend to use. Note that is fixed and the same batch size must be used
+        for both training and evaluation. If you want to calculate this from the
+        global batch size, you can use `num_replicas_in_sync` property of your
+        strategy object. May be set to None if not created under a TPUStrategy.
 
     Raises:
-      ValueError: If per_replica_batch_size is None and object was created in a
-        TPUStrategy scope.
+      ValueError: If per_replica_input_shapes is inconsistent with the output
+      shapes stored in the feature config or the output shapes get from the
+      input shapes are not fully defined.
       RuntimeError: If tpu embedding is already initialized on TPU.
     """
     if self._built:
       return
 
     if self._using_tpu:
-      if per_replica_batch_size is None:
-        raise ValueError(
-            "When calling TpuShardedVariable.build under TpuStrategy you must "
-            "specify a per_replica_batch_size argument.")
       # If the tpu embedding is already initialized on TPU, raise runtime error.
       # Below logic is not added in `initialize_system_for_tpu_embedding`
       # because doing exception control flow in graph mode is difficult.
@@ -379,7 +402,8 @@ class TPUEmbedding(tracking.AutoTrackable):
             "TPU is already initialized for embeddings. This may be caused by "
             "using multiple TPUEmbedding instances in a TPU scope which is "
             "unsupported")
-      self._batch_size = per_replica_batch_size
+      self._get_and_update_output_shapes_from_input(per_replica_input_shapes,
+                                                    per_replica_batch_size)
 
       self._config_proto = self._create_config_proto()
 
@@ -404,7 +428,8 @@ class TPUEmbedding(tracking.AutoTrackable):
     # This is internally conditioned self._built and self._using_tpu
     self._load_variables()
 
-  def _maybe_build(self, batch_size: Optional[int]):
+  def _maybe_build(self,
+                   output_shapes: Optional[Union[List[int], Iterable]] = None):  # pylint:disable=g-bare-generic
     if not self._built:
       # This can be called while tracing a function, so we wrap the
       # initialization code with init_scope so it runs eagerly, this means that
@@ -412,7 +437,73 @@ class TPUEmbedding(tracking.AutoTrackable):
       # we can be sure that we only initialize the TPU for embeddings exactly
       # once.
       with ops.init_scope():
-        self.build(batch_size)
+        self.build(output_shapes)
+
+  def _get_and_update_output_shapes_from_input(
+      self,
+      per_replica_input_shapes: Optional[List[TensorShape]] = None,
+      per_replica_batch_size: Optional[int] = None):
+    """Get and update the per replica output shapes from the input."""
+    per_replica_output_shapes = None
+    if per_replica_batch_size and per_replica_input_shapes is None:
+      logging.warning(
+          "per_replica_batch_size argument will be deprecated, please specify"
+          "all the input shapes using per_replica_input_shapes argument.")
+      per_replica_output_shapes = self._get_output_shapes_from_batch_size(
+          per_replica_batch_size)
+
+    # Update the input shapes if provided.
+    if per_replica_input_shapes is not None:
+      if isinstance(per_replica_input_shapes, int):
+        logging.warning(
+            "Passing batch size to per_replica_input_shapes argument will be"
+            " deprecated, please specify all the input shapes using"
+            " per_replica_input_shapes argument.")
+        per_replica_output_shapes = self._get_output_shapes_from_batch_size(
+            per_replica_input_shapes)
+      else:
+        nest.assert_same_structure(
+            nest.flatten(per_replica_input_shapes),
+            nest.flatten(self._feature_config))
+
+        # Convert the nested structure to list.
+        per_replica_input_shapes = nest.flatten(per_replica_input_shapes)
+
+        per_replica_output_shapes = self._get_output_shapes_from_input_shapes(
+            per_replica_input_shapes)
+
+    if per_replica_output_shapes is not None:
+
+      # Check the output shapes with existing output shapes setting.
+      self._check_output_shapes(per_replica_output_shapes)
+
+      # Update the output shapes with existing output shapes setting.
+      # This is necessary Because the output shapes might be missing from
+      # the feature config, the usr can set it:
+      #  1. calling the build method
+      #  2. output shapes auto detected when calling the dequeue method for
+      #     for the first time. The dequeue method will call build method
+      #     with the output shapes.
+      # Either these two situations will lead to an update to the existing
+      # output shapes.
+      self._update_output_shapes(per_replica_output_shapes)
+
+    # Check if the output shapes are fully defined. This is required in order
+    # to set them in the feature descriptor field of the tpu embedding config
+    # proto.
+    self._check_output_shapes_fully_defined()
+
+  def _get_output_shapes_from_input_shapes(
+      self, input_shapes: List[TensorShape]) -> List[TensorShape]:
+    """Get output shapes from the flattened input shapes list."""
+    output_shapes = []
+    for input_shape in input_shapes:
+      if input_shape.rank is None or input_shape.rank < 2:
+        raise ValueError(
+            "Received input tensor of shape {}. Rank must be 2 and above"
+            .format(input_shape))
+      output_shapes.append(input_shape[:-1])
+    return output_shapes
 
   @property
   def embedding_tables(
@@ -461,6 +552,9 @@ class TPUEmbedding(tracking.AutoTrackable):
     """
 
     config_proto = tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration()
+    # The tensor core batch size should be the GCD of all the input batch size.
+    tensor_core_batch_size = self._get_tensor_core_batch_size(
+        self._output_shapes)
 
     # There are several things that need to be computed here:
     # 1. Each table has a num_features, which corresponds to the number of
@@ -472,9 +566,9 @@ class TPUEmbedding(tracking.AutoTrackable):
     #    extremely bad performance characteristics. The more separate
     #    optimization configurations we have, the worse the performance will be.
     num_features = {table: 0 for table in self._table_config}
-    for feature in nest.flatten(self._feature_config):
-      num_features[feature.table] += (1 if feature.max_sequence_length == 0
-                                      else feature.max_sequence_length)
+    for i, feature in enumerate(nest.flatten(self._feature_config)):
+      num_features[feature.table] += math_ops.reduce_prod(
+          self._output_shapes[i]) / tensor_core_batch_size
 
     # Map each callable dynamic learning rate to its in index in the list.
     learning_rate_index = {r: i for i, r in enumerate(
@@ -506,11 +600,27 @@ class TPUEmbedding(tracking.AutoTrackable):
       # Use optimizer to handle the rest of the parameters.
       table.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
 
+    table_to_id = {table: i for i, table in enumerate(self._table_config)}
+
+    # Set feature descriptor field in the config proto.
+    for feature, output_shape in zip(
+        nest.flatten(self._feature_config), self._output_shapes):
+      feature_descriptor = config_proto.feature_descriptor.add()
+
+      if feature.name:
+        feature_descriptor.name = feature.name
+
+      feature_descriptor.table_id = table_to_id[feature.table]
+      # The input shape of the feature is the actual shape of the input tensor
+      # except the last dimension because the last dimension will always be
+      # reduced.
+      feature_descriptor.input_shape.extend(output_shape.as_list())
+
     # Always set mode to training, we override the mode during enqueue.
     config_proto.mode = (
         tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration.TRAINING)
 
-    config_proto.batch_size_per_tensor_core = self._batch_size
+    config_proto.batch_size_per_tensor_core = tensor_core_batch_size
     config_proto.num_hosts = self._strategy.extended.num_hosts
     config_proto.num_tensor_cores = self._strategy.num_replicas_in_sync
 
@@ -521,64 +631,6 @@ class TPUEmbedding(tracking.AutoTrackable):
         self._pipeline_execution_with_tensor_core)
 
     return config_proto
-
-  def _compute_per_table_gradients(
-      self,
-      gradients
-  ) -> Dict[Text, List[core.Tensor]]:
-    """Computes a dict of lists of gradients, keyed by table name.
-
-    Args:
-      gradients: A nested structure of Tensors (and Nones) with the same
-        structure as the feature config.
-
-    Returns:
-      A dict of lists of tensors, keyed by the table names, containing the
-    gradients in the correct order with None gradients replaced by zeros.
-    """
-
-    nest.assert_same_structure(self._feature_config, gradients)
-
-    per_table_gradients = {table: [] for table in self._table_config}
-    for (path, gradient), feature in zip(
-        nest.flatten_with_joined_string_paths(gradients),
-        nest.flatten(self._feature_config)):
-      if gradient is not None and not isinstance(gradient, ops.Tensor):
-        raise ValueError(
-            f"When computing per-table gradients, found non-tensor type: "
-            f"{type(gradient)} at path {path}.")
-
-      # Expected tensor shape differs for sequence and non-sequence features.
-      if feature.max_sequence_length > 0:
-        shape = [self._batch_size, feature.max_sequence_length,
-                 feature.table.dim]
-      else:
-        shape = [self._batch_size, feature.table.dim]
-
-      if gradient is not None:
-        if gradient.shape != shape:
-          raise ValueError("Found gradient of shape {} at path {}. Expected "
-                           "shape {}.".format(gradient.shape, path, shape))
-
-        # We expand dims on non-sequence features so that all features are
-        # of rank 3 and we can concat on axis=1.
-        if len(shape) == 2:
-          gradient = array_ops.expand_dims(gradient, axis=1)
-      else:
-        # No gradient for this feature, since we must give a gradient for all
-        # features, pass in a zero tensor here. Note that this is not correct
-        # for all optimizers.
-        logging.warn("No gradient passed for feature %s, sending zero "
-                     "gradient. This may not be correct behavior for certain "
-                     "optimizers like Adam.", path)
-        # Create a shape to mimic the expand_dims above for non-sequence
-        # features.
-        if len(shape) == 2:
-          shape = [shape[0], 1, shape[1]]
-        gradient = array_ops.zeros(shape, dtype=dtypes.float32)
-      per_table_gradients[feature.table].append(gradient)
-
-    return per_table_gradients
 
   def apply_gradients(self, gradients, name: Optional[Text] = None):
     """Applies the gradient update to the embedding tables.
@@ -644,31 +696,36 @@ class TPUEmbedding(tracking.AutoTrackable):
                          "object. Please either call enqueue first or manually "
                          "call the build method.")
 
-    # send_tpu_embedding_gradients requires per table gradient, if we only have
-    # one feature per table this isn't an issue. When multiple features share
-    # the same table, the order of the features in per table tensor returned by
-    # recv_tpu_embedding_activations matches the order in which they were passed
-    # to enqueue.
-    # In all three places, we use the fixed order given by nest.flatten to have
-    # a consistent feature order.
-
-    # First construct a dict of tensors one for each table.
-    per_table_gradients = self._compute_per_table_gradients(gradients)
-
-    # Now that we have a list of gradients we can compute a list of gradients
-    # in the fixed order of self._table_config which interleave the gradients of
-    # the individual features. We concat on axis 1 and then reshape into a 2d
-    # tensor. The send gradients op expects a tensor of shape
-    # [num_features*batch_size, dim] for each table.
-    interleaved_gradients = []
-    for table in self._table_config:
-      interleaved_gradients.append(array_ops.reshape(
-          array_ops.concat(per_table_gradients[table], axis=1),
-          [-1, table.dim]))
+    nest.assert_same_structure(self._feature_config, gradients)
+    updated_gradients = []
+    for (path, gradient), feature, output_shape in zip(
+        nest.flatten_with_joined_string_paths(gradients),
+        nest.flatten(self._feature_config), self._output_shapes):
+      full_output_shape = list(output_shape) + [feature.table.dim]
+      if gradient is not None and not isinstance(gradient, ops.Tensor):
+        raise ValueError(
+            f"found non-tensor type: {type(gradient)} at path {path}.")
+      if gradient is not None:
+        if gradient.shape != full_output_shape:
+          raise ValueError("Found gradient of shape {} at path {}. Expected "
+                           "shape {}.".format(gradient.shape, path,
+                                              full_output_shape))
+      else:
+        # No gradient for this feature, since we must give a gradient for all
+        # features, pass in a zero tensor here. Note that this is not correct
+        # for all optimizers.
+        logging.warning(
+            "No gradient passed for feature %s, sending zero "
+            "gradient. This may not be correct behavior for certain "
+            "optimizers like Adam.", path)
+        gradient = array_ops.zeros(full_output_shape, dtype=dtypes.float32)
+      updated_gradients.append(gradient)
     op = tpu_ops.send_tpu_embedding_gradients(
-        inputs=interleaved_gradients,
-        learning_rates=[math_ops.cast(fn(), dtype=dtypes.float32)
-                        for fn in self._dynamic_learning_rates],
+        inputs=updated_gradients,
+        learning_rates=[
+            math_ops.cast(fn(), dtype=dtypes.float32)
+            for fn in self._dynamic_learning_rates
+        ],
         config=self._config_proto.SerializeToString())
 
     # Apply the name tag to the op.
@@ -680,11 +737,14 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     Returns a nested structure of `tf.Tensor` objects, matching the structure of
     the `feature_config` argument to the `TPUEmbedding` class. The output shape
-    of the tensors is `(batch_size, dim)`, where `batch_size` is the per core
-    batch size, `dim` is the dimension of the corresponding `TableConfig`. If
-    the feature's corresponding `FeatureConfig` has `max_sequence_length`
-    greater than 0, the output will be a sequence of shape
-    `(batch_size, max_sequence_length, dim)` instead.
+    of the tensors is `(*output_shape, dim)`, `dim` is the dimension of the
+    corresponding `TableConfig`. For output_shape, there are three places where
+    it can be set.
+      1. FeatureConfig provided in the __init__ function.
+      2. Per_replica_output_shapes by directly calling the build method
+           after initializing the tpu embedding class.
+      3. Auto detected from the shapes of the input feature.
+    The priority of these places is the exact same order.
 
     ```python
     strategy = tf.distribute.TPUStrategy(...)
@@ -737,56 +797,17 @@ class TPUEmbedding(tracking.AutoTrackable):
                          "Please either call enqueue first or manually call "
                          "the build method.")
 
-    # The activations returned by this op are per table. So we must separate
-    # them out into per feature activations. The activations are interleaved:
-    # for each table, we expect a [num_features*batch_size, dim] tensor.
-    # E.g. we expect the slice [:num_features, :] to contain the lookups for the
-    # first example of all features using this table.
+    # The activations returned by this op are per feature.
     activations = tpu_ops.recv_tpu_embedding_activations(
-        num_outputs=len(self._table_config),
+        num_outputs=len(self._config_proto.feature_descriptor),
         config=self._config_proto.SerializeToString())
 
     # Apply the name tag to the op.
     if name is not None:
       _add_key_attr(activations[0].op, name)
 
-    # Compute the number of features for this  table.
-    num_features = {table: 0 for table in self._table_config}
-    for feature in nest.flatten(self._feature_config):
-      num_features[feature.table] += (1 if feature.max_sequence_length == 0
-                                      else feature.max_sequence_length)
-
-    # Activations are reshaped so that they are indexed by batch size and then
-    # by the 'feature' index within the batch. The final dimension should equal
-    # the dimension of the table.
-    table_to_activation = {
-        table: array_ops.reshape(activation,
-                                 [self._batch_size, num_features[table], -1])
-        for table, activation in zip(self._table_config, activations)}
-
-    # We process the features in the same order we enqueued them.
-    # For each feature we take the next slice of the activations, so need to
-    # track the activations and the current position we are in.
-    table_to_position = {table: 0 for table in self._table_config}
-
-    per_feature_activations = []
-    for feature in nest.flatten(self._feature_config):
-      activation = table_to_activation[feature.table]
-      feature_index = table_to_position[feature.table]
-      # We treat non-sequence and sequence features differently here as sequence
-      # features have rank 3 while non-sequence features have rank 2.
-      if feature.max_sequence_length == 0:
-        per_feature_activations.append(
-            activation[:, feature_index, :])
-        table_to_position[feature.table] += 1
-      else:
-        per_feature_activations.append(
-            activation[:, feature_index:(
-                feature_index+feature.max_sequence_length), :])
-        table_to_position[feature.table] += feature.max_sequence_length
-
     # Pack the list back into the same nested structure as the features.
-    return nest.pack_sequence_as(self._feature_config, per_feature_activations)
+    return nest.pack_sequence_as(self._feature_config, activations)
 
   def _create_variables_and_slots(
       self
@@ -906,12 +927,19 @@ class TPUEmbedding(tracking.AutoTrackable):
           "Weight will always be 1 in this case.".format(path))
     # For tensors, there are no indices and no weights.
     indices.append(int_zeros)
-    values.append(math_ops.cast(tensor, dtypes.int32))
+    values.append(math_ops.cast(array_ops.reshape(tensor, [-1]), dtypes.int32))
     weights.append(float_zeros)
 
   def _add_data_for_sparse_tensor(self, tensor, weight, indices, values,
-                                  weights, int_zeros, float_zeros, path):
-    indices.append(math_ops.cast(tensor.indices, dtypes.int32))
+                                  weights, int_zeros, float_zeros, path,
+                                  feature):
+    sample_indices = math_ops.cast(tensor.indices, dtypes.int32)
+    if tensor.shape.rank == 2:
+      if not feature.output_shape and feature.max_sequence_length > 0:
+        # Add one dimension to the last axis.
+        sample_indices = array_ops.pad(
+            sample_indices, paddings=[[0, 0], [0, 1]])
+    indices.append(sample_indices)
     values.append(math_ops.cast(tensor.values, dtypes.int32))
     # If we have weights they must be a SparseTensor.
     if weight is not None:
@@ -923,9 +951,10 @@ class TPUEmbedding(tracking.AutoTrackable):
     else:
       weights.append(float_zeros)
 
-  def _add_data_for_ragged_tensor(self, tensor, weight, indices, values,
-                                  weights, int_zeros, float_zeros, path):
-    indices.append(math_ops.cast(tensor.row_splits, dtypes.int32))
+  def _add_data_for_ragged_tensor(self, tensor, weight, row_lengths, values,
+                                  weights, int_zeros, float_zeros, path,
+                                  feature):
+    row_lengths.append(math_ops.cast(tensor.row_lengths(), dtypes.int32))
     values.append(math_ops.cast(tensor.values, dtypes.int32))
     # If we have weights they must be a RaggedTensor.
     if weight is not None:
@@ -958,36 +987,14 @@ class TPUEmbedding(tracking.AutoTrackable):
     Returns:
       The enqueue op.
     """
-
-    # First we need to understand which op to use. This depends on if sparse
-    # or ragged tensors are in the flat_inputs.
-    sparse = False
-    ragged = False
-    for inp in flat_inputs:
-      if isinstance(inp, sparse_tensor.SparseTensor):
-        sparse = True
-      elif isinstance(inp, ragged_tensor.RaggedTensor):
-        ragged = True
-    if sparse and ragged:
-      raise ValueError(
-          "Found both SparseTensors and RaggedTensors in the input to the "
-          "enqueue operation. Please ensure that your data does not include "
-          "both SparseTensors and RaggedTensors. It is ok to have Tensors in "
-          "combination with one of the previous types.")
-
     # Combiners are per table, list in the same order as the table order.
     combiners = [table.combiner for table in self._table_config]
 
-    # Reverse mapping of self._table_config, so that we can lookup the table
-    # index.
-    table_to_id = {table: i for i, table in enumerate(self._table_config)}
-
     # These parallel arrays will be the inputs to the enqueue op.
-    indices = []  # sample_indices for sparse, sample_splits for ragged.
+    # sample_indices for sparse, row_lengths for ragged.
+    indices_or_row_lengths = []
     values = []
     weights = []
-    table_ids = []
-    max_sequence_lengths = []
 
     # We have to supply a empty/zero tensor in a list position where we don't
     # have data (e.g. indices for standard Tensor input, weight when no weight
@@ -1003,41 +1010,29 @@ class TPUEmbedding(tracking.AutoTrackable):
     # early.
     for inp, weight, (path, feature) in zip(
         flat_inputs, flat_weights, flat_features):
-      table_ids.append(table_to_id[feature.table])
-      max_sequence_lengths.append(feature.max_sequence_length)
       if isinstance(inp, ops.Tensor):
-        self._add_data_for_tensor(inp, weight, indices, values, weights,
-                                  int_zeros, float_zeros, path)
+        self._add_data_for_tensor(inp, weight, indices_or_row_lengths, values,
+                                  weights, int_zeros, float_zeros, path)
       elif isinstance(inp, sparse_tensor.SparseTensor):
-        self._add_data_for_sparse_tensor(inp, weight, indices, values, weights,
-                                         int_zeros, float_zeros, path)
+        self._add_data_for_sparse_tensor(inp, weight, indices_or_row_lengths,
+                                         values, weights, int_zeros,
+                                         float_zeros, path, feature)
       elif isinstance(inp, ragged_tensor.RaggedTensor):
-        self._add_data_for_ragged_tensor(inp, weight, indices, values, weights,
-                                         int_zeros, float_zeros, path)
+        self._add_data_for_ragged_tensor(inp, weight, indices_or_row_lengths,
+                                         values, weights, int_zeros,
+                                         float_zeros, path, feature)
       else:
         raise ValueError("Input {} is of unknown type {}. Please only pass "
                          "Tensor, SparseTensor or RaggedTensor as input to "
                          "enqueue.".format(path, type(inp)))
 
-    if ragged:
-      return tpu_ops.enqueue_tpu_embedding_ragged_tensor_batch(
-          sample_splits=indices,
-          embedding_indices=values,
-          aggregation_weights=weights,
-          mode_override=mode_override,
-          device_ordinal=device_ordinal,
-          combiners=combiners,
-          table_ids=table_ids,
-          max_sequence_lengths=max_sequence_lengths)
-    return tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
-        sample_indices=indices,
+    return tpu_ops.enqueue_tpu_embedding_arbitrary_tensor_batch(
+        sample_indices_or_row_lengths=indices_or_row_lengths,
         embedding_indices=values,
         aggregation_weights=weights,
         mode_override=mode_override,
         device_ordinal=device_ordinal,
-        combiners=combiners,
-        table_ids=table_ids,
-        max_sequence_lengths=max_sequence_lengths)
+        combiners=combiners)
 
   def _raise_error_for_incorrect_control_flow_context(self):
     """Raises an error if we are not in the TPUReplicateContext."""
@@ -1137,13 +1132,36 @@ class TPUEmbedding(tracking.AutoTrackable):
     """Enqueues id tensors for embedding lookup.
 
     This function enqueues a structure of features to be looked up in the
-    embedding tables. We expect that the batch size of each of the tensors in
-    features matches the per core batch size. This will automatically happen if
-    your input dataset is batched to the global batch size and you use
+    embedding tables. We expect that the input shapes of each of the tensors in
+    features matches the output shapes set via FeatureConfig or build method
+    (if any). the output shapes will be auto detected based on the input shapes
+    with the max_sequence_length or output shape setting in the FeatureConfig.
+    Note that the output shapes is based on per replica batch size.
+    If your input dataset is batched to the global batch size and you use
     `tf.distribute.TPUStrategy`'s `experimental_distribute_dataset`
     or if you use `distribute_datasets_from_function` and batch
     to the per core batch size computed by the context passed to your input
-    function.
+    function, the output shapes should match automatically.
+
+    The auto detected the output shapes:
+      1. For dense tensor, make sure the tensor has last dimension as 1. The
+         output shape will be the input shape excluding the last dimension.
+      2. For sparse tensor, make sure the tensor has rank 2 and above.
+           a. If feature config has max_sequence_length equals 0 or output shape
+              set (the max_sequence_length setting will be ignored), the
+              output shape will be the input shape excluding the last dimension.
+           b. Otherwize if the tensor is rank 2, the output shape will be input
+              shape  with last dimension set as max_sequence_length. If the
+              tensor is above rank 2, the output shape will be the input shape
+              excluding the last dimension and the last dimension of the output
+              shape will be set to max_sequence_length.
+      3. For ragged tensor, make sure the tensor has rank 2.
+           a. If feature config has max_sequence_length equals 0 or output shape
+              set (the max_sequence_length setting will be ignored), the
+              output shape will be the input shape excluding the last dimension.
+           b. Otherwise, the output shape will be the input shape excluding the
+              last dimension and the last dimension of the output shape will be
+              set to max_sequence_length.
 
     ```python
     strategy = tf.distribute.TPUStrategy(...)
@@ -1228,7 +1246,8 @@ class TPUEmbedding(tracking.AutoTrackable):
         directly taken from the args of the `strategy.run` call. Also if
         the size of any sequence in `features` does not match corresponding
         sequence in `feature_config`. Similarly for `weights`, if not `None`.
-        If batch size of features is unequal or different from a previous call.
+        If input shapes of features is unequal or different from a previous
+        call.
       RuntimeError: When called inside a strategy.run call and inside XLA
         control flow. If batch_size is not able to be determined and build was
         not called.
@@ -1242,29 +1261,22 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     in_tpu_context = self._raise_error_for_incorrect_control_flow_context()
 
-    if not self._verify_batch_size_on_enqueue:
-      if not self._batch_size or not self._built:
+    nest.assert_same_structure(self._feature_config, features)
+
+    if not self._verify_output_shapes_on_enqueue:
+      if not self._output_shapes or not self._built:
         raise ValueError(
-            "Configured not to check batch size on each enqueue() call; please "
-            "ensure build() was called with global batch size to initialize "
+            "Configured not to check output shapes on each enqueue() call; please "
+            "ensure build() was called with output shapes to initialize "
             "the TPU for embeddings.")
     else:
-      # Should we also get batch_size from weights if they exist?
-      # Since features is assumed to be batched at the per replica batch size
-      # the returned batch size here is per replica an not global.
-      batch_size = self._get_batch_size(features, in_tpu_context)
-      if batch_size is None and not self._built:
-        raise RuntimeError("Unable to determine batch size from input features."
-                           "Please call build() with global batch size to "
-                           "initialize the TPU for embeddings.")
-      if batch_size is not None:
-        self._maybe_build(batch_size)
-        if self._batch_size != batch_size:
-          raise ValueError("Multiple calls to enqueue with different batch "
-                           "sizes {} and {}.".format(self._batch_size,
-                                                     batch_size))
+      input_shapes = self._get_input_shapes(features, in_tpu_context)
 
-    nest.assert_same_structure(self._feature_config, features)
+      self._maybe_build(input_shapes)
+      # If is already built, we still need to check if the output shapes matches
+      # with the previous ones.
+      self._check_output_shapes(
+          self._get_output_shapes_from_input_shapes(input_shapes))
 
     flat_inputs = nest.flatten(features)
     flat_weights = [None] * len(flat_inputs)
@@ -1289,7 +1301,6 @@ class TPUEmbedding(tracking.AutoTrackable):
         mode_override = array_ops.where_v2(training,
                                            constant_op.constant("train"),
                                            constant_op.constant("inference"))
-
         # Device ordinal is -1 here, a later rewrite will fix this once the op
         # is expanded by outside compilation.
         enqueue_op = self._generate_enqueue_op(
@@ -1323,6 +1334,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         # the device ordinal is the last number
         device_ordinal = (
             tf_device.DeviceSpec.from_string(tpu_device).device_index)
+
         with ops.device(device_util.get_host_for_device(tpu_device)):
           enqueue_op = self._generate_enqueue_op(
               replica_inputs, replica_weights, flat_features,
@@ -1339,6 +1351,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       if device_spec.device_type != "TPU":
         raise ValueError(
             "Non-TPU device {} passed to enqueue.".format(device))
+
       with ops.device(device_util.get_host_for_device(device)):
         enqueue_op = self._generate_enqueue_op(
             flat_inputs, flat_weights, flat_features,
@@ -1350,33 +1363,159 @@ class TPUEmbedding(tracking.AutoTrackable):
           _add_key_attr(enqueue_op, name)
         ops.get_default_graph().control_outputs.append(enqueue_op)
 
-  def _get_batch_size(self, tensors, in_tpu_context: bool):
-    """Gets the batch size from a nested structure of features."""
-    batch_size = None
-    for path, maybe_tensor in nest.flatten_with_joined_string_paths(tensors):
-      tensor_list = []
+  def _get_input_shapes(self, tensors,
+                        in_tpu_context: bool) -> List[TensorShape]:
+    """Get the input shapes from the input tensor."""
+    input_shapes = []
+    for (path, maybe_tensor), feature in zip(
+        nest.flatten_with_joined_string_paths(tensors),
+        nest.flatten(self._feature_config)):
       if not in_tpu_context:
-        # if we are not in a context, then this is PerReplica and we need to
-        # check each replica's batch size.
-        for replica_id in range(self._strategy.num_replicas_in_sync):
-          tensor_list.append(distribute_utils.select_replica(replica_id,
-                                                             maybe_tensor))
+        tensor = distribute_utils.select_replica(0, maybe_tensor)
       else:
-        tensor_list = [maybe_tensor]
+        tensor = maybe_tensor
 
-      for tensor in tensor_list:
-        if tensor.shape.rank < 1:
+      if isinstance(tensor, ops.Tensor):
+        input_shapes.append(
+            self._get_input_shape_for_tensor(tensor, feature, path))
+      elif isinstance(tensor, sparse_tensor.SparseTensor):
+        input_shapes.append(
+            self._get_input_shape_for_sparse_tensor(tensor, feature, path))
+      elif isinstance(tensor, ragged_tensor.RaggedTensor):
+        input_shapes.append(
+            self._get_input_shape_for_ragged_tensor(tensor, feature, path))
+    return input_shapes
+
+  def _get_input_shape_for_tensor(self, tensor, feature, path) -> TensorShape:
+    """Get the input shape for the dense tensor."""
+    shape = tensor.shape.as_list()
+    if len(shape) < 1:
+      raise ValueError("Only rank 1 and above dense tensor is supported,"
+                       " find rank {} sparse tensor for input {}".format(
+                           len(shape), path))
+    if shape[-1] != 1:
+      return TensorShape(shape + [1])
+    return TensorShape(shape)
+
+  def _get_input_shape_for_sparse_tensor(self, tensor, feature,
+                                         path) -> TensorShape:
+    """Get the input shape for the sparse tensor."""
+    shape = tensor.shape.as_list()
+    # Only 2 and above rank sparse tensor is supported.
+    if len(shape) < 2:
+      raise ValueError("Only rank 2 and above sparse tensor is supported,"
+                       " find rank {} sparse tensor for input {}".format(
+                           len(shape), path))
+    if not feature.output_shape and feature.max_sequence_length > 0:
+      # If the max_sequence_length is set and the output shape for FeatureConfig
+      # is not set, we modify the shape of the input feature. Only rank 2
+      # feature output shape is modified
+      if len(shape) == 2:
+        # If the sparse tensor is 2D and max_sequence_length is set,
+        # we need to add one dimension to the input feature.
+        shape.insert(len(shape) - 1, feature.max_sequence_length)
+
+    return TensorShape(shape)
+
+  def _get_input_shape_for_ragged_tensor(self, tensor, feature,
+                                         path) -> TensorShape:
+    """Get the input shape for the ragged tensor."""
+    shape = tensor.shape.as_list()
+    # Only rank 2 ragged tensor is supported.
+    if len(shape) != 2:
+      raise ValueError("Only rank 2 ragged tensor is supported,"
+                       " find rank {} ragged tensor for input {}".format(
+                           len(shape), path))
+    if not feature.output_shape and feature.max_sequence_length > 0:
+      # If the max_sequence_length is set and the output shape for FeatureConfig
+      # is not set, add the sequence length as second last dimension of
+      # the ragged tensor.
+      shape.insert(len(shape) - 1, feature.max_sequence_length)
+
+    return TensorShape(shape)
+
+  def _get_tensor_core_batch_size(self, output_shapes):
+    """Get the tensor core batch size based on the output shapes."""
+    tensor_core_batch_size = math_ops.reduce_prod(output_shapes[0])
+    for output_shape in output_shapes[1:]:
+      tensor_core_batch_size = numpy_ops.gcd(tensor_core_batch_size,
+                                             math_ops.reduce_prod(output_shape))
+    return tensor_core_batch_size
+
+  def _update_output_shapes(self, incoming_output_shapes: List[TensorShape]):
+    """Update the existing output shapes based on the new output shapes.
+
+    The existing output shapes always have higher piority than the new incoming
+    output shapes.
+    Args:
+      incoming_output_shapes: nested structure of TensorShape to override the
+        existing output shapes.
+    """
+    nest.assert_same_structure(self._output_shapes, incoming_output_shapes)
+    updated_output_shapes = []
+    for old_output_shape, incoming_output_shape in zip(self._output_shapes,
+                                                       incoming_output_shapes):
+      if old_output_shape:
+        updated_output_shapes.append(old_output_shape)
+      else:
+        updated_output_shapes.append(incoming_output_shape)
+    self._output_shapes = updated_output_shapes
+
+  def _check_output_shapes(self, incoming_output_shapes: List[TensorShape]):
+    """Check the incoming output shapes against the output shapes stored."""
+    # The incoming output shape should have the same structure with the existing
+    # output shapes.
+    nest.assert_same_structure(self._output_shapes, incoming_output_shapes)
+
+    for (path, feature), old_output_shape, incoming_output_shape in zip(
+        nest.flatten_with_joined_string_paths(self._feature_config),
+        self._output_shapes, incoming_output_shapes):
+      # First check if both shapes are not None.
+      if old_output_shape and incoming_output_shape:
+        # We skip the check when the incoming output shape is rank 1 or 2 and
+        # rank of the old output shape is larger. This can happen for
+        # (sequence) ragged tensor, we push the check down to the enqueue op.
+        if (len(incoming_output_shape) == 1 or len(incoming_output_shape)
+            == 2) and len(old_output_shape) > len(incoming_output_shape):
+          continue
+        if len(old_output_shape) != len(
+            incoming_output_shape) or not self._is_tensor_shape_match(
+                old_output_shape, incoming_output_shape):
           raise ValueError(
-              "Input {} has rank 0, rank must be at least 1.".format(path))
-        shape = tensor.shape.as_list()
-        if shape[0] is not None:
-          if batch_size is None:
-            batch_size = shape[0]
-          elif batch_size != shape[0]:
-            raise ValueError("Found multiple batch sizes {} and {}. All inputs "
-                             "must have the same batch dimensions size.".format(
-                                 batch_size, shape[0]))
-    return batch_size
+              f"Inconsistent shape founded for input feature {path}, "
+              f"Output shape is set to be {old_output_shape}, "
+              f"But got incoming output shape {incoming_output_shape}")
+
+  def _check_output_shapes_fully_defined(self):
+    """Check if the output shape is fully defined."""
+    for (path, feature), output_shape in zip(
+        nest.flatten_with_joined_string_paths(self._feature_config),
+        self._output_shapes):
+      if not output_shape.is_fully_defined():
+        raise ValueError(
+            f"Input Feature {path} has output shape set as"
+            f"{output_shape} which is not fully defined. "
+            "Please specify the fully defined shape in either FeatureConfig"
+            "or for the build method.")
+
+  def _is_tensor_shape_match(self, shape_a: TensorShape,
+                             shape_b: TensorShape) -> bool:
+    """Check if shape b matches with shape a."""
+    for s_a, s_b in zip(shape_a.as_list(), shape_b.as_list()):
+      if s_a and s_b and s_a != s_b:
+        return False
+    return True
+
+  def _get_output_shapes_from_batch_size(self, per_replica_batch_size):
+    """Get the output shapes from the batch size."""
+    output_shapes = []
+    for feature in nest.flatten(self._feature_config):
+      if not feature.output_shape and feature.max_sequence_length > 0:
+        output_shapes.append(
+            TensorShape([per_replica_batch_size, feature.max_sequence_length]))
+      else:
+        output_shapes.append(TensorShape(per_replica_batch_size))
+    return output_shapes
 
 
 @def_function.function
