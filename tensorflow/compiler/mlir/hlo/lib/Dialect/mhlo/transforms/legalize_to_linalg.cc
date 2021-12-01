@@ -910,116 +910,63 @@ class TransposeConverter
 
 // Converts reshape ops that can be proven to be either a collapse of dimensions
 // or expansion of dimensions of the operand.
-template <typename OpTy>
-class ReshapeOpConverter : public OpConversionPattern<OpTy> {
+class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
  public:
-  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      OpTy reshape_op, typename OpTy::Adaptor adaptor,
+      mhlo::ReshapeOp reshape_op, mhlo::ReshapeOp::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     if (!VerifyHloOpBufferOrTensorSemantics(reshape_op)) return failure();
-    ShapedType operand_type =
-        adaptor.operand().getType().template cast<ShapedType>();
-    ShapedType result_type = GetHloOpResultType(reshape_op);
+    auto operand_type = adaptor.operand().getType().cast<ShapedType>();
+    auto result_type = reshape_op.getType().cast<ShapedType>();
 
     if (!result_type.hasStaticShape()) return failure();
 
-    result_type = this->typeConverter->convertType(result_type)
-                      .template cast<ShapedType>();
+    result_type = typeConverter->convertType(result_type).cast<ShapedType>();
 
-    // Compute the reassociation maps for the linalg operation.
-    ArrayRef<int64_t> src_shape =
-        (operand_type.getRank() > result_type.getRank()
-             ? operand_type.getShape()
-             : result_type.getShape());
-    ArrayRef<int64_t> dst_shape =
-        (operand_type.getRank() > result_type.getRank()
-             ? result_type.getShape()
-             : operand_type.getShape());
-    unsigned curr_src_dim = 0, curr_dst_dim = 0;
-    SmallVector<ReassociationExprs, 4> reassociation_map(dst_shape.size());
-
-    // First scan all dimensions in the source shapes to see whether we have a
-    // perfect case where consecutive dimensions in source are collapsed. For
-    // such case we can just generate one single linalg.reshape.
-    bool is_collapsing_source = operand_type.hasStaticShape();
-    while (is_collapsing_source && curr_src_dim < src_shape.size() &&
-           curr_dst_dim < dst_shape.size()) {
-      int64_t dst_size = dst_shape[curr_dst_dim];
-      int64_t src_size = src_shape[curr_src_dim];
-      while (src_size < dst_size && curr_src_dim < src_shape.size()) {
-        reassociation_map[curr_dst_dim].push_back(
-            rewriter.getAffineDimExpr(curr_src_dim++));
-        src_size *= src_shape[curr_src_dim];
-      }
-      if (src_size == dst_size) {
-        reassociation_map[curr_dst_dim].push_back(
-            rewriter.getAffineDimExpr(curr_src_dim++));
-        // If the next dim in dst_shape is not 1, treat subsequent dims in
-        // src_shape which are 1 to be collapsed.
-        if (curr_dst_dim == dst_shape.size() - 1 ||
-            dst_shape[curr_dst_dim + 1] != 1) {
-          while (curr_src_dim < src_shape.size() &&
-                 src_shape[curr_src_dim] == 1) {
-            reassociation_map[curr_dst_dim].push_back(
-                rewriter.getAffineDimExpr(curr_src_dim++));
-          }
-        }
+    // Compute the reassociation maps for the linalg operation. This will
+    // succeed if the reshape can be done with a single expand_shape or
+    // collapse_shape.
+    if (Optional<SmallVector<ReassociationIndices>> reassociation_map =
+            getReassociationIndicesForReshape(operand_type, result_type)) {
+      if (result_type.getRank() < operand_type.getRank()) {
+        rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
+            reshape_op, result_type, adaptor.operand(), *reassociation_map);
       } else {
-        is_collapsing_source = false;
-        break;
+        rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
+            reshape_op, result_type, adaptor.operand(), *reassociation_map);
       }
-      curr_dst_dim++;
-    }
-    // Rank 0 can always use the direct lowering.
-    if (!src_shape.empty() && !dst_shape.empty() &&
-        (curr_src_dim != src_shape.size() || curr_dst_dim != dst_shape.size()))
-      is_collapsing_source = false;
-
-    // Otherwise, we need to first reduce all source dimensions into one and
-    // then expand to the destination dimensions.
-    if (!is_collapsing_source) {
-      auto get_identity_exprs = [&rewriter](int n) {
-        SmallVector<AffineExpr, 4> exprs;
-        for (int i = 0; i < n; ++i)
-          exprs.push_back(rewriter.getAffineDimExpr(i));
-        return exprs;
-      };
-      Location loc = reshape_op.getLoc();
-      int64_t total_elems = result_type.getNumElements();
-      auto elem_type = operand_type.getElementType();
-      SmallVector<ReassociationExprs, 4> collapsing_map = {
-          // Use operand_type here because we need to collapse all operands
-          // dimensions.
-          get_identity_exprs(operand_type.getShape().size())};
-      SmallVector<ReassociationExprs, 4> expanding_map = {
-          // Use result_type here because we need to expand to all result
-          // dimensions.
-          get_identity_exprs(result_type.getShape().size())};
-
-      Value collapsed_op = rewriter.create<linalg::TensorCollapseShapeOp>(
-          loc, adaptor.operand(), collapsing_map);
-      // Cast to a known static type if the input has dynamic dimensions.
-      auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
-      collapsed_op =
-          rewriter.create<tensor::CastOp>(loc, collapsed_type, collapsed_op);
-      rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
-          reshape_op, result_type, collapsed_op, expanding_map);
       return success();
     }
 
-    bool isCollapsing = result_type.getRank() < adaptor.getOperands()[0]
-                                                    .getType()
-                                                    .template cast<ShapedType>()
-                                                    .getRank();
-    if (isCollapsing) {
-      rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
-          reshape_op, result_type, adaptor.getOperands()[0], reassociation_map);
-    } else {
-      rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
-          reshape_op, result_type, adaptor.getOperands()[0], reassociation_map);
-    }
+    // Otherwise, we need to first reduce all source dimensions into one and
+    // then expand to the destination dimensions.
+    auto get_identity_exprs = [&rewriter](int n) {
+      SmallVector<AffineExpr, 4> exprs;
+      for (int i = 0; i < n; ++i) exprs.push_back(rewriter.getAffineDimExpr(i));
+      return exprs;
+    };
+    Location loc = reshape_op.getLoc();
+    int64_t total_elems = result_type.getNumElements();
+    auto elem_type = operand_type.getElementType();
+    SmallVector<ReassociationExprs, 4> collapsing_map = {
+        // Use operand_type here because we need to collapse all operands
+        // dimensions.
+        get_identity_exprs(operand_type.getRank())};
+    SmallVector<ReassociationExprs, 4> expanding_map = {
+        // Use result_type here because we need to expand to all result
+        // dimensions.
+        get_identity_exprs(result_type.getRank())};
+
+    Value collapsed_op = rewriter.create<linalg::TensorCollapseShapeOp>(
+        loc, adaptor.operand(), collapsing_map);
+    // Cast to a known static type if the input has dynamic dimensions.
+    auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
+    collapsed_op =
+        rewriter.create<tensor::CastOp>(loc, collapsed_type, collapsed_op);
+    rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
+        reshape_op, result_type, collapsed_op, expanding_map);
     return success();
   }
 };
@@ -2723,7 +2670,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::SubOp>,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
       PointwiseToLinalgConverter<mhlo::XorOp>,
-      ReshapeOpConverter<mhlo::ReshapeOp>,
+      ReshapeOpConverter,
       ReverseConverter<mhlo::ReverseOp>,
       SliceConverter<mhlo::SliceOp>,
       ComputeReshapeShapeConversion,
