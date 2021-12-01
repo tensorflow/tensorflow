@@ -996,12 +996,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         dataset, cluster=cluster, processing_mode=ShardingPolicy.OFF)
     self.assertDatasetProduces(dataset, list(range(20)))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCardinality(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    dataset = self.make_distributed_range_dataset(10, cluster)
-    self.assertEqual(self.evaluate(dataset.cardinality()), dataset_ops.UNKNOWN)
-
 
 if __name__ == "__main__":
   test.main()
