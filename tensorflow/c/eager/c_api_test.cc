@@ -2325,89 +2325,98 @@ TEST(CAPI, ShareVariableAcrossContextsAfterUpdateContextWorks) {
 tensorflow::ServerDef CreateSingleHostServerDef(
     const tensorflow::ServerDef& cluster_server_def, int task_index) {
   tensorflow::ServerDef single_host_server_def;
-  single_host_server_def.set_job_name(cluster_server_def.job_name());
+  single_host_server_def.set_job_name("worker");
   single_host_server_def.set_protocol(cluster_server_def.protocol());
   single_host_server_def.set_task_index(0);
   tensorflow::ClusterDef* cluster_def =
       single_host_server_def.mutable_cluster();
   tensorflow::JobDef* job_def = cluster_def->add_job();
-  job_def->set_name(cluster_server_def.job_name());
+  job_def->set_name("client");
 
   // Add a client.
-  single_host_server_def.mutable_cluster()
-      ->mutable_job(0)
-      ->mutable_tasks()
-      ->insert(
-          {0, tensorflow::strings::StrCat(
-                  "localhost:", tensorflow::testing::PickUnusedPortOrDie())});
+  job_def->mutable_tasks()->insert(
+      {0, tensorflow::strings::StrCat(
+              "localhost:", tensorflow::testing::PickUnusedPortOrDie())});
+
+  tensorflow::JobDef* job_def2 = cluster_def->add_job();
+  job_def2->set_name("worker");
 
   // Copy over `host:port` at `task_index`
   for (auto task : cluster_server_def.cluster().job(0).tasks()) {
     if (task.first == task_index) {
-      single_host_server_def.mutable_cluster()
-          ->mutable_job(0)
-          ->mutable_tasks()
-          ->insert({task.first, task.second});
+      job_def2->mutable_tasks()->insert({task.first, task.second});
     }
   }
 
   return single_host_server_def;
 }
 
+tensorflow::ServerDef GetClusterServerDef(const string& worker_job_name,
+                                          int num_workers) {
+  tensorflow::ServerDef server_def = GetServerDef(worker_job_name, num_workers);
+  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
+
+  // Add a client.
+  tensorflow::JobDef* job_def2 = cluster_def->add_job();
+  job_def2->set_name("client");
+  job_def2->mutable_tasks()->insert(
+      {0, tensorflow::strings::StrCat(
+              "localhost:", tensorflow::testing::PickUnusedPortOrDie())});
+  return server_def;
+}
+
 TEST(CAPI, SingleHostServerDefWorks) {
-  // Create a server def that represents a 2-process cluster.
+  // Create a server def that represents a 2-process cluster and a client.
   // Example:
   //
-  // cluster { job { name: "localhost"
-  //               tasks { key: 0 value: "localhost:14319" } <--client
-  //               tasks { key: 1 value: "localhost:15022" } <--worker1
-  //               tasks { key: 2 value: "localhost:15023" } <--worker2
-  // } }
-  // job_name: "localhost" protocol: "grpc"
+  // cluster { job { name: "worker"
+  //                 tasks { key: 0 value: "localhost:14522" }
+  //                 tasks { key: 1 value: "localhost:14523" }
+  //               }
+  //           job { name: "client"
+  //                 tasks { key: 0 value: "localhost:14524" }
+  //               }
+  //         } job_name: "worker" protocol: "grpc"
   //
-  tensorflow::ServerDef cluster_server_def = GetServerDef(3);
-  // These server defs have task index set to 0.
-  string serialized_cluster_server_def = cluster_server_def.SerializeAsString();
+  tensorflow::ServerDef cluster_server_def = GetClusterServerDef("worker", 2);
 
   // Create two worker tasks, using single host server defs.
   // A single host server def contains a client and the remote host.
   // Example:
   //
-  //  Worker2:
-  //  cluster { job { name: "localhost"
-  //                  tasks { key: 0 value: "localhost:15226" } <--client
-  //                  tasks { key: 2 value: "localhost:15023" } <--worker2
-  //  } }
-  //  job_name: "localhost" task_index: 2 protocol: "grpc"
-  //
   //  Worker1:
-  //  cluster { job { name: "localhost"
-  //                 tasks { key: 0 value: "localhost:15024" } <--client
-  //                 tasks { key: 1 value: "localhost:15022" } <--worker1
-  //  } }
-  //  job_name: "localhost" task_index: 1 protocol: "grpc"
+  //  cluster { job { name: "client" tasks { key: 0 value: "localhost:14525" } }
+  //            job { name: "worker" tasks { key: 1 value: "localhost:14523" } }
+  //          } job_name: "worker" task_index: 1 protocol: "grpc"
+  //
+  //  Worker0:
+  //  cluster { job { name: "client" tasks { key: 0 value: "localhost:14526" } }
+  //            job { name: "worker" tasks { key: 0 value: "localhost:14522" } }
+  //          } job_name: "worker" protocol: "grpc"
   //
 
-  // Create `worker_2` using single host server def `worker_2_server_def`.
-  tensorflow::ServerDef worker_2_server_def =
-      CreateSingleHostServerDef(cluster_server_def, 2);
-  worker_2_server_def.set_task_index(2);
+  // Create `worker_1` using single host server def `worker_1_server_def`.
+  tensorflow::ServerDef worker_1_server_def =
+      CreateSingleHostServerDef(cluster_server_def, 1);
+  worker_1_server_def.set_task_index(1);
+  worker_1_server_def.set_job_name("worker");
 
-  std::unique_ptr<tensorflow::GrpcServer> worker_server2;
-  ASSERT_TRUE(tensorflow::GrpcServer::Create(worker_2_server_def,
+  std::unique_ptr<tensorflow::GrpcServer> worker_server1;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(worker_1_server_def,
                                              tensorflow::Env::Default(),
-                                             &worker_server2)
+                                             &worker_server1)
                   .ok());
-  ASSERT_TRUE(worker_server2->Start().ok());
+  ASSERT_TRUE(worker_server1->Start().ok());
 
   // Create context `local_ctx` using single host server def -
-  // `worker_2_server_def`.
-  worker_2_server_def.set_task_index(0);
+  // `worker_1_server_def`.
+  worker_1_server_def.set_task_index(0);
+  worker_1_server_def.set_job_name("client");
   TFE_Context* local_ctx =
-      CreateContext(worker_2_server_def.SerializeAsString(),
+      CreateContext(worker_1_server_def.SerializeAsString(),
                     /*isolate_session_state=*/false);
 
-  const char remote_device[] = "/job:localhost/replica:0/task:2/device:CPU:0";
+  const char remote_device[] = "/job:worker/replica:0/task:1/device:CPU:0";
 
   // Create a variable `var` on `worker2` using `local_ctx`.
   TFE_TensorHandle* handle_0 =
@@ -2418,21 +2427,24 @@ TEST(CAPI, SingleHostServerDefWorks) {
   TF_DeleteStatus(status);
   TFE_DeleteTensorHandle(handle_0);
 
-  // Create `worker1` using single host server def `worker_1_server_def`.
-  tensorflow::ServerDef worker_1_server_def =
-      CreateSingleHostServerDef(cluster_server_def, 1);
-  worker_1_server_def.set_task_index(1);
+  // Create `worker0` using single host server def `worker_0_server_def`.
+  tensorflow::ServerDef worker_0_server_def =
+      CreateSingleHostServerDef(cluster_server_def, 0);
+  worker_0_server_def.set_task_index(0);
 
-  std::unique_ptr<tensorflow::GrpcServer> worker_server1;
-  ASSERT_TRUE(tensorflow::GrpcServer::Create(worker_1_server_def,
+  std::unique_ptr<tensorflow::GrpcServer> worker_server0;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(worker_0_server_def,
                                              tensorflow::Env::Default(),
-                                             &worker_server1)
+                                             &worker_server0)
                   .ok());
-  ASSERT_TRUE(worker_server1->Start().ok());
+  ASSERT_TRUE(worker_server0->Start().ok());
 
   // Create a remote context, `remote_ctx`, using `cluster_server_def`.
-  TFE_Context* remote_ctx = CreateContext(serialized_cluster_server_def,
-                                          /*isolate_session_state=*/false);
+  cluster_server_def.set_task_index(0);
+  cluster_server_def.set_job_name("client");
+  TFE_Context* remote_ctx =
+      CreateContext(cluster_server_def.SerializeAsString(),
+                    /*isolate_session_state=*/false);
 
   // Read variable `var` using `remote_ctx`, created using `cluster_server_def`.
   {
@@ -2474,7 +2486,7 @@ TEST(CAPI, SingleHostServerDefWorks) {
   TFE_DeleteContext(remote_ctx);
 
   worker_server1.release();
-  worker_server2.release();
+  worker_server0.release();
 }
 
 }  // namespace
