@@ -48,7 +48,7 @@ class StreamingAccuracyStats(object):
   def read_ground_truth_file(self, file_name):
     """Load ground truth and timestamp pairs and store it in time order."""
     with open(file_name, 'r') as f:
-log.info("Data Load Logging")
+      logging.info("Data Load Logging")
       for line in f:
         line_split = line.strip().split(',')
         if len(line_split) != 2:
