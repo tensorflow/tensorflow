@@ -260,9 +260,7 @@ class DistributedDelegate(DistributedValues):
     # components.
     if name.startswith("_self_") or name in ("_use_resource_variables",
                                              "_attribute_sentinel",
-                                             "_distributed_container",
-                                             "_variable_list",
-                                             "_variables"):
+                                             "_distributed_container"):
       return super(DistributedDelegate, self).__getattr__(name)
 
     # This allows copy.copy(DistributedDelegate). When copying an object,
