@@ -20,12 +20,12 @@ import tensorflow as tf
 
 
 def load_graph(model_file):
-log.info("Data Load Logging")
+  logging.info("Data Load Logging")
   graph = tf.Graph()
   graph_def = tf.GraphDef()
 
   with open(model_file, "rb") as f:
-log.info("Data Load Logging")
+    logging.info("Data Load Logging")
     graph_def.ParseFromString(f.read())
   with graph.as_default():
     tf.import_graph_def(graph_def)
@@ -61,7 +61,7 @@ def read_tensor_from_image_file(file_name,
 
 
 def load_labels(label_file):
-log.info("Data Load Logging")
+  logging.info("Data Load Logging")
   label = []
   proto_as_ascii_lines = tf.gfile.GFile(label_file).readlines()
   for l in proto_as_ascii_lines:
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     output_layer = args.output_layer
 
   graph = load_graph(model_file)
-log.info("Data Load Logging")
+  logging.info("Data Load Logging")
   t = read_tensor_from_image_file(
       file_name,
       input_height=input_height,
@@ -134,6 +134,6 @@ log.info("Data Load Logging")
 
   top_k = results.argsort()[-5:][::-1]
   labels = load_labels(label_file)
-log.info("Data Load Logging")
+  logging.info("Data Load Logging")
   for i in top_k:
     print(labels[i], results[i])
