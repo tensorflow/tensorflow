@@ -3205,6 +3205,7 @@ tf_kernel_library(
 )
 
 SAVE_RESTORE_DEPS = [
+    ":checkpoint_callback_manager",
     ":save_restore_tensor",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -3224,6 +3225,35 @@ tf_kernel_library(
     name = "save_op",
     prefix = "save_op",
     deps = SAVE_RESTORE_DEPS,
+)
+
+tf_kernel_library(
+    name = "checkpoint_callback_manager",
+    srcs = [
+        "checkpoint_callback_manager.cc",
+    ],
+    hdrs = [
+        "checkpoint_callback_manager.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:regexp",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_tests(
+    name = "checkpoint_callback_manager_test",
+    size = "small",
+    srcs = ["checkpoint_callback_manager_test.cc"],
+    deps = [
+        ":checkpoint_callback_manager",
+        ":io",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_kernel_library(
@@ -6223,6 +6253,7 @@ filegroup(
         "bincount_op.h",
         "broadcast_to_op.h",
         "bucketize_op.h",
+        "checkpoint_callback_manager.h",
         "concat_lib.h",
         "control_flow_ops.h",
         "conv_2d.h",
@@ -6472,6 +6503,7 @@ filegroup(
         "bincount_op.cc",
         "broadcast_to_op.cc",
         "bucketize_op.cc",
+        "checkpoint_callback_manager.cc",
         "ctc_decoder_ops.cc",
         "decode_padded_raw_op.cc",
         "depthtospace_op.cc",
