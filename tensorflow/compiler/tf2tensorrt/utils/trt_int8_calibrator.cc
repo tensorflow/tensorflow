@@ -134,6 +134,11 @@ void TRTInt8Calibrator::setDone() {
   cond_.notify_all();
 }
 
+bool TRTInt8Calibrator::checkDone() {
+  mutex_lock lock(cond_mtx_);
+  return done_;
+}
+
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
                                               std::size_t length) noexcept {
   calibration_table_ = string(static_cast<const char*>(ptr), length);

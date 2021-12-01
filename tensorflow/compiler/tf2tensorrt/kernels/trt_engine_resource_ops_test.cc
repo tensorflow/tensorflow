@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+#include <fstream>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
@@ -224,6 +225,20 @@ constexpr std::array<TestParam, 2> TestParameters = {
     TestParam{nvinfer1::Dims{1, {1}}, true, 1}};
 #endif
 
+const string TestCalibData = 
+  "TRT-8003-EntropyCalibration2\n"
+  "TensorRTInputPH_0: 3c004a46\n"
+  "(Unnamed Layer* 0) [Shuffle]_output: 3c004a46\n"
+  "(Unnamed Layer* 1) [Fully Connected]_output: 3cbb0e14\n"
+  "StatefulPartitionedCall/model/dense/MatMul: 3cbb0e14\n"
+  "(Unnamed Layer* 3) [Constant]_output: 3803849c\n"
+  "StatefulPartitionedCall/model/dense/BiasAdd: 3cbb921c\n"
+  "(Unnamed Layer* 5) [Shuffle]_output: 3cbb921c\n"
+  "(Unnamed Layer* 6) [Fully Connected]_output: 3c143af9\n"
+  "StatefulPartitionedCall/model/dense_1/MatMul: 3c143af9\n"
+  "(Unnamed Layer* 8) [Constant]_output: 38034219\n"
+  "TensorRTOutputPH_0: 3c122df0\n";
+
 INSTANTIATE_TEST_CASE_P(EngineResourceOpsTestInstantiation,
                         TRTEngineResourceOpsTest,
                         ::testing::ValuesIn(TestParameters));
@@ -260,20 +275,29 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(env->NewWritableFile(filename, &file));
   }
+  const string calib_tbl_filename = io::JoinPath(testing::TmpDir(), "calib_tbl_file");
+  {
+    std::unique_ptr<WritableFile> file;
+    TF_ASSERT_OK(env->NewWritableFile(calib_tbl_filename, &file));
+  }
   TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTResource")
                    .Input(FakeInput(DT_RESOURCE))
+                   .Input(FakeInput(DT_STRING))
                    .Input(FakeInput(DT_STRING))
                    .Attr("max_cached_engines_count", 1)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<ResourceHandle>(TensorShape({}), {handle});
   AddInputFromArray<tstring>(TensorShape({}), {filename});
+  AddInputFromArray<tstring>(TensorShape({}), {calib_tbl_filename});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check that the resource is registered with the resource manager and the
   // cache of the resource is empty.
   EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
   EXPECT_EQ(0, resource->cache_.size());
+  // Check that the calibration table of the resource is empty.
+  EXPECT_EQ("", resource->calib_ctx_->TerminateCalibration());
 
   // Create an engine and add it to the cache of the resource.
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
@@ -335,17 +359,24 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   }
   EXPECT_TRUE(errors::IsOutOfRange(reader->ReadRecord(&offset, &record)));
 
+  // Initialize calibration table file with dummy test data.
+  std::ofstream write_calib_data(calib_tbl_filename);
+  write_calib_data << TestCalibData;
+  write_calib_data.close();
+
   // Recreate the resource and use the file with the serialized engine to
   // initialize the resource.
   Reset();
   TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTResource")
                    .Input(FakeInput(DT_RESOURCE))
                    .Input(FakeInput(DT_STRING))
+                   .Input(FakeInput(DT_STRING))
                    .Attr("max_cached_engines_count", 1)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<ResourceHandle>(TensorShape({}), {handle});
   AddInputFromArray<tstring>(TensorShape({}), {filename});
+  AddInputFromArray<tstring>(TensorShape({}), {calib_tbl_filename});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check that the resource is registered with the resource manager again and
@@ -382,6 +413,9 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
       EXPECT_EQ(2, resource->profiles_.GetProfileNumber(shapes));
     }
   }
+  // Check that calibration table is loaded correctly.
+  EXPECT_EQ(TestCalibData, resource->calib_ctx_->TerminateCalibration());
+
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());

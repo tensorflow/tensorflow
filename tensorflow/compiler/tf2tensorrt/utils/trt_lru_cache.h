@@ -172,6 +172,8 @@ class CalibrationContext {
  public:
   string TerminateCalibration();
 
+  void InitializeCalibratorFromData(const string& calib_data);
+
   // Lookup table for temporary staging areas of input tensors for calibration.
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
 

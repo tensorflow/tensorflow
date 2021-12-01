@@ -29,6 +29,13 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
+void CalibrationContext::InitializeCalibratorFromData(
+    const string &calib_data) {
+  mutex_lock l(mu_);
+  calibrator_.reset(new TRTInt8Calibrator(calib_data));
+  calibration_table_ = calib_data;
+  terminated_ = true;
+}
 string CalibrationContext::TerminateCalibration() {
   mutex_lock l(mu_);
   if (terminated_) return calibration_table_;

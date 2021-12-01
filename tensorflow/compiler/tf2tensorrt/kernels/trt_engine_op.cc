@@ -258,6 +258,8 @@ class TRTEngineOp : public AsyncOpKernel {
   bool use_calibration_;
 
   tensorflow::grappler::Cluster* cluster_;
+  // Whether or not we are using the V2 converter
+  bool is_v2_;
 
   // Array of all input shapes, collected from the input_shapes attribute when
   // constructing the TRTEngineOp. The input_shapes attribute is set during
@@ -401,6 +403,11 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   string calibration_data;
   OP_REQUIRES_OK(context,
                  context->GetAttr("calibration_data", &calibration_data));
+  bool calib_tbl_saved;
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("calib_tbl_saved", &calib_tbl_saved));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("is_v2", &is_v2_));
   OP_REQUIRES_OK(context, context->GetAttr("segment_func", &func_));
   OP_REQUIRES(context, !func_.name().empty(),
               errors::InvalidArgument(
@@ -442,12 +449,19 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   // TODO(laigd): calibration_data is used in TF v1.x and we keep it only for
   // backward compatibility reasons. Remove it once all known users switch to
   // 2.0.
-  calibration_mode_ =
-      (use_calibration_ && precision_mode_ == TrtPrecisionMode::INT8 &&
-       calibration_data.empty());
-  if (!calibration_data.empty()) {
-    calibrator_.reset(new TRTInt8Calibrator(calibration_data));
-    calibration_data.resize(0);
+  if (is_v2_) {
+    calibration_mode_ =
+        (use_calibration_ && precision_mode_ == TrtPrecisionMode::INT8 &&
+         !calib_tbl_saved);
+  }
+  else {
+    calibration_mode_ =
+        (use_calibration_ && precision_mode_ == TrtPrecisionMode::INT8 &&
+        calibration_data.empty());
+    if (!calibration_data.empty()) {
+      calibrator_.reset(new TRTInt8Calibrator(calibration_data));
+      calibration_data.resize(0);
+    }
   }
   OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
                                            &max_cached_engines_));
@@ -816,6 +830,18 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     // persistent tensor in the calibration resource.
     ExecuteCalibration(ctx, cache_res, async_helper);
     return;
+  }
+
+  // Load in calibrator if it exists
+  if (is_v2_ && cache_res->calib_ctx_ &&
+        cache_res->calib_ctx_.get()->calibrator_ &&
+        cache_res->calib_ctx_.get()->calibrator_.get()->checkDone()) {
+    if (this->calibrator_ == nullptr) {
+      mutex_lock lock(engine_mutex_);
+      if (this->calibrator_ == nullptr) {
+        this->calibrator_ = std::move(cache_res->calib_ctx_.get()->calibrator_);
+      }
+    }
   }
 
   // Get shapes of inputs to engine.

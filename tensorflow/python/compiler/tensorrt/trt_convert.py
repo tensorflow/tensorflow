@@ -844,6 +844,7 @@ class _TRTEngineResource(tracking.TrackableResource):
   def __init__(self,
                resource_name,
                filename,
+               calib_tbl_filename,
                maximum_cached_engines,
                device="GPU"):
     super(_TRTEngineResource, self).__init__(device=device)
@@ -851,6 +852,12 @@ class _TRTEngineResource(tracking.TrackableResource):
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
         tracking.Asset(filename), "_serialized_trt_resource_filename")
+    if calib_tbl_filename == None: # In this case there is no calibration data to save
+      self._calib_tbl_filename = ""
+    else:
+      self._calib_tbl_filename = self._track_trackable(
+        tracking.Asset(calib_tbl_filename), 
+        "_serialized_trt_calibration_resource_filename")
     self._maximum_cached_engines = maximum_cached_engines
 
   def _create_resource(self):
@@ -860,6 +867,7 @@ class _TRTEngineResource(tracking.TrackableResource):
     gen_trt_ops.initialize_trt_resource(
         self.resource_handle,
         self._filename,
+        self._calib_tbl_filename,
         max_cached_engines_count=self._maximum_cached_engines)
 
   def _destroy_resource(self):
@@ -1128,6 +1136,8 @@ class TrtGraphConverterV2(object):
     # Fields to support TF-TRT testing and shouldn't be used for other purpose.
     self._test_only_disable_non_trt_optimizers = False
 
+    self.calib_tbl_asset_dir = None
+
   def _need_trt_profiles(self):
     return self._use_dynamic_shape
 
@@ -1242,6 +1252,14 @@ class TrtGraphConverterV2(object):
     self._converted_func.graph.structured_input_signature = (
         func.structured_input_signature)
 
+    def _set_v2_mode(node):
+      node.attr["is_v2"].b = True
+    # Set this attribute so that TRTEngineOps can distinguish
+    # between a call from the V1 and V2 API.
+    self._for_each_trt_node(self._converted_graph_def, _set_v2_mode)
+    # Rebuild the function to change this attribute.
+    self._converted_func = self._rebuild_func(self._converted_func)
+
     if self._need_calibration:
       for inp in calibration_input_fn():
         if isinstance(inp, dict):
@@ -1253,7 +1271,14 @@ class TrtGraphConverterV2(object):
       def _save_calibration_table(node):
         calibration_table = gen_trt_ops.get_calibration_data_op(
             _get_canonical_engine_name(node.name))
-        node.attr["calibration_data"].s = calibration_table.numpy()
+        node.attr["calib_tbl_saved"].b = True
+        if self.calib_tbl_asset_dir == None:
+          self.calib_tbl_asset_dir = tempfile.mkdtemp()
+        canonical_engine_name = _get_canonical_engine_name(node.name)
+        calib_tbl_filename = os.path.join(self.calib_tbl_asset_dir,
+                              "calibration-table." + canonical_engine_name)
+        with open(calib_tbl_filename, 'wb') as write_tables:
+          write_tables.write(calibration_table.numpy())
 
       self._for_each_trt_node(self._converted_graph_def,
                               _save_calibration_table)
@@ -1365,6 +1390,12 @@ class TrtGraphConverterV2(object):
 
       filename = os.path.join(engine_asset_dir,
                               "trt-serialized-engine." + canonical_engine_name)
+      if self._need_calibration:
+        assert self.calib_tbl_asset_dir != None
+        calib_tbl_filename = os.path.join(self.calib_tbl_asset_dir,
+                              "calibration-table." + canonical_engine_name)
+      else: 
+        calib_tbl_filename = None # There is no calibration data to save
 
       try:
         gen_trt_ops.serialize_trt_resource(
@@ -1382,7 +1413,7 @@ class TrtGraphConverterV2(object):
 
       # TODO(laigd): add an option for the user to choose the device.
       resource_map[canonical_engine_name] = _TRTEngineResource(
-          canonical_engine_name, filename,
+          canonical_engine_name, filename, calib_tbl_filename,
           self._conversion_params.maximum_cached_engines)
 
     self._for_each_trt_node(self._converted_graph_def,

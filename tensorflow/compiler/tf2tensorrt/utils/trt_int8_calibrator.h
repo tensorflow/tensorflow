@@ -65,6 +65,8 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator2 {
   // will be ignored.
   void setDone();
 
+  bool checkDone();
+
   // If not null, calibration is skipped.
   const void* readCalibrationCache(std::size_t& length) noexcept override;
 

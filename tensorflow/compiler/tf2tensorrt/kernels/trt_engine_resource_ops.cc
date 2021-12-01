@@ -15,6 +15,8 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <vector>
+#include <fstream>
+#include <sstream>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
@@ -163,6 +165,23 @@ class InitializeTRTResource : public OpKernel {
     VLOG(1) << "Loaded " << num_loaded_engine << " TRT engines for op "
             << handle.name() << " on device " << ctx->device()->name()
             << " from file " << filename;
+
+    // Get the calibration table file name.
+    const string& calib_tbl_filename = ctx->input(2).scalar<tstring>()();
+    if (!calib_tbl_filename.empty()) {
+      auto ss = std::ostringstream{};
+      std::ifstream calib_data_reader(calib_tbl_filename);
+      OP_REQUIRES(ctx, calib_data_reader.is_open(),
+                errors::Internal("Not able to open calibration table asset "
+                                 "file."));
+      ss << calib_data_reader.rdbuf(); // Read the entire file.
+      resource->calib_ctx_ = absl::make_unique<CalibrationContext>();
+      resource->calib_ctx_.get()->InitializeCalibratorFromData(ss.str());
+      calib_data_reader.close();
+      VLOG(1) << "Loaded calibration tables for op "
+              << handle.name() << " on device " << ctx->device()->name()
+              << " from file " << calib_tbl_filename;
+    }
   }
 
  private:

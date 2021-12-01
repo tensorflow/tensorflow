@@ -563,11 +563,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     trt_engine_name = self._GetUniqueTRTEngineOp(
         converter._converted_graph_def).name
 
-    def _CheckFn(node):
-      self.assertTrue(len(node.attr["calibration_data"].s), node.name)
-
     # Verify the converted GraphDef.
-    self._CheckTrtOps(converter._converted_func, _CheckFn)  # pylint: disable=protected-access
+    self._CheckTrtOps(converter._converted_func)  # pylint: disable=protected-access
 
     # Build another engine with different batch size.
     def _InputFn():
@@ -585,13 +582,19 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertTrue(os.path.exists(expected_asset_file))
     self.assertTrue(os.path.getsize(expected_asset_file))
 
+    expected_calib_tbl_asset_file = os.path.join(
+        output_saved_model_dir,
+        "assets/calibration-table." + trt_engine_name)
+    self.assertTrue(os.path.exists(expected_calib_tbl_asset_file))
+    self.assertTrue(os.path.getsize(expected_calib_tbl_asset_file))
+
     del converter
     gc.collect()  # Force GC to destroy the TRT engine cache.
 
     # Load and verify the converted model.
     root_with_trt = load.load(output_saved_model_dir)
     converted_signature = root_with_trt.signatures[_SAVED_MODEL_SIGNATURE_KEY]
-    self._CheckTrtOps(converted_signature, _CheckFn)
+    self._CheckTrtOps(converted_signature)
     output_with_trt = converted_signature(
         inp1=ops.convert_to_tensor(np_input1),
         inp2=ops.convert_to_tensor(np_input2))
@@ -608,9 +611,16 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # using calibration table.
     # TODO(laigd): check that it should contain three engines.
     np_input1, np_input2 = self._RandomInput([6, 1, 1])
-    converted_signature(
+    expected_output = root.run(np_input1, np_input2)
+    output_with_trt = converted_signature(
         inp1=ops.convert_to_tensor(np_input1),
-        inp2=ops.convert_to_tensor(np_input2))
+        inp2=ops.convert_to_tensor(np_input2)) 
+    self.assertEqual(1, len(output_with_trt))
+    self.assertAllClose(
+        expected_output,
+        list(output_with_trt.values())[0],
+        atol=1e-6,
+        rtol=1e-6)
 
     del root_with_trt
     gc.collect()  # Force GC to destroy the TRT engine cache.

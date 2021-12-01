@@ -33,6 +33,7 @@ REGISTER_OP("InitializeTRTResource")
     .Attr("max_cached_engines_count: int = 1")
     .Input("resource_handle: resource")
     .Input("filename: string")
+    .Input("calibration_filename: string")
     .SetIsStateful()
     .SetShapeFn(shape_inference::NoOutputs);
 
