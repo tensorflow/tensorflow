@@ -858,6 +858,7 @@ cc_library(
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
+            "@tf_runtime//backends/gpu:gpu_executor",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_opdefs",
             "@tf_runtime//backends/gpu:gpu_passes",
@@ -865,6 +866,7 @@ cc_library(
         ],
         ":is_bef_executable_enabled": [
             ":xlir_kernels",
+            "@llvm-project//llvm:Support",
             "//tensorflow/core/tfrt/runtime:work_queue_interface",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
@@ -875,6 +877,7 @@ cc_library(
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
             "@tf_runtime//:tensor_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_executor",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_passes",
             "@tf_runtime//backends/gpu:gpu_types",

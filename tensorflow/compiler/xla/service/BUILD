@@ -311,6 +311,8 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
