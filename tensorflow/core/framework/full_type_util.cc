@@ -83,6 +83,47 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype) {
   };
 }
 
+OpTypeConstructor UnaryTensorContainer(FullTypeId t, const string& var_name) {
+  return [t, var_name](OpDef* op_def) {
+    FullTypeDef* tdef =
+        op_def->mutable_output_arg(0)->mutable_experimental_full_type();
+    tdef->set_type_id(t);
+
+    FullTypeDef* targ = tdef->add_args();
+    targ->set_type_id(TFT_TENSOR);
+    FullTypeDef* varg = targ->add_args();
+    varg->set_type_id(TFT_VAR);
+    varg->set_s(var_name);
+
+    return Status::OK();
+  };
+}
+
+OpTypeConstructor VariadicTensorContainer(FullTypeId t,
+                                          const string& var_name) {
+  return [t, var_name](OpDef* op_def) {
+    FullTypeDef* tdef =
+        op_def->mutable_output_arg(0)->mutable_experimental_full_type();
+    tdef->set_type_id(t);
+
+    FullTypeDef* for_each = tdef->add_args();
+    for_each->set_type_id(TFT_FOR_EACH);
+    for_each->add_args()->set_type_id(TFT_PRODUCT);
+
+    FullTypeDef* tpl = for_each->add_args();
+    tpl->set_type_id(TFT_TENSOR);
+    FullTypeDef* targ = tpl->add_args();
+    targ->set_type_id(TFT_VAR);
+    targ->set_s(var_name);
+
+    FullTypeDef* tvar = for_each->add_args();
+    tvar->set_type_id(TFT_VAR);
+    tvar->set_s(var_name);
+
+    return Status::OK();
+  };
+}
+
 StatusOr<FullTypeDef> SpecializeType(const AttrSlice& attrs,
                                      const OpDef& op_def) {
   FullTypeDef ft;

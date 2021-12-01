@@ -52,6 +52,17 @@ OpTypeConstructor UnaryGeneric(FullTypeId t);
 // Helper for a type constructor of <t>[FT_TENSOR[<dtype>]].
 OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype);
 
+// Helper for a type constructor of <t>[FT_VAR[<var_name>]].
+OpTypeConstructor UnaryTensorContainer(FullTypeId t, const string& var_name);
+
+// Helper for a type constructor of
+// <t>[FT_FOR_EACH[
+//     FT_PRODUCT,
+//     FT_TENSOR[FT_VAR[<var_name>]],
+//     FT_VAR[<var_name>]].
+// Multi-valued type variables will expand the template (see full_type.proto).
+OpTypeConstructor VariadicTensorContainer(FullTypeId t, const string& var_name);
+
 // Type specialization and inference logic. This function narrows the type
 // specified in an op definition. Such types are usually generic and dependent
 // on input types. This function resolves the output types based on the input

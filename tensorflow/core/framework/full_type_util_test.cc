@@ -91,6 +91,49 @@ TEST(UnaryTensorContainer, Fixed) {
   EXPECT_EQ(t.args(0).args(0).args_size(), 0);
 }
 
+TEST(UnaryTensorContainer, Dependent) {
+  OpTypeConstructor ctor = UnaryTensorContainer(TFT_ARRAY, "T");
+
+  OpDef op;
+  op.add_output_arg();
+
+  TF_ASSERT_OK(ctor(&op));
+
+  const FullTypeDef& t = op.output_arg(0).experimental_full_type();
+  EXPECT_EQ(t.type_id(), TFT_ARRAY);
+  EXPECT_EQ(t.args_size(), 1);
+  EXPECT_EQ(t.args(0).type_id(), TFT_TENSOR);
+  EXPECT_EQ(t.args(0).args_size(), 1);
+  EXPECT_EQ(t.args(0).args(0).type_id(), TFT_VAR);
+  EXPECT_EQ(t.args(0).args(0).args_size(), 0);
+  EXPECT_EQ(t.args(0).args(0).s(), "T");
+}
+
+TEST(VariadicTensorContainer, Basic) {
+  OpTypeConstructor ctor = VariadicTensorContainer(TFT_ARRAY, "T");
+
+  OpDef op;
+  op.add_output_arg();
+
+  TF_ASSERT_OK(ctor(&op));
+
+  const FullTypeDef& t = op.output_arg(0).experimental_full_type();
+  EXPECT_EQ(t.type_id(), TFT_ARRAY);
+  EXPECT_EQ(t.args_size(), 1);
+  EXPECT_EQ(t.args(0).type_id(), TFT_FOR_EACH);
+  EXPECT_EQ(t.args(0).args_size(), 3);
+  EXPECT_EQ(t.args(0).args(0).type_id(), TFT_PRODUCT);
+  EXPECT_EQ(t.args(0).args(0).args_size(), 0);
+  EXPECT_EQ(t.args(0).args(1).type_id(), TFT_TENSOR);
+  EXPECT_EQ(t.args(0).args(1).args_size(), 1);
+  EXPECT_EQ(t.args(0).args(1).args(0).type_id(), TFT_VAR);
+  EXPECT_EQ(t.args(0).args(1).args(0).args_size(), 0);
+  EXPECT_EQ(t.args(0).args(1).args(0).s(), "T");
+  EXPECT_EQ(t.args(0).args(2).type_id(), TFT_VAR);
+  EXPECT_EQ(t.args(0).args(2).args_size(), 0);
+  EXPECT_EQ(t.args(0).args(2).s(), "T");
+}
+
 TEST(GetArgDefaults, DefaultUnsetFromNoArgs) {
   FullTypeDef t;
 
