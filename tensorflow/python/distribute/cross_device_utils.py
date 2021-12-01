@@ -438,7 +438,7 @@ class CollectiveReplicaLauncher(object):
       options: Optional[collective_util.Options] = None) -> core.Tensor:
     """All-gather a dense tensor.
 
-    This method must be called inside a tf.function.
+    This method must can be called without a tf.function.
 
     Args:
       input_tensor: a dense tensor. It must have the same rank on all replicas,
@@ -451,12 +451,7 @@ class CollectiveReplicaLauncher(object):
     Returns:
       The gathered Tensor.
 
-    Raises:
-      RuntimeError: if called in eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError('all_gather is not supported in eager mode.')
-
     with ops.device(self._device), \
          ops.control_dependencies([array_ops.identity(input_tensor)]):
       # 1. Transpose
