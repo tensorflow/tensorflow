@@ -31,19 +31,16 @@ namespace tensorflow {
 namespace full_type {
 
 // TODO(mdan): Specific helpers won't get too far. Use a parser instead.
-// TODO(mdan): Move constructors into a separate file.
 
 // Helpers that allow shorthand expression for the more common kinds of type
 // constructors.
 // Note: The arity below refers to the number of arguments of parametric types,
 // not to the number of return values from a particular op.
-// Note: Type constructors are meant to create static type definitions in the
-// op definition (i.e. the OpDef proto).
 
 // Helper for a type constructor of <t>[] (with no parameters).
 OpTypeConstructor Nullary(FullTypeId t);
 
-// Helper for a type constructor of <t>[FT_VAR[<var_name>]].
+// Helper for a type constructor of <t>[FT_VAR[<param_name>]].
 OpTypeConstructor Unary(FullTypeId t, const string& var_name);
 
 // Helper for a type constructor of <t>[FT_ANY].
@@ -58,14 +55,6 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype);
 // types specified in a given node def.
 StatusOr<FullTypeDef> SpecializeType(const AttrSlice& attrs,
                                      const OpDef& op_def);
-
-const FullTypeDef& GetArgDefaultUnset(const FullTypeDef& t, int i);
-const FullTypeDef& GetArgDefaultAny(const FullTypeDef& t, int i);
-
-bool IsEqual(const FullTypeDef& lhs, const FullTypeDef& rhs);
-
-bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs,
-               bool covariant = true);
 
 }  // namespace full_type
 
