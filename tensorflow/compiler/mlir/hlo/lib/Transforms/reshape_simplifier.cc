@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
@@ -26,6 +27,10 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
+
+using ShapeOrValueInfo = ShapeComponentAnalysis::ShapeOrValueInfo;
+using Symbol = ShapeComponentAnalysis::Symbol;
+using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
 
 namespace {
 
@@ -99,6 +104,46 @@ struct RemoveComputeReshapeShape final
   }
 };
 
+bool IsSimpleProduct(
+    AffineExpr expr,
+    llvm::function_ref<void(AffineConstantExpr)> cbkConstantFactor,
+    llvm::function_ref<void(AffineSymbolExpr)> cbkSymbolicFactor) {
+  auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>();
+  if (binExpr && binExpr.getKind() == AffineExprKind::Mul) {
+    return IsSimpleProduct(binExpr.getLHS(), cbkConstantFactor,
+                           cbkSymbolicFactor) &&
+           IsSimpleProduct(binExpr.getRHS(), cbkConstantFactor,
+                           cbkSymbolicFactor);
+  }
+  if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
+    cbkSymbolicFactor(symExpr);
+    return true;
+  }
+  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+    cbkConstantFactor(constExpr);
+    return true;
+  }
+  return false;
+}
+
+bool IsSimpleProduct(const SymbolicExpr &symbolicExpr,
+                     llvm::function_ref<void(int64_t)> cbkConstantFactor,
+                     llvm::function_ref<void(Symbol)> cbkSymbolicFactor) {
+  return IsSimpleProduct(
+      symbolicExpr.expr,
+      [&](AffineConstantExpr cexpr) { cbkConstantFactor(cexpr.getValue()); },
+      [&](AffineSymbolExpr sexpr) {
+        cbkSymbolicFactor(symbolicExpr.symbols[sexpr.getPosition()]);
+      });
+}
+
+bool IsSimpleProduct(const SymbolicExpr &symbolicExpr, int64_t *concreteProduct,
+                     SmallVectorImpl<Symbol> *symbolicFactors) {
+  return IsSimpleProduct(
+      symbolicExpr, [&](int64_t c) { *concreteProduct *= c; },
+      [&](Symbol s) { symbolicFactors->push_back(s); });
+}
+
 struct RemoveRedundantCstrReshapable final
     : public OpRewritePattern<mhlo::CstrReshapableOp> {
   RemoveRedundantCstrReshapable(MLIRContext *ctx) : OpRewritePattern(ctx) {}
@@ -132,11 +177,10 @@ struct RemoveRedundantCstrReshapable final
 
     // We can only handle simple products with constants and symbols. Find all
     // the factors based on the number of elements.
-    SmallVector<AffineSymbolExpr> remainingSymbolicFactorsNumElems;
     int64_t concreteProductNumElems = 1;
-    if (!IsSimpleProduct(numElements.expr, &concreteProductNumElems,
-                         &remainingSymbolicFactorsNumElems,
-                         /*ignore_negative=*/false)) {
+    SmallVector<Symbol> remainingSymbolicFactorsNumElems;
+    if (!IsSimpleProduct(numElements, &concreteProductNumElems,
+                         &remainingSymbolicFactorsNumElems)) {
       return failure();
     }
     assert(concreteProductNumElems >= 1 &&
@@ -149,29 +193,20 @@ struct RemoveRedundantCstrReshapable final
     //     factor, i.e. if the symbolic factors based on the dynamic shape are
     //     not a subset of the factors based on the number of elements.
     int64_t concreteProductDynShape = 1;
-    for (auto d : *dynShapeDims) {
-      SmallVector<AffineSymbolExpr> partialSymbolicFactorsDynShape;
-      if (!IsSimpleProduct(d.expr, &concreteProductDynShape,
-                           &partialSymbolicFactorsDynShape,
-                           /*ignore_negative=*/true)) {
+    for (auto dim : *dynShapeDims) {
+      SmallVector<Symbol> partialSymbolicFactorsDynShape;
+      if (!IsSimpleProduct(
+              dim,
+              [&](int64_t c) {
+                if (c != -1) concreteProductDynShape *= c;
+              },
+              [&](Symbol s) { partialSymbolicFactorsDynShape.push_back(s); })) {
         return failure();
       }
-      for (const AffineSymbolExpr &symExpr : partialSymbolicFactorsDynShape) {
-        auto symDynShape = d.symbols[symExpr.getPosition()];
-        bool isFactorInBothProducts = false;
-        for (int i = 0; i < remainingSymbolicFactorsNumElems.size(); ++i) {
-          auto symNumElements =
-              numElements
-                  .symbols[remainingSymbolicFactorsNumElems[i].getPosition()];
-          if (symDynShape == symNumElements) {
-            remainingSymbolicFactorsNumElems[i] =
-                remainingSymbolicFactorsNumElems.back();
-            remainingSymbolicFactorsNumElems.pop_back();
-            isFactorInBothProducts = true;
-            break;
-          }
-        }
-        if (!isFactorInBothProducts) return failure();
+      for (const Symbol &symDynShape : partialSymbolicFactorsDynShape) {
+        auto it = llvm::find(remainingSymbolicFactorsNumElems, symDynShape);
+        if (it == remainingSymbolicFactorsNumElems.end()) return failure();
+        remainingSymbolicFactorsNumElems.erase(it);
       }
     }
     assert(concreteProductDynShape >= 1 &&
@@ -192,27 +227,87 @@ struct RemoveRedundantCstrReshapable final
     rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, isReshapable);
     return success();
   }
-  bool IsSimpleProduct(AffineExpr expr, int64_t *concreteProduct,
-                       SmallVectorImpl<AffineSymbolExpr> *symbolicFactors,
-                       bool ignore_minus_one) const {
-    auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>();
-    if (binExpr && binExpr.getKind() == AffineExprKind::Mul) {
-      return IsSimpleProduct(binExpr.getLHS(), concreteProduct, symbolicFactors,
-                             ignore_minus_one) &&
-             IsSimpleProduct(binExpr.getRHS(), concreteProduct, symbolicFactors,
-                             ignore_minus_one);
+};
+
+struct TurnDynamicReshapeIntoCollapseShape final
+    : public OpRewritePattern<mhlo::DynamicReshapeOp> {
+  TurnDynamicReshapeIntoCollapseShape(MLIRContext *ctx)
+      : OpRewritePattern(ctx) {}
+  LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
+                                PatternRewriter &rewriter) const override {
+    // Require sucessful shape analysis for operand and shape.
+    ShapeComponentAnalysis shapeComponentAnalysis;
+    auto argShapeInfo = shapeComponentAnalysis.GetShapeInfo(op.operand());
+    if (!argShapeInfo) return failure();
+    auto shapeInfo = shapeComponentAnalysis.GetValueInfo(op.output_shape());
+    if (!shapeInfo) return failure();
+
+    // The next dimension of the operand shape to look at.
+    int i = 0;
+
+    // For each dimension of the target shape, consume the matching dimensions
+    // of the operand shape and build the reassociation map on the fly.
+    SmallVector<ReassociationIndices> reassociation_map;
+    for (const auto &shapeDim : *shapeInfo) {
+      reassociation_map.push_back({});
+
+      // Find the concrete/symbolic factors for the current dimension of the
+      // target shape.
+      int64_t remainingConcreteProductShapeDim = 1;
+      SmallVector<Symbol> remainingSymbolicFactorsShapeDim;
+      if (!IsSimpleProduct(shapeDim, &remainingConcreteProductShapeDim,
+                           &remainingSymbolicFactorsShapeDim)) {
+        return failure();
+      }
+
+      // Consume (and collapse) as many of the operand dimensions as needed to
+      // match the target dimension. This is monotonic.
+      while (remainingConcreteProductShapeDim != 1 ||
+             !remainingSymbolicFactorsShapeDim.empty()) {
+        // Fail if there are no more operand dimensions to consume.
+        if (i >= argShapeInfo->size()) return failure();
+
+        // Find the concrete/symbolic factors for the next dimension of the
+        // operand shape.
+        int64_t concreteProductArgShapeDim = 1;
+        SmallVector<Symbol> symbolicFactorsArgShapeDim;
+        if (!IsSimpleProduct((*argShapeInfo)[i], &concreteProductArgShapeDim,
+                             &symbolicFactorsArgShapeDim)) {
+          return failure();
+        }
+
+        // Eliminate the common concrete factors. Fail if we cannot consume a
+        // concrete factor of the operand shape.
+        if (remainingConcreteProductShapeDim % concreteProductArgShapeDim != 0)
+          return failure();
+        remainingConcreteProductShapeDim /= concreteProductArgShapeDim;
+
+        // Eliminate the common symbolic factors. Fail if we cannot consume a
+        // symbolic factor of the operand shape.
+        for (const Symbol &symArgShapeDim : symbolicFactorsArgShapeDim) {
+          auto it =
+              llvm::find(remainingSymbolicFactorsShapeDim, symArgShapeDim);
+          if (it == remainingSymbolicFactorsShapeDim.end()) return failure();
+          remainingSymbolicFactorsShapeDim.erase(it);
+        }
+
+        // If all the concrete/symbolic factors were consumable, collapse this
+        // dimension (and continue if needed).
+        reassociation_map.back().push_back(i++);
+      }
+
+      // Consume trailing 1 dimensions.
+      while (i < argShapeInfo->size() && (*argShapeInfo)[i].isConstant(1))
+        reassociation_map.back().push_back(i++);
     }
-    if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
-      symbolicFactors->push_back(symExpr);
-      return true;
-    }
-    if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
-      int64_t c = constExpr.getValue();
-      if (c == -1 && ignore_minus_one) return true;
-      *concreteProduct *= c;
-      return true;
-    }
-    return false;
+
+    // Fail if not all of the operand shape could be consumed.
+    if (i < argShapeInfo->size()) return failure();
+
+    // Replace reshape op with its equivalent collapse shape op.
+    rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
+        op, op.operand(), reassociation_map);
+    return success();
   }
 };
 
@@ -236,7 +331,8 @@ void ReshapeSimplifierPass::runOnFunction() {
   patterns.insert<
       ReshapeToExpandShape,
       RemoveComputeReshapeShape,
-      RemoveRedundantCstrReshapable>(ctx);
+      RemoveRedundantCstrReshapable,
+      TurnDynamicReshapeIntoCollapseShape>(ctx);
   // clang-format on
   shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
 
