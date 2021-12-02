@@ -3005,9 +3005,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_rocm",
-        "notsan",  # TODO(b/206640843): flaky in tsan.
     ],
     deps = [
         ":client_testlib",
