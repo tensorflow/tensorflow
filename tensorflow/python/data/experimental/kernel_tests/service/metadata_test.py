@@ -60,6 +60,8 @@ def _cardinality_test_combinations():
   v2_only_cases = [
       ("NoShardingInfinite", lambda: dataset_ops.Dataset.range(10).repeat(),
        data_service_ops.ShardingPolicy.OFF, dataset_ops.INFINITE),
+      ("DynamicShardingInfinite", lambda: dataset_ops.Dataset.range(5).repeat(),
+       data_service_ops.ShardingPolicy.DYNAMIC, dataset_ops.INFINITE),
       ("DataShardingInfinite", lambda: dataset_ops.Dataset.range(10).repeat(),
        data_service_ops.ShardingPolicy.DATA, dataset_ops.INFINITE),
       ("NoShardingZero", lambda: dataset_ops.Dataset.range(0),
@@ -76,8 +78,6 @@ def _cardinality_test_combinations():
   v1_and_v2_cases = [
       ("Finite", lambda: dataset_ops.Dataset.range(10),
        data_service_ops.ShardingPolicy.OFF, dataset_ops.UNKNOWN),
-      ("DynamicShardingUnknown", lambda: dataset_ops.Dataset.range(10).repeat(),
-       data_service_ops.ShardingPolicy.DYNAMIC, dataset_ops.UNKNOWN),
       ("FileOrDataShardingUnknown",
        lambda: dataset_ops.Dataset.range(10).repeat(),
        data_service_ops.ShardingPolicy.FILE_OR_DATA, dataset_ops.UNKNOWN),

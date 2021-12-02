@@ -233,11 +233,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     if (metadata_.cardinality() == kInfiniteCardinality) {
-      // Sharding may cause an infinite dataset to be empty. Consider dataset
-      // `range(10).batch(10, drop_remainder=True).repeat()`. Inserting `shard`
-      // before `batch` will cause the dataset to be empty. Inserting `shard`
-      // after `repeat` (in the DATA sharding case) is ok.
+      // Sharding may cause an infinite dataset to be empty. For example, in
+      // `range(10).batch(10, drop_remainder=True).repeat()`, inserting `shard`
+      // before `batch` will cause the dataset to be empty.
+      // This case is rare, and there is significant performance hit for dynamic
+      // sharding if it reports unknown cardinality, so it is reasonable to
+      // report infinite cardinality. For DATA sharding, it is ok to report
+      // infinite cardinality since it inserts `shard` after `repeat`.
       if (processing_mode_.sharding_policy() == ProcessingModeDef::OFF ||
+          processing_mode_.sharding_policy() == ProcessingModeDef::DYNAMIC ||
           processing_mode_.sharding_policy() == ProcessingModeDef::DATA) {
         return kInfiniteCardinality;
       }
