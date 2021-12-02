@@ -36,7 +36,11 @@ REGISTER_KERNEL_BUILDER(
 class BoostedTreesCreateEnsembleOp : public OpKernel {
  public:
   explicit BoostedTreesCreateEnsembleOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
+  }
 
   void Compute(OpKernelContext* context) override {
     // Get the stamp token.
@@ -76,7 +80,11 @@ REGISTER_KERNEL_BUILDER(Name("BoostedTreesCreateEnsemble").Device(DEVICE_CPU),
 class BoostedTreesGetEnsembleStatesOp : public OpKernel {
  public:
   explicit BoostedTreesGetEnsembleStatesOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
+  }
 
   void Compute(OpKernelContext* context) override {
     // Looks up the resource.
@@ -139,7 +147,11 @@ REGISTER_KERNEL_BUILDER(
 class BoostedTreesSerializeEnsembleOp : public OpKernel {
  public:
   explicit BoostedTreesSerializeEnsembleOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
+  }
 
   void Compute(OpKernelContext* context) override {
     core::RefCountPtr<BoostedTreesEnsembleResource> tree_ensemble_resource;
@@ -166,7 +178,11 @@ REGISTER_KERNEL_BUILDER(
 class BoostedTreesDeserializeEnsembleOp : public OpKernel {
  public:
   explicit BoostedTreesDeserializeEnsembleOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
+  }
 
   void Compute(OpKernelContext* context) override {
     core::RefCountPtr<BoostedTreesEnsembleResource> tree_ensemble_resource;

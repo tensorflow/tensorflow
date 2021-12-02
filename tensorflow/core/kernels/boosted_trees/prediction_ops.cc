@@ -58,6 +58,9 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
  public:
   explicit BoostedTreesTrainingPredictOp(OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("num_bucketized_features",
                                              &num_bucketized_features_));
     OP_REQUIRES_OK(context,
@@ -201,6 +204,9 @@ class BoostedTreesPredictOp : public OpKernel {
  public:
   explicit BoostedTreesPredictOp(OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("num_bucketized_features",
                                              &num_bucketized_features_));
     OP_REQUIRES_OK(context,
@@ -298,6 +304,9 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
   explicit BoostedTreesExampleDebugOutputsOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("num_bucketized_features",
                                              &num_bucketized_features_));
     OP_REQUIRES_OK(context,

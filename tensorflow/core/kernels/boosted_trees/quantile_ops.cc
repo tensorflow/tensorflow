@@ -98,6 +98,9 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
   explicit BoostedTreesCreateQuantileStreamResourceOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kMaxElementsName, &max_elements_));
   }
 
@@ -143,6 +146,9 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
   explicit BoostedTreesMakeQuantileSummariesOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
   }
 
@@ -224,6 +230,9 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
   explicit BoostedTreesFlushQuantileSummariesOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
   }
 
@@ -284,7 +293,11 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
  public:
   explicit BoostedTreesQuantileStreamResourceAddSummariesOp(
       OpKernelConstruction* const context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
+  }
 
   void Compute(OpKernelContext* context) override {
     ResourceHandle handle;
@@ -348,6 +361,9 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
   explicit BoostedTreesQuantileStreamResourceDeserializeOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumStreamsName, &num_features_));
   }
 
@@ -398,6 +414,9 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
   explicit BoostedTreesQuantileStreamResourceFlushOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context,
                    context->GetAttr(kGenerateQuantiles, &generate_quantiles_));
   }
@@ -454,6 +473,9 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
   explicit BoostedTreesQuantileStreamResourceGetBucketBoundariesOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
   }
 
@@ -512,6 +534,9 @@ class BoostedTreesBucketizeOp : public OpKernel {
  public:
   explicit BoostedTreesBucketizeOp(OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
   }
 

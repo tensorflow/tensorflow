@@ -35,6 +35,9 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
  public:
   explicit BoostedTreesUpdateEnsembleOp(OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
 
     int32_t pruning_index;
@@ -234,6 +237,9 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
  public:
   explicit BoostedTreesUpdateEnsembleV2Op(OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
     OP_REQUIRES_OK(context, context->GetAttr("num_groups", &num_groups_));
   }
@@ -457,7 +463,11 @@ REGISTER_KERNEL_BUILDER(Name("BoostedTreesUpdateEnsembleV2").Device(DEVICE_CPU),
 class BoostedTreesCenterBiasOp : public OpKernel {
  public:
   explicit BoostedTreesCenterBiasOp(OpKernelConstruction* const context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
+  }
 
   void Compute(OpKernelContext* const context) override {
     // Get decision tree ensemble.
