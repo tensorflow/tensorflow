@@ -140,7 +140,10 @@ class TFL_AnyTypeOf<list<Type> allowedRuntimeTypes, string description = "",
 
 class TFL_TensorOf<list<Type> allowedRuntimeTypes,
                    list<Type> allowedOpTypes = [AnyType]> :
-  TensorOf<allowedOpTypes>, TFL_RuntimeType<TensorOf<allowedRuntimeTypes>>;
+  TensorOf<allowedOpTypes>, TFL_RuntimeType<TensorOf<allowedRuntimeTypes>> {
+  // Set the summary equal to that representing the runtime types.
+  let summary = TensorOf<allowedRuntimeTypes>.summary;
+}
 
 class TFL_TensorOfOrNone<list<Type> allowedRuntimeTypes, string description = "",
                          list<Type> allowedOpTypes = [AnyType]> :
