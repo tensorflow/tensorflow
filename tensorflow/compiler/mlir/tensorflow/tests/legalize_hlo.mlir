@@ -1839,6 +1839,23 @@ func @convert_reduce_to_sum(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
   return %1 : tensor<1xf32>
 }
 
+// CHECK-LABEL:   func @convert_reduce_to_sum_non_constant_init(
+// CHECK-SAME:                                %[[ARG_0:.*]]: tensor<1x256xf32>,
+// CHECK-SAME:                                %[[ARG_1:.*]]: tensor<f32>) -> tensor<1xf32> {
+// CHECK-DAG:       %[[VAL_0:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK:           %[[VAL_1:.*]] = "tf.Sum"(%[[ARG_0]], %[[VAL_0]]) {keep_dims = false} : (tensor<1x256xf32>, tensor<1xi64>) -> tensor<1xf32>
+// CHECK:           %[[VAL_2:.*]] = "tf.Add"(%[[VAL_1]], %[[ARG_1]]) : (tensor<1xf32>, tensor<f32>) -> tensor<1xf32>
+// CHECK:           return %[[VAL_2]] : tensor<1xf32>
+// CHECK:         }
+func @convert_reduce_to_sum_non_constant_init(%arg0: tensor<1x256xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
+  %1 = "mhlo.reduce"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+  return %1 : tensor<1xf32>
+}
+
 // CHECK-LABEL:   func @convert_int_reduce_to_sum(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xi32>) -> tensor<1xi32> {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -2857,6 +2874,24 @@ func @convert_reduce_to_all(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -
   return %1: tensor<2x4x5xi1>
 }
 
+// CHECK-LABEL:   func @convert_reduce_to_all_non_constant_init(
+// CHECK-SAME:                                %[[ARG_0:.*]]: tensor<i1>,
+// CHECK-SAME:                                %[[ARG_1:.*]]: tensor<1x2x3x4x5xi1>,
+// CHECK-SAME:                                %[[ARG_2:.*]]: tensor<2xi64>) -> tensor<2x4x5xi1> {
+// CHECK-DAG:       %[[DIMENSIONS:.*]] = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_0:.*]] = "tf.All"(%[[ARG_1]], %[[DIMENSIONS]]) {keep_dims = false} : (tensor<1x2x3x4x5xi1>, tensor<2xi64>) -> tensor<2x4x5xi1>
+// CHECK:           %[[VAL_1:.*]] = "tf.LogicalAnd"(%[[VAL_0]], %[[ARG_0]]) : (tensor<2x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+// CHECK:           return %[[VAL_1:.*]] : tensor<2x4x5xi1>
+// CHECK:         }
+func @convert_reduce_to_all_non_constant_init(%arg0: tensor<i1>, %arg1: tensor<1x2x3x4x5xi1>, %arg2: tensor<2xi64>) -> tensor<2x4x5xi1> {
+  %0 = "mhlo.reduce"(%arg1, %arg0) ( {
+    ^bb0(%arg3: tensor<i1>, %arg4: tensor<i1>):
+        %1 = mhlo.and %arg3, %arg4 : tensor<i1>
+        "mhlo.return"(%1) : (tensor<i1>) -> ()
+    }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+  return %0: tensor<2x4x5xi1>
+}
+
 // CHECK-LABEL:   func @convert_reduce_to_any(
 // CHECK-SAME:                                %[[ARG_0:.*]]: tensor<1x2x3x4x5xi1>,
 // CHECK-SAME:                                %[[ARG_1:.*]]: tensor<2xi64>) -> tensor<2x4x5xi1> {
@@ -2873,6 +2908,24 @@ func @convert_reduce_to_any(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -
         "mhlo.return"(%2) : (tensor<i1>) -> ()
     }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
   return %1: tensor<2x4x5xi1>
+}
+
+// CHECK-LABEL:   func @convert_reduce_to_any_non_constant_init(
+// CHECK-SAME:                                %[[ARG_0:.*]]: tensor<i1>,
+// CHECK-SAME:                                %[[ARG_1:.*]]: tensor<1x2x3x4x5xi1>,
+// CHECK-SAME:                                %[[ARG_2:.*]]: tensor<2xi64>) -> tensor<2x4x5xi1> {
+// CHECK-DAG:       %[[DIMENSIONS:.*]] = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_0:.*]] = "tf.Any"(%[[ARG_1]], %[[DIMENSIONS]]) {keep_dims = false} : (tensor<1x2x3x4x5xi1>, tensor<2xi64>) -> tensor<2x4x5xi1>
+// CHECK:           %[[VAL_1:.*]] = "tf.LogicalOr"(%[[VAL_0]], %[[ARG_0]]) : (tensor<2x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+// CHECK:           return %[[VAL_1:.*]] : tensor<2x4x5xi1>
+// CHECK:         }
+func @convert_reduce_to_any_non_constant_init(%arg0: tensor<i1>, %arg1: tensor<1x2x3x4x5xi1>, %arg2: tensor<2xi64>) -> tensor<2x4x5xi1> {
+  %0 = "mhlo.reduce"(%arg1, %arg0) ( {
+    ^bb0(%arg3: tensor<i1>, %arg4: tensor<i1>):
+        %1 = mhlo.or %arg3, %arg4 : tensor<i1>
+        "mhlo.return"(%1) : (tensor<i1>) -> ()
+    }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+  return %0: tensor<2x4x5xi1>
 }
 
 // CHECK-LABEL:   func @convert_sort_to_topk_iota_broadcast(

@@ -1283,9 +1283,48 @@ LogicalResult MatchBinaryReduceFunction<void>(mlir::Region &function) {
   return success();
 }
 
-// Converts an mhlo.reduce op with the specified BinaryOp as the reduction
-// operation into the specified TfOp.
-template <typename BinaryOp, typename TfOp>
+// Replace BinaryOp with a combination of TfBinaryOp and TfReduceOp if the
+// init value doesn't match the expection of TfReduceOp.
+template <typename TfReduceOp, typename TfBinOp>
+LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
+                                       ConstOp reduction_indices,
+                                       ConversionPatternRewriter &rewriter) {
+  Value reduce_result = rewriter.create<TfReduceOp>(
+      reduce_op.getLoc(), reduce_op.getType(0), input, reduction_indices,
+      /*keep_dim=*/rewriter.getBoolAttr(false));
+  rewriter.replaceOpWithNewOp<TfBinOp>(reduce_op, reduce_op.getType(0),
+                                       reduce_result,
+                                       reduce_op.init_values()[0]);
+  return success();
+}
+
+// Cannot replace BinaryOp if the init value doesn't match the expection of
+// TfReduceOp and there is no corresponding TfBinaryOp.
+template <>
+LogicalResult rewriteNonMatchInitValue<TF::MaxOp, void>(
+    mhlo::ReduceOp reduce_op, Value input, ConstOp reduction_indices,
+    ConversionPatternRewriter &rewriter) {
+  return failure();
+}
+
+template <>
+LogicalResult rewriteNonMatchInitValue<TF::MinOp, void>(
+    mhlo::ReduceOp reduce_op, Value input, ConstOp reduction_indices,
+    ConversionPatternRewriter &rewriter) {
+  return failure();
+}
+
+// Converts a mhlo.reduce op with a mlho binary operation into a tensorflow
+// reduction operation. If the initial value can be ignored, then convert it
+// into a single TfReduceOp. Otherwise, convert it into a TfReduceOp followed by
+// a TfBinaryOp.
+// For example:
+//   1) A mhlo::ReduceOp on value `x` with a mhlo::AndOp and a constant initial
+// value `true` is converted to a TF::Any on value `x`.
+//   2) A mhlo::ReduceOp on value `x` with a mhlo::AndOp with a non-constant
+// initial value `y` is converted to a TF::Any on value `x`, followed by a
+// TF::And with initial value `y`.
+template <typename BinaryOp, typename TfReduceOp, typename TfBinaryOp = void>
 class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -1297,10 +1336,6 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
 
     if (failed(MatchBinaryReduceFunction<BinaryOp>(reduce_op.body())))
       return failure();
-
-    // In `MatchReduceOpInput` function, we already match that the
-    // "mhlo::ReduceOp" only has one input, one init_value and one result.
-    if (failed(MatchInitValue(reduce_op.init_values()[0]))) return failure();
 
     auto input = reduce_op.inputs()[0];
 
@@ -1315,15 +1350,25 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
     auto reduction_indices = rewriter.create<ConstOp>(
         reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr(reduce_dims));
 
-    rewriter.replaceOpWithNewOp<TfOp>(reduce_op, reduce_op.getType(0), input,
-                                      reduction_indices,
-                                      /*keep_dim=*/rewriter.getBoolAttr(false));
-    return success();
+    // In `MatchReduceOpInput` function, we already match that the
+    // "mhlo::ReduceOp" only has one input, one init_value and one result.
+
+    // If the init value matches with the init value expected for the target
+    // TfReduceOp, then replace the BinaryOp with a TfReduceOp. Otherwise,
+    // replace the BinaryOp with a TfBinaryOp and a TfReduceOp.
+    if (succeeded(MatchInitValue(reduce_op.init_values()[0]))) {
+      rewriter.replaceOpWithNewOp<TfReduceOp>(
+          reduce_op, reduce_op.getType(0), input, reduction_indices,
+          /*keep_dim=*/rewriter.getBoolAttr(false));
+      return success();
+    }
+    return rewriteNonMatchInitValue<TfReduceOp, TfBinaryOp>(
+        reduce_op, input, reduction_indices, rewriter);
   }
 
  private:
   // Checks that the init value matches with the init value expected for the
-  // target TfOp.
+  // target TfReduceOp.
   virtual LogicalResult MatchInitValue(Value init_value) const = 0;
 
   // This function tries to match that the "mhlo::ReduceOp" only has one
@@ -1341,7 +1386,7 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
 };
 
 class ConvertReduceOpToTfSum
-    : public ConvertReduceOpToTfOp<mhlo::AddOp, TF::SumOp> {
+    : public ConvertReduceOpToTfOp<mhlo::AddOp, TF::SumOp, TF::AddOp> {
  public:
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
@@ -1399,9 +1444,10 @@ class ConvertReduceOpToTfMin
 };
 
 class ConvertReduceOpToTfAll
-    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp> {
+    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp, TF::LogicalAndOp> {
  public:
-  using ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp>::ConvertReduceOpToTfOp;
+  using ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp,
+                              TF::LogicalAndOp>::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
     DenseIntElementsAttr init_attr;
@@ -1414,9 +1460,10 @@ class ConvertReduceOpToTfAll
 };
 
 class ConvertReduceOpToTfAny
-    : public ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp> {
+    : public ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp, TF::LogicalOrOp> {
  public:
-  using ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp>::ConvertReduceOpToTfOp;
+  using ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp,
+                              TF::LogicalOrOp>::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
     DenseIntElementsAttr init_attr;
