@@ -610,6 +610,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_opdefs",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_test_passes",
         "//tensorflow/core:lib",
