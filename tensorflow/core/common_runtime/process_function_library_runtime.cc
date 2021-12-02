@@ -1300,6 +1300,7 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
             run_status.error_message());
+        if (opts.rendezvous != nullptr) opts.rendezvous->StartAbort(run_status);
         return errors::CreateWithUpdatedMessage(run_status, function_and_msg);
       } else {
         VLOG(2) << "Component function execution succeeded.";

@@ -155,6 +155,7 @@ class RandomNormalTest(RandomOpTestCommon):
             graph_seed=965)
 
 
+@test_util.with_eager_op_as_function
 class TruncatedNormalTest(test.TestCase):
 
   def _Sampler(self, num, mu, sigma, dtype, use_gpu, seed=None):
@@ -224,7 +225,19 @@ class TruncatedNormalTest(test.TestCase):
       sampler = self._Sampler(100000, 0.0, stddev, dt, use_gpu=True)
       x = sampler()
       print("std(x)", np.std(x), abs(np.std(x) / stddev - 0.85))
-      self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
+      self.assertLess(abs(np.std(x) / stddev - 0.85), 0.04)
+
+  def testSuccessAfterError(self):
+    # Force an error on the TruncatedNormal kernel.
+    config.enable_op_determinism()
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "When determinism is enabled, random ops must have a seed specified"):
+      self.evaluate(gen_random_ops.truncated_normal((1,), dtypes.float32))
+    config.disable_op_determinism()
+
+    # Ensure the StdDev of the TruncatedNormal works as intended.
+    self.testStdDev()
 
   @test_util.run_deprecated_v1
   def testLargeShape(self):
