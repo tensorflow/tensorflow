@@ -659,7 +659,7 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
         &allocations[GetAllocationIndex(
             view.source().cast<mlir::BlockArgument>(), constant_name)],
         mlir::cast<mlir::arith::ConstantOp>(view.byte_shift().getDefiningOp())
-            .value()
+            .getValue()
             .cast<mlir::IntegerAttr>()
             .getValue()
             .getSExtValue(),

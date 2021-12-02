@@ -462,14 +462,17 @@ struct ShapeVisitor {
   template <typename Op>
   void backwardBinOp(Op op) {
     forwards_worklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
-    backwards_worklist.append({ShapeOrValueInfo::getValueInfoOf(op.lhs()),
-                               ShapeOrValueInfo::getValueInfoOf(op.rhs())});
+    // TODO(jpienaar): Switch to named accessors when MHLO uses prefixed form.
+    backwards_worklist.append(
+        {ShapeOrValueInfo::getValueInfoOf(op.getOperand(0)),
+         ShapeOrValueInfo::getValueInfoOf(op.getOperand(1))});
   }
   template <typename Op, typename Combiner>
   void forwardBinOp(Op op, Combiner &&combiner) {
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
-    auto lhs = lookup(ShapeOrValueInfo::getValueInfoOf(op.lhs()));
-    auto rhs = lookup(ShapeOrValueInfo::getValueInfoOf(op.rhs()));
+    // TODO(jpienaar): Switch to named accessors when MHLO uses prefixed form.
+    auto lhs = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand(0)));
+    auto rhs = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand(1)));
     for (int i = 0, e = dim0size(op.getType()); i != e; ++i) {
       dims.emplace_back();
       auto &dim = dims.back();
