@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
-#include "mlir/Transforms/Bufferize.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
@@ -373,7 +373,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // All entry memrefs must have alignment compatible with Tensorflow.
     opts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
     opts.num_worker_threads = workers->NumThreads();
-    opts.type_converter = mlir::BufferizeTypeConverter();
+    opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
     opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
 
     // Register a custom pipeline for lowering from Tensorflow dialect.
