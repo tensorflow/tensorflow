@@ -83,7 +83,9 @@ tensorflow::Status CreateOpKernel(
 tfrt::StatusOr<OpKernelRunner> OpKernelRunner::Create(
     absl::string_view op_name, absl::string_view device_name, int num_args,
     const std::function<llvm::Error(tensorflow::AttrValueMap*)>& attr_builder,
-    const KernelFallbackCompatRequestState& fallback_request_state) {
+    const tensorflow::DeviceMgr& device_manager,
+    const tensorflow::ProcessFunctionLibraryRuntime&
+        process_function_library_runtime) {
   const OpDef* op_def = nullptr;
   TF_RETURN_IF_ERROR(tensorflow::OpDefForOp(std::string(op_name), &op_def));
   if (auto error = CheckOpDefCompatibility(*op_def)) {
@@ -105,20 +107,18 @@ tfrt::StatusOr<OpKernelRunner> OpKernelRunner::Create(
   // handle it specially. This is a workaround as the compiler lowering does not
   // use tensorflow format in some cases. Ideally, we should always use device
   // name in tensorflow format in fallback code.
-  Status s = fallback_request_state.device_manager().LookupDevice(device_name,
-                                                                  &device);
+  Status s = device_manager.LookupDevice(device_name, &device);
 
   // Fall back to host device if it fails to find the specified device.
   if (!s.ok()) {
     LOG(ERROR) << "Failed to find device " << device_name
                << " when creating OpKernel: " << op_name << ". Error: " << s;
     LOG(ERROR) << "Fallback to host device instead";
-    device = fallback_request_state.device_manager().HostCPU();
+    device = device_manager.HostCPU();
   }
 
   function_library_runtime =
-      fallback_request_state.process_function_library_runtime().GetFLR(
-          device->name());
+      process_function_library_runtime.GetFLR(device->name());
 
   std::unique_ptr<OpKernel> op_kernel;
   TF_RETURN_IF_ERROR(CreateOpKernel(function_library_runtime,
@@ -170,7 +170,9 @@ tfrt::StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
     tfrt::Location loc, absl::string_view op_name,
     absl::string_view device_name, int num_args,
     const std::function<llvm::Error(tensorflow::AttrValueMap*)>& attr_builder,
-    const KernelFallbackCompatRequestState& fallback_request_state) {
+    const tensorflow::DeviceMgr& device_manager,
+    const tensorflow::ProcessFunctionLibraryRuntime&
+        process_function_library_runtime) {
   OpLocationKey key(loc);
   {
     tf_shared_lock lock(mu_);
@@ -192,9 +194,10 @@ tfrt::StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
   VLOG(1) << "KernelFallbackExecuteCompat creating op " << op_name
           << " at location " << loc.data << " on device " << device_name;
 
-  TF_ASSIGN_OR_RETURN(auto runner, OpKernelRunner::Create(
-                                       op_name, device_name, num_args,
-                                       attr_builder, fallback_request_state));
+  TF_ASSIGN_OR_RETURN(
+      auto runner,
+      OpKernelRunner::Create(op_name, device_name, num_args, attr_builder,
+                             device_manager, process_function_library_runtime));
 
   auto runner_uptr = std::make_unique<OpKernelRunner>(std::move(runner));
 

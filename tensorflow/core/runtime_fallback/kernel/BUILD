@@ -389,7 +389,6 @@ cc_library(
         "//tensorflow/core/tfrt/eager:__pkg__",
     ],
     deps = [
-        ":kernel_fallback_compat_request_state",
         ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device.h"
@@ -45,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
 #include "tensorflow/core/tfrt/utils/statusor.h"
@@ -68,7 +69,13 @@ class OpKernelRunner {
   static tfrt::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view device_name, int num_args,
       const std::function<llvm::Error(tensorflow::AttrValueMap*)>& attr_builder,
-      const KernelFallbackCompatRequestState& fallback_request_state);
+      const tensorflow::DeviceMgr& device_manager,
+      const tensorflow::ProcessFunctionLibraryRuntime&
+          process_function_library_runtime);
+
+  OpKernelRunner() = default;
+
+  explicit operator bool() const { return op_kernel_ != nullptr; }
 
   void Run(OpKernelContext* context) const {
     DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
@@ -112,6 +119,41 @@ class OpKernelRunner {
   bool is_async_ = false;
   gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
   gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;
+};
+
+// OpKernelRunState keeps the states needed for per-kernel execution.
+struct OpKernelRunState {
+  gtl::InlinedVector<tensorflow::Tensor, 4> input_tf_tensors;
+  gtl::InlinedVector<tensorflow::TensorValue, 4> input_tf_tensor_values;
+  OpKernelContext::Params params;
+
+  OpKernelRunState() = default;
+  OpKernelRunState(
+      const gtl::InlinedVector<tensorflow::TensorValue, 4>& tensor_values,
+      const OpKernelContext::Params& p) {
+    // `input_tf_tensor_values` contains the reference to all tensor used,
+    // while `input_tf_tensors` only contains those needs ownership so their
+    // sizes may not match. For this copy assignment, we conservatively copy all
+    // tensors.
+    input_tf_tensors.reserve(tensor_values.size());
+    for (const auto& tensor_value : tensor_values) {
+      input_tf_tensors.push_back(*tensor_value.tensor);
+    }
+    for (auto& tensor : input_tf_tensors) {
+      input_tf_tensor_values.emplace_back(&tensor);
+    }
+
+    // Since `input_tf_tensor_values` and `params` contains pointers to
+    // `input_tf_tensors`, we need to change those pointers to the correct ones
+    // after copying.
+    params = p;
+    params.inputs = &input_tf_tensor_values;
+  }
+
+  OpKernelRunState(const OpKernelRunState& other) = delete;
+  OpKernelRunState& operator=(const OpKernelRunState& other) = delete;
+
+  ~OpKernelRunState() = default;
 };
 
 class OpLocationKey {
@@ -180,7 +222,9 @@ class OpKernelRunnerCache {
       tfrt::Location loc, absl::string_view op_name,
       absl::string_view device_name, int num_args,
       const std::function<llvm::Error(tensorflow::AttrValueMap*)>& attr_builder,
-      const KernelFallbackCompatRequestState& fallback_request_state);
+      const tensorflow::DeviceMgr& device_manager,
+      const tensorflow::ProcessFunctionLibraryRuntime&
+          process_function_library_runtime);
 
  private:
   mutable mutex mu_;

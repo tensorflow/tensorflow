@@ -208,7 +208,9 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
                 tensorflow::AttrValueMap* attr_value_map) -> llvm::Error {
               return tfd::FillAttrValueMap(attrs, host, attr_value_map);
             },
-            *fallback_op_entry.fallback_request_state);
+            fallback_op_entry.fallback_request_state->device_manager(),
+            fallback_op_entry.fallback_request_state
+                ->process_function_library_runtime());
 
         if (!kernel_runner_or_status.ok()) {
           propagate_error(kernel_runner_or_status.status());

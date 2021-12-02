@@ -213,62 +213,27 @@ static Status ValidateInputTypes(
 
 namespace {
 
-// OpKernelRunState keeps the states needed for per-kernel execution.
-struct OpKernelRunState {
-  gtl::InlinedVector<tensorflow::Tensor, 4> input_tf_tensors;
-  gtl::InlinedVector<tensorflow::TensorValue, 4> input_tf_tensor_values;
-  OpKernelContext::Params params;
-
-  OpKernelRunState() = default;
-  OpKernelRunState(
-      const gtl::InlinedVector<tensorflow::TensorValue, 4>& tensor_values,
-      const OpKernelContext::Params& p) {
-    // `input_tf_tensor_values` contains the reference to all tensor used,
-    // while `input_tf_tensors` only contains those needs ownership so their
-    // sizes may not match. For this copy assignment, we conservatively copy all
-    // tensors.
-    input_tf_tensors.reserve(tensor_values.size());
-    for (const auto& tensor_value : tensor_values) {
-      input_tf_tensors.push_back(*tensor_value.tensor);
-    }
-    for (auto& tensor : input_tf_tensors) {
-      input_tf_tensor_values.emplace_back(&tensor);
-    }
-
-    // Since `input_tf_tensor_values` and `params` contains pointers to
-    // `input_tf_tensors`, we need to change those pointers to the correct ones
-    // after copying.
-    params = p;
-    params.inputs = &input_tf_tensor_values;
-  }
-
-  OpKernelRunState(const OpKernelRunState& other) = delete;
-  OpKernelRunState& operator=(const OpKernelRunState& other) = delete;
-
-  ~OpKernelRunState() = default;
-
-  void SetUpParams(
-      const OpKernelRunner& runner,
-      const KernelFallbackCompatRequestState& fallback_request_state,
-      tensorflow::Device* device) {
-    params.inputs = &input_tf_tensor_values;
-    params.device = device;
-    params.op_kernel = runner.op_kernel();
-    // Still use original device's resource_manager.
-    params.resource_manager = runner.resource_manager();
-    params.input_alloc_attrs = &runner.input_alloc_attrs();
-    params.output_attr_array = runner.output_alloc_attrs().data();
-    params.step_container = fallback_request_state.step_container();
-    // Following two parameters are used to support executing tf.data via
-    // fallback.
-    params.function_library = runner.function_library_runtime();
-    params.runner = fallback_request_state.runner();
-    params.collective_executor = fallback_request_state.collective_executor();
-    params.rendezvous = fallback_request_state.rendezvous();
-    params.session_metadata = &fallback_request_state.session_metadata();
-    params.cancellation_manager = fallback_request_state.cancellation_manager();
-  }
-};
+void SetUpParams(const OpKernelRunner& runner,
+                 const KernelFallbackCompatRequestState& fallback_request_state,
+                 tensorflow::Device* device, OpKernelRunState& run_state) {
+  auto& params = run_state.params;
+  params.inputs = &run_state.input_tf_tensor_values;
+  params.device = device;
+  params.op_kernel = runner.op_kernel();
+  // Still use original device's resource_manager.
+  params.resource_manager = runner.resource_manager();
+  params.input_alloc_attrs = &runner.input_alloc_attrs();
+  params.output_attr_array = runner.output_alloc_attrs().data();
+  params.step_container = fallback_request_state.step_container();
+  // Following two parameters are used to support executing tf.data via
+  // fallback.
+  params.function_library = runner.function_library_runtime();
+  params.runner = fallback_request_state.runner();
+  params.collective_executor = fallback_request_state.collective_executor();
+  params.rendezvous = fallback_request_state.rendezvous();
+  params.session_metadata = &fallback_request_state.session_metadata();
+  params.cancellation_manager = fallback_request_state.cancellation_manager();
+}
 
 // Keep states needed by kernel execution in a thread local storage to avoid
 // repeated reallocation and destruction of them.
@@ -432,7 +397,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
   auto* device =
       GetDeviceFromFallbackState(fallback_request_state, op_kernel_runner);
 
-  run_state.SetUpParams(op_kernel_runner, fallback_request_state, device);
+  SetUpParams(op_kernel_runner, fallback_request_state, device, run_state);
 
   if (op_kernel_runner.IsAsync()) {
     KernelFallbackExecuteCompatAsyncInternal<KernelFallbackTensor>(
@@ -582,7 +547,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
     input_tf_tensor_values[i].tensor = &fallback_tensor.tensor();
   }
 
-  run_state.SetUpParams(kernel_runner, fallback_request_state, device);
+  SetUpParams(kernel_runner, fallback_request_state, device, run_state);
 
   if (is_async) {
     KernelFallbackExecuteCompatAsyncInternal<
@@ -660,7 +625,8 @@ llvm::Expected<tfrt::Chain> KernelFallbackCreateOp(
 
   auto statusor_runner = OpKernelRunner::Create(
       op_name, ToAbslStringView(device.GetValue()), num_args.GetValue(),
-      attr_builder, *fallback_request_state);
+      attr_builder, fallback_request_state->device_manager(),
+      fallback_request_state->process_function_library_runtime());
   if (!statusor_runner.ok())
     return tfrt::MakeStatusError(statusor_runner.status());
 
