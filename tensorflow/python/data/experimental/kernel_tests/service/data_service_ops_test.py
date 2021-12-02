@@ -38,7 +38,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -932,61 +931,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.evaluate(v.initializer)
     self.assertDatasetProduces(
         ds, list(range(10, 13)), requires_initialization=True)
-
-  @combinations.generate(test_base.graph_only_combinations())
-  def testElementSpecGraphMode(self):
-    cluster = data_service_test_base.TestCluster(
-        num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
-    num_elements = 10
-    ds = dataset_ops.Dataset.range(num_elements)
-    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
-                                                   ds)
-    with self.assertRaisesRegex(
-        ValueError, "In graph mode `element_spec` must be provided manually."):
-      ds = data_service_ops.from_dataset_id("parallel_epochs",
-                                            cluster.dispatcher_address(),
-                                            dataset_id)
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testFromDatasetIdDoesntRequireElementSpec(self):
-    cluster = data_service_test_base.TestCluster(
-        num_workers=1,
-        work_dir=NO_WORK_DIR,
-        fault_tolerant_mode=False,
-        data_transfer_protocol="grpc")
-    num_elements = 10
-    ds = dataset_ops.Dataset.range(num_elements)
-
-    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
-                                                   ds)
-    ds = data_service_ops.from_dataset_id("parallel_epochs",
-                                          cluster.dispatcher_address(),
-                                          dataset_id)
-    self.assertDatasetProduces(ds, list(range(num_elements)))
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testElementSpecMixedMode(self):
-    cluster = data_service_test_base.TestCluster(
-        num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
-    num_elements = 10
-    ds = dataset_ops.Dataset.range(num_elements)
-
-    @def_function.function
-    def get_dataset_id():
-      return data_service_ops.register_dataset(cluster.dispatcher_address(), ds)
-
-    dataset_id = get_dataset_id()
-    dataset_id_val = tensor_util.constant_value(dataset_id)
-
-    with self.assertRaisesRegex(
-        ValueError, "Failed to fetch element spec for dataset id " +
-        str(dataset_id_val) + " from tf.data service. If the "
-        "dataset was registered in graph mode or inside a "
-        "tf.function, the `element_spec` must be specified as "
-        "an argument to `from_dataset_id`."):
-      ds = data_service_ops.from_dataset_id("parallel_epochs",
-                                            cluster.dispatcher_address(),
-                                            dataset_id)
 
   @combinations.generate(test_base.default_test_combinations())
   def testNoShardingPolicy(self):

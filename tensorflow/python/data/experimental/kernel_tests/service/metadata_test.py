@@ -21,8 +21,11 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import test
 
 
@@ -91,9 +94,9 @@ def _cardinality_test_combinations():
   return v2_only_combinations + v1_and_v2_combinations
 
 
-class DataServiceCardinalityTest(data_service_test_base.TestBase,
-                                 parameterized.TestCase):
-  """Tests propagating cardinality through tf.data service."""
+class DataServiceMetadataTest(data_service_test_base.TestBase,
+                              parameterized.TestCase):
+  """Tests propagating data service metadata through tf.data service."""
 
   @combinations.generate(_cardinality_test_combinations())
   def testCardinality(self, dataset_fn, sharding_policy, expected_result):
@@ -116,6 +119,69 @@ class DataServiceCardinalityTest(data_service_test_base.TestBase,
         dataset_id=dataset_id,
         element_spec=dataset.element_spec)
     self.assertEqual(self.evaluate(dataset.cardinality()), expected_result)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromDatasetIdDoesntRequireElementSpec(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1,
+        work_dir=data_service_test_base.NO_WORK_DIR,
+        fault_tolerant_mode=False,
+        data_transfer_protocol="grpc")
+    num_elements = 10
+    dataset = dataset_ops.Dataset.range(num_elements)
+
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   dataset)
+    dataset = data_service_ops.from_dataset_id(
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher_address(),
+        dataset_id=dataset_id)
+    self.assertDatasetProduces(dataset, list(range(num_elements)))
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testElementSpecGraphMode(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1,
+        work_dir=data_service_test_base.NO_WORK_DIR,
+        fault_tolerant_mode=False)
+    num_elements = 10
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   dataset)
+    with self.assertRaisesRegex(
+        ValueError, "In graph mode `element_spec` must be provided manually."):
+      _ = data_service_ops.from_dataset_id(
+          processing_mode=data_service_ops.ShardingPolicy.OFF,
+          service=cluster.dispatcher_address(),
+          dataset_id=dataset_id)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testElementSpecMixedMode(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1,
+        work_dir=data_service_test_base.NO_WORK_DIR,
+        fault_tolerant_mode=False)
+    num_elements = 10
+    dataset = dataset_ops.Dataset.range(num_elements)
+
+    @def_function.function
+    def get_dataset_id():
+      return data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                               dataset)
+
+    dataset_id = get_dataset_id()
+    dataset_id_val = tensor_util.constant_value(dataset_id)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        f"Failed to fetch element spec for dataset id {dataset_id_val} from "
+        "tf.data service. If the dataset was registered in graph mode or "
+        "inside a tf.function, the `element_spec` must be specified as an "
+        "argument to `from_dataset_id`."):
+      dataset = data_service_ops.from_dataset_id(
+          processing_mode=data_service_ops.ShardingPolicy.OFF,
+          service=cluster.dispatcher_address(),
+          dataset_id=dataset_id)
 
 
 if __name__ == "__main__":
