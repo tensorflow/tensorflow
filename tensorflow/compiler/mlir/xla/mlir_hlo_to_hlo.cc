@@ -1695,12 +1695,22 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
       auto aliasing_output =
           f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
       if (!aliasing_output) continue;
-      if (use_tuple_args_) {
-        builder.SetUpAlias(/*output_index=*/{aliasing_output.getInt()},
-                           /*param_number=*/0, /*param_index=*/{i});
+      xla::ShapeIndex output_index;
+      if ((return_tuple_ && entry_function) || f.getNumResults() != 1) {
+        output_index = {aliasing_output.getInt()};
       } else {
-        builder.SetUpAlias(/*output_index=*/{aliasing_output.getInt()},
-                           /*param_number=*/i, /*param_index=*/{});
+        if (aliasing_output.getInt() != 0) {
+          return f.emitError(
+              "Aliasing output must be 0 if only one output exists");
+        }
+        output_index = {};
+      }
+      if (use_tuple_args_) {
+        builder.SetUpAlias(output_index, /*param_number=*/0,
+                           /*param_index=*/{i});
+      } else {
+        builder.SetUpAlias(output_index, /*param_number=*/i,
+                           /*param_index=*/{});
       }
     }
     // Do not populate this field when nothing is replicated, since empty field
