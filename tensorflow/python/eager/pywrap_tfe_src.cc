@@ -4394,15 +4394,9 @@ tensorflow::StatusOr<PyObject*> MakeAttrsType(PyObject* object,
       tensorflow::swig::GetRegisteredPyObject("AttrsType"), call_args.get());
 }
 
-tensorflow::StatusOr<PyObject*> EncodeGenericObject(PyObject* object,
-                                                    PyObject* context) {
+tensorflow::StatusOr<PyObject*> EncodeGenericObject(PyObject* object) {
+  tensorflow::Safe_PyObjectPtr ref(PyWeakref_NewRef(object, nullptr));
   std::string type_name = "WeakrefType";
-
-  tensorflow::Safe_PyObjectPtr deletion_observer(
-      PyObject_GetAttrString(context, "deletion_observer"));
-  tensorflow::Safe_PyObjectPtr ref(
-      PyWeakref_NewRef(object, deletion_observer.get()));
-
   if (ref == nullptr) {
     // Happens if the type can not be weakly referenceed (such as int).
     // https://docs.python.org/3/library/weakref.html
@@ -4450,7 +4444,7 @@ tensorflow::StatusOr<PyObject*> EncodeTraceType(PyObject* object,
     return MakeAttrsType(object, context);
   }
 
-  return EncodeGenericObject(object, context);
+  return EncodeGenericObject(object);
 }
 
 tensorflow::Status EncodeArgLegacy(PyObject* arg, EncodingContext& context) {

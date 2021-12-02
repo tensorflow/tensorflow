@@ -14,7 +14,7 @@
 # ==============================================================================
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
-from typing import Dict, Hashable, Optional, Sequence, Tuple, Type, Callable
+from typing import Dict, Hashable, Optional, Sequence, Tuple, Type
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import core
@@ -23,43 +23,10 @@ from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 
 
-class WeakrefDeletionObserver:
-  """An observer for the event of deleting a weakref.
-
-  This allows users of FunctionTraceType to be notified when an instance which
-  depends on a weakref becomes invalid by the deletion of the weakref. In
-  particular, tf.function caches can use this mechanism to clear the cache of
-  keys that are no longer valid.
-
-  We use the observer pattern and not just basic callbacks because the keys
-  are typically created before they are used by the cache.
-  """
-
-  def __init__(self):
-    self._triggered = False
-    self._callables = []
-
-  def add_listener(self, on_delete: Callable[[], None]):
-    if self._triggered:
-      on_delete()
-    else:
-      self._callables.append(on_delete)
-
-  def weakref_deleted(self):
-    self._triggered = True
-    for c in self._callables:
-      c()
-
-  def __call__(self, _):
-    """Call handler for convenience of use with weakref."""
-    self.weakref_deleted()
-
-
 class SignatureContext(trace.TracingContext):
   """Container for variables and flags shared across signature tracing."""
 
   def __init__(self, include_tensor_ranks_only=False):
-    self._deletion_observer = WeakrefDeletionObserver()
     self._include_tensor_ranks_only = include_tensor_ranks_only
     self._global_to_local_id = {}
 
@@ -76,11 +43,6 @@ class SignatureContext(trace.TracingContext):
   @property
   def include_tensor_ranks_only(self):
     return self._include_tensor_ranks_only
-
-  @property
-  def deletion_observer(self):
-    """Returns a functor which invalidates the current key when called."""
-    return self._deletion_observer
 
 
 class GenericType(trace.TraceType):
@@ -115,12 +77,10 @@ class GenericType(trace.TraceType):
     return f"{self.__class__.__name__}(obj={self._object!r})"
 
 
+# TODO(b/182990542): Trigger function cache to remove associated concrete
+# function at the deletion of referrant.
 class WeakrefType(GenericType):
-  """Represents weakref of an arbitrary Python object.
-
-  When a function argument is a custom class, instead of making a copy of it
-  just for the sake of function cache, a weakref is instead kept to save memory.
-  """
+  """Represents weakref of an arbitrary Python object."""
 
   def __eq__(self, other):
     if not isinstance(other, trace.TraceType):
@@ -311,29 +271,27 @@ class DictType(trace.TraceType):
 _pywrap_utils.RegisterType("DictType", DictType)
 
 
-def make_function_signature(
-    function_args,
-    signature_context: SignatureContext,
-    encode_variables_by_resource_id,
-    use_full_trace_type) -> trace.TraceType:
+def get_arg_spec(inputs, include_tensor_ranks_only,
+                 encode_variables_by_resource_id, use_full_trace_type):
   """Returns the trace type specification of a function's arguments.
 
   Args:
-    function_args: Tuple/List/Dict structure containing the function arguments
-    signature_context: The SignatureContext to be shared during protocol calls.
+    inputs: Tuple/List/Dict structure containing the function arguments
+    include_tensor_ranks_only: If Tensors should be considered by rank
     encode_variables_by_resource_id: If Variables should be considered by
       resource id
     use_full_trace_type: Uses the TraceType protocol wherever possible.
 
   Returns:
-    A TraceType object representing all the given inputs.
+    A TraceType object representing the function arguments.
   """
 
+  signature_context = SignatureContext(include_tensor_ranks_only)
   try:
-    encoding = pywrap_tfe.TFE_Py_EncodeArg(
-        function_args, signature_context,
-        signature_context.include_tensor_ranks_only,
-        encode_variables_by_resource_id, use_full_trace_type)
+    encoding = pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
+                                           include_tensor_ranks_only,
+                                           encode_variables_by_resource_id,
+                                           use_full_trace_type)
     if use_full_trace_type:
       return encoding
     else:

@@ -1949,15 +1949,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return 42
 
     def func(foo):
-      return constant_op.constant([id(foo)])
+      del foo
+      return
 
     defined = function.defun(func)
-    foo_1 = Foo()
-    defined(foo_1)
+    defined(Foo())
     self.assertLen(total_function_cache(defined), 1)
 
-    foo_2 = Foo()
-    defined(foo_2)
+    defined(Foo())
     self.assertLen(total_function_cache(defined), 2)
 
   def testCacheTensorDtypeCollision(self):

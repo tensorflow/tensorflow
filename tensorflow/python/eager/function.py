@@ -3158,14 +3158,14 @@ class Function(object):
     # Build a cache key where TensorShapes include only rank information (and
     # not information about the size of each dimension).
     if not any_composite_args:
-      rank_only_cache_key, _ = function_cache.make_cache_key(
+      rank_only_cache_key = function_cache.make_cache_key(
           (args, kwargs), include_tensor_ranks_only=True)
     else:
       # For the rank-only cache key, replace any composite tensors with
       # shape-relaxed TypeSpecs.
       relaxed_args = nest.map_structure(
           _shape_relaxed_type_for_composite_tensor, (args, kwargs))
-      rank_only_cache_key, _ = function_cache.make_cache_key(
+      rank_only_cache_key = function_cache.make_cache_key(
           relaxed_args, include_tensor_ranks_only=True)
 
     arg_specs = [_type_spec_for(x) for x in flat_no_comp]
@@ -3246,11 +3246,9 @@ class Function(object):
       flat_args, filtered_flat_args = [None], []
 
     if self.input_signature is None:
-      cache_key, cache_key_deletion_observer = function_cache.make_cache_key(
-          (args, kwargs))
+      cache_key = function_cache.make_cache_key((args, kwargs))
     else:
-      cache_key, cache_key_deletion_observer = function_cache.make_cache_key(
-          self.flat_input_signature)
+      cache_key = function_cache.make_cache_key(self.flat_input_signature)
 
     try:
       hash(cache_key)
@@ -3290,8 +3288,7 @@ class Function(object):
 
           self._function_cache.add_call_context(cache_key.call_context)
           graph_function = self._create_graph_function(args, kwargs)
-          self._function_cache.add(cache_key, cache_key_deletion_observer,
-                                   graph_function)
+          self._function_cache.add(cache_key, graph_function)
 
           return graph_function, filtered_flat_args
 
