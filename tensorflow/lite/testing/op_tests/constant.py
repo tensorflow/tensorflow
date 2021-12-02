@@ -31,9 +31,7 @@ def make_constant_tests(options):
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[], [1], [2], [1, 1, 1, 1], [2, 2, 2, 2]],
       "constant_is_also_output": [True, False],
-      # TODO(b/192473002) investigate if it can be removed for MLIR converter.
-      # This is a regression test for a bug where Toco rejects models with
-      # unread inputs.
+      # Models should not be rejected regardless whether it has unread inputs.
       "has_unread_input": [True, False],
   }]
 

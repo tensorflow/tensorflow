@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utils for make_zip tests."""
-import collections
 import functools
 import itertools
 import operator
@@ -561,14 +560,6 @@ def make_zip_of_tests(options,
           report["tflite_converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
 
-          # Sorts the lists to make the order of input/output the same as order
-          # of the signature names.
-          # TODO(b/192473002): Remove sorting after TFLiteDriver can run with
-          # signatures.
-          inputs = sorted(inputs, key=lambda x: _normalize_input_name(x.name))
-          outputs = sorted(
-              outputs, key=lambda x: _normalize_output_name(x.name))
-
           # Builds a saved model with the default signature key.
           input_names, tensor_info_inputs = _get_tensor_info(
               inputs, "input_", _normalize_input_name)
@@ -629,12 +620,6 @@ def make_zip_of_tests(options,
           zipinfo = zipfile.ZipInfo(zip_path_label + ".bin")
           archive.writestr(zipinfo, tflite_model_binary, zipfile.ZIP_DEFLATED)
 
-          # TODO(b/192473002): Remove sorting after TFLiteDriver can run with
-          # signatures.
-          baseline_input_map = collections.OrderedDict(
-              sorted(baseline_input_map.items()))
-          baseline_output_map = collections.OrderedDict(
-              sorted(baseline_output_map.items()))
           example = {
               "inputs": baseline_input_map,
               "outputs": baseline_output_map
