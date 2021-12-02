@@ -1717,6 +1717,36 @@ func @convert_conv2d_explicit_padding(%arg0: tensor<64x8x8x8xf32>, %arg1: tensor
   return %0 : tensor<64x3x3x64xf32>
 }
 
+// CHECK-LABEL:   func @convert_conv2d_negative_explicit_padding(
+// CHECK-SAME:                         %[[ARG0:.*]]: tensor<128x7x9x64xf32>,
+// CHECK-SAME:                         %[[ARG1:.*]]: tensor<3x2x64x4xf32>) -> tensor<128x4x3x4xf32> {
+// CHECK:           %[[START:.*]] = "tf.Const"() {value = dense<[0, 0, 5, 0]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[SIZE:.*]] = "tf.Const"() {value = dense<[128, 5, 4, 64]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[SLICED_ARG0:.*]] = "tf.Slice"(%[[ARG0]], %[[START]], %[[SIZE]])
+// CHECK-SAME:      (tensor<128x7x9x64xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<128x5x4x64xf32>
+// CHECK:           %[[CONV:.*]] = "tf.Conv2D"(%[[SLICED_ARG0]], %[[ARG1]])
+// CHECK-SAME:      explicit_paddings = [0, 0, 4, 0, 0, 2, 0, 0]
+// CHECK-SAME:      (tensor<128x5x4x64xf32>, tensor<3x2x64x4xf32>) -> tensor<128x4x3x4xf32>
+// CHECK:           return %[[CONV]] : tensor<128x4x3x4xf32>
+// CHECK:         }
+func @convert_conv2d_negative_explicit_padding(%arg0: tensor<128x7x9x64xf32>, %arg1: tensor<3x2x64x4xf32>) -> tensor<128x4x3x4xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 2,
+      kernel_output_feature_dimension = 3,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2]
+    >, feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<[[4, -2], [-5, 2]]> : tensor<2x2xi64>,
+    precision_config = ["DEFAULT", "DEFAULT"], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<2> : tensor<2xi64>
+  } : (tensor<128x7x9x64xf32>, tensor<3x2x64x4xf32>) -> tensor<128x4x3x4xf32>
+  return %0 : tensor<128x4x3x4xf32>
+}
+
 // CHECK-LABEL:   func @convert_depthwise_conv2d(
 // CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<1x8x8x207xf32>,
 // CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<3x3x1x3312xf32>) -> tensor<1x8x8x16xf32> {
