@@ -203,53 +203,69 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
-    name = "reduction_1D_all_benchmark",
+    name = "sum_1d_op_benchmark",
     testonly = 1,
-    srcs = ["reduction_1D_all_benchmark.cc"],
+    srcs = ["sum_1d_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
         "no_oss",
         "manual",
     ]),
-    deps = [":reduction_benchmark"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
 )
 
 tf_cc_binary(
-    name = "reduction_2D_all_benchmark",
+    name = "sum_2d_op_benchmark",
     testonly = 1,
-    srcs = ["reduction_2D_all_benchmark.cc"],
+    srcs = ["sum_2d_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
         "no_oss",
         "manual",
     ]),
-    deps = [":reduction_benchmark"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
 )
 
 tf_cc_binary(
-    name = "reduction_2D_row_benchmark",
+    name = "sum_col_op_benchmark",
     testonly = 1,
-    srcs = ["reduction_2D_row_benchmark.cc"],
+    srcs = ["sum_col_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
         "no_oss",
         "manual",
     ]),
-    deps = [":reduction_benchmark"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
 )
 
 tf_cc_binary(
-    name = "reduction_2D_column_benchmark",
+    name = "sum_row_op_benchmark",
     testonly = 1,
-    srcs = ["reduction_2D_column_benchmark.cc"],
+    srcs = ["sum_row_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
         "no_oss",
         "manual",
     ]),
-    deps = [":reduction_benchmark"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
 )
