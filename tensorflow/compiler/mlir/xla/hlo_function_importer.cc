@@ -60,6 +60,8 @@ namespace xla {
 
 namespace {
 
+constexpr char kShardingAttr[] = "mhlo.sharding";
+
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
 // direction. Longterm solution is to add a function attribute to maintain the
@@ -248,6 +250,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   mlir::Location loc = GenerateInstructionLocation(instruction, func_builder);
 
   llvm::SmallVector<NamedAttribute, 10> attributes;
+  if (instruction->has_sharding()) {
+    attributes.push_back(builder_->getNamedAttr(
+        kShardingAttr,
+        builder_->getStringAttr(
+            instruction->sharding().ToProto().SerializeAsString())));
+  }
+
   switch (instruction->opcode()) {
     case HloOpcode::kParameter: {
       return nullptr;
