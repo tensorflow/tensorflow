@@ -128,10 +128,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       handle = _eager_safe_var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
       resource_variable_ops.assign_variable_op(handle, 1)
+      # The error message varies depending on whether it is being raised
+      # by the kernel or shape inference. The shape inference code path can
+      # be reached when running in eager op as function mode where each op
+      # is wrapped in a tf.function.
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          "Trying to read variable with wrong dtype. "
-          "Expected float got int32"):
+          r"Trying to read variable with wrong dtype. "
+          r"Expected (float|int32) got (int32|float)"):
         _ = resource_variable_ops.read_variable_op(handle, dtype=dtypes.float32)
 
   def testEagerInitializedValue(self):
@@ -230,9 +234,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           dtype=dtypes.int32, shape=[1], name="foo")
       resource_variable_ops.assign_variable_op(
           handle, constant_op.constant([1]))
+      # The error message varies depending on whether it is being raised
+      # by the kernel or shape inference. The shape inference code path can
+      # be reached when running in eager op as function mode where each op
+      # is wrapped in a tf.function.
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError, "Trying to assign variable with wrong "
-          "dtype. Expected int32 got float"):
+          errors.InvalidArgumentError, r"Trying to .* variable with wrong "
+          r"dtype. Expected int32 got float"):
         resource_variable_ops.assign_variable_op(
             handle, constant_op.constant([1.], dtype=dtypes.float32))
 
