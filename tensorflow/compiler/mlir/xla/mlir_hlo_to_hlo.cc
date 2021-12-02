@@ -1582,10 +1582,9 @@ LogicalResult ConvertToHloModule::Lower(
     // Construct the return value for the function. If there is a single value
     // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
+    const bool has_ret_shardings =
+        !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
     if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
-      const bool has_ret_shardings =
-          !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
-
       std::vector<xla::XlaOp> returns(num_return_values);
       for (OpOperand& ret : inst->getOpOperands()) {
         unsigned index = ret.getOperandNumber();
@@ -1623,7 +1622,14 @@ LogicalResult ConvertToHloModule::Lower(
       if (failed(GetXlaOp(inst->getOperand(0), value_map, &operand, inst)))
         return failure();
 
-      *return_value = operand;
+      if (has_ret_shardings) {
+        auto tuple = Tuple(builder, {operand});
+        builder->SetSharding(*ret_shardings[0]);
+        *return_value = GetTupleElement(tuple, 0);
+        builder->ClearSharding();
+      } else {
+        *return_value = operand;
+      }
     }
 
     return success();
@@ -1836,6 +1842,9 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     for (BlockArgument& arg : block->getArguments()) {
       auto num = arg.getArgNumber();
       xla::Shape shape = xla::TypeToShape(arg.getType());
+      if (!arg_shardings.empty() && arg_shardings[num]) {
+        builder->SetSharding(*arg_shardings[num]);
+      }
       if (entry_args_same_across_replicas.empty()) {
         lowering[arg] =
             xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
@@ -1845,6 +1854,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
             std::vector<bool>(entry_args_same_across_replicas[num],
                               xla::ShapeUtil::GetLeafCount(shape)));
       }
+      builder->ClearSharding();
     }
   }
 
