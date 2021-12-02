@@ -39,7 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder
@@ -481,7 +481,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testTrtGraphConverter_ShapeOp_Int32InputOutput_v2(self):
-    """Testing ShapeOp and int32 values as engine input and outpu."""
+    """Testing ShapeOp and int32 values as engine input and output."""
 
     class ShapeOpModel(tracking.AutoTrackable):
 
@@ -497,8 +497,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         # Add an OP that is not supported by TF-TRT. This allows TF-TRT to build
         # two engines. The first engine produces an int32 output and the second
         # engines has an int32 input and an int32 output.
-        q = nn_ops.data_format_vec_permute(
-            q_shape, src_format="NHWC", dst_format="NCHW")
+        q = math_ops.cumsum(q_shape)
         q = q * 2
         return array_ops.identity(q, name="output")
 
