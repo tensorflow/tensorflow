@@ -96,24 +96,18 @@ class FuseTpuCompileAndExecutePass
       llvm::SmallVector<mlir::Value> exec_op_args;
       exec_op_args.resize(exec_op.args().size());
 
-      const auto &static_shaped_operands =
+      auto &static_shaped_operands =
           exec_to_static_shaped_operands_map[exec_op];
       for (int i = 0; i < exec_op.args().size(); ++i) {
         auto iter = static_shaped_operands.find(i);
         if (iter != static_shaped_operands.end()) {
           static_shaped_operand_indices_attr.push_back(iter->first);
-          static_shape_tensors.push_back(iter->second->getOperand(1));
-          exec_op_args[i] = iter->second->getOperand(0);
-          // There should be only one user of this op.
-          if (!iter->second->hasOneUse()) {
-            iter->second->emitOpError(
-                "there should be only one user of the "
-                "tf.SetStaticDimensionBounds op");
-            signalPassFailure();
-            return;
-          }
-          iter->second->dropAllDefinedValueUses();
-          iter->second->dropAllReferences();
+          static_shape_tensors.push_back(iter->second.static_shape());
+          exec_op_args[i] = iter->second.input();
+          // The first operand is the input tensor, while the second operand is
+          // the static shape tensor, hence the drop_back here.
+          iter->second->replaceAllUsesWith(
+              mlir::ValueRange({iter->second.input()}));
           iter->second->erase();
         } else {
           exec_op_args[i] = exec_op->getOperand(i);
