@@ -54,14 +54,18 @@ def FallbackCompileOp : TF_CPURT_Op<"fallback.compile",
     [TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "compiles kernel at runtime using LLVM JIT compiler";
   let description = [{
-    `tf_cpurt.fallback.compile` compiles a Tensorflow program defined by the
-    kernel function in the nested module to the CPURT JIT executable using
-    LLVM JIT APIs and caches it in the JitExecutableCache owned by the
-    resource context.
+    `tf_cpurt.fallback.compile` schedules the compilation of a Tensorflow
+    program defined by the kernel function in the nested module to the CPURT JIT
+    executable using LLVM JIT APIs and caches it in the JitExecutableCache owned
+    by the resource context.
+
+    Compilation happens asynchronously by launching compilation task into the
+    dedicated thread pool, and the kernel returns an available chain once the
+    task is scheduled.
 
     This kernel can be used in the init function to make sure that when execute
-    kernel (see definition below) called at runtime, the compiled kernel will be
-    already pre-compiled and ready to run.
+    kernel (see definition below) called at runtime, the default compiled kernel
+    will be already pre-compiled and ready to run.
     ```
   }];
 
@@ -70,7 +74,7 @@ def FallbackCompileOp : TF_CPURT_Op<"fallback.compile",
     StrAttr:$device
   );
 
-  let results = (outs TFRT_ChainType:$compiled);
+  let results = (outs TFRT_ChainType:$scheduled);
 
   let assemblyFormat = [{
     $kernel `device` `(` $device `)` attr-dict

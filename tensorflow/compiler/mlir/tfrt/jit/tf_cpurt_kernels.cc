@@ -77,7 +77,7 @@ using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
 using ::tfrt::IndirectAsyncValue;
 using ::tfrt::KernelRegistry;
-using ::tfrt::MakeConstructedAsyncValueRef;
+using ::tfrt::MakeAvailableAsyncValueRef;
 using ::tfrt::MakeErrorAsyncValueRef;
 using ::tfrt::MakeStringError;
 using ::tfrt::RCArray;
@@ -417,21 +417,12 @@ static AsyncValueRef<Chain> Compile(StringAttribute device,
   Expected<AsyncValuePtr<JitExecutable>> executable =
       CompileImpl(kernel, exec_ctx);
 
-  // Return immediately if can't compile the kernel.
+  // Return error if can't schedule the compilation task.
   if (auto err = executable.takeError())
     return MakeErrorAsyncValueRef(StrCat(err));
 
-  // Signal compilation completion using an async chain.
-  auto compiled = MakeConstructedAsyncValueRef<Chain>();
-
-  executable->AndThen([executable = *executable, res = compiled.CopyRef()]() {
-    if (executable.IsError())
-      res.SetError(executable.GetError());
-    else
-      res.SetStateConcrete();
-  });
-
-  return compiled;
+  // Immediately return an available chain once we schedule the compilation.
+  return MakeAvailableAsyncValueRef<Chain>();
 }
 
 // -------------------------------------------------------------------------- //
