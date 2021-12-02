@@ -9,14 +9,24 @@ func @assuming(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2 : !shape.wi
   %2 = shape.shape_of %0#1 : tensor<?x?xf32> -> tensor<2xindex>
   %3 = arith.index_cast %1 : tensor<2xindex> to tensor<2xi32>
   %4 = arith.index_cast %2 : tensor<2xindex> to tensor<2xi32>
+  // CHECK:      Value info for %5 = mhlo.add %3, %4 : tensor<2xi32>
+  // CHECK-NEXT:   s0 + s1 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+  // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0]
+  // CHECK-NEXT:   s0 + s1 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
+  // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]
   %5 = mhlo.add %3, %4 : tensor<2xi32>
-// CHECK: %5 = mhlo.add %3, %4 : tensor<2xi32>:
-// CHECK-NEXT: s0 + s1 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0];
-// CHECK-NEXT: s0 + s1 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1];
+  // CHECK:      Value info for %6 = mhlo.multiply %5, %4 : tensor<2xi32>
+  // CHECK-NEXT:   (s0 + s1) * s2 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+  // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0]
+  // CHECK-NEXT:     s2 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0]
+  // CHECK-NEXT:   (s0 + s1) * s2 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
+  // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]
+  // CHECK-NEXT:     s2 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]
   %6 = mhlo.multiply %5, %4 : tensor<2xi32>
-// CHECK: %6 = mhlo.multiply %5, %4 : tensor<2xi32>:
-// CHECK-NEXT: (s0 + s1) * s2 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0]; s2 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0];
-// CHECK-NEXT: (s0 + s1) * s2 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]; s2 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1];
   return %6 : tensor<2xi32>
 }
 
@@ -24,17 +34,19 @@ func @assuming(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2 : !shape.wi
 
 // CHECK-LABEL: Testing : num_elements
 func @num_elements(%arg0: tensor<?x8x?x64xf32>) -> index {
+  // CHECK:      Value info for %0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[0]
+  // CHECK-NEXT:   8
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[2]
+  // CHECK-NEXT:   64
   %0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
-// CHECK-NEXT: %0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>:
-// CHECK-NEXT:   s0 with s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[0];
-// CHECK-NEXT:   8
-// CHECK-NEXT:   s0 with s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[2];
-// CHECK-NEXT:   64
+  // CHECK:      Value info for %1 = shape.num_elements %0 : tensor<4xindex> -> index:
+  // CHECK-NEXT:   (s0 * s1) * 512 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[0]
+  // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[2]
   %1 = shape.num_elements %0 : tensor<4xindex> -> index
-// CHECK: %1 = shape.num_elements %0 : tensor<4xindex> -> index:
-// CHECK-NEXT:   (s0 * s1) * 512 with
-// CHECK-SAME:   s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[0];
-// CHECK-SAME:   s1 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[2];
   return %1 : index
 }
 
@@ -44,10 +56,12 @@ func @num_elements(%arg0: tensor<?x8x?x64xf32>) -> index {
 func @dynamic_broadcast_in_dim(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<2xindex> {
   %0 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %1 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  // CHECK:      Value info for %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>
-// CHECK: %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>:
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0];
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1];
   return %2 : tensor<2xindex>
 }
 
@@ -57,10 +71,12 @@ func @dynamic_broadcast_in_dim(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -
 func @dynamic_reshape(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<2xindex> {
   %0 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %1 = "mhlo.dynamic_reshape"(%arg0, %0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  // CHECK:      Value info for %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>
-// CHECK: %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>:
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0];
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1];
   return %2 : tensor<2xindex>
 }
 
@@ -73,10 +89,12 @@ func @reduce(%arg0: tensor<?x?x?xf32>, %arg1: tensor<f32>) -> tensor<2xindex> {
     %26 = mhlo.add %a, %b : tensor<f32>
     "mhlo.return"(%26) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK:      Value info for %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?x?xf32>' at index: 0)[0]
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?x?xf32>' at index: 0)[2]
   %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
-// CHECK: %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>:
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?x?xf32>' at index: 0)[0];
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?x?xf32>' at index: 0)[2];
   return %1 : tensor<2xindex>
 }
 
@@ -85,10 +103,12 @@ func @reduce(%arg0: tensor<?x?x?xf32>, %arg1: tensor<f32>) -> tensor<2xindex> {
 // CHECK-LABEL: Testing : transpose
 func @transpose(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK:      Value info for %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
-// CHECK: %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>:
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1];
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0];
   return %1 : tensor<2xindex>
 }
 
@@ -97,10 +117,12 @@ func @transpose(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
 // CHECK-LABEL: Testing : select
 func @select(%arg0: tensor<i1>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>) -> tensor<2xindex> {
   %0 = "mhlo.select"(%arg0, %arg1, %arg2)  : (tensor<i1>, tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK:      Value info for %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0]
+  // CHECK-NEXT: s0 with
+  // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]
   %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
-// CHECK: %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>:
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0];
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1];
   return %1 : tensor<2xindex>
 }
 
@@ -111,9 +133,11 @@ func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %c0 = arith.constant 0 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %t = tensor.from_elements %d0, %d0 : tensor<2xindex>
-// CHECK: tensor.from_elements %0, %0 : tensor<2xindex>:
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0];
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0];
+  // CHECK:      Value info for %1 = tensor.from_elements %0, %0 : tensor<2xindex>
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   return %t : tensor<2xindex>
 }
 
@@ -124,10 +148,12 @@ func @extract(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %shape = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %c1 = arith.constant 1 : index
   %d0 = tensor.extract %shape[%c1] : tensor<2xindex>
+  // CHECK:      Value info for %2 = tensor.from_elements %1, %1 : tensor<2xindex>
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   %t = tensor.from_elements %d0, %d0 : tensor<2xindex>
-// CHECK: tensor.from_elements %1, %1 : tensor<2xindex>:
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1];
-// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1];
   return %t : tensor<2xindex>
 }
 
@@ -144,10 +170,14 @@ func @symbolic_constraint(
   %1 = shape.shape_of %arg1 : tensor<?x?xf32> -> tensor<2xindex>
   %2 = arith.index_cast %0 : tensor<2xindex> to tensor<2xi32>
   %3 = arith.index_cast %1 : tensor<2xindex> to tensor<2xi32>
+  // CHECK:      Value info for %4 = mhlo.add %2, %3 : tensor<2xi32>:
+  // CHECK-NEXT:   s0 + s1 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+  // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0]
+  // CHECK-NEXT:   s0 + s1 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
+  // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   %4 = mhlo.add %2, %3 : tensor<2xi32>
-// CHECK: %4 = mhlo.add %2, %3 : tensor<2xi32>:
-// CHECK-NEXT: s0 + s1 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0]
-// CHECK-NEXT: s0 + s1 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]
   return %4 : tensor<2xi32>
 }
 
@@ -167,31 +197,37 @@ func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
   %4 = "mhlo.convert"(%3) : (tensor<?xf32>) -> tensor<?xf32>
   %cst = arith.constant dense<1> : tensor<1xi32>
+  // CHECK:      Value info for %5 = shape.shape_of
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   %5 = shape.shape_of %4 : tensor<?xf32> -> tensor<1xindex>
-// CHECK: %5 = shape.shape_of
-// CHECK-NEXT:   s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
+  // CHECK:      Value info for %6 = tensor.extract
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   %6 = tensor.extract %5[%c0] : tensor<1xindex>
-// CHECK: %6 = tensor.extract
-// CHECK-NEXT:   s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+  // CHECK:      Value info for %7 = tensor.from_elements
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+  // CHECK-NEXT:   1
   %7 = tensor.from_elements %6, %c1 : tensor<2xindex>
-// CHECK: %7 = tensor.from_elements
-// CHECK-NEXT:   s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
-// CHECK-NEXT:   1
   %8 = "mhlo.dynamic_reshape"(%4, %7) : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x1xf32>
   %9 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %10 = shape.shape_of %8 : tensor<?x1xf32> -> tensor<2xindex>
   %11 = shape.cstr_broadcastable %9, %10 : tensor<2xindex>, tensor<2xindex>
   %12 = shape.assuming %11 -> (tensor<?x?xf32>) {
+    // CHECK:      Value info for %26 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>:
+    // CHECK-NEXT:   s0 with
+    // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+    // CHECK-NEXT:   s0 with
+    // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
     %26 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
-// CHECK: %26 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>:
-// CHECK-NEXT:  s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
-// CHECK-NEXT:  s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
+    // CHECK:      Value info for %27 = shape.shape_of
+    // CHECK-NEXT:   s0 with
+    // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
+    // CHECK-NEXT:   1
     %27 = shape.shape_of %8 : tensor<?x1xf32> -> tensor<2xindex>
-// CHECK: %27 = shape.shape_of
-// CHECK-NEXT:  s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
-// CHECK-NEXT:  1
     %28 = shape.broadcast %26, %27 : tensor<2xindex>, tensor<2xindex> -> tensor<2xindex>
     %29 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %28) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
     %30 = "mhlo.dynamic_broadcast_in_dim"(%8, %28) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x1xf32>, tensor<2xindex>) -> tensor<?x?xf32>
@@ -248,16 +284,20 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
   %12 = "mhlo.reshape"(%11) : (tensor<1xi32>) -> tensor<i32>
   %13 = mhlo.multiply %10, %12 : tensor<i32>
   %14 = "mhlo.reshape"(%13) : (tensor<i32>) -> tensor<1xi32>
+  // CHECK:      Value info for %15 = "mhlo.concatenate"(%14, %0) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+  // CHECK-NEXT:   s0 * s1 with
+  // CHECK-NEXT:     s0 = <block argument> of type 'tensor<4xi32>' at index: 2[0]
+  // CHECK-NEXT:     s1 = <block argument> of type 'tensor<4xi32>' at index: 2[2]
+  // CHECK-NEXT:   512
   %15 = "mhlo.concatenate"(%14, %0) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
-// CHECK: %15 = "mhlo.concatenate"(%14, %0) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>:
-// CHECK-NEXT: s0 * s1 with s0 = <block argument> of type 'tensor<4xi32>' at index: 2[0]; s1 = <block argument> of type 'tensor<4xi32>' at index: 2[2];
-// CHECK-NEXT: 512
+  // CHECK:      Value info for %16 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>:
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = <block argument> of type 'tensor<4xi32>' at index: 2[0]
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = <block argument> of type 'tensor<4xi32>' at index: 2[2]
+  // CHECK-NEXT:   64
+  // CHECK-NEXT:   8
   %16 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>
-// CHECK: %16 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>:
-// CHECK-NEXT: s0 with s0 = <block argument> of type 'tensor<4xi32>' at index: 2[0];
-// CHECK-NEXT: s0 with s0 = <block argument> of type 'tensor<4xi32>' at index: 2[2];
-// CHECK-NEXT: 64
-// CHECK-NEXT: 8
   %17 = shape.num_elements %16 : tensor<4xindex> -> index
   %18 = mhlo.cstr_reshapable %17, %15 : index, tensor<2xi32>
   %19 = shape.assuming %18 -> (tensor<?x512xf32>) {

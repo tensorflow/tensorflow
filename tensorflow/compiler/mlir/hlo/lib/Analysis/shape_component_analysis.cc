@@ -361,17 +361,19 @@ struct ShapeVisitor {
     forwards_worklist.push_back(ShapeOrValueInfo::getShapeInfoOf(v));
   }
   void forwardUnknownShape(Value v) {
+    auto ranked_ty = v.getType().dyn_cast<RankedTensorType>();
+    if (!ranked_ty) return;
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(v));
-    auto type = v.getType().cast<RankedTensorType>();
     auto id = getAffineSymbolExpr(0, v.getContext());
-    for (size_t i = 0, e = type.getRank(); i != e; ++i) {
+    for (size_t i = 0, e = ranked_ty.getRank(); i != e; ++i) {
       dims.emplace_back();
       auto &dim = dims.back();
-      if (!type.isDynamicDim(i)) {
-        dim.expr = getAffineConstantExpr(type.getDimSize(i), v.getContext());
-      } else {
+      if (ranked_ty.isDynamicDim(i)) {
         dim.symbols.push_back({ShapeOrValueInfo::getShapeInfoOf(v), i});
         dim.expr = id;
+      } else {
+        dim.expr =
+            getAffineConstantExpr(ranked_ty.getDimSize(i), v.getContext());
       }
     }
   }
@@ -525,10 +527,10 @@ struct ShapeVisitor {
     forwards_worklist.push_back(ShapeOrValueInfo::getValueInfoOf(v));
   }
   void forwardConstant(Value v) {
-    auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(v));
     IntegerAttr intAttr;
     DenseIntElementsAttr denseAttr;
     if (matchPattern(v, m_Constant(&denseAttr))) {
+      auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(v));
       for (uint64_t i = 0, e = dim0size(v.getType()); i != e; ++i) {
         dims.emplace_back();
         auto &dim = dims.back();
@@ -536,6 +538,7 @@ struct ShapeVisitor {
             denseAttr.getValues<APInt>()[i].getSExtValue(), v.getContext());
       }
     } else if (matchPattern(v, m_Constant(&intAttr))) {
+      auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(v));
       dims.emplace_back();
       auto &dim = dims.back();
       dim.expr = getAffineConstantExpr(intAttr.getInt(), v.getContext());
@@ -718,15 +721,15 @@ llvm::Optional<Symbol> SymbolicExpr::singleton() const {
 
 void SymbolicExpr::dump(llvm::raw_ostream &os) const {
   expr.print(os);
-  if (!symbols.empty()) {
-    os << " with ";
-    for (auto sym : llvm::enumerate(symbols)) {
-      os << 's' << sym.index() << " = ";
-      if (!sym.value().source.isValueInfo()) os << "shapeof(";
-      sym.value().source.value().print(os);
-      if (!sym.value().source.isValueInfo()) os << ")";
-      os << '[' << sym.value().index << "]; ";
-    }
+  if (!symbols.empty()) os << " with";
+  os << "\n";
+  if (symbols.empty()) return;
+  for (auto sym : llvm::enumerate(symbols)) {
+    os.indent(4);
+    os << 's' << sym.index() << " = ";
+    if (!sym.value().source.isValueInfo()) os << "shapeof(";
+    sym.value().source.value().print(os);
+    if (!sym.value().source.isValueInfo()) os << ")";
+    os << '[' << sym.value().index << "]\n";
   }
-  os << '\n';
 }
