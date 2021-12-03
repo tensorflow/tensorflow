@@ -378,7 +378,7 @@ Client = _xla.Client
 Buffer = _xla.Buffer
 DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
-OpSharding = _xla.OpSharding  # type: ignore
+OpSharding = _xla.OpSharding
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
