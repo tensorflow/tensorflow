@@ -256,6 +256,8 @@ Status ImportGenericFunction(
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   NamedAttrList attrs;
   DictionaryAttr func_attrs = builder.getDictionaryAttr({});
+  if (signature.name().empty())
+    return InvalidArgument("generic function without a name");
   attrs.append("sym_name", builder.getStringAttr(signature.name()));
   attrs.append("generic", builder.getUnitAttr());
   if (!signature.description().empty())
