@@ -389,35 +389,20 @@ cc_library(
         "//tensorflow/core/tfrt/eager:__pkg__",
     ],
     deps = [
-        ":kernel_fallback_tensor",
-        ":kernel_fallback_tensor_conversion_alwayslink",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/meta:type_traits",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "//tensorflow/core/runtime_fallback/util:attr_util",
-        "//tensorflow/core/tfrt/utils:fallback_tensor",
-        "//tensorflow/core/tfrt/utils:statusor",
-        "@tf_runtime//:core_runtime",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
-        "@tf_runtime//:tensor_alwayslink",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
-            "//tensorflow/core/common_runtime/eager:attr_builder",
-            "//tensorflow/core/common_runtime/eager:core",
+            "//tensorflow/core/common_runtime:device_mgr",
+            "//tensorflow/core/common_runtime:function",
             "//tensorflow/core:framework",
-            "//tensorflow/core:framework_lite",
             "//tensorflow/core/framework:node_def_proto_cc",
             "//tensorflow/core/framework:op_def_proto_cc",
             "//tensorflow/core/framework:tensor",
             "//tensorflow/core/platform:errors",
             "//tensorflow/core/platform:status",
-            "//tensorflow/core:core_cpu_base",
         ],
     }),
 )

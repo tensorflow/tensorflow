@@ -20,55 +20,28 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/meta/type_traits.h"
-#include "absl/types/span.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
-#include "tensorflow/core/runtime_fallback/util/attr_util.h"
-#include "tensorflow/core/tfrt/utils/statusor.h"
-#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/chain.h"  // from @tf_runtime
-#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#include "tfrt/host_context/sync_kernel_frame.h"  // from @tf_runtime
-#include "tfrt/support/error_util.h"  // from @tf_runtime
-#include "tfrt/support/forward_decls.h"  // from @tf_runtime
-#include "tfrt/tensor/tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {
 
 class OpKernelRunner {
  public:
-  static tfrt::StatusOr<OpKernelRunner> Create(
+  static StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view device_name, int num_args,
-      const std::function<llvm::Error(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
       const tensorflow::DeviceMgr& device_manager,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime);
@@ -156,27 +129,6 @@ struct OpKernelRunState {
   ~OpKernelRunState() = default;
 };
 
-class OpLocationKey {
- public:
-  explicit OpLocationKey(tfrt::Location loc) : loc_(loc) {}
-
-  template <typename H>
-  friend H AbslHashValue(H h, const OpLocationKey& key) {
-    // NOTE: Each BEF file has its own LocationHandler. Using LocationHandler
-    // as part of cache key here can avoid cache collision between different
-    // BEF file.
-    return H::combine(std::move(h), key.loc_.data, key.loc_.GetHandler());
-  }
-
-  friend bool operator==(const OpLocationKey& x, const OpLocationKey& y) {
-    return x.loc_.data == y.loc_.data &&
-           x.loc_.GetHandler() == y.loc_.GetHandler();
-  }
-
- private:
-  tfrt::Location loc_;
-};
-
 // OpKernelRunnerTable for keeping OpKernelRunner instances to avoid expensive
 // reinstantiation of OpKernel and other repeated setup per kernel execution.
 // OpKernelRunnerTable is thread-compatible.
@@ -211,25 +163,6 @@ class OpKernelRunnerTable {
 
  private:
   std::vector<absl::optional<OpKernelRunner>> runners_;
-};
-
-// OpKernelRunnerCache is similar to OpKernelRunnerTable but thread-safe.
-class OpKernelRunnerCache {
- public:
-  OpKernelRunnerCache();
-
-  tfrt::StatusOr<OpKernelRunner*> GetOrCreate(
-      tfrt::Location loc, absl::string_view op_name,
-      absl::string_view device_name, int num_args,
-      const std::function<llvm::Error(tensorflow::AttrValueMap*)>& attr_builder,
-      const tensorflow::DeviceMgr& device_manager,
-      const tensorflow::ProcessFunctionLibraryRuntime&
-          process_function_library_runtime);
-
- private:
-  mutable mutex mu_;
-  absl::flat_hash_map<OpLocationKey, std::unique_ptr<OpKernelRunner>> map_
-      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tfd

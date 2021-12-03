@@ -20,27 +20,27 @@ namespace tensorflow {
 namespace tfd {
 namespace {
 
-llvm::Error CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
-  auto check_arg_def = [&](const auto& arg_def) -> llvm::Error {
+Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
+  auto check_arg_def = [&](const auto& arg_def) {
     if (arg_def.is_ref())
-      return tfrt::MakeStringError(
+      return tensorflow::errors::Internal(
           "TFRT kernel fallback error: Unsupported ref args in ",
           op_def.name());
-    return llvm::Error::success();
+    return Status::OK();
   };
 
   for (const auto& arg_def : op_def.input_arg())
-    if (auto error = check_arg_def(arg_def)) return error;
+    TF_RETURN_IF_ERROR(check_arg_def(arg_def));
   for (const auto& arg_def : op_def.output_arg())
-    if (auto error = check_arg_def(arg_def)) return error;
+    TF_RETURN_IF_ERROR(check_arg_def(arg_def));
 
-  return llvm::Error::success();
+  return Status::OK();
 }
 
 // Create a tensorflow::NodeDef from the tensorflow::OpDef and the attributes.
-tfrt::StatusOr<tensorflow::NodeDef> BuildNodeDef(
+StatusOr<tensorflow::NodeDef> BuildNodeDef(
     const tensorflow::OpDef& op_def, int num_args,
-    const std::function<llvm::Error(tensorflow::AttrValueMap*)>& attr_builder) {
+    const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder) {
   tensorflow::NodeDef node_def;
   node_def.set_name(op_def.name());
   node_def.set_op(op_def.name());
@@ -49,9 +49,7 @@ tfrt::StatusOr<tensorflow::NodeDef> BuildNodeDef(
   }
 
   auto* attr_value_map = node_def.mutable_attr();
-  if (auto error = attr_builder(attr_value_map)) {
-    return tensorflow::errors::InvalidArgument(tfrt::StrCat(error));
-  }
+  TF_RETURN_IF_ERROR(attr_builder(attr_value_map));
 
   // For any attr-value pairs that exist in the op def (from op registry)
   // but not in `attr_value_map`, fill them into `attr_value_map`, so that we
@@ -80,17 +78,16 @@ tensorflow::Status CreateOpKernel(
 
 }  // namespace
 
-tfrt::StatusOr<OpKernelRunner> OpKernelRunner::Create(
+StatusOr<OpKernelRunner> OpKernelRunner::Create(
     absl::string_view op_name, absl::string_view device_name, int num_args,
-    const std::function<llvm::Error(tensorflow::AttrValueMap*)>& attr_builder,
+    const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
     const tensorflow::DeviceMgr& device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime) {
   const OpDef* op_def = nullptr;
-  TF_RETURN_IF_ERROR(tensorflow::OpDefForOp(std::string(op_name), &op_def));
-  if (auto error = CheckOpDefCompatibility(*op_def)) {
-    return tensorflow::errors::Internal(tfrt::StrCat(error));
-  }
+  TF_RETURN_IF_ERROR(tensorflow::OpRegistry::Global()->LookUpOpDef(
+      std::string(op_name), &op_def));
+  TF_RETURN_IF_ERROR(CheckOpDefCompatibility(*op_def));
   VLOG(1) << "KernelFallbackExecuteCompat creating op from OpDef: "
           << op_def->DebugString();
 
@@ -162,50 +159,6 @@ void OpKernelRunner::RunAsync(OpKernelContext* context,
   DCHECK(async);
 
   async->ComputeAsync(context, std::move(done_callback));
-}
-
-OpKernelRunnerCache::OpKernelRunnerCache() {}
-
-tfrt::StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
-    tfrt::Location loc, absl::string_view op_name,
-    absl::string_view device_name, int num_args,
-    const std::function<llvm::Error(tensorflow::AttrValueMap*)>& attr_builder,
-    const tensorflow::DeviceMgr& device_manager,
-    const tensorflow::ProcessFunctionLibraryRuntime&
-        process_function_library_runtime) {
-  OpLocationKey key(loc);
-  {
-    tf_shared_lock lock(mu_);
-    auto it = map_.find(key);
-    if (it != map_.end()) {
-      DCHECK_EQ(it->second->op_kernel()->name(), op_name);
-      return it->second.get();
-    }
-  }
-
-  mutex_lock lock(mu_);
-
-  auto it = map_.find(key);
-  if (it != map_.end()) {
-    DCHECK_EQ(it->second->op_kernel()->name(), op_name);
-    return it->second.get();
-  }
-
-  VLOG(1) << "KernelFallbackExecuteCompat creating op " << op_name
-          << " at location " << loc.data << " on device " << device_name;
-
-  TF_ASSIGN_OR_RETURN(
-      auto runner,
-      OpKernelRunner::Create(op_name, device_name, num_args, attr_builder,
-                             device_manager, process_function_library_runtime));
-
-  auto runner_uptr = std::make_unique<OpKernelRunner>(std::move(runner));
-
-  auto* runner_ptr = runner_uptr.get();
-  auto r = map_.emplace(key, std::move(runner_uptr)).second;
-  DCHECK(r);
-
-  return runner_ptr;
 }
 
 }  // namespace tfd

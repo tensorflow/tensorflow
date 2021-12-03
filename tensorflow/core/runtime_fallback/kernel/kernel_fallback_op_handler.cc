@@ -146,6 +146,88 @@ struct KernelFallbackOpHandlerCompatTraits {
   }
 };
 
+class OpLocationKey {
+ public:
+  explicit OpLocationKey(tfrt::Location loc) : loc_(loc) {}
+
+  template <typename H>
+  friend H AbslHashValue(H h, const OpLocationKey& key) {
+    // NOTE: Each BEF file has its own LocationHandler. Using LocationHandler
+    // as part of cache key here can avoid cache collision between different
+    // BEF file.
+    return H::combine(std::move(h), key.loc_.data, key.loc_.GetHandler());
+  }
+
+  friend bool operator==(const OpLocationKey& x, const OpLocationKey& y) {
+    return x.loc_.data == y.loc_.data &&
+           x.loc_.GetHandler() == y.loc_.GetHandler();
+  }
+
+ private:
+  tfrt::Location loc_;
+};
+
+// OpKernelRunnerCache is similar to OpKernelRunnerTable but thread-safe.
+class OpKernelRunnerCache {
+ public:
+  OpKernelRunnerCache() = default;
+
+  StatusOr<OpKernelRunner*> GetOrCreate(
+      tfrt::Location loc, absl::string_view op_name,
+      absl::string_view device_name, int num_args,
+      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const tensorflow::DeviceMgr& device_manager,
+      const tensorflow::ProcessFunctionLibraryRuntime&
+          process_function_library_runtime);
+
+ private:
+  mutable mutex mu_;
+  absl::flat_hash_map<OpLocationKey, std::unique_ptr<OpKernelRunner>> map_
+      TF_GUARDED_BY(mu_);
+};
+
+StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
+    tfrt::Location loc, absl::string_view op_name,
+    absl::string_view device_name, int num_args,
+    const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+    const tensorflow::DeviceMgr& device_manager,
+    const tensorflow::ProcessFunctionLibraryRuntime&
+        process_function_library_runtime) {
+  OpLocationKey key(loc);
+  {
+    tf_shared_lock lock(mu_);
+    auto it = map_.find(key);
+    if (it != map_.end()) {
+      DCHECK_EQ(it->second->op_kernel()->name(), op_name);
+      return it->second.get();
+    }
+  }
+
+  mutex_lock lock(mu_);
+
+  auto it = map_.find(key);
+  if (it != map_.end()) {
+    DCHECK_EQ(it->second->op_kernel()->name(), op_name);
+    return it->second.get();
+  }
+
+  VLOG(1) << "KernelFallbackExecuteCompat creating op " << op_name
+          << " at location " << loc.data << " on device " << device_name;
+
+  TF_ASSIGN_OR_RETURN(
+      auto runner,
+      OpKernelRunner::Create(op_name, device_name, num_args, attr_builder,
+                             device_manager, process_function_library_runtime));
+
+  auto runner_uptr = std::make_unique<OpKernelRunner>(std::move(runner));
+
+  auto* runner_ptr = runner_uptr.get();
+  auto r = map_.emplace(key, std::move(runner_uptr)).second;
+  DCHECK(r);
+
+  return runner_ptr;
+}
+
 }  // namespace
 
 Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
@@ -205,8 +287,11 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
             ToAbslStringView(fallback_op_entry.op_name),
             ToAbslStringView(device()->name()), invocation.arguments.size(),
             [&attrs = invocation.attrs, host = invocation.exec_ctx.host()](
-                tensorflow::AttrValueMap* attr_value_map) -> llvm::Error {
-              return tfd::FillAttrValueMap(attrs, host, attr_value_map);
+                tensorflow::AttrValueMap* attr_value_map) {
+              if (auto error =
+                      tfd::FillAttrValueMap(attrs, host, attr_value_map))
+                return tensorflow::errors::InvalidArgument(tfrt::StrCat(error));
+              return Status::OK();
             },
             fallback_op_entry.fallback_request_state->device_manager(),
             fallback_op_entry.fallback_request_state

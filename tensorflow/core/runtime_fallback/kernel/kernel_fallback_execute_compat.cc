@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/kernel/op_kernel_runner.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
@@ -611,14 +612,9 @@ llvm::Expected<tfrt::Chain> KernelFallbackCreateOp(
   auto* runner_table = fallback_request_state->runner_table();
   DCHECK(runner_table);
 
-  auto attr_builder =
-      [op_attr_array, op_func_attr_array](
-          tensorflow::AttrValueMap* attr_value_map) -> llvm::Error {
-    auto status =
-        SetUpAttrValueMap(op_attr_array, op_func_attr_array, attr_value_map);
-
-    if (!status.ok()) return tfrt::MakeStringError(status.error_message());
-    return llvm::Error::success();
+  auto attr_builder = [op_attr_array, op_func_attr_array](
+                          tensorflow::AttrValueMap* attr_value_map) {
+    return SetUpAttrValueMap(op_attr_array, op_func_attr_array, attr_value_map);
   };
 
   auto op_name = StripTfPrefix(op_name_attr.GetValue());
