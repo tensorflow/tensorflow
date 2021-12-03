@@ -1950,10 +1950,11 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "fake_quant_ops_test",
     size = "small",
     srcs = ["fake_quant_ops_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":fake_quant_ops",
         ":ops_testutil",

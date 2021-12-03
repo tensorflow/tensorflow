@@ -686,7 +686,7 @@ func @QuantDequantTranspose(%arg0: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
 
   // CHECK-LABEL: QuantDequantTranspose
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
-  // CHECK: %[[CST_0:.*]] = arith.constant dense<1.00392151> : tensor<3x4xf32>
+  // CHECK: %[[CST_0:.*]] = arith.constant dense<1.00392163> : tensor<3x4xf32>
   // CHECK: %[[QUANT:.*]] = "tfl.quantize"(%[[CST_0]]) {qtype = tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>} : (tensor<3x4xf32>) -> tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>
   // CHECK: %[[DEQUANT:.*]] = "tfl.dequantize"(%[[QUANT]]) : (tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>) -> tensor<3x4xf32>
   // CHECK: %[[TRANSPOSE:.*]] = "tf.Transpose"(%[[DEQUANT]], %[[CST]]) : (tensor<3x4xf32>, tensor<?xi32>) -> tensor<*xf32>
