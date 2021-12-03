@@ -194,6 +194,18 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     }
   }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    // If start_ == stop_ or if the sign of stop_ - start_ and step do not agree
+    // (or are zero), return zero.
+    if (sgn(stop_ - start_) * sgn(step_) <= 0) {
+      return 0;
+    } else if (step_ > 0) {
+      return std::max(int64_t{0}, (stop_ - start_ - 1) / step_ + 1);
+    } else {
+      return std::max(int64_t{0}, (start_ - stop_ - 1) / -step_ + 1);
+    }
+  }
+
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     split_providers->push_back(

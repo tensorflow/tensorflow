@@ -119,6 +119,16 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
   }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    if (count_ == -1 || input_->Cardinality(options) == kInfiniteCardinality) {
+      return kInfiniteCardinality;
+    } else if (input_->Cardinality(options) == kUnknownCardinality) {
+      return kUnknownCardinality;
+    } else {
+      return input_->Cardinality(options) * count_;
+    }
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return Status::OK();
