@@ -1399,6 +1399,7 @@ distribute_py_test(
     name = "distributed_variable_test",
     size = "medium",
     srcs = ["distributed_variable_test.py"],
+    disable_v2 = True,  # TODO(b/209058825)
     main = "distributed_variable_test.py",
     shard_count = 3,
     tags = [
