@@ -268,6 +268,7 @@ class TruncatedNormalTest(test.TestCase):
       self.assertAllEqual(rnd1, rnd2)
 
 
+@test_util.with_eager_op_as_function
 @test_util.for_all_test_methods(test_util.disable_xla,
                                 "This never passed on XLA")
 class RandomUniformTest(RandomOpTestCommon):
