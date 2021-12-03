@@ -423,7 +423,12 @@ Status KernelAndDeviceFunc::Run(
                     eager_func_params, stack_trace, coordination_service_agent);
 
   std::vector<Tensor> rets;
-  Status s = pflr_->RunSync(*opts, handle_, inputs.GetLocalTensors(), &rets);
+  Status s;
+  {
+    port::ScopedFlushDenormal flush;
+    port::ScopedSetRound round(FE_TONEAREST);
+    s.Update(pflr_->RunSync(*opts, handle_, inputs.GetLocalTensors(), &rets));
+  }
 
   if (cancellation_manager == nullptr) {
     delete opts->cancellation_manager;
