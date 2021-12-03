@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -104,6 +106,20 @@ class PreprocessDynamicRangeQuantizableOp
   }
 
  private:
+  // Check if any specific operand is supported for int8 quantization.
+  bool hasInt8QuantizableOperandAt(Operation* op, int operand_index) const {
+    // TODO(b/201599094): check whether weight size < 1024 condition is needed
+    // here
+    if (auto quantizable_op = dyn_cast<DynamicRangeQuantizedOpInterface>(op)) {
+      const auto& quantizable_indices =
+          quantizable_op.GetQuantizableOperandIndices();
+      return std::find(std::begin(quantizable_indices),
+                       std::end(quantizable_indices),
+                       operand_index) != std::end(quantizable_indices);
+    }
+    return false;
+  }
+
   // Mark users that are applicable for dynamic range quantization if it
   // uses float tensors which are not biases and is a DynamicRangeQuantizableOp.
   bool getQuantizableOps(arith::ConstantOp op,
@@ -115,17 +131,11 @@ class PreprocessDynamicRangeQuantizableOp
     Value value = op.getResult();
 
     // Check whether dynamic-quantization can be applied.
-    // TODO(b/201599094): check whether weight size < 1024 condition is needed
-    // here
     for (auto& use : value.getUses()) {
       Operation* user = use.getOwner();
       int operand_num = use.getOperandNumber();
 
-      auto spec = GetOpQuantSpec(user);
-      auto biases = spec->biases_params;
-
-      if (biases.find(operand_num) == biases.end() &&
-          user->hasTrait<OpTrait::quant::DynamicRangeQuantizableOp>()) {
+      if (hasInt8QuantizableOperandAt(user, operand_num)) {
         quantizable_ops.insert({user, operand_num});
       }
     }
@@ -152,8 +162,7 @@ class PreprocessDynamicRangeQuantizableOp
     Operation* quantize_op = quant_op.first;
     int quantize_operand_num = quant_op.second;
 
-    auto affine_user =
-        llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(quantize_op);
+    auto affine_user = dyn_cast<AffineQuantizedOpInterface>(quantize_op);
 
     bool op_with_narrow_range =
         affine_user &&

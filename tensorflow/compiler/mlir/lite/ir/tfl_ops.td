@@ -932,7 +932,7 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const",
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
       [DeclareOpInterfaceMethods<InferTypeOpInterface>,
        DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
-       DynamicRangeQuantizableOp]> {
+       DynamicRangeQuantizedOpInterface]> {
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
@@ -946,6 +946,10 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
 
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+
+    // DynamicRangeQuantizedOpInterface:
+    bool GetDynamicRangeQuantKernelSupport() { return true; }
+    std::vector<int> GetQuantizableOperandIndices() { return {1}; }
   }];
 }
 
@@ -994,7 +998,7 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
 def TFL_DepthwiseConv2DOp :
     TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3,
                 [DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
-                DynamicRangeQuantizableOp]> {
+                DynamicRangeQuantizedOpInterface]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
@@ -1018,6 +1022,9 @@ def TFL_DepthwiseConv2DOp :
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
     std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
+    // DynamicRangeQuantizedOpInterface:
+    bool GetDynamicRangeQuantKernelSupport() { return true; }
+    std::vector<int> GetQuantizableOperandIndices() { return {1}; }
   }];
 }
 
@@ -1037,7 +1044,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     AffineOpCoefficient<-1, 1>,
     TFL_SparseOp,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
-    DynamicRangeQuantizableOp]> {
+    DynamicRangeQuantizedOpInterface]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -1074,6 +1081,9 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {{1, 4}}; }
     std::vector<std::vector<int>> GetQuantizedBlockSize() { return {{1, 16}}; }
+    // DynamicRangeQuantizedOpInterface:
+    bool GetDynamicRangeQuantKernelSupport() { return true; }
+    std::vector<int> GetQuantizableOperandIndices() { return {1}; }
   }];
 }
 
@@ -1086,7 +1096,7 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
            And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>,
-   DynamicRangeQuantizableOp]> {
+   DynamicRangeQuantizedOpInterface]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -1117,6 +1127,12 @@ in the batch dimensions and broadcasting.
   );
 
   let hasOptions = 1;
+
+  let extraClassDeclaration = [{
+    // DynamicRangeQuantizedOpInterface:
+    bool GetDynamicRangeQuantKernelSupport() { return true; }
+    std::vector<int> GetQuantizableOperandIndices() { return {1}; }
+  }];
 }
 
 def TFL_GatherOp : TFL_Op<"gather", [
@@ -3974,7 +3990,8 @@ def TFL_LSTMOp :
            TFL_OperandHasRank<15, 1>,          // output_gate_bias
            TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
            TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
-           TFL_StatefulOp]> {
+           TFL_StatefulOp,
+           DynamicRangeQuantizedOpInterface]> {
   let summary = "The full lstm operator";
 
   let description = [{
@@ -4078,6 +4095,11 @@ Ba et al. 'Layer Normalization'
   let extraClassDeclaration = [{
     // StatefulOpInterface:
     std::vector<int> GetStatefulOperands() { return {18, 19}; }
+    // DynamicRangeQuantizedOpInterface:
+    bool GetDynamicRangeQuantKernelSupport() { return true; }
+    std::vector<int> GetQuantizableOperandIndices() {
+      return {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16};
+    }
   }];
 }
 
@@ -4110,7 +4132,8 @@ def TFL_UnidirectionalSequenceLSTMOp :
            TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
            TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
            TFL_StatefulOp,
-           DeclareOpInterfaceMethods<InferTypeOpInterface>
+           DeclareOpInterfaceMethods<InferTypeOpInterface>,
+           DynamicRangeQuantizedOpInterface
           ]> {
   let summary = "Unidirectional sequence lstm operator";
 
@@ -4201,6 +4224,12 @@ def TFL_UnidirectionalSequenceLSTMOp :
 
     // Compatiable return types check
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+
+    // DynamicRangeQuantizedOpInterface:
+    bool GetDynamicRangeQuantKernelSupport() { return true; }
+    std::vector<int> GetQuantizableOperandIndices() {
+      return {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16};
+    }
   }];
 }
 
@@ -4276,7 +4305,8 @@ def TFL_BidirectionalSequenceLSTMOp :
            TFL_OperandHasRank<32, 1>,  // bw_output_gate_bias
            TFL_OperandHasRank<33, 2>,  // bw_projection_weights
            TFL_OperandHasRank<34, 1>,  // bw_projection_bias
-           TFL_StatefulOp]> {
+           TFL_StatefulOp,
+           DynamicRangeQuantizedOpInterface]> {
   let summary = "Bidirectional sequence lstm operator";
 
   let description = [{
@@ -4390,6 +4420,13 @@ def TFL_BidirectionalSequenceLSTMOp :
   let extraClassDeclaration = [{
     // StatefulOpInterface:
     std::vector<int> GetStatefulOperands() { return {35, 36, 37, 38}; }
+
+    // DynamicRangeQuantizedOpInterface:
+    bool GetDynamicRangeQuantKernelSupport() { return true; }
+    std::vector<int> GetQuantizableOperandIndices() {
+      return {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 16, 18, 19, 20, 21,
+              22, 23, 24, 25, 26, 27, 28, 33, 40, 41, 42, 43, 44, 45, 46, 47};
+    }
   }];
 }
 
@@ -4400,7 +4437,8 @@ def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     PredOpTrait<"input and constant value operands must have same element type",
       TFL_TCopVTEtAreSameAt<1, 2>>,
-    TFL_StatefulOp]> {
+    TFL_StatefulOp,
+    DynamicRangeQuantizedOpInterface]> {
   let summary = "Unidirectional sequence rnn operator";
 
   let description = [{
@@ -4450,6 +4488,12 @@ def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
   let extraClassDeclaration = [{
     // StatefulOpInterface:
     std::vector<int> GetStatefulOperands() { return {4}; }
+
+    // DynamicRangeQuantizedOpInterface:
+    bool GetDynamicRangeQuantKernelSupport() { return true; }
+    std::vector<int> GetQuantizableOperandIndices() {
+      return {1, 2};
+    }
   }];
 }
 
@@ -4507,7 +4551,8 @@ def TFL_SVDFOp :
     PredOpTrait<"the input and result tensor elemental types must be same",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_StatefulOp,
-    AccumulatorUniformScale<3, 2, 4>]> {
+    AccumulatorUniformScale<3, 2, 4>,
+    DynamicRangeQuantizedOpInterface]> {
 
   let summary = "Single value decomposition filter operator";
 
@@ -4550,6 +4595,12 @@ def TFL_SVDFOp :
   let extraClassDeclaration = [{
     // StatefulOpInterface:
     std::vector<int> GetStatefulOperands() { return {4}; }
+
+    // DynamicRangeQuantizedOpInterface:
+    bool GetDynamicRangeQuantKernelSupport() { return true; }
+    std::vector<int> GetQuantizableOperandIndices() {
+      return {1, 2};
+    }
   }];
 }
 
