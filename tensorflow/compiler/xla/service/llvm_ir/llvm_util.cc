@@ -691,8 +691,8 @@ llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
                                   llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
       GetOrCreateVariableForRngState(module, builder);
-  llvm::LoadInst* state_value_old =
-      builder->CreateLoad(state_ptr, "load_state");
+  llvm::LoadInst* state_value_old = builder->CreateLoad(
+      state_ptr->getType()->getPointerElementType(), state_ptr, "load_state");
   llvm::Value* state_value_new = builder->CreateAdd(
       state_value_old,
       llvm::ConstantInt::get(state_value_old->getType(), delta));
