@@ -140,7 +140,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
   llvm::SmallVector<mlir::AffineForOp> ancestors;
   getPerfectlyNestedLoops(ancestors, where);
   {
-    llvm::SmallVectorBase::Size i;
+    decltype(ancestors)::size_type i;
     for (i = 0; i < ancestors.size(); i++) {
       if (&ancestors[i].getBody()->front() == &*begin_op) {
         break;
@@ -208,7 +208,6 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
   if (any_op_is_loop_variant) {
     auto builder = OpBuilder(where);
     llvm::SmallVector<mlir::AffineForOp> new_loops;
-    new_loops.reserve(ancestor_dimensions.size());
     for (auto dim : ancestor_dimensions) {
       auto where =
           builder.create<mlir::AffineForOp>(builder.getUnknownLoc(), 0, dim);
@@ -219,8 +218,8 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
          llvm::make_early_inc_range(llvm::make_range(begin_op, end_op))) {
       op.moveBefore(&new_loops.back().getBody()->back());
     }
-    CHECK_EQ(ancestors_size, new_loops.size());
-    for (size_t i = 0; i < ancestors_size; i++) {
+    CHECK_EQ(ancestors.size(), new_loops.size());
+    for (decltype(ancestors)::size_type i = 0; i < ancestors.size(); i++) {
       replaceAllUsesInRegionWith(ancestors[i].getInductionVar(),
                                  new_loops[i].getInductionVar(),
                                  new_loops.back().region());
