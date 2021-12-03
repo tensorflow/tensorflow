@@ -277,7 +277,7 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
@@ -905,7 +905,7 @@ py_library(
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
         "//tensorflow/python/util",
         "@six_archive//:six",
     ],
@@ -1407,7 +1407,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":_python_memory_checker_helper",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
