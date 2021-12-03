@@ -719,7 +719,10 @@ class TPUEmbedding(tracking.AutoTrackable):
             "gradient. This may not be correct behavior for certain "
             "optimizers like Adam.", path)
         gradient = array_ops.zeros(full_output_shape, dtype=dtypes.float32)
-      updated_gradients.append(gradient)
+      # Some gradients can be passed with op which shape is not correctly set.
+      # This ensures that the shape of the gradient is correctly set.
+      updated_gradients.append(
+          array_ops.reshape(gradient, shape=gradient.shape))
     op = tpu_ops.send_tpu_embedding_gradients(
         inputs=updated_gradients,
         learning_rates=[
