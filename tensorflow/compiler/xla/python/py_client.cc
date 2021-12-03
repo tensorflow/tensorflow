@@ -153,7 +153,7 @@ Status PyClient::Defragment() {
       // Die instead of returning a bad status because program presumably can't
       // continue if we fail to reconstitute device buffers.
       for (TmpBuffer& tmp_buffer : tmp_buffers) {
-        TF_CHECK_OK(down_cast<PjRtStreamExecutorBuffer*>(
+        TF_CHECK_OK(tensorflow::down_cast<PjRtStreamExecutorBuffer*>(
                         tmp_buffer.py_buffer->buffer_.get())
                         ->Release(/*wait_for_operations_to_complete=*/true)
                         .status());
