@@ -7,6 +7,13 @@ module @rsqrt_m attributes { tfrt.compiled } {
   }
 }
 
+module @add_m attributes { tfrt.compiled } {
+  func @compute(%arg0: tensor<512x512xf32>) -> tensor<512x512xf32> {
+    %0 = "tf.Rsqrt"(%arg0): (tensor<512x512xf32>) -> tensor<512x512xf32>
+    return %0 : tensor<512x512xf32>
+  }
+}
+
 module @fusion_m attributes { tfrt.compiled } {
   func @compute(%arg0: tensor<?x512xf32>) -> tensor<?x512xf32> {
     %0 = "tf.Rsqrt"(%arg0): (tensor<?x512xf32>) -> tensor<?x512xf32>
@@ -20,7 +27,8 @@ module @fusion_m attributes { tfrt.compiled } {
 
 // expected-remark@+1 {{stream id: 0, stream cost: 514, parent stream: -1}}
 func @rsqrt(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
-
+  // stream 0 cost = 1 (root) + 1 (%arg0) + 512 * log2(2) (cost @rsqrt_m)
+  //               = 514
   // expected-remark@+1 {{stream id: 0, stream cost: 514, parent stream: -1}}
   %res = tf_cpurt.fallback.execute @rsqrt_m::@compute (%arg0)
            device("/device:CPU:0")
@@ -31,15 +39,30 @@ func @rsqrt(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   tfrt.return %res : !tfrt_fallback.tf_tensor
 }
 
-// expected-remark@+1 {{stream id: 0, stream cost: 1328, parent stream: -1}}
-func @fusion(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
+// expected-remark@+1 {{stream id: 0, stream cost: 262146, parent stream: -1}}
+func @add(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
+  // stream 0 cost = 1 (root) + 1 (%arg0) + 512 * 512 * log2(2) (cost @add_m)
+  //               = 262146
+  // expected-remark@+1 {{stream id: 0, stream cost: 262146, parent stream: -1}}
+  %res = tf_cpurt.fallback.execute @add_m::@compute (%arg0, %arg0)
+           device("/device:CPU:0")
+           :  (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+           -> (!tfrt_fallback.tf_tensor)
 
-  // expected-remark@+1 {{stream id: 0, stream cost: 1328, parent stream: -1}}
+  // expected-remark@+1 {{stream id: 0, stream cost: 262146, parent stream: -1}}
+  tfrt.return %res : !tfrt_fallback.tf_tensor
+}
+
+// expected-remark@+1 {{stream id: 0, stream cost: 1325, parent stream: -1}}
+func @fusion(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
+  // stream 0 cost = 1 (root) + 1 (%arg0) + 512 * log2(6) (cost @fusion_m)
+  //               = 2 + 512 * 2.58 = 1325
+  // expected-remark@+1 {{stream id: 0, stream cost: 1325, parent stream: -1}}
   %res = tf_cpurt.fallback.execute @fusion_m::@compute (%arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)
 
-  // expected-remark@+1 {{stream id: 0, stream cost: 1328, parent stream: -1}}
+  // expected-remark@+1 {{stream id: 0, stream cost: 1325, parent stream: -1}}
   tfrt.return %res : !tfrt_fallback.tf_tensor
 }

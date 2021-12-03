@@ -41,6 +41,18 @@ CpuRuntimeDialect::CpuRuntimeDialect(mlir::MLIRContext* context)
       >();
 }
 
+// Computes the number of elements in the tensor type. Optimistically use `1` as
+// a size of all unknown dimensions. These heuristics match cost estimates of
+// the fallback_async::ExecuteOp operations.
+static int64_t GetRankedTensorSize(TensorType tensor) {
+  assert(tensor.hasRank() && "shape must be ranked");
+  if (!tensor.hasRank()) return 0;
+
+  int64_t size = 1;  // scalars (rank 0) have size 1
+  for (int64_t dim : tensor.getShape()) size *= std::max<int64_t>(1, dim);
+  return size;
+}
+
 int64_t FallbackExecuteOp::cost() {
   Operation* self = getOperation();
 
@@ -50,17 +62,15 @@ int64_t FallbackExecuteOp::cost() {
 
   int64_t cost = 0;
 
-  // Get the sum of sizes of all ranked inputs. Optimistically use `1` as a size
-  // of all unknown dimensions. These heuristics match cost estimates of the
-  // fallback_async::ExecuteOp operations.
+  // Get the sum of sizes of all ranked inputs.
   //
   // TODO(ezhulenev): Once we have a proper cost model for MLIR operations,
   // use it to compute a more precise cost estimation.
   for (Type type : kernel_fn.getArgumentTypes()) {
-    ShapedType shaped = type.dyn_cast<ShapedType>();
-    if (!shaped || !shaped.hasRank()) continue;
+    TensorType tensor = type.dyn_cast<TensorType>();
+    if (!tensor || !tensor.hasRank()) continue;
 
-    for (int64_t dim : shaped.getShape()) cost += std::max<int64_t>(1, dim);
+    cost += GetRankedTensorSize(tensor);
   }
 
   // Scale the cost by the number of operations in the function body. The choice
