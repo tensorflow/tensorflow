@@ -75,7 +75,11 @@ string DebugString(const nvinfer1::Permutation& permutation, int len) {
 }
 
 string DebugString(const ITensorProxyPtr& tensor) {
-  return DebugString(*tensor->trt_tensor());
+  return StrCat(
+      tensor->is_trt_tensor() ? "nvinfer1::ITensor(@" : "SimpleItensor(@",
+      reinterpret_cast<uintptr_t>(&tensor), ", name=", tensor->getName(),
+      ", dtype=", DebugString(tensor->getType()),
+      ", dims=", DebugString(tensor->getDimensions()), ")");
 }
 
 string DebugString(const nvinfer1::ITensor& tensor) {
