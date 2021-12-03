@@ -193,7 +193,7 @@ Status ControlFlowDepsToChainsPass::Run(
       modified_body.mutable_ret()->insert(
           {c_ret_name, strings::StrCat(c_out_name, ":output:0")});
       AttrValue attr_val;
-      attr_val.mutable_list()->mutable_shape();
+      attr_val.mutable_list()->add_shape();
       FunctionDef_ArgAttrs arg_attrs;
       arg_attrs.mutable_attr()->insert({"_output_shapes", attr_val});
       modified_body.mutable_arg_attr()->insert(
@@ -260,7 +260,7 @@ Status ControlFlowDepsToChainsPass::Run(
 
       // TODO(mdan): Return values on the cond function? Most likely a bug.
       AttrValue attr_val;
-      attr_val.mutable_list()->mutable_shape();
+      attr_val.mutable_list()->add_shape();
       FunctionDef_ArgAttrs arg_attrs;
       arg_attrs.mutable_attr()->insert({"_output_shapes", attr_val});
       modified_cond.mutable_arg_attr()->insert(
