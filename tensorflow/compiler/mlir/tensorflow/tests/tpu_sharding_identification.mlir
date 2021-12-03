@@ -440,3 +440,43 @@ func @partitioned_output_maximal_sharding_revert_mpmd(%arg0: tensor<*xi32>, %arg
 func @cluster_func(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
   return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func @check_propagation_downwards_when_spmd_for_xla_is_true
+func @check_propagation_downwards_when_spmd_for_xla_is_true(%arg0: tensor<*xi32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\01\02\03"]
+  // CHECK-SAME: output_sharding_configuration = [""]
+  "tf_device.cluster_func"(%arg0) {
+      func = @func,
+      use_spmd_for_xla_partitioning = true
+  } : (tensor<*xi32>) -> tensor<*xi32>
+  return
+}
+
+func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+  %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  return %1 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @check_propagation_upwards_when_spmd_for_xla_is_true
+func @check_propagation_upwards_when_spmd_for_xla_is_true(%arg0: tensor<*xi32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = [""]
+  // CHECK-SAME: output_sharding_configuration = ["\01\02\03"]
+  "tf_device.cluster_func"(%arg0) {
+      func = @func,
+      use_spmd_for_xla_partitioning = true
+  } : (tensor<*xi32>) -> tensor<*xi32>
+  return
+}
+
+func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = "tf.A"(%arg0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+  return %1 : tensor<*xi32>
+}

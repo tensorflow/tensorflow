@@ -163,18 +163,18 @@ void IdentifyXlaShardingForComputationInputs(
       continue;
     }
 
+    auto arg_sharding = GetXlaShardingFromArg(arg);
+    if (arg_sharding) {
+      sharding_for_args.push_back(arg_sharding.getValue());
+      continue;
+    }
+
     if (use_spmd && !IsMaximalVariable(operand)) {
       // If XLA SPMD is enabled, host variables or non-variable per-replica
       // inputs should take on replicate sharding, unless another sharding is
       // set via a TPUPartitionedInput op. Exclude device variables, which
       // should take maximal sharding.
       sharding_for_args.push_back(kReplicateSharding);
-      continue;
-    }
-
-    auto arg_sharding = GetXlaShardingFromArg(arg);
-    if (arg_sharding) {
-      sharding_for_args.push_back(arg_sharding.getValue());
       continue;
     }
 
@@ -269,15 +269,15 @@ void IdentifyXlaShardingForComputationOutputs(
       continue;
     }
 
+    if (auto retval_sharding = GetXlaShardingFromRetval(retval.get())) {
+      sharding_for_rets.push_back(retval_sharding.getValue());
+      continue;
+    }
+
     if (use_spmd) {
       // If XLA SPMD is enabled, outputs all should have replicate sharding,
       // unless another sharding is set via a TPUPartitionedOutput op.
       sharding_for_rets.push_back(kReplicateSharding);
-      continue;
-    }
-
-    if (auto retval_sharding = GetXlaShardingFromRetval(retval.get())) {
-      sharding_for_rets.push_back(retval_sharding.getValue());
       continue;
     }
 
