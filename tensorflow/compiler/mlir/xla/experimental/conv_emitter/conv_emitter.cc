@@ -137,8 +137,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
                              llvm::iplist<mlir::Operation>::iterator end_op,
                              mlir::AffineForOp where) {
   // All loops to hoist through.
-  constexpr size_t ancestors_size = 4;
-  llvm::SmallVector<mlir::AffineForOp, ancestors_size> ancestors;
+  llvm::SmallVector<mlir::AffineForOp> ancestors;
   getPerfectlyNestedLoops(ancestors, where);
   {
     llvm::SmallVectorBase::Size i;
