@@ -165,6 +165,7 @@ Status ImportNodes(ValueMapManager value_manager,
   // Process every node and create a matching MLIR operation
   for (const NodeDef& node : nodes) {
     DVLOG(0) << "Processing node " << node.name() << "\n";
+    if (node.op().empty()) return InvalidArgument("empty op type");
     OperationState state(unknown_loc, absl::StrCat("tfg.", node.op()));
     // Fetch the inputs, creating placeholder if an input hasn't been visited.
     for (const std::string& input : node.input())
