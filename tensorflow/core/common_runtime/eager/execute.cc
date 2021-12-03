@@ -482,6 +482,18 @@ Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
   return Status::OK();
 }
 
+// Validates the node def. This is required when running in eager op as function
+// mode because this code path does not go through the _apply_op_helper's
+// validation (which is reached when executing in graph mode)
+// or the eager execution's validation (which is reached via the CreateOpKernel
+// call).
+Status ValidateOp(EagerOperation* op) {
+  const NodeDef& node_def = op->MutableAttrs()->BuildNodeDef();
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
+  return ValidateNodeDef(node_def, *op_def);
+}
+
 // Builds the signature of the wrapping FunctionDef for an eager op.
 //
 // For ops without variadic inputs/outputs, the signature is the same as the
@@ -631,7 +643,7 @@ Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
           return errors::Internal("Unable to read attr ", arg.number_attr(),
                                   " for op ", op->Name());
         }
-        for (size_t i = 0; i < number_attr; i++) {
+        for (int64_t i = 0; i < number_attr; i++) {
           auto arg_def = sig_args->Add();
           arg_def->set_name(GetFlatName(arg.name(), i));
           if (!arg.type_attr().empty()) {
@@ -990,6 +1002,7 @@ Status GetOrCreateKernelAndDevice(
     bool allow_small_function_optimizations = false;
     if (ctx.RunEagerOpAsFunction() && !op->is_function()) {
       EagerOperation* wrapped_op = nullptr;
+      TF_RETURN_IF_ERROR(ValidateOp(op));
       TF_RETURN_IF_ERROR(WrapInCallOp(op, &wrapped_op));
       DCHECK(wrapped_op);
       DCHECK(wrapped_op->is_function());
