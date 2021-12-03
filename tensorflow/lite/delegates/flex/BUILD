@@ -330,7 +330,8 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     features = tf_features_nolayering_check_if_android_or_ios(),
-    visibility = default_visibility + ["//third_party/fcp/client:__subpackages__"],
+    #TODO(b/206038955): Consider restrict the visibility to '//third_party/fcp/client:__subpackages__'.
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
