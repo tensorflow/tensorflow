@@ -1574,7 +1574,7 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
 
     SmallVector<Value> inputs, outputs;
     SmallVector<AffineMap, 3> indexing_maps;
-    for (auto it : llvm::enumerate(adaptor.inputs())) {
+    for (const auto& it : llvm::enumerate(adaptor.inputs())) {
       // Check if init_value is constant. If so, inline the value into the
       // region.
       Value init_value = adaptor.init_values()[it.index()];
@@ -1631,9 +1631,10 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
     TypeConverter::SignatureConversion signature_converter(num_inputs * 2);
 
     // map input and init values's types
-    for (auto it : llvm::enumerate(op.getOperation()->getOperands()))
+    for (const auto& it : llvm::enumerate(op.getOperation()->getOperands())) {
       signature_converter.addInputs(
           it.index(), it.value().getType().cast<ShapedType>().getElementType());
+    }
 
     rewriter.applySignatureConversion(&region, signature_converter);
     rewriter.replaceOp(op, linalg_op.getResults());
