@@ -831,6 +831,19 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   return AddMixedTypeListAttrs(*wrapped_op, op_attrs, opdef);
 }
 
+bool IntArgsAndRetvalsOnDevice(EagerOperation* op) {
+  // Most TF ops expect and generate int32 tensors on the host (or a TPU/XLA
+  // device). This is not the case with IteratorGetNext since it is possible to
+  // build int32 datasets that produce outputs on device when using
+  // prefetch_to_device.
+  // When running call ops, by default we assume that the int32 outputs are on a
+  // host (except for the XLA/TPU case). So we need to special case
+  // IteratorGetNext such that its eager behavior matches the wrapped one.
+  // TODO(b/208435025): Remove this if we end up deciding that int32 outputs
+  // from IteratorGetNext should indeed live on host.
+  return op->Name() == "IteratorGetNext";
+}
+
 Status GetOrCreateKernelAndDevice(
     EagerOperation* op, TensorHandle** retvals, int* num_retvals,
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
@@ -1000,6 +1013,7 @@ Status GetOrCreateKernelAndDevice(
     // expect unsupported ops to be outside compiled but that is not supported
     // on GPUs right now.
     bool allow_small_function_optimizations = false;
+    bool int_args_and_retvals_on_device = false;
     if (ctx.RunEagerOpAsFunction() && !op->is_function()) {
       EagerOperation* wrapped_op = nullptr;
       TF_RETURN_IF_ERROR(ValidateOp(op));
@@ -1007,9 +1021,10 @@ Status GetOrCreateKernelAndDevice(
       DCHECK(wrapped_op);
       DCHECK(wrapped_op->is_function());
       wrapped_op_releaser.reset(wrapped_op);
-      op = wrapped_op;
       run_function_with_flr = true;
       allow_small_function_optimizations = true;
+      int_args_and_retvals_on_device = IntArgsAndRetvalsOnDevice(op);
+      op = wrapped_op;
     }
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
 
@@ -1054,7 +1069,8 @@ Status GetOrCreateKernelAndDevice(
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
           function_outputs_on_op_device, allow_small_function_optimizations,
-          std::move(rendezvous_creator), get_op_id));
+          int_args_and_retvals_on_device, std::move(rendezvous_creator),
+          get_op_id));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << ". Full node_def=" << ndef.DebugString();

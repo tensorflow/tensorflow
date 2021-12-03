@@ -224,6 +224,8 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
 
   options.config_proto.set_log_device_placement(log_device_placement);
 
+  options.int_args_and_retvals_on_device = int_args_and_retvals_on_device_;
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
