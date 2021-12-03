@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/util/activation_mode.h"
 #include "tensorflow/core/util/autotune_maps/autotune_map.pb.h"
 #include "tensorflow/core/util/autotune_maps/autotune_maps_utils.h"
@@ -88,12 +89,16 @@ template <typename Op>
 Status PopulateConvMap(
     const ConvMapProto &m,
     AutotuneMap<ConvParameters, AutotuneEntry<Op>> *autotune_map) {
+  if (m.kv_pairs().size() == 0) {
+    return Status::OK();
+  }
   // Map device_id's to corresponding device_identifiers.
   std::vector<string> device_ids_map =
       autotune_maps_utils::GetDeviceIdToIdentifierMap();
   // Map device_identifiers to device_ids whose corresponding GPU devices have
   // the given device_identifier.
   std::unordered_map<string, std::vector<int>> device_identifiers_map;
+  bool devices_matched = false;
   for (const ConvMapProto::Entry &kv : m.kv_pairs()) {
     const ConvParametersProto &params_proto = kv.key();
     // Abort loading process whenever there is an entry whose version number
@@ -140,9 +145,25 @@ Status PopulateConvMap(
     } else {
       device_ids = iter->second;
     }
+
+    if (device_ids.empty()) {
+      LOG(WARNING) << "No matching devices found for "
+                   << params_proto.device_identifier() << "; existing devices: "
+                   << str_util::Join(device_ids_map, ", ");
+    } else {
+      devices_matched = true;
+    }
+
     for (int device_id : device_ids) {
       autotune_map->Insert(ConvParameters(device_id, params_proto), entry);
     }
+  }
+
+  // When no matching devices are found, populating autotuning map will not
+  // happen. Instead of silently reporting an OK status, report an error back.
+  if (!devices_matched) {
+    return errors::NotFound("No matching devices found for ",
+                            str_util::Join(device_ids_map, ", "));
   }
   return Status::OK();
 }
