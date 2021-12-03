@@ -151,7 +151,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     ancestors.resize(i + 1);
   }
 
-  llvm::SmallVector<int64_t, ancestors_size> ancestor_dimensions;
+  llvm::SmallVector<int64_t> ancestor_dimensions;
   for (auto ancestor : ancestors) {
     CHECK(IsSimpleLoop(ancestor));
     ancestor_dimensions.push_back(
