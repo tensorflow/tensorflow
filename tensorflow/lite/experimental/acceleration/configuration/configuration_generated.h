@@ -516,6 +516,39 @@ inline const char *EnumNameFloatTruncationType(FloatTruncationType e) {
   return EnumNamesFloatTruncationType()[index];
 }
 
+enum QosClass {
+  QosClass_QOS_UNDEFINED = 0,
+  QosClass_BEST_EFFORT = 1,
+  QosClass_REALTIME = 2,
+  QosClass_MIN = QosClass_QOS_UNDEFINED,
+  QosClass_MAX = QosClass_REALTIME
+};
+
+inline const QosClass (&EnumValuesQosClass())[3] {
+  static const QosClass values[] = {
+    QosClass_QOS_UNDEFINED,
+    QosClass_BEST_EFFORT,
+    QosClass_REALTIME
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesQosClass() {
+  static const char * const names[4] = {
+    "QOS_UNDEFINED",
+    "BEST_EFFORT",
+    "REALTIME",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameQosClass(QosClass e) {
+  if (flatbuffers::IsOutRange(e, QosClass_QOS_UNDEFINED, QosClass_REALTIME)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesQosClass()[index];
+}
+
 }  // namespace EdgeTpuSettings_
 
 namespace CoralSettings_ {
@@ -774,12 +807,12 @@ struct NNAPISettingsT : public flatbuffers::NativeTable {
       : execution_preference(tflite::NNAPIExecutionPreference_UNDEFINED),
         no_of_nnapi_instances_to_cache(0),
         allow_nnapi_cpu_on_android_10_plus(false),
-        execution_priority(
-            tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED),
+        execution_priority(tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED),
         allow_dynamic_dimensions(false),
         allow_fp16_precision_for_fp32(false),
         use_burst_computation(false),
-        support_library_handle(0) {}
+        support_library_handle(0) {
+  }
 };
 
 struct NNAPISettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -846,8 +879,7 @@ struct NNAPISettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_NO_OF_NNAPI_INSTANCES_TO_CACHE) &&
            VerifyOffset(verifier, VT_FALLBACK_SETTINGS) &&
            verifier.VerifyTable(fallback_settings()) &&
-           VerifyField<uint8_t>(verifier,
-                                VT_ALLOW_NNAPI_CPU_ON_ANDROID_10_PLUS) &&
+           VerifyField<uint8_t>(verifier, VT_ALLOW_NNAPI_CPU_ON_ANDROID_10_PLUS) &&
            VerifyField<int32_t>(verifier, VT_EXECUTION_PRIORITY) &&
            VerifyField<uint8_t>(verifier, VT_ALLOW_DYNAMIC_DIMENSIONS) &&
            VerifyField<uint8_t>(verifier, VT_ALLOW_FP16_PRECISION_FOR_FP32) &&
@@ -897,8 +929,7 @@ struct NNAPISettingsBuilder {
     fbb_.AddElement<uint8_t>(NNAPISettings::VT_USE_BURST_COMPUTATION, static_cast<uint8_t>(use_burst_computation), 0);
   }
   void add_support_library_handle(int64_t support_library_handle) {
-    fbb_.AddElement<int64_t>(NNAPISettings::VT_SUPPORT_LIBRARY_HANDLE,
-                             support_library_handle, 0);
+    fbb_.AddElement<int64_t>(NNAPISettings::VT_SUPPORT_LIBRARY_HANDLE, support_library_handle, 0);
   }
   explicit NNAPISettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -917,16 +948,15 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(
     flatbuffers::Offset<flatbuffers::String> accelerator_name = 0,
     flatbuffers::Offset<flatbuffers::String> cache_directory = 0,
     flatbuffers::Offset<flatbuffers::String> model_token = 0,
-    tflite::NNAPIExecutionPreference execution_preference =
-        tflite::NNAPIExecutionPreference_UNDEFINED,
+    tflite::NNAPIExecutionPreference execution_preference = tflite::NNAPIExecutionPreference_UNDEFINED,
     int32_t no_of_nnapi_instances_to_cache = 0,
     flatbuffers::Offset<tflite::FallbackSettings> fallback_settings = 0,
     bool allow_nnapi_cpu_on_android_10_plus = false,
-    tflite::NNAPIExecutionPriority execution_priority =
-        tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
+    tflite::NNAPIExecutionPriority execution_priority = tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
     bool allow_dynamic_dimensions = false,
     bool allow_fp16_precision_for_fp32 = false,
-    bool use_burst_computation = false, int64_t support_library_handle = 0) {
+    bool use_burst_computation = false,
+    int64_t support_library_handle = 0) {
   NNAPISettingsBuilder builder_(_fbb);
   builder_.add_support_library_handle(support_library_handle);
   builder_.add_execution_priority(execution_priority);
@@ -946,26 +976,34 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(
 inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettingsDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const char *accelerator_name = nullptr,
-    const char *cache_directory = nullptr, const char *model_token = nullptr,
-    tflite::NNAPIExecutionPreference execution_preference =
-        tflite::NNAPIExecutionPreference_UNDEFINED,
+    const char *cache_directory = nullptr,
+    const char *model_token = nullptr,
+    tflite::NNAPIExecutionPreference execution_preference = tflite::NNAPIExecutionPreference_UNDEFINED,
     int32_t no_of_nnapi_instances_to_cache = 0,
     flatbuffers::Offset<tflite::FallbackSettings> fallback_settings = 0,
     bool allow_nnapi_cpu_on_android_10_plus = false,
-    tflite::NNAPIExecutionPriority execution_priority =
-        tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
+    tflite::NNAPIExecutionPriority execution_priority = tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
     bool allow_dynamic_dimensions = false,
     bool allow_fp16_precision_for_fp32 = false,
-    bool use_burst_computation = false, int64_t support_library_handle = 0) {
+    bool use_burst_computation = false,
+    int64_t support_library_handle = 0) {
   auto accelerator_name__ = accelerator_name ? _fbb.CreateString(accelerator_name) : 0;
   auto cache_directory__ = cache_directory ? _fbb.CreateString(cache_directory) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   return tflite::CreateNNAPISettings(
-      _fbb, accelerator_name__, cache_directory__, model_token__,
-      execution_preference, no_of_nnapi_instances_to_cache, fallback_settings,
-      allow_nnapi_cpu_on_android_10_plus, execution_priority,
-      allow_dynamic_dimensions, allow_fp16_precision_for_fp32,
-      use_burst_computation, support_library_handle);
+      _fbb,
+      accelerator_name__,
+      cache_directory__,
+      model_token__,
+      execution_preference,
+      no_of_nnapi_instances_to_cache,
+      fallback_settings,
+      allow_nnapi_cpu_on_android_10_plus,
+      execution_priority,
+      allow_dynamic_dimensions,
+      allow_fp16_precision_for_fp32,
+      use_burst_computation,
+      support_library_handle);
 }
 
 flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -1470,10 +1508,12 @@ struct EdgeTpuSettingsT : public flatbuffers::NativeTable {
   std::unique_ptr<tflite::EdgeTpuDeviceSpecT> edgetpu_device_spec;
   std::string model_token;
   tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type;
+  tflite::EdgeTpuSettings_::QosClass qos_class;
   EdgeTpuSettingsT()
       : inference_power_state(tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE),
         inference_priority(-1),
-        float_truncation_type(tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
+        float_truncation_type(tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED),
+        qos_class(tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED) {
   }
 };
 
@@ -1485,7 +1525,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_INFERENCE_PRIORITY = 8,
     VT_EDGETPU_DEVICE_SPEC = 10,
     VT_MODEL_TOKEN = 12,
-    VT_FLOAT_TRUNCATION_TYPE = 14
+    VT_FLOAT_TRUNCATION_TYPE = 14,
+    VT_QOS_CLASS = 16
   };
   tflite::EdgeTpuPowerState inference_power_state() const {
     return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
@@ -1505,6 +1546,9 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type() const {
     return static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(GetField<int32_t>(VT_FLOAT_TRUNCATION_TYPE, 0));
   }
+  tflite::EdgeTpuSettings_::QosClass qos_class() const {
+    return static_cast<tflite::EdgeTpuSettings_::QosClass>(GetField<int32_t>(VT_QOS_CLASS, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_POWER_STATE) &&
@@ -1517,6 +1561,7 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_MODEL_TOKEN) &&
            verifier.VerifyString(model_token()) &&
            VerifyField<int32_t>(verifier, VT_FLOAT_TRUNCATION_TYPE) &&
+           VerifyField<int32_t>(verifier, VT_QOS_CLASS) &&
            verifier.EndTable();
   }
   EdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1545,6 +1590,9 @@ struct EdgeTpuSettingsBuilder {
   void add_float_truncation_type(tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type) {
     fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_FLOAT_TRUNCATION_TYPE, static_cast<int32_t>(float_truncation_type), 0);
   }
+  void add_qos_class(tflite::EdgeTpuSettings_::QosClass qos_class) {
+    fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_QOS_CLASS, static_cast<int32_t>(qos_class), 0);
+  }
   explicit EdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1564,8 +1612,10 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
     int32_t inference_priority = -1,
     flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
     flatbuffers::Offset<flatbuffers::String> model_token = 0,
-    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
+    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED,
+    tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED) {
   EdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_qos_class(qos_class);
   builder_.add_float_truncation_type(float_truncation_type);
   builder_.add_model_token(model_token);
   builder_.add_edgetpu_device_spec(edgetpu_device_spec);
@@ -1582,7 +1632,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
     int32_t inference_priority = -1,
     flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
     const char *model_token = nullptr,
-    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
+    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED,
+    tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED) {
   auto inactive_power_configs__ = inactive_power_configs ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(*inactive_power_configs) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   return tflite::CreateEdgeTpuSettings(
@@ -1592,7 +1643,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
       inference_priority,
       edgetpu_device_spec,
       model_token__,
-      float_truncation_type);
+      float_truncation_type,
+      qos_class);
 }
 
 flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -3048,23 +3100,19 @@ inline flatbuffers::Offset<ComputeSettings> CreateComputeSettings(flatbuffers::F
 
 
 inline bool operator==(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs) {
-  return (lhs.accelerator_name == rhs.accelerator_name) &&
-         (lhs.cache_directory == rhs.cache_directory) &&
-         (lhs.model_token == rhs.model_token) &&
-         (lhs.execution_preference == rhs.execution_preference) &&
-         (lhs.no_of_nnapi_instances_to_cache ==
-          rhs.no_of_nnapi_instances_to_cache) &&
-         ((lhs.fallback_settings == rhs.fallback_settings) ||
-          (lhs.fallback_settings && rhs.fallback_settings &&
-           *lhs.fallback_settings == *rhs.fallback_settings)) &&
-         (lhs.allow_nnapi_cpu_on_android_10_plus ==
-          rhs.allow_nnapi_cpu_on_android_10_plus) &&
-         (lhs.execution_priority == rhs.execution_priority) &&
-         (lhs.allow_dynamic_dimensions == rhs.allow_dynamic_dimensions) &&
-         (lhs.allow_fp16_precision_for_fp32 ==
-          rhs.allow_fp16_precision_for_fp32) &&
-         (lhs.use_burst_computation == rhs.use_burst_computation) &&
-         (lhs.support_library_handle == rhs.support_library_handle);
+  return
+      (lhs.accelerator_name == rhs.accelerator_name) &&
+      (lhs.cache_directory == rhs.cache_directory) &&
+      (lhs.model_token == rhs.model_token) &&
+      (lhs.execution_preference == rhs.execution_preference) &&
+      (lhs.no_of_nnapi_instances_to_cache == rhs.no_of_nnapi_instances_to_cache) &&
+      ((lhs.fallback_settings == rhs.fallback_settings) || (lhs.fallback_settings && rhs.fallback_settings && *lhs.fallback_settings == *rhs.fallback_settings)) &&
+      (lhs.allow_nnapi_cpu_on_android_10_plus == rhs.allow_nnapi_cpu_on_android_10_plus) &&
+      (lhs.execution_priority == rhs.execution_priority) &&
+      (lhs.allow_dynamic_dimensions == rhs.allow_dynamic_dimensions) &&
+      (lhs.allow_fp16_precision_for_fp32 == rhs.allow_fp16_precision_for_fp32) &&
+      (lhs.use_burst_computation == rhs.use_burst_computation) &&
+      (lhs.support_library_handle == rhs.support_library_handle);
 }
 
 inline bool operator!=(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs) {
@@ -3092,10 +3140,7 @@ inline void NNAPISettings::UnPackTo(NNAPISettingsT *_o, const flatbuffers::resol
   { auto _e = allow_dynamic_dimensions(); _o->allow_dynamic_dimensions = _e; }
   { auto _e = allow_fp16_precision_for_fp32(); _o->allow_fp16_precision_for_fp32 = _e; }
   { auto _e = use_burst_computation(); _o->use_burst_computation = _e; }
-  {
-    auto _e = support_library_handle();
-    _o->support_library_handle = _e;
-  }
+  { auto _e = support_library_handle(); _o->support_library_handle = _e; }
 }
 
 inline flatbuffers::Offset<NNAPISettings> NNAPISettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -3119,11 +3164,18 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(flatbuffers::FlatB
   auto _use_burst_computation = _o->use_burst_computation;
   auto _support_library_handle = _o->support_library_handle;
   return tflite::CreateNNAPISettings(
-      _fbb, _accelerator_name, _cache_directory, _model_token,
-      _execution_preference, _no_of_nnapi_instances_to_cache,
-      _fallback_settings, _allow_nnapi_cpu_on_android_10_plus,
-      _execution_priority, _allow_dynamic_dimensions,
-      _allow_fp16_precision_for_fp32, _use_burst_computation,
+      _fbb,
+      _accelerator_name,
+      _cache_directory,
+      _model_token,
+      _execution_preference,
+      _no_of_nnapi_instances_to_cache,
+      _fallback_settings,
+      _allow_nnapi_cpu_on_android_10_plus,
+      _execution_priority,
+      _allow_dynamic_dimensions,
+      _allow_fp16_precision_for_fp32,
+      _use_burst_computation,
       _support_library_handle);
 }
 
@@ -3380,7 +3432,8 @@ inline bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs)
       (lhs.inference_priority == rhs.inference_priority) &&
       ((lhs.edgetpu_device_spec == rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == *rhs.edgetpu_device_spec)) &&
       (lhs.model_token == rhs.model_token) &&
-      (lhs.float_truncation_type == rhs.float_truncation_type);
+      (lhs.float_truncation_type == rhs.float_truncation_type) &&
+      (lhs.qos_class == rhs.qos_class);
 }
 
 inline bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
@@ -3403,6 +3456,7 @@ inline void EdgeTpuSettings::UnPackTo(EdgeTpuSettingsT *_o, const flatbuffers::r
   { auto _e = edgetpu_device_spec(); if (_e) _o->edgetpu_device_spec = std::unique_ptr<tflite::EdgeTpuDeviceSpecT>(_e->UnPack(_resolver)); }
   { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
   { auto _e = float_truncation_type(); _o->float_truncation_type = _e; }
+  { auto _e = qos_class(); _o->qos_class = _e; }
 }
 
 inline flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -3419,6 +3473,7 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
   auto _edgetpu_device_spec = _o->edgetpu_device_spec ? CreateEdgeTpuDeviceSpec(_fbb, _o->edgetpu_device_spec.get(), _rehasher) : 0;
   auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
   auto _float_truncation_type = _o->float_truncation_type;
+  auto _qos_class = _o->qos_class;
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       _inference_power_state,
@@ -3426,7 +3481,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
       _inference_priority,
       _edgetpu_device_spec,
       _model_token,
-      _float_truncation_type);
+      _float_truncation_type,
+      _qos_class);
 }
 
 
