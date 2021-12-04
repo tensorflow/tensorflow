@@ -356,6 +356,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCustomCall: {
       auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+      const auto& called_computations = custom_call->called_computations();
+      if (!called_computations.empty()) {
+        llvm::SmallVector<mlir::Attribute> callees;
+        callees.reserve(called_computations.size());
+        for (HloComputation* callee : called_computations) {
+          TF_ASSIGN_OR_RETURN(FuncOp function, ImportAsFunc(*callee));
+          callees.push_back(mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                                         function.getName()));
+        }
+        attributes.push_back(builder_->getNamedAttr(
+            "called_computations",
+            mlir::ArrayAttr::get(builder_->getContext(), callees)));
+      }
       if (custom_call->layout_constrained()) {
         TF_ASSIGN_OR_RETURN(
             mlir::ArrayAttr operand_layouts,

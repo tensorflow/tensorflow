@@ -577,6 +577,17 @@ class ConvertToHloModule {
       mlir::CallOp call_op, xla::XlaBuilder* builder,
       ConvertToHloModule::ValueLoweringMap* value_lowering);
 
+  // Look up a symbol with the specified name, returning null if no such name
+  // exists.
+  FuncOp LookUpSymbol(FlatSymbolRefAttr symbol) {
+    return module_.lookupSymbol<mlir::FuncOp>(symbol);
+  }
+
+  // Get Reference to lowered XLA computation for a function.
+  xla::XlaComputation& GetLoweredComputation(FuncOp func) {
+    return lowered_computation_[func];
+  }
+
   LogicalResult Lower(
       mlir::Operation* inst, bool is_entry_function,
       llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
@@ -903,32 +914,63 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   if (op.getNumResults() != 1)
     return op.emitOpError() << "with multiple results cannot be exported";
+
+  if (op.called_computations().size() > 1)
+    return op.emitOpError()
+           << "cannot export with more than one called computations";
+
+  // Custom call can be exported either with called computation or with layout
+  // attributes. The XlaBuilder API does not allow both.
+  if (!op.called_computations().empty() && op.operand_layouts() &&
+      op.result_layouts()) {
+    return op.emitOpError() << "cannot export if both called computation and "
+                               "layouts are specified";
+  }
+
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.api_version());
   if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
-  if (!op.operand_layouts().hasValue() || !op.result_layouts().hasValue()) {
-    value_map[result] = xla::CustomCall(
-        ctx.builder, std::string(op.call_target_name()), args,
+
+  if (op.called_computations().size() == 1) {
+    mlir::FuncOp callee = ctx.converter->LookUpSymbol(
+        op.called_computations()[0].cast<FlatSymbolRefAttr>());
+    if (failed(ctx.converter->RunOnFunction(callee))) return failure();
+    xla::XlaComputation& computation =
+        ctx.converter->GetLoweredComputation(callee);
+    value_map[result] = xla::CustomCallWithComputation(
+        ctx.builder, std::string(op.call_target_name()), args, computation,
         xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-        op.has_side_effect(), /*output_operand_aliasing=*/{},
+        op.has_side_effect(),
+        /*output_operand_aliasing=*/{},
         /*literal=*/nullptr,
         /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
         /*api_version=*/*xla_api_version);
     return success();
   }
 
-  auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-      op.getOperandTypes(), op.operand_layouts().getValue());
-  xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
-      result.getType(), op.result_layouts().getValue());
-  value_map[result] = xla::CustomCallWithLayout(
+  if (op.operand_layouts() && op.result_layouts()) {
+    auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
+        op.getOperandTypes(), op.operand_layouts().getValue());
+    xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
+        result.getType(), op.result_layouts().getValue());
+    value_map[result] = xla::CustomCallWithLayout(
+        ctx.builder, std::string(op.call_target_name()), args,
+        result_shape_with_layout, operand_shapes_with_layout,
+        std::string(op.backend_config()), op.has_side_effect(),
+        /*output_operand_aliasing=*/{},
+        /*literal=*/nullptr,
+        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+        /*api_version=*/*xla_api_version);
+    return success();
+  }
+
+  value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), args,
-      result_shape_with_layout, operand_shapes_with_layout,
-      std::string(op.backend_config()), op.has_side_effect(),
-      /*output_operand_aliasing=*/{},
+      xla::TypeToShape(result.getType()), std::string(op.backend_config()),
+      op.has_side_effect(), /*output_operand_aliasing=*/{},
       /*literal=*/nullptr,
       /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
