@@ -90,6 +90,10 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
     const Tensor* cached_tree_ids_t;
     OP_REQUIRES_OK(context,
                    context->input("cached_tree_ids", &cached_tree_ids_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(cached_tree_ids_t->shape()),
+                errors::InvalidArgument(
+                    "cached_tree_ids must be a vector, received shape ",
+                    cached_tree_ids_t->shape().DebugString()));
     const auto cached_tree_ids = cached_tree_ids_t->vec<int32>();
 
     const Tensor* cached_node_ids_t;
