@@ -1468,6 +1468,7 @@ tf_py_test(
     srcs = ["error_interpolation_test.py"],
     main = "error_interpolation_test.py",
     python_version = "PY3",
+    tags = ["no_oss_py310"],  # b/209088097
     deps = [
         ":constant_op",
         ":error_interpolation",
