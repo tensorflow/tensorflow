@@ -304,6 +304,10 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
 
     const Tensor* pruning_mode_t;
     OP_REQUIRES_OK(context, context->input("pruning_mode", &pruning_mode_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(pruning_mode_t->shape()),
+                errors::InvalidArgument(
+                    "pruning_mode must be a scalar, got a tensor of shape ",
+                    pruning_mode_t->shape().DebugString()));
     const auto pruning_mode =
         static_cast<PruningMode>(pruning_mode_t->scalar<int32>()());
     // Find best splits for each active node.
