@@ -296,6 +296,10 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
 
     const Tensor* learning_rate_t;
     OP_REQUIRES_OK(context, context->input("learning_rate", &learning_rate_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(learning_rate_t->shape()),
+                errors::InvalidArgument(
+                    "learning_rate must be a scalar, got a tensor of shape ",
+                    learning_rate_t->shape().DebugString()));
     const auto learning_rate = learning_rate_t->scalar<float>()();
 
     const Tensor* pruning_mode_t;
