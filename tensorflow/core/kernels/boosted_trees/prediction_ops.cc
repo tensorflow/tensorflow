@@ -134,9 +134,9 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
       output_partial_logits.setZero();
     } else {
       output_tree_ids.setConstant(latest_tree);
-      auto do_work = [&resource, &bucketized_features, &cached_tree_ids,
-                      &cached_node_ids, &output_partial_logits,
-                      &output_node_ids, latest_tree,
+      auto do_work = [&context, &resource, &bucketized_features,
+                      &cached_tree_ids, &cached_node_ids,
+                      &output_partial_logits, &output_node_ids, latest_tree,
                       this](int64_t start, int64_t end) {
         for (int32_t i = start; i < end; ++i) {
           int32_t tree_id = cached_tree_ids(i);
@@ -154,7 +154,11 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
             // node's value. The following logic handles both of these cases.
             const auto& node_logits = resource->node_value(tree_id, node_id);
             if (!node_logits.empty()) {
-              DCHECK_EQ(node_logits.size(), logits_dimension_);
+              OP_REQUIRES(
+                  context, node_logits.size() == logits_dimension_,
+                  errors::Internal(
+                      "Expected node_logits.size() == logits_dimension_, got ",
+                      node_logits.size(), " vs ", logits_dimension_));
               for (int32_t j = 0; j < logits_dimension_; ++j) {
                 partial_tree_logits[j] -= node_logits[j];
               }
@@ -167,7 +171,11 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
           while (true) {
             if (resource->is_leaf(tree_id, node_id)) {
               const auto& leaf_logits = resource->node_value(tree_id, node_id);
-              DCHECK_EQ(leaf_logits.size(), logits_dimension_);
+              OP_REQUIRES(
+                  context, leaf_logits.size() == logits_dimension_,
+                  errors::Internal(
+                      "Expected leaf_logits.size() == logits_dimension_, got ",
+                      leaf_logits.size(), " vs ", logits_dimension_));
               // Tree is done
               const float tree_weight = resource->GetTreeWeight(tree_id);
               for (int32_t j = 0; j < logits_dimension_; ++j) {
