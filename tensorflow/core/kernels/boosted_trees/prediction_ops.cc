@@ -375,14 +375,16 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
     // features used to split and the associated logits at each point along the
     // path. Note: feature_ids has one less value than logits_path because the
     // first value of each logit path will be the bias.
-    auto do_work = [&resource, &bucketized_features, &output_debug_info,
-                    last_tree](int64_t start, int64_t end) {
+    auto do_work = [&context, &resource, &bucketized_features,
+                    &output_debug_info, last_tree](int64_t start, int64_t end) {
       for (int32_t i = start; i < end; ++i) {
         // Proto to store debug outputs, per example.
         boosted_trees::DebugOutput example_debug_info;
         // Initial bias prediction. E.g., prediction based off training mean.
         const auto& tree_logits = resource->node_value(0, 0);
-        DCHECK_EQ(tree_logits.size(), 1);
+        OP_REQUIRES(context, tree_logits.size() == 1,
+                    errors::Internal("Expected tree_logits.size() == 1, got ",
+                                     tree_logits.size()));
         float tree_logit = resource->GetTreeWeight(0) * tree_logits[0];
         example_debug_info.add_logits_path(tree_logit);
         int32_t node_id = 0;
@@ -408,7 +410,10 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
             node_id =
                 resource->next_node(tree_id, node_id, i, bucketized_features);
             const auto& tree_logits = resource->node_value(tree_id, node_id);
-            DCHECK_EQ(tree_logits.size(), 1);
+            OP_REQUIRES(
+                context, tree_logits.size() == 1,
+                errors::Internal("Expected tree_logits.size() == 1, got ",
+                                 tree_logits.size()));
             tree_logit = resource->GetTreeWeight(tree_id) * tree_logits[0];
             // Output logit incorporates sum of leaf logits from prior trees.
             example_debug_info.add_logits_path(tree_logit + past_trees_logit);
