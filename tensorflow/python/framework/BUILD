@@ -1912,6 +1912,7 @@ tf_py_test(
         ":test_lib",
         ":test_ops",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform_test",
