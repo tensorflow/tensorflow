@@ -7651,6 +7651,7 @@ cc_library(
 tf_cc_shared_library(
     name = "libtfkernel_all_kernels.so",
     static_deps = [
+        # TODO(rostam): Remove Copybara transform.
         # copybara:comment_begin(oss only)
         "@bazel_tools//:__subpackages__",
         "@boringssl//:__subpackages__",
