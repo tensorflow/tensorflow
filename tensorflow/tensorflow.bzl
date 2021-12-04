@@ -808,6 +808,22 @@ def tf_cc_shared_library(
             name_os_major = name_os
             name_os_full = name_os
 
+        if name_os != name_os_major:
+            native.genrule(
+                name = name_os + "_sym",
+                outs = [name_os],
+                srcs = [name_os_major],
+                output_to_bindir = 1,
+                cmd = "ln -sf $$(basename $<) $@",
+            )
+            native.genrule(
+                name = name_os_major + "_sym",
+                outs = [name_os_major],
+                srcs = [name_os_full],
+                output_to_bindir = 1,
+                cmd = "ln -sf $$(basename $<) $@",
+            )
+
         soname = name_os_major.split("/")[-1]
 
         data_extra = []
@@ -824,15 +840,14 @@ def tf_cc_shared_library(
             win_def_file = win_def_file,
         )
 
-        cc_shared_library_name = name_os_full + "_ccsharedlib"
-        shared_lib_name = name_os_full + "_sharedlibname"
+        cc_shared_library_name = name + "_ccsharedlib"
         cc_shared_library(
             name = cc_shared_library_name,
             roots = [cc_library_name],
             static_deps = static_deps,
             data = data + data_extra,
-            shared_lib_name = shared_lib_name,
-            user_link_flags = linkopts + _rpath_user_link_flags(shared_lib_name) + select({
+            shared_lib_name = name_os_full,
+            user_link_flags = linkopts + _rpath_user_link_flags(name_os_full) + select({
                 clean_dep("//tensorflow:ios"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
@@ -848,31 +863,10 @@ def tf_cc_shared_library(
             visibility = visibility,
         )
         native.alias(
-            name = shared_lib_name,
+            name = name_os_full,
             actual = cc_shared_library_name,
             visibility = visibility,
         )
-        filegroup(
-            name = name_os_full,
-            srcs = [shared_lib_name],
-            output_group = "custom_name_shared_library",
-        )
-
-        if name_os != name_os_major:
-            native.genrule(
-                name = name_os + "_sym",
-                outs = [name_os],
-                srcs = [name_os_major],
-                output_to_bindir = 1,
-                cmd = "ln -sf $$(basename $<) $@",
-            )
-            native.genrule(
-                name = name_os_major + "_sym",
-                outs = [name_os_major],
-                srcs = [name_os_full],
-                output_to_bindir = 1,
-                cmd = "ln -sf $$(basename $<) $@",
-            )
 
     flat_names = [item for sublist in names for item in sublist]
     if name not in flat_names:
@@ -1625,16 +1619,10 @@ def tf_java_test(
         kernels = [],
         *args,
         **kwargs):
-    cc_library_name = name + "_cclib"
-    cc_library(
-        # TODO(b/183579145): Remove when cc_shared_library supports CcInfo or JavaInfo providers .
-        name = cc_library_name,
-        srcs = tf_binary_additional_srcs(fullversion = True) + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
-    )
     native.java_test(
         name = name,
         srcs = srcs,
-        deps = deps + [cc_library_name],
+        deps = deps + tf_binary_additional_srcs(fullversion = True) + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
         *args,
         **kwargs
     )

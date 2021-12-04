@@ -23,9 +23,6 @@ load(
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
-
 # copybara:comment_begin(oss-only)
 load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
@@ -913,12 +910,8 @@ cc_library(
 #       as it diverges dependency topology between static and dynamic TF.
 #
 # TODO(cheshire): Write tests to check for rule violations.
-tf_cc_shared_library(
+tf_cc_shared_object(
     name = "tensorflow_framework",
-    additional_linker_inputs = [
-        "//tensorflow:tf_framework_version_script.lds",
-        "//tensorflow:tf_private_symbols.lds",
-    ],
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
@@ -937,53 +930,9 @@ tf_cc_shared_library(
     linkstatic = 1,
     per_os_targets = True,
     soversion = VERSION,
-    static_deps = [
-        # copybara:comment_begin(oss only)
-        "//:__subpackages__",
-        "@cudnn_frontend_archive//:__subpackages__",
-        "@gif//:__subpackages__",
-        "@highwayhash//:__subpackages__",
-        "@hwloc//:__subpackages__",
-        "@icu//:__subpackages__",
-        "@libjpeg_turbo//:__subpackages__",
-        "@llvm-project//:__subpackages__",
-        "@nsync//:__subpackages__",
-        "@png//:__subpackages__",
-        "@bazel_tools//:__subpackages__",
-        "@boringssl//:__subpackages__",
-        "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-        "@com_github_grpc_grpc//:__subpackages__",
-        "@com_google_absl//:__subpackages__",
-        "@com_google_googleapis//:__subpackages__",
-        "@com_google_protobuf//:__subpackages__",
-        "@com_googlesource_code_re2//:__subpackages__",
-        "@curl//:__subpackages__",
-        "@double_conversion//:__subpackages__",
-        "@eigen_archive//:__subpackages__",
-        "@farmhash_archive//:__subpackages__",
-        "@fft2d//:__subpackages__",
-        "@gemmlowp//:__subpackages__",
-        "@jsoncpp_git//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
-        "@llvm_openmp//:__subpackages__",
-        "@llvm_terminfo//:__subpackages__",
-        "@llvm_zlib//:__subpackages__",
-        "@lmdb//:__subpackages__",
-        "@local_config_cuda//:__subpackages__",
-        "@local_config_git//:__subpackages__",
-        "@local_config_rocm//:__subpackages__",
-        "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
-        "@mkl_dnn_v1//:__subpackages__",
-        "@org_sqlite//:__subpackages__",
-        "@platforms//:__subpackages__",
-        "@snappy//:__subpackages__",
-        "@upb//:__subpackages__",
-        "@zlib//:__subpackages__",
-        # copybara:comment_end
-    ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow:tf_private_symbols.lds",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:env",
@@ -1003,6 +952,7 @@ tf_cc_shared_library(
         "//tensorflow/core/util:determinism",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
 )
 
