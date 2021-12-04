@@ -396,7 +396,7 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
       boosted_trees::SplitTypeWithDefault split_type_with_default;
       bool parsed = boosted_trees::SplitTypeWithDefault_Parse(
           split_type, &split_type_with_default);
-      DCHECK(parsed);
+      OP_REQUIRES(context, parsed, errors::Internal("Parse failed"));
       if (split_type_with_default == boosted_trees::EQUALITY_DEFAULT_RIGHT) {
         // Add equality split to the node.
         ensemble_resource->AddCategoricalSplitNode(current_tree, split_entry,
@@ -630,7 +630,8 @@ class BoostedTreesCenterBiasOp : public OpKernel {
     float unused_gain;
 
     // TODO(crawles): Support multiclass.
-    DCHECK_EQ(logits_dim, 1);
+    OP_REQUIRES(context, logits_dim == 1,
+                errors::Internal("Expected logits_dim == 1, got ", logits_dim));
     Eigen::VectorXf gradients_mean(1);
     Eigen::VectorXf hessians_mean(1);
     gradients_mean[0] = mean_gradients_t->flat<float>()(0);
@@ -647,7 +648,9 @@ class BoostedTreesCenterBiasOp : public OpKernel {
       current_bias = logits;
     } else {
       const auto& current_biases = ensemble_resource->node_value(0, 0);
-      DCHECK_EQ(current_biases.size(), 1);
+      OP_REQUIRES(context, current_biases.size() == 1,
+                  errors::Internal("Expected current_biases.size() == 1, got ",
+                                   current_biases.size()));
       current_bias = current_biases[0];
       continue_centering =
           std::abs(logits / current_bias) > kMinDeltaForCenterBias;
