@@ -461,6 +461,14 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
               gains_list[group_idx].shape().DebugString(), " at index ",
               group_idx));
       const auto& gains = gains_list[group_idx].vec<float>();
+      OP_REQUIRES(
+          context,
+          TensorShapeUtils::IsVector(feature_ids_list[group_idx].shape()),
+          errors::InvalidArgument(
+              "Each feature_id in feature_ids_lists must be a vector, received "
+              "shape ",
+              feature_ids_list[group_idx].shape().DebugString(), " at index ",
+              group_idx));
       const auto& feature_ids = feature_ids_list[group_idx].vec<int32>();
       const auto& thresholds = thresholds_list[group_idx].vec<int32>();
       const auto& dimension_ids = dimension_ids_list[group_idx].vec<int32>();
