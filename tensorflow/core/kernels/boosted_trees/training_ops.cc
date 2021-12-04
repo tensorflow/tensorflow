@@ -509,6 +509,10 @@ class BoostedTreesCenterBiasOp : public OpKernel {
     // Get the regularization options.
     const Tensor* l1_t;
     OP_REQUIRES_OK(context, context->input("l1", &l1_t));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(l1_t->shape()),
+        errors::InvalidArgument("l1 must be a scalar, got a tensor of shape ",
+                                l1_t->shape().DebugString()));
     const auto l1 = l1_t->scalar<float>()();
     const Tensor* l2_t;
     OP_REQUIRES_OK(context, context->input("l2", &l2_t));
