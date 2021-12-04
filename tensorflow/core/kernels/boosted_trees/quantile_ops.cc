@@ -180,6 +180,10 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
             "Weights should be a single value or same size as features.")));
     const Tensor* epsilon_t;
     OP_REQUIRES_OK(context, context->input(kEpsilonName, &epsilon_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(epsilon_t->shape()),
+                errors::InvalidArgument(
+                    "epsilon must be a scalar, got a tensor of shape ",
+                    epsilon_t->shape().DebugString()));
     float epsilon = epsilon_t->scalar<float>()();
 
     OpOutputList summaries_output_list;
