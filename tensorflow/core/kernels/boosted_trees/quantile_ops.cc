@@ -445,6 +445,10 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
 
     const Tensor* num_buckets_t;
     OP_REQUIRES_OK(context, context->input(kNumBucketsName, &num_buckets_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_buckets_t->shape()),
+                errors::InvalidArgument(
+                    "num_buckets must be a scalar, got a tensor of shape ",
+                    num_buckets_t->shape().DebugString()));
     const int64_t num_buckets = num_buckets_t->scalar<int64_t>()();
     const int64_t num_streams = stream_resource->num_streams();
 
