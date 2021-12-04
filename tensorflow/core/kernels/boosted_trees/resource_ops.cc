@@ -56,6 +56,12 @@ class BoostedTreesCreateEnsembleOp : public OpKernel {
     const Tensor* tree_ensemble_serialized_t;
     OP_REQUIRES_OK(context, context->input("tree_ensemble_serialized",
                                            &tree_ensemble_serialized_t));
+    OP_REQUIRES(
+        context,
+        TensorShapeUtils::IsScalar(tree_ensemble_serialized_t->shape()),
+        errors::InvalidArgument(
+            "tree_ensemble_serialized must be a scalar, got a tensor of shape ",
+            tree_ensemble_serialized_t->shape().DebugString()));
     std::unique_ptr<BoostedTreesEnsembleResource> result(
         new BoostedTreesEnsembleResource());
     if (!result->InitFromSerialized(
