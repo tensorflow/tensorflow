@@ -1574,10 +1574,13 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
 
     SmallVector<Value> inputs, outputs;
     SmallVector<AffineMap, 3> indexing_maps;
-    for (const auto& it : llvm::enumerate(adaptor.inputs())) {
+    for (auto values :
+         llvm::zip(adaptor.inputs(), adaptor.init_values(), op.getResults())) {
       // Check if init_value is constant. If so, inline the value into the
       // region.
-      Value init_value = adaptor.init_values()[it.index()];
+      Value input = std::get<0>(values);
+      Value init_value = std::get<1>(values);
+      Value result = std::get<2>(values);
       Attribute init_const_val = GetInitValueAsConst(init_value);
       if (init_const_val) {
         init_value = rewriter.create<arith::ConstantOp>(
@@ -1586,10 +1589,10 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
         init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
       }
 
-      inputs.push_back(it.value());
-      auto result_type = op.getResult(it.index()).getType().cast<ShapedType>();
+      inputs.push_back(input);
+      auto result_type = result.getType().cast<ShapedType>();
       SmallVector<Value, 8> dyn_shape = GetReduceOpInitTensorDynSizes(
-          rewriter, loc, it.value(), result_type, reduction_dims);
+          rewriter, loc, input, result_type, reduction_dims);
       auto init_tensor = GetInitTensor(rewriter, loc, result_type, dyn_shape);
       Value filled_tensor =
           rewriter.create<linalg::FillOp>(loc, init_value, init_tensor)
