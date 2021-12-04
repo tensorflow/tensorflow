@@ -447,6 +447,12 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
       std::map<int32, boosted_trees::SplitCandidate>* best_split_per_node) {
     // Find best split per node going through every feature candidate.
     for (int64_t group_idx = 0; group_idx < num_groups_; ++group_idx) {
+      OP_REQUIRES(
+          context, TensorShapeUtils::IsVector(node_ids_list[group_idx].shape()),
+          errors::InvalidArgument(
+              "Each node_id in node_ids_list must be a vector, received shape ",
+              node_ids_list[group_idx].shape().DebugString(), " at index ",
+              group_idx));
       const auto& node_ids = node_ids_list[group_idx].vec<int32>();
       const auto& gains = gains_list[group_idx].vec<float>();
       const auto& feature_ids = feature_ids_list[group_idx].vec<int32>();
