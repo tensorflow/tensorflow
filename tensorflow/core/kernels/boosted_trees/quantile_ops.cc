@@ -122,6 +122,10 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
 
     const Tensor* num_streams_t;
     OP_REQUIRES_OK(context, context->input(kNumStreamsName, &num_streams_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_streams_t->shape()),
+                errors::InvalidArgument(
+                    "num_streams must be a scalar, got a tensor of shape ",
+                    num_streams_t->shape().DebugString()));
     int64_t num_streams = num_streams_t->scalar<int64_t>()();
     OP_REQUIRES(context, num_streams >= 0,
                 errors::InvalidArgument(
