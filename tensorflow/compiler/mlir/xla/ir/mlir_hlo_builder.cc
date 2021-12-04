@@ -561,8 +561,8 @@ StatusOr<XlaOp> MlirHloBuilder::PadInternal(
   TF_ASSIGN_OR_RETURN(
       mlir::Type result_type,
       ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
-  auto dimensions = padding_config.dimensions();
-  auto dimensions_size = dimensions.size();
+  const std::vector<PaddingConfig::PaddingConfigDimension>& dimensions = padding_config.dimensions();
+  const decltype(dimensions)::size_type& dimensions_size = dimensions.size();
   llvm::SmallVector<int64_t> low, high, internal;
   low.reserve(dimensions_size);
   high.reserve(dimensions_size);
