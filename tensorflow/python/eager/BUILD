@@ -425,7 +425,10 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
-    tags = ["notsan"],  # TODO(b/183962087)
+    tags = [
+        "no_oss_py310",  # TODO(b/209160947)
+        "notsan",  # TODO(b/183962087)
+    ],
     deps = [
         ":context",
         ":core",
