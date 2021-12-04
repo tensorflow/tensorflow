@@ -206,6 +206,14 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
               gains_list[feature_idx].shape().DebugString(), " at index ",
               feature_idx));
       const auto& gains = gains_list[feature_idx].vec<float>();
+      OP_REQUIRES(
+          context,
+          TensorShapeUtils::IsVector(thresholds_list[feature_idx].shape()),
+          errors::InvalidArgument(
+              "Each threshold in thresholds_list must be a vector, received "
+              "shape ",
+              thresholds_list[feature_idx].shape().DebugString(), " at index ",
+              feature_idx));
       const auto& thresholds = thresholds_list[feature_idx].vec<int32>();
       const auto& left_node_contribs =
           left_node_contribs_list[feature_idx].matrix<float>();
