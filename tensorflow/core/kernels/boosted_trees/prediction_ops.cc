@@ -264,8 +264,8 @@ class BoostedTreesPredictOp : public OpKernel {
     }
 
     const int32_t last_tree = resource->num_trees() - 1;
-    auto do_work = [&resource, &bucketized_features, &output_logits, last_tree,
-                    this](int64_t start, int64_t end) {
+    auto do_work = [&context, &resource, &bucketized_features, &output_logits,
+                    last_tree, this](int64_t start, int64_t end) {
       for (int32_t i = start; i < end; ++i) {
         std::vector<float> tree_logits(logits_dimension_, 0.0);
         int32_t tree_id = 0;
@@ -274,7 +274,11 @@ class BoostedTreesPredictOp : public OpKernel {
           if (resource->is_leaf(tree_id, node_id)) {
             const float tree_weight = resource->GetTreeWeight(tree_id);
             const auto& leaf_logits = resource->node_value(tree_id, node_id);
-            DCHECK_EQ(leaf_logits.size(), logits_dimension_);
+            OP_REQUIRES(
+                context, leaf_logits.size() == logits_dimension_,
+                errors::Internal(
+                    "Expected leaf_logits.size() == logits_dimension_, got ",
+                    leaf_logits.size(), " vs ", logits_dimension_));
             for (int32_t j = 0; j < logits_dimension_; ++j) {
               tree_logits[j] += tree_weight * leaf_logits[j];
             }
