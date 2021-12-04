@@ -4142,7 +4142,10 @@ cc_library(
 cc_library(
     name = "copy_insertion",
     srcs = ["copy_insertion.cc"],
-    hdrs = ["copy_insertion.h"],
+    hdrs = [
+        "compile_time_cap.h",
+        "copy_insertion.h",
+    ],
     deps = [
         ":dump",
         ":hlo",
@@ -4157,7 +4160,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -5439,7 +5441,10 @@ tf_cc_test(
 cc_library(
     name = "while_loop_invariant_code_motion",
     srcs = ["while_loop_invariant_code_motion.cc"],
-    hdrs = ["while_loop_invariant_code_motion.h"],
+    hdrs = [
+        "compile_time_cap.h",
+        "while_loop_invariant_code_motion.h",
+    ],
     deps = [
         ":hlo",
         ":hlo_dce",
@@ -5454,6 +5459,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
     ],
 )
 
