@@ -289,3 +289,15 @@ func @keepCustomFlexOps(%arg0: tensor<1x10xf32>) -> tensor<1x10xf32> {
   // CHECK-NEXT: %3 = "tfl.custom"(%0) {custom_code = "FlexReadVariableOp"
   return %3 : tensor<1x10xf32>
 }
+
+// -----
+
+// Converts tfl.broadcast_to to tfl.reshape if input and output have the same
+// number of elements.
+// CHECK-LABEL: broadcast_to_to_reshape
+func @broadcast_to_to_reshape(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<4xi32>) -> tensor<1x4x4x4xf32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
+  // CHECK: "tfl.reshape"
+  // CHECK-SAME: (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
+  return %0 : tensor<1x4x4x4xf32>
+}

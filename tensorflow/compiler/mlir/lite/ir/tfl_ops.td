@@ -4865,6 +4865,8 @@ subsequent operation and then be optimized away, however.)
   let results = (outs
     TFL_TensorOf<[F32, I32, I1, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
   );
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_RFFT2dOp : TFL_Op<"rfft2d", [NoSideEffect, NoQuantizableResult]> {
