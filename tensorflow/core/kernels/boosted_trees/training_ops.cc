@@ -492,6 +492,14 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
           left_node_contribs_list[group_idx].matrix<float>();
       const auto& right_node_contribs =
           right_node_contribs_list[group_idx].matrix<float>();
+      OP_REQUIRES(
+          context,
+          TensorShapeUtils::IsVector(split_types_list[group_idx].shape()),
+          errors::InvalidArgument(
+              "Each split_type in split_types_list must be a vector, received "
+              "shape ",
+              split_types_list[group_idx].shape().DebugString(), " at index ",
+              group_idx));
       const auto& split_types = split_types_list[group_idx].vec<tstring>();
 
       for (size_t candidate_idx = 0; candidate_idx < node_ids.size();
