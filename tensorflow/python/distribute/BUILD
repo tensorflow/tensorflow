@@ -1539,6 +1539,7 @@ distribute_py_test(
     main = "distribute_utils_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_oss_py310",  # b/209158747
     ],
     deps = [
         ":combinations",
