@@ -71,6 +71,10 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
 
     const Tensor* feature_ids_t;
     OP_REQUIRES_OK(context, context->input("feature_ids", &feature_ids_t));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(feature_ids_t->shape()),
+        errors::InvalidArgument("feature_ids must be a vector, received shape ",
+                                feature_ids_t->shape().DebugString()));
     const auto feature_ids = feature_ids_t->vec<int32>();
 
     const Tensor* max_depth_t;
