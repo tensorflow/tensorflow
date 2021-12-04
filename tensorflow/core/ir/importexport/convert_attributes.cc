@@ -365,6 +365,8 @@ tensorflow::StatusOr<Attribute> ConvertNonFuncAttributeValue(
           TF_ASSIGN_OR_RETURN(
               auto attr,
               ConvertAttributeValue(subattr.second, builder, tfgDialect));
+          if (subattr.first.empty())
+            return InvalidArgument("empty func_attr name");
           subattrs.push_back(builder.getNamedAttr(subattr.first, attr));
         }
         attrs.push_back(FuncAttr::get(builder.getContext(), func_attr.name(),
