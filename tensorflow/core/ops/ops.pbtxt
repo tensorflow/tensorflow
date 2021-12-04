@@ -2543,8 +2543,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -2577,8 +2590,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -3006,8 +3032,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -3627,8 +3666,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -3672,8 +3724,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -6846,8 +6911,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -6997,8 +7075,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -7073,8 +7164,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -7342,8 +7446,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -7387,8 +7504,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -7632,8 +7762,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -7686,8 +7829,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -8817,8 +8973,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -11755,8 +11924,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -11839,8 +12021,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -11923,8 +12118,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -13199,8 +13407,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -14006,8 +14227,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15480,8 +15714,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15518,8 +15765,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15559,8 +15819,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15621,8 +15894,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15662,8 +15948,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15737,8 +16036,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15772,8 +16084,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15824,8 +16149,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15903,8 +16241,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -15960,8 +16311,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16009,8 +16373,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16044,8 +16421,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16090,8 +16480,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16140,8 +16543,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16218,8 +16634,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16248,8 +16677,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16302,8 +16744,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16349,8 +16804,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16429,8 +16897,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16463,8 +16944,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16498,8 +16992,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16543,8 +17050,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16607,8 +17127,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16642,8 +17175,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16684,8 +17230,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16722,8 +17281,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16791,8 +17363,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16834,8 +17419,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16902,8 +17500,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -16932,8 +17543,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -17725,8 +18349,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -17759,8 +18396,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -17805,8 +18455,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -18165,8 +18828,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -19621,8 +20297,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -19690,8 +20379,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -19865,8 +20567,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -19944,8 +20659,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -20623,8 +21351,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -21292,8 +22033,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -21910,8 +22664,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -22277,8 +23044,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -22484,8 +23264,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -22760,8 +23553,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -23939,8 +24745,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -24034,8 +24853,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -25113,8 +25945,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -26470,8 +27315,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -27694,8 +28552,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -27917,8 +28788,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -27967,8 +28851,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -28070,8 +28967,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -28671,8 +29581,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "Toutput_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "Toutput_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "Toutput_types"
+        }
       }
     }
   }
@@ -28731,8 +29654,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "Toutput_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "Toutput_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "Toutput_types"
+        }
       }
     }
   }
@@ -28882,8 +29818,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -29010,8 +29959,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -29072,8 +30034,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -29141,8 +30116,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -29218,8 +30206,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -29279,8 +30280,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -29354,8 +30368,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -29575,8 +30602,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -29699,8 +30739,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -30862,8 +31915,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -31161,8 +32227,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -36533,8 +37612,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -37132,8 +38224,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -37527,8 +38632,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -37572,8 +38690,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -38276,8 +39407,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -44660,8 +45804,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -45002,8 +46159,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -46742,8 +47912,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -46845,8 +48028,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -46939,8 +48135,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47003,8 +48212,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47060,8 +48282,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47112,8 +48347,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47166,8 +48414,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47380,8 +48641,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47486,8 +48760,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47561,8 +48848,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47617,8 +48917,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47749,8 +49062,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47802,8 +49128,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -47893,8 +49232,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -51801,8 +53153,11 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "Tvalues"
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_VAR
+          s: "Tvalues"
+        }
       }
     }
   }
@@ -52064,8 +53419,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -55501,8 +56869,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -55580,8 +56961,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -56699,8 +58093,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "Toutput_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "Toutput_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "Toutput_types"
+        }
       }
     }
   }
@@ -57591,8 +58998,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "Toutput_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "Toutput_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "Toutput_types"
+        }
       }
     }
   }
@@ -57875,8 +59295,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -58475,8 +59908,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -58913,8 +60359,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -59816,8 +61275,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -59853,8 +61325,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
@@ -60446,8 +61931,21 @@ op {
     experimental_full_type {
       type_id: TFT_DATASET
       args {
-        type_id: TFT_VAR
-        s: "output_types"
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
       }
     }
   }
