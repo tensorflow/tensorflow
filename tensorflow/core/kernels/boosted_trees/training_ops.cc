@@ -506,6 +506,14 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
               dimension_ids_list[group_idx].shape().DebugString(), " at index ",
               group_idx));
       const auto& dimension_ids = dimension_ids_list[group_idx].vec<int32>();
+      OP_REQUIRES(context,
+                  TensorShapeUtils::IsMatrix(
+                      left_node_contribs_list[group_idx].shape()),
+                  errors::InvalidArgument(
+                      "Each left_node_contribs in right_node_contribs_list "
+                      "must be a matrix, received shape ",
+                      left_node_contribs_list[group_idx].shape().DebugString(),
+                      " at index ", group_idx));
       const auto& left_node_contribs =
           left_node_contribs_list[group_idx].matrix<float>();
       const auto& right_node_contribs =
