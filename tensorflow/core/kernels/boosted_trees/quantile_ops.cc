@@ -395,6 +395,12 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
       // Iterating over all streams.
       for (int64_t stream_idx = begin; stream_idx < end; stream_idx++) {
         const Tensor& bucket_boundaries_t = bucket_boundaries_list[stream_idx];
+        OP_REQUIRES(
+            context, TensorShapeUtils::IsVector(bucket_boundaries_t.shape()),
+            errors::InvalidArgument("bucket boundaries for each stream must be "
+                                    "a vector, received shape ",
+                                    bucket_boundaries_t.shape().DebugString(),
+                                    " for stream ", stream_idx));
         const auto& bucket_boundaries = bucket_boundaries_t.vec<float>();
         std::vector<float> result;
         result.reserve(bucket_boundaries.size());
