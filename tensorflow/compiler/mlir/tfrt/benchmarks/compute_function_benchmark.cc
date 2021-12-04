@@ -204,5 +204,110 @@ BM(Cpurt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 BM(CpurtV(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 BM(Tfrt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 
+static const char* const mlir_factorized0 = R"(
+  func @compute(%arg0: tensor<?x10xf32>) -> tensor<?x10xf32> {
+    %cst = "tf.Const"()
+          {value = dense<1.000000e+00> : tensor<f32>,
+           device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : () -> tensor<f32>
+    %cst_0 = "tf.Const"()
+          {value = dense<0.00508870464> : tensor<f32>,
+           device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : () -> tensor<f32>
+    %cst_1 = "tf.Const"()
+          {value = dense<8.52547168> : tensor<f32>,
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : () -> tensor<f32>
+    %0 = "tf.Sub"(%arg0, %cst_1)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<?x10xf32>, tensor<f32>) -> tensor<?x10xf32>
+    %1 = "tf.Mul"(%0, %cst_0)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<?x10xf32>, tensor<f32>) -> tensor<?x10xf32>
+    %2 = "tf.Abs"(%1)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<?x10xf32>) -> tensor<?x10xf32>
+    %3 = "tf.Minimum"(%2, %cst)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<?x10xf32>, tensor<f32>) -> tensor<?x10xf32>
+    %4 = "tf.Maximum"(%cst, %2)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<f32>, tensor<?x10xf32>) -> tensor<?x10xf32>
+    %5 = "tf.Log"(%4)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<?x10xf32>) -> tensor<?x10xf32>
+    %6 = "tf.AddV2"(%3, %5)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<?x10xf32>, tensor<?x10xf32>) -> tensor<?x10xf32>
+    %7 = "tf.Sign"(%1)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<?x10xf32>) -> tensor<?x10xf32>
+    %8 = "tf.Mul"(%7, %6)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<?x10xf32>, tensor<?x10xf32>) -> tensor<?x10xf32>
+    return %8 : tensor<?x10xf32>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsFactorized0() {
+  return {
+      InputTensorSpec(DT_FLOAT, {1000, 10})  // %arg0
+  };
+}
+
+BM(Cpurt(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
+BM(CpurtV(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
+BM(Tfrt(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
+
+static const char* const mlir_factorized1 = R"(
+  func @compute(%arg0: tensor<?x50xf32>,
+                %arg1: tensor<50xf32>) -> tensor<?x50xf32> {
+    %0 = "tf.BiasAdd"(%arg0, %arg1)
+         {data_format = "NHWC",
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<?x50xf32>, tensor<50xf32>) -> tensor<?x50xf32>
+    %1 = "tf.Relu"(%0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<?x50xf32>) -> tensor<?x50xf32>
+    return %1 : tensor<?x50xf32>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsFactorized1() {
+  return {
+      InputTensorSpec(DT_FLOAT, {1000, 50}),  // %arg0
+      InputTensorSpec(DT_FLOAT, {50}),        // %arg1
+  };
+}
+
+BM(Cpurt(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
+BM(CpurtV(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
+BM(Tfrt(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
+
+static const char* const mlir_factorized2 = R"(
+  func @compute(%arg0: tensor<?x50x1x5xf32>,
+                %arg1: tensor<5xf32>) -> tensor<?x50x1x5xf32> {
+    %0 = "tf.BiasAdd"(%arg0, %arg1)
+         {data_format = "NHWC",
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<?x50x1x5xf32>, tensor<5xf32>) -> tensor<?x50x1x5xf32>
+    %1 = "tf.Relu"(%0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<?x50x1x5xf32>) -> tensor<?x50x1x5xf32>
+    return %1 : tensor<?x50x1x5xf32>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsFactorized2() {
+  return {
+      InputTensorSpec(DT_FLOAT, {1000, 50, 1, 5}),  // %arg0
+      InputTensorSpec(DT_FLOAT, {5}),               // %arg1
+  };
+}
+
+BM(Cpurt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
+BM(CpurtV(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
+BM(Tfrt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
+
 }  // namespace
 }  // namespace tensorflow
