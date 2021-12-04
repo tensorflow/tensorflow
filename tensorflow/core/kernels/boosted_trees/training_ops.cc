@@ -288,6 +288,10 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
 
     const Tensor* max_depth_t;
     OP_REQUIRES_OK(context, context->input("max_depth", &max_depth_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_depth_t->shape()),
+                errors::InvalidArgument(
+                    "max_depth must be a scalar, got a tensor of shape ",
+                    max_depth_t->shape().DebugString()));
     const auto max_depth = max_depth_t->scalar<int32>()();
 
     const Tensor* learning_rate_t;
