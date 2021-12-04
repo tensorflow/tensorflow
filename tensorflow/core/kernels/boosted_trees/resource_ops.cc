@@ -203,6 +203,10 @@ class BoostedTreesDeserializeEnsembleOp : public OpKernel {
     // Get the stamp token.
     const Tensor* stamp_token_t;
     OP_REQUIRES_OK(context, context->input("stamp_token", &stamp_token_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(stamp_token_t->shape()),
+                errors::InvalidArgument(
+                    "stamp_token must be a scalar, got a tensor of shape ",
+                    stamp_token_t->shape().DebugString()));
     int64_t stamp_token = stamp_token_t->scalar<int64_t>()();
 
     // Get the tree ensemble proto.
