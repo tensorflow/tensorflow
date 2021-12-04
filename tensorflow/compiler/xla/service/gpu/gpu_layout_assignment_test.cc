@@ -18,8 +18,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -360,6 +360,34 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::ShapeWithLayout(expected_shape),
                       op::ShapeWithLayout(expected_shape)));
+}
+
+TEST_F(LayoutAssignmentTest, DotLayoutS8) {
+  const char* hlo_text = R"(
+  HloModule DotLayout
+  ENTRY int8 {
+    p0 = s8[1024,65536] parameter(0)
+    p1 = s8[65536,65536] parameter(1)
+    ROOT out = s32[1024,65536] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
+
+  Shape expected_shape_p0 =
+      ShapeUtil::MakeShapeWithLayout(S8, {1024, 65536}, {1, 0});
+  Shape expected_shape_p1 =
+      ShapeUtil::MakeShapeWithLayout(S8, {65536, 65536}, {0, 1});
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::ShapeWithLayout(expected_shape_p0),
+                      op::ShapeWithLayout(expected_shape_p1)));
 }
 
 TEST_F(LayoutAssignmentTest, SortLayout) {

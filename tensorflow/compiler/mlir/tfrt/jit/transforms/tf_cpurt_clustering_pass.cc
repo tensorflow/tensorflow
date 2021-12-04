@@ -48,8 +48,14 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
     llvm::Optional<CpurtClusteringTier> tier;
 
     for (const auto& op : oplist) {
-      if (op == "tier1") {
+      if (op == "tier0") {
+        tier = CpurtClusteringTier::kTier0;
+      } else if (op == "tier1") {
         tier = CpurtClusteringTier::kTier1;
+      } else if (op == "tier1metadata") {
+        tier = CpurtClusteringTier::kTier1Metadata;
+      } else if (op == "tier1reductions") {
+        tier = CpurtClusteringTier::kTier1Reductions;
       } else if (op == "all") {
         tier = CpurtClusteringTier::kAll;
       } else {

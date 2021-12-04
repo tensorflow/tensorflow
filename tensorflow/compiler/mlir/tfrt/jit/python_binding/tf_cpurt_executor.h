@@ -41,12 +41,18 @@ class TfCpurtExecutor {
   // Compiles mlir module and caches it. Returns a handle, that can be passed to
   // execute function.
   Handle Compile(const std::string& mlir_module, const std::string& entrypoint,
-                 Specialization specialization, bool vectorize);
+                 Specialization specialization, bool vectorize,
+                 bool legalize_i1_tensors);
 
   // Executes compiled mlir module with Python array arguments. Converts
   // returned memrefs into Python arrays.
   std::vector<pybind11::array> Execute(
       Handle handle, const std::vector<pybind11::array>& arguments);
+
+  // Returns true if the binary was built with the given CPU feature.
+  // The list of supported CPU features is purposedly incomplete; we
+  // will only add features if CPURT relies on them.
+  bool BuiltWith(const std::string& cpu_feature);
 
  private:
   tfrt::HostContext host_context_;

@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -96,16 +97,16 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
         continue;
       }
 
-      if (auto tensor_load = dyn_cast<memref::TensorLoadOp>(definingOp)) {
-        auto alias = tensor_load.memref();
+      if (auto to_tensor = dyn_cast<bufferization::ToTensorOp>(definingOp)) {
+        auto alias = to_tensor.memref();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);
         }
         continue;
       }
 
-      if (auto tensor_to_memref = dyn_cast<memref::BufferCastOp>(definingOp)) {
-        auto alias = tensor_to_memref.tensor();
+      if (auto to_memref = dyn_cast<bufferization::ToMemrefOp>(definingOp)) {
+        auto alias = to_memref.tensor();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);
         }
@@ -175,14 +176,14 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       for (OpOperand* inputOperand : op.getInputOperands()) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
-        if (auto info = fuseProducerOfBuffer(b, *inputOperand, graph)) {
-          auto originalOp = info->originalProducer.getOperation();
-          erase_set.insert(originalOp);
-          auto originalOpInLinalgOpsVector = std::find_if(
-              linalg_ops.begin(), linalg_ops.end(),
-              [&](const Operation* op) { return op == originalOp; });
-          *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
-        }
+        auto info = fuseProducerOfBuffer(b, *inputOperand, graph);
+        if (failed(info)) continue;
+        auto originalOp = info->originalProducer.getOperation();
+        erase_set.insert(originalOp);
+        auto originalOpInLinalgOpsVector =
+            std::find_if(linalg_ops.begin(), linalg_ops.end(),
+                         [&](const Operation* op) { return op == originalOp; });
+        *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
@@ -196,11 +197,10 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
     auto loopType = use_parallel_loops_
                         ? linalg::LinalgTilingLoopType::ParallelLoops
                         : linalg::LinalgTilingLoopType::Loops;
-    auto tiled_generic_op = linalg::tileLinalgOp(*b, op,
-                                                 linalg::LinalgTilingOptions()
-                                                     .setTileSizes(tile_sizes)
-                                                     .setLoopType(loopType));
-    return tiled_generic_op.hasValue();
+    return succeeded(linalg::tileLinalgOp(*b, op,
+                                          linalg::LinalgTilingOptions()
+                                              .setTileSizes(tile_sizes)
+                                              .setLoopType(loopType)));
   }
 };
 

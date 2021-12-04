@@ -256,9 +256,9 @@ py::handle ShardedDeviceArray::AsHandle() {
   });
   type.attr("size") = property_readonly([](ShardedDeviceArray::object self) {
     py::tuple shape = py::cast<py::tuple>(self.sda()->aval().attr("shape"));
-    int size = 1;
+    int64_t size = 1;
     for (auto dim : shape) {
-      size *= py::cast<int>(dim);
+      size *= py::cast<int64_t>(dim);
     }
     return size;
   });

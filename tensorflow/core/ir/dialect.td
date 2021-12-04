@@ -36,6 +36,36 @@ def TFGraphDialect : Dialect {
   let description = [{
     This dialect is modeling TensorFlow GraphDefs and intended to provide a high
     level of fidelity.
+
+    The attribute mappings from GraphDef are listed down below,
+
+    Graph/Function Attributes:
+    FunctionDef.attr will prepand with "tf" prefix
+    FunctionDef.signature.name <-> "sym_name"
+    FunctionDef.signature.description <-> "description"
+    FunctionDef.signature.is_stateful <-> "is_stateful"
+    FunctionDef.signature.gradient <-> "gradient"
+    FunctionDef.resource_arg_unique_id <-> "resource_arg_unique_ids_keys"
+    FunctionDef.resource_arg_unique_id <-> "resource_arg_unique_ids_values"
+
+    Input Attributes:
+    FunctionDef.signature.input_arg.name <-> "tfg.name"
+    FunctionDef.signature.input_arg.description <-> "tfg.description"
+    FunctionDef.signature.input_arg.handle_data <-> "tfg.handle_data"
+    FunctionDef.signature.input_arg.is_ref <-> "tfg.is_ref"
+    FunctionDef.arg_attr will prepand with "tf" prefix
+
+    Output Attributes:
+    FunctionDef.signature.output_arg.name <-> "tfg.name"
+    FunctionDef.signature.output_arg.description <-> "tfg.description"
+    FunctionDef.signature.output_arg.handle_data <-> "tfg.handle_data"
+    FunctionDef.signature.output_arg.type <-> "tfg.dtype"
+    FunctionDef.signature.control_output <-> "tfg.control_ret_name_"
+
+    Node Attributes:
+    NodeDef.device <-> "_mlir_device"
+    NodeDef.name <-> "_mlir_name"
+    NodeDef.attr <-> "_output_shape"
   }];
 
   let extraClassDeclaration = [{

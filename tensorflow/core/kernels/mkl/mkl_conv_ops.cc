@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -1173,7 +1173,8 @@ class MklConvOp : public OpKernel {
   // descriptor (data format)
   void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,
                       Tensor** filter_tensor,
-                      const MklDnnShape* filter_mkl_shape) {
+                      const MklDnnShape* filter_mkl_shape)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     DCHECK(filter_tensor);
     TensorShape filter_tf_shape;
     filter_tf_shape.AddDim(
@@ -1195,11 +1196,8 @@ class MklConvOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DT_UINT8, cached_filter_md_shape,
                                           &cached_filter_md_));
-    {
-      tf_shared_lock lock(mu_);
-      *reinterpret_cast<memory::desc*>(cached_filter_md_.flat<uint8>().data()) =
-          weights_desc;
-    }
+    *reinterpret_cast<memory::desc*>(cached_filter_md_.flat<uint8>().data()) =
+        weights_desc;
   }
 
   void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,
@@ -2135,6 +2133,14 @@ class MklFusedConv3DOp
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv3D must have one extra argument: bias."));
+    } else if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
+                   fused_ops.end() &&
+               std::find(fused_ops.begin(), fused_ops.end(), "Add") ==
+                   fused_ops.end()) {
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv3D must have two extra arguments: bias and add."));
     }
 
     if (fused_ops == std::vector<string>{"BiasAdd"}) {
@@ -2156,6 +2162,31 @@ class MklFusedConv3DOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, mkldnn::algorithm::eltwise_elu, 1.0);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_bounded_relu,
+                                6.0);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_elu, 1.0);
+    } else if (fused_ops ==
+               std::vector<string>{"BiasAdd", "Add", "LeakyRelu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      float leakyrelu_alpha;
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu,
+                                leakyrelu_alpha);
     } else {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",

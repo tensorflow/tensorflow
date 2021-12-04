@@ -115,6 +115,7 @@ build -c opt
 # Make Bazel print out all options from rc files.
 build --announce_rc
 
+# TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --define=grpc_no_ares=true
 
 # See https://github.com/bazelbuild/bazel/issues/7362 for information on what
@@ -131,18 +132,25 @@ build --define=grpc_no_ares=true
 # archives in -whole_archive -no_whole_archive.
 build --noincompatible_remove_legacy_whole_archive
 
+# TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --enable_platform_specific_config
 
 # Enable XLA support by default.
 build --define=with_xla_support=true
 
+# TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --config=short_logs
 
+# TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --config=v2
 
 # Disable AWS/HDFS support by default
 build --define=no_aws_support=true
 build --define=no_hdfs_support=true
+
+# TF now has `cc_shared_library` targets, so it needs the experimental flag
+# TODO(rostam): Remove when `cc_shared_library` is enabled by default
+build --experimental_cc_shared_library
 
 # Default options should come above this line.
 
@@ -586,6 +594,12 @@ build:release_cpu_linux --config=avx_linux
 build:release_cpu_linux --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
 test:release_cpu_linux --test_env=LD_LIBRARY_PATH
 
+# manylinux2014 config for cpu
+build:release_cpu_linux_manylinux2014 --config=release_base
+build:release_cpu_linux_manylinux2014 --config=avx_linux
+build:release_cpu_linux_manylinux2014 --crosstool_top="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+test:release_cpu_linux_manylinux2014 --test_env=LD_LIBRARY_PATH
+
 build:release_cpu_macos --config=release_base
 build:release_cpu_macos --config=avx_linux
 
@@ -607,6 +621,12 @@ build:release_gpu_linux_11_4 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-11.
 build:release_gpu_linux_11_4 --action_env=TF_CUDA_VERSION="11.4"
 build:release_gpu_linux_11_4 --action_env=TF_CUDNN_VERSION="8.2"
 build:release_gpu_linux_11_4 --crosstool_top=@ubuntu18.04-gcc7_manylinux2010-cuda11.4-cudnn8.2-tensorrt7.2_config_cuda//crosstool:toolchain
+
+# manylinux2014 config for gpu
+build:release_gpu_linux_manylinux2014 --config=release_gpu_linux
+build:release_gpu_linux_manylinux2014 --action_env=GCC_HOST_COMPILER_PATH="/dt8/usr/bin/gcc"
+build:release_gpu_linux_manylinux2014 --crosstool_top=@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
+
 
 build:release_cpu_windows --config=release_base
 build:release_cpu_windows --config=avx_win
@@ -650,7 +670,7 @@ build:ubsan --linkopt -fsanitize=undefined
 build:ubsan --linkopt -lubsan
 
 # Disable TFRT integration for now unless --config=tfrt is specified.
-build      --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/common,tensorflow/core/tfrt/eager,tensorflow/core/tfrt/eager/backends/cpu,tensorflow/core/tfrt/eager/backends/gpu,tensorflow/core/tfrt/eager/core_runtime,tensorflow/core/tfrt/eager/cpp_tests/core_runtime,tensorflow/core/tfrt/fallback,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils
+build      --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/common,tensorflow/core/tfrt/eager,tensorflow/core/tfrt/eager/backends/cpu,tensorflow/core/tfrt/eager/backends/gpu,tensorflow/core/tfrt/eager/core_runtime,tensorflow/core/tfrt/eager/cpp_tests/core_runtime,tensorflow/core/tfrt/fallback,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils
 build:tfrt --deleted_packages=
 
 # Experimental configuration for testing XLA GPU lowering to TFRT BEF thunks.

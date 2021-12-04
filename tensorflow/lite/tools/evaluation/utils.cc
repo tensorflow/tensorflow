@@ -168,7 +168,7 @@ TfLiteDelegatePtr CreateHexagonDelegate(
 }
 #endif
 
-#if defined(TFLITE_WITHOUT_XNNPACK)
+#if defined(__s390x__) || defined(TFLITE_WITHOUT_XNNPACK)
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
   return CreateNullDelegate();
 }

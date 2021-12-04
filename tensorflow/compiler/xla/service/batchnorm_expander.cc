@@ -188,8 +188,10 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       operand_shape,
       add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
   std::vector<int64_t> dimensions_without_feature;
+  const int64_t rank = operand_shape.rank();
+  dimensions_without_feature.reserve(rank - 1);
 
-  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -316,8 +318,10 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
       {}));
 
   std::vector<int64_t> dimensions_without_feature;
+  const int64_t rank = operand_shape.rank();
+  dimensions_without_feature.reserve(rank - 1);
 
-  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -435,8 +439,10 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       add(HloInstruction::CreateBroadcast(feature_shape, epsilon_scalar, {}));
 
   std::vector<int64_t> dimensions_without_feature;
+  const int64_t rank = activation_shape.rank();
+  dimensions_without_feature.reserve(rank - 1);
 
-  for (int64_t i = 0; i < activation_shape.rank(); ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -559,8 +565,8 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 StatusOr<bool> BatchNormExpander::Run(HloModule* module) {
   XLA_VLOG_LINES(2, "BatchNormExpander::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations()) {
-    if (BatchNormExpanderVisitor::Run(comp, rewrite_training_op_,
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    if (BatchNormExpanderVisitor::Run(computation, rewrite_training_op_,
                                       rewrite_inference_op_,
                                       rewrite_grad_op_)) {
       changed = true;

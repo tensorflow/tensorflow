@@ -127,14 +127,14 @@ REGISTER_OP("TypeInferenceOpBasicType")
     .SetForwardTypeFn(
         [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
                input_types) {
-          if (input_types[0].get().args(0).type_id() == TFT_TENSOR) {
-            return input_types[0].get();
+          FullTypeDef mock;
+          mock.set_type_id(TFT_PRODUCT);
+          if (input_types[0].get().type_id() == TFT_TENSOR) {
+            mock.add_args()->set_type_id(TFT_TENSOR);
           } else {
-            FullTypeDef mock;
-            mock.set_type_id(TFT_PRODUCT);
             mock.add_args()->set_type_id(TFT_ARRAY);
-            return mock;
           }
+          return mock;
         });
 
 TEST(NodeBuilderTest, FwdTypeInferenceBasicType) {

@@ -80,7 +80,7 @@ const int64_t EagerContext::kGlobalRendezvousId = -1;
 
 // Find the rendezvous instance corresponding to the step id, or create a
 // new instance if not existing.
-Rendezvous* EagerContext::LocalRendezvousTable::FindOrCreate(
+IntraProcessRendezvous* EagerContext::LocalRendezvousTable::FindOrCreate(
     int64_t step_id, DeviceMgr* device_mgr) {
   mutex_lock l(table_lock_);
   auto iter = table_.find(step_id);
@@ -92,6 +92,15 @@ Rendezvous* EagerContext::LocalRendezvousTable::FindOrCreate(
       return iter->second;
     }
   }
+  iter->second->Ref();
+  return iter->second;
+}
+
+IntraProcessRendezvous* EagerContext::LocalRendezvousTable::Find(
+    int64_t step_id) {
+  mutex_lock l(table_lock_);
+  auto iter = table_.find(step_id);
+  if (iter == table_.end()) return nullptr;
   iter->second->Ref();
   return iter->second;
 }
@@ -422,6 +431,16 @@ void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
             thread_local_executor_.erase(thread_id);
           }
           has_cleanup_[thread_id].erase(executor);
+          // Clears the global rendezvous after cleaning up the executor. This
+          // is needed when running in eager op as function mode because it
+          // re-uses the EagerContext's global_rendezvous_for_functions. The
+          // global rendezvous can end up in a bad state if any op ends in a
+          // bad state after execution.
+          if (!GetGlobalRendezvousForFunctionLocalRendezvousStatus().ok()) {
+            VLOG(6) << "global_rendezvous_for_functions_ is in bad state. "
+                       "Resetting.";
+            ResetGlobalRendezvousForFunction();
+          }
         }
       });
       executor->AddCleanup(reinterpret_cast<intptr_t>(this),
@@ -462,6 +481,7 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
     ContextDevicePlacementPolicy policy) {
   mutex_lock ml(policy_map_mu_);
+  VLOG(6) << "Setting device placement policy to: " << policy;
   device_placement_policy_[std::this_thread::get_id()] = policy;
 }
 
@@ -470,8 +490,10 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() const {
   auto policy_map_it =
       device_placement_policy_.find(std::this_thread::get_id());
   if (policy_map_it != device_placement_policy_.end()) {
+    VLOG(6) << "ContextDevicePlacementPolicy: " << policy_map_it->second;
     return policy_map_it->second;
   }
+  VLOG(6) << "ContextDevicePlacementPolicy not found; returning default.";
   return default_device_placement_policy_;
 }
 
@@ -624,6 +646,21 @@ EagerContext::~EagerContext() {
   keep_alive_thread_.reset();
   if (!remote_contexts_.empty()) {
     CloseAndClearAllRemoteContexts();
+  }
+
+  // Clean up all the rendezvous instances created via EagerContext.
+  // Currently there are 3 cases in which a rendezvous instances is created:
+  // (1). Created through a rendezvous_creator passed to EagerContext.
+  // (2). Created through rendezvous_mgr.
+  // (3). Created within EagerContext using LocalRendezvousTable.
+  //
+  // Currently case-(3) is taken care of automatically when an EagerContext
+  // instance is deleted. The following code takes care of case-(2). Case-(1)
+  // is tricky as EagerContext does not have a way to access those rendezvous
+  // instances.
+  // TODO (tfrt-dev): Take care of case-(1) mentioned above.
+  if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
+    worker_env_->rendezvous_mgr->CleanupAll();
   }
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -927,6 +964,7 @@ Status EagerContext::RemoveFunction(const string& func) {
 }
 
 Status EagerContext::SyncExecutors() {
+  VLOG(6) << "Calling SyncExecutors";
   StatusGroup sg;
   // Synchronize on context default executor
   sg.Update(default_executor_.WaitForAllPendingNodes());
@@ -1118,6 +1156,26 @@ void EagerContext::ClearResourceContainer(const string& name) {
   }
 }
 
+Status EagerContext::GetGlobalRendezvousForFunctionLocalRendezvousStatus() {
+  mutex_lock l(global_rendezvous_mu_);
+  IntraProcessRendezvous* rendezvous =
+      local_rendezvous_table_->Find(kGlobalRendezvousId);
+  if (rendezvous == nullptr) return Status::OK();
+  Status s = rendezvous->GetLocalRendezvousStatus();
+  rendezvous->Unref();
+  return s;
+}
+
+void EagerContext::UpdateGlobalRendezvousDeviceManager(
+    tensorflow::DeviceMgr* device_mgr) {
+  mutex_lock l(global_rendezvous_mu_);
+  IntraProcessRendezvous* rendezvous =
+      local_rendezvous_table_->Find(kGlobalRendezvousId);
+  if (rendezvous == nullptr) return;
+  rendezvous->UpdateDeviceManager(device_mgr);
+  rendezvous->Unref();
+}
+
 namespace {
 Status GetTaskName(Device* d, string* task_name) {
   string ignored;
@@ -1218,6 +1276,7 @@ Status EagerContext::StoreCollectiveOpsServer(
           std::move(local_device_manager_.owned_object));
     }
     local_device_manager_.Reset(device_mgr);
+    UpdateGlobalRendezvousDeviceManager(local_device_manager_.Get());
     if (rendezvous_ != nullptr) rendezvous_->Unref();
     rendezvous_ = CreateRendezvous(-1);
   }
@@ -1462,6 +1521,7 @@ Status EagerContext::SetMasterContextState(
           std::move(local_device_manager_.owned_object));
     }
     local_device_manager_.Reset(local_device_mgr);
+    UpdateGlobalRendezvousDeviceManager(local_device_manager_.Get());
   }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 

@@ -63,6 +63,7 @@ bool ComputationLayout::LayoutIsSet() const {
 
 string ComputationLayout::ToString() const {
   std::vector<string> params;
+  params.reserve(parameter_layouts_.size());
   for (auto& param_layout : parameter_layouts_) {
     params.push_back(param_layout.ToString());
   }

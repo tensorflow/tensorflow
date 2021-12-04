@@ -434,6 +434,22 @@ FunctionDef ReadResourceVariable() {
       {{"y", "read:value:0"}});
 }
 
+FunctionDef ControlFlow() {
+  return FDH::Create(
+      // Name
+      "ControlFlow",
+      // Args
+      {"i: float"},
+      // Return values
+      {"o: float"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"enter"}, "Enter", {"i"}, {{"T", DT_FLOAT}, {"frame_name", "while"}}}},
+      // Output mapping
+      {{"o", "enter:output"}});
+}
+
 FunctionDef InvalidControlFlow() {
   return FDH::Create(
       // Name

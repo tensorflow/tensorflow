@@ -219,11 +219,20 @@ class ScopedCublasMathMode {
 };
 #endif  // CUDA_VERSION >= 9000
 
+static const char *const kCublasNotInitializedExplanation =
+    "Failure to initialize cublas may be due to OOM (cublas needs some free "
+    "memory when you initialize it, and your deep-learning framework may have "
+    "preallocated more than its fair share), or may be because this binary was "
+    "not built with support for the GPU in your machine.";
+
 bool CUDABlas::Init() {
   gpu::ScopedActivateExecutorContext sac{parent_};
   cublasStatus_t ret = cublasCreate(&blas_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublas handle: " << ToString(ret);
+    if (ret == CUBLAS_STATUS_NOT_INITIALIZED) {
+      LOG(ERROR) << kCublasNotInitializedExplanation;
+    }
     return false;
   }
 
@@ -231,6 +240,9 @@ bool CUDABlas::Init() {
   ret = cublasLtCreate(&blasLt_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublasLt handle: " << ToString(ret);
+    if (ret == CUBLAS_STATUS_NOT_INITIALIZED) {
+      LOG(ERROR) << kCublasNotInitializedExplanation;
+    }
     return false;
   }
 #endif  // CUDA_VERSION >= 11000

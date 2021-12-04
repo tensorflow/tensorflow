@@ -1,5 +1,5 @@
 // RUN: tf-tfrt-opt %s                                                         \
-// RUN:   -tf-cpurt-test-clustering="min-cluster-size=2" -verify-diagnostics   \
+// RUN:   -tf-cpurt-test-clustering="min-cluster-size=1" -verify-diagnostics   \
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: func @no_clusters
@@ -83,21 +83,23 @@ func @single_cluster_from_independent_ops(%arg0 : tensor<i32>)
 // CHECK-LABEL: func @single_cluster_from_independent_ops_and_unsupported_op_breaks_cluster
 func @single_cluster_from_independent_ops_and_unsupported_op_breaks_cluster(
     %arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i32>, tensor<i32>) {
-  // CHECK: %[[CLUSTER:.*]]:2 = "tf_device.cluster"()
-  // CHECK: %[[ADD:.*]] = "tf.Add"(%arg0, %arg1)
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  // CHECK: %[[NEG0:.*]] = "tf.Neg"(%[[ADD]])
-  %1 = "tf.Neg"(%0) : (tensor<i32>) -> tensor<i32>
-  // CHECK: %[[SUB:.*]] = "tf.Sub"(%arg0, %arg1)
-  %2 = "tf.Sub"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  // CHECK: %[[NEG1:.*]] = "tf.Neg"(%[[SUB]])
-  %3 = "tf.Neg"(%2) : (tensor<i32>) -> tensor<i32>
+  // CHECK: %[[CLUSTER0:.*]]:2 = "tf_device.cluster"()
+  // CHECK:   %[[ADD:.*]] = "tf.Add"(%arg0, %arg1)
+  // CHECK:   %[[NEG0:.*]] = "tf.Neg"(%[[ADD]])
+  // CHECK:   %[[SUB:.*]] = "tf.Sub"(%arg0, %arg1)
+  // CHECK:   %[[NEG1:.*]] = "tf.Neg"(%[[SUB]])
   // CHECK:   tf_device.return %[[NEG0]], %[[NEG1]]
-  // CHECK: %[[UNS:.*]] = "tf.Unsupported"(%[[CLUSTER]]#0, %[[CLUSTER]]#1)
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %1 = "tf.Neg"(%0) : (tensor<i32>) -> tensor<i32>
+  %2 = "tf.Sub"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %3 = "tf.Neg"(%2) : (tensor<i32>) -> tensor<i32>
+  // CHECK: %[[UNS:.*]] = "tf.Unsupported"(%[[CLUSTER0]]#0, %[[CLUSTER0]]#1)
   %4 = "tf.Unsupported"(%1, %3) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  // CHECK: %[[NEG3:.*]] = "tf.Neg"(%[[UNS]])
+  // CHECK: %[[CLUSTER1:.*]] = "tf_device.cluster"()
+  // CHECK:   %[[NEG3:.*]] = "tf.Neg"(%[[UNS]])
+  // CHECK:   tf_device.return %[[NEG3]]
   %5 = "tf.Neg"(%4) : (tensor<i32>) -> tensor<i32>
-  // CHECK: return %[[CLUSTER]]#0, %[[NEG3]]
+  // CHECK: return %[[CLUSTER0]]#0, %[[CLUSTER1]]
   return %1, %5 : tensor<i32>, tensor<i32>
 }
 
@@ -144,18 +146,30 @@ func @transpose_in_two_clusters(%arg0 : tensor<?x?xf32>,
   return %2, %5 : tensor<?x?xf32>, tensor<?x?xf32>
 }
 
-func @cluster_i1_arguments(%arg0 : tensor<?xi1>, %arg1 : tensor<?xi1>,
-                           %arg2 : tensor<?xf32>, %arg3 : tensor<?xf32>)
+// CHECK-LABEL: func @do_not_cluster_i1_arguments
+func @do_not_cluster_i1_arguments(%arg0 : tensor<?xi1>, %arg1 : tensor<?xi1>,
+                                  %arg2 : tensor<?xf32>, %arg3 : tensor<?xf32>)
     -> tensor<?xf32> {
-  // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
-  // CHECK:                 "tf.LogicalOr"
-  // CHECK:   %[[RET:.*]] = "tf.Select"
-  // CHECK:   tf_device.return %[[RET]]
+  // CHECK-NOT: tf_device.cluster
   %0 = "tf.LogicalOr"(%arg0, %arg1)
         : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
   %1 = "tf.Select"(%0, %arg2, %arg3)
         : (tensor<?xi1>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  // CHECK: })
-  // CHECK: return %[[CLUSTER]]
   return %1 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @do_not_cluster_i1_in_the_body
+func @do_not_cluster_i1_in_the_body(%arg0 : tensor<?xf32>,
+                                    %arg1 : tensor<?xf32>)
+    -> tensor<?xi1> {
+  // CHECK-NOT: tf_device.cluster
+  %0 = "tf.Less"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xi1>
+  return %0 : tensor<?xi1>
+}
+
+// CHECK-LABEL: func @do_not_cluster_ui64_arguments
+func @do_not_cluster_ui64_arguments(%arg0: tensor<?xui64>) -> tensor<?xi64> {
+  // CHECK-NOT: tf_device.cluster
+  %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<?xui64>) -> tensor<?xi64>
+  tf_device.return %0 : tensor<?xi64>
 }

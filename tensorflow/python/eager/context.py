@@ -476,6 +476,7 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
+    self._operation_timeout_in_ms = None
     self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
@@ -715,7 +716,8 @@ class Context(object):
                                      service_leader="",
                                      enable_health_check=True,
                                      cluster_register_timeout_in_ms=0,
-                                     heartbeat_timeout_in_ms=0):
+                                     heartbeat_timeout_in_ms=0,
+                                     coordinated_jobs=None):
     """Enable distributed coordination service with specified configs."""
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
@@ -727,6 +729,12 @@ class Context(object):
     config.enable_health_check = enable_health_check
     config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
+    if coordinated_jobs is not None:
+      if isinstance(coordinated_jobs, list):
+        config.coordinated_jobs.extend(coordinated_jobs)
+      else:
+        raise ValueError("`coordinated_jobs` must be a list of job names or "
+                         "None, but got: %s" % (coordinated_jobs,))
     self._coordination_service_config = config
 
   @property
@@ -1053,6 +1061,9 @@ class Context(object):
 
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
+
+    if self._operation_timeout_in_ms is not None:
+      config.operation_timeout_in_ms = self._operation_timeout_in_ms
 
     is_mlir_bridge_enabled = pywrap_tfe.TF_IsMlirBridgeEnabled()
     config.experimental.mlir_bridge_rollout = is_mlir_bridge_enabled
@@ -1861,6 +1872,21 @@ class Context(object):
         raise ValueError("use_tfrt should be set before being initialized.")
       self._use_tfrt_distributed_runtime = enable
 
+  @property
+  def operation_timeout_in_ms(self):
+    return self.config.operation_timeout_in_ms
+
+  @operation_timeout_in_ms.setter
+  def operation_timeout_in_ms(self, timeout_in_ms):
+    if self._operation_timeout_in_ms == timeout_in_ms:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Operation timeout cannot be modified after initialization.")
+
+    self._operation_timeout_in_ms = timeout_in_ms
+
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
 
@@ -2011,6 +2037,14 @@ def _reset_context():
       _context = None
   _create_context()
   _device_parsing_cache = {}
+
+
+def _reset_mlir_flags():
+  """Clears and re-initializes the flags used by MLIR.
+
+  Should only be used for testing.
+  """
+  pywrap_tfe.TF_ResetMlirFlags()
 
 
 def context():

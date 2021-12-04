@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/op_context.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -1544,7 +1545,14 @@ int64_t OpLevelCostEstimator::CalculateTensorElementCount(
   auto tensor_shape =
       MaybeGetMinimumShape(tensor.shape(), num_dims, found_unknown_shapes);
   for (const auto& dim : tensor_shape.dim()) {
-    tensor_size *= dim.size();
+    int64_t new_tensor_size = MultiplyWithoutOverflow(tensor_size, dim.size());
+    if (new_tensor_size < 0) {
+      VLOG(1) << "Overflow encountered when computing element count of a "
+                 "tensor, multiplying "
+              << tensor_size << " with " << dim.size();
+      return -1;
+    }
+    tensor_size = new_tensor_size;
   }
   return tensor_size;
 }
@@ -1554,7 +1562,13 @@ int64_t OpLevelCostEstimator::CalculateTensorSize(
   int64_t count = CalculateTensorElementCount(tensor, found_unknown_shapes);
   int size = DataTypeSize(BaseType(tensor.dtype()));
   VLOG(2) << "Count: " << count << " DataTypeSize: " << size;
-  return count * size;
+  int64_t tensor_size = MultiplyWithoutOverflow(count, size);
+  if (tensor_size < 0) {
+    VLOG(1) << "Overflow encountered when computing tensor size, multiplying "
+            << count << " with " << size;
+    return -1;
+  }
+  return tensor_size;
 }
 
 int64_t OpLevelCostEstimator::CalculateInputSize(const OpInfo& op_info,
@@ -1607,7 +1621,14 @@ int64_t OpLevelCostEstimator::CalculateOutputSize(const OpInfo& op_info,
     auto output_shape = MaybeGetMinimumShape(original_output_shape, num_dims,
                                              found_unknown_shapes);
     for (const auto& dim : output_shape.dim()) {
-      output_size *= dim.size();
+      int64_t new_output_size =
+          MultiplyWithoutOverflow(output_size, dim.size());
+      if (new_output_size < 0) {
+        VLOG(1) << "Overflow encountered when estimating cost, multiplying "
+                << output_size << " with " << dim.size();
+        return -1;
+      }
+      output_size = new_output_size;
     }
     total_output_size += output_size;
     VLOG(1) << "Output Size: " << output_size
@@ -2132,7 +2153,7 @@ OpInfo::TensorProperties OpLevelCostEstimator::DescribeTensor(
 }
 
 /* static */
-OpLevelCostEstimator::ConvolutionDimensions
+StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
 OpLevelCostEstimator::OpDimensionsFromInputs(
     const TensorShapeProto& original_image_shape, const OpInfo& op_info,
     bool* found_unknown_shapes) {
@@ -2169,6 +2190,11 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
   std::vector<int64_t> strides = GetStrides(op_info);
   int64_t sx = strides[x_index];
   int64_t sy = strides[y_index];
+  if (sx == 0 || sy == 0) {
+    return errors::InvalidArgument(
+        "Stride must be > 0 for Height and Width, but got (", sy, ", ", sx,
+        ")");
+  }
   const auto padding = GetPadding(op_info);
 
   int64_t ox = GetOutputSize(ix, kx, sx, padding);
@@ -2185,8 +2211,9 @@ Status OpLevelCostEstimator::PredictMaxPool(const OpContext& op_context,
   bool found_unknown_shapes = false;
   const auto& op_info = op_context.op_info;
   // x: op_info.inputs(0)
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(0).shape(), op_info,
+                                             &found_unknown_shapes));
   // kx * ky - 1 comparisons per output (kx * xy > 1)
   // or 1 copy per output (kx * k1 = 1).
   int per_output_ops = dims.kx * dims.ky == 1 ? 1 : dims.kx * dims.ky - 1;
@@ -2227,8 +2254,9 @@ Status OpLevelCostEstimator::PredictMaxPoolGrad(const OpContext& op_context,
                                    op_info.ShortDebugString());
   }
 
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(0).shape(), op_info,
+                                             &found_unknown_shapes));
 
   int64_t ops = 0;
   if (dims.kx == 1 && dims.ky == 1) {
@@ -2303,8 +2331,9 @@ Status OpLevelCostEstimator::PredictAvgPool(const OpContext& op_context,
   bool found_unknown_shapes = false;
   const auto& op_info = op_context.op_info;
   // x: op_info.inputs(0)
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(0).shape(), op_info,
+                                             &found_unknown_shapes));
 
   // kx * ky - 1 additions and 1 multiplication per output.
   int64_t ops = dims.batch * dims.ox * dims.oy * dims.oz * dims.kx * dims.ky;
@@ -2361,8 +2390,9 @@ Status OpLevelCostEstimator::PredictAvgPoolGrad(const OpContext& op_context,
     found_unknown_shapes = true;
   }
 
-  ConvolutionDimensions dims =
-      OpDimensionsFromInputs(x_shape, op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(
+      ConvolutionDimensions dims,
+      OpDimensionsFromInputs(x_shape, op_info, &found_unknown_shapes));
 
   int64_t ops = 0;
   if (dims.kx <= dims.sx && dims.ky <= dims.sy) {
@@ -2388,8 +2418,9 @@ Status OpLevelCostEstimator::PredictFusedBatchNorm(
   // offset: op_info.inputs(2)
   // mean: op_info.inputs(3)  --> only for inference
   // variance: op_info.inputs(4) --> only for inference
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(0).shape(), op_info,
+                                             &found_unknown_shapes));
   const bool is_training = IsTraining(op_info);
 
   int64_t ops = 0;
@@ -2438,8 +2469,9 @@ Status OpLevelCostEstimator::PredictFusedBatchNormGrad(
   // scale: op_info.inputs(2)
   // mean: op_info.inputs(3)
   // variance or inverse of variance: op_info.inputs(4)
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(1).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(1).shape(), op_info,
+                                             &found_unknown_shapes));
 
   int64_t ops = 0;
   const auto rsqrt_cost = Eigen::internal::functor_traits<
@@ -2660,27 +2692,42 @@ Status OpLevelCostEstimator::PredictCropAndResize(const OpContext& op_context,
   // calculation differs from rough estimate in implementation, as it separates
   // out cost per box from cost per pixel and cost per element.
 
+  // Since crop arguments are user controlled, check for overflow.
+  int64_t crop_area = MultiplyWithoutOverflow(crop_height, crop_width);
+  if (crop_area < 0)
+    return errors::InvalidArgument("Cannot estimate cost, multiplying ",
+                                   crop_height, " with ", crop_width,
+                                   " would overflow");
+  int64_t crop_volume = MultiplyWithoutOverflow(crop_area, num_boxes);
+  if (crop_volume < 0)
+    return errors::InvalidArgument("Cannot estimate cost, multiplying ",
+                                   crop_area, " with ", num_boxes,
+                                   " would overflow");
+  int64_t crop_depth = MultiplyWithoutOverflow(crop_height, num_boxes);
+  if (crop_depth < 0)
+    return errors::InvalidArgument("Cannot estimate cost, multiplying ",
+                                   crop_height, " with ", num_boxes,
+                                   " would overflow");
+
   // Ops for variables height_scale and width_scale.
   int64_t ops = (sub_cost * 6 + mul_cost * 2 + div_cost * 2) * num_boxes;
   // Ops for variable in_y.
-  ops += (mul_cost * 2 + sub_cost + add_cost) * crop_height * num_boxes;
+  ops += (mul_cost * 2 + sub_cost + add_cost) * crop_depth;
   // Ops for variable in_x (same computation across both branches).
-  ops += (mul_cost * 2 + sub_cost + add_cost) * crop_height * crop_width *
-         num_boxes;
+  ops += (mul_cost * 2 + sub_cost + add_cost) * crop_volume;
   // Specify op_cost based on the method.
   if (use_bilinear_interp) {
     // Ops for variables top_y_index, bottom_y_index, y_lerp.
-    ops += (floor_cost + ceil_cost + sub_cost) * crop_height * num_boxes;
+    ops += (floor_cost + ceil_cost + sub_cost) * crop_depth;
     // Ops for variables left_x, right_x, x_lerp;
-    ops += (floor_cost + ceil_cost + sub_cost) * crop_height * crop_width *
-           num_boxes;
+    ops += (floor_cost + ceil_cost + sub_cost) * crop_volume;
     // Ops for innermost loop across depth.
     ops +=
         (cast_to_float_cost * 4 + add_cost * 3 + sub_cost * 3 + mul_cost * 3) *
         output_elements;
   } else /* method == "nearest" */ {
     // Ops for variables closest_x_index and closest_y_index.
-    ops += round_cost * 2 * crop_height * crop_width * num_boxes;
+    ops += round_cost * 2 * crop_volume;
     // Ops for innermost loop across depth.
     ops += cast_to_float_cost * output_elements;
   }

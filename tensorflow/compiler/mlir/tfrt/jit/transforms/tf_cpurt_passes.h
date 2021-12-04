@@ -35,26 +35,29 @@ std::unique_ptr<mlir::FunctionPass> CreateLinalgTrivialBufferForwardingPass();
 // Pass for trivial copy removal of linalg.copy operations.
 std::unique_ptr<mlir::FunctionPass> CreateLinalgTrivialCopyRemovalPass();
 
-// Pass to tile, promote and vectorize linalg.matmul on buffers.
-std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForMatMulPass();
-
 // Pass to optimize padding in tiled loops by peeling the final loop iteration.
 std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass();
 
 // Pass to tile and fuse linalg.generic on tensors that models reduction.
 std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass();
 
+// Pass to replace 'i1' tensor types with 'i8' tensor types. This pass is a
+// temporary workaround to avoid the problem of vectorizing 'i1' tensors (see
+// b/205714705).
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateCpuRtLegalizeI1TypesPass();
+
 // Pass to pad linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreatePadTiledOpsPass();
+
+// Pass to sink unused outputs of `tiled_loop` into the loop body.
+std::unique_ptr<mlir::FunctionPass> CreateSinkUnusedOutputs();
 
 // Pass to vectorize linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass();
 
 // Pass to tile elementwise ops on tensors.
 std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForCWisePass();
-
-// Pass to specialize linalg.matmul to dot, matvec or vecmat.
-std::unique_ptr<mlir::FunctionPass> CreateLinalgMatmulSpecializationPass();
 
 // Pass to split _Fused Tensorflow kernels into primitives.
 std::unique_ptr<mlir::FunctionPass> CreateFissionPass();
@@ -66,11 +69,18 @@ std::unique_ptr<mlir::FunctionPass> CreateFusionPass();
 std::unique_ptr<mlir::FunctionPass> CreateSymbolicShapeOptimizationPass(
     bool constraints_only = false);
 
+// Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
+std::unique_ptr<mlir::FunctionPass> CreateDetensorizeLinalgPass();
+
 // Creates `tf_device.cluster` operations according to the TF CPURT clustering
 // policy.
 std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass();
 std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass(
     llvm::ArrayRef<std::string> oplist, int min_cluster_size);
+
+// Pass to replace math ops with approximations.
+std::unique_ptr<mlir::FunctionPass> CreateMathApproximationPass(
+    llvm::ArrayRef<std::string> oplist = {});
 
 // Returns true if the `value` type is a memref that is contiguous in memory.
 bool IsContiguousMemref(mlir::Value value);

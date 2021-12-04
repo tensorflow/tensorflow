@@ -98,7 +98,6 @@ void BatchMatMulToEinsumPass::runOnFunction() {
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
-PassRegistration<BatchMatMulToEinsumPass> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass() {

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
@@ -52,6 +53,67 @@ limitations under the License.
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
+namespace {
+
+using TensorTypeAndShape = XlaCompilationCache::Signature::TensorTypeAndShape;
+
+// Functor that converts a Signature's arg to a human readable string.
+struct SignatureHumanStringAppender {
+  explicit SignatureHumanStringAppender(string* dest) : dest(dest) {}
+  string* dest;
+  void operator()(const Tensor& arg) {
+    absl::StrAppend(dest, "; ", arg.DebugString());
+  }
+  void operator()(const TensorTypeAndShape& arg) {
+    absl::StrAppend(dest, ",", DataTypeString(arg.first));
+    absl::StrAppend(dest, " [", absl::StrJoin(arg.second, ","), "]");
+  }
+};
+
+// Functor that compares the arg values of two different signatures. Returns
+// true when the args are not equal.
+struct SignatureNotEqual {
+  bool operator()(const Tensor& arg, const Tensor& other) {
+    return arg.dtype() != other.dtype() || arg.shape() != other.shape() ||
+           arg.tensor_data() != other.tensor_data();
+  }
+  bool operator()(const TensorTypeAndShape& arg,
+                  const TensorTypeAndShape& other) {
+    return arg.first != other.first || arg.second != other.second;
+  }
+  bool operator()(const Tensor& arg, const TensorTypeAndShape& other) {
+    return true;
+  }
+  bool operator()(const TensorTypeAndShape& arg, const Tensor& other) {
+    return true;
+  }
+};
+
+// Functor that incrementally computes a Signature's hash given its current hash
+// and one of its args.
+struct SignatureHashCombiner {
+  explicit SignatureHashCombiner(const uint64 h) : h(h) {}
+  uint64 h;
+  uint64 operator()(const Tensor& arg) {
+    h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.dtype())));
+    h = Hash64Combine(
+        h, Hash64(arg.tensor_data().data(), arg.tensor_data().size()));
+    for (int dim = 0; dim < arg.dims(); ++dim) {
+      h = Hash64Combine(h, std::hash<int>()(arg.dim_size(dim)));
+    }
+    return h;
+  }
+  uint64 operator()(const TensorTypeAndShape& arg) {
+    h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.first)));
+    h = Hash64Combine(h, std::hash<int>()(arg.second.size()));
+    for (int dim : arg.second) {
+      h = Hash64Combine(h, std::hash<int>()(dim));
+    }
+    return h;
+  }
+};
+
+}  // namespace
 
 constexpr int64_t XlaCompilationCache::kDefaultCompilationThreshold;
 constexpr int64_t
@@ -95,26 +157,17 @@ string XlaCompilationCache::DebugString() const {
 // arguments in the supplied list.
 string XlaCompilationCache::Signature::HumanString() const {
   string result = name;
-  for (const auto& a : arg_shapes) {
-    absl::StrAppend(&result, ",", DataTypeString(a.first));
-    absl::StrAppend(&result, " [", absl::StrJoin(a.second, ","), "]");
-  }
-
-  for (const auto& v : arg_values) {
-    absl::StrAppend(&result, "; ", v.DebugString());
+  for (const auto& a : args) {
+    absl::visit(SignatureHumanStringAppender(&result), a);
   }
   return result;
 }
 
 bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
   if (name != other.name) return false;
-  if (arg_shapes != other.arg_shapes) return false;
-
-  if (arg_values.size() != other.arg_values.size()) return false;
-  for (int i = 0, end = arg_values.size(); i < end; ++i) {
-    if (arg_values[i].dtype() != other.arg_values[i].dtype() ||
-        arg_values[i].shape() != other.arg_values[i].shape() ||
-        arg_values[i].tensor_data() != other.arg_values[i].tensor_data()) {
+  if (args.size() != other.args.size()) return false;
+  for (int i = 0, end = args.size(); i < end; ++i) {
+    if (absl::visit(SignatureNotEqual(), args[i], other.args[i])) {
       return false;
     }
   }
@@ -124,16 +177,8 @@ bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
 uint64 XlaCompilationCache::Signature::Hash::operator()(
     const XlaCompilationCache::Signature& signature) const {
   uint64 h = std::hash<string>()(signature.name);
-  for (const auto& arg : signature.arg_shapes) {
-    h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.first)));
-    h = Hash64Combine(h, std::hash<int>()(arg.second.size()));
-    for (int dim : arg.second) {
-      h = Hash64Combine(h, std::hash<int>()(dim));
-    }
-  }
-  for (const auto& arg : signature.arg_values) {
-    h = Hash64Combine(
-        h, Hash64(arg.tensor_data().data(), arg.tensor_data().size()));
+  for (const auto& arg : signature.args) {
+    h = absl::visit(SignatureHashCombiner(h), arg);
   }
   return h;
 }
@@ -148,12 +193,12 @@ StatusOr<XlaCompilationCache::Signature> XlaCompilationCache::BuildSignature(
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
       case XlaCompiler::Argument::kConstantResource:
-        signature.arg_values.push_back(arg.constant_value);
+        signature.args.push_back(arg.constant_value);
         break;
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kResource:
-        signature.arg_shapes.emplace_back(arg.type,
-                                          arg.DimensionSizesAsInlinedVector());
+        signature.args.push_back(
+            TensorTypeAndShape(arg.type, arg.DimensionSizesAsInlinedVector()));
         break;
       default:
         return errors::InvalidArgument(
@@ -176,8 +221,8 @@ Status XlaCompilationCache::BuildExecutable(
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
-  if (result.collective_reduce_info) {
-    build_options.set_num_replicas(result.collective_reduce_info->group_size);
+  if (result.collective_info) {
+    build_options.set_num_replicas(result.collective_info->group_size);
   }
   build_options.set_device_ordinal(options.device_ordinal != -1
                                        ? options.device_ordinal
@@ -226,10 +271,8 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
   // _Arg nodes, and let CompileGraph walk it. This could be optimized.
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
-  Status status;
   // First create the actual node we care about computing.
-  Node* main_node = graph->AddNode(node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * main_node, graph->AddNode(node_def));
 
   // Create dummy _Arg nodes. Link these to `node` and also via a control
   // dependency edge to the _SOURCE node.

@@ -374,7 +374,9 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   }
 
   std::vector<string> nodes_to_preserve;
-  for (const auto& n : item.NodesToPreserve()) {
+  const auto& old_nodes_to_preserve = item.NodesToPreserve();
+  nodes_to_preserve.reserve(old_nodes_to_preserve.size());
+  for (const auto& n : old_nodes_to_preserve) {
     auto tokens = str_util::Split(n, ":");
     string s = tokens.at(0);
     for (int i = 1; i < tokens.size() - 1; ++i) {
@@ -392,7 +394,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
 
   ConversionParams cp;
   cp.grappler_item = &item;
-  cp.output_names = &nodes_to_preserve;
+  cp.input_output_names = &nodes_to_preserve;
   cp.trt_logger_name = trt_logger_name_;
   cp.max_batch_size = maximum_batch_size_;
   cp.max_workspace_size_bytes = max_workspace_size_bytes_;

@@ -28,14 +28,28 @@ namespace tensorflow {
 // enabled for all models. We'll be introducing new tiers based on the
 // completeness of lowering and testing, and eventually will remove this flag.
 enum class CpurtClusteringTier : uint8_t {
+  kCwise = 0x1,
+  kTranspose = 0x2,
+  kMetadata = 0x4,    // shape, reshape, ...
+  kReductions = 0x8,  // all, any, min, max, mean, prod, sum
+
+  // Only cwise operations (unary, binary, ternary).
+  kTier0 = kCwise,
+
   // All cwise operations (unary, binary, ternary) plus a tf.Transpose.
-  kTier1 = 0,
+  kTier1 = kCwise | kTranspose,
+
+  // All tier 1 operations plus metadata operations (shape, reshape).
+  kTier1Metadata = kTier1 | kMetadata,
+
+  // All tier 1 operations plus reductions.
+  kTier1Reductions = kTier1 | kReductions,
 
   // TODO(ezhulenev): Include metadata (shape, reshape) and slicing into tier 2?
   // TODO(ezhulenev): Include reductions into tier 3?
 
   // All operations that do have clustering policy.
-  kAll = 1
+  kAll = 0xff
 };
 
 // Adds policies for clustering operations for TF->CPURT JIT compilation.

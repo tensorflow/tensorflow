@@ -2117,6 +2117,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   // Virtually pull the transpose into the dot. Now the dot is equivalent to
   // a new dot with "permuted" lhs contracting dims.
   std::vector<int64_t> permutation;
+  permutation.reserve(lhs_contracting_dims.size());
   for (auto dim : lhs_contracting_dims) {
     permutation.push_back(transpose_dims[dim] - lhs_contracting_dims[0]);
   }
@@ -3076,6 +3077,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // Merge two consecutive broadcasts into a single one.
   if (operand->opcode() == HloOpcode::kBroadcast) {
     std::vector<int64_t> new_dimensions;
+    new_dimensions.reserve(operand->dimensions().size());
     for (auto dim : operand->dimensions()) {
       new_dimensions.push_back(dims[dim]);
     }
@@ -4719,6 +4721,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
        }))) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64_t> new_reduce_dimensions;
+    new_reduce_dimensions.reserve(dimensions.size());
     for (auto dim : dimensions) {
       new_reduce_dimensions.push_back(transpose_dimensions[dim]);
     }
@@ -5517,8 +5520,11 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
             std::vector<int64_t> start_indices;
             std::vector<int64_t> end_indices;
             std::vector<int64_t> strides;
-            for (int64_t dim = 0; dim < reshape_operand->shape().rank();
-                 dim++) {
+            const auto rank = reshape_operand->shape().rank();
+            start_indices.reserve(rank);
+            end_indices.reserve(rank);
+            strides.reserve(rank);
+            for (int64_t dim = 0; dim < rank; dim++) {
               if (dim == split_dim) {
                 start_indices.push_back(i * chunk_size);
                 end_indices.push_back(i * chunk_size + chunk_size);
@@ -5877,6 +5883,10 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     return false;
   }
 
+  if (convolution->feature_group_count() != 1 ||
+      convolution->batch_group_count() != 1) {
+    return false;
+  }
   auto add_bitcast = [&](Shape shape, HloInstruction* operand) {
     std::vector<int64_t> dims(operand->shape().dimensions_size());
     std::iota(dims.begin(), dims.end(), 0);

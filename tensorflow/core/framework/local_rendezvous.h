@@ -39,7 +39,8 @@ class LocalRendezvous {
   // Rendezvous), pass in its pointer in constructor so the LocalRendezvous
   // can make sure it outlives the async recv requests.
   // Pass in nullptr if the wrapping class is not refcounted.
-  explicit LocalRendezvous(Rendezvous* owner) : rc_owner_(owner) {}
+  explicit LocalRendezvous(Rendezvous* owner)
+      : rc_owner_(owner), pending_callback_counter_(0) {}
   ~LocalRendezvous();
 
   Status Send(const Rendezvous::ParsedKey& key,
@@ -49,6 +50,7 @@ class LocalRendezvous {
                  const Rendezvous::Args& recv_args,
                  Rendezvous::DoneCallback done);
   void StartAbort(const Status& status);
+  Status status();
 
  private:
   struct Item;
@@ -73,6 +75,9 @@ class LocalRendezvous {
   mutex mu_;
   Table table_ TF_GUARDED_BY(mu_);
   Status status_ TF_GUARDED_BY(mu_);
+  // Track the number of pening callbacks using a counter.
+  int pending_callback_counter_ TF_GUARDED_BY(mu_);
+  condition_variable pending_callback_cond_var_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvous);
 };

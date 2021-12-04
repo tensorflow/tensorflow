@@ -54,14 +54,18 @@ def FallbackCompileOp : TF_CPURT_Op<"fallback.compile",
     [TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "compiles kernel at runtime using LLVM JIT compiler";
   let description = [{
-    `tf_cpurt.fallback.compile` compiles a Tensorflow program defined by the
-    kernel function in the nested module to the CPURT JIT executable using
-    LLVM JIT APIs and caches it in the JitExecutableCache owned by the
-    resource context.
+    `tf_cpurt.fallback.compile` schedules the compilation of a Tensorflow
+    program defined by the kernel function in the nested module to the CPURT JIT
+    executable using LLVM JIT APIs and caches it in the JitExecutableCache owned
+    by the resource context.
+
+    Compilation happens asynchronously by launching compilation task into the
+    dedicated thread pool, and the kernel returns an available chain once the
+    task is scheduled.
 
     This kernel can be used in the init function to make sure that when execute
-    kernel (see definition below) called at runtime, the compiled kernel will be
-    already pre-compiled and ready to run.
+    kernel (see definition below) called at runtime, the default compiled kernel
+    will be already pre-compiled and ready to run.
     ```
   }];
 
@@ -70,7 +74,7 @@ def FallbackCompileOp : TF_CPURT_Op<"fallback.compile",
     StrAttr:$device
   );
 
-  let results = (outs TFRT_ChainType:$compiled);
+  let results = (outs TFRT_ChainType:$scheduled);
 
   let assemblyFormat = [{
     $kernel `device` `(` $device `)` attr-dict
@@ -78,7 +82,7 @@ def FallbackCompileOp : TF_CPURT_Op<"fallback.compile",
 }
 
 def FallbackExecuteOp : TF_CPURT_Op<"fallback.execute",
-    [TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
+    [DeclareOpInterfaceMethods<TFRT_CostFunctionInterface>]> {
   let summary = "cpurt execute operation with a fallback runtime interop";
   let description = [{
     `tf_cpurt.fallback.execute` compiles a Tensorflow program defined by the
@@ -128,14 +132,24 @@ def FallbackExecuteOp : TF_CPURT_Op<"fallback.execute",
 def FallbackDebugExecuteOp : TF_CPURT_Op<"fallback.debug.execute"> {
   let summary = "cpurt debug-execute operation with a fallback runtime interop";
   let description = [{
-    Same as `tf_cpurt.fallback.execute`, except that this prints debug
-    information to standard output.
+    Same as `tf_cpurt.fallback.execute`, except that this kernel allows to pass
+    compilation options to the tf-cpurt-pipeline and optionally print
+    specialization-related debug information to standard output.
   }];
 
   let arguments = (ins
     SymbolRefAttr:$kernel,
     Variadic<TFTensorType>:$operands,
-    StrAttr:$device
+    StrAttr:$device,
+    // Print to standard output whenever compiled kernel specialized for the
+    // operands shapes or values.
+    BoolAttr:$debug_specializations,
+    // Compiler options for lowering from Tensorflow dialect to the dialects
+    // supported by the CPURT (see the `tf-cpurt-pipeline` options).
+    BoolAttr:$vectorize,
+    // Compiler options for lowering from Tensorflow dialect to the dialects
+    // supported by the CPURT (see the `tf-cpurt-pipeline` options).
+    BoolAttr:$legalize_i1_tensors
   );
 
   let results = (outs

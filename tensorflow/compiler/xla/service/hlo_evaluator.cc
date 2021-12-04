@@ -286,15 +286,6 @@ StatusOr<Literal> HloEvaluator::Evaluate(
 }
 
 StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
-  // If the instruction is a kCopyDone, simply find the argument that it is
-  // copied from.
-  while (instruction->opcode() == HloOpcode::kCopyDone) {
-    if (instruction->operand(0)->opcode() != HloOpcode::kCopyStart) {
-      return tensorflow::errors::FailedPrecondition(
-          "kCopyDone has an argument different than a kCopyStart.");
-    }
-    instruction = instruction->mutable_operand(0)->mutable_operand(0);
-  }
   if (instruction->opcode() == HloOpcode::kParameter) {
     return tensorflow::errors::FailedPrecondition(
         "Cannot evaluate a parameter.");
@@ -407,8 +398,10 @@ StatusOr<Literal> HloEvaluator::EvaluateElementwiseUnaryOp(
   std::unique_ptr<HloInstruction> operand_instr =
       HloInstruction::CreateConstant(operand.Clone());
 
+  TF_ASSIGN_OR_RETURN(Shape inferred_shape, ShapeInference::InferUnaryOpShape(
+                                                opcode, operand.shape()));
   std::unique_ptr<HloInstruction> cloned_instruction =
-      HloInstruction::CreateUnary(operand.shape(), opcode, operand_instr.get());
+      HloInstruction::CreateUnary(inferred_shape, opcode, operand_instr.get());
   auto result = Evaluate(cloned_instruction.get());
 
   return result;
@@ -2243,6 +2236,9 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   std::vector<int64_t> increment(rank, 1);
   int64_t sort_dim = sort->dimensions(0);
   int64_t sort_dim_elements = key_shape.dimensions(sort_dim);
+  TF_RET_CHECK(sort_dim >= 0 && sort_dim < increment.size())
+      << "Unexpected out-of-bound sort dimension " << sort_dim
+      << " accessing increment of size " << increment.size();
   increment[sort_dim] = sort_dim_elements;
   HloEvaluator embedded_evaluator(max_loop_iterations_);
   // Iterate through each dimension except 'sort_dim'.

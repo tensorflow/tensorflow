@@ -20,9 +20,33 @@ limitations under the License.
 
 namespace tensorflow {
 
+/// Register kernels.
+
+#define REGISTER_ALIASED_CPU_KERNEL(tf_op, mlir_op, input_type, output_type) \
+  REGISTER_ALIASED_KERNEL(tf_op, mlir_op, CPU, input_type, output_type,      \
+                          /*no additional_cstrs*/)
+
+// clang-format off
+#define REGISTER_CPU_KERNEL(tf_op, input_type, output_type) \
+  REGISTER_KERNEL(tf_op, CPU, input_type, output_type, /*no additional_cstrs*/)
+// clang-format on
+
+#define REGISTER_COMPLEX_CPU_KERNEL(tf_op, input_type, output_type) \
+  REGISTER_COMPLEX_KERNEL(tf_op, CPU, input_type, output_type)
+
+#define REGISTER_CPU_KERNEL_NO_TYPE_CONSTRAINT(tf_op, input_type) \
+  REGISTER_KERNEL_NO_TYPE_CONSTRAINT(tf_op, CPU, input_type)
+
+/// Unary kernels.
+
 #define GENERATE_AND_REGISTER_UNARY_CPU_KERNEL(tf_op, input_type) \
   GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, CPU, input_type,      \
                                      /*no additional_cstrs*/)
+
+#define GENERATE_AND_REGISTER_UNARY_CPU_KERNEL2(tf_op, input_type,         \
+                                                output_type)               \
+  GENERATE_AND_REGISTER_UNARY_KERNEL2(tf_op, CPU, input_type, output_type, \
+                                      /*no additional_cstrs*/)
 
 #define GENERATE_AND_REGISTER_UNARY_CPU_KERNEL3(                             \
     tf_op, input_type, output_type, casted_input_type, casted_output_type)   \
@@ -41,20 +65,7 @@ namespace tensorflow {
   GENERATE_UNARY_KERNEL3(tf_op, CPU, input_type, output_type,             \
                          casted_input_type, casted_output_type)
 
-#define REGISTER_ALIASED_CPU_KERNEL(tf_op, mlir_op, input_type, output_type) \
-  REGISTER_ALIASED_KERNEL(tf_op, mlir_op, CPU, input_type, output_type,      \
-                          /*no additional_cstrs*/)
-
-// clang-format off
-#define REGISTER_CPU_KERNEL(tf_op, input_type, output_type) \
-  REGISTER_KERNEL(tf_op, CPU, input_type, output_type, /*no additional_cstrs*/)
-// clang-format on
-
-#define REGISTER_COMPLEX_CPU_KERNEL(tf_op, input_type, output_type) \
-  REGISTER_COMPLEX_KERNEL(tf_op, CPU, input_type, output_type)
-
-#define REGISTER_CPU_KERNEL_NO_TYPE_CONSTRAINT(tf_op, input_type) \
-  REGISTER_KERNEL_NO_TYPE_CONSTRAINT(tf_op, CPU, input_type)
+/// Binary kernels.
 
 #define GENERATE_AND_REGISTER_BINARY_CPU_KERNEL(tf_op, input_type) \
   GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, CPU, input_type,      \
@@ -77,8 +88,16 @@ namespace tensorflow {
 #define GENERATE_BINARY_CPU_KERNEL2(tf_op, input_type, output_type) \
   GENERATE_BINARY_KERNEL2(tf_op, CPU, input_type, output_type)
 
-#define GENERATE_AND_REGISTER_SELECT_CPU_KERNEL(tf_op, input_type) \
-  GENERATE_AND_REGISTER_SELECT_KERNEL(tf_op, CPU, input_type)
+#define GENERATE_BINARY_CPU_KERNEL3(tf_op, input_type, output_type,        \
+                                    casted_input_type, casted_output_type) \
+  GENERATE_BINARY_KERNEL3(tf_op, CPU, input_type, output_type,             \
+                          casted_input_type, casted_output_type)
+
+/// Ternary kernels.
+
+#define GENERATE_AND_REGISTER_TERNARY_CPU_KERNEL(tf_op, input_type) \
+  GENERATE_AND_REGISTER_TERNARY_KERNEL(tf_op, CPU, input_type,      \
+                                       /*no additional_cstrs*/)
 
 }  // namespace tensorflow
 

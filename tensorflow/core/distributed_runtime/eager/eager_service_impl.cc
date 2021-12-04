@@ -243,7 +243,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   }
   TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
-      true));
+      request->server_def().default_session_config().isolate_session_state()));
   int64_t context_id = request->context_id();
   std::function<void()> session_destroyer = [this, context_id, session_name]() {
     env_->rendezvous_mgr->Cleanup(context_id);
@@ -262,6 +262,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 
   // Initialize remote tensor communication based on worker session.
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+  // Set the rendezvous as context-global instance for eager op-by-op execution.
+  r->SetRemoteEagerContextDefault();
 
   std::function<Rendezvous*(const int64_t)> rendezvous_creator =
       [worker_session, this](const int64_t step_id) {
@@ -387,9 +389,9 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
 
-  TF_RETURN_IF_ERROR(env_->session_mgr->UpdateSession(
-      session_name, request->server_def(), request->cluster_device_attributes(),
-      true));
+  TF_RETURN_IF_ERROR(
+      env_->session_mgr->UpdateSession(session_name, request->server_def(),
+                                       request->cluster_device_attributes()));
 
   std::shared_ptr<WorkerSession> worker_session;
   TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(

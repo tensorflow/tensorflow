@@ -15,7 +15,6 @@
 """Tests for tensorflow.ops.random_ops."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
@@ -68,7 +67,7 @@ class RandomNormalTest(RandomOpTestCommon):
         rng = random_ops.random_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -156,6 +155,7 @@ class RandomNormalTest(RandomOpTestCommon):
             graph_seed=965)
 
 
+@test_util.with_eager_op_as_function
 class TruncatedNormalTest(test.TestCase):
 
   def _Sampler(self, num, mu, sigma, dtype, use_gpu, seed=None):
@@ -165,7 +165,7 @@ class TruncatedNormalTest(test.TestCase):
         rng = random_ops.truncated_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -225,7 +225,19 @@ class TruncatedNormalTest(test.TestCase):
       sampler = self._Sampler(100000, 0.0, stddev, dt, use_gpu=True)
       x = sampler()
       print("std(x)", np.std(x), abs(np.std(x) / stddev - 0.85))
-      self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
+      self.assertLess(abs(np.std(x) / stddev - 0.85), 0.04)
+
+  def testSuccessAfterError(self):
+    # Force an error on the TruncatedNormal kernel.
+    config.enable_op_determinism()
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "When determinism is enabled, random ops must have a seed specified"):
+      self.evaluate(gen_random_ops.truncated_normal((1,), dtypes.float32))
+    config.disable_op_determinism()
+
+    # Ensure the StdDev of the TruncatedNormal works as intended.
+    self.testStdDev()
 
   @test_util.run_deprecated_v1
   def testLargeShape(self):
@@ -256,6 +268,7 @@ class TruncatedNormalTest(test.TestCase):
       self.assertAllEqual(rnd1, rnd2)
 
 
+@test_util.with_eager_op_as_function
 @test_util.for_all_test_methods(test_util.disable_xla,
                                 "This never passed on XLA")
 class RandomUniformTest(RandomOpTestCommon):
@@ -267,7 +280,7 @@ class RandomUniformTest(RandomOpTestCommon):
         rng = random_ops.random_uniform(
             [num], minval=minv, maxval=maxv, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 

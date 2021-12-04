@@ -761,6 +761,21 @@ class FunctionLibraryRuntime {
 
     // If true, the function library runtime cache the function instantiation.
     bool use_function_cache = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If True, allow optimizations which should be targeted at a limited
+    // set of small functions.  For example, running kernels synchronously can
+    // be faster under some conditions.
+    bool allow_small_function_optimizations = false;
+
+    // Force int32 _Arg and _Retvals nodes to be left on device instead of
+    // pinning to host.
+    //
+    // Note that we do not pin int32 nodes to host for subgraphs running in
+    // TPU/XLA devices. So this is mainly used to handle the case of multi-CPU
+    // and GPU (non-XLA) graphs.
+    bool int_args_and_retvals_on_device = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,

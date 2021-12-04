@@ -3007,6 +3007,14 @@ func @testSplitSmallSplitDim(%input: tensor<4x8xf32>) {
 
 // -----
 
+func @testSqueezeOutOfBounds(%arg0: tensor<?x?x10xf32>) -> tensor<?x10xf32> {
+  // expected-error @+1 {{squeeze dimension -4 not in [-3, 3)}}
+  %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [-4] }: (tensor<?x?x10xf32>) -> tensor<?x10xf32>
+  return %0 : tensor<?x10xf32>
+}
+
+// -----
+
 func @testTernaryEinsum(%arg0: tensor<2x3xf32>){
   // expected-error @+1 {{supports at most two operands}}
   %0 = "tf.Einsum"(%arg0, %arg0, %arg0) {equation = "ab,cd,ef->"} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<*xf32>)

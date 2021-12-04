@@ -21,7 +21,6 @@ import tempfile
 import threading
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -516,7 +515,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       while_id_tensors = dump.get_tensors("while/Identity", 0, "DebugIdentity")
       self.assertEqual(10, len(while_id_tensors))
-      for k in xrange(len(while_id_tensors)):
+      for k in range(len(while_id_tensors)):
         self.assertAllClose(np.array(k), while_id_tensors[k])
 
       # Verify ascending timestamps from the while loops.
@@ -1484,7 +1483,7 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
     with session.Session() as sess:
       v = variables.VariableV1(30.0, name="v")
       constants = []
-      for i in xrange(self._num_concurrent_runs):
+      for i in range(self._num_concurrent_runs):
         constants.append(constant_op.constant(1.0, name="c%d" % i))
       incs = [
           state_ops.assign_add(
@@ -1499,11 +1498,11 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
         run_options = config_pb2.RunOptions(output_partition_graphs=True)
         debug_utils.watch_graph(
             run_options, sess.graph, debug_urls=concurrent_debug_urls[index])
-        for _ in xrange(100):
+        for _ in range(100):
           sess.run(incs[index], options=run_options)
 
       inc_threads = []
-      for index in xrange(self._num_concurrent_runs):
+      for index in range(self._num_concurrent_runs):
         inc_thread = threading.Thread(target=functools.partial(inc_job, index))
         inc_thread.start()
         inc_threads.append(inc_thread)
@@ -1514,7 +1513,7 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
                           sess.run(v))
 
       all_session_run_indices = []
-      for index in xrange(self._num_concurrent_runs):
+      for index in range(self._num_concurrent_runs):
         dump = debug_data.DebugDumpDir(self._dump_roots[index])
         self.assertTrue(dump.loaded_partition_graphs())
 
@@ -1544,14 +1543,14 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
         executor_step_indices = zip(timestamps, executor_step_indices)
         executor_step_indices = sorted(
             executor_step_indices, key=lambda x: x[0])
-        for i in xrange(len(executor_step_indices) - 1):
+        for i in range(len(executor_step_indices) - 1):
           self.assertEquals(executor_step_indices[i][1] + 1,
                             executor_step_indices[i + 1][1])
 
         # Assert that session_run_index increase monotonically.
         session_run_indices = zip(timestamps, session_run_indices)
         session_run_indices = sorted(session_run_indices, key=lambda x: x[0])
-        for i in xrange(len(session_run_indices) - 1):
+        for i in range(len(session_run_indices) - 1):
           self.assertGreater(session_run_indices[i + 1][1],
                              session_run_indices[i][1])
 

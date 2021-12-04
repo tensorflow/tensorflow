@@ -99,7 +99,21 @@ PjRtTpuClient::PjRtTpuClient(
         return absl::StrCat(
             "libtpu version ", absl::StrJoin(version.version, "."), "\n",
             absl::string_view(version.metadata, version.metadata_size));
-      }()) {}
+      }()) {
+  // We always initialize the tpu client even if libtpu isn't linked in or
+  // initialized.
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  }
+}
+
+PjRtTpuClient::~PjRtTpuClient() {
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  }
+}
 
 StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {

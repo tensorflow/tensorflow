@@ -909,10 +909,10 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
         matchPattern(op.paddings(), m_Constant(&paddings))) {
       for (uint64_t i = 0; i < block_rank; i++) {
         int64_t paddings_sum =
-            paddings.getValue({i, 0}).cast<IntegerAttr>().getInt() +
-            paddings.getValue({i, 1}).cast<IntegerAttr>().getInt();
+            paddings.getValues<APInt>()[{i, 0}].getSExtValue() +
+            paddings.getValues<APInt>()[{i, 1}].getSExtValue();
         int64_t block_shape_i =
-            block_shape.getValue({i}).cast<IntegerAttr>().getInt();
+            block_shape.getValues<APInt>()[i].getSExtValue();
         padded_shape[i + 1] = (paddings_sum + input_shape[i + 1]);
         block_shape_ints.push_back(block_shape_i);
       }
@@ -1102,7 +1102,8 @@ class LowerBatchToSpaceND : public RewritePattern {
     //      [block_shape[0], ..., block_shape[M-1],
     //       batch / prod(block_shape),
     //       input_shape[1], ..., input_shape[N-1]]
-    std::vector<int64_t> reshaped_shape;
+    SmallVector<int64_t> reshaped_shape;
+    reshaped_shape.reserve(block_shape.size());
     for (auto val : block_shape) {
       reshaped_shape.push_back(val.getSExtValue());
     }
@@ -1125,7 +1126,7 @@ class LowerBatchToSpaceND : public RewritePattern {
     //       input_shape[M], block_shape[M-1],
     //
     //       input_shape[M+1], ..., input_shape[N-1]]
-    std::vector<int64_t> permutation(reshaped_shape.size());
+    SmallVector<int64_t> permutation(reshaped_shape.size());
     permutation[0] = block_rank;
     for (int i = 0; i < block_rank; ++i) {
       permutation[1 + 2 * i] = block_rank + 1 + i;
@@ -1134,7 +1135,7 @@ class LowerBatchToSpaceND : public RewritePattern {
     std::iota(permutation.begin() + 1 + block_rank * 2, permutation.end(),
               1 + block_rank * 2);
 
-    std::vector<int64_t> transpose_shape(permutation.size());
+    SmallVector<int64_t> transpose_shape(permutation.size());
     for (auto it : llvm::enumerate(permutation)) {
       transpose_shape[it.index()] = reshaped_shape[it.value()];
     }
@@ -1155,7 +1156,7 @@ class LowerBatchToSpaceND : public RewritePattern {
     //       input_shape[M+1],
     //       ...,
     //       input_shape[N-1]]
-    std::vector<int64_t> reshaped_permuted_shape(input_rank);
+    SmallVector<int64_t> reshaped_permuted_shape(input_rank);
     auto block_shape_values =
         llvm::to_vector<4>(block_shape.getValues<APInt>());
     reshaped_permuted_shape[0] = batch_size / block_num_elems;
@@ -1182,9 +1183,9 @@ class LowerBatchToSpaceND : public RewritePattern {
     //       input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],
     //
     //       input_shape[M+1], ..., input_shape[N-1]]
-    std::vector<int64_t> start_indices(input_rank, 0);
-    std::vector<int64_t> slice_sizes = reshaped_permuted_shape;
-    std::vector<int64_t> strides(input_rank, 1);
+    SmallVector<int64_t> start_indices(input_rank, 0);
+    SmallVector<int64_t> slice_sizes = reshaped_permuted_shape;
+    SmallVector<int64_t> strides(input_rank, 1);
     auto crop_values = llvm::to_vector<4>(crops.getValues<APInt>());
     for (int i = 0; i < block_rank; ++i) {
       int64_t crop_start = crop_values[i * 2].getSExtValue();
@@ -1569,9 +1570,9 @@ struct LowerRollOp : public RewritePattern {
     int input_rank = input_shape.size();
     SmallVector<int32_t, 4> shift_map(input_rank, 0);
     for (int i = 0; i < axis_attr.getNumElements(); ++i) {
-      int32_t axis_i = axis_attr.getValue<int32_t>(i);
+      int32_t axis_i = axis_attr.getValues<int32_t>()[i];
       if (axis_i < 0) axis_i += input_rank;
-      int32_t shift_i = shift_attr.getValue<int32_t>(i);
+      int32_t shift_i = shift_attr.getValues<int32_t>()[i];
       shift_map[axis_i] += shift_i;
     }
 
@@ -1693,6 +1694,7 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
   // clang-format off
   patterns->insert<
       LowerAddNOp,
+      LowerExp1mOp,
       ConvertFakeQuantWithMinMaxVarsOp,
       LowerDynamicStitchOp<DynamicStitchOp>,
       LowerDynamicStitchOp<ParallelDynamicStitchOp>,
@@ -1759,6 +1761,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerSquaredDifferenceOpOnRealTensors,
       LowerSquaredDifferenceOpOneComplexTensors,
       LowerTanhGradOp,
+      LowerTruncateDivOp,
       LowerXdivyOp,
       LowerXlog1pyOp,
       LowerXlogyOp>(context);

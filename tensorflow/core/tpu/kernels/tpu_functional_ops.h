@@ -108,6 +108,13 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
         pool_(ctx->env(), "InitializeVarOnTPUPool", 1),
         library_runtime_(nullptr) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    // If the importer has set the original function name, it means the function
+    // attribute is referring to a rewritten function, but we need to use the
+    // original function name in order to find it in the function library.
+    std::string orig_f;
+    if (ctx->GetAttr("_orig_f", &orig_f).ok()) {
+      func_.set_name(orig_f);
+    }
     auto status = ctx->GetAttr("autotuner_thresh", &autotuner_thresh_);
     if (!status.ok()) {
       autotuner_thresh_ = 0;

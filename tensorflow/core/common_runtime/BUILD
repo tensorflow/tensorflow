@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "if_libtpu",
     "tf_cc_test",
     "tf_cc_test_mkl",
@@ -50,7 +51,13 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    features = ["-layering_check"],
+    features = if_google(
+        [
+            "-layering_check",
+            "-parse_headers",
+        ],
+        ["-layering_check"],
+    ),
     licenses = ["notice"],
 )
 
@@ -654,6 +661,22 @@ cc_library(
 )
 
 cc_library(
+    name = "forward_type_inference",
+    srcs = ["forward_type_inference.cc"],
+    hdrs = ["forward_type_inference.h"],
+    copts = tf_copts(),
+    visibility = default_package_visibility,
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
     name = "single_threaded_executor",
     srcs = ["single_threaded_executor.cc"],
     hdrs = ["single_threaded_executor.h"],
@@ -665,6 +688,31 @@ cc_library(
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "forward_type_inference_test",
+    size = "small",
+    srcs = ["forward_type_inference_test.cc"],
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":forward_type_inference",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cc_test(
@@ -734,6 +782,7 @@ cc_library(
         ":device_set",
         ":executor",
         ":executor_factory",
+        ":forward_type_inference",
         ":function_body",
         ":function_def_utils",
         ":function_optimization_registry",
@@ -1595,6 +1644,13 @@ cc_library(
 )
 
 cc_library(
+    name = "local_session_selection",
+    srcs = ["local_session_selection.cc"],
+    hdrs = ["local_session_selection.h"],
+    copts = tf_copts(),
+)
+
+cc_library(
     name = "session_options",
     srcs = ["session_options.cc"],
     hdrs = [
@@ -1884,6 +1940,7 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":core_cpu_internal",
+        ":local_session_selection",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
@@ -2004,6 +2061,7 @@ cc_library(
         ":cost_measurement_registry",
         ":request_cost_accessor",
         ":request_cost_accessor_registry",
+        "//tensorflow/core/platform:str_util",
     ],
 )
 
@@ -2429,6 +2487,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:resource_variable_ops",

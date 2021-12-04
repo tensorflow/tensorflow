@@ -69,6 +69,8 @@ string JobName() {
   return "";
 }
 
+int64_t JobUid() { return -1; }
+
 int NumSchedulableCPUs() {
 #if defined(__linux__) && !defined(__ANDROID__)
   cpu_set_t cpuset;
@@ -309,7 +311,13 @@ void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.
 }
 
-std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
+std::size_t MallocExtension_GetAllocatedSize(const void* p) {
+#if !defined(__ANDROID__)
+  return 0;
+#else
+  return malloc_usable_size(p);
+#endif
+}
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY

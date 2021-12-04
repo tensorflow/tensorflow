@@ -23,8 +23,8 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -277,10 +277,13 @@ tensorflow::Status HloToLhloModule(const xla::BufferAssignment& assignment,
 
 tensorflow::Status OptimizeAndConvertHloToLmhlo(
     std::unique_ptr<xla::HloModule> hlo_module, ModuleOp module,
-    StringRef platform_name);
-
+    StringRef platform_name, bool optimize_xla_hlo);
 OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
-                                               MLIRContext* context);
+                                               MLIRContext* context,
+                                               bool optimize_xla_hlo);
+
+// This register the MLIR pass with the command line.
+void RegisterMhloToLhloWithXlaPass();
 
 }  // namespace mlir
 

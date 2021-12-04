@@ -25,49 +25,53 @@ namespace mlir {
 
 // Analysis to infer shape information.
 //
-// This lazily analyzes the individual components of a shape or shape tensor.
+// This lazily analyzes the individual components of a shape (e.g., the
+// dimensions of a tensor) or value (e.g, the elements of a shape tensor).
 // Results are cached but the cache is not consistent across IR mutations and
 // needs to be reset in that case.
 class ShapeComponentAnalysis {
  public:
-  // Represents either the shape of a tensor or value of a tensor.
-  class ShapeOrValueOfTensor {
+  // Represents the analysis request for a specific value. We are either
+  // interested in the shape of a value or the value itself.
+  class ShapeOrValueInfo {
     llvm::PointerIntPair<Value, 1, bool> p;
 
-    explicit ShapeOrValueOfTensor(decltype(p) p) : p(p) {}
-    ShapeOrValueOfTensor(Value v, bool isShapeTensor) : p(v, isShapeTensor) {}
+    explicit ShapeOrValueInfo(decltype(p) p) : p(p) {}
+    ShapeOrValueInfo(Value v, bool isValueInfo) : p(v, isValueInfo) {}
 
    public:
-    static ShapeOrValueOfTensor getShapeOf(Value v) { return {v, false}; }
-    static ShapeOrValueOfTensor getValueOf(Value v) { return {v, true}; }
+    static ShapeOrValueInfo getShapeInfoOf(Value v) { return {v, false}; }
+    static ShapeOrValueInfo getValueInfoOf(Value v) { return {v, true}; }
     Value value() const { return p.getPointer(); }
-    bool isShapeTensor() const { return p.getInt(); }
+    bool isValueInfo() const { return p.getInt(); }
+    bool isShapeInfo() const { return !isValueInfo(); }
 
-    bool operator==(ShapeOrValueOfTensor rhs) const { return p == rhs.p; }
-    bool operator!=(ShapeOrValueOfTensor rhs) const { return !(*this == rhs); }
+    bool operator==(ShapeOrValueInfo rhs) const { return p == rhs.p; }
+    bool operator!=(ShapeOrValueInfo rhs) const { return !(*this == rhs); }
 
     // Forward p's DenseMapInfo.
     struct DenseMapInfo {
       using PairInfo = llvm::DenseMapInfo<decltype(p)>;
-      static inline ShapeOrValueOfTensor getEmptyKey() {
-        return ShapeOrValueOfTensor(PairInfo::getEmptyKey());
+      static inline ShapeOrValueInfo getEmptyKey() {
+        return ShapeOrValueInfo(PairInfo::getEmptyKey());
       }
-      static inline ShapeOrValueOfTensor getTombstoneKey() {
-        return ShapeOrValueOfTensor(PairInfo::getTombstoneKey());
+      static inline ShapeOrValueInfo getTombstoneKey() {
+        return ShapeOrValueInfo(PairInfo::getTombstoneKey());
       }
-      static unsigned getHashValue(ShapeOrValueOfTensor val) {
+      static unsigned getHashValue(ShapeOrValueInfo val) {
         return PairInfo::getHashValue(val.p);
       }
-      static bool isEqual(ShapeOrValueOfTensor lhs, ShapeOrValueOfTensor rhs) {
+      static bool isEqual(ShapeOrValueInfo lhs, ShapeOrValueInfo rhs) {
         return lhs == rhs;
       }
     };
   };
 
-  // Represents a dimension of a shape or shape tensor in the input. This is
-  // used for the symbols of a symbolic dimension.
+  // Symbolically represents one component of a shape (e.g., the dimensions of a
+  // tensor) or value (e.g, the elements of a shape tensor). This is used to tie
+  // symbolic expressions to components of shapes or values.
   struct Symbol {
-    ShapeOrValueOfTensor source;
+    ShapeOrValueInfo source;
     size_t index;
 
     bool operator==(const Symbol &rhs) const {
@@ -76,51 +80,54 @@ class ShapeComponentAnalysis {
     bool operator!=(const Symbol &rhs) const { return !(*this == rhs); }
   };
 
-  // Represents the computed dimension of a shape or shape tensor. This can be a
-  // constant or a combination of different symbols as described by an affine
-  // expression.
-  struct SymbolicDimension {
+  // Represents the analysis result for a one component of a shape (e.g., the
+  // dimensions of a tensor) or value (e.g, the elements of a shape tensor).
+  // This can be a constant or an expression over symbols.
+  struct SymbolicExpr {
     SmallVector<Symbol, 1> symbols;
     AffineExpr expr;
 
-    // Return true if this dimension is a constant equal to `value`.
+    // Returns true if this symbolic expression is known to be a constant equal
+    // to `value`.
     bool isConstant(int64_t value) const;
-    // Returns true if this dimension is known to be not `-1`. This is useful
-    // for reshapes.
+    // Returns true if this symbolic expression is known to be different from
+    // `-1`. This is useful for reshapes.
     bool isKnownNotNegativeOne() const;
-    // If this a reference to a singular symbol return it.
+    // If this is a reference to a singular symbol, return it.
     Optional<Symbol> singleton() const;
 
-    bool operator==(const SymbolicDimension &rhs) const {
+    bool operator==(const SymbolicExpr &rhs) const {
       return expr == expr && symbols == rhs.symbols;
     }
-    bool operator!=(const SymbolicDimension &rhs) const {
-      return !(*this == rhs);
-    }
+    bool operator!=(const SymbolicExpr &rhs) const { return !(*this == rhs); }
 
     void dump(llvm::raw_ostream &os = llvm::outs()) const;
   };
 
-  using DimensionsMap =
-      DenseMap<ShapeOrValueOfTensor, std::vector<SymbolicDimension>,
-               ShapeOrValueOfTensor::DenseMapInfo>;
-  using ConstraintsMap = DenseMap<int, Symbol>;
+  using SymbolicExprsMap = DenseMap<ShapeOrValueInfo, std::vector<SymbolicExpr>,
+                                    ShapeOrValueInfo::DenseMapInfo>;
+  using SymbolicShapeConstraintsMap = DenseMap<int, Symbol>;
 
  private:
-  // Mapping from value to an array of symbolic dimensions.
-  DimensionsMap dimensions;
+  // Mapping from the analysis requests to the results, i.e. to an array of
+  // symbolic expressions. This is essentially a cache for all the results of
+  // this analysis.
+  SymbolicExprsMap symbolicExprsMap;
 
-  // Mapping of constraints derived from argument attributes.
-  ConstraintsMap symbolicShapeConstraints;
+  // Mapping from symbolic shape constraints, derived from the argument
+  // attributes, to the symbols used in this analysis.
+  SymbolicShapeConstraintsMap symbolicShapeConstraintsMap;
 
-  // Run the analysis on a value.
-  void compute(ShapeOrValueOfTensor v);
+  // Run the analysis to request either shape or value information.
+  void compute(ShapeOrValueInfo v);
 
  public:
-  // Return the computed dimensions for a shape of a value.
-  Optional<ArrayRef<SymbolicDimension>> dimensionsForShape(Value value);
-  // Return the computed dimensions for a shape tensor.
-  Optional<ArrayRef<SymbolicDimension>> dimensionsForShapeTensor(Value shape);
+  // Return the computed components for the shape of a value, e.g., the
+  // dimensions of a tensor.
+  Optional<ArrayRef<SymbolicExpr>> GetShapeInfo(Value value);
+  // Return the computed components for the value of a value, e.g, the elements
+  // of a shape tensor.
+  Optional<ArrayRef<SymbolicExpr>> GetValueInfo(Value shape);
 
   // Clear analysis data structures.
   void reset();

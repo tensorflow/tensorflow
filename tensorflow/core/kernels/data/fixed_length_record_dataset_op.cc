@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/fixed_length_record_dataset_op.h"
 
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -169,8 +170,9 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
         // Actually move on to next file.
         uint64 file_size;
-        TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
-            dataset()->filenames_[current_file_index_], &file_size));
+        const std::string& next_filename =
+            dataset()->filenames_[current_file_index_];
+        TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(next_filename, &file_size));
         file_pos_limit_ = file_size - dataset()->footer_bytes_;
 
         uint64 body_size =
@@ -180,14 +182,13 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           return errors::InvalidArgument(
               "Excluding the header (", dataset()->header_bytes_,
               " bytes) and footer (", dataset()->footer_bytes_,
-              " bytes), input file \"",
-              dataset()->filenames_[current_file_index_], "\" has body length ",
+              " bytes), input file \"", next_filename, "\" has body length ",
               body_size,
               " bytes, which is not an exact multiple of the record length (",
               dataset()->record_bytes_, " bytes).");
         }
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            dataset()->filenames_[current_file_index_], &file_));
+            TranslateFileName(next_filename), &file_));
         input_buffer_ = absl::make_unique<io::InputBuffer>(
             file_.get(), dataset()->buffer_size_);
         TF_RETURN_IF_ERROR(input_buffer_->SkipNBytes(dataset()->header_bytes_));
@@ -226,11 +227,13 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       file_.reset();
       if (current_pos >= 0) {  // There was an active input_buffer_.
         uint64 file_size;
-        TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
-            dataset()->filenames_[current_file_index_], &file_size));
+        const std::string& current_filename =
+            dataset()->filenames_[current_file_index_];
+        TF_RETURN_IF_ERROR(
+            ctx->env()->GetFileSize(current_filename, &file_size));
         file_pos_limit_ = file_size - dataset()->footer_bytes_;
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            dataset()->filenames_[current_file_index_], &file_));
+            TranslateFileName(current_filename), &file_));
         input_buffer_ = absl::make_unique<io::InputBuffer>(
             file_.get(), dataset()->buffer_size_);
         TF_RETURN_IF_ERROR(input_buffer_->Seek(current_pos));
@@ -349,7 +352,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           }
         }
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            dataset()->filenames_[current_file_index_], &file_));
+            TranslateFileName(dataset()->filenames_[current_file_index_]),
+            &file_));
         if (!dataset()->compression_type_.empty()) {
           const io::ZlibCompressionOptions zlib_options =
               dataset()->compression_type_ == kZLIB
@@ -412,7 +416,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       file_.reset();
       if (current_pos >= 0) {  // There was an active buffered_input_stream_.
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            dataset()->filenames_[current_file_index_], &file_));
+            TranslateFileName(dataset()->filenames_[current_file_index_]),
+            &file_));
         const io::ZlibCompressionOptions zlib_options =
             dataset()->compression_type_ == kZLIB
                 ? io::ZlibCompressionOptions::DEFAULT()

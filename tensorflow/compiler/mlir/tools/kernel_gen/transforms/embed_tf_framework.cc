@@ -112,7 +112,7 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
 
     // Operand with no layout is expected.
     auto operand_memref_type = dealloc.memref().getType().cast<MemRefType>();
-    if (!operand_memref_type.getAffineMaps().empty()) {
+    if (!operand_memref_type.getLayout().isIdentity()) {
       return failure();
     }
     rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx, adaptor.memref());
@@ -131,9 +131,9 @@ struct AssertOpConverter : public OpConversionPattern<AssertOp> {
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
-    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.arg(),
+    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.getArg(),
                                             ErrorCode::INVALID_ARGUMENT,
-                                            adaptor.msg().getValue());
+                                            adaptor.getMsg().getValue());
     return success();
   }
 };

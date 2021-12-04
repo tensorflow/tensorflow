@@ -42,7 +42,7 @@ limitations under the License.
 // Only include it for platforms that PluggableDevice is tested on.
 #if !defined(PLUGGABLE_DEVICE_SUPPORTED) &&                                \
     (__x86_64__ || __i386__ || defined(__APPLE__)) && !defined(ANDROID) && \
-    !TARGET_OS_IOS
+    !defined(__ANDROID__) && !TARGET_OS_IOS
 #define PLUGGABLE_DEVICE_SUPPORTED
 #endif
 

@@ -589,7 +589,7 @@ array([b'3.14', b'2.72'], dtype=object)
     DefaultValuedAttr<BoolAttr, "false">:$scientific,
     DefaultValuedAttr<BoolAttr, "false">:$shortest,
     DefaultValuedAttr<I64Attr, "-1">:$width,
-    DefaultValuedAttr<StrAttr, "">:$fill
+    DefaultValuedAttr<StrAttr, "\"\"">:$fill
   );
 
   let results = (outs
@@ -748,7 +748,9 @@ this value or a subsequent newer value of the variable.
 
   let arguments = (ins
     Arg<TF_ResourceTensor, [{handle to the resource in which to store the variable.}], [TF_VariableWrite]>:$resource,
-    Arg<TF_Tensor, [{the value to set the new tensor to use.}]>:$value
+    Arg<TF_Tensor, [{the value to set the new tensor to use.}]>:$value,
+
+    DefaultValuedAttr<BoolAttr, "false">:$validate_shape
   );
 
   let results = (outs);
@@ -862,7 +864,7 @@ window in `value`.
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -886,7 +888,7 @@ Each entry in `output` is the mean of the corresponding size `ksize` window in
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
 
   let results = (outs
@@ -906,7 +908,7 @@ def TF_AvgPool3DGradOp : TF_Op<"AvgPool3DGrad", [NoSideEffect]> {
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
 
   let results = (outs
@@ -927,7 +929,7 @@ the output of `avg_pool`.}]>:$grad,
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -950,7 +952,8 @@ is smaller than desired.}]>:$drop_remainder,
 
     DefaultValuedAttr<BoolAttr, "false">:$parallel_copy,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -1014,9 +1017,9 @@ to be batched.}]>:$captured_tensors,
     I64Attr:$batch_timeout_micros,
     DefaultValuedAttr<I64Attr, "10">:$max_enqueued_batches,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$allowed_batch_sizes,
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name,
-    DefaultValuedAttr<StrAttr, "">:$batching_queue,
+    DefaultValuedAttr<StrAttr, "\"\"">:$container,
+    DefaultValuedAttr<StrAttr, "\"\"">:$shared_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$batching_queue,
     DefaultValuedAttr<BoolAttr, "false">:$enable_large_batch_splitting
   );
 
@@ -1493,7 +1496,7 @@ Broadcasting is supported, so `value` may have any number of dimensions.
     Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Any number of dimensions.}]>:$value,
     Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{1-D with size the last dimension of `value`.}]>:$bias,
 
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -1529,7 +1532,7 @@ the feature dimension is the third-to-last.
   let arguments = (ins
     Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Any number of dimensions.}]>:$out_backprop,
 
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -1946,7 +1949,8 @@ def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
     Arg<TF_ResourceTensor, "", [TF_DatasetMemoryCacheRead, TF_DatasetMemoryCacheWrite]>:$cache,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -2093,7 +2097,7 @@ def TF_CollectiveBcastRecvOp : TF_Op<"CollectiveBcastRecv", []> {
     I64Attr:$group_key,
     I64Attr:$instance_key,
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<StrAttr, "\"auto\"">:$communication_hint,
     DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
@@ -2114,7 +2118,7 @@ def TF_CollectiveBcastSendOp : TF_Op<"CollectiveBcastSend", []> {
     I64Attr:$group_key,
     I64Attr:$instance_key,
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<StrAttr, "\"auto\"">:$communication_hint,
     DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
@@ -2137,7 +2141,7 @@ Mutually accumulates multiple tensors of identical type and shape.
     I64Attr:$group_key,
     I64Attr:$instance_key,
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<StrAttr, "\"auto\"">:$communication_hint,
     DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
@@ -2187,7 +2191,7 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
     I64ArrayAttr:$subdiv_offsets,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$wait_for,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<StrAttr, "\"auto\"">:$communication_hint,
     DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
@@ -2212,7 +2216,7 @@ Mutually reduces multiple tensors of identical type and shape.
 
     TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<StrAttr, "\"auto\"">:$communication_hint,
     DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds,
     DefaultValuedAttr<I64Attr, "-1">:$max_subdivs_per_device
   );
@@ -2380,8 +2384,8 @@ Sets up the centralized structures for a distributed TPU system.
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$embedding_config,
-    DefaultValuedAttr<StrAttr, "">:$tpu_embedding_config,
+    DefaultValuedAttr<StrAttr, "\"\"">:$embedding_config,
+    DefaultValuedAttr<StrAttr, "\"\"">:$tpu_embedding_config,
     DefaultValuedAttr<BoolAttr, "false">:$is_global_init,
     DefaultValuedAttr<BoolAttr, "false">:$enable_whole_mesh_compilations,
     DefaultValuedAttr<BoolAttr, "true">:$compilation_failure_closes_chips,
@@ -2497,7 +2501,7 @@ of `data_format`, see below for details.}]>:$input,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
   );
 
@@ -2542,7 +2546,7 @@ Gradients w.r.t. the output of the convolution.}]>:$out_backprop,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
   );
 
@@ -2580,7 +2584,7 @@ Gradients w.r.t. the output of the convolution.}]>:$out_backprop,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
   );
 
@@ -2624,7 +2628,7 @@ out_channels]`. `in_channels` must match between `input` and `filter`.}]>:$filte
 
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
   );
 
@@ -2663,7 +2667,7 @@ out_channels]`.}]>:$out_backprop,
 
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
   );
 
@@ -2690,7 +2694,7 @@ out_channels]`.}]>:$out_backprop,
 
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
   );
 
@@ -2929,8 +2933,8 @@ the source data format.
     Arg<TF_I32OrI64Tensor, [{A Tensor with each element as a dimension index in source data format.
 Must be in the range [-4, 4).}]>:$x,
 
-    DefaultValuedAttr<StrAttr, "NHWC">:$src_format,
-    DefaultValuedAttr<StrAttr, "NCHW">:$dst_format
+    DefaultValuedAttr<StrAttr, "\"NHWC\"">:$src_format,
+    DefaultValuedAttr<StrAttr, "\"NCHW\"">:$dst_format
   );
 
   let results = (outs
@@ -2969,8 +2973,8 @@ and
   let arguments = (ins
     Arg<TF_I32OrI64Tensor, [{Vector of size 4 or Tensor of shape (4, 2) in source data format.}]>:$x,
 
-    DefaultValuedAttr<StrAttr, "NHWC">:$src_format,
-    DefaultValuedAttr<StrAttr, "NCHW">:$dst_format
+    DefaultValuedAttr<StrAttr, "\"NHWC\"">:$src_format,
+    DefaultValuedAttr<StrAttr, "\"NCHW\"">:$dst_format
   );
 
   let results = (outs
@@ -3000,13 +3004,13 @@ computes summary information about one or more tensors.
   let arguments = (ins
     Arg<TF_Tensor, [{Input tensor, non-Reference type}]>:$input,
 
-    DefaultValuedAttr<StrAttr, "">:$tfdbg_context_id,
-    DefaultValuedAttr<StrAttr, "">:$op_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$tfdbg_context_id,
+    DefaultValuedAttr<StrAttr, "\"\"">:$op_name,
     DefaultValuedAttr<I64Attr, "-1">:$output_slot,
     DefaultValuedAttr<I64Attr, "-1">:$tensor_debug_mode,
     DefaultValuedAttr<StrArrayAttr, "{}">:$debug_urls,
     DefaultValuedAttr<I64Attr, "1000">:$circular_buffer_size,
-    DefaultValuedAttr<StrAttr, "">:$tfdbg_run_id
+    DefaultValuedAttr<StrAttr, "\"\"">:$tfdbg_run_id
   );
 
   let results = (outs
@@ -3050,7 +3054,7 @@ decoding partial jpeg image.
     DefaultValuedAttr<BoolAttr, "true">:$fancy_upscaling,
     DefaultValuedAttr<BoolAttr, "false">:$try_recover_truncated,
     DefaultValuedAttr<F32Attr, "1.0f">:$acceptable_fraction,
-    DefaultValuedAttr<StrAttr, "">:$dct_method
+    DefaultValuedAttr<StrAttr, "\"\"">:$dct_method
   );
 
   let results = (outs
@@ -3114,7 +3118,7 @@ the same, though it is cleaner to use `tf.io.decode_image`.
     DefaultValuedAttr<BoolAttr, "true">:$fancy_upscaling,
     DefaultValuedAttr<BoolAttr, "false">:$try_recover_truncated,
     DefaultValuedAttr<F32Attr, "1.0f">:$acceptable_fraction,
-    DefaultValuedAttr<StrAttr, "">:$dct_method
+    DefaultValuedAttr<StrAttr, "\"\"">:$dct_method
   );
 
   let results = (outs
@@ -3333,7 +3337,7 @@ x = [[[ [1],   [2],  [5],  [6]],
     TF_Tensor:$input,
 
     Confined<I64Attr, [IntMinValue<2>]>:$block_size,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "NHWC">:$data_format
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -3376,7 +3380,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
     I64ArrayAttr:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
   );
 
@@ -3407,7 +3411,7 @@ Gradients w.r.t. the output of the convolution.}]>:$out_backprop,
     I64ArrayAttr:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
   );
 
@@ -3439,7 +3443,7 @@ Gradients w.r.t. the output of the convolution.}]>:$out_backprop,
     I64ArrayAttr:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
   );
 
@@ -3518,7 +3522,7 @@ and `QuantizeV2`, using the following algorithm:
     Arg<TF_Float32Tensor, [{The minimum scalar value possibly produced for the input.}]>:$min_range,
     Arg<TF_Float32Tensor, [{The maximum scalar value possibly produced for the input.}]>:$max_range,
 
-    DefaultValuedAttr<TF_AnyStrAttrOf<["MIN_COMBINED", "MIN_FIRST", "SCALED"]>, "MIN_COMBINED">:$mode,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["MIN_COMBINED", "MIN_FIRST", "SCALED"]>, "\"MIN_COMBINED\"">:$mode,
     DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
     DefaultValuedAttr<I64Attr, "-1">:$axis
   );
@@ -3624,7 +3628,7 @@ error status.
   let results = (outs);
 }
 
-def TF_DeviceIndexOp : TF_Op<"DeviceIndex", [NoSideEffect]> {
+def TF_DeviceIndexOp : TF_Op<"DeviceIndex", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Return the index of device the op runs.";
 
   let description = [{
@@ -4061,7 +4065,59 @@ This operation creates a tensor of `shape` and `dtype`.
   let hasFolder = 1;
 }
 
-def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingArbitraryTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingArbitraryTensorBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
+  let summary = [{
+Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
+  }];
+
+  let description = [{
+embedding_indices[i] and aggregation_weights[i] correspond
+to the ith feature.
+
+The tensors at corresponding positions in the three input lists (sample_indices,
+embedding_indices and aggregation_weights) must have the same shape, i.e. rank 1
+with dim_size() equal to the total number of lookups into the table described by
+the corresponding feature.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_I32OrI64Tensor>, [{A list of rank 2 Tensors specifying the training example to which the
+corresponding embedding_indices and aggregation_weights values belong.
+If the size of its first dimension is 0, we assume each embedding_indices
+belongs to a different sample. Both int32 and int64 are allowed and will
+be converted to int32 internally.
+
+Or a list of rank 1 Tensors specifying the row lengths for splitting
+embedding_indices and aggregation_weights into rows. It corresponds to
+ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
+the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+passed to the op Both int32 and int64 are allowed and will be converted to
+int32 internally.}]>:$sample_indices_or_row_lengths,
+    Arg<Variadic<TF_I32OrI64Tensor>, [{A list of rank 1 Tensors, indices into the embedding
+tables. Both int32 and int64 are allowed and will be converted to
+int32 internally.}]>:$embedding_indices,
+    Arg<Variadic<TF_F32OrF64Tensor>, [{A list of rank 1 Tensors containing per training
+example aggregation weights. Both float32 and float64 are allowed and will
+be converted to float32 internally.}]>:$aggregation_weights,
+    Arg<TF_StrTensor, [{A string input that overrides the mode specified in the
+TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_override,
+
+    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$combiners
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandTypeAttr T1 = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T2 = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 An op that enqueues a list of input batch tensors to TPUEmbedding.
   }];
@@ -4085,7 +4141,7 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_EnqueueTPUEmbeddingIntegerBatchOp : TF_Op<"EnqueueTPUEmbeddingIntegerBatch", [TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingIntegerBatchOp : TF_Op<"EnqueueTPUEmbeddingIntegerBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 An op that enqueues a list of input batch tensors to TPUEmbedding.
   }];
@@ -4106,7 +4162,7 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_EnqueueTPUEmbeddingRaggedTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingRaggedTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingRaggedTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingRaggedTensorBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
   let summary = "Eases the porting of code that uses tf.nn.embedding_lookup().";
 
   let description = [{
@@ -4151,7 +4207,7 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
   TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_EnqueueTPUEmbeddingSparseBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingSparseBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 An op that enqueues TPUEmbedding input indices from a SparseTensor.
   }];
@@ -4194,7 +4250,7 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
   TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_EnqueueTPUEmbeddingSparseTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingSparseTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseTensorBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
   }];
@@ -4795,6 +4851,35 @@ values.
   }];
 }
 
+def TF_FakeQuantWithMinMaxVarsPerChannelGradientOp : TF_Op<"FakeQuantWithMinMaxVarsPerChannelGradient", [NoSideEffect]> {
+  let summary = [{
+Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Float32Tensor, [{Backpropagated gradients above the FakeQuantWithMinMaxVars operation,
+shape one of: `[d]`, `[b, d]`,  `[b, h, w, d]`.}]>:$gradients,
+    Arg<TF_Float32Tensor, [{Values passed as inputs to the FakeQuantWithMinMaxVars operation, shape
+  same as `gradients`.
+min, max: Quantization interval, floats of shape `[d]`.}]>:$inputs,
+    TF_Float32Tensor:$min,
+    TF_Float32Tensor:$max,
+
+    DefaultValuedAttr<I64Attr, "8">:$num_bits,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+  );
+
+  let results = (outs
+    Res<TF_Float32Tensor, [{Backpropagated gradients w.r.t. inputs, shape same as
+`inputs`:
+  `gradients * (inputs >= min && inputs <= max)`.}]>:$backprops_wrt_input,
+    Res<TF_Float32Tensor, [{Backpropagated gradients w.r.t. min parameter, shape `[d]`:
+`sum_per_d(gradients * (inputs < min))`.}]>:$backprop_wrt_min,
+    Res<TF_Float32Tensor, [{Backpropagated gradients w.r.t. max parameter, shape `[d]`:
+`sum_per_d(gradients * (inputs > max))`.}]>:$backprop_wrt_max
+  );
+}
+
 def TF_FillOp : TF_Op<"Fill", [NoSideEffect]> {
   let summary = "Creates a tensor filled with a scalar value.";
 
@@ -4882,7 +4967,8 @@ into a single Dataset.
 
     SymbolRefAttr:$f,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -4972,7 +5058,7 @@ must be empty for training.}]>:$variance,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
     DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
@@ -5020,7 +5106,7 @@ for the population variance to be reused in both 1st and 2nd
 order gradient computation.}]>:$reserve_space_2,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
@@ -5059,7 +5145,7 @@ for the population variance to be reused in both 1st and 2nd
 order gradient computation.}]>:$reserve_space_2,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
@@ -5102,7 +5188,7 @@ in gradient computation. When is_training is False, a dummy empty Tensor will be
 created.}]>:$reserve_space_3,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NDHWC", "NCDHW"]>, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NDHWC", "NCDHW"]>, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
@@ -5146,7 +5232,7 @@ must be empty for training.}]>:$variance,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
     DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
@@ -5196,7 +5282,7 @@ must be empty for training.}]>:$variance,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
     DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NDHWC", "NCDHW"]>, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NDHWC", "NCDHW"]>, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
@@ -5476,7 +5562,8 @@ Creates a dataset that invokes a function to generate elements.
     SymbolRefAttr:$next_func,
     SymbolRefAttr:$finalize_func,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -5586,8 +5673,8 @@ table will be immutable.
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$container,
+    DefaultValuedAttr<StrAttr, "\"\"">:$shared_name,
     DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
     TypeAttr:$key_dtype,
     TypeAttr:$value_dtype
@@ -5610,8 +5697,8 @@ table will be immutable.
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$container,
+    DefaultValuedAttr<StrAttr, "\"\"">:$shared_name,
     DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
     TypeAttr:$key_dtype,
     TypeAttr:$value_dtype
@@ -6082,7 +6169,7 @@ Where to extract the key and value from a line is specified by `key_index` and
     Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
     Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
     Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
-    DefaultValuedAttr<StrAttr, "\t">:$delimiter,
+    DefaultValuedAttr<StrAttr, "\"\\t\"">:$delimiter,
     DefaultValuedAttr<I64Attr, "0">:$offset
   );
 
@@ -6112,7 +6199,7 @@ Where to extract the key and value from a line is specified by `key_index` and
     Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
     Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
     Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
-    DefaultValuedAttr<StrAttr, "\t">:$delimiter,
+    DefaultValuedAttr<StrAttr, "\"\\t\"">:$delimiter,
     DefaultValuedAttr<I64Attr, "0">:$offset
   );
 
@@ -6861,7 +6948,7 @@ idx ==> [1, 3, 5]
   TF_DerivedResultTypeAttr out_idx = TF_DerivedResultTypeAttr<1>;
 }
 
-def TF_LoadTPUEmbeddingADAMParametersOp : TF_Op<"LoadTPUEmbeddingADAMParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingADAMParametersOp : TF_Op<"LoadTPUEmbeddingADAMParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load ADAM embedding parameters.";
 
   let description = [{
@@ -6878,16 +6965,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of velocities used in the ADAM optimization algorithm.}]>:$velocities,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingADAMParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingADAMParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -6897,16 +6984,16 @@ def TF_LoadTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingA
     TF_Float32Tensor:$gradient_accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdadeltaParametersOp : TF_Op<"LoadTPUEmbeddingAdadeltaParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingAdadeltaParametersOp : TF_Op<"LoadTPUEmbeddingAdadeltaParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load Adadelta embedding parameters.";
 
   let description = [{
@@ -6923,16 +7010,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of updates used in the Adadelta optimization algorithm.}]>:$updates,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdadeltaParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdadeltaParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -6942,16 +7029,16 @@ def TF_LoadTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbedd
     TF_Float32Tensor:$gradient_accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdagradParametersOp : TF_Op<"LoadTPUEmbeddingAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingAdagradParametersOp : TF_Op<"LoadTPUEmbeddingAdagradParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load Adagrad embedding parameters.";
 
   let description = [{
@@ -6967,16 +7054,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of accumulators used in the Adagrad optimization algorithm.}]>:$accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdagradParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -6985,16 +7072,16 @@ def TF_LoadTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddi
     TF_Float32Tensor:$gradient_accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingCenteredRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingCenteredRMSPropParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load centered RMSProp embedding parameters.";
 
   let description = [{
@@ -7012,16 +7099,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of mg used in the centered RMSProp optimization algorithm.}]>:$mg,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingFTRLParametersOp : TF_Op<"LoadTPUEmbeddingFTRLParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingFTRLParametersOp : TF_Op<"LoadTPUEmbeddingFTRLParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load FTRL embedding parameters.";
 
   let description = [{
@@ -7038,16 +7125,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of linears used in the FTRL optimization algorithm.}]>:$linears,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingFTRLParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingFTRLParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7057,16 +7144,16 @@ def TF_LoadTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingF
     TF_Float32Tensor:$gradient_accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"LoadTPUEmbeddingMDLAdagradLightParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"LoadTPUEmbeddingMDLAdagradLightParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load MDL Adagrad Light embedding parameters.";
 
   let description = [{
@@ -7084,16 +7171,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of benefits used in the MDL Adagrad Light optimization algorithm.}]>:$benefits,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingMomentumParametersOp : TF_Op<"LoadTPUEmbeddingMomentumParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingMomentumParametersOp : TF_Op<"LoadTPUEmbeddingMomentumParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load Momentum embedding parameters.";
 
   let description = [{
@@ -7109,16 +7196,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of momenta used in the Momentum optimization algorithm.}]>:$momenta,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingMomentumParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingMomentumParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7127,16 +7214,16 @@ def TF_LoadTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbedd
     TF_Float32Tensor:$gradient_accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalAdagradParametersOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingProximalAdagradParametersOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load proximal Adagrad embedding parameters.";
 
   let description = [{
@@ -7152,16 +7239,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of accumulators used in the proximal Adagrad optimization algorithm.}]>:$accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7170,16 +7257,16 @@ def TF_LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"LoadTP
     TF_Float32Tensor:$gradient_accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProximalYogiParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProximalYogiParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7188,16 +7275,16 @@ def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProxima
     TF_Float32Tensor:$m,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalYogiParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalYogiParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7207,16 +7294,16 @@ def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEm
     TF_Float32Tensor:$gradient_accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingRMSPropParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load RMSProp embedding parameters.";
 
   let description = [{
@@ -7233,16 +7320,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of mom used in the RMSProp optimization algorithm.}]>:$mom,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingRMSPropParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingRMSPropParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7252,16 +7339,16 @@ def TF_LoadTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddi
     TF_Float32Tensor:$gradient_accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load SGD embedding parameters.";
 
   let description = [{
@@ -7276,16 +7363,16 @@ executed.
     Arg<TF_Float32Tensor, [{Value of parameters used in the stochastic gradient descent optimization algorithm.}]>:$parameters,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7293,10 +7380,10 @@ def TF_LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_
     TF_Float32Tensor:$gradient_accumulators,
 
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs);
@@ -7685,7 +7772,8 @@ is smaller than desired.}]>:$drop_remainder,
     SymbolRefAttr:$f,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -7708,7 +7796,8 @@ Creates a dataset that applies `f` to the outputs of `input_dataset`.
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -7974,7 +8063,7 @@ of a matrix band. `k[0]` must not be larger than `k[1]`.}]>:$k,
     Arg<TF_Tensor, [{The value to fill the area outside the specified diagonal band with.
 Default is 0.}]>:$padding_value,
 
-    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "RIGHT_LEFT">:$align
+    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "\"RIGHT_LEFT\"">:$align
   );
 
   let results = (outs
@@ -8241,7 +8330,7 @@ k and the innermost dimension of `diagonal`.}]>:$num_cols,
     Arg<TF_Tensor, [{The number to fill the area outside the specified diagonal band with.
 Default is 0.}]>:$padding_value,
 
-    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "RIGHT_LEFT">:$align
+    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "\"RIGHT_LEFT\"">:$align
   );
 
   let results = (outs
@@ -8538,7 +8627,7 @@ diagonal, and negative value means subdiagonals. `k` can be a single integer
 (for a single diagonal) or a pair of integers specifying the low and high ends
 of a matrix band. `k[0]` must not be larger than `k[1]`.}]>:$k,
 
-    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "RIGHT_LEFT">:$align
+    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "\"RIGHT_LEFT\"">:$align
   );
 
   let results = (outs
@@ -8628,15 +8717,15 @@ tf.matmul(a, x)
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>, [{Shape is `[..., M, M]`.}]>:$matrix,
-    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>, [{Shape is `[..., M, K]`.}]>:$rhs,
+    Arg<TF_FpOrComplexTensor, [{Shape is `[..., M, M]`.}]>:$matrix,
+    Arg<TF_FpOrComplexTensor, [{Shape is `[..., M, K]`.}]>:$rhs,
 
     DefaultValuedAttr<BoolAttr, "true">:$lower,
     DefaultValuedAttr<BoolAttr, "false">:$adjoint
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>, [{Shape is `[..., M, K]`.}]>:$output
+    Res<TF_FpOrComplexTensor, [{Shape is `[..., M, K]`.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -8685,7 +8774,7 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInter
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "NHWC">:$data_format
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -8714,7 +8803,7 @@ def TF_MaxPool3DOp : TF_Op<"MaxPool3D", [NoSideEffect]> {
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
 
   let results = (outs
@@ -8735,7 +8824,7 @@ def TF_MaxPool3DGradOp : TF_Op<"MaxPool3DGrad", [NoSideEffect]> {
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
 
   let results = (outs
@@ -8757,7 +8846,7 @@ def TF_MaxPool3DGradGradOp : TF_Op<"MaxPool3DGradGrad", [NoSideEffect]> {
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
 
   let results = (outs
@@ -8779,7 +8868,7 @@ def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -8804,7 +8893,7 @@ def TF_MaxPoolGradGradOp : TF_Op<"MaxPoolGradGrad", [NoSideEffect]> {
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -8826,7 +8915,7 @@ def TF_MaxPoolGradGradV2Op : TF_Op<"MaxPoolGradGradV2", [NoSideEffect]> {
 input tensor.}]>:$strides,
 
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -8848,7 +8937,7 @@ def TF_MaxPoolGradV2Op : TF_Op<"MaxPoolGradV2", [NoSideEffect]> {
 input tensor.}]>:$strides,
 
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -8868,7 +8957,7 @@ def TF_MaxPoolV2Op : TF_Op<"MaxPoolV2", [NoSideEffect]> {
 input tensor.}]>:$strides,
 
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "NHWC">:$data_format
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -9401,8 +9490,8 @@ the insert operations. It does not support the initialization operation.
 be used in insert or lookup operations.}]>:$empty_key,
     TF_Tensor:$deleted_key,
 
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$container,
+    DefaultValuedAttr<StrAttr, "\"\"">:$shared_name,
     DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
     TypeAttr:$value_dtype,
     DefaultValuedAttr<TF_ShapeAttr, "llvm::ArrayRef<int64_t>({})">:$value_shape,
@@ -9427,8 +9516,8 @@ the insert operations. It does not support the initialization operation.
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$container,
+    DefaultValuedAttr<StrAttr, "\"\"">:$shared_name,
     DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
     TypeAttr:$key_dtype,
     TypeAttr:$value_dtype,
@@ -9450,8 +9539,8 @@ the insert operations. It does not support the initialization operation.
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$container,
+    DefaultValuedAttr<StrAttr, "\"\"">:$shared_name,
     DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
     TypeAttr:$key_dtype,
     TypeAttr:$value_dtype
@@ -9870,8 +9959,8 @@ times by rerunning "MakeIterator".
     SymbolRefAttr:$dataset_factory,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name
+    DefaultValuedAttr<StrAttr, "\"\"">:$container,
+    DefaultValuedAttr<StrAttr, "\"\"">:$shared_name
   );
 
   let results = (outs
@@ -9884,11 +9973,11 @@ def TF_OnesLikeOp : TF_Op<"OnesLike", [Idempotent, NoSideEffect, SameOperandsAnd
   let summary = "Returns a tensor of ones with the same shape and type as x.";
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint8]>, [{a tensor of type T.}]>:$x
+    Arg<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{a tensor of type T.}]>:$x
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint8]>, [{a tensor of the same shape and type as x but filled with ones.}]>:$y
+    Res<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{a tensor of the same shape and type as x but filled with ones.}]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -10231,7 +10320,8 @@ elements from `input_dataset` in parallel.}]>:$num_parallel_calls,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedAttr<BoolAttr, "false">:$sloppy,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -10261,8 +10351,9 @@ elements from `input_dataset` in parallel.}]>:$num_parallel_calls,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
-    DefaultValuedAttr<StrAttr, "default">:$deterministic,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+    DefaultValuedAttr<StrAttr, "\"default\"">:$deterministic,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -10318,9 +10409,9 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     Arg<Variadic<TF_Tensor>, [{A list of input tensors.}]>:$args,
 
     SymbolRefAttr:$f,
-    DefaultValuedAttr<StrAttr, "">:$config,
-    DefaultValuedAttr<StrAttr, "">:$config_proto,
-    DefaultValuedAttr<StrAttr, "">:$executor_type
+    DefaultValuedAttr<StrAttr, "\"\"">:$config,
+    DefaultValuedAttr<StrAttr, "\"\"">:$config_proto,
+    DefaultValuedAttr<StrAttr, "\"\"">:$executor_type
   );
 
   let results = (outs
@@ -10442,7 +10533,8 @@ this dataset.}]>:$buffer_size,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<I64Attr, "0">:$slack_period,
     DefaultValuedAttr<BoolAttr, "true">:$legacy_autotune,
-    DefaultValuedAttr<I64Attr, "0">:$buffer_size_min
+    DefaultValuedAttr<I64Attr, "0">:$buffer_size_min,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -10468,7 +10560,7 @@ gradients in some corner cases.
   let arguments = (ins
     Arg<TF_Tensor, [{any tensor.}]>:$input,
 
-    DefaultValuedAttr<StrAttr, "">:$message
+    DefaultValuedAttr<StrAttr, "\"\"">:$message
   );
 
   let results = (outs
@@ -10489,7 +10581,7 @@ Passes `input` through to `output` and prints `data` when evaluating.
     Arg<TF_Tensor, [{The tensor passed to `output`}]>:$input,
     Arg<Variadic<TF_Tensor>, [{A list of tensors to print out when op is evaluated.}]>:$data,
 
-    DefaultValuedAttr<StrAttr, "">:$message,
+    DefaultValuedAttr<StrAttr, "\"\"">:$message,
     DefaultValuedAttr<I64Attr, "-1">:$first_n,
     DefaultValuedAttr<I64Attr, "3">:$summarize
   );
@@ -10512,8 +10604,8 @@ Prints a string scalar to the desired output_stream.
   let arguments = (ins
     Arg<TF_StrTensor, [{The string scalar to print.}]>:$input,
 
-    DefaultValuedAttr<StrAttr, "stderr">:$output_stream,
-    DefaultValuedAttr<StrAttr, "\n">:$end
+    DefaultValuedAttr<StrAttr, "\"stderr\"">:$output_stream,
+    DefaultValuedAttr<StrAttr, "\"\\n\"">:$end
   );
 
   let results = (outs);
@@ -10678,7 +10770,7 @@ tensor.}]>:$input_max,
     DefaultValuedAttr<BoolAttr, "true">:$signed_input,
     DefaultValuedAttr<I64Attr, "8">:$num_bits,
     DefaultValuedAttr<BoolAttr, "false">:$range_given,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["HALF_TO_EVEN", "HALF_UP"]>, "HALF_TO_EVEN">:$round_mode,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["HALF_TO_EVEN", "HALF_UP"]>, "\"HALF_TO_EVEN\"">:$round_mode,
     DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
     DefaultValuedAttr<I64Attr, "-1">:$axis
   );
@@ -10739,7 +10831,7 @@ tensor.}]>:$input_max,
     DefaultValuedAttr<BoolAttr, "true">:$signed_input,
     DefaultValuedAttr<I64Attr, "8">:$num_bits,
     DefaultValuedAttr<BoolAttr, "false">:$range_given,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["HALF_TO_EVEN", "HALF_UP"]>, "HALF_TO_EVEN">:$round_mode,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["HALF_TO_EVEN", "HALF_UP"]>, "\"HALF_TO_EVEN\"">:$round_mode,
     DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
     DefaultValuedAttr<I64Attr, "-1">:$axis
   );
@@ -11274,7 +11366,8 @@ Creates a dataset with a range of values. Corresponds to python's xrange.
     Arg<TF_Int64Tensor, [{corresponds to step in python's xrange().}]>:$step,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -11455,7 +11548,7 @@ def TF_RecvOp : TF_Op<"Recv", []> {
   TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", [TF_TPUEmbeddingSideEffect]> {
+def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "An op that receives embedding activations on the TPU.";
 
   let description = [{
@@ -11515,7 +11608,7 @@ order specified.  Omitting `reduction_indices` is equivalent to passing
 `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.}]>:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims,
-    DefaultValuedAttr<StrAttr, "">:$separator
+    DefaultValuedAttr<StrAttr, "\"\"">:$separator
   );
 
   let results = (outs
@@ -11621,7 +11714,8 @@ Creates a dataset that emits the outputs of `input_dataset` `count` times.
 be repeated. A value of `-1` indicates that it should be repeated infinitely.}]>:$count,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -12845,7 +12939,7 @@ checkpoint directly.}]>:$tensors
   TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_RetrieveTPUEmbeddingADAMParametersOp : TF_Op<"RetrieveTPUEmbeddingADAMParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingADAMParametersOp : TF_Op<"RetrieveTPUEmbeddingADAMParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve ADAM embedding parameters.";
 
   let description = [{
@@ -12857,10 +12951,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -12870,15 +12964,15 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingADAMParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingADAMParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -12889,7 +12983,7 @@ def TF_RetrieveTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEm
   );
 }
 
-def TF_RetrieveTPUEmbeddingAdadeltaParametersOp : TF_Op<"RetrieveTPUEmbeddingAdadeltaParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingAdadeltaParametersOp : TF_Op<"RetrieveTPUEmbeddingAdadeltaParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve Adadelta embedding parameters.";
 
   let description = [{
@@ -12901,10 +12995,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -12914,15 +13008,15 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -12933,7 +13027,7 @@ def TF_RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"RetrieveT
   );
 }
 
-def TF_RetrieveTPUEmbeddingAdagradParametersOp : TF_Op<"RetrieveTPUEmbeddingAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingAdagradParametersOp : TF_Op<"RetrieveTPUEmbeddingAdagradParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve Adagrad embedding parameters.";
 
   let description = [{
@@ -12945,10 +13039,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -12957,15 +13051,15 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingAdagradParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -12975,7 +13069,7 @@ def TF_RetrieveTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTP
   );
 }
 
-def TF_RetrieveTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"RetrieveTPUEmbeddingCenteredRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"RetrieveTPUEmbeddingCenteredRMSPropParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve centered RMSProp embedding parameters.";
 
   let description = [{
@@ -12987,10 +13081,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13001,7 +13095,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingFTRLParametersOp : TF_Op<"RetrieveTPUEmbeddingFTRLParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingFTRLParametersOp : TF_Op<"RetrieveTPUEmbeddingFTRLParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve FTRL embedding parameters.";
 
   let description = [{
@@ -13013,10 +13107,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13026,15 +13120,15 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingFTRLParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingFTRLParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13045,7 +13139,7 @@ def TF_RetrieveTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEm
   );
 }
 
-def TF_RetrieveTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"RetrieveTPUEmbeddingMDLAdagradLightParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"RetrieveTPUEmbeddingMDLAdagradLightParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve MDL Adagrad Light embedding parameters.";
 
   let description = [{
@@ -13057,10 +13151,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13071,7 +13165,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingMomentumParametersOp : TF_Op<"RetrieveTPUEmbeddingMomentumParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingMomentumParametersOp : TF_Op<"RetrieveTPUEmbeddingMomentumParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve Momentum embedding parameters.";
 
   let description = [{
@@ -13083,10 +13177,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13095,15 +13189,15 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingMomentumParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingMomentumParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13113,7 +13207,7 @@ def TF_RetrieveTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"RetrieveT
   );
 }
 
-def TF_RetrieveTPUEmbeddingProximalAdagradParametersOp : TF_Op<"RetrieveTPUEmbeddingProximalAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingProximalAdagradParametersOp : TF_Op<"RetrieveTPUEmbeddingProximalAdagradParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve proximal Adagrad embedding parameters.";
 
   let description = [{
@@ -13125,10 +13219,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13137,15 +13231,15 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13155,15 +13249,15 @@ def TF_RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"Re
   );
 }
 
-def TF_RetrieveTPUEmbeddingProximalYogiParametersOp : TF_Op<"RetrieveTPUEmbeddingProximalYogiParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingProximalYogiParametersOp : TF_Op<"RetrieveTPUEmbeddingProximalYogiParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13173,15 +13267,15 @@ def TF_RetrieveTPUEmbeddingProximalYogiParametersOp : TF_Op<"RetrieveTPUEmbeddin
   );
 }
 
-def TF_RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13192,7 +13286,7 @@ def TF_RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"Retri
   );
 }
 
-def TF_RetrieveTPUEmbeddingRMSPropParametersOp : TF_Op<"RetrieveTPUEmbeddingRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingRMSPropParametersOp : TF_Op<"RetrieveTPUEmbeddingRMSPropParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve RMSProp embedding parameters.";
 
   let description = [{
@@ -13204,10 +13298,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13217,15 +13311,15 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingRMSPropParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingRMSPropParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13236,7 +13330,7 @@ def TF_RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"RetrieveTP
   );
 }
 
-def TF_RetrieveTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"RetrieveTPUEmbeddingStochasticGradientDescentParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"RetrieveTPUEmbeddingStochasticGradientDescentParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve SGD embedding parameters.";
 
   let description = [{
@@ -13248,10 +13342,10 @@ used to retrieve updated parameters before saving a checkpoint.
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -13259,15 +13353,15 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
     DefaultValuedAttr<I64Attr, "-1">:$table_id,
-    DefaultValuedAttr<StrAttr, "">:$table_name,
+    DefaultValuedAttr<StrAttr, "\"\"">:$table_name,
     I64Attr:$num_shards,
     I64Attr:$shard_id,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs
@@ -14114,7 +14208,7 @@ For example:
 
 ```
 c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_sum(c, tf.constant([0, 0, 1]))
+tf.math.segment_sum(c, tf.constant([0, 0, 1]))
 # ==> [[5, 5, 5, 5],
 #      [5, 6, 7, 8]]
 ```
@@ -14313,7 +14407,7 @@ def TF_SendOp : TF_Op<"Send", []> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
+def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Performs gradient updates of embedding tables.";
 
   let arguments = (ins
@@ -14468,7 +14562,8 @@ def TF_ShuffleAndRepeatDatasetV2Op : TF_Op<"ShuffleAndRepeatDatasetV2", []> {
 
     DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -14485,7 +14580,8 @@ def TF_ShuffleDatasetV2Op : TF_Op<"ShuffleDatasetV2", []> {
     Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -14505,7 +14601,8 @@ def TF_ShuffleDatasetV3Op : TF_Op<"ShuffleDatasetV3", []> {
 
     DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -15178,7 +15275,7 @@ x = [[[[1, 2, 3, 4],
     TF_Tensor:$input,
 
     Confined<I64Attr, [IntMinValue<2>]>:$block_size,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "NHWC">:$data_format
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format
   );
 
   let results = (outs
@@ -15652,6 +15749,41 @@ This is the label for the given minibatch entry.}]>:$labels
   let verifier = [{ return Verify(*this); }];
 }
 
+def TF_SparseTensorDenseMatMulOp : TF_Op<"SparseTensorDenseMatMul", [NoSideEffect]> {
+  let summary = [{
+Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
+  }];
+
+  let description = [{
+No validity checking is performed on the indices of A.  However, the following
+input format is recommended for optimal behavior:
+
+if adjoint_a == false:
+  A should be sorted in lexicographically increasing order.  Use SparseReorder
+  if you're not sure.
+if adjoint_a == true:
+  A should be sorted in order of increasing dimension 1 (i.e., "column major"
+  order instead of "row major" order).
+  }];
+
+  let arguments = (ins
+    Arg<TF_I32OrI64Tensor, [{2-D.  The `indices` of the `SparseTensor`, size `[nnz, 2]` Matrix.}]>:$a_indices,
+    Arg<TF_Tensor, [{1-D.  The `values` of the `SparseTensor`, size `[nnz]` Vector.}]>:$a_values,
+    Arg<TF_Int64Tensor, [{1-D.  The `shape` of the `SparseTensor`, size `[2]` Vector.}]>:$a_shape,
+    Arg<TF_Tensor, [{2-D.  A dense Matrix.}]>:$b,
+
+    DefaultValuedAttr<BoolAttr, "false">:$adjoint_a,
+    DefaultValuedAttr<BoolAttr, "false">:$adjoint_b
+  );
+
+  let results = (outs
+    TF_Tensor:$product
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SparseToDenseOp : TF_Op<"SparseToDense", [NoSideEffect]> {
   let summary = "Converts a sparse representation into a dense tensor.";
 
@@ -15789,11 +15921,11 @@ I.e., \\(y = x * x = x^2\\).
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -15858,6 +15990,8 @@ size 1 removed.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_StackCloseV2Op : TF_Op<"StackCloseV2", []> {
@@ -15909,7 +16043,7 @@ def TF_StackV2Op : TF_Op<"StackV2", [TF_UniqueResourceAllocation]> {
 size is unlimited.}]>:$max_size,
 
     TypeAttr:$elem_type,
-    DefaultValuedAttr<StrAttr, "">:$stack_name
+    DefaultValuedAttr<StrAttr, "\"\"">:$stack_name
   );
 
   let results = (outs
@@ -16739,7 +16873,7 @@ Examples:
 or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
 of non-scalar inputs.}]>:$inputs,
 
-    DefaultValuedAttr<StrAttr, "">:$separator
+    DefaultValuedAttr<StrAttr, "\"\"">:$separator
   );
 
   let results = (outs
@@ -17093,13 +17227,13 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
   let arguments = (ins
     Confined<I64Attr, [IntMinValue<0>]>:$num_replicas,
     DefaultValuedAttr<I64Attr, "1">:$num_cores_per_replica,
-    DefaultValuedAttr<StrAttr, "">:$topology,
+    DefaultValuedAttr<StrAttr, "\"\"">:$topology,
     DefaultValuedAttr<BoolAttr, "true">:$use_tpu,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$device_assignment,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$computation_shape,
     DefaultValuedAttr<StrArrayAttr, "{}">:$host_compute_core,
     DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
-    DefaultValuedAttr<StrAttr, "STEP_MARK_AT_ENTRY">:$step_marker_location,
+    DefaultValuedAttr<StrAttr, "\"STEP_MARK_AT_ENTRY\"">:$step_marker_location,
     DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement,
     DefaultValuedAttr<BoolAttr, "false">:$use_spmd_for_xla_partitioning
   );
@@ -17218,7 +17352,8 @@ that should be taken. A value of `-1` indicates that all of `input_dataset`
 is taken.}]>:$count,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -17263,8 +17398,8 @@ Given an input tensor, this function computes hyperbolic tangent of every
   >>> x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
   >>> tf.math.tanh(x)
   <tf.Tensor: shape=(8,), dtype=float32, numpy=
-  array([-1.        , -0.99990916, -0.46211717,  0.7615942 ,  0.8336547 ,
-          0.9640276 ,  0.9950547 ,  1.        ], dtype=float32)>
+  array([-1.0, -0.99990916, -0.46211717,  0.7615942 ,  0.8336547 ,
+          0.9640276 ,  0.9950547 ,  1.0], dtype=float32)>
   }];
 
   let arguments = (ins
@@ -17537,7 +17672,7 @@ Write data via Write and read via Read or Pack.
     DefaultValuedAttr<BoolAttr, "false">:$dynamic_size,
     DefaultValuedAttr<BoolAttr, "true">:$clear_after_read,
     DefaultValuedAttr<BoolAttr, "false">:$identical_element_shapes,
-    DefaultValuedAttr<StrAttr, "">:$tensor_array_name
+    DefaultValuedAttr<StrAttr, "\"\"">:$tensor_array_name
   );
 
   let results = (outs
@@ -18122,7 +18257,8 @@ Creates a dataset that emits each dim-0 slice of `components` once.
     Variadic<TF_Tensor>:$components,
 
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<BoolAttr, "false">:$is_files
+    DefaultValuedAttr<BoolAttr, "false">:$is_files,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
   let results = (outs
@@ -18565,8 +18701,7 @@ Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
-This operator is similar to the unsorted segment sum operator found
-[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to `tf.math.unsorted_segment_sum`,
 Instead of computing the sum over segments, it computes the maximum such that:
 
 \\(output_i = \max_{j...} data[j...]\\) where max is over tuples `j...` such
@@ -18620,8 +18755,7 @@ Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
-This operator is similar to the unsorted segment sum operator found
-[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to `tf.math.unsorted_segment_sum`,
 Instead of computing the sum over segments, it computes the minimum such that:
 
 \\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
@@ -18671,8 +18805,7 @@ Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
-This operator is similar to the unsorted segment sum operator found
-[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to `tf.math.unsorted_segment_sum`,
 Instead of computing the sum over segments, it computes the product of all
 entries belonging to a segment such that:
 
@@ -18827,8 +18960,8 @@ def TF_VariableOp : TF_Op<"Variable", []> {
 
   let arguments = (ins
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name
+    DefaultValuedAttr<StrAttr, "\"\"">:$container,
+    DefaultValuedAttr<StrAttr, "\"\"">:$shared_name
   );
 
   let results = (outs
@@ -18884,8 +19017,8 @@ about sharing states in tensorflow.
 
   let arguments = (ins
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name
+    DefaultValuedAttr<StrAttr, "\"\"">:$container,
+    DefaultValuedAttr<StrAttr, "\"\"">:$shared_name
   );
 
   let results = (outs
@@ -19000,7 +19133,8 @@ documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
     Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>, [{Array or a non-empty tuple of arrays to reduce across replicas.}]>:$input,
     Arg<TF_Int32Tensor, [{Groups between which the reductions are performed.}]>:$group_assignment,
 
-    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op
+    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op,
+    TF_AnyStrAttrOf<["CrossReplica", "CrossReplicaAndPartition"]>:$mode
   );
 
   let results = (outs
@@ -19686,6 +19820,10 @@ XlaVariadicReduceV2 is a version that supports heterogeneous operands.
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_XlaVariadicReduceV2Op : TF_Op<"XlaVariadicReduceV2", [AttrSizedOperandSegments, NoSideEffect]> {
@@ -19712,6 +19850,8 @@ operands of different dtypes, and improved shape inference.
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_XlaVariadicSortOp : TF_Op<"XlaVariadicSort", [NoSideEffect]> {
@@ -19858,8 +19998,8 @@ expected to create these operators.
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
     DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
-    DefaultValuedAttr<StrAttr, "Identity">:$activation_mode,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<StrAttr, "\"Identity\"">:$activation_mode,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
@@ -19910,7 +20050,7 @@ create these operators.
     I64ArrayAttr:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
     DefaultValuedAttr<StrArrayAttr, "{}">:$fused_ops,
@@ -20033,7 +20173,7 @@ def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {
   TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", [TF_TPUEmbeddingSideEffect]> {
+def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "An op that receives embeddng activations on the TPU.";
 
   let description = [{
@@ -20085,7 +20225,7 @@ of the embedding lookup operation.
   );
 }
 
-def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
+def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "An op that performs gradient updates of embedding tables.";
 
   let description = [{
@@ -20140,7 +20280,7 @@ look up the program in the compilation cache.
   let arguments = (ins
     Variadic<TF_Int64Tensor>:$dynamic_shapes,
 
-    DefaultValuedAttr<StrAttr, "">:$mlir_module,
+    DefaultValuedAttr<StrAttr, "\"\"">:$mlir_module,
     StrAttr:$metadata
   );
 
@@ -20204,7 +20344,7 @@ A pseudo-op to represent host-side computation in an XLA program.
     StrAttr:$send_key,
     StrAttr:$recv_key,
     DefaultValuedAttr<I64Attr, "0">:$tpu_core,
-    DefaultValuedAttr<StrAttr, "">:$host_mlir_module
+    DefaultValuedAttr<StrAttr, "\"\"">:$host_mlir_module
   );
 
   let results = (outs

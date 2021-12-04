@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/linalg/eye_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
@@ -227,15 +227,20 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
       functor::EyeFunctor<GPUDevice, Scalar> eye;
       eye(device, output_reshaped);
 
+#if GOOGLE_CUDA
+      cublasOperation_t trans = CUBLAS_OP_N;
+#elif TENSORFLOW_USE_ROCM
+      rocblas_operation trans = rocblas_operation_none;
+#endif
+
       // Solve A X = I.
       dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "getrs"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver->Getrs(CUBLAS_OP_N, n, n, &input_copy_reshaped(batch, 0, 0),
-                          n, &pivots_mat(batch, 0),
-                          &output_reshaped(batch, 0, 0), n,
-                          &dev_info.back()(batch)),
+            solver->Getrs(trans, n, n, &input_copy_reshaped(batch, 0, 0), n,
+                          &pivots_mat(batch, 0), &output_reshaped(batch, 0, 0),
+                          n, &dev_info.back()(batch)),
             done);
       }
     }

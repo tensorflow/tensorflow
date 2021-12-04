@@ -20,13 +20,15 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 #if BEF_THUNKS
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_tfrt_gpu.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -69,6 +72,7 @@ bool IsBefThunkEnabled() { return true; }
 namespace {
 
 struct CoreRuntimeAndWorkQueue {
+  mlir::MLIRContext* mlir_ctx;
   tfrt::CoreRuntime* core_runtime;
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue;
 };
@@ -79,8 +83,7 @@ class BefThunk : public Thunk {
            std::vector<BufferAllocation::Slice> buffers,
            tfrt::BefBuffer bef_buffer,
            tfrt::RCReference<tfrt::BEFFile> bef_file,
-           mlir::Operation* op = nullptr,
-           CustomCallThunk::CustomCallTarget call_target = nullptr)
+           mlir::Operation* op = nullptr)
       : Thunk(kind, thunk_info),
         buffers_(std::move(buffers)),
         bef_buffer_(std::move(bef_buffer)),
@@ -104,10 +107,6 @@ class BefThunk : public Thunk {
             mlir::dyn_cast_or_null<mlir::lmhlo::AllToAllOp>(op)) {
       xccl_config_ = GetNcclCollectiveConfigForMlir(
           all_to_all_op, all_to_all_op.use_global_device_ids());
-    }
-    if (auto custom_call_op =
-            mlir::dyn_cast_or_null<mlir::lmhlo::CustomCallOp>(op)) {
-      custom_call_target_ = std::move(call_target);
     }
   }
 
@@ -145,9 +144,6 @@ class BefThunk : public Thunk {
   absl::flat_hash_map<int64_t,
                       NcclCollectivePermuteConfig::SourceTargetMapEntry>
       id_to_collective_permute_source_target_;
-
-  // Used only when performing CustomCall.
-  CustomCallThunk::CustomCallTarget custom_call_target_;
 
   // The module data will be set in the execution context for kernel thunk to
   // use during execution. The resource contexts cache the loaded modules.
@@ -192,10 +188,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateModule(mlir::Operation* op) {
 static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
   mlir::PassManager pass_manager(module->getContext(),
                                  mlir::PassManager::Nesting::Implicit);
-  pass_manager.addPass(tensorflow::createConvertLmhloToGpuPass());
-  pass_manager.addPass(mlir::createGpuAsyncRegionPass());
-  tfrt::gpu::populateGpuToTfrtGpuPasses(pass_manager);
-
+  tensorflow::populateLmhloToTfrtGpuPasses(pass_manager);
   if (failed(pass_manager.run(module)))
     return tensorflow::errors::Internal("Failed to run pass pipeline.");
   return Status::OK();
@@ -253,49 +246,46 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
     return Thunk::Kind::kTriangularSolve;
   }
+  if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvBackwardInputOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvBackwardFilterOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvForwardFusedOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvForwardFusedSideInputOp>(op)) {
+    return Thunk::Kind::kConvolution;
+  }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
 }
 
 static StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
-  // TODO(hanbinyoon): Make these configurable.
-  int tfrt_num_threads = tensorflow::port::MaxParallelism();
-  int tfrt_num_blocking_threads = 16;
+  static auto runtime_and_queue_or =
+      [&]() -> StatusOr<CoreRuntimeAndWorkQueue> {
+    // TODO(hanbinyoon): Make these configurable.
+    int num_threads = tensorflow::port::MaxParallelism();
+    int num_blocking_threads = 16;
 
-  static StatusOr<CoreRuntimeAndWorkQueue>* runtime_and_queue_or =
-      [&](int num_threads, int num_blocking_threads) {
-        // Create work queue.
-        auto work_queue = tensorflow::tfrt_stub::WrapDefaultWorkQueue(
-            tfrt::CreateMultiThreadedWorkQueue(num_threads,
-                                               num_blocking_threads));
-        if (work_queue == nullptr) {
-          auto status =
-              tensorflow::errors::Internal("Failed to create TFRT work queue.");
-          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
-        }
-        auto* work_queue_ptr = work_queue.get();
+    // Create work queue.
+    auto work_queue = tensorflow::tfrt_stub::WrapDefaultWorkQueue(
+        tfrt::CreateMultiThreadedWorkQueue(num_threads, num_blocking_threads));
+    if (work_queue == nullptr) {
+      return tensorflow::errors::Internal("Failed to create TFRT work queue.");
+    }
+    auto* work_queue_ptr = work_queue.get();
+    auto* mlir_ctx = new mlir::MLIRContext;
 
-        // Create core runtime.
-        auto expected_core_runtime = tfrt::CoreRuntime::Create(
-            [](const tfrt::DecodedDiagnostic& diag) {
-              LOG(ERROR) << diag.message;
-            },
-            tfrt::CreateMallocAllocator(), std::move(work_queue),
-            kDefaultHostDeviceName);
-        if (!expected_core_runtime) {
-          auto error = expected_core_runtime.takeError();
-          auto status =
-              tensorflow::errors::Internal(llvm::toString(std::move(error)));
-          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
-        }
+    // Create core runtime.
+    auto expected_core_runtime = tfrt::CoreRuntime::Create(
+        tfrt::gpu::GetDiagHandler(mlir_ctx), tfrt::CreateMallocAllocator(),
+        std::move(work_queue), kDefaultHostDeviceName);
+    if (!expected_core_runtime) {
+      auto error = expected_core_runtime.takeError();
+      return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+    }
 
-        auto runtime_and_queue = CoreRuntimeAndWorkQueue{
-            expected_core_runtime->release(), work_queue_ptr};
-        return new StatusOr<CoreRuntimeAndWorkQueue>(runtime_and_queue);
-      }(tfrt_num_threads, tfrt_num_blocking_threads);
-
-  TF_RETURN_IF_ERROR(runtime_and_queue_or->status());
-  return runtime_and_queue_or->ValueOrDie();
+    return CoreRuntimeAndWorkQueue{mlir_ctx, expected_core_runtime->release(),
+                                   work_queue_ptr};
+  }();
+  return runtime_and_queue_or;
 }
 
 // Creates a TFRT module that loads the GPU module and launches the target
@@ -431,25 +421,6 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
                    std::move(bef_result.first), std::move(bef_result.second)));
 }
 
-// TODO(hanbinyoon): Deduplicate common code for BefThunk instantiation.
-StatusOr<std::unique_ptr<Thunk>> CreateBefCustomCallThunk(
-    Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    std::vector<BufferAllocation::Slice> buffers,
-    CustomCallThunk::CustomCallTarget call_target) {
-  TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
-  auto module = CreateModule(op);
-  TF_RETURN_IF_ERROR(RunLmhloGpuToTfrtConversionPipeline(*module));
-
-  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
-  TF_ASSIGN_OR_RETURN(
-      auto bef_result,
-      ConvertToBef(*module, runtime_and_queue.core_runtime->GetHostContext()));
-
-  return std::unique_ptr<Thunk>(new BefThunk(
-      kind, thunk_info, std::move(buffers), std::move(bef_result.first),
-      std::move(bef_result.second), op, std::move(call_target)));
-}
-
 // Wrap the GPU stream specified in 'params' (initialized by the StreamExecutor)
 // to be passed to BEF functions as AsyncValueRef<GpuStream>.
 static auto CreateGpuStream(const Thunk::ExecuteParams& params) {
@@ -498,11 +469,13 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
 }
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
-CreateDefaultExecutionContext() {
+CreateDefaultExecutionContext(
+    tfrt::ResourceContext* resource_context = nullptr) {
   return CreateExecutionContext(
       [](tfrt::RequestContextBuilder& request_context_builder) {
         return Status::OK();
-      });
+      },
+      resource_context);
 }
 
 #if XLA_ENABLE_XCCL
@@ -600,22 +573,6 @@ CreateKernelExecutionContext(absl::optional<GpuModuleData> gpu_module_data,
   return std::move(exec_ctx);
 }
 
-static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
-CreateCustomCallExecutionContext(
-    CustomCallThunk::CustomCallTarget& custom_call_target) {
-  if (!custom_call_target) {
-    return tensorflow::errors::FailedPrecondition(
-        "Custom call target is not set for a CustomCall thunk.");
-  }
-
-  return CreateExecutionContext(
-      [&](tfrt::RequestContextBuilder& request_context_builder) {
-        request_context_builder.context_data().emplace<CustomCallContext>(
-            custom_call_target);
-        return Status::OK();
-      });
-}
-
 Status BefThunk::Initialize(const GpuExecutable& executable,
                             se::StreamExecutor* executor) {
   // Save the module data for kernel thunk to use during execution.
@@ -667,7 +624,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 #endif  // XLA_ENABLE_XCCL
   if (!exec_ctx) {
-    if (kind() == Thunk::kKernel) {
+    if (kind() == Thunk::kKernel || kind() == Thunk::kConvolution) {
       tensorflow::mutex_lock lock(mutex_);
       using AsyncStreamRef = tfrt::AsyncValueRef<tfrt::gpu::GpuStream>;
       CUcontext context = static_cast<AsyncStreamRef>(stream)->context()->get();
@@ -676,11 +633,13 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
         it = resource_contexts_.emplace_hint(it, context,
                                              new tfrt::ResourceContext());
       }
-      TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
-                                        gpu_module_data_, it->second.get()));
-    } else if (kind() == Thunk::kCustomCall) {
-      TF_ASSIGN_OR_RETURN(
-          exec_ctx, CreateCustomCallExecutionContext(custom_call_target_));
+      if (kind() == Thunk::kKernel) {
+        TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
+                                          gpu_module_data_, it->second.get()));
+      } else {  // kind() == Thunk::kConvolution
+        TF_ASSIGN_OR_RETURN(exec_ctx,
+                            CreateDefaultExecutionContext(it->second.get()));
+      }
     } else {
       TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
     }
@@ -689,8 +648,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Create owning handles for arguments and add pointer to them to 'args'.
   tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
-  tfrt::AsyncValueRef<tfrt::Chain> chain =
-      tfrt::GetReadyChain(exec_ctx->host());
+  tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
   args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
                      .GetAsyncValue());
@@ -709,6 +667,14 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (function->num_results() != 1)
     return tensorflow::errors::Internal("Unexpected result count.");
 
+  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  // Capture errors and augment with source.
+  std::string diag_str;
+  llvm::raw_string_ostream diag_os(diag_str);
+  llvm::SourceMgr src_mgr;
+  mlir::SourceMgrDiagnosticHandler handler(src_mgr, runtime_and_queue.mlir_ctx,
+                                           diag_os);
+
   // Execute the function.
   function->Execute(*exec_ctx, args, {result});
 
@@ -724,9 +690,10 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 #endif  // XLA_ENABLE_XCCL
 
-  // Report error if any.
+  // Report error if any, from handler and result.
+  if (diag_os.tell()) return tensorflow::errors::Internal(diag_os.str());
   if (auto* error = result->GetErrorIfPresent())
-    return tensorflow::errors::Internal(error->message);
+    return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
   return Status::OK();
 }
@@ -754,12 +721,6 @@ StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefKernelThunk(
     const std::string&, const LaunchDimensions&) {
   return tensorflow::errors::FailedPrecondition(
       "BefKernelThunks are disabled.");
-}
-
-StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefCustomCallThunk(
-    Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>,
-    CustomCallThunk::CustomCallTarget) {
-  return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
 }
 
 }  // namespace xla

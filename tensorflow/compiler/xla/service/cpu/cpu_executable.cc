@@ -109,7 +109,7 @@ static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     se::DeviceMemoryBase out = arguments[allocation.parameter_number()]
                                    .Buffer(allocation.param_shape_index())
                                    .AsDeviceMemoryBase();
-    CHECK_EQ(allocation.size(), out.size())
+    CHECK_LE(allocation.size(), out.size())
         << "Size mismatch on param " << allocation.parameter_number()
         << " at shape index " << allocation.param_shape_index().ToString();
     VLOG(3) << "allocation is a parameter";

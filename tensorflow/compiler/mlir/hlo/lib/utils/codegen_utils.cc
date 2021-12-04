@@ -47,11 +47,11 @@ Value emitNumElementsComputation(OpBuilder& b, Location loc, Operation* op) {
   return emitNumElementsComputation(b, loc, result_memref);
 }
 
-SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                        Value linear_index,
-                                        ArrayRef<Value> shape) {
+SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
+                                     Value linear_index,
+                                     ArrayRef<Value> shape) {
   int rank = shape.size();
-  SmallVector<Value, 4> result;
+  SmallVector<Value> result;
   if (rank == 0) return result;
   if (rank == 1) {
     result.push_back(linear_index);
@@ -59,7 +59,7 @@ SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
   }
 
   // dim_acc_mul_vec = [d, c*d, b*c*d]
-  std::vector<Value> dim_acc_mul_vec;
+  SmallVector<Value> dim_acc_mul_vec;
   Value tmp_acc_mul = shape[rank - 1];
   dim_acc_mul_vec.emplace_back(tmp_acc_mul);
   for (int i = rank - 2; i > 0; --i) {
@@ -83,10 +83,10 @@ SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
   return result;
 }
 
-SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                        Value linear_index, Value memref) {
+SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
+                                     Value linear_index, Value memref) {
   int rank = memref.getType().cast<MemRefType>().getRank();
-  SmallVector<Value, 4> result;
+  SmallVector<Value> result;
   if (rank == 0) return result;
   if (rank == 1) {
     result.push_back(linear_index);
@@ -101,10 +101,9 @@ SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
   return calcMultiDimIndex(b, loc, linear_index, shape_vec);
 }
 
-SmallVector<Value, 4> calcMultiDimIndexForFirstOperand(OpBuilder& b,
-                                                       Location loc,
-                                                       Value linear_index,
-                                                       Operation* op) {
+SmallVector<Value> calcMultiDimIndexForFirstOperand(OpBuilder& b, Location loc,
+                                                    Value linear_index,
+                                                    Operation* op) {
   assert(op->getDialect()->getNamespace() == "lmhlo");
   Value operand_memref = op->getOperand(0);
   return calcMultiDimIndex(b, loc, linear_index, operand_memref);

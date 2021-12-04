@@ -135,7 +135,7 @@ TensorFlowSavedModelDialect::TensorFlowSavedModelDialect(MLIRContext *context)
 }
 
 static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
-  auto attr = named_attr.second.dyn_cast<ArrayAttr>();
+  auto attr = named_attr.getValue().dyn_cast<ArrayAttr>();
   if (!attr) {
     return op->emitError()
            << "'tf_saved_model.index_path' attribute should be an ArrayAttr";
@@ -187,12 +187,13 @@ static LogicalResult VerifyBoundInputArgType(Operation *op_for_diagnostics,
 LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     Operation *op, unsigned region_index, unsigned arg_index,
     NamedAttribute named_attr) {
-  if (named_attr.first == "tf_saved_model.bound_input") {
-    if (!named_attr.second.isa<FlatSymbolRefAttr>()) {
+  if (named_attr.getName() == "tf_saved_model.bound_input") {
+    if (!named_attr.getValue().isa<FlatSymbolRefAttr>()) {
       return op->emitError() << "'tf_saved_model.bound_input' attribute should "
                                 "be a FlatSymbolRefAttr";
     }
-    auto symbol_name = named_attr.second.cast<FlatSymbolRefAttr>().getValue();
+    auto symbol_name =
+        named_attr.getValue().cast<FlatSymbolRefAttr>().getValue();
     auto module = op->getParentOfType<ModuleOp>();
     mlir::Operation *symbol_op = module.lookupSymbol(symbol_name);
     if (!symbol_op) {
@@ -203,23 +204,23 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     auto arg_type = cast<FuncOp>(op).getArgument(arg_index).getType();
     return VerifyBoundInputArgType(op, arg_type, symbol_op);
   }
-  if (named_attr.first == "tf_saved_model.index_path") {
+  if (named_attr.getName() == "tf_saved_model.index_path") {
     return VerifyIndexPath(op, named_attr);
   }
 
   return op->emitError() << "unknown tf_saved_model dialect arg attribute '"
-                         << named_attr.first << "'";
+                         << named_attr.getName().getValue() << "'";
 }
 
 LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
     Operation *op, unsigned region_index, unsigned result_index,
     NamedAttribute named_attr) {
-  if (named_attr.first == "tf_saved_model.index_path") {
+  if (named_attr.getName() == "tf_saved_model.index_path") {
     return VerifyIndexPath(op, named_attr);
   }
 
   return op->emitError() << "unknown tf_saved_model dialect result attribute '"
-                         << named_attr.first << "'";
+                         << named_attr.getName().getValue() << "'";
 }
 
 static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
@@ -374,12 +375,12 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
 
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
-  if (named_attr.first == "tf_saved_model.exported_names") {
+  if (named_attr.getName() == "tf_saved_model.exported_names") {
     if (!isa<FuncOp, GlobalTensorOp>(op)) {
       return op->emitError() << "'tf_saved_model.exported_names' must be on a "
                                 "'func' or 'tf_saved_model.global_tensor' op";
     }
-    if (!IsStrArrayAttr(named_attr.second)) {
+    if (!IsStrArrayAttr(named_attr.getValue())) {
       return op->emitError()
              << "'tf_saved_model.exported_names' must be an array of strings";
     }
@@ -396,7 +397,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     }
     return success();
   }
-  if (named_attr.first == "tf_saved_model.semantics") {
+  if (named_attr.getName() == "tf_saved_model.semantics") {
     auto module = dyn_cast<ModuleOp>(op);
     if (!module) {
       return op->emitError() << "'tf_saved_model.semantics' must "
@@ -404,12 +405,12 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     }
     return VerifySavedModelModule(module, this);
   }
-  if (named_attr.first == "tf_saved_model.under_construction") {
+  if (named_attr.getName() == "tf_saved_model.under_construction") {
     return success();
   }
 
   return op->emitError() << "unknown tf_saved_model dialect attribute '"
-                         << named_attr.first << "'";
+                         << named_attr.getName().getValue() << "'";
 }
 
 SmallVector<StringRef, 2> GetExportedNames(Operation *op) {

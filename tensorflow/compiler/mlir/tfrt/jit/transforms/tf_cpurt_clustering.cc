@@ -46,16 +46,20 @@ using mlir::TFDevice::ValueConstraint;
 using mlir::TFDevice::ValuesConstraintSet;
 
 using mlir::TF::_FusedMatMulOp;
+using mlir::TF::BatchMatMulV2Op;
 using mlir::TF::BroadcastToOp;
 using mlir::TF::ConcatV2Op;
 using mlir::TF::ConstOp;
 using mlir::TF::ExpandDimsOp;
 using mlir::TF::FillOp;
 using mlir::TF::MatMulOp;
+using mlir::TF::OneHotOp;
 using mlir::TF::PackOp;
 using mlir::TF::RangeOp;
 using mlir::TF::ReshapeOp;
 using mlir::TF::ShapeOp;
+using mlir::TF::SliceOp;
+using mlir::TF::SqueezeOp;
 using mlir::TF::StopGradientOp;
 using mlir::TF::StridedSliceOp;
 using mlir::TF::TransposeOp;
@@ -188,6 +192,13 @@ LogicalResult DefaultClusteringPolicy::MatchAndUpdateConstraints(
 }
 
 // -------------------------------------------------------------------------- //
+// tf.BatchMatMulV2
+// -------------------------------------------------------------------------- //
+
+class BatchMatMulV2OpClusteringPolicy
+    : public OpDefaultClusteringPolicy<BatchMatMulV2Op> {};
+
+// -------------------------------------------------------------------------- //
 // tf.BroadcastTo
 // -------------------------------------------------------------------------- //
 
@@ -257,6 +268,7 @@ class CwiseBinaryOpClusteringPolicy : public DefaultClusteringPolicy {
         "tf.RealDiv",
         "tf.SquaredDifference",
         "tf.Sub",
+        "tf.TruncateDiv",
         "tf.Xdivy",
         "tf.Xlogy",
     };
@@ -509,6 +521,26 @@ class FillOpClusteringPolicy : public TensorflowOpClusteringPolicy<FillOp> {
 class MatMulOpClusteringPolicy : public OpDefaultClusteringPolicy<MatMulOp> {};
 
 // -------------------------------------------------------------------------- //
+// tf.OneHot
+// -------------------------------------------------------------------------- //
+
+class OneHotOpClusteringPolicy : public TensorflowOpClusteringPolicy<OneHotOp> {
+  LogicalResult MatchAndUpdateConstraints(
+      OneHotOp op, const ValuesConstraintSet& results,
+      ValuesConstraintSet& operands) const final {
+    // Value constraint propagation is not supported.
+    if (auto constraint = results.GetConstraint(op.getResult()))
+      if (*constraint == ValueConstraint::kValue) return failure();
+
+    // MHLO lowering needs a static shape for the indices and a constant depth.
+    operands.Insert(op.indices(), ValueConstraint::kShape);
+    operands.Insert(op.depth(), ValueConstraint::kValue);
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
 // tf.Pack
 // -------------------------------------------------------------------------- //
 
@@ -581,6 +613,9 @@ class ShapeOpClusteringPolicy : public TensorflowOpClusteringPolicy<ShapeOp> {
   LogicalResult MatchAndUpdateConstraints(
       ShapeOp op, const ValuesConstraintSet& results,
       ValuesConstraintSet& operands) const final {
+    // Unranked inputs aren't supported by CPURT.
+    operands.Insert(op.input(), ValueConstraint::kRank);
+
     // Check constraint on the result value.
     auto result_constraint = results.GetConstraint(op.getResult());
     if (!result_constraint.hasValue()) return success();
@@ -615,6 +650,30 @@ class SoftmaxOpClusteringPolicy : public DefaultClusteringPolicy {
 };
 
 // -------------------------------------------------------------------------- //
+// tf.Squeeze
+// -------------------------------------------------------------------------- //
+
+class SqueezeOpClusteringPolicy
+    : public TensorflowOpClusteringPolicy<SqueezeOp> {
+  LogicalResult MatchAndUpdateConstraints(
+      SqueezeOp op, const ValuesConstraintSet& results,
+      ValuesConstraintSet& operands) const final {
+    // Propagate static shape constraints.
+    auto input_constraint = ValueConstraint::kRank;
+    if (auto result_constraint = results.GetConstraint(op.getResult())) {
+      if (*result_constraint == ValueConstraint::kValue) return failure();
+      input_constraint = *result_constraint;
+    }
+
+    // If squeeze_dims is not present we need a static shape.
+    if (op.squeeze_dims().empty()) input_constraint = ValueConstraint::kShape;
+
+    operands.Insert(op.input(), input_constraint);
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
 // tf.StopGradient
 // -------------------------------------------------------------------------- //
 
@@ -639,6 +698,30 @@ class TransposeOpClusteringPolicy
 
     // Permutation must be always known at compile time.
     operands.Insert(op.perm(), ValueConstraint::kValue);
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+// tf.Slice
+// -------------------------------------------------------------------------- //
+
+class SliceOpClusteringPolicy : public TensorflowOpClusteringPolicy<SliceOp> {
+  LogicalResult MatchAndUpdateConstraints(
+      SliceOp op, const ValuesConstraintSet& results,
+      ValuesConstraintSet& operands) const final {
+    // Value constraint propagation is not supported.
+    if (auto constraint = results.GetConstraint(op.getResult()))
+      if (*constraint == ValueConstraint::kValue) return failure();
+
+    // We must know the shape of the input.
+    operands.Insert(op.input(), ValueConstraint::kShape);
+
+    // Force begin and size to be constants. The restriction on begin could be
+    // lifted if we know that there are no `-1` sizes.
+    // TODO(kramerb): Revisit this when mhlo.real_dynamic_slice stabilizes.
+    operands.Insert({op.begin(), op.size()}, ValueConstraint::kValue);
 
     return success();
   }
@@ -670,30 +753,44 @@ void populateTfCpurtClusteringPolicies(ClusteringPolicySet& policies,
                                        CpurtClusteringTier tier) {
   // Returns true if the given cpurt compilation tier is enabled.
   auto is_enabled = [&](CpurtClusteringTier requested) -> bool {
-    return static_cast<uint8_t>(requested) <= static_cast<uint8_t>(tier);
+    return (static_cast<uint8_t>(tier) & static_cast<uint8_t>(requested)) ==
+           static_cast<uint8_t>(requested);
   };
 
-  if (is_enabled(CpurtClusteringTier::kTier1)) {
+  if (is_enabled(CpurtClusteringTier::kCwise)) {
     policies.Add<CwiseBinaryOpClusteringPolicy,   //
                  CwiseUnaryOpClusteringPolicy,    //
                  CwiseTernaryOpClusteringPolicy,  //
-                 StopGradientOpClusteringPolicy,  //
-                 TransposeOpClusteringPolicy>();
+                 StopGradientOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kTranspose)) {
+    policies.Add<TransposeOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kReductions)) {
+    policies.Add<ReductionOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kMetadata)) {
+    policies.Add<ExpandDimsOpClusteringPolicy,  //
+                 ReshapeOpClusteringPolicy,     //
+                 ShapeOpClusteringPolicy,       //
+                 SqueezeOpClusteringPolicy>();
   }
 
   if (is_enabled(CpurtClusteringTier::kAll)) {
-    policies.Add<BroadcastToOpClusteringPolicy,  //
-                 ConcatV2OpClusteringPolicy,     //
-                 ExpandDimsOpClusteringPolicy,   //
-                 FillOpClusteringPolicy,         //
-                 FusedMatMulOpClusteringPolicy,  //
-                 MatMulOpClusteringPolicy,       //
-                 PackOpClusteringPolicy,         //
-                 RangeOpClusteringPolicy,        //
-                 ReductionOpClusteringPolicy,    //
-                 ReshapeOpClusteringPolicy,      //
-                 ShapeOpClusteringPolicy,        //
-                 SoftmaxOpClusteringPolicy,      //
+    policies.Add<BatchMatMulV2OpClusteringPolicy,  //
+                 BroadcastToOpClusteringPolicy,    //
+                 ConcatV2OpClusteringPolicy,       //
+                 FillOpClusteringPolicy,           //
+                 FusedMatMulOpClusteringPolicy,    //
+                 MatMulOpClusteringPolicy,         //
+                 OneHotOpClusteringPolicy,         //
+                 PackOpClusteringPolicy,           //
+                 RangeOpClusteringPolicy,          //
+                 SliceOpClusteringPolicy,          //
+                 SoftmaxOpClusteringPolicy,        //
                  StridedSliceOpClusteringPolicy>();
   }
 }
@@ -713,6 +810,14 @@ mlir::LogicalResult IsCompilableConstant(mlir::ElementsAttr value) {
                  value.getType().getElementType().isIntOrIndexOrFloat());
 }
 
+static bool IsI1Integer(Type type) {
+  return mlir::getElementTypeOrSelf(type).isInteger(1);
+}
+
+static bool IsUnsignedInteger(Type type) {
+  return mlir::getElementTypeOrSelf(type).isUnsignedInteger();
+}
+
 mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
   llvm::SmallDenseSet<Operation*> ops;
   for (Operation* op : cluster.operations) {
@@ -721,24 +826,21 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
     (void)inserted;
   }
 
-  // TODO(b/196192286): This is a temporary workaround to disable excessive
-  // recompilation for dynamic shapes in one particular model. Remove this once
-  // specialization will be done based on shape constraints.
+  // TODO(ezhulenev): This is a temporary workaround to disable forming clusters
+  // with known compilation problems.
   for (Operation* op : ops) {
-    for (Value value : op->getOperands()) {
-      Operation* defining_op = value.getDefiningOp();
-      if (!defining_op) continue;
+    // TODO(b/205714705): Memory layout of `i1` data type is not defined, and
+    // when vectorization is enabled it can lead to crashes.
+    bool has_i1_integers = llvm::any_of(op->getOperandTypes(), IsI1Integer) ||
+                           llvm::any_of(op->getResultTypes(), IsI1Integer);
+    if (has_i1_integers) return failure();
 
-      // Check if value will be sunk into the cluster body.
-      auto const_op = mlir::dyn_cast<mlir::TF::ConstOp>(defining_op);
-      if (const_op && succeeded(IsCompilableConstant(const_op.value())))
-        continue;
-
-      // Skip clusters with non-f32 inputs.
-      if (!ops.contains(defining_op) &&
-          !mlir::getElementTypeOrSelf(value.getType()).isF32())
-        return failure();
-    }
+    // TODO(b/205905286): Unsigned integers support has a lot of gaps, and
+    // similar to handling `i1` we need a type conversion to signless integers.
+    bool has_unsigned_integers =
+        llvm::any_of(op->getOperandTypes(), IsUnsignedInteger) ||
+        llvm::any_of(op->getResultTypes(), IsUnsignedInteger);
+    if (has_unsigned_integers) return failure();
   }
 
   for (auto& pair : cluster.constraints) {

@@ -63,6 +63,8 @@ struct PassConfig {
   // Note: This is staging step and will be removed.
   // TODO(b/137395003): Remove post switching legalization.
   bool legalize_tf_while;
+  // Whether to outline WhileOp at the end of the pipeline.
+  bool outline_tf_while = false;
   // Whether to do shape inference.
   bool shape_inference;
   // Whether to do TFLite runtime verification.

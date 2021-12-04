@@ -413,6 +413,62 @@ message GradientAccumulationStatus {
   }
 }
 
+// Whether to optimize the packing of low-dimensional embedding tables in HBM
+// (high bandwidth memory). TPUs access HBM at 32-byte (8-float) granularity.
+// For functional correctness, the TPU software internally pads the embedding
+// dimension to a multiple of 8. This can sometimes lead to significant memory
+// wastage due to padding. For 1-dimensional, 2-dimensional, and 4-dimensional,
+// the TPU software can remove this padding by packing multiple rows into the
+// same 8-float HBM chunk. For example, 8 rows could be packed into the same
+// 8-float chunk for a 1-dimensional embedding table.
+
+// There is one important limitation for this HBM packing though. When only a
+// subset of rows in an 8-float chunk are accessed on a particular step, the
+// adjoining rows in the same chunk are updated with zero gradients on the
+// backward pass even if they are not touched. This is an artifact of the
+// packing implementation. This operation is NOT functionally correct for
+// optimizers where zero gradients change the embeddings/slot-variable values,
+// e.g., momentum-based optimizers. Hence, this HBM packing cannot be enabled
+// for embedding tables with such optimizers. The TPU software automatically
+// recognizes that a zero gradient can modify state and turns off the low
+// dimensional embedding packing in that scenario.
+//
+// However, for optimizers where a zero gradient is a NoOp, such as SGD,
+// Adagrad, and FTRL, this packing optimization can be used. However, there are
+// some important considerations:
+// * Clipping limits: The initial values for such embeddings should fall within
+//   the clipping limits specified in the optimization parameters. Otherwise, a
+//   zero gradient will cause the embeddings to be clipped. This changes state
+//   and hence, is not a NoOp.
+// * FTRL: The embedding vector is computed directly from the values of the
+//   accumulator and linear slot variables. Hence, the initial embedding values
+//   should match that computed from the initial values of the accumulator and
+//   linear slot variables. Note that in nearly all cases, the linear value is
+//   initialized to zero; this corresponds to an embedding value of zero.
+//
+// Performance: The TPU has to perform additional work when low dimensional
+// packing is enabled. In certain situations when the vocabulary size is small,
+// it may not make sense to turn on this packing since the total memory usage
+// due to padding is extremely low. Hence, the TPU software automatically turns
+// off the packing optimization in such scenarios.
+message LowDimensionalPackingStatus {
+  // if UNSPECIFIED (default), the low dimension packing status is DISABLED.
+  // This can change in future.
+  //
+  // if ENABLED, the low dimension packing is enabled only if the following
+  // three additional conditions are true:
+  //  * The optimizer treats the zero gradient as a NoOp.
+  //  * The embedding dimension is 1, 2, or 4.
+  //  * The vocabulary size is large enough to avoid performance issues.
+  //
+  // if DISABLED, the low dimension packing is always disabled.
+  enum Status {
+    UNSPECIFIED = 0;
+    ENABLED = 1;
+    DISABLED = 2;
+  }
+}
+
 // Configuration proto for hot ID optimization. This is an experimental feature
 // that is currently disabled (by default).
 message HotIdReplicationConfiguration {
@@ -463,6 +519,11 @@ message OptimizationParameters {
   // apply them using the actual optimization algorithm).
   GradientAccumulationStatus.Status gradient_accumulation_status = 17;
 
+  // Status of the low-dimensional embedding packing optimization. This controls
+  // whether to optimize the packing of 1-dimensional, 2-dimensional, and
+  // 4-dimensional embedding tables in memory.
+  LowDimensionalPackingStatus.Status low_dimensional_packing_status = 28;
+
   // Configuration proto for hot ID replication. This is an experimental
   // feature that is currently disabled (by default).
   HotIdReplicationConfiguration hot_id_replication_configuration = 18;
@@ -491,7 +552,7 @@ message OptimizationParameters {
 
   reserved 15;  // Old use_gradient_accumulation.
 
-  // NEXT_ID: 28
+  // NEXT_ID: 29
 }
 
 // Specification of an optimization algorithm's state variables (both the main

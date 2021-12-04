@@ -22,8 +22,6 @@ import sys
 import textwrap
 import traceback
 
-import six
-
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.converters import asserts
@@ -605,8 +603,7 @@ def call_with_unspecified_conversion_status(func):
 def _log_callargs(f, args, kwargs):
   """Logging helper."""
   logging.log(2, 'Defaults of %s : %s', f, f.__defaults__)
-  if not six.PY2:
-    logging.log(2, 'KW defaults of %s : %s', f, f.__kwdefaults__)
+  logging.log(2, 'KW defaults of %s : %s', f, f.__kwdefaults__)
 
   if kwargs is not None:
     callargs = tf_inspect.getcallargs(f, *args, **kwargs)

@@ -598,7 +598,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     std::shared_ptr<WorkerSession> worker_session;
     LOG_AND_RETURN_IF_ERROR(server->worker_env()->session_mgr->CreateSession(
         session_name, server_def, base_request.cluster_device_attributes(),
-        true));
+        context->session_options().config.isolate_session_state()));
     LOG_AND_RETURN_IF_ERROR(
         server->worker_env()->session_mgr->WorkerSessionForSession(
             session_name, &worker_session));
@@ -622,8 +622,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     LOG_AND_RETURN_IF_ERROR(server->Start());
   } else {
     sg.Update(server->worker_env()->session_mgr->UpdateSession(
-        session_name, server_def, base_request.cluster_device_attributes(),
-        /*isolate_session_state=*/true));
+        session_name, server_def, base_request.cluster_device_attributes()));
     sg.Update(context->UpdateRemoteMaster(context_id,
                                           std::move(remote_eager_workers),
                                           added_workers, removed_workers));
@@ -708,7 +707,8 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       auto session_name = strings::StrCat("eager_", context_->GetContextId());
       std::shared_ptr<WorkerSession> worker_session;
       LOG_AND_RETURN_IF_ERROR(server->worker_env()->session_mgr->CreateSession(
-          session_name, server_def, true));
+          session_name, server_def,
+          context_->session_options().config.isolate_session_state()));
       LOG_AND_RETURN_IF_ERROR(
           server->worker_env()->session_mgr->WorkerSessionForSession(
               session_name, &worker_session));

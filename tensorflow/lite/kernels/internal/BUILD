@@ -150,6 +150,13 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_sim_arm64",
+    values = {
+        "cpu": "ios_sim_arm64",
+    },
+)
+
+config_setting(
     name = "k8",
     values = {
         "cpu": "k8",
@@ -242,6 +249,7 @@ selects.config_setting_group(
         ":ios_armv7",
         ":ios_arm64",
         ":ios_arm64e",
+        ":ios_sim_arm64",
         ":darwin_arm64",
         ":raspberry_pi_with_neon",
     ] + tflite_extra_arm_config_settings(),
@@ -549,7 +557,6 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
-        ":portable_tensor_utils",
         ":quantization_util",
         ":strided_slice_logic",
         ":tensor",
@@ -650,6 +657,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",

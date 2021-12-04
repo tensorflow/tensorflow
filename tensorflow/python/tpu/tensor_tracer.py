@@ -96,6 +96,7 @@ _TT_SUMMARY_MIN = tensor_tracer_flags.TT_SUMMARY_MIN
 _TT_SUMMARY_MEAN = tensor_tracer_flags.TT_SUMMARY_MEAN
 _TT_SUMMARY_VAR = tensor_tracer_flags.TT_SUMMARY_VAR
 _TT_SUMMARY_SIZE = tensor_tracer_flags.TT_SUMMARY_SIZE
+_TT_SUMMARY_SPARSITY = tensor_tracer_flags.TT_SUMMARY_SPARSITY
 
 _TT_SUMMARY_TAG = 'tensor_tracer_summary'
 _TT_TENSORBOARD_PLUGIN_NAME = 'tensor_tracer'
@@ -808,6 +809,15 @@ class TensorTracer(object):
       # returns 0 for empty tensor
       return _compute_signature(tensor, linalg_ops.norm, cast_to_f32)
 
+    def _show_sparsity(tensor, cast_to_f32=True, tolerance=1e-06):
+      # returns nan for empty tensor and treats nans as non-zero numbers
+      def sparsity_fn(tensor):
+        non_zeros = math_ops.greater_equal(math_ops.abs(tensor), tolerance)
+        nans = math_ops.is_nan(tensor)
+        return nn_impl.zero_fraction(math_ops.logical_or(non_zeros, nans))
+
+      return _compute_signature(tensor, sparsity_fn, cast_to_f32)
+
     def _show_mean_and_variance(tensor, cast_to_f32=True):
       """Returns the mean and variance of the given tensor."""
       if cast_to_f32:
@@ -859,6 +869,8 @@ class TensorTracer(object):
           signature_result_tensor = _show_max_abs(tensor, cast_to_f32=False)
         elif signature_name == _TT_SUMMARY_MIN:
           signature_result_tensor = _show_min(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_SPARSITY:
+          signature_result_tensor = _show_sparsity(tensor)
         elif signature_name == _TT_SUMMARY_SIZE:
           signature_result_tensor = _show_size(tensor)
         elif signature_name == _TT_SUMMARY_MEAN:

@@ -149,6 +149,7 @@ enum StatType {
   kQueueAddr,
   kRequestId,
   kRunId,
+  kReplicaId,
   kGraphType,
   kStepNum,
   kIterNum,
@@ -198,6 +199,7 @@ enum StatType {
   kLevel0,
   kTfOp,
   kHloOp,
+  kHloCategory,
   kHloModule,
   kProgramId,
   kEquation,
@@ -210,13 +212,13 @@ enum StatType {
   kSourceInfo,
   kModelName,
   kModelVersion,
+  kBytesTransferred,
+  kDmaQueue,
   // Performance counter related.
   kRawValue,
   kScaledValue,
   kThreadId,
   // XLA metadata map related.
-  kSelfDurationPs,
-  kMinDurationPs,
   kHloProto,
   // Device capability related.
   kDevCapClockRateKHz,

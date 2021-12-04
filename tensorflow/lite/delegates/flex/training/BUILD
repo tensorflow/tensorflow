@@ -13,14 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_android")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 #
 # This is a TF Lite delegate that is used for on-device training exclusively.
 #
 package(
-    default_visibility = ["//visibility:private"],
+    default_visibility = [
+        "//tensorflow/lite/delegates/flex:__subpackages__",
+        "//third_party/fcp/client:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -32,26 +35,38 @@ cc_library(
     hdrs = [
         "training_delegate.h",
     ],
-    copts = tflite_copts(),
-    visibility = [
-        "//tensorflow/lite/delegates/flex/training:__subpackages__",
-    ],
+    copts = tflite_copts() + tf_opts_nortti_if_android(),
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/lite/delegates/flex:delegate_without_symbol",
-    ],
+        "//tensorflow/lite/delegates/flex:delegate_only_runtime",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
     alwayslink = 1,
 )
 
 tf_cc_test(
     name = "training_delegate_test",
     size = "small",
-    srcs = ["training_delegate_test.cc"],
+    srcs = [
+        "training_delegate_test.cc",
+    ],
     tags = [
         "no_gpu",  # GPU + flex is not supported.
+        "no_mac",
+        "no_windows",
     ],
     deps = [
         ":training_delegate",
+        "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/lite:shared_library",
         "//tensorflow/lite/delegates/flex:test_util",
         "//tensorflow/lite/kernels:test_util",

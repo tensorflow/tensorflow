@@ -49,6 +49,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -56,6 +57,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import gpu_util
 from tensorflow.python.framework import importer
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
@@ -1206,7 +1208,63 @@ def disable_eager_op_as_function(unused_msg):
     func._disable_eager_op_as_function = True
     return func
 
+  # Once the environment flag is flipped and `run_eager_op_as_function_enabled`
+  # is True by default, the `with_eager_op_as_function` wrapper will not add a
+  # separate test for eager_op_as_function execution. In that case the test with
+  # the original name needs to be disabled.
+  if context.run_eager_op_as_function_enabled():
+    return _disable_test(execute_func=False)
+
   return wrapper
+
+
+def set_xla_env_flag(func=None, flag=""):
+  """Decorator for setting XLA_FLAGS prior to running a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will allow users to set any xla flags
+  exposed via the XLA_FLAGS environment variable, execute the test, then reset
+  the XLA_FLAGS to the state it was in prior to this test.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @set_xla_env_flag(flag='--xla_gpu_enable_fast_min_max=false')
+    def testFoo(self):
+      ...
+
+  Args:
+    func: The function to be wrapped.
+    flag: The xla flag to be set in the XLA_FLAGS env variable.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+      original_xla_flags = os.environ.get("XLA_FLAGS")
+      new_xla_flags = flag
+      if original_xla_flags:
+        new_xla_flags = new_xla_flags + " " + original_xla_flags
+      os.environ["XLA_FLAGS"] = new_xla_flags
+      try:
+        return f(*args, **kwargs)
+      finally:
+        if original_xla_flags is None:
+          del os.environ["XLA_FLAGS"]
+        else:
+          os.environ["XLA_FLAGS"] = original_xla_flags
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
 
 
 def build_as_function_and_v1_graph(func=None):
@@ -2469,8 +2527,8 @@ class TensorFlowTestCase(googletest.TestCase):
           return ragged_tensor_value.RaggedTensorValue(
               self._eval_tensor(tensor.values),
               self._eval_tensor(tensor.row_splits))
-        elif isinstance(tensor, ops.IndexedSlices):
-          return ops.IndexedSlicesValue(
+        elif isinstance(tensor, indexed_slices.IndexedSlices):
+          return indexed_slices.IndexedSlicesValue(
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
               dense_shape=tensor.dense_shape.numpy())
@@ -2866,6 +2924,8 @@ class TensorFlowTestCase(googletest.TestCase):
                                atol=1e-6,
                                path=None,
                                msg=None):
+    if ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b):
+      return self._assertRaggedClose(a, b, rtol, atol, msg)
     path = path or []
     path_str = (("[" + "][".join(str(p) for p in path) + "]") if path else "")
     msg = msg if msg else ""
@@ -2961,8 +3021,6 @@ class TensorFlowTestCase(googletest.TestCase):
           to the nested structure, e.g. given `a = [(1, 1), {'d': (6, 7)}]` and
           `[p] = [1]['d']`, then `a[p] = (6, 7)`.
     """
-    if ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b):
-      return self._assertRaggedClose(a, b, rtol, atol, msg)
     self._assertAllCloseRecursive(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
@@ -3355,23 +3413,33 @@ class TensorFlowTestCase(googletest.TestCase):
         exception_type, r"Incompatible shapes|Dimensions must be equal|"
         r"required broadcastable shapes")
 
-  def assertShapeEqual(self, np_array, tf_tensor, msg=None):
-    """Asserts that a Numpy ndarray and a TensorFlow tensor have the same shape.
+  def assertShapeEqual(self, input_a, input_b, msg=None):
+    """Asserts that two Numpy or TensorFlow objects have the same shape.
+
+    For Tensors, this compares statically known shapes at compile time, not
+    dynamic shapes at runtime.
 
     Args:
-      np_array: A Numpy ndarray or Numpy scalar.
-      tf_tensor: A Tensor.
+      input_a: A Numpy ndarray, Numpy scalar, or a Tensor.
+      input_b: A Numpy ndarray, Numpy scalar, or a Tensor.
       msg: Optional message to report on failure.
 
     Raises:
       TypeError: If the arguments have the wrong type.
     """
-    if not isinstance(np_array, (np.ndarray, np.generic)):
-      raise TypeError("np_array must be a Numpy ndarray or Numpy scalar")
-    if not isinstance(tf_tensor, ops.Tensor):
-      raise TypeError("tf_tensor must be a Tensor")
-    self.assertAllEqual(
-        np_array.shape, tf_tensor.get_shape().as_list(), msg=msg)
+    if not isinstance(input_a, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_a must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_a)}")
+    if not isinstance(input_b, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_b must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_b)}")
+    shape_a = input_a.get_shape().as_list() if isinstance(
+        input_a, ops.Tensor) else input_a.shape
+    shape_b = input_b.get_shape().as_list() if isinstance(
+        input_b, ops.Tensor) else input_b.shape
+    self.assertAllEqual(shape_a, shape_b, msg=msg)
 
   def assertDeviceEqual(self, device1, device2, msg=None):
     """Asserts that the two given devices are the same.
@@ -3386,6 +3454,32 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertEqual(
         device1, device2,
         "Devices %s and %s are not equal. %s" % (device1, device2, msg))
+
+  @py_func_if_in_function
+  def assertDictEqual(self, a, b, msg=None):
+    """Assert that two given dictionary of tensors are the same.
+
+    Args:
+      a: Expected dictionary with numpy ndarray or anything else that can be
+        converted to one as values.
+      b: Actual dictionary with numpy ndarray or anything else that can be
+        converted to one as values.
+      msg: Optional message to report on failure.
+    """
+    # To keep backwards compatibility, we first try the base class
+    # assertDictEqual. If that fails we try the tensorflow one.
+    try:
+      super().assertDictEqual(a, b, msg)
+    except Exception:  # pylint: disable=broad-except
+      self.assertSameElements(a.keys(), b.keys())  # pylint: disable=g-assert-in-except
+      for k, v in a.items():
+        (a_k, b_k) = self.evaluate_if_both_tensors(v, b[k])
+        a_k = self._GetNdArray(a_k)
+        b_k = self._GetNdArray(b_k)
+        if np.issubdtype(a_k.dtype, np.floating):
+          self.assertAllClose(v, b[k], msg=k)
+        else:
+          self.assertAllEqual(v, b[k], msg=k)
 
   def _GetPyList(self, a):
     """Converts `a` to a nested python list."""
@@ -3433,16 +3527,15 @@ class TensorFlowTestCase(googletest.TestCase):
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
   # Fix Python 3+ compatibility issues
-  if not six.PY2:
-    # pylint: disable=invalid-name
+  # pylint: disable=invalid-name
 
-    # Silence a deprecation warning
-    assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
+  # Silence a deprecation warning
+  assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
 
-    # assertItemsEqual is assertCountEqual as of 3.2.
-    assertItemsEqual = googletest.TestCase.assertCountEqual
+  # assertItemsEqual is assertCountEqual as of 3.2.
+  assertItemsEqual = googletest.TestCase.assertCountEqual
 
-    # pylint: enable=invalid-name
+  # pylint: enable=invalid-name
 
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):
@@ -3746,3 +3839,20 @@ def run_functions_eagerly(run_eagerly):
     yield
   finally:
     def_function.run_functions_eagerly(initial_state)
+
+
+class TestDelta(object):
+  """A utility class to track increments to test counters."""
+
+  def __init__(self, name, label):
+    self.name = name
+    self.label = label
+    self.Reset()
+
+  def Reset(self):
+    self.last_value = _test_metrics_util.test_counter_value(
+        self.name, self.label)
+
+  def Get(self):
+    value = _test_metrics_util.test_counter_value(self.name, self.label)
+    return value - self.last_value

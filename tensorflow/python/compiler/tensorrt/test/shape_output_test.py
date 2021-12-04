@@ -115,5 +115,75 @@ class ShapeOutputWithSingleInputAndReshape(trt_test.TfTrtIntegrationTestBase):
     return ["TRTEngineOp_0", "TRTEngineOp_1"]
 
 
+class PrunedInputTest(trt_test.TfTrtIntegrationTestBase):
+  """In TRT 7, an input tensor can be pruned if it is not used by the network.
+
+  This happens if only its shape is used, but the shape is already defined by
+  the optimization profile by setting min=max. (nvbugs/3153064)
+
+  After pruning, the TRT network has no input bindings.
+  """
+
+  def setUp(self):
+    super().setUp()
+    self.DisableNonTrtOptimizers()
+
+  def GraphFn(self, x):
+    q = array_ops.shape(x)
+    q = q * 2 + q * q
+    return array_ops.identity(q, name="output_0")
+
+  def GetParams(self):
+    return self.BuildParamsWithMask(
+        self.GraphFn,
+        dtypes.float32, [[1, 2, 5, 3]], [[4]],
+        extra_inputs=[],
+        extra_outputs=[],
+        input_mask=[[False, True, True, True]],
+        output_mask=[[True]])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Returns the expected engines to build."""
+    return ["TRTEngineOp_0"]
+
+  def ShouldRunTest(self, run_params):
+    # Shape op is only converted in dynamic shape mode.
+    return (run_params.dynamic_shape and
+            run_params.is_v2, "test v2 dynamic shape")
+
+
+class PrunedInputTest2(trt_test.TfTrtIntegrationTestBase):
+  """Two inputs, one of the is pruned."""
+
+  def setUp(self):
+    super().setUp()
+    self.DisableNonTrtOptimizers()
+
+  def GraphFn(self, x, y):
+    q = array_ops.shape(x)
+    z = y * y + y
+    z = gen_array_ops.reshape(z, q)
+    out_0 = array_ops.identity(q, name="output_0")
+    out_1 = array_ops.identity(z, name="output_1")
+    return (out_0, out_1)
+
+  def GetParams(self):
+    return self.BuildParamsWithMask(
+        self.GraphFn,
+        dtypes.float32, [[1, 2, 5, 3], [2, 15]], [[4], [1, 2, 5, 3]],
+        extra_inputs=[],
+        extra_outputs=[],
+        input_mask=[[False, True, True, True], [False, True]],
+        output_mask=[[True], [False, True, True, True]])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Returns the expected engines to build."""
+    return ["TRTEngineOp_0"]
+
+  def ShouldRunTest(self, run_params):
+    # Shape op is only converted in dynamic shape mode.
+    return (run_params.dynamic_shape and
+            run_params.is_v2, "test v2 dynamic shape")
+
 if __name__ == "__main__":
   test.main()

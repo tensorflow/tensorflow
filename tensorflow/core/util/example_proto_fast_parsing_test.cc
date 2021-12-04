@@ -170,6 +170,10 @@ TEST(FastParse, Packed) {
       "\x0a\x0d\x0a\x0b\x0a\x03\x61\x67\x65\x12\x04\x1a\x02\x08\x0d");
 }
 
+TEST(FastParse, ValueBeforeKeyInMap) {
+  TestCorrectness("\x0a\x12\x0a\x10\x12\x09\x0a\x07\x0a\x05value\x0a\x03key");
+}
+
 TEST(FastParse, EmptyFeatures) {
   Example example;
   example.mutable_features();

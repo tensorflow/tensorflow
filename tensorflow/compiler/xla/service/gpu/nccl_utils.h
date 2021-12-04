@@ -99,14 +99,16 @@ using NcclComm = std::unique_ptr<ncclComm, void (*)(ncclComm_t)>;
 // GPUs, you'll need a different clique.
 class NcclClique {
  public:
-  explicit NcclClique(
-      absl::flat_hash_map<int, NcclComm> comms_by_device_ordinal);
+  using CommMap = absl::flat_hash_map<int, NcclComm>;
+
+  explicit NcclClique(CommMap comms_by_device_ordinal);
 
   ncclComm_t GetCommForDeviceOrdinal(int device_ordinal) const;
+  const CommMap& GetComms() const { return comms_by_device_ordinal_; }
   absl::Mutex* mu() { return &mu_; }
 
  private:
-  absl::flat_hash_map<int, NcclComm> comms_by_device_ordinal_;
+  CommMap comms_by_device_ordinal_;
   absl::Mutex mu_;
 };
 

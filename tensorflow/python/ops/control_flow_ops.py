@@ -30,6 +30,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -412,7 +413,9 @@ def merge(inputs, name=None):
     else:
       # If there is a mix of tensors and indexed slices, then convert the
       # tensors to indexed slices.
-      if all(isinstance(v, (ops.IndexedSlices, ops.Tensor)) for v in inputs):
+      if all(
+          isinstance(v, (indexed_slices.IndexedSlices, ops.Tensor))
+          for v in inputs):
         inputs = math_ops._as_indexed_slices_list(inputs, optimize=False)
 
       for v in inputs:
@@ -621,7 +624,7 @@ def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
     def update_component(m_component, v_component):
       m_component.op._update_input(1, v_component)
 
-    if isinstance(m, ops.IndexedSlices):
+    if isinstance(m, indexed_slices.IndexedSlices):
       v = math_ops._as_indexed_slices(v, optimize=False)
     # pylint: enable=protected-access
     v = _NextIteration(v)
@@ -1362,8 +1365,9 @@ def _cast_indexed_slice_indices(a, b):
     a: A value, which may be an IndexedSlices.
     b: A value, which may be an IndexedSlices.
   """
-  if (isinstance(a, ops.IndexedSlices) and isinstance(b, ops.IndexedSlices)
-      and a.indices.dtype != b.indices.dtype):
+  if (isinstance(a, indexed_slices.IndexedSlices) and
+      isinstance(b, indexed_slices.IndexedSlices) and
+      a.indices.dtype != b.indices.dtype):
     # pylint: disable=protected-access
     a._indices = math_ops.cast(a.indices, dtypes.int64)
     b._indices = math_ops.cast(b.indices, dtypes.int64)
@@ -2143,7 +2147,7 @@ class WhileContext(ControlFlowContext):
     self.loop_exits.extend(exit_acc)
 
     self.ExitResult(exit_acc)
-    return ops.IndexedSlices(
+    return indexed_slices.IndexedSlices(
         indices=exit_acc[0],
         values=exit_acc[1],
         dense_shape=exit_acc[2] if shape_acc is not None else None)
@@ -2233,7 +2237,7 @@ class WhileContext(ControlFlowContext):
     pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     body_result = body(*packed_vars_for_body)
     post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
-    if not nest.is_sequence_or_composite(body_result):
+    if not nest.is_nested_or_composite(body_result):
       body_result = [body_result]
     if len(post_summaries) > len(pre_summaries):
       new_summaries = post_summaries[len(pre_summaries):]
@@ -2862,7 +2866,7 @@ def _AsTensorList(x, p):
       l.append(array_ops.identity(v))
     else:
       l.append(
-          ops.IndexedSlices(
+          indexed_slices.IndexedSlices(
               array_ops.identity(v.values), array_ops.identity(v.indices)))
   return l
 
@@ -2909,7 +2913,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
         if isinstance(output_tensor, ops.Tensor):
           return _Identity(output_tensor, name=name)
         else:
-          return ops.IndexedSlices(
+          return indexed_slices.IndexedSlices(
               _Identity(output_tensor.values, name=name), output_tensor.indices,
               output_tensor.dense_shape)
 

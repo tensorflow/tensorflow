@@ -1,0 +1,16 @@
+op {
+  name: "FileSystemSetConfiguration"
+  input_arg {
+    name: "scheme"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "key"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "value"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

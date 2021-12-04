@@ -65,7 +65,7 @@ class ConfigTest(test.TestCase):
 
   def test_table_config_repr(self):
     table = tpu_embedding_v2_utils.TableConfig(
-        vocabulary_size=2, dim=4, initializer=None,
+        vocabulary_size=2, dim=4,
         combiner='sum', name='table')
 
     self.assertEqual(

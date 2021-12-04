@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
@@ -372,6 +373,16 @@ StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
   return std::unique_ptr<PjRtExecutable>(std::move(executable));
 }
 
+StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  XlaComputation xla_computation;
+  TF_RETURN_IF_ERROR(MlirToXlaComputation(
+      module, xla_computation,
+      /*use_tuple_args=*/options.parameter_is_tupled_arguments,
+      /*return_tuple=*/false));
+  return Compile(xla_computation, options);
+}
+
 StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
     const Shape& on_device_shape,
     absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events,
@@ -379,7 +390,8 @@ StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
   if (!on_device_shape.IsTuple()) {
     size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-    auto device_buffer = MaybeOwningCpuMemory::AllocateShared(byte_size);
+    TF_ASSIGN_OR_RETURN(auto device_buffer,
+                        MaybeOwningCpuMemory::AllocateShared(byte_size));
     buffers.push_back(std::move(device_buffer));
     return std::make_unique<TfrtCpuBuffer>(
         on_device_shape,
@@ -392,7 +404,8 @@ StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
   buffers.reserve(on_device_shape.tuple_shapes().size());
   for (const auto& leaf_shape : on_device_shape.tuple_shapes()) {
     size_t byte_size = ShapeUtil::ByteSizeOf(leaf_shape);
-    auto device_buffer = MaybeOwningCpuMemory::AllocateShared(byte_size);
+    TF_ASSIGN_OR_RETURN(auto device_buffer,
+                        MaybeOwningCpuMemory::AllocateShared(byte_size));
     buffers.push_back(std::move(device_buffer));
   }
   return std::make_unique<TfrtCpuBuffer>(
@@ -460,7 +473,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
     buffers.push_back(std::move(device_buffer));
     on_delete_callback = std::move(on_done_with_host_buffer);
   } else {
-    auto device_buffer = MaybeOwningCpuMemory::AllocateShared(byte_size);
+    TF_ASSIGN_OR_RETURN(auto device_buffer,
+                        MaybeOwningCpuMemory::AllocateShared(byte_size));
     auto dst_data_ptr = device_buffer->data();
     buffers.push_back(device_buffer);
     if (!has_default_layout) {
@@ -1107,7 +1121,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
 
   for (int i = 0; i < num_leaf_buffers; ++i) {
     auto src_buffer = src_device_buffer->Buffers()[i];
-    auto dst_buffer = MaybeOwningCpuMemory::AllocateShared(src_buffer->size());
+    TF_ASSIGN_OR_RETURN(auto dst_buffer, MaybeOwningCpuMemory::AllocateShared(
+                                             src_buffer->size()));
     src_buffers.push_back(std::move(src_buffer));
     dst_buffers.push_back(std::move(dst_buffer));
     tfrt::RCReference<tfrt::IndirectAsyncValue> definition_event =
@@ -1260,7 +1275,7 @@ Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
 
 // The following few helpers are adapted from XLA:CPU to create a buffer table
 // and assemble the buffer pointers in order to call into CpuExecutable.
-static std::shared_ptr<MaybeOwningCpuMemory> MemoryForAllocation(
+static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> MemoryForAllocation(
     const BufferAllocation& allocation,
     absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> arguments) {
   if (allocation.is_entry_computation_parameter()) {
@@ -1280,7 +1295,8 @@ static std::shared_ptr<MaybeOwningCpuMemory> MemoryForAllocation(
 
   // Output and temporary buffer.
   int64_t buffer_size = allocation.size();
-  auto out = MaybeOwningCpuMemory::AllocateShared(buffer_size);
+  TF_ASSIGN_OR_RETURN(auto out,
+                      MaybeOwningCpuMemory::AllocateShared(buffer_size));
 
   // Since the output buffer and all the temporary buffers were written into
   // by the JITed code, msan has no way of knowing their memory was
@@ -1299,7 +1315,7 @@ CreateBufferTable(
   for (BufferAllocation::Index i = 0; i < assignment.Allocations().size();
        ++i) {
     const BufferAllocation& allocation = assignment.GetAllocation(i);
-    buffers[i] = MemoryForAllocation(allocation, arguments);
+    TF_ASSIGN_OR_RETURN(buffers[i], MemoryForAllocation(allocation, arguments));
   }
   return std::move(buffers);
 }

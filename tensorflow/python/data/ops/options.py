@@ -37,10 +37,14 @@ class AutotuneAlgorithm(enum.Enum):
 
   GRADIENT_DESCENT: In each optimization step, this algorithm updates the
   parameter values in the optimal direction.
+
+  MAX_PARALLELISM: Similar to HILL_CLIMB but uses a relaxed stopping condition,
+  allowing the optimization to oversubscribe the CPU.
   """
   DEFAULT = 0
   HILL_CLIMB = 1
   GRADIENT_DESCENT = 2
+  MAX_PARALLELISM = 3
 
   @classmethod
   def _to_proto(cls, obj):
@@ -50,6 +54,8 @@ class AutotuneAlgorithm(enum.Enum):
       return model_pb2.AutotuneAlgorithm.HILL_CLIMB
     if obj == cls.GRADIENT_DESCENT:
       return model_pb2.AutotuneAlgorithm.GRADIENT_DESCENT
+    if obj == cls.MAX_PARALLELISM:
+      return model_pb2.AutotuneAlgorithm.MAX_PARALLELISM
     raise ValueError(
         f"Invalid `obj.` Supported values include `DEFAULT`, `HILL_CLIMB` and "
         f"`GRADIENT_DESCENT`. Got {obj.name}.")
@@ -62,6 +68,8 @@ class AutotuneAlgorithm(enum.Enum):
       return cls.HILL_CLIMB
     if pb == model_pb2.AutotuneAlgorithm.GRADIENT_DESCENT:
       return cls.GRADIENT_DESCENT
+    if pb == model_pb2.AutotuneAlgorithm.MAX_PARALLELISM:
+      return cls.MAX_PARALLELISM
     raise ValueError(f"Invalid `pb.` Supported values include `DEFAULT`, "
                      f"`HILL_CLIMB` and `GRADIENT_DESCENT`. Got {pb}.")
 
@@ -346,13 +354,8 @@ class OptimizationOptions(options_lib.OptionsBase):
   parallel_batch = options_lib.create_option(
       name="parallel_batch",
       ty=bool,
-      docstring="Whether to parallelize copying of batch elements. This "
-      "optimization is highly experimental and can cause performance "
-      "degradation (e.g. when the parallelization overhead exceeds the "
-      "benefits of performing the data copies in parallel). You should only "
-      "enable this optimization if a) your input pipeline is bottlenecked on "
-      "batching and b) you have validated that this optimization improves "
-      "performance. If None, defaults to False.")
+      docstring="Whether to parallelize copying of batch elements. If None, "
+      "defaults to True.")
 
   shuffle_and_repeat_fusion = options_lib.create_option(
       name="shuffle_and_repeat_fusion",

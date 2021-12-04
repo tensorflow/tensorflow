@@ -6,6 +6,10 @@
 
 # For platform specific build config
 load(
+    "//tensorflow:tensorflow.bzl",
+    "if_google",
+)
+load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
@@ -18,6 +22,7 @@ package(
         "//tensorflow/core:__subpackages__",
         "//tensorflow_models:__subpackages__",
     ],
+    features = if_google(["-parse_headers"]),
     licenses = ["notice"],
 )
 
@@ -123,6 +128,17 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "coordination_service_proto",
+    srcs = ["coordination_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_grpc_version = 1,
+    cc_stubby_versions = ["2"],
+    create_service = True,
+    protodeps = tf_additional_all_protos(),
+)
+
+tf_proto_library(
     name = "replay_log_proto",
     srcs = ["replay_log.proto"],
     cc_api_version = 2,
@@ -162,6 +178,7 @@ exports_files(
         "tensorflow_server.proto",
         "trackable_object_graph.proto",
         "transport_options.proto",
+        "distributed_runtime_payloads.proto",
     ],
 )
 
@@ -193,6 +210,7 @@ tf_proto_library(
         "tensorflow_server.proto",
         "trackable_object_graph.proto",
         "transport_options.proto",
+        "distributed_runtime_payloads.proto",
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,

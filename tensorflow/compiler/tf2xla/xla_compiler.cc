@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -856,9 +858,11 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_RETURN_IF_ERROR(
               XLAShapeToTensorShape(absl::get<xla::Shape>(arg.shape), &shape));
         }
-        TF_ASSIGN_OR_RETURN(*xla_shape, options_.shape_representation_fn(
-                                            shape, arg.type,
-                                            /*use_fast_memory=*/false));
+        TF_ASSIGN_OR_RETURN(
+            *xla_shape,
+            options_.shape_representation_fn(
+                shape, arg.type,
+                /*use_fast_memory=*/false, XlaLayoutPreference::kNoPreference));
         TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
             arg_sharding, /*use_fast_memory=*/false,
             options_.shape_representation_fn, xla_shape));
@@ -887,7 +891,8 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_ASSIGN_OR_RETURN(*xla_shape,
                               options_.shape_representation_fn(
                                   absl::get<TensorShape>(arg.shape), arg.type,
-                                  /*use_fast_memory=*/arg.fast_mem));
+                                  /*use_fast_memory=*/arg.fast_mem,
+                                  XlaLayoutPreference::kNoPreference));
           TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
               arg_sharding, arg.fast_mem, options_.shape_representation_fn,
               xla_shape));
@@ -1415,7 +1420,7 @@ Status XlaCompiler::CompileGraph(
           << " nonconstant: " << num_nonconst_outputs;
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
-  result->collective_reduce_info = context->GetCollectiveReduceV2OpInfo();
+  result->collective_info = context->GetCollectiveInfo();
   return Status::OK();
 }
 

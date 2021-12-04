@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
+
 #include <utility>
 #include <vector>
 
@@ -175,24 +177,6 @@ void ReplaceVarWithConstant(
   }
 }
 
-// A pass that tries to freeze / constant fold read only variables in the graph.
-// The pass will analyze the variable usage and if the variable is immutable
-// it will replace it with constant tensor which has its value.
-// Note: This pass currently only works with variables that are initialized
-// during Session init function only. Expanding to other uses is a todo.
-class FreezeVariablesPass
-    : public PassWrapper<FreezeVariablesPass, OperationPass<ModuleOp>> {
- public:
-  // If no session is provided or null the pass is no-op.
-  explicit FreezeVariablesPass(tensorflow::Session* session = nullptr)
-      : session_(session) {}
-
-  void runOnOperation() override;
-
- private:
-  tensorflow::Session* session_;
-};
-
 // Helper that returns the FuncOp that is the SessionInit function which
 // will be called to initialize all resources.
 // Returns nullptr if no function is found.
@@ -315,15 +299,15 @@ T GetUpdatedWhileOp(T while_op,
   return new_while_op;
 }
 
-void FreezeVariablesPass::runOnOperation() {
-  if (!session_) return;
-  ModuleOp module = getOperation();
+}  // namespace
+
+LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
   const tensorflow::DeviceMgr* mgr = nullptr;
-  auto status = session_->LocalDeviceManager(&mgr);
+  auto status = session->LocalDeviceManager(&mgr);
   if (!status.ok()) {
     module->emitError("failed to fetch device manager: " +
                       status.error_message());
-    return signalPassFailure();
+    return failure();
   }
 
   FuncOp session_init_func = GetSessionInitializerFunc(module);
@@ -342,10 +326,10 @@ void FreezeVariablesPass::runOnOperation() {
 
   // Fetch the values to replace the VarHandleOps with.
   auto resource_tensors_or =
-      tf_saved_model::GetResourcesFromSession(variables, session_);
+      tf_saved_model::GetResourcesFromSession(variables, session);
   if (!resource_tensors_or.ok()) {
     module->emitError(resource_tensors_or.status().message().data());
-    signalPassFailure();
+    return failure();
   }
 
   auto* context = module.getContext();
@@ -408,12 +392,7 @@ void FreezeVariablesPass::runOnOperation() {
   for (auto var_handle_op : variables) {
     if (var_handle_op) var_handle_op->erase();
   }
-}
-}  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeVariablesPass(
-    tensorflow::Session* session) {
-  return std::make_unique<FreezeVariablesPass>(session);
+  return success();
 }
 
 }  // namespace tf_saved_model

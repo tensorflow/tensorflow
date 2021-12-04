@@ -116,6 +116,38 @@ class DynamicPadderTest : public HloTestBase {
   const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
+class MemoryAlignmentTest : public HloTestBase {};
+
+// Test that dynamic padder will not cause memory misalignment in CUDA
+// when the read or write address is not aligned with 32 bits.
+// TODO(b/203599920): Disabled on CPU due to ASAN test failure.
+TEST_F(MemoryAlignmentTest, DISABLED_ON_CPU(TestDataTypeFP16)) {
+  const string hlo_text = R"(
+    HloModule TestDataTypeFP16
+
+    update_add (p0: f16[], p1: f16[]) -> f16[] {
+      p0 = f16[] parameter(0)
+      p1 = f16[] parameter(1)
+      ROOT out = f16[] add(p0, p1)
+    }
+
+    ENTRY main () -> f16[<=1,1] {
+      c1 = s32[1]{0} constant({1})
+      c2 = f16[1,1]{1,0} constant({ {0.099976} })
+      shape = s32[] reshape(s32[1]{0} c1)
+      dim_size = f16[<=1,1]{1,0} set-dimension-size(f16[1,1]{1,0} c2, s32[] shape),
+          dimensions={0}
+      ROOT out = f16[<=1,1]{1,0} scatter(f16[<=1,1]{1,0} dim_size, s32[1]{0} c1, f16[1,1]{1,0} c2),
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1,
+          to_apply=update_add
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 TEST_F(DynamicPadderTest, ReduceTest) {
   auto builder = HloComputation::Builder(TestName());
   auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
@@ -1332,74 +1364,6 @@ ENTRY entry {
   //
   // Reducing along major dimension gives us [3, 3]
   Literal expected = LiteralUtil::CreateR1<int32>({{3, 3}});
-
-  EXPECT_EQ(result, expected);
-}
-
-XLA_TEST_F(ExecutionTest, DynamicStackPop) {
-  // This tests the case where a static sized stack is popped by a dynamic
-  // number of times.
-
-  // In the beginning the stack has static size that has 4 elements:
-  // [[1, 1],
-  //  [1, 1],
-  //  [1, 1],
-  //  [1, 1]]
-  //
-  // Popping this stack using set-dimension-size in a loop creates a dynamic
-  // result depending on how many times we pop it (in this test, two times).
-
-  const string hlo_text = R"(
-HloModule module
-
-update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
-  lhs = s32[] parameter(0)
-  rhs = s32[] parameter(1)
-  ROOT add = s32[] add(lhs, rhs)
-}
-
-body {
-  param_tuple = (s32[<=4,2]) parameter(0)
-  param = s32[<=4, 2] get-tuple-element(param_tuple), index=0
-  one = s32[] constant(1)
-  size = s32[] get-dimension-size(param), dimensions={0}
-  new_size = s32[] subtract(size, one)
-  output = s32[<=4, 2] set-dimension-size(param, new_size), dimensions={0}
-  ROOT root = (s32[<=4, 2]) tuple(output)
-}
-
-condition {
-  stack = (s32[<=4,2]) parameter(0)
-  stack_buffer = s32[<=4,2] get-tuple-element(stack), index=0
-  stack_size = s32[] get-dimension-size(stack_buffer), dimensions={0}
-  two = s32[] constant(2)
-  ROOT greater-than = pred[] compare(s32[] stack_size, s32[] two), direction=GE
-}
-
-ENTRY entry {
-  one = s32[] constant(1)
-  zero = s32[] constant(0)
-  stack_buffer_input = s32[4, 2] broadcast(s32[] one), dimensions={}
-  input_tuple = (s32[4, 2]) tuple(stack_buffer_input)
-  while = (s32[4, 2]) while(input_tuple), body=body, condition=condition
-  stack_buffer = s32[<=4, 2] get-tuple-element(while), index=0
-  ROOT reduce = s32[2] reduce(stack_buffer, zero),
-    dimensions={0},
-    to_apply=update_s32
-}
-)";
-
-  auto module = GetHloModule(hlo_text);
-
-  Literal result = PadAndExecute(std::move(module), {});
-
-  // Stack has two valid items in it:
-  // [[1, 1],
-  //  [1, 1],
-  //  [P, P],
-  //  [P, P]]
-  // Reducing them gives us [2, 2]
-  Literal expected = LiteralUtil::CreateR1<int32>({{1, 1}});
 
   EXPECT_EQ(result, expected);
 }

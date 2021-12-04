@@ -32,25 +32,7 @@ namespace gpu {
 
 namespace {
 
-class TreeReductionRewriterTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_deterministic_reductions(true);
-    return debug_options;
-  }
-
- protected:
-  void EnsureDeterminism(absl::string_view hlo_text) {
-    std::vector<ExecutionProfile> profiles;
-    profiles.emplace_back();
-    profiles.emplace_back();
-    EXPECT_TRUE(RunMultipleTimes(hlo_text,
-                                 /*run_hlo_passes=*/true,
-                                 /*profiles=*/&profiles,
-                                 /*backend_config=*/"",
-                                 /*assert_determinism=*/true));
-  }
-};
+class TreeReductionRewriterTest : public GpuCodegenTest {};
 
 TEST_F(TreeReductionRewriterTest, RowReductionSingleDimensionNoBatched) {
   const char* hlo_text = R"(
@@ -69,7 +51,6 @@ ENTRY main {
 }
 )";
 
-  // TODO(cheshire): a more generic check, do not hardcode the names.
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
 // CHECK: %fused_computation (param_0.2: f32[50000]) -> f32[224] {
@@ -86,8 +67,6 @@ ENTRY main {
 // CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce(f32[224]{0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
 // CHECK: }
       )");
-
-  EnsureDeterminism(hlo_text);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -113,8 +92,6 @@ ENTRY main {
                               R"(
 // CHECK: reduce.1 = f32[2,4]{0,1}
       )");
-
-  EnsureDeterminism(hlo_text);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -151,8 +128,6 @@ ENTRY main {
 // CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce(f32[223]{0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
 // CHECK: }
       )");
-
-  EnsureDeterminism(hlo_text);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -172,8 +147,6 @@ ENTRY main {
   ROOT out = f32[100,10] reduce(input, zero), dimensions={2}, to_apply=add
 }
 )";
-
-  EnsureDeterminism(hlo_text);
 
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
@@ -227,8 +200,6 @@ ENTRY main {
 // CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce(f32[1000]{0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
 // CHECK: }
       )");
-
-  EnsureDeterminism(hlo_text);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -248,8 +219,6 @@ ENTRY main {
   ROOT out = f32[100] reduce(input, zero), dimensions={0,2}, to_apply=add
 }
 )";
-
-  EnsureDeterminism(hlo_text);
 
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
@@ -286,8 +255,6 @@ ENTRY main {
   ROOT out = f32[100] reduce(input, zero), dimensions={0,2}, to_apply=add
 }
 )";
-
-  EnsureDeterminism(hlo_text);
 
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
@@ -344,8 +311,6 @@ ENTRY main {
 // CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[100]{0} reduce(f32[100,100]{1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
 // CHECK: }
       )");
-
-  EnsureDeterminism(hlo_text);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -382,8 +347,6 @@ ENTRY main {
 // CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[100]{0} reduce(f32[102,100]{1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
 // CHECK: }
       )");
-
-  EnsureDeterminism(hlo_text);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -419,8 +382,6 @@ ENTRY main {
 // CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[2,2,2]{2,1,0} reduce(f32[100,2,2,2]{3,2,1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
 // CHECK: }
       )");
-
-  EnsureDeterminism(hlo_text);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -459,8 +420,6 @@ ENTRY main {
 // CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[5]{0} reduce(f32[1000,5]{1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
 // CHECK: }
       )");
-
-  EnsureDeterminism(hlo_text);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 

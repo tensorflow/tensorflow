@@ -566,7 +566,10 @@ xla::Status ComputeSignature(bool jax_enable_x64, xla::PyClient& pyclient,
   };
   static const auto& types = *[]() -> PythonTypes* {
     py::module xla_module(py::module::import("jax.interpreters.xla"));
-    py::object device_array(xla_module.attr("_DeviceArray"));
+    py::object device_array;
+    if (py::hasattr(xla_module, "_DeviceArray")) {
+      device_array = xla_module.attr("_DeviceArray");
+    }
     return new PythonTypes{device_array};
   }();
   // When the jitted function is not committed, we first check whether any
@@ -1082,6 +1085,9 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
     PyErr_SetString(PyExc_ValueError, e.what());
     return nullptr;
   } catch (std::invalid_argument& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  } catch (std::runtime_error& e) {
     PyErr_SetString(PyExc_ValueError, e.what());
     return nullptr;
   }

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -60,8 +61,21 @@ string TakeDataset::DebugString() const {
   return name_utils::DatasetDebugString(TakeDatasetOp::kDatasetType);
 }
 
-int64_t TakeDataset::Cardinality() const {
+int64_t TakeDataset::CardinalityInternal() const {
   int64_t n = input_->Cardinality();
+  if (n == kUnknownCardinality) {
+    return kUnknownCardinality;
+  }
+  if (n == kInfiniteCardinality) {
+    return count_;
+  } else if (count_ == kInfiniteCardinality) {
+    return n;
+  }
+  return std::min(n, count_);
+}
+
+int64_t TakeDataset::CardinalityInternal(CardinalityOptions options) const {
+  int64_t n = input_->Cardinality(options);
   if (n == kUnknownCardinality) {
     return kUnknownCardinality;
   }
@@ -82,6 +96,12 @@ Status TakeDataset::InputDatasets(
 
 Status TakeDataset::CheckExternalState() const {
   return input_->CheckExternalState();
+}
+
+Status TakeDataset::Get(OpKernelContext* ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
+  TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+  return input_->Get(ctx, index, out_tensors);
 }
 
 class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {

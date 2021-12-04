@@ -219,7 +219,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         ParallelInterleaveDatasetOp::kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality) {
       return n;
@@ -991,8 +991,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                {"element_id", result->id}});
         });
         bool end_of_input = false;
-        result->status = iterator->GetNext(ctx_.get(), &result->return_values,
-                                           &end_of_input);
+        result->status =
+            iterator->GetNext(MakeNestedIteratorContext(ctx_.get()),
+                              &result->return_values, &end_of_input);
         if (end_of_input) {
           mutex_lock l(*mu_);
           element->iterator.reset();

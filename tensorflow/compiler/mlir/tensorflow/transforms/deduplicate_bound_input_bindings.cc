@@ -21,23 +21,15 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
 namespace {
 
 class DedupBoundInputBindingPass
-    : public PassWrapper<DedupBoundInputBindingPass, FunctionPass> {
- public:
-  StringRef getArgument() const final {
-    return "tf-saved-model-dedup-bound-input-binding-pass";
-  }
-
-  StringRef getDescription() const final {
-    return "Remove duplicate 'tf_saved_model.bound_input' bindings.";
-  }
-
-  void runOnFunction() override;
+    : public DedupBoundInputBindingPassBase<DedupBoundInputBindingPass> {
+  void runOnFunction() final;
 };
 
 void DedupBoundInputBindingPass::runOnFunction() {
@@ -60,8 +52,6 @@ void DedupBoundInputBindingPass::runOnFunction() {
 }
 
 }  // namespace
-
-static PassRegistration<DedupBoundInputBindingPass> pass;
 
 std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass() {
   return std::make_unique<DedupBoundInputBindingPass>();

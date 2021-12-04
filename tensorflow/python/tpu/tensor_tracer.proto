@@ -25,6 +25,14 @@ message TensorTracerReport {
   // this field and graphdef).
   string fingerprint = 4;
 
+  // The function_name passed to the function_callback
+  // that produced this TensorTracerReport
+  string concrete_function_name = 5;
+
+  // The index of the last stack frame where the stack traces for all output
+  // operations in the graph have the same value.
+  int32 last_common_frame_no = 6;
+
   message TensorTracerConfig {
     // Tensor tracer version, e.g. hostcall, outside compilation.
     string version = 1;
@@ -74,5 +82,18 @@ message TensorTracerReport {
     bool is_traced = 4;
     // Detailed explanation why the tensor is traced or not.
     string explanation = 5;
+    // Detailed stack of operation
+    Stack op_stack_info = 6;
+
+    message Stack {
+      // Function names from stack
+      repeated string stack_fn_names = 1;
+      // Line in stack
+      repeated string stack_lines = 2;
+      // Filenames from stack
+      repeated string stack_filenames = 3;
+      // Line number in file from stack
+      repeated int32 stack_linenos = 4;
+    }
   }
 }

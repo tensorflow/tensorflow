@@ -44,6 +44,9 @@ absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString
                                   NSDictionary<NSString*, NSString*>* macros,
                                   id<MTLComputePipelineState>* program);
 
+absl::Status CreateFunction(id<MTLDevice> device, NSString* code, NSString* functionName,
+                            NSDictionary<NSString*, NSString*>* macros, id<MTLFunction>* function);
+
 int PixelFormatToSizeInBytes(MTLPixelFormat pixel_format);
 MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized = false);
 

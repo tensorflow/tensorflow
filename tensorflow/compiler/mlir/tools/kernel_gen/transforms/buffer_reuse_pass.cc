@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -186,7 +186,7 @@ class BufferReuseAnalysis {
     auto old_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
     auto new_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
     if (!old_buffer_ty || !new_buffer_ty ||
-        old_buffer_ty.getAffineMaps() != new_buffer_ty.getAffineMaps())
+        old_buffer_ty.getLayout() != new_buffer_ty.getLayout())
       return false;
 
     if (auto generic_op = dyn_cast<linalg::GenericOp>(op)) {

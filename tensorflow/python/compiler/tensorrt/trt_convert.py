@@ -133,19 +133,18 @@ class TrtConversionParams(
   """Parameters that are used for TF-TRT conversion.
 
   Fields:
-    max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
+    max_workspace_size_bytes: the maximum GPU temporary memory that the TRT
       engine can use at execution time. This corresponds to the
       'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
-    precision_mode: one the strings in
+    precision_mode: one of the strings in
       TrtPrecisionMode.supported_precision_modes().
     minimum_segment_size: the minimum number of nodes required for a subgraph
       to be replaced by TRTEngineOp.
     maximum_cached_engines: max number of cached TRT engines for dynamic TRT
-      ops. Created TRT engines for a dynamic dimension are cached. This is the
-      maximum number of engines that can be cached. If the number of cached
-      engines is already at max but none of them supports the input shapes,
-      the TRTEngineOp will fall back to run the original TF subgraph that
-      corresponds to the TRTEngineOp.
+      ops. Created TRT engines for a dynamic dimension are cached. If the
+      number of cached engines is already at max but none of them supports the
+      input shapes, the TRTEngineOp will fall back to run the original TF
+      subgraph that corresponds to the TRTEngineOp.
     use_calibration: this argument is ignored if precision_mode is not INT8.
       If set to True, a calibration graph will be created to calibrate the
       missing ranges. The calibration graph must be converted to an inference
@@ -155,10 +154,10 @@ class TrtConversionParams(
       will occur. Please note that accuracy may be negatively affected if
       there is a mismatch between which tensors TRT quantizes and which
       tensors were trained with fake quantization.
-    allow_build_at_runtime: whether to build TensorRT engines during runtime.
-      If no TensorRT engine can be found in cache that can handle the given
-      inputs during runtime, then a new TensorRT engine is built at runtime if
-      allow_build_at_runtime=True, and otherwise native TF is used.
+    allow_build_at_runtime: whether to allow building TensorRT engines during
+      runtime if no prebuilt TensorRT engine can be found that can handle the
+      given inputs during runtime, then a new TensorRT engine is built at
+      runtime if allow_build_at_runtime=True, and otherwise native TF is used.
   """
 
   def __new__(cls,
@@ -232,7 +231,7 @@ def _check_trt_version_compatibility():
         "The {version_type} version of TensorRT: `{trt_version}` has now "
         "been removed. Please upgrade to TensorRT 7 or more recent.".format(
             version_type=version_type,
-            trt_version=trt_utils.versionTupleToString(trt_version)))
+            trt_version=trt_utils.version_tuple_to_string(trt_version)))
 
     raise RuntimeError("Incompatible %s TensorRT versions" % version_type)
 
@@ -251,16 +250,16 @@ def _check_trt_version_compatibility():
         "compilation and runtime.\n"
         "\t-TensorRT does not support forward compatibility. The loaded "
         "version has to be equal or more recent than the linked version.",
-        trt_utils.versionTupleToString(loaded_version),
-        trt_utils.versionTupleToString(linked_version))
+        trt_utils.version_tuple_to_string(loaded_version),
+        trt_utils.version_tuple_to_string(linked_version))
     raise RuntimeError("Incompatible TensorRT major version")
 
   elif loaded_version != linked_version:
     logging.info(
         "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. This is "
         "supported because TensorRT minor/patch upgrades are backward "
-        "compatible.", trt_utils.versionTupleToString(loaded_version),
-        trt_utils.versionTupleToString(linked_version))
+        "compatible.", trt_utils.version_tuple_to_string(loaded_version),
+        trt_utils.version_tuple_to_string(linked_version))
 
 
 def _get_tensorrt_rewriter_config(conversion_params,
@@ -973,12 +972,21 @@ class TrtGraphConverterV2(object):
           ("profile_strategy '{}' is not supported. It should be one of {}"
           ).format(strategy, supported_profile_strategies()))
 
+  @deprecation.deprecated_args(None,
+                               "Use individual converter parameters instead",
+                               "conversion_params")
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
                input_saved_model_signature_key=None,
                use_dynamic_shape=None,
                dynamic_shape_profile_strategy=None,
+               max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
+               precision_mode=TrtPrecisionMode.FP32,
+               minimum_segment_size=3,
+               maximum_cached_engines=1,
+               use_calibration=True,
+               allow_build_at_runtime=True,
                conversion_params=None):
     """Initialize the converter.
 
@@ -993,14 +1001,45 @@ class TrtGraphConverterV2(object):
       dynamic_shape_profile_strategy: one of the strings in
         supported_profile_strategies(). None is equivalent to Range in the
         current implementation.
-      conversion_params: a TrtConversionParams instance.
+      max_workspace_size_bytes: the maximum GPU temporary memory that the TRT
+        engine can use at execution time. This corresponds to the
+        'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
+      precision_mode: one of the strings in
+        TrtPrecisionMode.supported_precision_modes().
+      minimum_segment_size: the minimum number of nodes required for a subgraph
+        to be replaced by TRTEngineOp.
+      maximum_cached_engines: max number of cached TRT engines for dynamic TRT
+        ops. Created TRT engines for a dynamic dimension are cached. If the
+        number of cached engines is already at max but none of them supports the
+        input shapes, the TRTEngineOp will fall back to run the original TF
+        subgraph that corresponds to the TRTEngineOp.
+      use_calibration: this argument is ignored if precision_mode is not INT8.
+        If set to True, a calibration graph will be created to calibrate the
+        missing ranges. The calibration graph must be converted to an inference
+        graph by running calibration with calibrate(). If set to False,
+        quantization nodes will be expected for every tensor in the graph
+        (excluding those which will be fused). If a range is missing, an error
+        will occur. Please note that accuracy may be negatively affected if
+        there is a mismatch between which tensors TRT quantizes and which
+        tensors were trained with fake quantization.
+      allow_build_at_runtime: whether to allow building TensorRT engines during
+        runtime if no prebuilt TensorRT engine can be found that can handle the
+        given inputs during runtime, then a new TensorRT engine is built at
+        runtime if allow_build_at_runtime=True, and otherwise native TF is used.
+      conversion_params: a TrtConversionParams instance (deprecated).
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
     """
     assert context.executing_eagerly()
     if conversion_params is None:
-      conversion_params = TrtConversionParams()
+      conversion_params = TrtConversionParams(
+          max_workspace_size_bytes=max_workspace_size_bytes,
+          precision_mode=precision_mode,
+          minimum_segment_size=minimum_segment_size,
+          maximum_cached_engines=maximum_cached_engines,
+          use_calibration=use_calibration,
+          allow_build_at_runtime=allow_build_at_runtime)
 
     _check_trt_version_compatibility()
     _check_conversion_params(conversion_params, is_v2=True)
@@ -1094,9 +1133,9 @@ class TrtGraphConverterV2(object):
 
     Args:
       calibration_input_fn: a generator function that yields input data as a
-        list or tuple, which will be used to execute the converted signature for
-        calibration. All the returned input data should have the same shape.
-        Example: `def input_fn(): yield input1, input2, input3`
+        list or tuple or dict, which will be used to execute the converted
+        signature for calibration. All the returned input data should have the
+        same shape. Example: `def input_fn(): yield input1, input2, input3`
 
     Raises:
       ValueError: if the input combination is invalid.
@@ -1153,7 +1192,11 @@ class TrtGraphConverterV2(object):
 
     if self._need_calibration:
       for inp in calibration_input_fn():
-        self._converted_func(*map(ops.convert_to_tensor, inp))
+        if isinstance(inp, dict):
+          self._converted_func(
+              **{k: ops.convert_to_tensor(v) for k, v in inp.items()})
+        else:
+          self._converted_func(*map(ops.convert_to_tensor, inp))
 
       def _save_calibration_table(node):
         calibration_table = gen_trt_ops.get_calibration_data_op(
@@ -1173,9 +1216,9 @@ class TrtGraphConverterV2(object):
     """Run inference with converted graph in order to build TensorRT engines.
 
     Args:
-      input_fn: a generator function that yields input data as a list or tuple,
-        which will be used to execute the converted signature to generate TRT
-        engines. Example:
+      input_fn: a generator function that yields input data as a list or tuple
+        or dict, which will be used to execute the converted signature to
+        generate TRT engines. Example:
         `def input_fn(): # Let's assume a network with 2 input tensors. We
           generate 3 sets
              # of dummy input data: input_shapes = [[(1, 16), (2, 16)], # 1st
@@ -1216,7 +1259,10 @@ class TrtGraphConverterV2(object):
     for inp in input_fn():
       if not first_input:
         first_input = inp
-      func(*map(ops.convert_to_tensor, inp))
+      if isinstance(inp, dict):
+        func(**{k: ops.convert_to_tensor(v) for k, v in inp.items()})
+      else:
+        func(*map(ops.convert_to_tensor, inp))
 
     if self._need_trt_profiles():
       # Disable profile generation.
@@ -1227,15 +1273,25 @@ class TrtGraphConverterV2(object):
       # the inputs can be used because the shape of this input does not
       # determine the engine and instead the shapes collected in profiles
       # determine the engine.
-      self._converted_func(*map(ops.convert_to_tensor, first_input))
+      if isinstance(first_input, dict):
+        self._converted_func(
+            **{k: ops.convert_to_tensor(v) for k, v in first_input.items()})
+      else:
+        self._converted_func(*map(ops.convert_to_tensor, first_input))
 
     self._build_called_once = True
 
-  def save(self, output_saved_model_dir):
+  def save(self, output_saved_model_dir, save_gpu_specific_engines=True):
     """Save the converted SavedModel.
 
     Args:
       output_saved_model_dir: directory to saved the converted SavedModel.
+      save_gpu_specific_engines: whether to save TRT engines that have been
+        built. When True, all engines are saved and when False, the engines 
+        are not saved and will be rebuilt at inference time. By using
+        save_gpu_specific_engines=False after doing INT8 calibration, inference 
+        can be done on different GPUs than the GPU that the model was calibrated
+        and saved on.
     """
     assert self._converted
 
@@ -1258,7 +1314,8 @@ class TrtGraphConverterV2(object):
         gen_trt_ops.serialize_trt_resource(
             resource_name=canonical_engine_name,
             filename=filename,
-            delete_resource=True)
+            delete_resource=True,
+            save_gpu_specific_engines=save_gpu_specific_engines)
       except errors.NotFoundError:
         logging.info(
             "Could not find %s in TF-TRT cache. "

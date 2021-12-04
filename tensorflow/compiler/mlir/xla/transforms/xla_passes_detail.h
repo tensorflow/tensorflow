@@ -21,6 +21,7 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+class MhloDialect;
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"

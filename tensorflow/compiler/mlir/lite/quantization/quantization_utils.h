@@ -90,6 +90,34 @@ struct OpQuantSpec {
   llvm::DenseMap<int, int> coeff_op_quant_dim;
 };
 
+// Used in TFL Numeric Verify
+struct NumericVerifySpec {
+  // Whether to enable numeric verification
+  bool verify_numeric = false;
+
+  // Tolerance level from the quantized value for verification. If the tolerance
+  // is very small(<0.1), only the stats of the diff is displayed.
+  float error_tolerance = 5.0f;
+
+  // Whether to verify numerical correctness layer by layer or by whole model
+  bool whole_model_verify = false;
+
+  // Whether to enable log for failures
+  bool log_if_failed_flag = false;
+};
+
+// Used in TFL Quantize Pass
+struct QuantPassSpec {
+  // Variables to control TFL Numeric Verify
+  NumericVerifySpec numeric_verify;
+
+  // Names of ops to block from quantization
+  StringSet ops_blocklist;
+
+  // Names of locations to block from quantization
+  StringSet nodes_blocklist;
+};
+
 // A function signature for getting the particular OpQuantSpec for the provided
 // op.
 typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
@@ -154,8 +182,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
         quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
-      double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
-      double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      auto statValues = stats.getValues<APFloat>();
+      double rmin = FloatAttr::getValueAsDouble(statValues[0]);
+      double rmax = FloatAttr::getValueAsDouble(statValues[1]);
       // The default nudging implementation of mlir quant library might cause
       // clamping during inference if the calibration range isn't wide enough.
       // So here we adjust the range to include 0.0.
@@ -219,34 +248,31 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 // matched pattern are rewritten by its quantized alternatives.
 //
 // The concrete pattern, extends from this base pattern, can specify whether it
-// allows "hybrid" operands or results. These "hybrid" operands and results
-// don't have quantization parameters propagated to, so will be in float in the
-// quantized results. The concrete pattern should define the following two
-// functions:
+// allows "hybrid" operands and results for the operations in the current
+// context. These "hybrid" operands and results don't have quantization
+// parameters propagated to, so will be in float in the quantized results. The
+// concrete pattern should define the following two functions:
 //
-//   bool AllowHybridOperand() const
-//   bool AllowHybridResult() const
+//   bool AllowHybridOperand(Operation *) const
+//   bool AllowHybridResult(Operation *) const
 //
 // Full integer quantization disallows "hybrid" operands or results.
-// Weight quantization allows "hybrid" operands and results.
+// Dynamic range quantization allows "hybrid" operands and results.
 template <typename ConcretTy, typename Q, typename DQ, typename VERIFIER,
           typename RootOp = DQ>
 struct QuantizationPattern : public RewritePattern {
   using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER, RootOp>;
 
-  explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
-                               float error_tolerance, bool whole_model_verify,
-                               bool log_if_failed = false,
-                               const StringSet& ops_blocklist = {},
-                               const StringSet& nodes_blocklist = {})
+  explicit QuantizationPattern(MLIRContext* context,
+                               const QuantPassSpec& quant_params)
       // Set the score to a large number so it is always preferred.
       : RewritePattern(RootOp::getOperationName(), 300, context),
-        enable_verify(enable_verify),
-        error_tolerance(error_tolerance),
-        whole_model_verify(whole_model_verify),
-        log_if_failed(log_if_failed),
-        ops_blocklist(ops_blocklist),
-        nodes_blocklist(nodes_blocklist) {}
+        enable_verify(quant_params.numeric_verify.verify_numeric),
+        error_tolerance(quant_params.numeric_verify.error_tolerance),
+        whole_model_verify(quant_params.numeric_verify.whole_model_verify),
+        log_if_failed(quant_params.numeric_verify.log_if_failed_flag),
+        ops_blocklist(quant_params.ops_blocklist),
+        nodes_blocklist(quant_params.nodes_blocklist) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
@@ -341,7 +367,8 @@ struct QuantizationPattern : public RewritePattern {
           // If the operand is an integer tensor, then it doesn't require the
           // DQ op in the pattern.
           inputs.push_back(operand);
-        } else if (static_cast<const ConcretTy*>(this)->AllowHybridOperand()) {
+        } else if (static_cast<const ConcretTy*>(this)->AllowHybridOperand(
+                       quantized_op)) {
           inputs.push_back(operand);
         } else {
           return failure();
@@ -376,7 +403,8 @@ struct QuantizationPattern : public RewritePattern {
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
-        } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult()) {
+        } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult(
+                       quantized_op)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else {
@@ -490,6 +518,12 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     if (!qtype || qtype.isSigned()) return failure();
 
     int num_bits = qtype.getStorageTypeIntegralWidth();
+    if (num_bits == 8) {
+      // If storage is 8-bit, trained num bits may be less than 8 so check here.
+      const double range = static_cast<double>(qtype.getStorageTypeMax() -
+                                               qtype.getStorageTypeMin());
+      num_bits = static_cast<int>(std::ceil(std::log2(range)));
+    }
     // This is a positive value, and will be applied on zero points and fixed
     // point ranges.
     int64_t offset =
@@ -600,7 +634,8 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor);
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, int quant_dim,
                               IntegerAttr num_bits, BoolAttr narrow_range,
-                              bool is_signed, bool legacy_float_scale = false);
+                              bool is_signed, bool legacy_float_scale = false,
+                              bool use_fake_quant_num_bits = false);
 
 // Casts the `target` type to a quantized type by using the quantization
 // parameters from the type in the `source` type attribute.
@@ -636,16 +671,17 @@ ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type);
 Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
                                       unsigned num_bits, bool is_signed,
                                       bool narrow_range,
-                                      bool legacy_float_scale = false);
+                                      bool legacy_float_scale = false,
+                                      bool use_fake_quant_num_bits = false);
 
 // Returns the per channel quantized type for an element attribute.
 // `quant_dim` defines the quantization axis. The channel min/max are adjusted
 // to be symmetric if `symmetric` flag is set to True. And `symmetric` can only
 // be set to true when it is signed and narrow_range.
-Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
-                                             bool symmetric, unsigned num_bits,
-                                             bool is_signed, bool narrow_range,
-                                             bool legacy_float_scale = false);
+Type GetUniformQuantizedPerAxisTypeForWeight(
+    ElementsAttr attr, int quant_dim, bool symmetric, unsigned num_bits,
+    bool is_signed, bool narrow_range, bool legacy_float_scale = false,
+    bool use_fake_quant_num_bits = false);
 
 // Returns the quantized type of a bias input, given the quantized types of
 // other operands which are multiply-accumulated (the bias is added to the
@@ -697,7 +733,8 @@ void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
 Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
                       ArrayRef<double> max, int quant_dim,
                       int storage_type_width, bool narrow_range, bool is_signed,
-                      bool legacy_float_scale = false);
+                      bool legacy_float_scale = false,
+                      bool use_fake_quant_num_bits = false);
 }  // namespace quant
 }  // namespace mlir
 

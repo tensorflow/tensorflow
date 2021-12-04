@@ -50,9 +50,13 @@ constexpr DataType ToDataType<int32>::value;
 
 AlgorithmDesc::AlgorithmDesc(
     int64_t engine_id,
-    const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs) {
+    const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs,
+    absl::optional<uint64_t> workspace_size) {
   proto_.set_is_cudnn_frontend(true);
   proto_.set_algo_id(engine_id);
+  if (workspace_size) {
+    proto_.mutable_workspace_size()->set_value(*workspace_size);
+  }
   for (const auto& pair : tuning_knobs) {
     (*proto_.mutable_tuning_knobs())[pair.first] = pair.second;
   }
@@ -110,9 +114,13 @@ port::Status DnnSupport::GetConvolveRunners(
     bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
     dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
     Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
+    DeviceMemoryBase /*input_data*/,
     const dnn::FilterDescriptor& /*filter_descriptor*/,
+    DeviceMemoryBase /*filter_data*/,
     const dnn::BatchDescriptor& /*output_descriptor*/,
+    DeviceMemoryBase /*output_data*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
   return port::UnimplementedError("GetConvolveRunners not implemented.");
 }
@@ -136,7 +144,7 @@ port::Status DnnSupport::GetFusedConvolveRunners(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     dnn::ActivationMode activation_mode,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   return port::UnimplementedError("GetFusedConvolveRunners not implemented.");
@@ -248,6 +256,8 @@ std::string DataLayoutString(DataLayout layout) {
       return "BatchDepthYX";
     case DataLayout::kBatchDepthYX4:
       return "BatchDepthYX4";
+    case DataLayout::kBatchDepthYX32:
+      return "BatchDepthYX32";
     default:
       LOG(FATAL) << "Unknown data layout " << static_cast<int32>(layout);
   }
@@ -262,6 +272,8 @@ std::string FilterLayoutString(FilterLayout layout) {
       return "OutputYXInput";
     case FilterLayout::kOutputInputYX4:
       return "OutputInputYX4";
+    case FilterLayout::kOutputInputYX32:
+      return "OutputInputYX32";
     case FilterLayout::kInputYXOutput:
       return "InputYXOutput";
     case FilterLayout::kYXInputOutput:
@@ -549,6 +561,7 @@ std::string BatchDescriptor::ToShortString() const {
     case DataLayout::kBatchDepthYX:
       return absl::StrCat(batch, depth, spatial, suffix);
     case DataLayout::kBatchDepthYX4:
+    case DataLayout::kBatchDepthYX32:
       return absl::StrCat(batch, depth, spatial, suffix, "(VECT_C)");
     default:
       LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
@@ -653,6 +666,7 @@ std::string FilterDescriptor::ToShortString() const {
     case FilterLayout::kOutputYXInput:
       return absl::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
+    case FilterLayout::kOutputInputYX32:
       return absl::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:
       return absl::StrCat(id, spatial, od);

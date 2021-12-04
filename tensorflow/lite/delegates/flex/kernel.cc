@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/kernel.h"
 
+#include <map>
+#include <set>
+
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
@@ -21,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -53,11 +58,6 @@ using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeAndType;
 using tensorflow::shape_inference::ShapeHandle;
-
-const std::string GetDimsDebugString(const TfLiteIntArray* dims) {
-  return absl::StrCat("[", absl::StrJoin(tflite::TfLiteIntArrayView(dims), ","),
-                      "]");
-}
 
 namespace tflite {
 namespace flex {
@@ -184,6 +184,20 @@ class OpOutputs {
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> vector_;
 };
 
+// This struct holds information such as tensor lifecycle and BufferMap which
+// needs to be shared between `OpNode` and DelegateKernel.
+struct OpDataInfo {
+  // Buffer map which stores the mapping between TfLiteTensor index to TF
+  // tensor.
+  BufferMap* buffer_map;
+  // Mapping information between TfLiteTensor index to last node which uses the
+  // tensor.
+  std::map<int, int>* tensor_release_map;
+  // For output tensors that don't need to be preserved in the BufferMap, we
+  // copy them to TF Lite tensors and keep the tensor indexes in this set.
+  std::set<int> already_transferred_outputs;
+};
+
 // A single node within the larger 'op'. Note that this kernel executes many
 // TensorFlow ops within a single TF Lite op.
 class OpNode {
@@ -306,13 +320,82 @@ class OpNode {
     return tensorflow::Status::OK();
   }
 
-  tensorflow::Status PersistEagerOutputs(BufferMap* buffer_map) {
+  // Returns whether an output tensor should be preserved in the buffer map by
+  // checking its lifetime information.
+  // The eager tensor doesn't need to be persisted in the buffer map if it has
+  // no future uses in the graph.
+  bool ShouldPersistEagerTensor(TfLiteContext* context,
+                                const OpDataInfo* shared_info, int tensor_index,
+                                int node_index) {
+    TfLiteTensor* tensor = &context->tensors[tensor_index];
+    // Always persist variant|resource|string tensors since they have special
+    // storage requirement.
+    if (IsResourceOrVariant(tensor) || tensor->type == kTfLiteString) {
+      return true;
+    }
+
+    auto it = shared_info->tensor_release_map->find(tensor_index);
+    return it != shared_info->tensor_release_map->end() &&
+           it->second > node_index;
+  }
+
+  // Copies the data of Tensorflow tensor into the corresponding TfLite tensor,
+  // after copy is done release the original tensor handle so that memory could
+  // be released by TF eager runtime.
+  TfLiteStatus CopyToTfLiteTensor(
+      TfLiteContext* context, OpDataInfo* shared_info,
+      tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>* handles,
+      TfLiteTensor* tensor, const tensorflow::Tensor* tf_tensor,
+      int tensor_index, int index) const {
+    if (tensor->allocation_type == kTfLiteDynamic) {
+      // For dynamic tensors, update the TfLite tensor's shape information from
+      // the Tensorflow tensor.
+      CopyShapeAndType(context, *tf_tensor, tensor);
+    }
+    tensorflow::StringPiece t_data = tf_tensor->tensor_data();
+    if (tf_tensor->NumElements() != NumElements(tensor) ||
+        tf_tensor->TotalBytes() != tensor->bytes) {
+      TF_LITE_KERNEL_LOG(context,
+                         "FlexDelegate: Tensor %s(%d) buffer size mismatch "
+                         "%zu(%lld) != %ld(%ld)",
+                         tensor->name, tensor_index, tf_tensor->TotalBytes(),
+                         tf_tensor->NumElements(), tensor->bytes,
+                         NumElements(tensor));
+      return kTfLiteError;
+    }
+    // Copy TF tensor's data content into TfLiteTensor, and release the
+    // tensor handle.
+    memcpy(tensor->data.raw, t_data.data(), t_data.size());
+    handles->at(index)->Release();
+    handles->at(index) = nullptr;
+    shared_info->already_transferred_outputs.insert(tensor_index);
+    return kTfLiteOk;
+  }
+
+  // TODO(b/204479285): Release tensors from BufferMap if it has no future
+  // uses.
+  tensorflow::Status MaybePersistEagerOutputs(TfLiteContext* context,
+                                              OpDataInfo* shared_info,
+                                              int node_index) {
     auto* handles = outputs_.GetTensorHandles();
+
     for (int i = 0; i < outputs_.Size(); ++i) {
       if (outputs_.IsSubgraphOutput(i)) {
-        const tensorflow::Tensor* tensor = nullptr;
-        TF_RETURN_IF_ERROR(handles->at(i)->Tensor(&tensor));
-        buffer_map->SetFromTensorFlow(outputs_.TfLiteIndex(i), *tensor);
+        const tensorflow::Tensor* tf_tensor = nullptr;
+        TF_RETURN_IF_ERROR(handles->at(i)->Tensor(&tf_tensor));
+        const int tflite_index = outputs_.TfLiteIndex(i);
+        TfLiteTensor* tensor = &context->tensors[tflite_index];
+        if (!ShouldPersistEagerTensor(context, shared_info, tflite_index,
+                                      node_index)) {
+          if (CopyToTfLiteTensor(context, shared_info, handles, tensor,
+                                 tf_tensor, tflite_index, i) != kTfLiteOk) {
+            return tensorflow::Status(tensorflow::error::INTERNAL,
+                                      "failed to copy data from TF tensor");
+          }
+        } else {
+          shared_info->buffer_map->SetFromTensorFlow(outputs_.TfLiteIndex(i),
+                                                     *tf_tensor);
+        }
       }
     }
     return tensorflow::Status::OK();
@@ -338,13 +421,21 @@ class OpNode {
   std::unique_ptr<tensorflow::EagerOperation> op_;
 };
 
-// Executes the TensorFlow op given by 'op_name', with the attributes specified
-// in 'nodedef'. Inputs and outputs are given as indices into the 'buffer_map'.
-tensorflow::Status ExecuteFlexOp(TfLiteContext* context, BufferMap* buffer_map,
-                                 OpNode* node_data) {
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(node_data->BuildEagerInputs(buffer_map),
-                                  " (while executing '", node_data->name(),
-                                  "' via Eager)");
+// The larger 'op', which contains all the nodes in a supported subgraph.
+struct OpData {
+  tensorflow::EagerContext* eager_context;
+  tensorflow::CancellationManager* cancellation_manager;
+  std::vector<std::unique_ptr<OpNode>> nodes;
+  std::vector<int> subgraph_inputs;
+  std::vector<int> subgraph_outputs;
+  OpDataInfo shared_info;
+};
+
+tensorflow::Status DelegateKernel::ExecuteFlexOp(TfLiteContext* context,
+                                                 OpNode* node_data) {
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      node_data->BuildEagerInputs(op_data_->shared_info.buffer_map),
+      " (while executing '", node_data->name(), "' via Eager)");
 
   node_data->mutable_outputs()->ResetTensorHandles();
   int num_retvals = node_data->NumOutputs();
@@ -362,22 +453,13 @@ tensorflow::Status ExecuteFlexOp(TfLiteContext* context, BufferMap* buffer_map,
         "Unexpected number of outputs from EagerExecute");
   }
 
-  TF_RETURN_IF_ERROR(node_data->PersistEagerOutputs(buffer_map));
+  TF_RETURN_IF_ERROR(node_data->MaybePersistEagerOutputs(
+      context, &(op_data_->shared_info), node_data->index()));
 
   node_data->ClearEagerInputs();
 
   return tensorflow::Status::OK();
 }
-
-// The larger 'op', which contains all the nodes in a supported subgraph.
-struct OpData {
-  tensorflow::EagerContext* eager_context;
-  tensorflow::CancellationManager* cancellation_manager;
-  BufferMap* buffer_map;
-  std::vector<std::unique_ptr<OpNode>> nodes;
-  std::vector<int> subgraph_inputs;
-  std::vector<int> subgraph_outputs;
-};
 
 DelegateKernel::DelegateKernel() : op_data_(new OpData) {}
 DelegateKernel::~DelegateKernel() {}
@@ -388,7 +470,9 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
       reinterpret_cast<FlexDelegate*>(params->delegate->data_)->mutable_data();
   op_data_->eager_context = flex_delegate_data->GetEagerContext();
   op_data_->cancellation_manager = flex_delegate_data->GetCancellationManager();
-  op_data_->buffer_map = flex_delegate_data->GetBufferMap(context);
+  op_data_->shared_info.buffer_map = flex_delegate_data->GetBufferMap(context);
+  op_data_->shared_info.tensor_release_map =
+      flex_delegate_data->GetTensorReleaseMap(context);
 
   CHECK(params->output_tensors);
   std::set<int> output_set;
@@ -410,6 +494,23 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
     TfLiteNode* node;
     TfLiteRegistration* reg;
     context->GetNodeAndRegistration(context, node_index, &node, &reg);
+
+    // For each node handled by this delegate partition, record the mapping
+    // information between each input tensor and the node index. The node index
+    // is the index of the last node in execution order that uses this tensor.
+    // So the tensor is no longer needed after this last node is executed.
+    // Since we execute in order, then the maximum index is the index of the
+    // last node that needs this tensor.
+    for (auto tensor_index : TfLiteIntArrayView(node->inputs)) {
+      int node_id = node_index;
+      if (op_data_->shared_info.tensor_release_map->find(tensor_index) !=
+          op_data_->shared_info.tensor_release_map->end()) {
+        node_id =
+            std::max(op_data_->shared_info.tensor_release_map->at(tensor_index),
+                     node_index);
+      }
+      (*op_data_->shared_info.tensor_release_map)[tensor_index] = node_id;
+    }
 
     op_data_->nodes.emplace_back(new OpNode(node->inputs, node->outputs));
     OpNode& node_data = *op_data_->nodes.back();
@@ -461,7 +562,7 @@ TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
   std::map<int, int> tensor_ref_count;
 
   // Whenever we find a constant tensor, insert it in the buffer map.
-  BufferMap* buffer_map = op_data_->buffer_map;
+  BufferMap* buffer_map = op_data_->shared_info.buffer_map;
   for (auto tensor_index : op_data_->subgraph_inputs) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     if (IsConstantTensor(tensor)) {
@@ -543,7 +644,7 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
       // calculate the output shape.
       if (IsConstantTensor(tfl_tensor)) {
         input_tensors_vector[i] =
-            op_data_->buffer_map->GetTensorPtr(input_tensor_index);
+            op_data_->shared_info.buffer_map->GetTensorPtr(input_tensor_index);
       }
       const auto dims_array = tfl_tensor->dims;
       std::vector<DimensionHandle> dims(dims_array->size);
@@ -583,7 +684,8 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
       // tfl_tensor->dims only has valid information if the given model is
       // converted by the MLIR converter. Also when ResizeInputTensor() is
       // called the dims information becomes invalid.
-      const std::string tfl_shape_string = GetDimsDebugString(tfl_tensor->dims);
+      const std::string tfl_shape_string =
+          GetShapeDebugString(tfl_tensor->dims);
       const std::string calculated_shape_string = c.DebugString(c.output(i));
       // Getting a shape string via c.DebugString() is the easiest way to get
       // the shape information of the given ShapeHandle for now.
@@ -609,7 +711,7 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
 }
 
 TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
-  BufferMap* buffer_map = op_data_->buffer_map;
+  BufferMap* buffer_map = op_data_->shared_info.buffer_map;
 
   // Insert a tensor in the buffer map for all inputs that are not constant.
   // Constants were handled in Prepare() already.
@@ -633,15 +735,21 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
 
     if (op_data_->cancellation_manager != nullptr &&
         op_data_->cancellation_manager->IsCancelled()) {
-      TF_LITE_KERNEL_LOG(context, "Client requested cancel during Invoke()");
+      TF_LITE_KERNEL_LOG(context,
+                         "Client requested cancel during DelegateKernel::Eval");
       return kTfLiteError;
     }
 
-    auto status = ExecuteFlexOp(context, buffer_map, node_data.get());
+    auto status = ExecuteFlexOp(context, node_data.get());
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));
   }
 
   for (auto tensor_index : op_data_->subgraph_outputs) {
+    if (op_data_->shared_info.already_transferred_outputs.count(tensor_index) !=
+        0) {
+      // Skip if a tensor output has already been copied to a TfLiteTensor.
+      continue;
+    }
     if (!buffer_map->HasTensor(tensor_index)) {
       context->ReportError(context, "Cannot write to invalid tensor index %d",
                            tensor_index);
@@ -664,10 +772,12 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
     // expected size.
     if (tf_tensor.NumElements() != NumElements(tensor) ||
         tf_tensor.TotalBytes() != tensor->bytes) {
-      TF_LITE_KERNEL_LOG(
-          context, "Tensor: %s(%d) buffer size mismatch %zu(%lld) != %ld(%ld)",
-          tensor->name, tensor_index, tf_tensor.TotalBytes(),
-          tf_tensor.NumElements(), tensor->bytes, NumElements(tensor));
+      TF_LITE_KERNEL_LOG(context,
+                         "FlexDelegate: Tensor %s(%d) buffer size mismatch "
+                         "%zu(%lld) != %ld(%ld)",
+                         tensor->name, tensor_index, tf_tensor.TotalBytes(),
+                         tf_tensor.NumElements(), tensor->bytes,
+                         NumElements(tensor));
       return kTfLiteError;
     }
     tensorflow::StringPiece t_data = tf_tensor.tensor_data();
@@ -675,6 +785,10 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   return kTfLiteOk;
+}
+
+const std::map<int, int>& DelegateKernel::GetTensorReleaseMap() const {
+  return *(op_data_->shared_info.tensor_release_map);
 }
 
 }  // namespace flex

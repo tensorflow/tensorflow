@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
@@ -98,7 +99,7 @@ Optional<Operation *> TFAllocOp::buildDealloc(OpBuilder &builder, Value alloc) {
 
 Optional<Value> TFAllocOp::buildClone(OpBuilder &builder, Value alloc) {
   // TODO(herhut): We should have our own clone op if one of these survives.
-  return builder.create<mlir::memref::CloneOp>(alloc.getLoc(), alloc)
+  return builder.create<mlir::bufferization::CloneOp>(alloc.getLoc(), alloc)
       .getResult();
 }
 

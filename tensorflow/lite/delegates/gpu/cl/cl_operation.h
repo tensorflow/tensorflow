@@ -89,7 +89,6 @@ class ClOperation {
   void MoveObjectRefsFromGenericToCL() {
     cl_args_.MoveObjectRefsIn(&operation_->args_);
   }
-  void SyncScalarValues() { cl_args_.CopyScalarValues(&operation_->args_); }
 
  private:
   std::unique_ptr<GPUOperation> operation_;

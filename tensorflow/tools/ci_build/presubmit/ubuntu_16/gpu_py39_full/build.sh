@@ -36,6 +36,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 # Run bazel test command.
 "${BAZEL_WRAPPER_PATH}" \
   test \
+  --profile="${KOKORO_ARTIFACTS_DIR}/profile.json" \
   --config=rbe_linux_cuda_nvcc_py39 \
   --config=tensorflow_testing_rbe_linux \
   --test_tag_filters="${tag_filters}" \

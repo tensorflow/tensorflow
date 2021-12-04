@@ -271,6 +271,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   bool GetReuseRendezvousForFunctions() const {
     return reuse_rendezvous_for_functions_;
   }
+  mutex* reuse_rendezvous_for_functions_mu() {
+    return &reuse_rendezvous_for_functions_mu_;
+  }
 
   bool AllowSoftPlacement() const { return allow_soft_placement_; }
   void SetAllowSoftPlacement(bool enable) override {
@@ -290,6 +293,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
         core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
   }
 
+  // Returns the global_rendezvous_for_functions' underlying LocalRendezvous'
+  // status. If the underlying Rendezvous is not in the local_rendezvous_table_
+  // returns OK.
+  Status GetGlobalRendezvousForFunctionLocalRendezvousStatus();
+
   // Returns a function which maps from step_id to rendezvous. This closure
   // respects the value of `SetReuseRendezvousForFunctions` at the time the
   // closure was created, which allows the setting to be toggled around async op
@@ -298,7 +306,17 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // The caller of the returned function owns a reference to the resulting
   // Rendezvous.
   std::function<Rendezvous*(int64_t)> RendezvousCreator() {
-    if (reuse_rendezvous_for_functions_) {
+    // There is an implicit assumption that the global_rendezvous_for_functions_
+    // is always an IntraProcessRendezvous to match the behaviour of the
+    // EagerContext's rendezvous.
+    // Ref: tensorflow/c/eager/c_api.cc;l=143;rcl=396387348
+    // If a cross process kernel needs a rendezvous a new InterProcessRendezvous
+    // should be created.
+    if (reuse_rendezvous_for_functions_ && rendezvous_creator_ == nullptr &&
+#if !defined(IS_MOBILE_PLATFORM)
+        worker_env_ == nullptr &&
+#endif
+        remote_device_mgr() == nullptr) {
       return [this](int64_t step_id) {
         mutex_lock l(global_rendezvous_mu_);
         global_rendezvous_for_functions_->Ref();
@@ -542,22 +560,27 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     LocalRendezvousTable() = default;
     ~LocalRendezvousTable();
 
-    Rendezvous* FindOrCreate(int64_t step_id, DeviceMgr* device_mgr);
+    IntraProcessRendezvous* FindOrCreate(int64_t step_id,
+                                         DeviceMgr* device_mgr);
+    IntraProcessRendezvous* Find(int64_t step_id);
     void Remove(int64_t step_id);
     void CleanUpAll();
 
    private:
     mutable mutex table_lock_;
-    absl::flat_hash_map<int64_t, Rendezvous*> table_ TF_GUARDED_BY(table_lock_);
+    absl::flat_hash_map<int64_t, IntraProcessRendezvous*> table_
+        TF_GUARDED_BY(table_lock_);
   };
 
   Rendezvous* CreateRendezvous(int64_t step_id) const {
     if (rendezvous_creator_ != nullptr) {
+      VLOG(6) << "Creating rendezvous using the rendezvous_creator_.";
       return rendezvous_creator_(step_id);
     }
 
 #if !defined(IS_MOBILE_PLATFORM)
     if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
+      VLOG(6) << "Creating rendezvous using the worker_env's rendezvous_mgr.";
       auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
       remote_r->Initialize(worker_session_.get()).IgnoreError();
       return remote_r;
@@ -565,6 +588,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 #endif
 
     if (remote_device_mgr() == nullptr) {
+      VLOG(6) << "Creating rendezvous using local_device_mgr.";
       return local_rendezvous_table_->FindOrCreate(step_id, local_device_mgr());
     }
 
@@ -585,6 +609,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                  DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
   void ResetClusterFLR(DistributedFunctionLibraryRuntime* cluster_flr);
+  void UpdateGlobalRendezvousDeviceManager(tensorflow::DeviceMgr* device_mgr);
 
   void ClearResourceContainer(const string& name);
 
@@ -716,6 +741,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   mutable mutex global_rendezvous_mu_;
   core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
       TF_GUARDED_BY(global_rendezvous_mu_);
+  mutex reuse_rendezvous_for_functions_mu_;
 
   Env* const env_;
 

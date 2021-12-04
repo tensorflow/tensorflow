@@ -24,9 +24,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/resource_variable_util.h"
+#include "tensorflow/core/kernels/scatter_nd_util.h"
 
 namespace tensorflow {
 namespace {
+
+Status ValidateAssignUpdateVariableOpShapes(XlaOpKernelContext* ctx) {
+  DataType variable_dtype;
+  TensorShape variable_shape;
+  TensorShape value_shape = ctx->InputShape(1);
+  TF_RETURN_IF_ERROR(
+      ctx->GetVariableTypeAndShape(0, &variable_dtype, &variable_shape));
+  TF_RETURN_IF_ERROR(
+      ValidateAssignUpdateVariableOpShapes(variable_shape, value_shape));
+  return Status::OK();
+}
 
 class VarIsInitializedOp : public XlaOpKernel {
  public:
@@ -98,6 +111,7 @@ class AssignAddVariableOp : public XlaOpKernel {
     xla::XlaOp handle;
     OP_REQUIRES_OK(ctx,
                    ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
+    OP_REQUIRES_OK(ctx, ValidateAssignUpdateVariableOpShapes(ctx));
     handle = xla::Add(handle, ctx->Input(1));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
@@ -114,6 +128,7 @@ class AssignSubVariableOp : public XlaOpKernel {
     xla::XlaOp handle;
     OP_REQUIRES_OK(ctx,
                    ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
+    OP_REQUIRES_OK(ctx, ValidateAssignUpdateVariableOpShapes(ctx));
     handle = xla::Sub(handle, ctx->Input(1));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
@@ -164,6 +179,12 @@ class ResourceScatterOp : public XlaOpKernel {
     xla::XlaOp var_value;
     OP_REQUIRES_OK(
         context, context->ReadVariableInput(0, dtype, &var_shape, &var_value));
+    // This check is only required for ScatterNdOps.
+    if (indices_are_vectors_) {
+      OP_REQUIRES_OK(context, ValidateScatterNdUpdateShape(
+                                  var_shape, context->InputShape(1),
+                                  context->InputShape(2)));
+    }
 
     const xla::XlaOp indices = context->Input(1);
     const xla::XlaOp updates = context->Input(2);

@@ -14,12 +14,8 @@
 # ==============================================================================
 """Helper functions for modules."""
 import os
-import six
 
-if six.PY2:
-  import imp  # pylint: disable=g-import-not-at-top
-else:
-  import importlib  # pylint: disable=g-import-not-at-top
+import importlib
 
 
 def get_parent_dir(module):
@@ -42,20 +38,11 @@ def get_parent_dir_for_name(module_name):
   if not name_split:
     return None
 
-  if six.PY2:
-    try:
-      spec = imp.find_module(name_split[0])
-    except ImportError:
-      return None
-    if not spec:
-      return None
-    base_path = spec[1]
-  else:
-    try:
-      spec = importlib.util.find_spec(name_split[0])
-    except ValueError:
-      return None
-    if not spec or not spec.origin:
-      return None
-    base_path = os.path.dirname(spec.origin)
+  try:
+    spec = importlib.util.find_spec(name_split[0])
+  except ValueError:
+    return None
+  if not spec or not spec.origin:
+    return None
+  base_path = os.path.dirname(spec.origin)
   return os.path.join(base_path, *name_split[1:-1])

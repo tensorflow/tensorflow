@@ -31,7 +31,9 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -192,7 +194,9 @@ bool AlternativeSubgraphPass::IsAllSupportedbySpec(
     FuncOp func, const InferenceDeviceType& device_inference_type) {
   bool found_unsupported = false;
   func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op) && IsTFLNonQuantDequantizeOp(op) &&
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        NotTFLQuantDequantizeOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op) &&
         !IsSupported(op, device_inference_type.hardware)) {
       found_unsupported = true;
     }
@@ -245,7 +249,8 @@ FuncOp AlternativeSubgraphPass::GetAlternativeViewForSpec(
 
   // Set device for each op.
   cloned_func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op)) {
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallableOpInterface>(op)) {
       op->setAttr(kDevice, builder->getStringAttr(
                                target_device_inference_type.hardware));
       op->setAttr(kInferenceType,

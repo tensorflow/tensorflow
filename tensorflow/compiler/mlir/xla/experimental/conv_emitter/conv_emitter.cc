@@ -163,7 +163,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
 
     OpBuilder builder(where);
     mlir::MemRefType type = alloc.getType();
-    CHECK(type.getAffineMaps().empty());
+    CHECK(type.getLayout().isIdentity());
     ancestor_dimensions.insert(ancestor_dimensions.end(),
                                type.getShape().begin(), type.getShape().end());
     mlir::MemRefType new_type =
@@ -555,11 +555,14 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
       llvm_ir::AsStringRef(function_name),
       builder.getFunctionType(
           {mlir::MemRefType::get(output_shape_info.physical_dimensions,
-                                 output_shape_info.element_type, {}),
+                                 output_shape_info.element_type,
+                                 mlir::AffineMap()),
            mlir::MemRefType::get(input_shape_info.physical_dimensions,
-                                 input_shape_info.element_type, {}),
+                                 input_shape_info.element_type,
+                                 mlir::AffineMap()),
            mlir::MemRefType::get(filter_shape_info.physical_dimensions,
-                                 filter_shape_info.element_type, {})},
+                                 filter_shape_info.element_type,
+                                 mlir::AffineMap())},
           {}));
 
   auto* entry_block = function.addEntryBlock();

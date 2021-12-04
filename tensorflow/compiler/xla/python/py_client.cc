@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
@@ -116,7 +118,57 @@ std::vector<std::shared_ptr<PyExecutable>> PyClient::LiveExecutables() {
 
 Status PyClient::Defragment() {
   CHECK(PyGILState_Check());
-  return pjrt_client_->Defragment();
+  switch (pjrt_client_->runtime_type()) {
+    case PjRtRuntimeType::kTfrt:
+      return pjrt_client_->Defragment();
+    case PjRtRuntimeType::kStreamExecutor:
+      struct TmpBuffer {
+        PyBuffer* py_buffer;
+        // TODO(skyewm): maybe use py_buffer's HostValue
+        std::shared_ptr<Literal> host_copy;
+      };
+
+      // Synchronously copy all buffers to host
+      std::vector<TmpBuffer> tmp_buffers;
+      for (PyBuffer* device_buffers : buffers_) {
+        for (PyBuffer* buffer = device_buffers; buffer;
+             buffer = buffer->next_) {
+          if (!buffer->is_deleted()) {
+            TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
+                                buffer->buffer_->ToLiteral());
+            tmp_buffers.push_back({buffer, literal});
+          }
+        }
+      }
+
+      // All buffers successfully copied to host, delete on-device copies.
+      //
+      // Use blocking delete operation to ensure all memory is actually cleared
+      // before we start rewriting buffers.
+      //
+      // Die instead of returning a bad status because program presumably can't
+      // continue if we fail to reconstitute device buffers.
+      for (TmpBuffer& tmp_buffer : tmp_buffers) {
+        TF_CHECK_OK(tensorflow::down_cast<PjRtStreamExecutorBuffer*>(
+                        tmp_buffer.py_buffer->buffer_.get())
+                        ->Release(/*wait_for_operations_to_complete=*/true)
+                        .status());
+      }
+
+      // Copy host copies back to device and update PyBuffers in-place.
+      for (TmpBuffer& tmp_buffer : tmp_buffers) {
+        std::unique_ptr<PjRtBuffer> new_copy =
+            pjrt_client_
+                ->BufferFromHostLiteral(*tmp_buffer.host_copy,
+                                        tmp_buffer.py_buffer->buffer_->device())
+                .ValueOrDie();
+        TF_CHECK_OK(new_copy->BlockHostUntilReady());
+        tmp_buffer.py_buffer->buffer_.reset(new_copy.release());
+      }
+
+      // TODO(skyewm): delete executables?
+  }
+  return Status::OK();
 }
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
@@ -196,6 +248,26 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable,
                         pjrt_client_->Compile(computation, std::move(options)));
+    TF_ASSIGN_OR_RETURN(fingerprint,
+                        pjrt_client_->ExecutableFingerprint(*executable));
+  }
+  auto traceback = Traceback::Get();
+  return std::make_shared<PyExecutable>(
+      shared_from_this(), std::move(executable), std::move(traceback),
+      std::move(fingerprint));
+}
+
+StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
+    absl::string_view mlir_module, CompileOptions options) {
+  std::unique_ptr<PjRtExecutable> executable;
+  absl::optional<std::string> fingerprint;
+  {
+    py::gil_scoped_release gil_release;
+    mlir::MLIRContext context;
+    TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+                        ParseMlirModuleString(mlir_module, context));
+    TF_ASSIGN_OR_RETURN(
+        executable, pjrt_client_->Compile(module.get(), std::move(options)));
     TF_ASSIGN_OR_RETURN(fingerprint,
                         pjrt_client_->ExecutableFingerprint(*executable));
   }

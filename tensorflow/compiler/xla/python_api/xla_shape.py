@@ -16,8 +16,6 @@
 
 import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
-from six.moves import xrange
-
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python_api import types
 
@@ -117,7 +115,7 @@ def _CreateShapeFromNumpy(ndarray):  # pylint: disable=invalid-name
   else:
     # Row-major layout. This corresponds to a "dimension order is
     # major-to-minor" layout int XLA.
-    layout = list(reversed(xrange(ndarray.ndim)))
+    layout = list(reversed(range(ndarray.ndim)))
 
   return Shape(element_type, dimensions, layout)
 

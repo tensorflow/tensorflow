@@ -10,15 +10,17 @@ load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
+default_visibility = [
+    "//tensorflow/compiler/mlir/lite:__subpackages__",
+    "//tensorflow/lite/android:__subpackages__",
+    "//tensorflow/lite/toco/tflite:__subpackages__",
+]
+
 #
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
 #
 package(
-    default_visibility = [
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/lite/android:__subpackages__",
-        "//tensorflow/lite/toco/tflite:__subpackages__",
-    ],
+    default_visibility = default_visibility,
     licenses = ["notice"],
 )
 
@@ -35,6 +37,7 @@ cc_library(
     copts = tf_opts_nortti_if_lite_protos(),
     features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
+        ":util",
         ":buffer_map_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:string",
@@ -63,6 +66,7 @@ cc_library(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/experimental/resource",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -222,6 +226,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:util",
@@ -269,6 +274,7 @@ cc_library(
     hdrs = ["subgraph_resource.h"],
     features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:cc_api",
     ] + select({
         "//tensorflow:android": [
@@ -287,12 +293,19 @@ cc_library(
 tf_cc_test(
     name = "kernel_test",
     size = "small",
-    srcs = ["kernel_test.cc"],
+    srcs = [
+        "kernel.h",
+        "kernel_test.cc",
+    ],
     tags = ["no_gpu"],  # GPU + flex is not officially supported.
     deps = [
         ":delegate",
         ":delegate_data",
         ":test_util",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/utils:simple_delegate",
+        "//tensorflow/lite/kernels:kernel_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -317,9 +330,14 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     features = tf_features_nolayering_check_if_android_or_ios(),
+    #TODO(b/206038955): Consider restrict the visibility to '//third_party/fcp/client:__subpackages__'.
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
+        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite:string_util",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -331,6 +349,7 @@ cc_library(
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:framework",
+            "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         ],
     }),
 )
@@ -341,7 +360,13 @@ tf_cc_test(
     srcs = ["util_test.cc"],
     deps = [
         ":util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/lite:string",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -416,6 +441,10 @@ cc_library(
     deps = [
         ":buffer_map_util",
         ":subgraph_resource",
+        ":util",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_types",

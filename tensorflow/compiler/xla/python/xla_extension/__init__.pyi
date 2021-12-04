@@ -15,12 +15,14 @@
 
 import enum
 import inspect
+import typing
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
 
 import numpy as np
 
 from . import ops
 from . import jax_jit
+from . import mlir
 from . import outfeed_receiver
 from . import pmap_lib
 from . import profiler
@@ -92,6 +94,13 @@ class Shape:
   def __ne__(self, other: Shape) -> bool: ...
   def __hash__(self) -> int: ...
   def __repr__(self) -> str: ...
+
+class Layout:
+  def minor_to_major(self) -> Tuple[int, ...]: ...
+  def to_string(self) -> str: ...
+  def __eq__(self, other: Layout) -> bool: ...
+  def __ne__(self, other: Layout) -> bool: ...
+  def __hash__(self) -> int: ...
 
 class ProgramShape:
   def __init__(self, params: Sequence[Shape], result: Shape) -> None: ...
@@ -228,6 +237,15 @@ class OpSharding_Type(enum.IntEnum):
   MAXIMAL: int
   TUPLE: int
   OTHER: int
+
+class OpSharding:
+  Type: typing.Type[OpSharding_Type]
+  type: OpSharding_Type
+  replicate_on_last_tile_dim: bool
+  tile_assignment_dimensions: Sequence[int]
+  tile_assignment_devices: Sequence[int]
+  tuple_shardings: Sequence[OpSharding]
+  def SerializeToString(self) -> bytes: ...
 
 class ChannelHandle_ChannelType(enum.IntEnum):
   CHANNEL_TYPE_INVALID: int
@@ -442,20 +460,20 @@ class DistributedRuntimeClient:
 def get_distributed_runtime_service(
     address: str,
     num_nodes: int,
-    heartbeat_interval: Optional[int],
-    max_missing_heartbeats: Optional[int],
-    enumerate_devices_timeout: Optional[int],
-    shutdown_timeout: Optional[int]) -> DistributedRuntimeService: ...
+    heartbeat_interval: Optional[int] = ...,
+    max_missing_heartbeats: Optional[int] = ...,
+    enumerate_devices_timeout: Optional[int] = ...,
+    shutdown_timeout: Optional[int] = ...) -> DistributedRuntimeService: ...
 def get_distributed_runtime_client(
     address: str,
     node_id: int,
-    rpc_timeout: Optional[int],
-    init_timeout: Optional[int],
-    shutdown_timeout: Optional[int],
-    heartbeat_interval: Optional[int],
-    max_missing_heartbeats: Optional[int],
-    missed_heartbeat_callback: Optional[Any],
-    shutdown_on_destruction: Optional[bool]) -> DistributedRuntimeClient: ...
+    rpc_timeout: Optional[int] = ...,
+    init_timeout: Optional[int] = ...,
+    shutdown_timeout: Optional[int] = ...,
+    heartbeat_interval: Optional[int] = ...,
+    max_missing_heartbeats: Optional[int] = ...,
+    missed_heartbeat_callback: Optional[Any] = ...,
+    shutdown_on_destruction: Optional[bool] = ...) -> DistributedRuntimeClient: ...
 
 def collect_garbage() -> None: ...
 
@@ -471,6 +489,14 @@ class CompiledFunctionCache:
   def clear(self): ...
 
 class CompiledFunction:
+  def __call__(self, *args, **kwargs) -> Any: ...
+  def __getstate__(self) -> Any: ...
+  def __setstate__(self, Any): ...
+  __signature__: inspect.Signature
+  def _cache_size(self) -> int: ...
+  def _clear_cache(self) -> None: ...
+
+class PmapFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
   def __getstate__(self) -> Any: ...
   def __setstate__(self, Any): ...

@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
@@ -167,9 +168,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 #if BEF_EXECUTABLE
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
-#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #endif  // BEF_EXECUTABLE
@@ -290,6 +289,10 @@ Status GpuCompiler::OptimizeHloModule(
 
       spmd_simplify.AddPass<SortSimplifier>();
       spmd_simplify.AddPass<TupleSimplifier>();
+      spmd_simplify.AddPass<ScatterExpander>(
+          ScatterExpander::kEliminateSimpleScatters);
+      spmd_simplify.AddPass<GatherExpander>(
+          GatherExpander::kEliminateSimpleGathers);
       spmd_simplify.AddPass<WhileLoopConstantSinking>();
       spmd_simplify.AddPass<WhileLoopSimplifier>();
 
@@ -624,12 +627,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<ReductionLayoutNormalizer>();
   pipeline.AddPass<ReductionDimensionGrouper>();
   pipeline.AddPass<HloPassFix<ReductionSplitter>>();
-
-  if (RequireDeterminism(hlo_module->config()) ||
-      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
-        stream_exec->GetDeviceDescription().cuda_compute_capability());
-  }
+  pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -755,23 +754,14 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 }
 
 #if BEF_EXECUTABLE
-static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
-  if (!mlir_module) {
-    return tensorflow::errors::FailedPrecondition(
-        "No mlir module to lower to BEF.");
-  }
+static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
+                                           std::string entry_function_name,
+                                           HloModule* hlo_module) {
+  // LMHLO -> TFRT Dialect
+  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(mlir_module));
 
-  // LHLO -> TFRT Dialect (gpu kernels)
-  mlir::PassManager pm(mlir_module.getContext(),
-                       mlir::PassManager::Nesting::Implicit);
-  pm.addPass(tensorflow::createConvertLmhloToGpuBinaryPass());
-  pm.addPass(tensorflow::createConvertLmhloToGpuPass());
-  pm.addPass(mlir::createGpuAsyncRegionPass());
-  tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
-  pm.addPass(mlir::createCanonicalizerPass());
-  if (pm.run(mlir_module).failed()) {
-    return InternalError(
-        "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    DumpToFileInDirOrStdout(*hlo_module, "tfrt_gpu", mlir_module);
   }
 
   // TFRT Dialect -> BEF
@@ -781,10 +771,14 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
     return InternalError("Failed to lower TFRT Dialect to BEF.");
   }
 
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    DumpToFileInDirOrStdout(*hlo_module, "", "bef", bef);
+  }
+
   auto ptr = static_cast<uint8_t*>(
       tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
   std::copy(bef.begin(), bef.end(), ptr);
-  return OwnedBefBuffer(ptr, {bef.size()});
+  return OwnedBefBuffer(ptr, {entry_function_name, bef.size()});
 }
 #endif  // BEF_EXECUTABLE
 
@@ -860,8 +854,9 @@ static Status CompileModuleToLlvmIrImpl(
 
   results->module_name = mlir::GetNameFromLoc(mlir_module->getLoc());
 
-  llvm_ir::DumpIrIfEnabled(mlir_module.get(), hlo_module->unique_id(),
-                           hlo_module->config().debug_options());
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    DumpToFileInDirOrStdout(*hlo_module, "lmhlo", mlir_module.get());
+  }
 
   auto entry_function = mlir::cast<mlir::FuncOp>(
       mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
@@ -890,7 +885,9 @@ static Status CompileModuleToLlvmIrImpl(
   }
 
 #if BEF_EXECUTABLE
-  TF_ASSIGN_OR_RETURN(results->thunks_or_bef, LowerToBef(*mlir_module));
+  TF_ASSIGN_OR_RETURN(
+      results->thunks_or_bef,
+      LowerToBef(*mlir_module, entry_function.getName().str(), hlo_module));
 #else   // BEF_EXECUTABLE
   results->thunks_or_bef =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
@@ -1039,7 +1036,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   llvm::SplitModule(
-      *llvm_module.get(),
+      *llvm_module,
       std::max<unsigned>(
           1, std::min<unsigned>(thread_pool->NumThreads(), num_functions)),
       [&](std::unique_ptr<llvm::Module> module) {
@@ -1294,11 +1291,11 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
 
   for (int i = 0; i < func.getNumArguments(); i++) {
     for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
-      TF_RET_CHECK(attr.first == "lmhlo.params" ||
-                   attr.first == "lmhlo.param_shape_index" ||
-                   attr.first == "lmhlo.constant_name" ||
-                   attr.first == "lmhlo.must_alias" ||
-                   attr.first == "lmhlo.output_index");
+      TF_RET_CHECK(attr.getName() == "lmhlo.params" ||
+                   attr.getName() == "lmhlo.param_shape_index" ||
+                   attr.getName() == "lmhlo.constant_name" ||
+                   attr.getName() == "lmhlo.must_alias" ||
+                   attr.getName() == "lmhlo.output_index");
     }
   }
 

@@ -109,6 +109,7 @@ cc_library(
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:SideEffects",
@@ -349,8 +350,18 @@ py_library(
     srcs = ["python/tfr_gen.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
+        "//tensorflow/python/autograph/converters",
+        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:op_def_registry",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
+        "@gast_archive//:gast",
     ],
 )
 

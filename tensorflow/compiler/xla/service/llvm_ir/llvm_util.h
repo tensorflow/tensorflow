@@ -272,9 +272,6 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix = "");
 
-void DumpIrIfEnabled(mlir::ModuleOp mlir_module, int unique_id,
-                     const DebugOptions& debug_options);
-
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   llvm::GlobalValue::LinkageTypes linkage,
                                   const HloModuleConfig& module_config,

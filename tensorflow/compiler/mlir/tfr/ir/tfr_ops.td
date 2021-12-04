@@ -24,6 +24,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
@@ -444,7 +445,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     llvm::StringSet<> getDefinedAttributeNames() {
       llvm::StringSet<> all_attrs;
       for (auto& attr : (*this)->getAttrs()) {
-        all_attrs.insert(attr.first.strref());
+        all_attrs.insert(attr.getName().strref());
       }
       for (const auto& operand : llvm::enumerate(getType().getInputs())) {
         if (auto attr_name = getArgAttrOfType<StringAttr>(
