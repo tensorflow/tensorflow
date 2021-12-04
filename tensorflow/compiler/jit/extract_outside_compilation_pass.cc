@@ -476,6 +476,7 @@ StatusOr<std::vector<DataType>> UpdateTypesAttribute(
         lifted_arg_nodes_and_outside_compilation_nodes,
     const string& type_attr_name, Node* n) {
   std::vector<DataType> data_types;
+  data_types.reserve(lifted_arg_nodes_and_outside_compilation_nodes.size());
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), type_attr_name, &data_types));
   for (auto pair : lifted_arg_nodes_and_outside_compilation_nodes) {
     Node* outside_compilation_node = pair.second;
@@ -618,6 +619,9 @@ Status PostprocessLiftedArgsForWhile(
 
   // Add edges from outside compilation nodes to While node.
   std::vector<Node*> outside_compilation_nodes;
+  outside_compilation_attr_to_node.reserve(
+          lifted_arg_nodes_and_outside_compilation_nodes.size()
+  );
   std::transform(
       lifted_arg_nodes_and_outside_compilation_nodes.begin(),
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
@@ -631,6 +635,9 @@ Status PostprocessLiftedArgsForWhile(
   // In body_graph, create new _Arg/_Retval nodes, and replace lifted arg
   // nodes with the new _Arg nodes.
   std::vector<Node*> lifted_arg_nodes;
+  lifted_arg_nodes.reserve(
+          lifted_arg_nodes_and_outside_compilation_nodes.size()
+  );
   std::transform(
       lifted_arg_nodes_and_outside_compilation_nodes.begin(),
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
@@ -735,6 +742,12 @@ Status PostprocessLiftedArgsForIf(
   // Merge lifted args from then and else branches.
   std::vector<Node*> outside_compilation_nodes;
   std::vector<Node*> then_branch_lifted_arg_nodes;
+  outside_compilation_nodes.reserve(
+          then_branch_lifted_arg_nodes_and_outside_compilation_nodes.size()
+  );
+  then_branch_lifted_arg_nodes.reserve(
+          then_branch_lifted_arg_nodes_and_outside_compilation_nodes.size()
+  );
   for (const auto& pair :
        then_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
     outside_compilation_nodes.push_back(pair.second);
@@ -765,6 +778,7 @@ Status PostprocessLiftedArgsForIf(
 
   // Append lifted args' types to If node's Tin attribute.
   std::vector<DataType> data_types;
+  data_types.reserve(outside_compilation_nodes.size());
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tin", &data_types));
   for (Node* n : outside_compilation_nodes) {
     data_types.push_back(n->output_type(0));
@@ -859,6 +873,9 @@ Status PostprocessLiftedArgsForCall(
   }
 
   std::vector<Node*> lifted_arg_nodes;
+  lifted_arg_nodes.reserve(
+          lifted_arg_nodes_and_outside_compilation_nodes.size()
+  );
   std::transform(
       lifted_arg_nodes_and_outside_compilation_nodes.begin(),
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
@@ -900,6 +917,9 @@ Status PostprocessLiftedArgsForCall(
 
   // Add edges from outside compilation nodes to call node.
   std::vector<Node*> outside_compilation_nodes;
+  outside_compilation_nodes.reserve(
+          lifted_arg_nodes_and_outside_compilation_nodes.size()
+  );
   std::transform(
       lifted_arg_nodes_and_outside_compilation_nodes.begin(),
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
@@ -1209,7 +1229,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   attrs["_device_ordinal"] = device_ordinal_attr;
   std::unique_ptr<FunctionBody> fbody;
   const FunctionDef* shape_inference_graph =
-      fld->Find(shape_inference_graph_name);
+          fld->Find(shape_inference_graph_name);
   TF_RET_CHECK(shape_inference_graph);
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*shape_inference_graph,
                                              AttrSlice(&attrs), fld, &fbody));
@@ -1244,7 +1264,9 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
     nodes.reserve(g->num_op_nodes());
     for (Node* n : g->op_nodes()) {
       nodes.push_back(n);
-      g->RemoveNode(nodes.back());
+    }
+    for (Node* n : nodes) {
+      g->RemoveNode(n);
     }
     Node* start_node = pivot_node ? pivot_node : host_graph->source_node();
     // Reverse DFS from send_from_host_main_graph, and stop at start_node.
@@ -1312,9 +1334,9 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   // Replace original shape inference graph.
   FunctionDef fdef_replace;
   TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(*g, shape_inference_graph_name, &fdef_replace));
+          GraphToFunctionDef(*g, shape_inference_graph_name, &fdef_replace));
   TF_RETURN_IF_ERROR(
-      fld->ReplaceFunction(shape_inference_graph_name, fdef_replace));
+          fld->ReplaceFunction(shape_inference_graph_name, fdef_replace));
 
   return Status::OK();
 }
