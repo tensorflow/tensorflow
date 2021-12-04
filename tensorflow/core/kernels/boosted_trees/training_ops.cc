@@ -215,6 +215,15 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
               thresholds_list[feature_idx].shape().DebugString(), " at index ",
               feature_idx));
       const auto& thresholds = thresholds_list[feature_idx].vec<int32>();
+      OP_REQUIRES(
+          context,
+          TensorShapeUtils::IsMatrix(
+              left_node_contribs_list[feature_idx].shape()),
+          errors::InvalidArgument(
+              "Each left_node_contribs in left_node_contribs_list must be a "
+              "matrix, received shape ",
+              left_node_contribs_list[feature_idx].shape().DebugString(),
+              " at index ", feature_idx));
       const auto& left_node_contribs =
           left_node_contribs_list[feature_idx].matrix<float>();
       const auto& right_node_contribs =
