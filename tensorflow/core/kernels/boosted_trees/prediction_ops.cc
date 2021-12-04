@@ -37,7 +37,7 @@ limitations under the License.
 namespace tensorflow {
 
 static void ConvertVectorsToMatrices(
-    const OpInputList bucketized_features_list,
+    OpKernelContext* const context, const OpInputList bucketized_features_list,
     std::vector<tensorflow::TTypes<int32>::ConstMatrix>& bucketized_features) {
   for (const Tensor& tensor : bucketized_features_list) {
     if (tensor.dims() == 1) {
@@ -45,6 +45,10 @@ static void ConvertVectorsToMatrices(
       bucketized_features.emplace_back(
           TTypes<int32>::ConstMatrix(v.data(), v.size(), 1));
     } else {
+      OP_REQUIRES(context, TensorShapeUtils::IsMatrix(tensor.shape()),
+                  errors::Internal("Cannot use tensor as matrix, expected "
+                                   "vector or matrix, received shape ",
+                                   tensor.shape().DebugString()));
       bucketized_features.emplace_back(tensor.matrix<int32>());
     }
   }
@@ -79,7 +83,8 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
                                                 &bucketized_features_list));
     std::vector<tensorflow::TTypes<int32>::ConstMatrix> bucketized_features;
     bucketized_features.reserve(bucketized_features_list.size());
-    ConvertVectorsToMatrices(bucketized_features_list, bucketized_features);
+    ConvertVectorsToMatrices(context, bucketized_features_list,
+                             bucketized_features);
     const int batch_size = bucketized_features[0].dimension(0);
 
     const Tensor* cached_tree_ids_t;
@@ -225,7 +230,8 @@ class BoostedTreesPredictOp : public OpKernel {
                                                 &bucketized_features_list));
     std::vector<tensorflow::TTypes<int32>::ConstMatrix> bucketized_features;
     bucketized_features.reserve(bucketized_features_list.size());
-    ConvertVectorsToMatrices(bucketized_features_list, bucketized_features);
+    ConvertVectorsToMatrices(context, bucketized_features_list,
+                             bucketized_features);
     const int batch_size = bucketized_features[0].dimension(0);
 
     // Allocate outputs.
@@ -328,7 +334,8 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
                                                 &bucketized_features_list));
     std::vector<tensorflow::TTypes<int32>::ConstMatrix> bucketized_features;
     bucketized_features.reserve(bucketized_features_list.size());
-    ConvertVectorsToMatrices(bucketized_features_list, bucketized_features);
+    ConvertVectorsToMatrices(context, bucketized_features_list,
+                             bucketized_features);
     const int batch_size = bucketized_features[0].dimension(0);
 
     // We need to get the feature ids used for splitting and the logits after
