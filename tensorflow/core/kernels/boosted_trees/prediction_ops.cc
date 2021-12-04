@@ -99,6 +99,10 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
     const Tensor* cached_node_ids_t;
     OP_REQUIRES_OK(context,
                    context->input("cached_node_ids", &cached_node_ids_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(cached_node_ids_t->shape()),
+                errors::InvalidArgument(
+                    "cached_node_ids must be a vector, received shape ",
+                    cached_node_ids_t->shape().DebugString()));
     const auto cached_node_ids = cached_node_ids_t->vec<int32>();
 
     // Allocate outputs.
