@@ -140,14 +140,11 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
   llvm::SmallVector<mlir::AffineForOp> ancestors;
   getPerfectlyNestedLoops(ancestors, where);
   {
-    decltype(ancestors)::size_type i;
-    for (i = 0; i < ancestors.size(); i++) {
-      if (&ancestors[i].getBody()->front() == &*begin_op) {
-        break;
-      }
-    }
-    CHECK(i < ancestors.size());
-    ancestors.resize(i + 1);
+    const std::ptrdiff_t lastValidAncestor = std::distance(ancestors.begin(),
+                                                           llvm::find_if(ancestors, [&] (mlir::AffineForOp for_op) {
+                                                             return for_op.getBody()->front() == &*begin_op;
+                                                           }));
+    ancestors.resize(lastValidAncestor + 1);
   }
 
   llvm::SmallVector<int64_t> ancestor_dimensions;
@@ -219,10 +216,11 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
       op.moveBefore(&new_loops.back().getBody()->back());
     }
     CHECK_EQ(ancestors.size(), new_loops.size());
-    for (decltype(ancestors)::size_type i = 0; i < ancestors.size(); i++) {
-      replaceAllUsesInRegionWith(ancestors[i].getInductionVar(),
-                                 new_loops[i].getInductionVar(),
-                                 new_loops.back().region());
+    for (auto ancestor_and_new : llvm::zip(ancestors, new_loops) {
+      replaceAllUsesInRegionWith(
+              std::get<0>(ancestor_and_new).getInductionVar(),
+              std::get<1>(ancestor_and_new).getInductionVar(),
+              new_loops.back().region());
     }
     return new_loops.front();
   }
