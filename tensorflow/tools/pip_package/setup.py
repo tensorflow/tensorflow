@@ -88,7 +88,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wheel >= 0.32.0, < 1.0', # capped as astunparse 1.6.0-1.6.3 requires < 1.0
+    'wheel >= 0.32.0',
     'wrapt >= 1.11.0',
     # These packages need to be pinned exactly as newer versions are
     # incompatible with the rest of the ecosystem
