@@ -361,9 +361,12 @@ ConvolutionVisitor::GetSpatialDimsToSplit(HloInstruction* old_operand) {
   auto permute_dims = instr_to_dim_permute_map_[new_operand];
   std::vector<int64_t> old_dims(ctrl_.count_of_dimensions_to_convert),
       new_dims(ctrl_.count_of_dimensions_to_convert);
-  for (int i = 0; i < ctrl_.count_of_dimensions_to_convert; ++i) {
-    old_dims[i] = dim_map_val[DimMapper(SpaceToBatchDimMap::kSpace0) + i];
-    new_dims[i] = DimLookUp(permute_dims, old_dims[i]);
+
+  old_dims[0] = dim_map_val[DimMapper(SpaceToBatchDimMap::kSpace0)];
+  new_dims[0] = DimLookUp(permute_dims, old_dims[0]);
+  for (int i = 1; i < ctrl_.count_of_dimensions_to_convert; ++i) {
+    old_dims[i] = old_dims[0] + i;
+    new_dims[i] = new_dims[0] + i;
   }
   return std::make_pair(old_dims, new_dims);
 }
@@ -2317,10 +2320,11 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
     auto radix = ToMixedRadix(k, bounds);
 
     bool out_of_bounds = false;
+    int64_t batch_residue = 1;
     for (int i = 0; i < spatial_dim_count; ++i) {
-      const int64_t space_index = radix[spatial_dim_count + 1 + i];
-      const int64_t batch_index = radix[spatial_dim_count - i];
-
+      const int64_t space_index = radix[2 + i];
+      const int64_t batch_index = (radix[1] / batch_residue) % num_splits;
+      batch_residue *= num_splits;
       if (batch_index * new_space_size + space_index >= old_space_size) {
         out_of_bounds = true;
       }
@@ -2700,10 +2704,13 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   }
 
   auto new_window = convolution->window();
-  new_window.mutable_dimensions(get_first_chosen_spatial_dim(convolution))
-      ->set_padding_high(c.high_padding_for_conv);
-  new_window.mutable_dimensions(get_first_chosen_spatial_dim(convolution))
-      ->set_padding_low(c.low_padding_for_conv);
+  const int64_t first_dim = get_first_chosen_spatial_dim(convolution);
+  for (int i = 0; i < ctrl_.count_of_dimensions_to_convert; ++i) {
+    new_window.mutable_dimensions(first_dim + i)
+        ->set_padding_high(c.high_padding_for_conv);
+    new_window.mutable_dimensions(first_dim + i)
+        ->set_padding_low(c.low_padding_for_conv);
+  }
   TF_ASSIGN_OR_RETURN(
       HloInstruction * new_conv,
       MakeConvolveHlo(
@@ -2819,7 +2826,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
 
     for (int i = 0; i < spatial_dim_count; ++i) {
       trans_dims[start_batch_dim_position + i] =
-          start_batch_dim_position + i * 2;
+          start_batch_dim_position + (spatial_dim_count - 1 - i) * 2;
       trans_dims[start_space_dim_position + i] =
           start_batch_dim_position + i * 2 + 1;
     }
@@ -2878,7 +2885,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::PerformSplitSpace(
   int counter = 0;
   for (auto spatial_dimension_to_split : spatial_dimensions_to_split) {
     reshape_dimensions.insert(
-        reshape_dimensions.begin() + (spatial_dimension_to_split + counter - 1),
+        reshape_dimensions.begin() + (spatial_dimension_to_split + counter),
         num_splits);
     counter++;
   }
@@ -3771,10 +3778,13 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   VLOG(1) << "New dim numbers " << new_dim_numbers.DebugString()
           << " batch dim " << new_dim_numbers.input_batch_dimension();
   auto new_window = convolution->window();
-  new_window.mutable_dimensions(get_first_chosen_spatial_dim(convolution))
-      ->set_padding_high(c.high_padding_for_conv);
-  new_window.mutable_dimensions(get_first_chosen_spatial_dim(convolution))
-      ->set_padding_low(c.low_padding_for_conv);
+  const int64_t first_dim = get_first_chosen_spatial_dim(convolution);
+  for (int i = 0; i < ctrl_.count_of_dimensions_to_convert; ++i) {
+    new_window.mutable_dimensions(first_dim + i)
+        ->set_padding_high(c.high_padding_for_conv);
+    new_window.mutable_dimensions(first_dim + i)
+        ->set_padding_low(c.low_padding_for_conv);
+  }
   TF_ASSIGN_OR_RETURN(
       HloInstruction * new_conv,
       MakeConvolveHlo(
@@ -3792,14 +3802,13 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   VLOG(1) << "Space-to-batched convolution " << new_conv->ToString();
 
   std::vector<int64_t> new_output_split_spatial_dims(
-      ctrl_.dimension_from_end_to_convert),
-      old_output_split_spatial_dims(ctrl_.dimension_from_end_to_convert);
-  for (int i = 0; i < ctrl_.dimension_from_end_to_convert; ++i) {
-    old_output_split_spatial_dims[i] = dim_numbers.output_spatial_dimensions(
-        get_first_chosen_spatial_dim(convolution) + i);
+      ctrl_.count_of_dimensions_to_convert),
+      old_output_split_spatial_dims(ctrl_.count_of_dimensions_to_convert);
+  for (int i = 0; i < ctrl_.count_of_dimensions_to_convert; ++i) {
+    old_output_split_spatial_dims[i] =
+        dim_numbers.output_spatial_dimensions(first_dim + i);
     new_output_split_spatial_dims[i] =
-        new_dim_numbers.output_spatial_dimensions(
-            get_first_chosen_spatial_dim(convolution) + i);
+        new_dim_numbers.output_spatial_dimensions(first_dim + i);
   }
 
   const int64_t output_batch_dim = new_dim_numbers.output_batch_dimension();
