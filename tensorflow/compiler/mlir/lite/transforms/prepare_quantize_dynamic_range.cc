@@ -39,6 +39,10 @@ namespace TFL {
 
 namespace {
 
+// A boolean attribute used to describe whether input activations need to be
+// asymmetrically quantized.
+constexpr char kAsymmetricQuantizeInputsAttr[] = "asymmetric_quantize_inputs";
+
 using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 
 // Applies prepare dynamic range quantization on the model in TFL dialect.
@@ -83,10 +87,10 @@ class PrepareDynamicRangeQuantizePass
 
 // If the weight is applicable to dynamic range quantization, insert Quantize
 // and Dequantize ops with either per-axis or per-tensor scale.
-class PreprocessDynamicRangeQuantizableOp
+class PrepareDynamicRangeQuantizableOp
     : public OpRewritePattern<arith::ConstantOp> {
  public:
-  explicit PreprocessDynamicRangeQuantizableOp(
+  explicit PrepareDynamicRangeQuantizableOp(
       MLIRContext* context, const QuantizationSpecs& quant_specs)
       : OpRewritePattern<arith::ConstantOp>(context),
         quant_specs_(quant_specs) {}
@@ -100,6 +104,10 @@ class PreprocessDynamicRangeQuantizableOp
     }
 
     if (!(quantizeOps(op, quantizable_ops, rewriter))) {
+      return failure();
+    }
+
+    if (!(setAsymmetricQuantizeInputAttr(quantizable_ops, rewriter))) {
       return failure();
     }
     return success();
@@ -209,6 +217,31 @@ class PreprocessDynamicRangeQuantizableOp
     return true;
   }
 
+  // Add asymmetric input quantization attribute. MLIR dynamic quantization
+  // supports only the case that the value of the attribute equals to true. For
+  // details, see tensorflow/compiler/mlir/lite/quantization/quantization.td
+  bool setAsymmetricQuantizeInputAttr(QuantizationUnits& quantizable_ops,
+                                      PatternRewriter& rewriter) const {
+    bool changed = false;
+    for (auto& quant_op : quantizable_ops) {
+      auto dynamic_range_quantized_user =
+          dyn_cast<DynamicRangeQuantizedOpInterface>(quant_op.first);
+      if (dynamic_range_quantized_user &&
+          dynamic_range_quantized_user.RequireAsymmetricQuantizeInputsAttr()) {
+        // At runtime, this flag will be used in the kernels to decide whether
+        // input activations need to be asymmetrically quantized. Refer to the
+        // implementation for fully-connected as an example in
+        // tensorflow/lite/kernels/fully_connected.cc. The kernels will handle
+        // the asymmetric_quantize_inputs attribute in the builtin option.
+        dynamic_range_quantized_user->setAttr(
+            kAsymmetricQuantizeInputsAttr,
+            BoolAttr::get(rewriter.getContext(), true));
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
  protected:
   QuantizationSpecs quant_specs_;
 };
@@ -220,7 +253,7 @@ void PrepareDynamicRangeQuantizePass::runOnFunction() {
   ConvertTFLQuantOpsToMlirQuantOps(func);
 
   OwningRewritePatternList patterns(&getContext());
-  patterns.insert<PreprocessDynamicRangeQuantizableOp>(ctx, quant_specs_);
+  patterns.insert<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   ConvertMlirQuantOpsToTFLQuantOps(func);

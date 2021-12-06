@@ -154,7 +154,16 @@ def DynamicRangeQuantizedOpInterface : OpInterface<
     %conv = "tfl.conv_2d"(%input_act, %q_w, %bias)
 
     Note that this is part of reaching feature parity with the old quantizer for
-    dynamic range quantization.
+    dynamic range quantization except:
+    -  Only use_updated_hybrid_scheme=True is supported which means the ops with
+    the asymmetrically quantizing input support is enabled to use this feature
+    during MLIR graph rewriting passes while it is configurable in the old
+    quantizer. So when those ops are matched during graph rewriting passes,
+    MLIR quantizer will always ignore the pre-set value of the attribute, if
+    there's any, and set it to True. The reason behind this decision is that
+    generally activations of these ops show better accuracy with asymmetric
+    input quantization so we want to deprecate symmetric activation quantization
+    for those ops eventually.
   }];
 
   let methods = [
@@ -166,8 +175,12 @@ def DynamicRangeQuantizedOpInterface : OpInterface<
       [{Returns whether the op has the kernel support for dynamic range
       quantization.}],
       "bool", "GetDynamicRangeQuantKernelSupport",
-      (ins), [{}], [{return false;}]
-    >,
+      (ins), [{}], [{return false;}]>,
+    InterfaceMethod<
+      [{Returns whether the op requires asymmetric quantize input attribute
+      setting.}],
+      "bool", "RequireAsymmetricQuantizeInputsAttr",
+      (ins), [{}], [{return false;}]>,
   ];
 }
 

@@ -1082,6 +1082,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     std::vector<std::vector<int>> GetFloatBlockSize() { return {{1, 4}}; }
     std::vector<std::vector<int>> GetQuantizedBlockSize() { return {{1, 16}}; }
     // DynamicRangeQuantizedOpInterface:
+    bool RequireAsymmetricQuantizeInputsAttr() { return true; }
     bool GetDynamicRangeQuantKernelSupport() { return true; }
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
   }];
@@ -1130,6 +1131,7 @@ in the batch dimensions and broadcasting.
 
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
+    bool RequireAsymmetricQuantizeInputsAttr() { return true; }
     bool GetDynamicRangeQuantKernelSupport() { return true; }
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
   }];
@@ -4096,6 +4098,7 @@ Ba et al. 'Layer Normalization'
     // StatefulOpInterface:
     std::vector<int> GetStatefulOperands() { return {18, 19}; }
     // DynamicRangeQuantizedOpInterface:
+    bool RequireAsymmetricQuantizeInputsAttr() { return true; }
     bool GetDynamicRangeQuantKernelSupport() { return true; }
     std::vector<int> GetQuantizableOperandIndices() {
       return {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16};
@@ -4226,6 +4229,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
 
     // DynamicRangeQuantizedOpInterface:
+    bool RequireAsymmetricQuantizeInputsAttr() { return true; }
     bool GetDynamicRangeQuantKernelSupport() { return true; }
     std::vector<int> GetQuantizableOperandIndices() {
       return {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16};
@@ -4422,6 +4426,7 @@ def TFL_BidirectionalSequenceLSTMOp :
     std::vector<int> GetStatefulOperands() { return {35, 36, 37, 38}; }
 
     // DynamicRangeQuantizedOpInterface:
+    bool RequireAsymmetricQuantizeInputsAttr() { return true; }
     bool GetDynamicRangeQuantKernelSupport() { return true; }
     std::vector<int> GetQuantizableOperandIndices() {
       return {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 16, 18, 19, 20, 21,
@@ -4490,6 +4495,7 @@ def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
     std::vector<int> GetStatefulOperands() { return {4}; }
 
     // DynamicRangeQuantizedOpInterface:
+    bool RequireAsymmetricQuantizeInputsAttr() { return true; }
     bool GetDynamicRangeQuantKernelSupport() { return true; }
     std::vector<int> GetQuantizableOperandIndices() {
       return {1, 2};
@@ -4597,6 +4603,7 @@ def TFL_SVDFOp :
     std::vector<int> GetStatefulOperands() { return {4}; }
 
     // DynamicRangeQuantizedOpInterface:
+    bool RequireAsymmetricQuantizeInputsAttr() { return true; }
     bool GetDynamicRangeQuantKernelSupport() { return true; }
     std::vector<int> GetQuantizableOperandIndices() {
       return {1, 2};
