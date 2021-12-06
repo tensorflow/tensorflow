@@ -66,8 +66,11 @@ alias(
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
-    srcs = ["tensorrt_test.cc"],
+    srcs = [
+        "tensorrt_test.cc",
+    ],
     tags = [
+        "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
     ],
@@ -81,7 +84,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
         ":tensorrt_lib",
-        "@local_config_cuda//cuda:cuda_headers",
+        "//third_party/tensorrt/plugin:nvinfer_plugin_nms",
     ]),
 )
 
