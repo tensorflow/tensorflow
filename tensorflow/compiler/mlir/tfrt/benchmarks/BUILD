@@ -183,12 +183,9 @@ cc_library(
 )
 
 tf_cc_binary(
-    name = "softmax_benchmark",
+    name = "softmax_op_benchmark",
     testonly = 1,
-    srcs = [
-        "softmax_benchmark.cc",
-        "softmax_benchmark.h",
-    ],
+    srcs = ["softmax_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
@@ -197,8 +194,8 @@ tf_cc_binary(
     ]),
     deps = [
         ":benchmark",
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
+        ":benchmark_mlir_function",
+        "@llvm-project//llvm:Support",
     ],
 )
 
