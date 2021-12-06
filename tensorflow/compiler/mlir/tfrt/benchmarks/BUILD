@@ -283,3 +283,20 @@ tf_cc_binary(
         ":reduction_benchmark",
     ],
 )
+
+tf_cc_binary(
+    name = "fused_reduction_benchmark",
+    testonly = 1,
+    srcs = ["fused_reduction_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        "@llvm-project//llvm:Support",
+    ],
+)
