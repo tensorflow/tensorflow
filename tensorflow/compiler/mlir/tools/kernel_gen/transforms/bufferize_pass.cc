@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
@@ -46,7 +47,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
@@ -76,7 +76,8 @@ static Value materializeToTensor(OpBuilder& builder, TensorType type,
 }
 
 // TODO(pifon): Remove as soon as https://reviews.llvm.org/D93126 is landed.
-class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
+class CustomBufferizeTypeConverter
+    : public bufferization::BufferizeTypeConverter {
  public:
   CustomBufferizeTypeConverter() {
     // Keep all types unchanged.
@@ -151,7 +152,7 @@ struct ComputeOpAndFuncBufferizePass
     populateReturnOpTypeConversionPattern(patterns, converter);
 
     // Configure legality and structural patterns.
-    populateBufferizeMaterializationLegality(target);
+    bufferization::populateBufferizeMaterializationLegality(target);
     linalg::populateLinalgBufferizePatterns(converter, patterns);
     populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
                                                       target);
@@ -209,7 +210,7 @@ struct TiledLoopBufferizePass
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);
-    populateBufferizeMaterializationLegality(target);
+    bufferization::populateBufferizeMaterializationLegality(target);
     populateTiledLoopBufferizePattern(&getContext(), &converter, &patterns);
     populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
                                                       target);
@@ -254,7 +255,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
         tensor::CastOp, tensor::DimOp, chlo::MinimumBroadcastShapesOp,
         bufferization::ToTensorOp, bufferization::ToMemrefOp,
         linalg::TensorExpandShapeOp, linalg::TensorCollapseShapeOp>();
-    BufferizeTypeConverter converter;
+    bufferization::BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());

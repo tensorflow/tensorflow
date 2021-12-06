@@ -46,7 +46,6 @@ licenses(["notice"])
 
 exports_files([
     "LICENSE",
-    "ACKNOWLEDGMENTS",
     # The leakr files are used by //third_party/cloud_tpu and
     # //third_party/tensorboard/google:copybara_config_test.
     "leakr_badwords.dic",

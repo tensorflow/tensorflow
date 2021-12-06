@@ -143,6 +143,8 @@ find_package(fft2d REQUIRED)
 find_package(flatbuffers REQUIRED)
 find_package(gemmlowp REQUIRED)
 find_package(neon2sse REQUIRED)
+find_package(clog REQUIRED)
+find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ruy REQUIRED)
 # Generate TensorFlow Lite FlatBuffer code.
 # We used to have an actual compilation logic with flatc but decided to use

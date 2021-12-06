@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 
+#include <utility>
+
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -57,6 +62,37 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
   return Status::OK();
+}
+
+StatusOr<mlir::OwningModuleRef> ParseMlirModuleString(
+    absl::string_view mlir_module_str, mlir::MLIRContext& context) {
+  mlir::OwningModuleRef module;
+  context.loadDialect<mlir::StandardOpsDialect>();
+  context.loadDialect<mlir::mhlo::MhloDialect>();
+  context.loadDialect<mlir::chlo::HloClientDialect>();
+  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
+  module = mlir::parseSourceString(
+      llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
+      &context);
+  if (!module) {
+    return diagnostic_handler.ConsumeStatus();
+  }
+  if (failed(module->verify())) {
+    VLOG(1) << "MLIR verification failed.";
+    module->dump();
+    return diagnostic_handler.ConsumeStatus();
+  }
+  return std::move(module);
+}
+
+Status ParseMlirModuleStringAndConvertToXlaComputation(
+    absl::string_view mlir_module_str, XlaComputation& xla_computation,
+    bool use_tuple_args, bool return_tuple) {
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+                      xla::ParseMlirModuleString(mlir_module_str, context));
+  return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
+                                   return_tuple);
 }
 
 }  // namespace xla

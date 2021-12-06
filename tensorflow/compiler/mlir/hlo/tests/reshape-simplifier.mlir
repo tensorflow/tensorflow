@@ -168,6 +168,31 @@ func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
 
 // -----
 
+// CHECK-LABEL: @dynamic_reshape_to_collapse_shape
+// CHECK-SAME: %[[ARG:.*]]: tensor<1x4x?x64x?x8x1x1xf32>
+func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
+    -> tensor<?x?x8xf32> {
+  // CHECK: %[[RESULT:.*]] = linalg.tensor_collapse_shape %[[ARG]] {{\[}}[0, 1, 2], [3, 4], [5, 6, 7]{{\]}}
+  // CHECK: return %[[RESULT]]
+  %c2 = arith.constant 2 : index
+  %c4 = arith.constant 4 : index
+  %c4_i32 = arith.constant 4 : i32
+  %c8_i32 = arith.constant 8 : i32
+  %c64_i32 = arith.constant 64 : i32
+  %d2 = tensor.dim %arg0, %c2 : tensor<1x4x?x64x?x8x1x1xf32>
+  %d4 = tensor.dim %arg0, %c4 : tensor<1x4x?x64x?x8x1x1xf32>
+  %d2_i32 = arith.index_cast %d2 : index to i32
+  %d4_i32 = arith.index_cast %d4 : index to i32
+  %s0 = arith.muli %c4_i32, %d2_i32 : i32
+  %s1 = arith.muli %c64_i32, %d4_i32 : i32
+  %shape = tensor.from_elements %s0, %s1, %c8_i32 : tensor<3xi32>
+  %result = "mhlo.dynamic_reshape"(%arg0, %shape)
+      : (tensor<1x4x?x64x?x8x1x1xf32>, tensor<3xi32>) -> tensor<?x?x8xf32>
+  return %result : tensor<?x?x8xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @reshape_integration(
 // CHECK-SAME:      %arg0: tensor<512x512xf32>,
 // CHECK-SAME:      %arg1: tensor<?x8x?x64xf32>,
@@ -216,7 +241,7 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
   %19 = shape.assuming %18 -> (tensor<?x512xf32>) {
     // CHECK-NOT: compute_reshape_shape
     %20 = mhlo.compute_reshape_shape %17, %15 : index, tensor<2xi32> -> tensor<2xi32>
-    // CHECK: "mhlo.dynamic_reshape"
+    // CHECK: linalg.tensor_collapse_shape
     %21 = "mhlo.dynamic_reshape"(%6, %20) : (tensor<?x?x64x8xf32>, tensor<2xi32>) -> tensor<?x512xf32>
     // CHECK-NOT: assuming_yield
     shape.assuming_yield %21 : tensor<?x512xf32>

@@ -1252,11 +1252,13 @@ class TrackableSaver(object):
       feed_dict[file_prefix_tensor] = file_prefix
     else:
       with ops.device("/cpu:0"):
-        file_prefix_tensor = constant_op.constant(
+        file_prefix_tensor = ops.convert_to_tensor(
             file_prefix, dtype=dtypes.string)
       object_graph_tensor = None
 
-    file_io.recursive_create_dir(os.path.dirname(file_prefix))
+    if not tensor_util.is_tensor(file_prefix):
+      file_io.recursive_create_dir(os.path.dirname(file_prefix))
+
     save_path, new_feed_additions = self._save_cached_when_graph_building(
         file_prefix_tensor, object_graph_tensor, options)
     if new_feed_additions:

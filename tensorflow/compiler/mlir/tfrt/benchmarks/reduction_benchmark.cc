@@ -18,27 +18,54 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
 namespace tensorflow {
+namespace {
+
+using ::llvm::ArrayRef;
+using ::llvm::SmallVector;
+using ::llvm::StringRef;
 
 static const char* kReductionIR = R"(
   func @main(%input: {1}) -> {2} {
-    %dim_to_reduce = "tf.Const"() {{value = {3} : {4}} : () -> {4}
-    %result = "{0}"(%input, %dim_to_reduce) {{keep_dims = false}
-      : ({1}, {4}) -> {2}
+    %dim_to_reduce = "tf.Const"() {{
+      value = {3} : {4},
+      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    } : () -> {4}
+    %result = "{0}"(%input, %dim_to_reduce) {{
+      keep_dims = false,
+      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    } : ({1}, {4}) -> {2}
     return %result : {2}
   }
 )";
 
-std::string GetIR(StringRef op_name, ArrayRef<int64_t> input_shape,
-                  ArrayRef<int64_t> output_shape,
-                  ArrayRef<int32_t> dims_to_reduce, StringRef element_type) {
+std::string GetReductionIR(StringRef op_name,
+                           ArrayRef<int64_t> mlir_input_shape,
+                           ArrayRef<int64_t> mlir_output_shape,
+                           ArrayRef<int32_t> dims_to_reduce,
+                           StringRef element_type) {
   return llvm::formatv(
-      kReductionIR, op_name,                        // TF op to use {0},
-      PrintTensorType(input_shape, element_type),   // Input type {1}
-      PrintTensorType(output_shape, element_type),  // Output type {2}
-      PrintDenseArray(dims_to_reduce),              // Dims to reduce attr {3}
+      kReductionIR, op_name,                             // TF op to use {0},
+      PrintTensorType(mlir_input_shape, element_type),   // Input type {1}
+      PrintTensorType(mlir_output_shape, element_type),  // Output type {2}
+      PrintDenseArray(dims_to_reduce),  // Dims to reduce attr {3}
       PrintTensorType(static_cast<int64_t>(dims_to_reduce.size()),
                       "i32")  // Dims to reduce type {4}
   );
+}
+
+}  // namespace
+
+std::string GetTFSumIR(ArrayRef<int32_t> input_shape,
+                       ArrayRef<bool> dynamic_dims,
+                       ArrayRef<int32_t> dims_to_reduce) {
+  SmallVector<int64_t, 2> mlir_input_shape, mlir_output_shape;
+  for (int i = 0; i < input_shape.size(); ++i) {
+    mlir_input_shape.push_back(dynamic_dims[i] ? kDynSize : input_shape[i]);
+    if (llvm::find(dims_to_reduce, i) == dims_to_reduce.end())
+      mlir_output_shape.push_back(mlir_input_shape[i]);
+  }
+  return GetReductionIR("tf.Sum", mlir_input_shape, mlir_output_shape,
+                        dims_to_reduce, "f32");
 }
 
 }  // namespace tensorflow

@@ -714,6 +714,28 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+    ],
+)
+
+tf_cc_binary(
+    name = "xla-opt-gpu",
+    testonly = True,
+    srcs = ["xla_opt_main.cc"],
+    deps = [
+        ":adjust_layout",  # buildcleaner: keep
+        ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
+        ":tf_xla_passes",  # buildcleaner: keep
+        ":xla_legalize_tf",  # buildcleaner: keep
+        ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
+        ":xla_passes",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllPassesAndDialects",

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/Bufferize.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
@@ -450,7 +450,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
     target.addDynamicallyLegalOp<mlir::bufferization::ToMemrefOp>(
         [](auto op) { return op->use_empty(); });
 
-    BufferizeTypeConverter converter;
+    bufferization::BufferizeTypeConverter converter;
     auto isMemRefType = [](Type type) { return type.isa<BaseMemRefType>(); };
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       return converter.isSignatureLegal(op.getType()) &&
@@ -489,7 +489,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 
 // Simply lowers all mhlo ops to their lmhlo counterparts.
 void populateDynamicHLOToLHLOConversionPattern(
-    MLIRContext* context, BufferizeTypeConverter* converter,
+    MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
     OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
@@ -502,9 +502,9 @@ void populateDynamicHLOToLHLOConversionPattern(
   // clang-format on
 }
 
-void populateHLOToLHLOConversionPattern(MLIRContext* context,
-                                        BufferizeTypeConverter* converter,
-                                        OwningRewritePatternList* patterns) {
+void populateHLOToLHLOConversionPattern(
+    MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
+    OwningRewritePatternList* patterns) {
   populateDynamicHLOToLHLOConversionPattern(context, converter, patterns);
 
   // clang-format off

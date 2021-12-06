@@ -235,13 +235,13 @@ bool elemwiseFuseHelper(PatternRewriter& rewriter, Operation* user,
         rewriter.create<LoadOp>(loc, producer_operand, load_op.getIndices()));
   }
   auto inlined_result =
-      HloOpToStdScalarOp::map<LHLO_OpTy>(llvm::cast<LHLO_OpTy>(producer),
-                                         cast<LmhloOp>(producer)
-                                             .getResultBuffer()
-                                             .getType()
-                                             .cast<MemRefType>()
-                                             .getElementType(),
-                                         operand_values, &rewriter);
+      LhloOpToStdScalarOp::map<LHLO_OpTy>(llvm::cast<LHLO_OpTy>(producer),
+                                          cast<LmhloOp>(producer)
+                                              .getResultBuffer()
+                                              .getType()
+                                              .cast<MemRefType>()
+                                              .getElementType(),
+                                          operand_values, &rewriter);
 
   for (LoadOp to_be_replaced : load_ops)
     to_be_replaced.replaceAllUsesWith(inlined_result);

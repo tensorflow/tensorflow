@@ -69,18 +69,18 @@ func private @test_fuse_dynamic_dimension_ops(%arg0: tensor<*xi32>, %arg1: tenso
   // CHECK: [[read_result:%.*]] = "tf.ReadVariableOp"(%arg1)
   // CHECK: [[shape_result_1:%.*]] = "tf.Shape"(%arg0) {device = "/CPU:0"} : (tensor<*xi32>) -> tensor<?xi64>
   // CHECK: [[shape_result_2:%.*]] = "tf.Shape"([[read_result]]) {device = "/CPU:0"} : (tensor<*xi32>) -> tensor<?xi64>
-  // CHECK: [[key:%.*]], [[exec_result:%.*]] = "tf.TPUCompileMlirAndExecute"(%arg0, [[shape_result_2]], %0, [[shape_result_1]], %arg2, %arg4, %arg3) {metadata = "metadata", mlir_module = "mlir_module", operand_segment_sizes = dense<[4, 3]> : vector<2xi32>, operands_with_static_shape = [0 : i32, 1 : i32, 3 : i32]} : (tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) -> (tensor<3x!tf_type.string>, tensor<*xi32>)
+  // CHECK: [[key:%.*]], [[exec_result:%.*]] = "tf.TPUCompileMlirAndExecute"(%arg0, [[shape_result_2]], %0, %0, %arg2, %arg4, %arg3) {metadata = "metadata", mlir_module = "mlir_module", operand_segment_sizes = dense<[4, 3]> : vector<2xi32>, operands_with_static_shape = [0 : i32, 1 : i32, 3 : i32]} : (tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) -> (tensor<3x!tf_type.string>, tensor<*xi32>)
   // CHECK: [[key_1:%.*]], [[exec_result_1:%.*]] = "tf.TPUCompileMlirAndExecute"(%arg0, %2, %0, %1) {metadata = "metadata", mlir_module = "mlir_module", operand_segment_sizes = dense<[4, 0]> : vector<2xi32>, operands_with_static_shape = []} : (tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<?xi64>) -> (tensor<3x!tf_type.string>, tensor<*xi32>)
   // CHECK-NEXT: return [[exec_result]] : tensor<*xi32>
-  %arg0_dyn = "tf.SetStaticDimensionBounds" (%arg0, %arg2) :(tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
   %0 = "tf.ReadVariableOp"(%arg1) {device = "/CPU:0"} : (tensor<*x!tf_type.resource>) -> tensor<*xi32>
-  %1 = "tf.Shape"(%arg0) {device = "/CPU:0"} : (tensor<*xi32>) -> tensor<?xi64>
-  %dyn_1 = "tf.SetStaticDimensionBounds" (%1, %arg3) :(tensor<?xi64>, tensor<*xi32>) -> tensor<?xi64>
+  %dyn_arg0 = "tf.SetStaticDimensionBounds" (%arg0, %arg2) :(tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  %dyn_0 = "tf.SetStaticDimensionBounds" (%0, %arg3) :(tensor<*xi32>, tensor<*xi32>) -> tensor<?xi64>
+  %1 = "tf.Shape"(%dyn_arg0) {device = "/CPU:0"} : (tensor<*xi32>) -> tensor<?xi64>
   %2 = "tf.Shape"(%0) {device = "/CPU:0"} : (tensor<*xi32>) -> tensor<?xi64>
   %dyn_2 = "tf.SetStaticDimensionBounds" (%2, %arg4) :(tensor<?xi64>, tensor<*xi32>) -> tensor<?xi64>
   %compilation_status, %program = "tf._TPUCompileMlir"(%1, %2) {device = "/CPU:0", metadata = "metadata", mlir_module = "mlir_module"} : (tensor<?xi64>, tensor<?xi64>) -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
   "tf.TPUCompileSucceededAssert"(%compilation_status) {device = "/CPU:0"} : (tensor<!tf_type.string>) -> ()
-  %3 = "tf.TPUExecute"(%arg0_dyn, %dyn_2, %0, %dyn_1, %program) {device = "/TPU:0"} : (tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<?xi64>, tensor<3x!tf_type.string>) -> tensor<*xi32>
+  %3 = "tf.TPUExecute"(%dyn_arg0, %dyn_2, %0, %dyn_0, %program) {device = "/TPU:0"} : (tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<?xi64>, tensor<3x!tf_type.string>) -> tensor<*xi32>
   %compilation_status_2, %program_2 = "tf._TPUCompileMlir"(%1, %2) {device = "/CPU:0", metadata = "metadata", mlir_module = "mlir_module"} : (tensor<?xi64>, tensor<?xi64>) -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
   "tf.TPUCompileSucceededAssert"(%compilation_status) {device = "/CPU:0"} : (tensor<!tf_type.string>) -> ()
   %4 = "tf.TPUExecute"(%arg0, %2, %0, %1, %program_2) {device = "/TPU:0"} : (tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<?xi64>, tensor<3x!tf_type.string>) -> tensor<*xi32>

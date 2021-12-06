@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace xla {
@@ -272,6 +273,31 @@ class NcclCliqueRendezvous
   absl::BlockingCounter* counter_;
 };
 
+// Periodically checks all NCCL communicators for asynchronous errors.
+// If an asynchronous error is observed, the communicator is aborted and an
+// error message logged.
+void CheckNcclAsyncErrors() {
+  while (true) {
+    absl::SleepFor(absl::Seconds(30));
+
+    NcclCliqueCache().ForEach([](const auto&, const NcclClique& clique) {
+      for (const auto& it : clique.GetComms()) {
+        ncclComm_t comm = it.second.get();
+        Status status = [comm] {
+          ncclResult_t async_err;
+          XLA_CUDA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
+          if (async_err != ncclSuccess) {
+            LOG(ERROR) << "Async NCCL error. Aborting communicator: " << comm;
+            XLA_CUDA_RETURN_IF_ERROR(ncclCommAbort(comm));
+          }
+          return XLA_CUDA_STATUS(async_err);
+        }();
+        if (!status.ok()) LOG(ERROR) << status.ToString();
+      }
+    });
+  }
+}
+
 }  // namespace
 
 StatusOr<std::vector<LocalParticipant>> GetLocalParticipants(
@@ -360,6 +386,13 @@ StatusOr<LockedNcclClique> AcquireNcclClique(
     const NcclCliqueParticipantData& participant,
     const std::vector<LocalParticipant>& local_participants,
     const NcclUniqueIdCallback* callback) {
+  // Launch a thread to check for async NCCL errors.
+  static auto check_async_error_thread =
+      tensorflow::Env::Default()->StartThread(tensorflow::ThreadOptions(),
+                                              "nccl_async_error_thread",
+                                              CheckNcclAsyncErrors);
+  (void)check_async_error_thread;  // Silence unused variable warning.
+
   VLOG(2) << "Rendezvous key: " << participant.rendezvous_key.ToString()
           << ", local participants: "
           << LocalParticipantsToString(local_participants);

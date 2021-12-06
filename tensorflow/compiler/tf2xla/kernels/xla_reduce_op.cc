@@ -132,7 +132,7 @@ class XlaReduceOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("XlaReduce"), XlaReduceOp);
-REGISTER_XLA_OP(Name("XlaVariadicReduce"), XlaReduceOp);
+REGISTER_XLA_OP(Name("XlaVariadicReduce"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("XlaVariadicReduceV2"), MlirXlaOpKernel);
 
 }  // namespace

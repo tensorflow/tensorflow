@@ -122,7 +122,7 @@ struct TFLQuantizationBase
     // it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           quantized_op->hasTrait<OpTrait::quant::DynamicRangeQuantizableOp>();
+           dyn_cast<DynamicRangeQuantizedOpInterface>(quantized_op);
   }
 
   static bool AllowHybridResult(Operation* quantized_op) {
@@ -130,7 +130,7 @@ struct TFLQuantizationBase
     // supports it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           quantized_op->hasTrait<OpTrait::quant::DynamicRangeQuantizableOp>();
+           dyn_cast<DynamicRangeQuantizedOpInterface>(quantized_op);
   }
 };
 

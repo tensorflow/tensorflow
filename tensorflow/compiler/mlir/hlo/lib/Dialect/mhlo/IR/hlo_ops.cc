@@ -4931,7 +4931,10 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
   if (!result_ty.hasStaticShape()) return {};
 
   auto direction = comparison_direction();
-  if (lhs() == rhs() && !getElementTypeOrSelf(lhs()).isa<FloatType>()) {
+  auto lhs_ty = getElementTypeOrSelf(lhs());
+  if (lhs() == rhs() && !lhs_ty.isa<FloatType>() &&
+      (!lhs_ty.isa<ComplexType>() ||
+       !lhs_ty.cast<ComplexType>().getElementType().isa<FloatType>())) {
     if (direction == "LE" || direction == "EQ" || direction == "GE") {
       return DenseIntElementsAttr::get(result_ty, {true});
     }

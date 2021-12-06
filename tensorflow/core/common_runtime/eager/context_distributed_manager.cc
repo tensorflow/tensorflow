@@ -622,8 +622,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     LOG_AND_RETURN_IF_ERROR(server->Start());
   } else {
     sg.Update(server->worker_env()->session_mgr->UpdateSession(
-        session_name, server_def, base_request.cluster_device_attributes(),
-        /*isolate_session_state=*/true));
+        session_name, server_def, base_request.cluster_device_attributes()));
     sg.Update(context->UpdateRemoteMaster(context_id,
                                           std::move(remote_eager_workers),
                                           added_workers, removed_workers));

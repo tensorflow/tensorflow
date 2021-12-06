@@ -594,6 +594,12 @@ build:release_cpu_linux --config=avx_linux
 build:release_cpu_linux --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
 test:release_cpu_linux --test_env=LD_LIBRARY_PATH
 
+# manylinux2014 config for cpu
+build:release_cpu_linux_manylinux2014 --config=release_base
+build:release_cpu_linux_manylinux2014 --config=avx_linux
+build:release_cpu_linux_manylinux2014 --crosstool_top="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+test:release_cpu_linux_manylinux2014 --test_env=LD_LIBRARY_PATH
+
 build:release_cpu_macos --config=release_base
 build:release_cpu_macos --config=avx_linux
 
@@ -615,6 +621,12 @@ build:release_gpu_linux_11_4 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-11.
 build:release_gpu_linux_11_4 --action_env=TF_CUDA_VERSION="11.4"
 build:release_gpu_linux_11_4 --action_env=TF_CUDNN_VERSION="8.2"
 build:release_gpu_linux_11_4 --crosstool_top=@ubuntu18.04-gcc7_manylinux2010-cuda11.4-cudnn8.2-tensorrt7.2_config_cuda//crosstool:toolchain
+
+# manylinux2014 config for gpu
+build:release_gpu_linux_manylinux2014 --config=release_gpu_linux
+build:release_gpu_linux_manylinux2014 --action_env=GCC_HOST_COMPILER_PATH="/dt8/usr/bin/gcc"
+build:release_gpu_linux_manylinux2014 --crosstool_top=@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
+
 
 build:release_cpu_windows --config=release_base
 build:release_cpu_windows --config=avx_win

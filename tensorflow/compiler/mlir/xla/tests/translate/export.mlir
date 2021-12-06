@@ -1237,6 +1237,26 @@ func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
 // -----
 
 // CHECK:  HloModule
+// CHECK: %[[FOO:.*]] ([[ARG0:.*]]: f32[2,3], [[ARG1:.*]]: f32[5,5]) -> f32[2,3]
+func @foo (%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<2x3xf32> {
+  return %arg0 : tensor<2x3xf32>
+}
+
+// CHECK: ENTRY
+func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<2x3xf32> {
+  // CHECK:  ROOT
+  // CHECK-SAME:  f32[2,3] custom-call
+  // CHECK-SAME:  called_computations={%[[FOO]]}
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {
+    call_target_name = "foo",
+    called_computations = [@foo]
+  } : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<2x3xf32>
+  return %0 : tensor<2x3xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<2xcomplex<f64>>) -> (tensor<2xf32>, tensor<2xf64>) {
   %0 = "mhlo.abs"(%arg0) : (tensor<2xcomplex<f32>>) -> (tensor<2xf32>)
   %1 = "mhlo.abs"(%arg1) : (tensor<2xcomplex<f64>>) -> (tensor<2xf64>)

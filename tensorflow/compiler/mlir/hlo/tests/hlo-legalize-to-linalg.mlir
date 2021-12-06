@@ -706,7 +706,7 @@ func @reshape_3D_2D(%arg0: tensor<12x1x42xi32>) -> tensor<12x42xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x1x42xi32>) -> tensor<12x42xi32>
   return %0 : tensor<12x42xi32>
 }
-// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1], [2]]
+// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0], [1, 2]]
 
 // -----
 
@@ -724,7 +724,7 @@ func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x42xi32>) -> tensor<12x1x42x1xi32>
   return %0 : tensor<12x1x42x1xi32>
 }
-// CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0, 1], [2, 3]]
+// CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0], [1, 2, 3]]
 
 // -----
 
