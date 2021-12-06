@@ -1,5 +1,5 @@
 #
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,29 +13,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if(TARGET ruy OR ruy_POPULATED)
+if(TARGET clog OR clog_POPULATED)
   return()
 endif()
 
 include(OverridableFetchContent)
 
 OverridableFetchContent_Declare(
-  ruy
-  GIT_REPOSITORY https://github.com/google/ruy
-  # Sync with tensorflow/third_party/ruy/workspace.bzl
-  GIT_TAG e6c1b8dc8a8b00ee74e7268aac8b18d7260ab1ce
+  clog
+  GIT_REPOSITORY https://github.com/pytorch/cpuinfo
+  # Sync with tensorflow/third_party/clog/workspace.bzl
+  GIT_TAG d5e37adf1406cf899d7d9ec1d317c47506ccb970
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/ruy"
+  SOURCE_DIR "${CMAKE_BINARY_DIR}/clog"
 )
-OverridableFetchContent_GetProperties(ruy)
-if(NOT ruy_POPULATED)
-  OverridableFetchContent_Populate(ruy)
+OverridableFetchContent_GetProperties(clog)
+if(NOT clog_POPULATED)
+  OverridableFetchContent_Populate(clog)
 endif()
 
-set(RUY_SOURCE_DIR "${ruy_SOURCE_DIR}" CACHE PATH "RUY source directory")
+set(CLOG_SOURCE_DIR "${clog_SOURCE_DIR}" CACHE PATH "CLOG source directory")
+set(CLOG_BUILD_TESTS OFF CACHE BOOL "Disable CLOG tests")
 
 add_subdirectory(
-  "${ruy_SOURCE_DIR}"
-  "${ruy_BINARY_DIR}"
+  "${clog_SOURCE_DIR}/deps/clog"
+  "${clog_BINARY_DIR}"
   EXCLUDE_FROM_ALL
 )
