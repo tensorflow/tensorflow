@@ -423,6 +423,12 @@ Below is the list of currently supported quantized operators:
   (use `kTfLiteMmapRo` allocation type).
 * The numbers of padding elements must be non-negative.
 
+#### `QUANTIZE`
+
+* Input tensor must be in 32-bit floating-point format.
+* Output tensor must be in 8-bit quantized format without per-channel
+  quantization.
+
 #### `RESIZE_BILINEAR`
 
 * The first input and the output must be 4D tensors in 8-bit quantized format.
