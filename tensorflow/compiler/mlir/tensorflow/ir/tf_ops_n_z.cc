@@ -3397,6 +3397,44 @@ static LogicalResult Verify(XlaVariadicReduceV2Op op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// XlaVariadicSortOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(XlaVariadicSortOp op) {
+  const auto &inputs_ty = op.inputs().getType();
+  int n_inputs = inputs_ty.size();
+  auto input_ty_0 = inputs_ty[0].cast<ShapedType>();
+  if (input_ty_0.hasStaticShape()) {
+    for (int i = 0; i < n_inputs; ++i) {
+      auto input_ty_i = inputs_ty[i].cast<ShapedType>();
+      if (input_ty_i.hasStaticShape() &&
+          input_ty_i.getShape() != input_ty_0.getShape()) {
+        return op.emitOpError()
+               << "input[" << i << "] has shape [" << input_ty_i.getShape()
+               << "] different than the shape of input[0]: "
+               << input_ty_0.getShape();
+      }
+    }
+  }
+
+  ElementsAttr dimension;
+  if (matchPattern(op.dimension(), m_Constant(&dimension))) {
+    if (dimension.getType().getRank() != 0 ||
+        dimension.getType().getNumElements() != 1)
+      return op.emitOpError() << "dimension must be a scalar";
+  }
+
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  auto function = dyn_cast_or_null<mlir::FuncOp>(
+      SymbolTable::lookupSymbolIn(module, op.comparator()));
+  if (!function) return op.emitOpError() << "No comparator";
+  if (!function.body().hasOneBlock())
+    return op.emitOpError() << "comparator has more than one block";
+
+  return success();
+}
+
 }  // namespace TF
 }  // namespace mlir
 

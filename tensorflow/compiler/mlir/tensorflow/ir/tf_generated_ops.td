@@ -19878,6 +19878,9 @@ is_stable attributes.
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_Xlog1pyOp : TF_Op<"Xlog1py", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {

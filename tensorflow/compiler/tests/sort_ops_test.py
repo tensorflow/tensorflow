@@ -86,7 +86,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
             ])
 
   @parameterized.parameters(0, 1, 2)
-  @test_util.disable_mlir_bridge("Not supported yet")
   def testVariadicSortDimension(self, dimension):
     shape = (2, 3, 4)
     for key_type in self._supported_key_types():
@@ -105,7 +104,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
       self._assertOpOutputMatchesExpected(wrap_sort, [x], expected=[expected])
 
-  @test_util.disable_mlir_bridge("Not supported yet")
   def testVariadicSortReverse(self):
     shape = (100,)
     for key_type in self._supported_key_types():
@@ -125,7 +123,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
       self._assertOpOutputMatchesExpected(wrap_sort, [x], expected=[expected])
 
   @parameterized.parameters(0, 1, 2)
-  @test_util.disable_mlir_bridge("Not supported yet")
   def testVariadicSortSeveral(self, dimension):
     if np.__version__ < "1.15":
       raise unittest.SkipTest("np.take_along_axis was added in 1.15")
@@ -205,7 +202,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
               wrap_sort, inputs, expected=expected)
 
   @parameterized.parameters(0, 1, 2)
-  @test_util.disable_mlir_bridge("Not supported yet")
   def testVariadicSortSeveralStable(self, dimension):
     shape = (2, 3, 4)
     for key_type in self._supported_key_types():
