@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Analysis/CallGraph.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -63,31 +62,67 @@ void OutsideCompiledToHostLaunchPass::runOnOperation() {
   mlir::TF::RuntimeDevices devices;
   if (failed(tensorflow::GetDevicesFromOp(module, &devices)))
     return signalPassFailure();
+  const CallGraph call_graph(module);
+  // symbol_table caches callees in the CallGraph.
+  SymbolTableCollection symbol_table;
+  // List pending nodes to traverse with their root TPU cluster.
+  llvm::SmallVector<std::pair<CallGraphNode*, tf_device::ClusterOp>>
+      pending_call_nodes;
+  // Cache the host device for each TPU cluster.
+  std::unordered_map<Operation*, std::string> cluster_to_host;
 
-  auto result = module.walk([&](tf_device::ClusterOp tpu_cluster) {
-    auto inner_result = tpu_cluster.walk([&](Operation* op) {
-      if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
-        return WalkResult::interrupt();
-      return WalkResult::advance();
-    });
-    if (inner_result.wasInterrupted()) {
+  // traverse_op(op, c) is applied to each op reachable from tpu_cluster c.
+  auto traverse_op = [&](Operation* op, tf_device::ClusterOp tpu_cluster) {
+    // Add callee nodes to pending_call_nodes.
+    if (CallOpInterface call = dyn_cast<CallOpInterface>(op)) {
+      CallGraphNode* node = call_graph.resolveCallable(call, symbol_table);
+      pending_call_nodes.emplace_back(node, tpu_cluster);
+    }
+    // Apply WrapOpInLaunch when the op has _xla_outside_compilation.
+    if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
       if (tensorflow::HasModelParallelism(tpu_cluster)) {
         tpu_cluster.emitOpError(
             "outside compilation is not supported with model parallelism.");
         return WalkResult::interrupt();
       }
-      std::string host_device;
-      if (failed(tensorflow::GetHostDeviceOutsideComputation(
-              devices, tpu_cluster, &host_device)))
-        return WalkResult::interrupt();
-      tpu_cluster.walk([&](Operation* op) {
-        if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
-          WrapOpInLaunch(op, host_device);
-      });
+      WrapOpInLaunch(op, cluster_to_host[tpu_cluster.getOperation()]);
     }
     return WalkResult::advance();
+  };
+
+  // Traverse ops in each TPU cluster.
+  auto result = module.walk([&](tf_device::ClusterOp tpu_cluster) {
+    std::string host_device;
+    if (failed(tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
+                                                           &host_device)))
+      return WalkResult::interrupt();
+    cluster_to_host[tpu_cluster.getOperation()] = host_device;
+    return tpu_cluster.walk(
+        [&](Operation* op) { return traverse_op(op, tpu_cluster); });
   });
   if (result.wasInterrupted()) return signalPassFailure();
+
+  // Traverse ops that are reachable from some TPU cluster.
+  // node_to_cluster is used to avoid traversing the same node twice, and to
+  // check that no node is reachable from multiple TPU clusters.
+  std::unordered_map<CallGraphNode*, tf_device::ClusterOp> node_to_cluster;
+  while (!pending_call_nodes.empty()) {
+    auto pair = pending_call_nodes.back();
+    pending_call_nodes.pop_back();
+    CallGraphNode* node = pair.first;
+    tf_device::ClusterOp tpu_cluster = pair.second;
+    if (node_to_cluster.count(node)) {
+      if (node_to_cluster[node].getOperation() != tpu_cluster) {
+        node->getCallableRegion()->getParentOp()->emitOpError(
+            "The same function is reachable from multiple TPU Clusters.");
+      }
+    } else {
+      node_to_cluster[node] = tpu_cluster;
+      auto result = node->getCallableRegion()->walk(
+          [&](Operation* op) { return traverse_op(op, tpu_cluster); });
+      if (result.wasInterrupted()) return signalPassFailure();
+    }
+  }
 }
 
 }  // anonymous namespace
