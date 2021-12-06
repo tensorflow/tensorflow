@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace {
 
 std::string Sum1D(bool dynamic, int32_t size) {
-  return GetTFSumIR({size}, {dynamic}, {0});
+  return GetReductionIR("tf.Sum", {size}, {dynamic}, {0}, "f32");
 }
 
 auto EigenSum1D() {

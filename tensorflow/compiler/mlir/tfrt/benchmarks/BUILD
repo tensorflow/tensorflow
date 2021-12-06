@@ -266,3 +266,20 @@ tf_cc_binary(
         ":reduction_benchmark",
     ],
 )
+
+tf_cc_binary(
+    name = "mean_row_op_benchmark",
+    testonly = 1,
+    srcs = ["mean_row_op_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
+)
