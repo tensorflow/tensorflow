@@ -84,7 +84,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
         ":tensorrt_lib",
-        "//third_party/tensorrt/plugin:nvinfer_plugin_nms",
+        "@local_config_tensorrt//plugin:nvinfer_plugin_nms",
     ]),
 )
 

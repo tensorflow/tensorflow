@@ -58,5 +58,3 @@ py_library(
 )
 
 %{copy_rules}
-
-%{oss_rules}

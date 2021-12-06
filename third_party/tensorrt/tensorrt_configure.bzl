@@ -136,6 +136,7 @@ def _create_local_tensorrt_repository(repository_ctx):
         "BUILD": _tpl_path(repository_ctx, "BUILD"),
         "tensorrt/include/tensorrt_config.h": _tpl_path(repository_ctx, "tensorrt/include/tensorrt_config.h"),
         "tensorrt/tensorrt_config.py": _tpl_path(repository_ctx, "tensorrt/tensorrt_config.py"),
+        "plugin.BUILD": _tpl_path(repository_ctx, "plugin.BUILD")
     }
 
     config = find_cuda_config(repository_ctx, find_cuda_config_path, ["tensorrt"])
@@ -195,8 +196,16 @@ def _create_local_tensorrt_repository(repository_ctx):
         tpl_paths["BUILD"],
         {
             "%{copy_rules}": "\n".join(copy_rules),
-            "%{oss_rules}": _TENSORRT_OSS_ARCHIVE_BUILD_CONTENT,
         },
+    )
+
+    # Set up the plugins folder BUILD file.
+    repository_ctx.template(
+        "plugin/BUILD",
+        tpl_paths["plugin.BUILD"],
+        {
+            "%{oss_rules}": _TENSORRT_OSS_ARCHIVE_BUILD_CONTENT,
+        }
     )
 
     # Copy license file in non-remote build.
