@@ -149,7 +149,6 @@ add_mlir_library(MhloToMemrefConversion
 add_mlir_library(MhloToStandard
   legalize_control_flow.cc
   legalize_to_standard.cc
-  mhlo_control_flow_to_scf.cc
 
   DEPENDS
   MLIRhlo_opsIncGen

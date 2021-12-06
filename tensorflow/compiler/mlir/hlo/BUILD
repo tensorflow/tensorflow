@@ -883,23 +883,6 @@ cc_library(
 )
 
 cc_library(
-    name = "mhlo_control_flow_to_scf",
-    srcs = ["lib/Dialect/mhlo/transforms/mhlo_control_flow_to_scf.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
-    deps = [
-        ":hlo",
-        ":pass_details",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-cc_library(
     name = "mhlo_mark_shape_calc",
     srcs = ["lib/Dialect/mhlo/transforms/mhlo_mark_shape_calc.cc"],
     deps = [
@@ -1759,7 +1742,6 @@ cc_library(
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
         ":mhlo_canonicalize_reduction",
-        ":mhlo_control_flow_to_scf",
         ":mhlo_flatten_tuple",
         ":mhlo_fusion",
         ":mhlo_mark_shape_calc",
