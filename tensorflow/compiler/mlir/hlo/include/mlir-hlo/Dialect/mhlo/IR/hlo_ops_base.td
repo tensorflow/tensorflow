@@ -21,6 +21,8 @@ include "mlir/IR/OpBase.td"
 def HLO_Dialect : Dialect {
   let name = "mhlo";
   let cppNamespace = "::mlir::mhlo";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"
