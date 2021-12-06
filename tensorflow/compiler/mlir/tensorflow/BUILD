@@ -2259,10 +2259,8 @@ cc_library(
     srcs = ["utils/dump_graph.cc"],
     hdrs = ["utils/dump_graph.h"],
     deps = [
-        ":convert_graphdef",
         ":error_util",
         ":tensorflow",
-        ":tensorflow_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

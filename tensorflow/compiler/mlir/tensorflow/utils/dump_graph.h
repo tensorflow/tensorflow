@@ -36,8 +36,6 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
 // Config of the textual dump.
 struct MlirDumpConfig {
   enum class Dialect {
-    // Tensorflow Executor Dialect
-    kTFExecutor,
     // Tensorflow Graph Dialect
     kTFG,
   };
@@ -65,7 +63,7 @@ struct MlirDumpConfig {
   mlir::OpPrintingFlags op_printing_flags = llvm::None;
 
   // The target MLIR dialect.
-  Dialect dialect = Dialect::kTFExecutor;
+  Dialect dialect = Dialect::kTFG;
 };
 
 // Change DumpGraphToFile to dump MLIR textual IR instead of protobuf.
