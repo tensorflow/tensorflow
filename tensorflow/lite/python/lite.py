@@ -236,8 +236,7 @@ class QuantizationMode(object):
                representative_dataset,
                graph_def,
                disable_per_channel=False,
-               experimental_new_dynamic_range_quantizer=False,
-               experimental_low_bit_qat=False):
+               experimental_new_dynamic_range_quantizer=False):
     self._optimizations = optimizations
     for deprecated_optimization in [
         Optimize.OPTIMIZE_FOR_SIZE, Optimize.OPTIMIZE_FOR_LATENCY
@@ -256,9 +255,6 @@ class QuantizationMode(object):
 
     self._enable_new_dynamic_range_quantizer = (
         experimental_new_dynamic_range_quantizer)
-    # Allow training with lower than 8 bit weights to be converted
-    # to constants with trained scale.
-    self._experimental_low_bit_qat = experimental_low_bit_qat
 
   # TODO(b/162537905): Refactor the following quantization functions -
   # re-organize and refactor for better readability.
@@ -289,12 +285,10 @@ class QuantizationMode(object):
 
   def is_integer_quantize(self):
     return (self.is_post_training_integer_quantize() or
-            self.is_training_time_int8_allow_float() or
-            self.is_training_time_low_bit_allow_float())
+            self.is_training_time_int8_allow_float())
 
   def is_training_time_int8_allow_float(self):
-    return (not self.is_training_time_low_bit_allow_float() and
-            self.any_optimization_enabled() and
+    return (self.any_optimization_enabled() and
             self.contains_training_quant_op())
 
   def is_bfloat16_inference_allowed(self):
@@ -333,11 +327,6 @@ class QuantizationMode(object):
                 self.post_training_dynamic_range_int8() or
                 self.post_training_fp16())
 
-  def is_training_time_low_bit_allow_float(self):
-    return (self.any_optimization_enabled() and
-            self.contains_training_quant_op() and
-            self._experimental_low_bit_qat)
-
   def activations_type(self):
     if self.is_integer_quantize():
       if self._is_int16x8_target_required():
@@ -351,15 +340,12 @@ class QuantizationMode(object):
     """Flags to the converter."""
 
     if self.is_integer_quantize():
-      is_low_bit_qat = self.is_training_time_low_bit_allow_float()
       return {
-          "inference_type": (inference_ty if inference_ty is not None else
-                             self.activations_type()),
+          "inference_type": (
+              inference_ty if inference_ty else self.activations_type()),
           "inference_input_type": _dtypes.float32,
           "post_training_quantize": False,  # disable dynamic range quantization
-          "quantize_to_float16": False,  # disable float16 quantization
-          "disable_infer_tensor_range": is_low_bit_qat,
-          "use_fake_quant_num_bits": is_low_bit_qat,
+          "quantize_to_float16": False  # disable float16 quantization
       }
     elif self.post_training_dynamic_range_int8():
       return {
@@ -388,8 +374,7 @@ class QuantizationMode(object):
       # Note this might still trigger (uint8) quantization to be compatible with
       # TOCO.
       return {
-          "inference_type": (
-              inference_ty if inference_ty is not None else _dtypes.float32),
+          "inference_type": inference_ty if inference_ty else _dtypes.float32,
           "inference_input_type": inference_input_ty,
           "post_training_quantize": False,  # enable dynamic range quantization
           "quantize_to_float16": False,  # disable float16 quantization
@@ -504,8 +489,6 @@ class TFLiteConverterBase(object):
     # by default and remove the flag once feature parity with the old quantizer
     # is verified.
     self._experimental_new_dynamic_range_quantizer = False
-    # Experimental flag to enable low-bit QAT in 8 bit.
-    self._experimental_low_bit_qat = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -685,8 +668,7 @@ class TFLiteConverterBase(object):
     quant_mode = QuantizationMode(
         self.optimizations, self.target_spec, self.representative_dataset,
         graph_def, self._experimental_disable_per_channel,
-        self._experimental_new_dynamic_range_quantizer,
-        self._experimental_low_bit_qat)
+        self._experimental_new_dynamic_range_quantizer)
     converter_kwargs.update({
         "optimization_default":
             quant_mode.any_optimization_enabled(),
@@ -698,8 +680,6 @@ class TFLiteConverterBase(object):
             quant_mode.is_post_training_integer_quantize(),
         "optimization_qat":
             quant_mode.is_training_time_int8_allow_float(),
-        "optimization_low_bit_qat":
-            quant_mode.is_training_time_low_bit_allow_float(),
         "optimization_sparsify":
             self._sparsify_model(),
         "activations_type":
@@ -885,8 +865,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     self._quant_mode = QuantizationMode(
         self.optimizations, self.target_spec, self.representative_dataset,
         graph_def, self._experimental_disable_per_channel,
-        self._experimental_new_dynamic_range_quantizer,
-        self._experimental_low_bit_qat)
+        self._experimental_new_dynamic_range_quantizer)
     self._validate_inference_input_output_types(self._quant_mode)
 
     if not self._is_unknown_shapes_allowed():
@@ -1060,8 +1039,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     quant_mode = QuantizationMode(
         self.optimizations, self.target_spec, self.representative_dataset,
         graph_def, self._experimental_disable_per_channel,
-        self._experimental_new_dynamic_range_quantizer,
-        self._experimental_low_bit_qat)
+        self._experimental_new_dynamic_range_quantizer)
     self._validate_inference_input_output_types(quant_mode)
 
     converter_kwargs = {
@@ -1883,8 +1861,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     quant_mode = QuantizationMode(
         self.optimizations, self.target_spec, self.representative_dataset,
         self._graph_def, self._experimental_disable_per_channel,
-        self._experimental_new_dynamic_range_quantizer,
-        self._experimental_low_bit_qat)
+        self._experimental_new_dynamic_range_quantizer)
 
     optimized_graph = self._optimize_tf_model(self._graph_def,
                                               self._input_tensors,

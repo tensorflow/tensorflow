@@ -520,8 +520,9 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     int num_bits = qtype.getStorageTypeIntegralWidth();
     if (num_bits == 8) {
       // If storage is 8-bit, trained num bits may be less than 8 so check here.
-      num_bits =
-          static_cast<int>(std::ceil(std::log2(qtype.getStorageTypeMax())));
+      const double range = static_cast<double>(qtype.getStorageTypeMax() -
+                                               qtype.getStorageTypeMin());
+      num_bits = static_cast<int>(std::ceil(std::log2(range)));
     }
     // This is a positive value, and will be applied on zero points and fixed
     // point ranges.

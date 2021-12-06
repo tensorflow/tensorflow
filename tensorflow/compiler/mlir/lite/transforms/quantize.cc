@@ -254,8 +254,7 @@ void QuantizePass::runOnFunction() {
 
   // TODO(b/202451048): separate full and weight-only post-training dynamic
   // range quantization
-  if (quant_specs.weight_quantization || enable_dynamic_range_quantization ||
-      quant_specs.disable_infer_tensor_range) {
+  if (quant_specs.weight_quantization || enable_dynamic_range_quantization) {
     patterns.insert<TFLDynamicRangeQuantization>(ctx, quant_params);
   } else {
     patterns.insert<TFLFullQuantization, TFLFullQuantizationReverse>(
