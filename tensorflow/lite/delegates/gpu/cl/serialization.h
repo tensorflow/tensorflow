@@ -29,6 +29,13 @@ namespace cl {
 
 class InferenceContext;
 
+flatbuffers::Offset<data::GpuModel> EncodeGpuModel(
+    const InferenceContext& inference, const std::vector<int64_t>& in_refs,
+    std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
+
+absl::Status DecodeGpuModel(const data::GpuModel* fb_gpu_model,
+                            InferenceContext* inference);
+
 flatbuffers::Offset<data::InferenceContext> Encode(
     const CLDevice& device, const InferenceContext& inference,
     const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,

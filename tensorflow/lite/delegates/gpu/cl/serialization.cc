@@ -944,9 +944,8 @@ absl::Status Decode(const data::GpuNode* fb_node, CLNode* node) {
   return absl::OkStatus();
 }
 
-flatbuffers::Offset<data::InferenceContext> Encode(
-    const CLDevice& device, const InferenceContext& inference,
-    const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
+flatbuffers::Offset<data::GpuModel> EncodeGpuModel(
+    const InferenceContext& inference, const std::vector<int64_t>& in_refs,
     std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder) {
   std::vector<int32_t> in_ids(inference.input_ids_.size());
   for (int i = 0; i < in_ids.size(); ++i) {
@@ -969,6 +968,80 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   }
   auto nodes_fb_vec = builder->CreateVector(nodes_fb);
 
+  std::vector<flatbuffers::Offset<data::TensorDescWithId>> tensors_fb;
+  for (const auto& tensor : inference.tensors_descs_) {
+    auto tensor_fb = Encode(tensor.second, tensor.first, builder);
+    tensors_fb.push_back(tensor_fb);
+  }
+  auto tensors_fb_vec = builder->CreateVector(tensors_fb);
+
+  std::vector<flatbuffers::Offset<data::TensorDescWithId>> const_tensors_fb;
+  for (const auto& tensor : inference.const_tensors_descs_) {
+    auto tensor_fb = Encode(tensor.second, tensor.first, builder);
+    const_tensors_fb.push_back(tensor_fb);
+  }
+  auto const_tensors_fb_vec = builder->CreateVector(const_tensors_fb);
+
+  std::vector<flatbuffers::Offset<data::PairOfValueIds>>
+      variable_ids_and_refs_fb;
+  for (auto& pair : inference.variable_ids_and_refs_) {
+    data::PairOfValueIdsBuilder pair_builder(*builder);
+    pair_builder.add_first(pair.first);
+    pair_builder.add_second(pair.second);
+    variable_ids_and_refs_fb.push_back(pair_builder.Finish());
+  }
+  auto variable_ids_and_refs_fb_vec =
+      builder->CreateVector(variable_ids_and_refs_fb);
+
+  data::GpuModelBuilder gpu_model_builder(*builder);
+  gpu_model_builder.add_nodes(nodes_fb_vec);
+  gpu_model_builder.add_tensors(tensors_fb_vec);
+  gpu_model_builder.add_const_tensors(const_tensors_fb_vec);
+  gpu_model_builder.add_input_ids(in_ids_fb);
+  gpu_model_builder.add_output_ids(out_ids_fb);
+  gpu_model_builder.add_variable_ids_and_refs(variable_ids_and_refs_fb_vec);
+  gpu_model_builder.add_input_refs(in_refs_fb);
+  gpu_model_builder.add_output_refs(out_refs_fb);
+  return gpu_model_builder.Finish();
+}
+
+absl::Status DecodeGpuModel(const data::GpuModel* fb_gpu_model,
+                            InferenceContext* inference) {
+  inference->nodes_.resize(fb_gpu_model->nodes()->size());
+  int counter = 0;
+  for (auto node_fb : *fb_gpu_model->nodes()) {
+    RETURN_IF_ERROR(Decode(node_fb, &inference->nodes_[counter]));
+    counter++;
+  }
+
+  for (const auto& tensor_fb : *fb_gpu_model->tensors()) {
+    TensorDescriptor desc;
+    Decode(tensor_fb->desc(), &desc);
+    inference->tensors_descs_[tensor_fb->id()] = std::move(desc);
+  }
+  for (const auto& tensor_fb : *fb_gpu_model->const_tensors()) {
+    TensorDescriptor desc;
+    Decode(tensor_fb->desc(), &desc);
+    inference->const_tensors_descs_[tensor_fb->id()] = std::move(desc);
+  }
+  for (auto in_fb : *fb_gpu_model->input_ids()) {
+    inference->input_ids_.push_back(in_fb);
+  }
+  for (auto out_fb : *fb_gpu_model->output_ids()) {
+    inference->output_ids_.push_back(out_fb);
+  }
+
+  for (auto variable_id : *fb_gpu_model->variable_ids_and_refs()) {
+    inference->variable_ids_and_refs_[variable_id->first()] =
+        variable_id->second();
+  }
+  return absl::OkStatus();
+}
+
+flatbuffers::Offset<data::InferenceContext> Encode(
+    const CLDevice& device, const InferenceContext& inference,
+    const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
+    std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder) {
   std::vector<flatbuffers::Offset<tflite::gpu::data::Int3>> work_groups_fb;
   for (int i = 0; i < inference.nodes_.size(); ++i) {
     auto work_group_fb =
@@ -998,44 +1071,13 @@ flatbuffers::Offset<data::InferenceContext> Encode(
     binary_programs_fb.push_back(program_builder.Finish());
   }
   auto binary_programs_fb_vec = builder->CreateVector(binary_programs_fb);
-
-  std::vector<flatbuffers::Offset<data::TensorDescWithId>> tensors_fb;
-  for (const auto& tensor : inference.tensors_descs_) {
-    auto tensor_fb = Encode(tensor.second, tensor.first, builder);
-    tensors_fb.push_back(tensor_fb);
-  }
-  auto tensors_fb_vec = builder->CreateVector(tensors_fb);
-
-  std::vector<flatbuffers::Offset<data::TensorDescWithId>> const_tensors_fb;
-  for (const auto& tensor : inference.const_tensors_descs_) {
-    auto tensor_fb = Encode(tensor.second, tensor.first, builder);
-    const_tensors_fb.push_back(tensor_fb);
-  }
-  auto const_tensors_fb_vec = builder->CreateVector(const_tensors_fb);
-
-  std::vector<flatbuffers::Offset<data::PairOfValueIds>>
-      variable_ids_and_refs_fb;
-  for (auto& pair : inference.variable_ids_and_refs_) {
-    data::PairOfValueIdsBuilder pair_builder(*builder);
-    pair_builder.add_first(pair.first);
-    pair_builder.add_second(pair.second);
-    variable_ids_and_refs_fb.push_back(pair_builder.Finish());
-  }
-  auto variable_ids_and_refs_fb_vec =
-      builder->CreateVector(variable_ids_and_refs_fb);
   auto driver_version = builder->CreateString(device.GetPlatformVersion());
+  auto gpu_model_fb = EncodeGpuModel(inference, in_refs, out_refs, builder);
 
   data::InferenceContextBuilder inf_builder(*builder);
+  inf_builder.add_gpu_model(gpu_model_fb);
   inf_builder.add_driver_version(driver_version);
   inf_builder.add_binary_programs(binary_programs_fb_vec);
-  inf_builder.add_nodes(nodes_fb_vec);
-  inf_builder.add_tensors(tensors_fb_vec);
-  inf_builder.add_const_tensors(const_tensors_fb_vec);
-  inf_builder.add_input_ids(in_ids_fb);
-  inf_builder.add_output_ids(out_ids_fb);
-  inf_builder.add_variable_ids_and_refs(variable_ids_and_refs_fb_vec);
-  inf_builder.add_input_refs(in_refs_fb);
-  inf_builder.add_output_refs(out_refs_fb);
   inf_builder.add_tuned_work_group_sizes_per_node(work_groups_fb_vec);
   inf_builder.add_fingerprints_per_node(node_fingerprints_fb);
   return inf_builder.Finish();
@@ -1053,6 +1095,8 @@ absl::Status Decode(const CLContext& context, const CLDevice& device,
         "regenerated.");
   }
 
+  RETURN_IF_ERROR(DecodeGpuModel(fb_inference->gpu_model(), inference));
+
   for (auto binary_program_fb : *fb_inference->binary_programs()) {
     RETURN_IF_ERROR(program_cache->AddProgramBinary(
         context, device, binary_program_fb->fingerprint(),
@@ -1060,12 +1104,6 @@ absl::Status Decode(const CLContext& context, const CLDevice& device,
                        binary_program_fb->binary()->size())));
   }
 
-  inference->nodes_.resize(fb_inference->nodes()->size());
-  int counter = 0;
-  for (auto node_fb : *fb_inference->nodes()) {
-    RETURN_IF_ERROR(Decode(node_fb, &inference->nodes_[counter]));
-    counter++;
-  }
   for (int i = 0; i < inference->nodes_.size(); ++i) {
     uint64_t fingerprint = (*fb_inference->fingerprints_per_node())[i];
     RETURN_IF_ERROR(inference->nodes_[i].cl_operation.InitFromCache(
@@ -1076,28 +1114,6 @@ absl::Status Decode(const CLContext& context, const CLDevice& device,
     wg_size.y = (*fb_inference->tuned_work_group_sizes_per_node())[i]->y();
     wg_size.z = (*fb_inference->tuned_work_group_sizes_per_node())[i]->z();
     inference->nodes_[i].cl_operation.SetWorkGroupSize(wg_size);
-  }
-
-  for (const auto& tensor_fb : *fb_inference->tensors()) {
-    TensorDescriptor desc;
-    Decode(tensor_fb->desc(), &desc);
-    inference->tensors_descs_[tensor_fb->id()] = std::move(desc);
-  }
-  for (const auto& tensor_fb : *fb_inference->const_tensors()) {
-    TensorDescriptor desc;
-    Decode(tensor_fb->desc(), &desc);
-    inference->const_tensors_descs_[tensor_fb->id()] = std::move(desc);
-  }
-  for (auto in_fb : *fb_inference->input_ids()) {
-    inference->input_ids_.push_back(in_fb);
-  }
-  for (auto out_fb : *fb_inference->output_ids()) {
-    inference->output_ids_.push_back(out_fb);
-  }
-
-  for (auto variable_id : *fb_inference->variable_ids_and_refs()) {
-    inference->variable_ids_and_refs_[variable_id->first()] =
-        variable_id->second();
   }
   return absl::OkStatus();
 }
@@ -1113,13 +1129,13 @@ absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
   auto fb_inference = data::GetInferenceContext(serialized_model.data());
   if (in_refs) {
     in_refs->clear();
-    for (auto in_fb : *fb_inference->input_refs()) {
+    for (auto in_fb : *fb_inference->gpu_model()->input_refs()) {
       in_refs->push_back(in_fb);
     }
   }
   if (out_refs) {
     out_refs->clear();
-    for (auto out_fb : *fb_inference->output_refs()) {
+    for (auto out_fb : *fb_inference->gpu_model()->output_refs()) {
       out_refs->push_back(out_fb);
     }
   }
