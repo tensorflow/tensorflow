@@ -306,10 +306,9 @@ def _get_tensorrt_rewriter_config(conversion_params,
   rewriter_config_with_trt.remapping = False
 
   if not disable_non_trt_optimizers:
-    # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
-    # need to run constant folding again.
     rewriter_config_with_trt.optimizers.extend(
-        ["constfold", "layout", "constfold"])
+        ["pruning", "debug_stripper", "layout", "dependency", "constfold",
+         "common_subgraph_elimination"])
 
   rewriter_config_with_trt.meta_optimizer_iterations = (
       rewriter_config_pb2.RewriterConfig.ONE)

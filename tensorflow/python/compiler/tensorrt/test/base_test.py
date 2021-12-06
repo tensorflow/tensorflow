@@ -126,16 +126,15 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
-    """Create a graph containing two segment."""
+    """Create a graph containing two segments."""
     n = inp
     for i in range(2):
       c = constant_op.constant(1.0, name="c%d" % i)
       n = math_ops.add(n, c, name="add%d" % i)
       n = math_ops.mul(n, n, name="mul%d" % i)
-    edge = self.trt_incompatible_op(n, name="incompatible")
-    with ops.control_dependencies([edge]):
-      c = constant_op.constant(1.0, name="c2")
-      n = math_ops.add(n, c, name="add2")
+    n = self.trt_incompatible_op(n, name="incompatible")
+    c = constant_op.constant(1.0, name="c2")
+    n = math_ops.add(n, c, name="add2")
     n = math_ops.mul(n, n, name="mul2")
     c = constant_op.constant(1.0, name="c3")
     n = math_ops.add(n, c, name="add3")
