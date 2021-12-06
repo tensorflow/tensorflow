@@ -907,7 +907,7 @@ void Decode(const data::TensorDescWithId* fb_desc, TensorDescriptor* desc,
   *id = fb_desc->id();
 }
 
-flatbuffers::Offset<data::CLNode> Encode(
+flatbuffers::Offset<data::GpuNode> Encode(
     const CLNode& node, flatbuffers::FlatBufferBuilder* builder) {
   auto op_fb = Encode(node.cl_operation.GetGpuOperation(), builder);
   std::vector<int32_t> in_ids(node.inputs.size());
@@ -921,22 +921,18 @@ flatbuffers::Offset<data::CLNode> Encode(
   auto in_ids_fb = builder->CreateVector(in_ids);
   auto out_ids_fb = builder->CreateVector(out_ids);
   auto name_fb = builder->CreateString(node.name);
-  data::CLNodeBuilder node_builder(*builder);
+  data::GpuNodeBuilder node_builder(*builder);
   node_builder.add_gpu_op(op_fb);
-  node_builder.add_fingerprint(node.cl_operation.GetKernelFingerprint());
   node_builder.add_input_ids(in_ids_fb);
   node_builder.add_output_ids(out_ids_fb);
   node_builder.add_name(name_fb);
   return node_builder.Finish();
 }
 
-absl::Status Decode(const ProgramCache& program_cache,
-                    const data::CLNode* fb_node, CLNode* node) {
+absl::Status Decode(const data::GpuNode* fb_node, CLNode* node) {
   GPUOperation op;
   RETURN_IF_ERROR(Decode(fb_node->gpu_op(), &op));
   node->cl_operation.Init(absl::make_unique<GPUOperation>(std::move(op)));
-  RETURN_IF_ERROR(
-      node->cl_operation.InitFromCache(fb_node->fingerprint(), program_cache));
   for (auto in_fb : *fb_node->input_ids()) {
     node->inputs.push_back(in_fb);
   }
@@ -966,12 +962,27 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   auto in_refs_fb = builder->CreateVector(in_refs);
   auto out_refs_fb = builder->CreateVector(out_refs);
 
-  std::vector<flatbuffers::Offset<data::CLNode>> nodes_fb;
+  std::vector<flatbuffers::Offset<data::GpuNode>> nodes_fb;
   for (int i = 0; i < inference.nodes_.size(); ++i) {
     auto node_fb = Encode(inference.nodes_[i], builder);
     nodes_fb.push_back(node_fb);
   }
   auto nodes_fb_vec = builder->CreateVector(nodes_fb);
+
+  std::vector<flatbuffers::Offset<tflite::gpu::data::Int3>> work_groups_fb;
+  for (int i = 0; i < inference.nodes_.size(); ++i) {
+    auto work_group_fb =
+        Encode(inference.nodes_[i].cl_operation.GetWorkGroupSize(), builder);
+    work_groups_fb.push_back(work_group_fb);
+  }
+  auto work_groups_fb_vec = builder->CreateVector(work_groups_fb);
+  std::vector<uint64_t> node_fingerprints(inference.nodes_.size());
+  for (int i = 0; i < inference.nodes_.size(); ++i) {
+    node_fingerprints[i] =
+        inference.nodes_[i].cl_operation.GetKernelFingerprint();
+  }
+  auto node_fingerprints_fb = builder->CreateVector(node_fingerprints);
+
   std::set<uint64_t> fingerprints;
   for (const auto& node : inference.nodes_) {
     fingerprints.insert(node.cl_operation.GetKernelFingerprint());
@@ -1025,6 +1036,8 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   inf_builder.add_variable_ids_and_refs(variable_ids_and_refs_fb_vec);
   inf_builder.add_input_refs(in_refs_fb);
   inf_builder.add_output_refs(out_refs_fb);
+  inf_builder.add_tuned_work_group_sizes_per_node(work_groups_fb_vec);
+  inf_builder.add_fingerprints_per_node(node_fingerprints_fb);
   return inf_builder.Finish();
 }
 
@@ -1050,9 +1063,19 @@ absl::Status Decode(const CLContext& context, const CLDevice& device,
   inference->nodes_.resize(fb_inference->nodes()->size());
   int counter = 0;
   for (auto node_fb : *fb_inference->nodes()) {
-    RETURN_IF_ERROR(
-        Decode(*program_cache, node_fb, &inference->nodes_[counter]));
+    RETURN_IF_ERROR(Decode(node_fb, &inference->nodes_[counter]));
     counter++;
+  }
+  for (int i = 0; i < inference->nodes_.size(); ++i) {
+    uint64_t fingerprint = (*fb_inference->fingerprints_per_node())[i];
+    RETURN_IF_ERROR(inference->nodes_[i].cl_operation.InitFromCache(
+        fingerprint, *program_cache));
+
+    int3 wg_size;
+    wg_size.x = (*fb_inference->tuned_work_group_sizes_per_node())[i]->x();
+    wg_size.y = (*fb_inference->tuned_work_group_sizes_per_node())[i]->y();
+    wg_size.z = (*fb_inference->tuned_work_group_sizes_per_node())[i]->z();
+    inference->nodes_[i].cl_operation.SetWorkGroupSize(wg_size);
   }
 
   for (const auto& tensor_fb : *fb_inference->tensors()) {

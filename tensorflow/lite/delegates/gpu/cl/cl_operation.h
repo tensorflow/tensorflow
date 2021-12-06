@@ -98,6 +98,10 @@ class ClOperation {
     cl_args_.MoveObjectRefsIn(&operation_->args_);
   }
 
+  int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
+
+  void SetWorkGroupSize(const int3& work_group_size);
+
  private:
   std::unique_ptr<GPUOperation> operation_;
   CLKernel kernel_;
