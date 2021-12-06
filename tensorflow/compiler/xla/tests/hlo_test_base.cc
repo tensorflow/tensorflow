@@ -366,6 +366,107 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                        reference_preprocessor);
 }
 
+StatusOr<::testing::AssertionResult>
+HloTestBase::RunAndCompareTwoModulesInternal(
+    std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+    const absl::Span<Literal* const> arguments,
+    const absl::optional<ErrorSpec>& error, bool run_hlo_passes) {
+  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_0.get()).status());
+  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_1.get()).status());
+
+  // Execute the two modules.
+  TF_ASSIGN_OR_RETURN(
+      auto test_0,
+      test_runner_.Execute(std::move(module_0), arguments, run_hlo_passes));
+  TF_ASSIGN_OR_RETURN(
+      auto test_1,
+      test_runner_.Execute(std::move(module_1), arguments, run_hlo_passes));
+
+  return LiteralTestUtil::NearOrEqual(/*expected=*/test_0, /*actual=*/test_1,
+                                      error);
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
+    std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+    const absl::Span<Literal* const> arguments,
+    const optional<ErrorSpec>& error) {
+  auto result = RunAndCompareTwoModulesInternal(
+      std::move(module_0), std::move(module_1), arguments, error,
+      /*run_hlo_passes=*/true);
+  if (!result.ok()) {
+    return ::testing::AssertionFailure() << result.status();
+  }
+  return result.ValueOrDie();
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
+    std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+    const optional<ErrorSpec>& error) {
+  const auto params_0 = module_0->entry_computation()->parameter_instructions();
+  const auto params_1 = module_1->entry_computation()->parameter_instructions();
+  for (int i = 0; i < params_0.size(); ++i) {
+    const HloModuleConfig& module_config_0 = module_0->config();
+    const Shape& param_shape_0 =
+        (module_config_0.has_entry_computation_layout() &&
+         module_config_0.entry_computation_layout()
+             .parameter_layout(i)
+             .shape()
+             .is_static())
+            ? module_config_0.entry_computation_layout()
+                  .parameter_layout(i)
+                  .shape()
+            : params_0[i]->shape();
+
+    const HloModuleConfig& module_config_1 = module_1->config();
+    const Shape& param_shape_1 =
+        (module_config_1.has_entry_computation_layout() &&
+         module_config_1.entry_computation_layout()
+             .parameter_layout(i)
+             .shape()
+             .is_static())
+            ? module_config_1.entry_computation_layout()
+                  .parameter_layout(i)
+                  .shape()
+            : params_1[i]->shape();
+
+    if (!ShapeUtil::Equal(param_shape_0, param_shape_1)) {
+      return ::testing::AssertionFailure()
+             << "Error : mismatching parameter shapes: "
+             << param_shape_0.ToString() << " Vs. " << param_shape_1.ToString();
+    }
+  }
+
+  auto fake_arguments = MakeFakeArguments(module_0.get()).ConsumeValueOrDie();
+
+  std::vector<Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+
+  return RunAndCompareTwoModules(std::move(module_0), std::move(module_1),
+                                 fake_argument_ptrs, error);
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
+    string_view hlo_string_module_0, string_view hlo_string_module_1,
+    const absl::optional<ErrorSpec>& error) {
+  auto module_0_or_status = ParseAndReturnVerifiedModule(hlo_string_module_0);
+  if (!module_0_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_0_or_status.status().ToString();
+  }
+
+  auto module_1_or_status = ParseAndReturnVerifiedModule(hlo_string_module_1);
+  if (!module_1_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_1_or_status.status().ToString();
+  }
+  return RunAndCompareTwoModules(module_0_or_status.ConsumeValueOrDie(),
+                                 module_1_or_status.ConsumeValueOrDie(), error);
+}
+
 ::testing::AssertionResult HloTestBase::Run(string_view hlo_string,
                                             bool run_hlo_passes,
                                             ExecutionProfile* profile,

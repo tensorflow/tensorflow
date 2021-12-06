@@ -237,6 +237,24 @@ class HloTestBase : public ManifestCheckingTest {
                                  ExecutionProfile* profile = nullptr,
                                  string backend_config = "") TF_MUST_USE_RESULT;
 
+  // Same as below, except requires passing fake arguments.
+  ::testing::AssertionResult RunAndCompareTwoModules(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      const absl::Span<Literal* const> arguments,
+      const absl::optional<ErrorSpec>& error);
+
+  // Same as below, except requires passing the modules.
+  ::testing::AssertionResult RunAndCompareTwoModules(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      const absl::optional<ErrorSpec>& error);
+
+  // Convenient wrapper for executing and comparing results of two unoptimized
+  // hlo modules with fake input.
+  ::testing::AssertionResult RunAndCompareTwoModules(
+      absl::string_view hlo_string_module_0,
+      absl::string_view hlo_string_module_1,
+      const absl::optional<ErrorSpec>& error);
+
   // Executes an hlo module with fake inputs on multiple replicas.
   ::testing::AssertionResult RunReplicated(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
@@ -344,6 +362,14 @@ class HloTestBase : public ManifestCheckingTest {
       const absl::Span<Literal* const> arguments,
       const absl::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor);
+
+  // Runs the two module on with or without running hlo passes and
+  // compares the results. Returns whether the results are near or equal. If any
+  // error happens before the results are computed, returns the error status.
+  StatusOr<::testing::AssertionResult> RunAndCompareTwoModulesInternal(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      const absl::Span<Literal* const> arguments,
+      const absl::optional<ErrorSpec>& error, bool run_hlo_passes);
 };
 
 }  // namespace xla
