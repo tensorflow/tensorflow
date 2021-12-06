@@ -241,7 +241,7 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
   %19 = shape.assuming %18 -> (tensor<?x512xf32>) {
     // CHECK-NOT: compute_reshape_shape
     %20 = mhlo.compute_reshape_shape %17, %15 : index, tensor<2xi32> -> tensor<2xi32>
-    // CHECK: "mhlo.dynamic_reshape"
+    // CHECK: linalg.tensor_collapse_shape
     %21 = "mhlo.dynamic_reshape"(%6, %20) : (tensor<?x?x64x8xf32>, tensor<2xi32>) -> tensor<?x512xf32>
     // CHECK-NOT: assuming_yield
     shape.assuming_yield %21 : tensor<?x512xf32>
