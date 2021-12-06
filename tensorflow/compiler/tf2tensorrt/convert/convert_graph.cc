@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
@@ -463,6 +464,7 @@ Status CreateTRTNode(const ConversionParams& params,
       .Attr("precision_mode", prec_string)
       .Attr("use_calibration", info.use_calibration)
       .Attr("_use_implicit_batch", params.use_implicit_batch)
+      .Attr("use_explicit_precision", params.use_explicit_precision)
       .Attr("_allow_build_at_runtime", info.allow_build_at_runtime)
       .Attr("OutT", out_types);
 
@@ -680,7 +682,8 @@ Status CreateStaticEngine(const ConversionParams& params,
       max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
       trt_allocator.get(), /*calibrator=*/nullptr, &engine,
       info.use_calibration, params.use_implicit_batch,
-      /*convert_successfully=*/nullptr, profile, info.engine_name));
+      /*convert_successfully=*/nullptr, profile, info.engine_name,
+      /*use_explicit_precision=*/params.use_explicit_precision));
   TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
   *segment_string = string(static_cast<const char*>(engine_data->data()),
                            engine_data->size());
@@ -749,7 +752,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
 
   segment::SegmentVector initial_segments;
   TrtNodeValidator validator(static_graph_properties, params.precision_mode,
-                             params.use_calibration, params.use_implicit_batch);
+                             params.use_calibration, params.use_implicit_batch,
+                             params.use_explicit_precision);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
       &graph, &static_graph_properties,
       std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
@@ -798,7 +802,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     // range info cause TRT failure. Avoid this situation by setting the
     // precision to FP16.
     if (int8_no_calib && !has_qdq) {
-      VLOG(1) << "Set engine precision to FP16 due to missing QDQ OP";
+      LOG(WARNING) << "Set engine precision to FP16 due to missing QDQ OP";
       curr_engine.precision_mode = TrtPrecisionMode::FP16;
     } else {
       curr_engine.precision_mode = params.precision_mode;
@@ -832,7 +836,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     }
   }
 
-  // Save the cuda device if we may need to switch to another cuda device to
+  // Save the cuda device since we may need to switch to another cuda device to
   // build static engines.
   absl::optional<int> old_cuda_device = absl::nullopt;
   if (!params.is_dyn_op) {

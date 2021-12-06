@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/layer_utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/ops/slice_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -944,7 +946,7 @@ OpConverterParams::OpConverterParams(
     const NodeDef& node_def, const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs, TrtWeightStore* weight_store,
     TrtPrecisionMode precision_mode, bool use_calibration,
-    bool use_implicit_batch)
+    bool use_implicit_batch, bool use_explicit_precision)
     : node_def(node_def),
       inputs(inputs),
       outputs(outputs),
@@ -952,7 +954,8 @@ OpConverterParams::OpConverterParams(
       weight_store(weight_store),
       precision_mode(precision_mode),
       use_calibration(use_calibration),
-      use_implicit_batch(use_implicit_batch) {}
+      use_implicit_batch(use_implicit_batch),
+      use_explicit_precision(use_explicit_precision) {}
 
 OpConverterParams::OpConverterParams(
     Converter* converter, const NodeDef& node_def,
@@ -966,22 +969,18 @@ OpConverterParams::OpConverterParams(
       weight_store(weight_store),
       precision_mode(converter->precision_mode()),
       use_calibration(converter->use_calibration()),
-      use_implicit_batch(converter->use_implicit_batch()) {}
-
-bool IsQuantizeAndDequantizeOp(const Node* node) {
-  // return TrtNodeValidator::quantize_ops->count(node->def().op()) != 0;
-  return absl::c_find(kQuantizationOpNames, node->def().op()) !=
-         kQuantizationOpNames.end();
-}
+      use_implicit_batch(converter->use_implicit_batch()),
+      use_explicit_precision(converter->UseExplicitPrecision()) {}
 
 TrtNodeValidator::TrtNodeValidator(
     const grappler::GraphProperties& graph_properties,
     TrtPrecisionMode precision_mode, bool use_calibration,
-    bool use_implicit_batch)
+    bool use_implicit_batch, bool use_explicit_precision)
     : graph_properties_(graph_properties),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration),
-      use_implicit_batch_(use_implicit_batch) {}
+      use_implicit_batch_(use_implicit_batch),
+      use_explicit_precision_(use_explicit_precision) {}
 
 StatusOr<OpConverter> TrtNodeValidator::GetValidator(const std::string& op) {
   return GetOpConverterRegistry()->LookUp(op);
@@ -1066,7 +1065,7 @@ Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
   TF_RETURN_IF_ERROR(validator.status());
   OpConverterParams params(node->def(), inputs, /*arg_outputs=*/nullptr,
                            &weight_store_, precision_mode_, use_calibration_,
-                           use_implicit_batch_);
+                           use_implicit_batch_, use_explicit_precision_);
   return (*validator)(&params);
 }
 
@@ -1077,11 +1076,13 @@ Status TrtNodeValidator::ConvertConstToWeights(
   std::vector<TRT_TensorOrWeights> outputs;
   OpConverterParams params(const_node_def, inputs, &outputs, &weight_store_,
                            precision_mode_, use_calibration_,
-                           use_implicit_batch_);
+                           use_implicit_batch_, use_explicit_precision_);
   auto const_val = GetValidator("Const");
   TF_RETURN_IF_ERROR(const_val.status());
   Status status = (*const_val)(&params);
-  if (status.ok() && output) *output = outputs[0];
+  if (status.ok() && (output != nullptr)) {
+    *output = outputs[0];
+  }
   return status;
 }
 
@@ -1089,10 +1090,10 @@ Status TrtNodeValidator::ConvertConstToWeights(
 StatusOr<std::unique_ptr<Converter>> Converter::Create(
     TrtPrecisionMode precision_mode, bool use_calibration,
     nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
-    absl::string_view engine_name) {
+    absl::string_view engine_name, bool use_explicit_precision) {
   std::unique_ptr<Converter> converter = absl::WrapUnique(
       new Converter(precision_mode, use_calibration, trt_logger,
-                    use_implicit_batch, engine_name));
+                    use_implicit_batch, engine_name, use_explicit_precision));
   TF_RETURN_IF_ERROR(converter->Init(trt_logger));
   return converter;
 }
@@ -1100,11 +1101,12 @@ StatusOr<std::unique_ptr<Converter>> Converter::Create(
 Converter::Converter(TrtPrecisionMode precision_mode, bool use_calibration,
                      nvinfer1::ILogger* trt_logger,
                      const bool use_implicit_batch,
-                     absl::string_view engine_name)
+                     absl::string_view engine_name, bool use_explicit_precision)
     : precision_mode_(precision_mode),
       use_calibration_(use_calibration),
       use_implicit_batch_(use_implicit_batch),
-      engine_name_(engine_name) {
+      engine_name_(engine_name),
+      use_explicit_precision_(use_explicit_precision) {
   MaybeInitializeTrtPlugins(trt_logger);
 }
 
@@ -1113,11 +1115,16 @@ Status Converter::Init(nvinfer1::ILogger* trt_logger) {
   trt_builder_.reset(nvinfer1::createInferBuilder(*trt_logger));
 
   VLOG(1) << "Creating TensorRT network";
-  const uint32_t flags =
+  uint32_t flags =
       use_implicit_batch_
           ? 0U
           : (1U << static_cast<int>(
                  nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH));
+  if (use_explicit_precision_) {
+    flags |=
+        (1U << static_cast<int>(
+             nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_PRECISION));
+  }
   trt_network_.reset(trt_builder_->createNetworkV2(flags));
   if (!trt_network_) {
     return errors::Internal("Failed to create TensorRT network object");
@@ -1126,7 +1133,8 @@ Status Converter::Init(nvinfer1::ILogger* trt_logger) {
 }
 
 Status Converter::ConvertNode(const NodeDef& node_def) {
-  std::vector<TRT_TensorOrWeights> inputs, outputs;
+  std::vector<TRT_TensorOrWeights> inputs;
+  std::vector<TRT_TensorOrWeights> outputs;
   TF_RETURN_IF_ERROR(this->GetInputs(node_def, &inputs));
 
   OpConverterParams params(this, node_def, inputs, &outputs, &weight_store_);
@@ -1138,7 +1146,9 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   for (size_t i = 0; i < outputs.size(); ++i) {
     TRT_TensorOrWeights& output = outputs[i];
     string output_name = node_def.name();
-    if (i != 0) absl::StrAppend(&output_name, ":", i);
+    if (i != 0) {
+      StrAppend(&output_name, ":", i);
+    }
     // We need to check the name before setting it. If the input is one of the
     // engine input, setting the name here will overwrite engine input
     // bindings which will cause runtime error.
@@ -1463,7 +1473,14 @@ Status Converter::BuildCudaEngine(
   if (precision_mode_ == TrtPrecisionMode::FP16) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
   } else if (precision_mode_ == TrtPrecisionMode::INT8) {
-    builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+    // FP16 is not available in Explicit Precision mode with TensorRT 7.
+    if (IS_TRT_VERSION_GE(8, 0, 0, 0) || !use_explicit_precision_) {
+      builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+    } else {
+      LOG_WARNING_WITH_PREFIX << "With explicit precision mode, FP16 is not "
+                                 "allowed before TensorRT 8. TRT will consider "
+                                 "INT8 and FP32 tactics.";
+    }
     builder_config->setFlag(nvinfer1::BuilderFlag::kINT8);
     if (use_calibration_) {
       builder_config->setInt8Calibrator(calibrator);
@@ -2070,9 +2087,13 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   if (is_conv2d_backprop_input) {
     // In the case when Conv2dBackpropInput is used for conv2d_transpose, these
     // inputs correspond to: output size, filter, and input.
-    TF_RETURN_IF_ERROR(CheckInputsWeights(
-        *params,
-        {{"input_sizes", true}, {"filter", true}, {"out_backprop", false}}));
+    // TODO(cbate): refine this check when moving to structured op converter.
+    if (!params->use_explicit_precision) {
+      TF_RETURN_IF_ERROR(CheckInputsWeights(
+          *params,
+          {{"input_sizes", true}, {"filter", true}, {"out_backprop", false}}));
+    }
+
     backprop_output_size = inputs.at(0);
     tensor = inputs.at(2).tensor();
     bool has_dynamic_hw_shape{false};
@@ -2102,14 +2123,15 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
           "shape");
     }
   } else {
-    TF_RETURN_IF_ERROR(
-        CheckInputsWeights(*params, {{"input", false}, {"filter", true}}));
+    TF_RETURN_IF_ERROR(CheckInputsWeights(
+        *params,
+        {{"input", false}, {"filter", !params->use_explicit_precision}}));
     tensor = inputs.at(0).tensor();
   }
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
-  if (weights_rsck.shape_.nbDims != 4) {
+
+  if (inputs.at(1).GetTrtDims().nbDims != 4) {
     return errors::InvalidArgument("Conv2D expects kernel of dimension 4");
   }
   TFAttrs attrs(node_def);
@@ -2174,15 +2196,62 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   // For conv, TF weights are RSCK, and TRT expects KCRS.
   // For backprop, TF weights are RSKC, and TRT expects CKRS.
   // Therefore, this reorder will work for both cases.
+  const int output_axis = is_conv2d_backprop_input ? 2 : 3;
+  auto weights_shape = inputs.at(1).GetTrtDims();
+  const int noutput = weights_shape.d[output_axis] * num_groups;
+  nvinfer1::DimsHW kernel_size;
+  kernel_size.h() = weights_shape.d[0];
+  kernel_size.w() = weights_shape.d[1];
+  TRT_ShapedWeights weights_rsck =
+      inputs.at(1).is_weights()
+          ? inputs.at(1).weights()
+          : params->weight_store->GetTempWeights(nvinfer1::DataType::kFLOAT,
+                                                 weights_shape);
+
+  // In explcit precision mode, trace the input back to the constant while also
+  // verifying that QDQ scale layers are present.
+  if (!inputs.at(1).is_weights()) {
+    TRT_ENSURE(params->use_explicit_precision);
+    StatusOr<TRTNetworkBuilder> builder = TRTNetworkBuilder::Create(
+        params->converter->network(), params->weight_store);
+    TRT_ENSURE_OK(builder);
+    auto dequant_layer =
+        builder->FindProducerOf(inputs.at(1).tensor()->trt_tensor());
+    TRT_ENSURE_PTR_OK(dequant_layer);
+
+    // TODO(cbate): corresponding TRT layer name check
+    if (!IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+      TRT_ENSURE((*dequant_layer)->getType() == nvinfer1::LayerType::kSCALE);
+    }
+
+    auto quant_layer = builder->UniqueParentOf(*dequant_layer, 0);
+    TRT_ENSURE_PTR_OK(quant_layer);
+
+    // TODO(cbate): corresponding TRT layer name check
+    if (!IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+      TRT_ENSURE((*quant_layer)->getType() == nvinfer1::LayerType::kSCALE);
+    }
+
+    auto weights_layer = builder->UniqueParentOf(*quant_layer, 0);
+    TRT_ENSURE_PTR_OK(weights_layer);
+    TRT_ENSURE((*weights_layer)->getType() == nvinfer1::LayerType::kCONSTANT);
+    auto const_weights_rsck =
+        reinterpret_cast<nvinfer1::IConstantLayer*>(*weights_layer)
+            ->getWeights();
+
+    TRT_ENSURE(weights_rsck.count() == weights_rsck.count());
+    const auto* weights_ptr =
+        static_cast<const float*>(const_weights_rsck.values);
+    std::copy_n(weights_ptr, const_weights_rsck.count,
+                weights_rsck.GetPointer<float>());
+  }
+
   TRT_ShapedWeights weights =
       params->weight_store->GetTempWeights(weights_rsck);
+  TRT_ShapedWeights biases = params->weight_store->GetTempWeights(
+      nvinfer1::DataType::kFLOAT, nvinfer1::Dims{1, {noutput}});
+  std::fill_n(biases.GetPointer<float>(), noutput, 0.0f);
   ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
-  TRT_ShapedWeights biases(weights.TrtDType());
-  const int output_axis = is_conv2d_backprop_input ? 1 : 0;
-  const int noutput = weights.shape_.d[output_axis] * num_groups;
-  nvinfer1::DimsHW kernel_size;
-  kernel_size.h() = weights.shape_.d[2];
-  kernel_size.w() = weights.shape_.d[3];
 
   // Add convolution.
   nvinfer1::ILayer* conv_layer = nullptr;
@@ -2201,10 +2270,14 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     layer->setNbGroups(num_groups);
     conv_layer = layer;
   } else {
+    const nvinfer1::Weights empty_weights{nvinfer1::DataType::kFLOAT, nullptr,
+                                          0};
     nvinfer1::IConvolutionLayer* layer =
         params->converter->network()->addConvolution(
             *tensor->trt_tensor(), noutput, kernel_size,
-            weights.GetTrtWeights(), biases.GetTrtWeights());
+            params->use_explicit_precision ? empty_weights
+                                           : weights.GetTrtWeights(),
+            empty_weights);
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
     if (attrs.get<string>("padding") == "SAME") {
@@ -2214,6 +2287,16 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     layer->setDilation(dilation);
     conv_layer = layer;
   }
+
+  // After creating the conv layer, if we are in explicit precision mode and the
+  // weights input is a tensor, then we need to override the weights input by
+  // calling setInput() on the layer.
+  if (params->use_explicit_precision) {
+    TRT_ENSURE(inputs.at(1).is_tensor());
+
+    conv_layer->setInput(1, *inputs.at(1).tensor()->trt_tensor());
+  }
+
   params->converter->SetLayerName(conv_layer, node_def, "conv");
   ITensorProxyPtr output_tensor = conv_layer->getOutput(0);
   // Add an extra padding for Deconv because TRT doesn't accept the
@@ -3549,65 +3632,6 @@ Status ConvertActivation(OpConverterParams* params) {
   return Status::OK();
 }
 
-Status ConvertQuantize(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  if (node_def.op() == "FakeQuantWithMinMaxArgs") {
-    TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
-  } else if (node_def.op() == "FakeQuantWithMinMaxVars") {
-    TF_RETURN_IF_ERROR(CheckInputsWeights(
-        *params, {{"input", false}, {"min", true}, {"max", true}}));
-  } else if (node_def.op() == "QuantizeAndDequantizeV2") {
-    TF_RETURN_IF_ERROR(CheckInputsWeights(
-        *params, {{"input", false}, {"input_min", true}, {"input_max", true}}));
-  } else if (node_def.op() == "QuantizeAndDequantizeV3") {
-    TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false},
-                                                    {"input_min", true},
-                                                    {"input_max", true},
-                                                    {"num_bits", true}}));
-  }
-  float min_range = 0.0f;
-  float max_range = 0.0f;
-  if (node_def.op() == "FakeQuantWithMinMaxArgs") {
-    // Get ranges via node attributes.
-    TFAttrs attrs(node_def);
-    if (attrs.count("min") == 0 || attrs.count("max") == 0) {
-      return errors::InvalidArgument("Min or max attribute not found for ",
-                                     node_def.op());
-    }
-    min_range = attrs.get<float>("min");
-    max_range = attrs.get<float>("max");
-  } else if (node_def.op() == "FakeQuantWithMinMaxVars" ||
-             node_def.op() == "QuantizeAndDequantizeV2" ||
-             node_def.op() == "QuantizeAndDequantizeV3") {
-    // Get ranges via inputs.
-    auto get_weights_value = [&inputs](int index) {
-      auto raw_weights = inputs.at(index).weights().GetPointer<float>();
-      return raw_weights[0];
-    };
-    min_range = get_weights_value(1);
-    max_range = get_weights_value(2);
-  } else {
-    return errors::InvalidArgument("Unknown quantization op ", node_def.op());
-  }
-  if (params->validation_only) return Status::OK();
-
-  // Store ranges for tensor
-  ITensorProxyPtr input0 = inputs.at(0).tensor();
-  params->converter->ProvideQuantizationRange(&input0, min_range, max_range);
-  // Sometimes, TRT may not quantize a tensor, either because it chooses to
-  // execute a higher precision kernel or because of op fusion. In these cases,
-  // accuracy will suffer if the model was trained to expect quantization at
-  // that tensor. We should consider adding a clip(tensor, min_range, max_range)
-  // operation here to ensure that any arbitrarily placed quantize node will
-  // execute as expected. However, this will negatively affect performance. If
-  // users train their models in a way which models inference as close as
-  // possible (i.e. not quantizing in place where fusion will occur), then there
-  // is no problem with the current implementation.
-  params->outputs->push_back(inputs.at(0));
-  return Status::OK();
-}
-
 Status ConvertRelu6(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3920,6 +3944,11 @@ Status ConvertBinary(OpConverterParams* params) {
   nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
       *tensor_l->trt_tensor(), *tensor_r->trt_tensor(), op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+
+  if (params->use_explicit_precision) {
+    layer->setPrecision(nvinfer1::DataType::kFLOAT);
+  }
+
   params->converter->SetLayerName(layer, node_def);
   ITensorProxyPtr trt_tensor = layer->getOutput(0);
 
@@ -4709,12 +4738,11 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     }
   }
 
-  nvinfer1::ScaleMode mode = nweight == 1 ? nvinfer1::ScaleMode::kUNIFORM
-                                          : nvinfer1::ScaleMode::kCHANNEL;
+  nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
   nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
       *tensor->trt_tensor(), mode, combined_offset_weights.GetTrtWeights(),
       combined_scale_weights.GetTrtWeights(),
-      dummy_power_weights.GetTrtWeights());
+      nvinfer1::Weights{nvinfer1::DataType::kFLOAT, nullptr, 0});
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
   ITensorProxyPtr output_tensor = layer->getOutput(0);
@@ -6764,7 +6792,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertStridedSlice, "StridedSlice");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTopK, "TopKV2");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTranspose, "Transpose");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnpack, "Unpack");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertQuantize, kQuantizationOpNames);
 template <typename T>
 absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
   absl::InlinedVector<std::string, 10> result;
@@ -6801,15 +6828,18 @@ Status ConvertGraphDefToEngine(
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
-    TrtShapeOptimizationProfile* profiles, absl::string_view engine_name) {
+    TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
+    bool use_explicit_precision) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
   // Creating converter, TensorRT builder and network
   auto statusor = Converter::Create(precision_mode, use_calibration, trt_logger,
-                                    use_implicit_batch, engine_name);
+                                    use_implicit_batch, engine_name,
+                                    use_explicit_precision);
+
   TF_RETURN_IF_ERROR(statusor.status());
-  auto converter = std::move(statusor.ValueOrDie());
+  std::unique_ptr<Converter> converter = std::move(statusor.ValueOrDie());
 
   VLOG(1) << "Starting to convert TensorFlow ops to TensorRT layers";
   std::vector<Converter::EngineOutputInfo> output_tensors;
@@ -6903,10 +6933,10 @@ Status ConvertGraphDefToEngine(
       auto layer = converter->network()->getLayer(i);
       if (layer->getName() == nullptr ||
           !layer_names.insert(layer->getName()).second) {
-        std::string error_message =
-            absl::StrCat("Converting node ", node_name, ", op=", node_def.op(),
-                         layer->getName() ? "create a layer with name collision"
-                                          : "create a layer without a name");
+        std::string error_message = absl::StrCat(
+            "Converting node ", node_name, ", op=", node_def.op(),
+            layer->getName() ? " creates a layer with name collision"
+                             : " creates a layer without a name");
         LOG_WARNING_WITH_PREFIX << error_message;
         return errors::Internal(error_message);
       }
@@ -6917,7 +6947,9 @@ Status ConvertGraphDefToEngine(
   if (convert_successfully) *convert_successfully = true;
 
   // Apply user provided quantization ranges to tensors
-  converter->MaybeApplyQuantizationRanges();
+  if (!use_explicit_precision) {
+    converter->MaybeApplyQuantizationRanges();
+  }
 
   // Build the engine.
   TF_RETURN_IF_ERROR(converter->BuildCudaEngine(
