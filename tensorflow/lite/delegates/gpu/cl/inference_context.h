@@ -162,6 +162,8 @@ class InferenceContext {
 
   void ReleaseCPURepresentation();
 
+  absl::Status ProfileTime(ProfilingCommandQueue* queue, ProfilingInfo* result);
+
   struct ExecutionHints {
     bool need_flush = false;
 
@@ -205,6 +207,8 @@ class InferenceContext {
   std::vector<ValueId> output_ids_;
 
   std::unique_ptr<RecordableQueue> recordable_queue_;
+
+  GpuInfo gpu_info_;
 };
 
 // Runs OpenCL specific transforms for the graph.

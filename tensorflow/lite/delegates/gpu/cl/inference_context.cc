@@ -468,6 +468,8 @@ void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
   }
   if (gpu_info.IsPowerVR()) {
     need_flush = true;
+    flush_periodically = true;
+    flush_period = 16;
   }
 }
 
@@ -524,6 +526,8 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(
       Tune(tuning_type, env->device().GetInfo(), env->profiling_queue()));
   InitRecordableQueue(env);
+
+  gpu_info_ = env->device().GetInfo();
 
   if (serialized_model) {
     for (auto& node : nodes_) {
@@ -905,8 +909,8 @@ absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::Profile(ProfilingCommandQueue* queue,
-                                       ProfilingInfo* result) {
+absl::Status InferenceContext::ProfileTime(ProfilingCommandQueue* queue,
+                                           ProfilingInfo* result) {
   queue->ResetMeasurements();
   for (auto& node : nodes_) {
     queue->SetEventsLabel(node.name);
@@ -914,6 +918,56 @@ absl::Status InferenceContext::Profile(ProfilingCommandQueue* queue,
   }
   RETURN_IF_ERROR(queue->WaitForCompletion());
   *result = queue->GetProfilingInfo();
+
+  if (!(gpu_info_.IsMali() || gpu_info_.IsPowerVR())) {
+    return absl::OkStatus();
+  }
+
+  if (gpu_info_.IsMali()) {
+    queue->ResetMeasurements();
+    for (int i = 0; i < nodes_.size(); ++i) {
+      queue->SetEventsLabel(nodes_[i].name);
+      const double times =
+          16.0 / absl::ToDoubleMilliseconds(result->dispatches[i].duration);
+      const int n = std::min(256.0, std::max(2.0, times));
+      RETURN_IF_ERROR(nodes_[i].cl_operation.AddToQueueNTimes(queue, n));
+    }
+    RETURN_IF_ERROR(queue->WaitForCompletion());
+    *result = queue->GetProfilingInfo();
+    return absl::OkStatus();
+  }
+
+  if (gpu_info_.IsPowerVR()) {
+    queue->ResetMeasurements();
+    for (int i = 0; i < nodes_.size(); ++i) {
+      queue->SetEventsLabel(nodes_[i].name);
+      const double times =
+          32.0 / absl::ToDoubleMilliseconds(result->dispatches[i].duration);
+      const int n = std::min(64.0, std::max(4.0, times));
+      RETURN_IF_ERROR(nodes_[i].cl_operation.AddToQueueNTimes(queue, n));
+    }
+    RETURN_IF_ERROR(queue->WaitForCompletion());
+    *result = queue->GetProfilingInfo();
+
+    queue->ResetMeasurements();
+    for (int i = 0; i < nodes_.size(); ++i) {
+      queue->SetEventsLabel(nodes_[i].name);
+      const double times =
+          128.0 / absl::ToDoubleMilliseconds(result->dispatches[i].duration);
+      const int n = std::min(1024.0, std::max(4.0, times));
+      RETURN_IF_ERROR(nodes_[i].cl_operation.AddToQueueNTimes(queue, n));
+    }
+    RETURN_IF_ERROR(queue->WaitForCompletion());
+    *result = queue->GetProfilingInfo();
+    return absl::OkStatus();
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::Profile(ProfilingCommandQueue* queue,
+                                       ProfilingInfo* result) {
+  RETURN_IF_ERROR(ProfileTime(queue, result));
   for (int i = 0; i < nodes_.size(); ++i) {
     uint64_t read_size = 0;
     for (auto& src_id : nodes_[i].inputs) {
@@ -928,6 +982,7 @@ absl::Status InferenceContext::Profile(ProfilingCommandQueue* queue,
     const auto& gpu_op = nodes_[i].cl_operation.GetGpuOperation();
     result->dispatches[i].flops = gpu_op.flops_;
   }
+
   return absl::OkStatus();
 }
 

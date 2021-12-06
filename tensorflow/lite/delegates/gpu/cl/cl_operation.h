@@ -74,6 +74,14 @@ class ClOperation {
                            operation_->work_group_size_);
   }
 
+  // for better profiling
+  absl::Status AddToQueueNTimes(ProfilingCommandQueue* queue, int n,
+                                int flush_period = 0) {
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
+    return queue->DispatchNTimes(kernel_, operation_->work_groups_count_,
+                                 operation_->work_group_size_, n, flush_period);
+  }
+
   absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
                     ProfilingCommandQueue* profiling_queue);
 
