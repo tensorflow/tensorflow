@@ -228,7 +228,7 @@ Status TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64_t> dim_sizes) {
   if (!kIsPartial && !large_size) {
     for (auto s : dim_sizes) {
       if (TF_PREDICT_FALSE(s < 0)) {
-        return errors::Internal(
+        return errors::InvalidArgument(
             "Expected shape dimensions to be non-negative, got ", s);
       }
     }
@@ -410,7 +410,8 @@ template <class Shape>
 Status TensorShapeBase<Shape>::AddDimWithStatus(int64_t size) {
   if (!kIsPartial) {
     if (TF_PREDICT_FALSE(size < 0)) {
-      return errors::Internal("Expected a non-negative size, got ", size);
+      return errors::InvalidArgument("Expected a non-negative size, got ",
+                                     size);
     }
   }
 
@@ -419,7 +420,7 @@ Status TensorShapeBase<Shape>::AddDimWithStatus(int64_t size) {
   }
 
   if (TF_PREDICT_FALSE(ndims_byte() >= MaxDimensions())) {
-    return errors::Internal("Too many dimensions in tensor");
+    return errors::InvalidArgument("Too many dimensions in tensor");
   }
 
   int64_t new_num_elements;
@@ -428,9 +429,9 @@ Status TensorShapeBase<Shape>::AddDimWithStatus(int64_t size) {
   } else {
     new_num_elements = MultiplyWithoutOverflow(num_elements(), size);
     if (TF_PREDICT_FALSE(new_num_elements < 0)) {
-      return errors::Internal("Encountered overflow when multiplying ",
-                              num_elements(), " with ", size,
-                              ", result: ", new_num_elements);
+      return errors::InvalidArgument("Encountered overflow when multiplying ",
+                                     num_elements(), " with ", size,
+                                     ", result: ", new_num_elements);
     }
   }
 

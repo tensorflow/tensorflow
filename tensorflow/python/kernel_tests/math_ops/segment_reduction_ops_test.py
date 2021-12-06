@@ -276,7 +276,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         math_ops.segment_prod,
     ]:
       with self.cached_session(use_gpu=False):
-        with self.assertRaises((ValueError, errors_impl.InternalError)):
+        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
           s = op(data=np.ones((1, 10, 1)), segment_ids=[1676240524292489355])
           self.evaluate(s)
 
@@ -794,6 +794,19 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         with self.assertRaisesOpError("segment ids must be >= 0"):
+          self.evaluate(s)
+
+  @test_util.run_deprecated_v1
+  def testSegmentsInvalid8(self):
+    tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
+    ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
+    segment_indices = [2**62 - 1]
+    tf_indices = [2**62 - 1]
+    with self.session(use_gpu=False):
+      for tf_op in ops_list:
+        s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
+        with self.assertRaisesOpError(
+            "Segment ids likely to cause integer overflow"):
           self.evaluate(s)
 
   def testSegmentWithNumSegmentsValid(self):
