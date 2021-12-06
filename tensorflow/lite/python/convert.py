@@ -44,8 +44,9 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-def _requires_input_stats(toco_flags: _toco_flags_pb2.TocoFlags()) -> bool:
-  """Checks if the `input_stats` flag is required for conversion.
+def _is_quantized_input_stats_required(toco_flags: _toco_flags_pb2.TocoFlags()
+                                      ) -> bool:
+  """Checks if the `quantized_input_stats` flag is required for conversion.
 
   Args:
     toco_flags: A protocol buffer describing the conversion process.
@@ -687,8 +688,14 @@ def build_toco_convert_protos(input_tensors,
     input_array.data_type = convert_tensor_tf_type_to_tflite_type(
         input_tensor.dtype, usage="input type of the TensorFlow model")
 
-    if _requires_input_stats(toco) and quantized_input_stats:
-      input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
+    if _is_quantized_input_stats_required(toco):
+      if quantized_input_stats:
+        input_array.mean_value, input_array.std_value = (
+            quantized_input_stats[idx])
+      else:
+        # We should ideally raise an error here, but we don't as it would break
+        # several models/projects that depend on this workflow.
+        pass
 
     if input_shapes is None:
       shape = input_tensor.shape
@@ -767,18 +774,19 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
   """
   model_flags, toco_flags, _ = build_toco_convert_protos(
       input_tensors=[], output_tensors=[], *args, **kwargs)
+  quantized_input_stats = kwargs.get("quantized_input_stats", None)
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
     input_array = model_flags.input_arrays.add()
-    if _requires_input_stats(toco_flags):
-      if (("quantized_input_stats" not in kwargs) or
-          (not kwargs["quantized_input_stats"])):
+    if _is_quantized_input_stats_required(toco_flags):
+      if quantized_input_stats:
+        input_array.mean_value, input_array.std_value = (
+            quantized_input_stats[idx])
+      else:
         raise ValueError(
             "The `quantized_input_stats` flag must be defined when either "
             "`inference_type` flag or `inference_input_type` flag is set to "
             "tf.int8 or tf.uint8.")
-      input_array.mean_value, input_array.std_value = kwargs[
-          "quantized_input_stats"][idx]
     input_array.name = name
     input_array.shape.dims.extend(list(map(int, shape)))
 
