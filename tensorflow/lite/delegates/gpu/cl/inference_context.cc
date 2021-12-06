@@ -186,6 +186,46 @@ class TensorReserver {
   ValueId next_;
 };
 
+absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
+                                            const TensorDescriptor& tensor_desc,
+                                            const BHWC& shape,
+                                            DataType data_type) {
+  if (tensor_desc.data_type != data_type) {
+    return absl::InvalidArgumentError(
+        "Global precision and precision of predefined/external tensors must be "
+        "synchronized.");
+  }
+  const bool tensor_supported_layout = tensor_desc.layout == Layout::HWDC ||
+                                       tensor_desc.layout == Layout::BHWDC ||
+                                       tensor_desc.layout == Layout::HWC ||
+                                       tensor_desc.layout == Layout::BHWC;
+  if (!tensor_supported_layout) {
+    return absl::InvalidArgumentError(
+        "Currently no support of this layouts for spatial tensors.");
+  }
+  const bool has_depth =
+      tensor_desc.layout == Layout::HWDC || tensor_desc.layout == Layout::BHWDC;
+  if (has_depth) {
+    return absl::InvalidArgumentError(
+        "Currently no support of Depth dimension in predefined/external "
+        "tensors.");
+  }
+  const bool has_batch =
+      tensor_desc.layout == Layout::BHWC || tensor_desc.layout == Layout::BHWDC;
+  if (has_batch && shape.b == 1) {
+    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
+  }
+  if (!has_batch && shape.b != 1) {
+    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
+  }
+  if (!CanCreateTensorWithShape(gpu_info, shape, tensor_desc).ok()) {
+    return absl::UnavailableError(
+        "Current device can not allocate tensor with this shape for "
+        "predefined/external descriptor.");
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ReserveGraphTensors(
     const InferenceContext::CreateInferenceInfo& create_info,
     const GpuInfo& gpu_info, const GraphFloat32& graph,
@@ -194,22 +234,36 @@ absl::Status ReserveGraphTensors(
   auto tensors = graph.values();
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
   for (auto& t : tensors) {
-    TensorStorageType storage_type = create_info.storage_type;
     const auto shape = graph.GetValue(t->id)->tensor.shape;
-    Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
-    if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
-      if (shape.c < 4 &&
-          CanCreateTensorWithShape(
-              gpu_info, shape,
-              TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
-                               layout})
-              .ok()) {
-        storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
+    auto it_immutable_external =
+        create_info.external_immutable_tensors.find(t->id);
+    TensorDescriptor tensor_desc;
+    if (it_immutable_external != create_info.external_immutable_tensors.end()) {
+      if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
+        return absl::InvalidArgumentError(
+            "Currently external tensors can be used only for graph "
+            "inputs/outputs");
       }
+      tensor_desc = it_immutable_external->second->GetDescriptor();
+      RETURN_IF_ERROR(CheckExternalTensorDescription(gpu_info, tensor_desc,
+                                                     shape, data_type));
+    } else {
+      TensorStorageType storage_type = create_info.storage_type;
+      Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
+      if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
+        if (shape.c < 4 &&
+            CanCreateTensorWithShape(
+                gpu_info, shape,
+                TensorDescriptor{data_type,
+                                 TensorStorageType::SINGLE_TEXTURE_2D, layout})
+                .ok()) {
+          storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
+        }
+      }
+      RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
+                                            data_type, layout, &storage_type));
+      tensor_desc = TensorDescriptor{data_type, storage_type, layout};
     }
-    RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
-                                          data_type, layout, &storage_type));
-    TensorDescriptor tensor_desc{data_type, storage_type, layout};
     tensor_desc.shape = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
     tensor_reserver->Add(t->id, tensor_desc);
     max_id = std::max(max_id, t->id);
@@ -403,7 +457,9 @@ absl::Status ResolvePolymorphicArgs(InferenceContext::GpuModel* gpu_model) {
   class DummySpatialTensor : public GpuSpatialTensor {
    public:
     DummySpatialTensor() = default;
-    explicit DummySpatialTensor(const BHWDC& shape) : shape_(shape) {}
+    explicit DummySpatialTensor(const BHWDC& shape,
+                                const TensorDescriptor& tensor_desc)
+        : shape_(shape), tensor_desc_(tensor_desc) {}
     ~DummySpatialTensor() override = default;
 
     int Width() const override { return shape_.w; }
@@ -413,21 +469,24 @@ absl::Status ResolvePolymorphicArgs(InferenceContext::GpuModel* gpu_model) {
     int Slices() const override { return DivideRoundUp(shape_.c, 4); }
     int Batch() const override { return shape_.b; }
 
+    TensorDescriptor GetDescriptor() const override { return tensor_desc_; }
+
    private:
     BHWDC shape_;
+    TensorDescriptor tensor_desc_;
   };
 
   for (auto& node : gpu_model->nodes) {
     std::vector<DummySpatialTensor> src_tensors(node.inputs.size());
     for (int i = 0; i < node.inputs.size(); ++i) {
       const auto& tensor_desc = gpu_model->tensors[node.inputs[i]];
-      src_tensors[i] = DummySpatialTensor(tensor_desc.shape);
+      src_tensors[i] = DummySpatialTensor(tensor_desc.shape, tensor_desc);
       node.gpu_operation->SetSrc(&src_tensors[i], i);
     }
     std::vector<DummySpatialTensor> dst_tensors(node.outputs.size());
     for (int i = 0; i < node.outputs.size(); ++i) {
       const auto& tensor_desc = gpu_model->tensors[node.outputs[i]];
-      dst_tensors[i] = DummySpatialTensor(tensor_desc.shape);
+      dst_tensors[i] = DummySpatialTensor(tensor_desc.shape, tensor_desc);
       node.gpu_operation->SetDst(&dst_tensors[i], i);
     }
     RETURN_IF_ERROR(
@@ -504,6 +563,13 @@ absl::Status InferenceContext::InitFromGraph(
   creation_context.context = &env->context();
   creation_context.queue = env->queue();
   creation_context.cache = env->program_cache();
+  for (const auto& external_tensor : create_info.external_immutable_tensors) {
+    auto* cl_spatial_tensor = dynamic_cast<Tensor*>(external_tensor.second);
+    if (!cl_spatial_tensor) {
+      return absl::InvalidArgumentError("Expected CLSpatialTensor.");
+    }
+    external_immutable_tensors_[external_tensor.first] = cl_spatial_tensor;
+  }
   execution_hints_.Init(env->device().GetInfo());
   RETURN_IF_ERROR(
       AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
@@ -557,7 +623,8 @@ absl::Status InferenceContext::InitFromGraph(
 }
 
 absl::Status InferenceContext::RestoreDeserialized(
-    const absl::Span<const uint8_t> serialized_model, Environment* env) {
+    const absl::Span<const uint8_t> serialized_model, Environment* env,
+    CreateInferenceInfo* create_info) {
   flatbuffers::Verifier verifier(serialized_model.data(),
                                  serialized_model.size());
   if (!data::VerifyInferenceContextBuffer(verifier)) {
@@ -572,6 +639,16 @@ absl::Status InferenceContext::RestoreDeserialized(
   creation_context.context = &env->context();
   creation_context.queue = env->queue();
   creation_context.cache = env->program_cache();
+  if (create_info) {
+    for (const auto& external_tensor :
+         create_info->external_immutable_tensors) {
+      auto* cl_spatial_tensor = dynamic_cast<Tensor*>(external_tensor.second);
+      if (!cl_spatial_tensor) {
+        return absl::InvalidArgumentError("Expected CLSpatialTensor.");
+      }
+      external_immutable_tensors_[external_tensor.first] = cl_spatial_tensor;
+    }
+  }
 
   execution_hints_.Init(env->device().GetInfo());
 
@@ -627,7 +704,10 @@ void InferenceContext::GetUsages(const std::function<bool(ValueId)>& functor,
 
 InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
     const GpuInfo& gpu_info, ValueId id) {
-  if (const_tensors_.find(id) != const_tensors_.end()) {
+  if (external_immutable_tensors_.find(id) !=
+      external_immutable_tensors_.end()) {
+    return TensorMemoryType::kExternal;
+  } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return TensorMemoryType::kConst;
   } else if (variable_ids_and_refs_.find(id) != variable_ids_and_refs_.end()) {
     return TensorMemoryType::kVariable;
@@ -1008,7 +1088,10 @@ uint64_t InferenceContext::GetSizeOfMemoryAllocatedForIntermediateTensors()
 }
 
 Tensor* InferenceContext::GetTensor(ValueId id) {
-  if (const_tensors_.find(id) != const_tensors_.end()) {
+  if (external_immutable_tensors_.find(id) !=
+      external_immutable_tensors_.end()) {
+    return external_immutable_tensors_[id];
+  } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return &const_tensors_[id];
   } else if (variable_ids_and_refs_.find(id) != variable_ids_and_refs_.end()) {
     return &variable_tensors_[variable_ids_and_refs_[id]];

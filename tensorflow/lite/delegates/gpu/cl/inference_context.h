@@ -79,6 +79,19 @@ class InferenceContext {
     CalculationsPrecision precision;
     TensorStorageType storage_type;
     ModelHints hints;
+
+    // User can provide immutable external tensors for inference context.
+    // Some restrictions apply:
+    //   1) ValueId must be input or output id of GraphFloat32
+    //   2) Provided ptrs must be valid during life of InferenceContext.
+    //   3) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+    //      for example for precision F16, data_type must be FLOAT16
+    //   4) Layout must be without Batch dimension if tensor.shape.b == 1
+    //      Layout must be with Batch dimension if tensor.shape.b != 1
+    // InitFromGraph will fail if gpu can not allocate tensor with requested
+    // tensor descriptor
+    // WARNING: This is an experimental API and subject to change.
+    absl::flat_hash_map<ValueId, GpuSpatialTensor*> external_immutable_tensors;
   };
 
   struct GpuModel {
@@ -120,10 +133,17 @@ class InferenceContext {
   const std::vector<ValueId>& GetOutputIds() const { return output_ids_; }
 
   absl::Status RestoreDeserialized(
-      const absl::Span<const uint8_t> serialized_model, Environment* env);
+      const absl::Span<const uint8_t> serialized_model, Environment* env,
+      CreateInferenceInfo* create_info = nullptr);
 
  private:
-  enum class TensorMemoryType { kStrongShape, kBuffer, kVariable, kConst };
+  enum class TensorMemoryType {
+    kStrongShape,
+    kBuffer,
+    kVariable,
+    kConst,
+    kExternal
+  };
 
   friend flatbuffers::Offset<data::InferenceContext> Encode(
       const CLDevice& device, const InferenceContext& inference,
@@ -188,6 +208,7 @@ class InferenceContext {
   //  anywhere.
   std::vector<CLNode> nodes_;
 
+  absl::flat_hash_map<ValueId, Tensor*> external_immutable_tensors_;
   absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
   absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
   std::map<ValueId, Tensor> const_tensors_;
