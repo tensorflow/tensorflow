@@ -67,6 +67,14 @@ cc_library(
 )
 
 cc_library(
+    name = "enable_hexagon_delegate",
+    defines = select({
+        "//tensorflow:arm_any": ["TFLITE_ENABLE_HEXAGON"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "hexagon_delegate",
     srcs = ["hexagon_delegate.cc"],
     hdrs = ["hexagon_delegate.h"],
@@ -82,7 +90,12 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
-    ],
+    ] + select({
+        "//tensorflow:ios": [],
+        "//tensorflow:ios_x86_64": [],
+        "//tensorflow:macos": [],
+        "//conditions:default": [":enable_hexagon_delegate"],
+    }),
 )
 
 cc_library(
