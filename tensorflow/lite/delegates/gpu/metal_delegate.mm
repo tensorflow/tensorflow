@@ -211,7 +211,6 @@ class Delegate {
     }
     for (auto& input : graph_inputs_) {
       if (input.tensor_id == tensor_index) {
-        input_output_buffers_[input.id] = buffer;
         if (bphwc4_buffers_[input.id] != buffer) {
           bphwc_buffers_updated_ = true;
         }
@@ -222,7 +221,6 @@ class Delegate {
     }
     for (auto& output : graph_outputs_) {
       if (output.tensor_id == tensor_index) {
-        input_output_buffers_[output.id] = buffer;
         if (bphwc4_buffers_[output.id] != buffer) {
           bphwc_buffers_updated_ = true;
         }
@@ -373,27 +371,17 @@ class Delegate {
           input_tensor.shape,  // .shape
           false,               // .set_externally
       });
-      int bhwc_length = static_cast<int>(sizeof(float) * input_tensor.shape.DimensionsProduct());
+
+      // Create BHWC F32 buffer
+      int bhwc_f32_length =
+          static_cast<int>(sizeof(float) * input_tensor.shape.DimensionsProduct());
+      in_out_bhwc_f32_buffers_[input] =
+          [metal_device_ newBufferWithLength:bhwc_f32_length options:MTLResourceStorageModeShared];
+
       int bphwc4_length =
           static_cast<int>(storage_type_size * GetElementsSizeForPHWC4(input_tensor.shape));
-      id<MTLBuffer> buffer = [metal_device_ newBufferWithLength:bhwc_length
-                                                        options:MTLResourceStorageModeShared];
-      input_output_buffers_[input] = buffer;
-      if (options_.allow_precision_loss || input_tensor.shape.c != 4) {
-        bphwc4_buffers_[input] = [metal_device_ newBufferWithLength:bphwc4_length
-                                                            options:MTLResourceStorageModeShared];
-        if (converter_to_BPHWC4_ == nil) {
-          converter_to_BPHWC4_ =
-              [[TFLBufferConvert alloc] initWithDevice:metal_device_
-                                             isFloat16:options_.allow_precision_loss
-                                       convertToPBHWC4:true];
-          if (converter_to_BPHWC4_ == nil) {
-            return absl::InternalError("Error initialization of input buffer converter");
-          }
-        }
-      } else {
-        bphwc4_buffers_[input] = buffer;
-      }
+      bphwc4_buffers_[input] = [metal_device_ newBufferWithLength:bphwc4_length
+                                                          options:MTLResourceStorageModeShared];
     }
 
     std::vector<::tflite::gpu::ValueId> output_ids;
@@ -409,30 +397,33 @@ class Delegate {
           output_tensor.shape,  // .shape
           false,                // .set_externally
       });
-      // Create BHWC buffer
+
+      // Create BHWC F32 buffer
       int bhwc_length = static_cast<int>(sizeof(float) * output_tensor.shape.DimensionsProduct());
+      in_out_bhwc_f32_buffers_[output] =
+          [metal_device_ newBufferWithLength:bhwc_length options:MTLResourceStorageModeShared];
+
       int bphwc4_length =
           static_cast<int>(storage_type_size * GetElementsSizeForPHWC4(output_tensor.shape));
-      id<MTLBuffer> buffer = [metal_device_ newBufferWithLength:bhwc_length
-                                                        options:MTLResourceStorageModeShared];
-      input_output_buffers_[output] = buffer;
-      if (options_.allow_precision_loss || output_tensor.shape.c != 4) {
-        bphwc4_buffers_[output] = [metal_device_ newBufferWithLength:bphwc4_length
-                                                             options:MTLResourceStorageModeShared];
-        if (converter_from_BPHWC4_ == nil) {
-          converter_from_BPHWC4_ =
-              [[TFLBufferConvert alloc] initWithDevice:metal_device_
-                                             isFloat16:options_.allow_precision_loss
-                                       convertToPBHWC4:false];
-          if (converter_from_BPHWC4_ == nil) {
-            return absl::InternalError("Error initialization of output buffer converter");
-          }
-        }
-      } else {
-        bphwc4_buffers_[output] = buffer;
-      }
+      bphwc4_buffers_[output] = [metal_device_ newBufferWithLength:bphwc4_length
+                                                           options:MTLResourceStorageModeShared];
     }
-    bphwc_buffers_updated_ = true;
+
+    // allocate converter bhwc->bphwc4
+    converter_to_BPHWC4_ = [[TFLBufferConvert alloc] initWithDevice:metal_device_
+                                                          isFloat16:options_.allow_precision_loss
+                                                    convertToPBHWC4:true];
+    if (converter_to_BPHWC4_ == nil) {
+      return absl::InternalError("Error initialization of input buffer converter");
+    }
+
+    // allocate converter bphwc4->bhwc
+    converter_from_BPHWC4_ = [[TFLBufferConvert alloc] initWithDevice:metal_device_
+                                                            isFloat16:options_.allow_precision_loss
+                                                      convertToPBHWC4:false];
+    if (converter_from_BPHWC4_ == nil) {
+      return absl::InternalError("Error initialization of output buffer converter");
+    }
 
     InferenceContext::CreateInferenceInfo create_info;
     create_info.precision = precision;
@@ -477,17 +468,18 @@ class Delegate {
 
     // CPU HWC input data conversion to PHWC4 and fill the GPU buffer
     for (const auto& input : graph_inputs_) {
-      if (input.set_externally) continue;
+      if (input.set_externally) {
+        continue;
+      }
       // A user provides data on CPU memory for this buffer - need to copy to MTLBuffer
 
       TfLiteTensor* tensor = &context->tensors[input.tensor_id];
-      void* gpu_ptr = [input_output_buffers_[input.id] contents];
+      void* gpu_ptr = [in_out_bhwc_f32_buffers_[input.id] contents];
       std::memcpy(gpu_ptr, tensor->data.f, input.shape.DimensionsProduct() * sizeof(float));
-      if (input_output_buffers_[input.id] == bphwc4_buffers_[input.id]) continue;
       id<MTLComputeCommandEncoder> input_encoder = [command_buffer computeCommandEncoder];
       [converter_to_BPHWC4_ convertWithEncoder:input_encoder
                                          shape:input.shape
-                                  sourceBuffer:input_output_buffers_[input.id]
+                                  sourceBuffer:in_out_bhwc_f32_buffers_[input.id]
                                convertedBuffer:bphwc4_buffers_[input.id]];
       [input_encoder endEncoding];
     }
@@ -508,13 +500,14 @@ class Delegate {
     }
 
     for (const auto& output : graph_outputs_) {
-      if (output.set_externally) continue;
-      if (bphwc4_buffers_[output.id] == input_output_buffers_[output.id]) continue;
+      if (output.set_externally) {
+        continue;
+      }
       id<MTLComputeCommandEncoder> output_encoder = [command_buffer computeCommandEncoder];
       [converter_from_BPHWC4_ convertWithEncoder:output_encoder
                                            shape:output.shape
                                     sourceBuffer:bphwc4_buffers_[output.id]
-                                 convertedBuffer:input_output_buffers_[output.id]];
+                                 convertedBuffer:in_out_bhwc_f32_buffers_[output.id]];
       [output_encoder endEncoding];
     }
 
@@ -571,7 +564,7 @@ class Delegate {
       if (output.set_externally) continue;
       // A user retrieves data on CPU memory for this buffer - need to copy from MTLBuffer.
       TfLiteTensor* tensor = context->tensors + output.tensor_id;
-      const void* gpu_ptr = [input_output_buffers_[output.id] contents];
+      const void* gpu_ptr = [in_out_bhwc_f32_buffers_[output.id] contents];
       std::memcpy(tensor->data.f, gpu_ptr, output.shape.DimensionsProduct() * sizeof(float));
     }
     if (is_quantized_model) {
@@ -609,9 +602,10 @@ class Delegate {
   absl::flat_hash_map<int, int> quant_conversion_map_;
 
   InferenceContext inference_context_;
-  // input and output buffers are passed into Metal inference engine
-  std::map<::tflite::gpu::ValueId, id<MTLBuffer>> input_output_buffers_;
-  std::map<::tflite::gpu::ValueId, id<MTLBuffer>> bphwc4_buffers_;
+  // Metal bhwc f32 input and output buffers for better conversion performance from cpu tensors
+  // We will memcpy cpu<->gpu and use metal for other conversions(layout changes, for example)
+  std::map<ValueId, id<MTLBuffer>> in_out_bhwc_f32_buffers_;
+  std::map<ValueId, id<MTLBuffer>> bphwc4_buffers_;
   bool bphwc_buffers_updated_ = true;
   TFLBufferConvert* converter_to_BPHWC4_ = nil;
   TFLBufferConvert* converter_from_BPHWC4_ = nil;

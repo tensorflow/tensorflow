@@ -98,7 +98,11 @@ namespace wrap {
   __macro(rocsolver_cunmqr)                 \
   __macro(rocsolver_zunmqr)                \
   __macro(rocsolver_cungqr)                \
+<<<<<<< HEAD
   __macro(rocsolver_zungqr)                
+=======
+  __macro(rocsolver_zungqr)
+>>>>>>> google_upstream/master
 // clang-format on
 
 FOREACH_ROCSOLVER_API(ROCSOLVER_API_WRAPPER)

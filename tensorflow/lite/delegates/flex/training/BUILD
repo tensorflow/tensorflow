@@ -61,6 +61,8 @@ tf_cc_test(
     ],
     tags = [
         "no_gpu",  # GPU + flex is not supported.
+        "no_mac",
+        "no_windows",
     ],
     deps = [
         ":training_delegate",

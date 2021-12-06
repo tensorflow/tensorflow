@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <map>
 #include <queue>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 
@@ -680,8 +681,8 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
 
 }  // namespace
 
-string GenerateUnconversionReport(
-    std::map<string, std::map<string, int>>& unconverted_ops_map) {
+string GenerateNonConversionReport(
+    std::map<string, std::map<string, int>>& nonconverted_ops_map) {
   // Fetch whether to print a detailed version of the TF-TRT conversion report.
   bool show_detailed_conversion_report;
   TF_CHECK_OK(ReadBoolFromEnvVar("TF_TRT_SHOW_DETAILED_REPORT",
@@ -690,60 +691,62 @@ string GenerateUnconversionReport(
 
   string unsupported_op_report =
       StrCat("\n\n", string(80, '#'), "\n",
-             "TensorRT unsupported/unconverted OP Report:");
-  int total_unconverted_ops{0};
+             "TensorRT unsupported/non-converted OP Report:");
+  int total_nonconverted_ops{0};
 
-  using OPCounterVector = std::vector<std::pair<string, int>>;
+  // <Reason, Count for this reason>
+  using ReasonCounterVector = std::vector<std::pair<string, int>>;
+  // <OP Name, Total Non-Converted for OP, <Reason, Count for this reason>>>
+  using NotConvertedOPTuple = std::tuple<string, int, ReasonCounterVector>;
 
-  // Copying map data into a vector for descending sorting.
-  // <OP Name, <Total Unconverted for OP, <Reason, Total for this reason>>>
-  std::vector<std::pair<std::string, std::pair<int, OPCounterVector>>>
-      unconverted_ops_vec;
+  std::vector<NotConvertedOPTuple> nonconverted_ops_vec;
 
   // Populate the vector from the map
-  for (auto& it1 : unconverted_ops_map) {
-    int total_unconverted_op{0};
-    OPCounterVector reason_occurances_vect;
+  for (auto& nonconverted_op_data : nonconverted_ops_map) {
+    int total_nonconverted_op{0};
+    ReasonCounterVector reason_occurances_vect;
 
-    for (auto& it2 : it1.second) {
-      total_unconverted_op += it2.second;
-      reason_occurances_vect.push_back(it2);
+    auto op_name = nonconverted_op_data.first;
+    auto op_data = nonconverted_op_data.second;
+
+    for (auto& notconversion_reason_data : op_data) {
+      auto reason_count = notconversion_reason_data.second;
+      total_nonconverted_op += reason_count;
+      reason_occurances_vect.push_back(notconversion_reason_data);
     }
 
     // Sort in descending number of occurances for the reasons why a given
     // TensorFlow OP was not converted.
     std::sort(reason_occurances_vect.begin(), reason_occurances_vect.end(),
-              [](const std::pair<std::string, int>& a,
-                 const std::pair<std::string, int>& b) -> bool {
+              [](const std::pair<string, int>& a,
+                 const std::pair<string, int>& b) -> bool {
                 return a.second > b.second;
               });
 
-    unconverted_ops_vec.push_back(std::make_pair(
-        it1.first,
-        std::make_pair(total_unconverted_op, reason_occurances_vect)));
+    nonconverted_ops_vec.push_back(std::make_tuple(
+        op_name, total_nonconverted_op, reason_occurances_vect));
   }
 
   // Sort the vector by descending OP names.
-  std::sort(
-      unconverted_ops_vec.begin(), unconverted_ops_vec.end(),
-      [](const std::pair<std::string, std::pair<int, OPCounterVector>>& a,
-         const std::pair<std::string, std::pair<int, OPCounterVector>>& b) {
-        return a.second.first > b.second.first;
-      });
+  std::sort(nonconverted_ops_vec.begin(), nonconverted_ops_vec.end(),
+            [](const NotConvertedOPTuple& a, const NotConvertedOPTuple& b) {
+              return std::get<1>(a) > std::get<1>(b);
+            });
 
-  for (auto& it1 : unconverted_ops_vec) {
-    auto& op_name = it1.first;
-    auto& op_total_unconverted = it1.second.first;
-    total_unconverted_ops += op_total_unconverted;
+  for (auto& notconverted_op_detail : nonconverted_ops_vec) {
+    auto& op_name = std::get<0>(notconverted_op_detail);
+    auto& op_total_nonconverted = std::get<1>(notconverted_op_detail);
+    total_nonconverted_ops += op_total_nonconverted;
 
     unsupported_op_report = StrCat(unsupported_op_report, "\n\t- ", op_name,
-                                   " -> ", op_total_unconverted, "x");
+                                   " -> ", op_total_nonconverted, "x");
 
     if (show_detailed_conversion_report) {
-      auto& op_unconversion_details = it1.second.second;
-      for (auto& it2 : op_unconversion_details) {
-        auto& reason = it2.first;
-        auto& reason_count = it2.second;
+      auto& nonconverted_ops_details = std::get<2>(notconverted_op_detail);
+
+      for (auto& nonconversion_details : nonconverted_ops_details) {
+        auto& reason = nonconversion_details.first;
+        auto& reason_count = nonconversion_details.second;
         if (reason_count == 0) {
           continue;
         }
@@ -757,8 +760,8 @@ string GenerateUnconversionReport(
 
   unsupported_op_report =
       StrCat(unsupported_op_report, "\n", string(80, '-'),
-             "\n\t- Total unconverted OPs: ", total_unconverted_ops,
-             "\n\t- Total unconverted OP Types: ", unconverted_ops_map.size(),
+             "\n\t- Total nonconverted OPs: ", total_nonconverted_ops,
+             "\n\t- Total nonconverted OP Types: ", nonconverted_ops_map.size(),
              "\nFor more information see https://docs.nvidia.com/deeplearning",
              "/frameworks/tf-trt-user-guide/index.html#supported-ops.", "\n",
              string(80, '#'), "\n");
@@ -815,7 +818,7 @@ Status SegmentGraph(const Graph* tf_graph,
   // segment. A node value of nullptr indicates that the node is not a candidate
   // for TRT.
 
-  std::map<string, std::map<string, int>> unconverted_ops_map = {};
+  std::map<string, std::map<string, int>> nonconverted_ops_map = {};
 
   // Parsing each node of the graph
   std::vector<UnionFind<SimpleNode*>> node_segments;
@@ -834,7 +837,7 @@ Status SegmentGraph(const Graph* tf_graph,
               << "(Op type: " << node_op_type << "), "
               << "(Op name: " << node->name() << "), "
               << "(Reason: " << reason << ")";
-      unconverted_ops_map[node_op_type][std::string(reason)]++;
+      nonconverted_ops_map[node_op_type][string(reason)]++;
       node = nullptr;
     };
     absl::optional<DeviceNameUtils::ParsedName> device_name =
@@ -878,7 +881,7 @@ Status SegmentGraph(const Graph* tf_graph,
                       options.use_implicit_batch);
   }
 
-  LOG(WARNING) << GenerateUnconversionReport(unconverted_ops_map);
+  LOG(WARNING) << GenerateNonConversionReport(nonconverted_ops_map);
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs

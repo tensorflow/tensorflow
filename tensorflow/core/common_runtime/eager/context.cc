@@ -431,6 +431,16 @@ void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
             thread_local_executor_.erase(thread_id);
           }
           has_cleanup_[thread_id].erase(executor);
+          // Clears the global rendezvous after cleaning up the executor. This
+          // is needed when running in eager op as function mode because it
+          // re-uses the EagerContext's global_rendezvous_for_functions. The
+          // global rendezvous can end up in a bad state if any op ends in a
+          // bad state after execution.
+          if (!GetGlobalRendezvousForFunctionLocalRendezvousStatus().ok()) {
+            VLOG(6) << "global_rendezvous_for_functions_ is in bad state. "
+                       "Resetting.";
+            ResetGlobalRendezvousForFunction();
+          }
         }
       });
       executor->AddCleanup(reinterpret_cast<intptr_t>(this),

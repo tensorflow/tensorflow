@@ -21,8 +21,10 @@ limitations under the License.
 
 #if BEF_THUNKS
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -69,6 +72,7 @@ bool IsBefThunkEnabled() { return true; }
 namespace {
 
 struct CoreRuntimeAndWorkQueue {
+  mlir::MLIRContext* mlir_ctx;
   tfrt::CoreRuntime* core_runtime;
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue;
 };
@@ -254,44 +258,34 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
 }
 
 static StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
-  // TODO(hanbinyoon): Make these configurable.
-  int tfrt_num_threads = tensorflow::port::MaxParallelism();
-  int tfrt_num_blocking_threads = 16;
+  static auto runtime_and_queue_or =
+      [&]() -> StatusOr<CoreRuntimeAndWorkQueue> {
+    // TODO(hanbinyoon): Make these configurable.
+    int num_threads = tensorflow::port::MaxParallelism();
+    int num_blocking_threads = 16;
 
-  static StatusOr<CoreRuntimeAndWorkQueue>* runtime_and_queue_or =
-      [&](int num_threads, int num_blocking_threads) {
-        // Create work queue.
-        auto work_queue = tensorflow::tfrt_stub::WrapDefaultWorkQueue(
-            tfrt::CreateMultiThreadedWorkQueue(num_threads,
-                                               num_blocking_threads));
-        if (work_queue == nullptr) {
-          auto status =
-              tensorflow::errors::Internal("Failed to create TFRT work queue.");
-          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
-        }
-        auto* work_queue_ptr = work_queue.get();
+    // Create work queue.
+    auto work_queue = tensorflow::tfrt_stub::WrapDefaultWorkQueue(
+        tfrt::CreateMultiThreadedWorkQueue(num_threads, num_blocking_threads));
+    if (work_queue == nullptr) {
+      return tensorflow::errors::Internal("Failed to create TFRT work queue.");
+    }
+    auto* work_queue_ptr = work_queue.get();
+    auto* mlir_ctx = new mlir::MLIRContext;
 
-        // Create core runtime.
-        auto expected_core_runtime = tfrt::CoreRuntime::Create(
-            [](const tfrt::DecodedDiagnostic& diag) {
-              LOG(ERROR) << tfrt::StrCat(diag);
-            },
-            tfrt::CreateMallocAllocator(), std::move(work_queue),
-            kDefaultHostDeviceName);
-        if (!expected_core_runtime) {
-          auto error = expected_core_runtime.takeError();
-          auto status =
-              tensorflow::errors::Internal(llvm::toString(std::move(error)));
-          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
-        }
+    // Create core runtime.
+    auto expected_core_runtime = tfrt::CoreRuntime::Create(
+        tfrt::gpu::GetDiagHandler(mlir_ctx), tfrt::CreateMallocAllocator(),
+        std::move(work_queue), kDefaultHostDeviceName);
+    if (!expected_core_runtime) {
+      auto error = expected_core_runtime.takeError();
+      return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+    }
 
-        auto runtime_and_queue = CoreRuntimeAndWorkQueue{
-            expected_core_runtime->release(), work_queue_ptr};
-        return new StatusOr<CoreRuntimeAndWorkQueue>(runtime_and_queue);
-      }(tfrt_num_threads, tfrt_num_blocking_threads);
-
-  TF_RETURN_IF_ERROR(runtime_and_queue_or->status());
-  return runtime_and_queue_or->ValueOrDie();
+    return CoreRuntimeAndWorkQueue{mlir_ctx, expected_core_runtime->release(),
+                                   work_queue_ptr};
+  }();
+  return runtime_and_queue_or;
 }
 
 // Creates a TFRT module that loads the GPU module and launches the target
@@ -673,6 +667,14 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (function->num_results() != 1)
     return tensorflow::errors::Internal("Unexpected result count.");
 
+  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  // Capture errors and augment with source.
+  std::string diag_str;
+  llvm::raw_string_ostream diag_os(diag_str);
+  llvm::SourceMgr src_mgr;
+  mlir::SourceMgrDiagnosticHandler handler(src_mgr, runtime_and_queue.mlir_ctx,
+                                           diag_os);
+
   // Execute the function.
   function->Execute(*exec_ctx, args, {result});
 
@@ -688,7 +690,8 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 #endif  // XLA_ENABLE_XCCL
 
-  // Report error if any.
+  // Report error if any, from handler and result.
+  if (diag_os.tell()) return tensorflow::errors::Internal(diag_os.str());
   if (auto* error = result->GetErrorIfPresent())
     return tensorflow::errors::Internal(tfrt::StrCat(*error));
 

@@ -677,7 +677,8 @@ llvm::Value* IrEmitterUnnested::CreateLoad(llvm::Value* address,
   int data_bytes = data_type->getPrimitiveSizeInBits() /
                    primitive_util::BitWidth(PrimitiveType::U8);
   if (alignment_bytes == 0) {
-    return b_.CreateLoad(b_.CreateBitCast(address, data_type->getPointerTo()));
+    return b_.CreateLoad(data_type,
+                         b_.CreateBitCast(address, data_type->getPointerTo()));
   }
 
   int alignment_bitwidth =
@@ -896,7 +897,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   for (int64_t i = 1; i < slice_to_dynamic.args().size(); ++i) {
     // const int64_t dim_index = i - 1;
     llvm::Value* source_buffer = ir_arrays[i].GetBasePointer();
-    llvm::LoadInst* dyn_dim_size = b_.CreateLoad(source_buffer, "dyn_dim_size");
+    llvm::LoadInst* dyn_dim_size = Load(source_buffer, "dyn_dim_size");
     dynamic_dims.push_back(dyn_dim_size);
   }
 
@@ -3829,9 +3830,9 @@ void IrEmitterUnnested::EmitTileElementForFusion(
         // spaces are inferred (which is pretty late in the pipeline), so
         // even if we had address-space-based AA in LLVM, it wouldn't help
         // us much here.
-        return b_.CreateLoad(thread_id_info.GEPIntoSharedMemory(
-                                 &b_, param_tile_buffer, {x_loc, y_loc}),
-                             "tiled_buffer");
+        return Load(thread_id_info.GEPIntoSharedMemory(&b_, param_tile_buffer,
+                                                       {x_loc, y_loc}),
+                    "tiled_buffer");
       };
     } else {
       auto array = operand_arrays[i];
@@ -3903,9 +3904,8 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
                                        .ValueOrDie();
 
       for (int i = 0; i < num_partial_results; ++i) {
-        b_.CreateStore(
-            init_ir_value,
-            b_.CreateInBoundsGEP(partial_result_address, {b_.getInt32(i)}));
+        b_.CreateStore(init_ir_value,
+                       InBoundsGEP(partial_result_address, {b_.getInt32(i)}));
       }
 
       const TilingScheme& tiling_scheme =
@@ -3983,7 +3983,8 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
 
       llvm::Value* partial_result_address = partial_result_addresses[oidx];
       llvm::Value* partial_result =
-          b_.CreateLoad(convert_pointer_for_shuffle(partial_result_address),
+          b_.CreateLoad(shuffled_value_type,
+                        convert_pointer_for_shuffle(partial_result_address),
                         "partial_reduction_result");
       b_.CreateStore(
           EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), &b_),
@@ -4138,9 +4139,9 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
   for (int output_idx = 0; output_idx < num_outputs; output_idx++) {
     const ReductionCodegenState::ReductionCalculationState& state =
         reduction_codegen_state.GetCalculationStateFor(reduction, output_idx);
-    current_outputs.push_back(
-        b_.CreateInBoundsGEP(state.partial_result_address,
-                             {constant(partial_result_idx)}, "current_output"));
+    current_outputs.push_back(InBoundsGEP(state.partial_result_address,
+                                          {constant(partial_result_idx)},
+                                          "current_output"));
   }
 
   EmitFullWarpShuffleDownLoopForReduce(reducer, current_outputs,
@@ -4156,7 +4157,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
           reduction_codegen_state.GetCalculationStateFor(reduction, oidx);
       llvm::Value* shmem_output_addr = thread_id_info.GEPIntoSharedMemory(
           &b_, state.shared_cache, {constant(partial_result_idx), warp_id});
-      b_.CreateStore(b_.CreateLoad(current_outputs[oidx]), shmem_output_addr);
+      Store(Load(current_outputs[oidx]), shmem_output_addr);
     }
   });
 
@@ -4201,8 +4202,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
             tiling_kernel_info, output_arrays, reduction, oidx);
 
         if (reduction_codegen_state.IsRaceFree()) {
-          b_.CreateStore(b_.CreateLoad(selected_values[oidx], "output"),
-                         output_address);
+          Store(Load(selected_values[oidx], "output"), output_address);
         } else {
           CHECK_EQ(num_outputs, 1);
           TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
@@ -4242,10 +4242,10 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
          thread_id_info.thread_id_y},
         "shmem_output_address");
     llvm::Value* current_output =
-        b_.CreateInBoundsGEP(state.partial_result_address,
-                             {constant(partial_result_idx)}, "current_output");
+        InBoundsGEP(state.partial_result_address,
+                    {constant(partial_result_idx)}, "current_output");
 
-    llvm::Value* current_output_value = b_.CreateLoad(current_output);
+    llvm::Value* current_output_value = Load(current_output);
     b_.CreateStore(current_output_value, shmem_output_addr);
   }
 
@@ -4285,9 +4285,8 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
                  partial_result_idx, index_ty, reduction_codegen_state,
                  tiling_kernel_info, output_arrays, reduction, oidx);
              if (reduction_codegen_state.IsRaceFree()) {
-               b_.CreateStore(
-                   b_.CreateLoad(shmem_transposed_addrs[oidx], "output_value"),
-                   output_address);
+               Store(Load(shmem_transposed_addrs[oidx], "output_value"),
+                     output_address);
              } else {
                CHECK_EQ(num_outputs, 1);
                TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
@@ -4956,7 +4955,8 @@ llvm::Value* IrEmitterUnnested::ThreadIdInfo::GEPIntoSharedMemory(
   idxs_scaled.push_back(scaling);
   idxs_scaled.insert(idxs_scaled.end(), idx_major_to_minor.begin(),
                      idx_major_to_minor.end());
-  llvm::Value* gep = b->CreateInBoundsGEP(shared, idxs_scaled, name);
+  llvm::Value* gep = b->CreateInBoundsGEP(
+      shared->getType()->getPointerElementType(), shared, idxs_scaled, name);
 
   // __shared__ memory uses a different address space, so we cast it to
   // global address space before writing or reading.
@@ -5107,8 +5107,8 @@ void IrEmitterUnnested::GenerateElementForReducer(
     llvm::Value* const input_ir_value = *state.input_gen(
         num_partial_results > 1 ? index_without_linear : input_index);
     b_.CreateStore(input_ir_value, input_address);
-    llvm::Value* partial_result_address = b_.CreateInBoundsGEP(
-        partial_reduction_result_address, {partial_result_index});
+    llvm::Value* partial_result_address =
+        InBoundsGEP(partial_reduction_result_address, {partial_result_index});
     reduction_accumulators.push_back(partial_result_address);
     reduction_input_value.push_back(input_address);
   }

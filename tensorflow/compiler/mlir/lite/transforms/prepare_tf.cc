@@ -225,6 +225,21 @@ class ConvertTFConvOp : public RewritePattern {
         !filter_type.hasStaticShape())
       return failure();
 
+    Value input = tf_op.input();
+    RankedTensorType input_type =
+        input.getType().template dyn_cast<RankedTensorType>();
+    // Safe guard for skipping grouped convolution legalization.
+    // Only rank size four input will be only available by the tf.Conv2D
+    // operator verification.
+    if (!input_type || input_type.isDynamicDim(3)) {
+      return failure();
+    }
+    // Check if the given op is based on unsupported grouped convolution.
+    // Dim size zero will be verified by the tf.Conv2D operator verification.
+    if (input_type.getDimSize(3) / filter_type.getDimSize(2) != 1) {
+      return failure();
+    }
+
     // TensorFlow convolution op only has two inputs, while the TFLite one has
     // three, with the bias vector marked as optional. However, TOCO has a
     // dedicated pass, EnsureBiasVectors, to create default bias vectors for all
@@ -243,7 +258,6 @@ class ConvertTFConvOp : public RewritePattern {
     auto bias =
         rewriter.create<TF::ConstOp>(op->getLoc(), bias_type, bias_attr);
 
-    auto input = tf_op.input();
     if (op->getAttrOfType<StringAttr>("padding").getValue() == "EXPLICIT") {
       // Add Const op for padding value.
       ArrayRef<Attribute> padding_attr_array =

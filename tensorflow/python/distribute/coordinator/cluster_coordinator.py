@@ -329,7 +329,7 @@ class _CoordinatedClosureQueue(object):
   def stop(self):
     with self._queue_lock:
       self._should_process_closures = False
-      self._closures_queued_condition.notifyAll()
+      self._closures_queued_condition.notify_all()
     self._watchdog.stop()
 
   def _cancel_all_closures(self):
@@ -408,9 +408,9 @@ class _CoordinatedClosureQueue(object):
         raise AssertionError("There is no inflight closures to mark_finished.")
       self._inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
-        self._no_inflight_closure_condition.notifyAll()
+        self._no_inflight_closure_condition.notify_all()
       if self._queue.empty() and self._inflight_closure_count == 0:
-        self._stop_waiting_condition.notifyAll()
+        self._stop_waiting_condition.notify_all()
       self._watchdog.report_closure_done()
 
   def put_back(self, closure):
@@ -426,7 +426,7 @@ class _CoordinatedClosureQueue(object):
         self._closures_queued_condition.notify()
       self._inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
-        self._no_inflight_closure_condition.notifyAll()
+        self._no_inflight_closure_condition.notify_all()
 
   def wait(self, timeout=None):
     """Wait for all closures to be finished before returning.
@@ -459,8 +459,8 @@ class _CoordinatedClosureQueue(object):
         self._error = e
       self._inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
-        self._no_inflight_closure_condition.notifyAll()
-      self._stop_waiting_condition.notifyAll()
+        self._no_inflight_closure_condition.notify_all()
+      self._stop_waiting_condition.notify_all()
 
   def done(self):
     """Returns true if the queue is empty and there is no inflight closure.

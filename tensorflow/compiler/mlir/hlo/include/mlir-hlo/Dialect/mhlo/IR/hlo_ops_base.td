@@ -115,6 +115,13 @@ def HLO_LayoutAttr : Attr<
 def HLO_ArrayOfLayoutAttr : TypedArrayAttrBase<HLO_LayoutAttr,
     "Array of layout (1D tensor of index type) attributes">;
 
+// An array of FlatSymbolRef attributes that can be used as a default valued
+// attribute.
+def HLO_FlatSymbolRefArrayAttr :
+  TypedArrayAttrBase<FlatSymbolRefAttr, "flat symbol ref array attribute"> {
+  let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
+}
+
 
 //===----------------------------------------------------------------------===//
 // Common convolution attributes

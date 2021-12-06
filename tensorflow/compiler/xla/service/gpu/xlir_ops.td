@@ -38,6 +38,8 @@ def XLIR_Dialect : Dialect {
   }];
 
   let cppNamespace = "xla::gpu";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 // Base class for XLIR dialect ops.

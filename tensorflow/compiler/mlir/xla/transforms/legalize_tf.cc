@@ -3069,7 +3069,7 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
         b.create<shape::AssumingOp>(ArrayRef<Type>{result_type}, assumption);
 
     OpBuilder::InsertionGuard guard(b);
-    b.createBlock(&assuming_op.doRegion());
+    b.createBlock(&assuming_op.getDoRegion());
 
     // Broadcast the cond if necessary.
     Value cond = op.condition();
@@ -3259,7 +3259,7 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
       lhs_type.getShape().drop_back(2), rhs_type.getShape().drop_back(2),
       result_batch_shape_compile_time_extents);
   auto result_batch_shape = rewriter->create<shape::BroadcastOp>(
-      loc, shape_type, lhs_splitted.head(), rhs_splitted.head(),
+      loc, shape_type, lhs_splitted.getHead(), rhs_splitted.getHead(),
       /*error=*/nullptr);
   // Lambda which handles the broadcasting of one side to the common
   // leading-batch dimensions.
@@ -3280,8 +3280,8 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
     *out_side = rewriter->create<TF::BroadcastToOp>(loc, result_type, side,
                                                     shape_tensor);
   };
-  broadcast_one_side(lhs, lhs_type, lhs_splitted.tail(), out_lhs);
-  broadcast_one_side(rhs, rhs_type, rhs_splitted.tail(), out_rhs);
+  broadcast_one_side(lhs, lhs_type, lhs_splitted.getTail(), out_lhs);
+  broadcast_one_side(rhs, rhs_type, rhs_splitted.getTail(), out_rhs);
 }
 
 class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
@@ -6053,15 +6053,12 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
     // using a string.
     if (!op._XlaSharding().hasValue()) return failure();
 
-    mlir::ArrayAttr empty_layout_attr;
+    NamedAttribute call_target_name = rewriter.getNamedAttr(
+        "call_target_name", rewriter.getStringAttr("Sharding"));
+
     auto custom_call = rewriter.create<mhlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.input(),
-        /*call_target_name=*/"Sharding",
-        /*has_side_effect=*/false,
-        /*backend_config=*/"",
-        /*api_version=*/mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL,
-        /*operand_layouts=*/empty_layout_attr,
-        /*result_layouts=*/empty_layout_attr);
+        ArrayRef<NamedAttribute>{call_target_name});
     custom_call->setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult(0));
 
@@ -6355,7 +6352,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
                                       &rewriter);
 
     auto reduce = rewriter.create<ReduceWindowOp>(
-        op.getLoc(), input_type, input, init,
+        op.getLoc(), input.getType(), input, init,
         GetI64ElementsAttr(rewriter.getI64ArrayAttr(window_dims)),
         GetI64ElementsAttr(rewriter.getI64ArrayAttr(window_strides)),
         /*base_dilations=*/DenseIntElementsAttr(),
@@ -6374,7 +6371,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
       low_padding[axis] = 1;
       high_padding[axis] = -1;
       result = rewriter.create<PadOp>(
-          op.getLoc(), op.getType(), result, init,
+          op.getLoc(), result.getType(), result, init,
           GetI64ElementsAttr(low_padding, &rewriter),
           GetI64ElementsAttr(high_padding, &rewriter),
           GetI64ElementsAttr(interior_padding, &rewriter));

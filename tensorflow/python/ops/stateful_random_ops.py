@@ -470,6 +470,8 @@ class Generator(tracking.AutoTrackable):
       The created variable.
     """
     with ops.name_scope("random_generator"):
+      # Make sure we don't change this name since Keras was using this name
+      # to filter out the state variable.
       kwargs["name"] = "StateVar"
       v = variables.Variable(*args, **kwargs)
     if isinstance(v, sharded_variable.ShardedVariable):

@@ -114,7 +114,7 @@ class GPUDeviceTest : public ::testing::Test {
   }
 };
 
-TEST_F(GPUDeviceTest, CudaMallocAsync) {
+TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
   // cudaMallocAsync supported only when cuda toolkit and driver supporting
   // CUDA 11.2+
 #ifndef GOOGLE_CUDA

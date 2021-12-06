@@ -418,8 +418,9 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
                                      /*isSigned=*/true);
     }
     builder->CreateStore(
-        value, builder->CreateGEP(arguments_ptr, {builder->getInt64(0),
-                                                  builder->getInt32(i)}));
+        value,
+        builder->CreateGEP(arguments_type, arguments_ptr,
+                           {builder->getInt64(0), builder->getInt32(i)}));
   }
   llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
   return builder->CreateCall(
@@ -659,7 +660,7 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
         &allocations[GetAllocationIndex(
             view.source().cast<mlir::BlockArgument>(), constant_name)],
         mlir::cast<mlir::arith::ConstantOp>(view.byte_shift().getDefiningOp())
-            .value()
+            .getValue()
             .cast<mlir::IntegerAttr>()
             .getValue()
             .getSExtValue(),

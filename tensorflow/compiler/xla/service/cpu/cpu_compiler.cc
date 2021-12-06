@@ -399,10 +399,19 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     return false;
   };
   pipeline.AddPass<ConvolutionGroupConverter>(
-      cost_model,
+      /*should_expand=*/[](HloInstruction* conv) { return true; }, cost_model,
       /*convert_batch_groups_only=*/true);
+  auto feature_group_should_expand = [](HloInstruction* conv) {
+    switch (conv->shape().element_type()) {
+      case F16:
+      case F32:
+        return false;
+      default:
+        return true;
+    }
+  };
   pipeline.AddPass<ConvolutionGroupConverter>(
-      cost_model,
+      feature_group_should_expand, cost_model,
       /*convert_batch_groups_only=*/false);
   pipeline.AddPass<BatchNormExpander>(
       /*rewrite_training_op=*/true,

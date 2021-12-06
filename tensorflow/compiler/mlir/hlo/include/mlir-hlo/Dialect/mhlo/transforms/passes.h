@@ -108,9 +108,6 @@ namespace lmhlo {
 // Lowers from LHLO dialect to Affine dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass();
 
-// Lowers from LHLO dialect to Linalg dialect.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass();
-
 // Lowers from LHLO dialect to GPU dialect.
 std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
 

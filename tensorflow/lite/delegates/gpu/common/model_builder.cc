@@ -2664,7 +2664,7 @@ TfLiteIntArray* GetOpsToReplace(
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
       if (unsupported_details) {
         *unsupported_details =
-            "OP is supported, but tensor type/shape doesn't supported.";
+            "OP is supported, but tensor type/shape isn't compatible.";
       }
       return false;
     }

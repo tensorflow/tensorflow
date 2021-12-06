@@ -45,6 +45,9 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
   explicit BoostedTreesCalculateBestGainsPerFeatureOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
     OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
   }
@@ -267,6 +270,9 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
   explicit BoostedTreesCalculateBestFeatureSplitOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
     OP_REQUIRES_OK(context, context->GetAttr("split_type", &split_type_));
   }
@@ -622,6 +628,9 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
   explicit BoostedTreesCalculateBestFeatureSplitV2(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
     OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
   }
@@ -1076,6 +1085,9 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
   explicit BoostedTreesSparseCalculateBestFeatureSplitOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     // TODO(crawles): Using logits_dim_ for multi-class split.
     OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
     // TODO(tanzheny): Using this for equality split.
@@ -1424,6 +1436,9 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
  public:
   explicit BoostedTreesMakeStatsSummaryOp(OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
     OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
     OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
@@ -1521,6 +1536,9 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
  public:
   explicit BoostedTreesAggregateStatsOp(OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
     OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
   }
@@ -1758,6 +1776,9 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
   explicit BoostedTreesSparseAggregateStatsOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
     OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
   }

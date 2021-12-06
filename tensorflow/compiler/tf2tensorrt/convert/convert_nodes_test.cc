@@ -1763,6 +1763,8 @@ class OpConverter_FP32_FP16_Test : public ParameterizedOpConverterTestBase {};
 // Base class for tests that need to be tested for FP32, FP16, and INT32
 class OpConverter_FP32_FP16_INT32_Test
     : public ParameterizedOpConverterTestBase {};
+// Base class for tests that need to be tested for INT32
+class OpConverter_INT32_Test : public ParameterizedOpConverterTestBase {};
 
 // Instantiate parameter combinations to OpConverter_<DT_X...>_Test
 INSTANTIATE_TEST_CASE_P(
@@ -1781,6 +1783,12 @@ INSTANTIATE_TEST_CASE_P(
     OpConvTestInstantiation, OpConverter_FP32_FP16_INT32_Test,
     ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_FLOAT, DT_HALF, DT_INT32),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverter_INT32_Test,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_INT32),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
 template <typename T>
@@ -5917,6 +5925,180 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertTopK) {
                             Status::OK(), Status::OK(),
                             {ElementsAre(6, 5, 7, 1), ElementsAre(4, 2, 1, 2)},
                             {tf_type_, DT_INT32});
+  }
+}
+
+struct DataFormatVecPermuteTestParams {
+  string dst_format;
+  string src_format;
+  std::vector<int> x_shape;
+  std::vector<int> x;
+  bool x_is_tensor;
+  std::vector<int> expected_output;
+  Status conversion_status;
+};
+
+NodeDef GetDataFormatVecPermuteNodeDef(string dst_format, string src_format,
+                                       std::vector<int>& x_shape) {
+  Scope s = Scope::NewRootScope();
+  PartialTensorShape tensor_shape;
+  auto x = ops::Placeholder(s.WithOpName("x"), DT_INT32);
+  const auto attrs = ops::DataFormatVecPermute::Attrs()
+                         .DstFormat(dst_format)
+                         .SrcFormat(src_format);
+  auto dfvp = ops::DataFormatVecPermute(s.WithOpName("my_dfvp"), x, attrs);
+  return dfvp.operation.node()->def();
+}
+
+TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
+  Status implicit_error = Status{
+      error::UNIMPLEMENTED, "Implicit batch mode not supported, at my_dfvp"};
+
+  std::vector<DataFormatVecPermuteTestParams> test_params = {
+      // 1D case with tensor.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4},
+          /*x=*/{1, 2, 3, 4},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{1, 4, 2, 3},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // 1D case with weights.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4},
+          /*x=*/{1, 2, 3, 4},
+          /*x_is_tensor=*/false,
+          /*expected_output=*/{1, 4, 2, 3},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // 2D case with tensor.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{1, 2, 7, 8, 3, 4, 5, 6},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // 2D case with weights.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/false,
+          /*expected_output=*/{1, 2, 7, 8, 3, 4, 5, 6},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Format of size 5.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCDHW",
+          /*src_format=*/"NDHWC",
+          /*x_shape=*/{5, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{1, 2, 9, 10, 3, 4, 5, 6, 7, 8},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Input of size 2: treat the elements as spatial dimensions.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCWH",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{2, 2},
+          /*x=*/{1, 2, 3, 4},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{3, 4, 1, 2},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Input of size 3: treat the elements as spatial dimensions.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHWD",
+          /*src_format=*/"NDHWC",
+          /*x_shape=*/{3},
+          /*x=*/{1, 2, 3},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{2, 3, 1},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Invalid rank, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{2, 2, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "Input must be a vector or matrix, but got rank 3, at "
+                       "my_dfvp"}},
+      // Invalid size for 1D input, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{3},
+          /*x=*/{1, 2, 3},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "1D input must be of size 2 or 4, but got size 3, at "
+                       "my_dfvp"}},
+      // Invalid first dim for 2D input, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCDHW",
+          /*src_format=*/"NDHWC",
+          /*x_shape=*/{4, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "First dimension of 2D input must be of size 3 or 5, "
+                       "but got shape (4, 2), at my_dfvp"}},
+      // Invalid second dim for 2D input, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4, 3},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "Second dimension of 2D input must be of size 2, but "
+                       "got shape (4, 3), at my_dfvp"}},
+  };
+
+  for (auto p : test_params) {
+    Reset();
+    const NodeDef node_def =
+        GetDataFormatVecPermuteNodeDef(p.dst_format, p.src_format, p.x_shape);
+
+    if (p.x_is_tensor) {
+      AddTestTensor("x", p.x_shape, DT_INT32, p.x, p.x_shape);
+    } else {
+      AddTestWeights("x", p.x_shape, p.x, DT_INT32);
+    }
+
+    TestOpConverter("my_dfvp", node_def, p.x_shape, p.conversion_status,
+                    Status::OK(), ElementsAreArray(p.expected_output));
   }
 }
 

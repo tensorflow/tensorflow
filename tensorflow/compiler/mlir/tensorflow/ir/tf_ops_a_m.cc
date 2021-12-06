@@ -2300,6 +2300,37 @@ static LogicalResult Verify(EmptyTensorListOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// EnqueueTPUEmbedding ops
+//===----------------------------------------------------------------------===//
+
+// For EnqueueTPUEmbedding ops the device ordinal corresponds to the resource
+// instance.
+
+int64_t EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+//===----------------------------------------------------------------------===//
 // EnsureShapeOp
 //===----------------------------------------------------------------------===//
 

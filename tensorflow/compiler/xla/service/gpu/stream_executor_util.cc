@@ -496,6 +496,8 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       return se::dnn::ToDataType<int8>::value;
     case S32:
       return se::dnn::ToDataType<int32>::value;
+    case BF16:
+      return se::dnn::ToDataType<Eigen::bfloat16>::value;
     default:
       break;
   }

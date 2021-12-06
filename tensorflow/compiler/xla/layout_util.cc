@@ -474,4 +474,52 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return hash_value;
 }
 
+/*static*/ int64_t LayoutUtil::LinearIndex(const Shape& shape,
+                                           absl::Span<const int64_t> indices) {
+  CHECK(shape.IsArray());
+  CHECK(shape.has_layout());
+  const int rank = shape.rank();
+  CHECK_EQ(rank, indices.size());
+
+  if (rank == 0) {
+    return 0;
+  }
+  if (rank == 1) {
+    return indices[0];
+  }
+
+  Tile tile = {};
+  if (!shape.layout().tiles().empty()) {
+    tile = shape.layout().tiles()[0];
+  }
+
+  int64_t linear_index = 0;
+  int64_t tile_multiplier = 1;
+  // Initialize to number of elements in a tile.
+  for (int64_t i : tile.dimensions()) {
+    tile_multiplier *= i;
+  }
+  int64_t within_tile_multiplier = 1;
+
+  // We only look at the top-level tile.
+  for (int64_t minor = 0; minor < rank; minor++) {
+    int64_t logical_dim = Minor(shape.layout(), minor);
+    int64_t shape_dim_size = shape.dimensions(logical_dim);
+    int64_t index = indices[logical_dim];
+
+    if (minor < tile.dimensions().size()) {
+      int64_t tile_dim_size =
+          tile.dimensions()[tile.dimensions().size() - 1 - minor];
+      linear_index += tile_multiplier * (index / tile_dim_size) +
+                      within_tile_multiplier * (index % tile_dim_size);
+      tile_multiplier *= CeilOfRatio(shape_dim_size, tile_dim_size);
+      within_tile_multiplier *= tile_dim_size;
+    } else {
+      linear_index += index * tile_multiplier;
+      tile_multiplier *= shape_dim_size;
+    }
+  }
+  return linear_index;
+}
+
 }  // namespace xla

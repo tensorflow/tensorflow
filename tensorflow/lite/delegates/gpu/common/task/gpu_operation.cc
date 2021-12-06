@@ -98,6 +98,7 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       elementwise_(operation.elementwise_),
       linkable_(operation.linkable_),
       check_src_channels_size_(operation.check_src_channels_size_),
+      flops_(operation.flops_),
       definition_(std::move(operation.definition_)),
       src_(std::move(operation.src_)),
       dst_(std::move(operation.dst_)),
@@ -120,6 +121,7 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     elementwise_ = operation.elementwise_;
     linkable_ = operation.linkable_;
     check_src_channels_size_ = operation.check_src_channels_size_;
+    flops_ = operation.flops_;
     definition_ = std::move(operation.definition_);
     src_ = std::move(operation.src_);
     dst_ = std::move(operation.dst_);

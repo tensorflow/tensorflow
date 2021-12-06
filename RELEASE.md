@@ -16,9 +16,12 @@
 # Major Features and Improvements
 
 *   `tf.lite`:
-    *   Where operation support is added for these data types
-        'int32/uint32/int8/uint8/int64'
-    *   Add builtin support for `Bucketize` op on CPU.
+    *   Added TFLite builtin op support for the following TF ops:
+        *  `tf.raw_ops.Bucketize` op on CPU.
+        *  `tf.where` op for data types `tf.int32`/`tf.uint32`/`tf.int8`/`tf.uint8`/`tf.int64`.
+        *  `tf.random.normal` op for output data type `tf.float32` on CPU.
+        *  `tf.random.uniform` op for output data type `tf.float32` on CPU.
+        *  `tf.random.categorical` op for output data type `tf.int64` on CPU.
 *   `tensorflow.experimental.tensorrt`:
 
     *   `conversion_params` is now deprecated inside `TrtGraphConverterV2` in
@@ -29,6 +32,16 @@
         `.save()` function inside `TrtGraphConverterV2`. When `False`, the
         `.save()` function won't save any TRT engines that have been built. When
         `True` (default), the original behavior is preserved.
+*   `tf.tpu.experimental.embedding`:
+    *   `tf.tpu.experimental.embedding.FeatureConfig` now takes an additional
+        argument `output_shape` which can specify the shape of the output
+        activation for the feature.
+    *   `tf.tpu.experimental.embedding.TPUEmbedding` now has the same behavior
+        as `tf.tpu.experimental.embedding.serving_embedding_lookup` which can
+        take arbitrary rank of dense and sparse tensor. For ragged tensor,
+        though the input tensor remains to be rank 2, the activations now can be
+        rank 2 or above by specifying the output shape in the feature config
+        or via the build method.
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
@@ -42,6 +55,9 @@
 * `tf.data`:
   * The optimization `parallel_batch` now becomes default if not disabled by
     users, which will parallelize copying of batch elements.
+  * Added the ability for `TensorSliceDataset` to identify and handle inputs
+    that are files. This enables creating hermetic SavedModels when using
+    datasets created from files.
 
 * `tf.lite`:
   * GPU
@@ -161,6 +177,7 @@ This release contains contributions from many people at Google, as well as:
 * `tf.lite`:
   * Add experimental API `experimental_from_jax` to support conversion from Jax models to TensorFlow Lite.
   * Support uint32 data type for cast op.
+  * Support int8 data type for cast op.
   * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
   * Add lite.experimental.authoring.compatible API
       *   A Python decorator to provide a way to check TFLite compatibility

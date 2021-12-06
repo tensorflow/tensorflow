@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -316,7 +317,7 @@ struct HloLegalizeToMemrefPass
     OwningRewritePatternList patterns(&context);
     ConversionTarget target(context);
 
-    BufferizeTypeConverter converter;
+    bufferization::BufferizeTypeConverter converter;
     RemoveSignTypeConverter sign_converter;
 
     populateHLOToMemrefConversionPattern(&converter, &sign_converter,
@@ -337,8 +338,8 @@ struct HloLegalizeToMemrefPass
 }  // namespace
 
 void populateHLOToMemrefConversionPattern(
-    BufferizeTypeConverter* converter, RemoveSignTypeConverter* sign_converter,
-    OwningRewritePatternList* patterns,
+    bufferization::BufferizeTypeConverter* converter,
+    RemoveSignTypeConverter* sign_converter, OwningRewritePatternList* patterns,
     std::function<bool(Operation*)> enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
   patterns->insert<HloToMemrefDynamicBroadcastInDimOpConverter>(

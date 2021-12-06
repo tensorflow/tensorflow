@@ -180,6 +180,13 @@ absl::Status ClOperation::UpdateParams() {
   return absl::OkStatus();
 }
 
+void ClOperation::SetWorkGroupSize(const int3& work_group_size) {
+  operation_->work_group_size_ = work_group_size;
+  operation_->work_groups_count_ = GetWorkGroupsCount(
+      operation_->grid_dimension_, operation_->grid_size_,
+      operation_->work_group_size_, operation_->work_group_launch_order_);
+}
+
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->code_ =
       GetCommonOpenCLDefines(operation_->definition_.precision) +

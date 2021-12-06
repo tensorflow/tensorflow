@@ -155,6 +155,7 @@ add_mlir_library(MhloToStandard
   MLIRhlo_opsIncGen
   MLIRlhlo_opsIncGen
   MLIRMhloLegalizeToStandardIncGen
+  MLIRMhloPassIncGen
   MhloTypeConversion
 
   LINK_COMPONENTS
@@ -206,6 +207,7 @@ add_mlir_library(LmhloPasses
 
   DEPENDS
   MLIRlhlo_opsIncGen
+  MLIRMhloPassIncGen
 
   LINK_COMPONENTS
   Core

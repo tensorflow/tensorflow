@@ -81,6 +81,19 @@ class InferenceContext {
     //   3) Layout must be without Batch dimension if tensor.shape.b == 1
     //      Layout must be with Batch dimension if tensor.shape.b != 1
     std::map<ValueId, TensorDescriptor> preallocated;
+
+    // User can provide immutable external tensors for inference context.
+    // Some restrictions apply:
+    //   1) ValueId must be input or output id of GraphFloat32
+    //   2) Provided ptrs must be valid during life of InferenceContext.
+    //   3) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+    //      for example for precision F16, data_type must be FLOAT16
+    //   4) Layout must be without Batch dimension if tensor.shape.b == 1
+    //      Layout must be with Batch dimension if tensor.shape.b != 1
+    // InitFromGraph will fail if gpu can not allocate tensor with requested
+    // tensor descriptor
+    // WARNING: This is an experimental API and subject to change.
+    absl::flat_hash_map<ValueId, GpuSpatialTensor*> external_immutable_tensors;
   };
 
   struct GpuModel {
@@ -165,7 +178,7 @@ class InferenceContext {
     kBuffer,
     kVariable,
     kConst,
-    kPreallocated
+    kExternal
   };
 
   absl::Status CompileOperations(MetalDevice* device);
@@ -192,6 +205,7 @@ class InferenceContext {
   std::vector<ValueId> output_ids_;
   std::map<ValueId, MetalSpatialTensor> preallocated_tensors_;
 
+  absl::flat_hash_map<ValueId, MetalSpatialTensor*> external_immutable_tensors_;
   absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
   std::map<ValueId, MetalSpatialTensor> const_tensors_;
 

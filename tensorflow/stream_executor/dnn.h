@@ -25,8 +25,10 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 #include "google/protobuf/wrappers.pb.h"
 #include "absl/types/optional.h"
@@ -783,12 +785,12 @@ class AlgorithmDesc {
   typedef int64_t Index;
   AlgorithmDesc() : AlgorithmDesc(0, false, absl::nullopt) {}
   explicit AlgorithmDesc(AlgorithmProto proto) : proto_(std::move(proto)) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops)
-      : AlgorithmDesc(a, use_tensor_ops, absl::nullopt) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops,
+  AlgorithmDesc(Index algo_id, bool use_tensor_ops)
+      : AlgorithmDesc(algo_id, use_tensor_ops, absl::nullopt) {}
+  AlgorithmDesc(Index algo_id, bool use_tensor_ops,
                 absl::optional<uint64_t> workspace_size) {
     proto_.set_is_cudnn_frontend(false);
-    proto_.set_algo_id(a);
+    proto_.set_algo_id(algo_id);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
     if (workspace_size) {

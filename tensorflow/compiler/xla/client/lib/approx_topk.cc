@@ -260,6 +260,12 @@ StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     return InvalidArgument("recall_target should range in (0,1]");
   }
 
+  // Need to handle 1.0 explicitly, otherwise we would encounter division by
+  // log(1.0) = 0 issue.
+  if (recall_target == 1.0) {
+    return std::pair<int64_t, int64_t>(input_size, 0);
+  }
+
   if (input_size_override >= 0) {
     if (input_size > input_size_override) {
       return InvalidArgument(
@@ -286,8 +292,10 @@ StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
   //
   //   => M = (1 - K)/LOG(recall)
   uint64_t m = std::min<uint64_t>(
-      std::max(static_cast<uint64_t>((1.0 - top_k) / std::log(recall_target)),
-               tpu_tiling),
+      std::max(
+          static_cast<uint64_t>((1.0 - top_k) /
+                                std::log(static_cast<double>(recall_target))),
+          tpu_tiling),
       input_size);
   uint32_t log2_reduction = log2_floor(logical_input_size / m);
   if (log2_reduction == 0) {

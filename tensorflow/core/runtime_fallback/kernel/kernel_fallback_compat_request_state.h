@@ -33,7 +33,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tfd {
 
-class OpKernelRunnerCache;
 class OpKernelRunnerTable;
 
 // FallbackResourceArray holds the tensors that are computed only once during

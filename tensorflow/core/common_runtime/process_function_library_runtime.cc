@@ -1055,10 +1055,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
           dev_set->FindDeviceByName(target)->device_type();
       Graph* subgraph = pair.second.get();
 
+      bool ints_on_device =
+          (device_type == "TPU" || device_type == "XLA_CPU" ||
+           device_type == "XLA_GPU" || options.int_args_and_retvals_on_device);
       status->Update(UpdateArgAndRetvalMetadata(
-          subgraph, device_type, &comp_data->arg_indices,
-          &comp_data->ret_indices, &comp_data->arg_alloc_attrs,
-          &comp_data->ret_alloc_attrs));
+          subgraph, &comp_data->arg_indices, &comp_data->ret_indices,
+          &comp_data->arg_alloc_attrs, &comp_data->ret_alloc_attrs,
+          ints_on_device));
       if (!status->ok()) {
         counter.DecrementCount();
         return;
@@ -1300,6 +1303,7 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
             run_status.error_message());
+        if (opts.rendezvous != nullptr) opts.rendezvous->StartAbort(run_status);
         return errors::CreateWithUpdatedMessage(run_status, function_and_msg);
       } else {
         VLOG(2) << "Component function execution succeeded.";

@@ -472,10 +472,11 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class TensorTypeTest(test_util.TensorFlowTestCase):
+class TensorTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  def testEqualTypes(self):
-    signature_context = function_trace_type.SignatureContext(False)
+  @parameterized.parameters([True, False])
+  def testEqualTypes(self, shape_relaxation):
+    signature_context = function_trace_type.SignatureContext(shape_relaxation)
     type_1 = ops.TensorType(signature_context,
                             tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
                             None)
@@ -488,8 +489,9 @@ class TensorTypeTest(test_util.TensorFlowTestCase):
     self.assertTrue(type_2.is_subtype_of(type_1))
     self.assertTrue(type_1.is_subtype_of(type_2))
 
-  def testDtypeMismatch(self):
-    signature_context = function_trace_type.SignatureContext(False)
+  @parameterized.parameters([True, False])
+  def testDtypeMismatch(self, shape_relaxation):
+    signature_context = function_trace_type.SignatureContext(shape_relaxation)
     type_1 = ops.TensorType(signature_context,
                             tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
                             None)
@@ -500,8 +502,9 @@ class TensorTypeTest(test_util.TensorFlowTestCase):
     self.assertFalse(type_2.is_subtype_of(type_1))
     self.assertFalse(type_1.is_subtype_of(type_2))
 
-  def testSubtypeOfShapeless(self):
-    signature_context = function_trace_type.SignatureContext(False)
+  @parameterized.parameters([True, False])
+  def testSubtypeOfShapeless(self, shape_relaxation):
+    signature_context = function_trace_type.SignatureContext(shape_relaxation)
     type_1 = ops.TensorType(signature_context, tensor_shape.TensorShape(None),
                             dtypes.float32, None)
     type_2 = ops.TensorType(signature_context,

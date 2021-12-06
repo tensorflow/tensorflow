@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DUMP_H_
 
 #include "absl/strings/string_view.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
@@ -65,6 +66,14 @@ void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
                              absl::string_view file_prefix,
                              absl::string_view file_suffix,
                              absl::string_view contents);
+
+// Writes the given op to a file in the xla_dump_to directory specified by
+// module's DebugOptions. Sets the op's source locations to that file.
+//
+// If module doesn't have an xla_dump_to directory, does nothing.
+void DumpToFileInDirOrStdout(const HloModule& module,
+                             absl::string_view file_prefix,
+                             mlir::Operation* op);
 
 // Dumps the given execution options if dumping is enabled. Exactly
 // where and in what formats it's dumped is determined by the debug options.
