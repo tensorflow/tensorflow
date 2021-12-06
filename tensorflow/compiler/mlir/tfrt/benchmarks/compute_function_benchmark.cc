@@ -309,5 +309,48 @@ BM(Cpurt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
 BM(CpurtV(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
 BM(Tfrt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
 
+static const char* const mlir_factorized3 = R"(
+  func @compute(%arg0: tensor<?x1xf32>,
+                %arg1: tensor<1xf32>,
+                %arg2: tensor<?x1xf32>,
+                %arg3: tensor<1xf32>) -> tensor<?x1xf32> {
+    %cst = "tf.Const"()
+         {value = dense<-1.956890e+00> : tensor<f32>,
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : () -> tensor<f32>
+    %0 = "tf.BiasAdd"(%arg0, %arg1)
+         {data_format = "NHWC",
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<?x1xf32>, tensor<1xf32>) -> tensor<?x1xf32>
+    %1 = "tf.BiasAdd"(%arg2, %arg3)
+         {data_format = "NHWC",
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<?x1xf32>, tensor<1xf32>) -> tensor<?x1xf32>
+    %2 = "tf.AddV2"(%0, %1)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<?x1xf32>, tensor<?x1xf32>) -> tensor<?x1xf32>
+    %3 = "tf.AddV2"(%2, %cst)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+    %4 = "tf.Sigmoid"(%3)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<?x1xf32>) -> tensor<?x1xf32>
+    return %4 : tensor<?x1xf32>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsFactorized3() {
+  return {
+      InputTensorSpec(DT_FLOAT, {128000, 1}),  // %arg0
+      InputTensorSpec(DT_FLOAT, {1}),          // %arg1
+      InputTensorSpec(DT_FLOAT, {128000, 1}),  // %arg2
+      InputTensorSpec(DT_FLOAT, {1}),          // %arg3
+  };
+}
+
+BM(Cpurt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
+BM(CpurtV(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
+BM(Tfrt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
+
 }  // namespace
 }  // namespace tensorflow
