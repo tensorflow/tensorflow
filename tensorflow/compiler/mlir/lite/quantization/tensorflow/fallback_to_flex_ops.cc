@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -31,92 +32,97 @@ constexpr char kFlexOpNamePrefix[] = "Flex";
 constexpr char kDefaultMode[] = "DEFAULT";
 constexpr char kLegacyIntegerMode[] = "LEGACY_INTEGER";
 
-// Checks if the operation is allowlisted in the Legacy Integer mode.
-bool IsAllowListedOpInLegacyMode(Operation *op) {
-  if (llvm::isa<
-          // clang-format off
-          // go/keep-sorted start
-          TF::AbsOp,
-          TF::AddOp,
-          TF::AddV2Op,
-          TF::ArgMaxOp,
-          TF::AvgPoolOp,
-          TF::BiasAddOp,
-          TF::BucketizeOp,
-          TF::ConcatV2Op,
-          TF::ConstOp,
-          TF::Conv2DBackpropInputOp,
-          TF::Conv2DOp,
-          TF::DepthwiseConv2dNativeOp,
-          TF::FakeQuantWithMinMaxVarsOp,
-          TF::FakeQuantWithMinMaxVarsPerChannelOp,
-          TF::GatherV2Op,
-          TF::IdentityOp,
-          TF::MatMulOp,
-          TF::MaxPoolOp,
-          TF::MaximumOp,
-          TF::MeanOp,
-          TF::MinimumOp,
-          TF::MulOp,
-          TF::PadOp,
-          TF::PadV2Op,
-          TF::PartitionedCallOp,
-          TF::Relu6Op,
-          TF::ReluOp,
-          TF::ReshapeOp,
-          TF::SoftmaxOp,
-          TF::StatefulPartitionedCallOp,
-          TF::SubOp,
-          TF::TransposeOp
-          // go/keep-sorted end
-          // clang-format on
-          >(op)) {
-    return true;
-  }
-  return false;
+// Checks if the operation is TF FakeQuant ops.
+bool IsTfFakeQuantOp(Operation *op) {
+  return llvm::isa<
+      // clang-format off
+      TF::FakeQuantWithMinMaxArgsOp,
+      TF::FakeQuantWithMinMaxVarsOp,
+      TF::FakeQuantWithMinMaxVarsPerChannelOp
+      // clang-format on
+      >(op);
 }
 
-// Checks if the operation is allowlisted in the Default mode.
-bool IsAllowListedOpInDefaultMode(Operation *op) {
-  if (llvm::isa<
-          // clang-format off
-          // go/keep-sorted start
-          TF::BiasAddOp,
-          TF::ConstOp,
-          TF::Conv2DBackpropInputOp,
-          TF::Conv2DOp,
-          TF::DepthwiseConv2dNativeOp,
-          TF::FakeQuantWithMinMaxVarsOp,
-          TF::FakeQuantWithMinMaxVarsPerChannelOp,
-          TF::IdentityOp,
-          TF::MatMulOp,
-          TF::PartitionedCallOp,
-          TF::Relu6Op,
-          TF::ReluOp,
-          TF::StatefulPartitionedCallOp
-          // go/keep-sorted end
-          // clang-format on
-          >(op)) {
-    return true;
-  }
-  return false;
+// Checks if the operation is allowlisted in both modes. These ops are not
+// quantizable but is necessary to make the conversion successful.
+bool IsAlwaysAllowlistedOp(Operation *op) {
+  return llvm::isa<
+      // clang-format off
+      // go/keep-sorted start
+      TF::ConstOp,
+      TF::IdentityOp,
+      TF::PartitionedCallOp,
+      TF::StatefulPartitionedCallOp
+      // go/keep-sorted end
+      // clang-format on
+      >(op);
+}
+
+// Checks if the operation is quantizable in the Legacy Integer mode.
+bool IsQuantizableOpInLegacyMode(Operation *op) {
+  return llvm::isa<
+      // clang-format off
+      // go/keep-sorted start
+      TF::AbsOp,
+      TF::AddOp,
+      TF::AddV2Op,
+      TF::ArgMaxOp,
+      TF::AvgPoolOp,
+      TF::BiasAddOp,
+      TF::BucketizeOp,
+      TF::ConcatV2Op,
+      TF::Conv2DBackpropInputOp,
+      TF::Conv2DOp,
+      TF::DepthwiseConv2dNativeOp,
+      TF::GatherV2Op,
+      TF::MatMulOp,
+      TF::MaxPoolOp,
+      TF::MaximumOp,
+      TF::MeanOp,
+      TF::MinimumOp,
+      TF::MulOp,
+      TF::PadOp,
+      TF::PadV2Op,
+      TF::Relu6Op,
+      TF::ReluOp,
+      TF::ReshapeOp,
+      TF::SoftmaxOp,
+      TF::SubOp,
+      TF::TransposeOp
+      // go/keep-sorted end
+      // clang-format on
+      >(op);
+}
+
+// Checks if the operation is quantizable in the Default mode.
+bool IsQuantizableOpInDefaultMode(Operation *op) {
+  return llvm::isa<
+      // clang-format off
+      // go/keep-sorted start
+      TF::BiasAddOp,
+      TF::Conv2DBackpropInputOp,
+      TF::Conv2DOp,
+      TF::DepthwiseConv2dNativeOp,
+      TF::MatMulOp,
+      TF::Relu6Op,
+      TF::ReluOp
+      // go/keep-sorted end
+      // clang-format on
+      >(op);
 }
 
 // Checks if the operation can be fused with bias.
 inline bool IsFusibleWithBiasOp(Operation *op) {
-  if (llvm::isa<
-          // clang-format off
-          TF::MatMulOp,
-          TF::Conv2DOp,
-          TF::DepthwiseConv2dNativeOp,
-          TF::Conv2DBackpropInputOp,
-          TF::Conv3DOp,
-          TF::Conv3DBackpropInputV2Op
-          // clang-format on
-          >(op)) {
-    return true;
-  }
-  return false;
+  return llvm::isa<
+      // clang-format off
+      TF::MatMulOp,
+      TF::Conv2DOp,
+      TF::DepthwiseConv2dNativeOp,
+      TF::Conv2DBackpropInputOp,
+      TF::Conv3DOp,
+      TF::Conv3DBackpropInputV2Op
+      // clang-format on
+      >(op);
 }
 
 // If the Add op can be fused as bias, converts it to BiasAdd op.
@@ -213,10 +219,12 @@ class FallbackToFlexOps : public PassWrapper<FallbackToFlexOps, FunctionPass> {
 
   // Checks if the operation is allowlisted in the current mode.
   bool IsAllowListedOp(Operation *op) {
-    if (mode_ == kDefaultMode) {
-      return IsAllowListedOpInDefaultMode(op);
+    if (IsAlwaysAllowlistedOp(op) || IsTfFakeQuantOp(op)) {
+      return true;
+    } else if (mode_ == kDefaultMode) {
+      return IsQuantizableOpInDefaultMode(op);
     } else if (mode_ == kLegacyIntegerMode) {
-      return IsAllowListedOpInLegacyMode(op);
+      return IsQuantizableOpInLegacyMode(op);
     } else {
       mlir::emitError(getFunction().getLoc(), "Unregconized mode: " + mode_);
       signalPassFailure();
