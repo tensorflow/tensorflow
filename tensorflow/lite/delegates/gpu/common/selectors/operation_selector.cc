@@ -330,6 +330,11 @@ absl::Status GPUOperationFromNodePart0(
           gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
           *gpu_op =
               SelectConvolution(attr, output_shape, gpu_info, op_def, hints);
+          uint64_t dst_elements =
+              output_shape.b * output_shape.h * output_shape.w * output_shape.c;
+          // 2 flops per element, we have for every element multiply and add
+          (*gpu_op)->flops_ = dst_elements * attr.weights.shape.i *
+                              attr.weights.shape.w * attr.weights.shape.h * 2;
           return absl::OkStatus();
         }
       } else {

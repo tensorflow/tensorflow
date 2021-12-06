@@ -160,6 +160,9 @@ class GPUOperation {
   // applicable only with elementwise_ = true;
   bool check_src_channels_size_ = false;
 
+  // for profiling
+  uint64_t flops_ = 0;
+
  protected:
   friend class cl::ClOperation;
   friend class gl::GlOperation;

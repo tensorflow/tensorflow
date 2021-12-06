@@ -823,6 +823,7 @@ absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
   op->elementwise_ = fb_op->elementwise();
   op->linkable_ = fb_op->linkable();
   op->check_src_channels_size_ = fb_op->check_src_channels_size();
+  op->flops_ = fb_op->flops();
   Decode(fb_op->definition(), &op->definition_);
   op->grid_dimension_ = fb_op->grid_dimension();
   op->work_group_launch_order_.x = fb_op->work_group_launch_order()->x();
@@ -876,6 +877,7 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   op_builder.add_elementwise(op.elementwise_);
   op_builder.add_linkable(op.linkable_);
   op_builder.add_check_src_channels_size(op.check_src_channels_size_);
+  op_builder.add_flops(op.flops_);
   op_builder.add_definition(def_fb);
   op_builder.add_grid_dimension(op.grid_dimension_);
   op_builder.add_work_group_launch_order(work_group_launch_order_fb);
