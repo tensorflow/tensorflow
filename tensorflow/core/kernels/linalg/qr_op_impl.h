@@ -237,16 +237,9 @@ class QrOpGpu : public AsyncOpKernel {
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-<<<<<<< HEAD
-            solver->Geam(transa, transb, n,
-                         full_matrices_ ? m : min_size, &alpha,
-                         &input_transposed_reshaped(batch, 0, 0), m, &beta,
-                         dummy, n, &r_reshaped(batch, 0, 0), n),
-=======
             solver->Geam(transa, transb, n, full_matrices_ ? m : min_size,
                          &alpha, &input_transposed_reshaped(batch, 0, 0), m,
                          &beta, dummy, n, &r_reshaped(batch, 0, 0), n),
->>>>>>> google_upstream/master
             done);
       }
     }
