@@ -844,6 +844,7 @@ absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
   op->work_groups_count_.y = fb_op->work_groups_count()->y();
   op->work_groups_count_.z = fb_op->work_groups_count()->z();
   op->linkable_count_ = fb_op->linkable_count();
+  op->CalculateConstArgsSize();
   return absl::OkStatus();
 }
 

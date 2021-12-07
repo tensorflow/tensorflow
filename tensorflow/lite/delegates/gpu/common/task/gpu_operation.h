@@ -162,6 +162,11 @@ class GPUOperation {
 
   // for profiling
   uint64_t flops_ = 0;
+  // size in bytes of constant gpu_objects inside args_
+  uint64_t const_args_size_ = 0;
+
+  // Must be called before const generic objects in args_ released.
+  void CalculateConstArgsSize();
 
  protected:
   friend class cl::ClOperation;

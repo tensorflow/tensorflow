@@ -1053,14 +1053,15 @@ absl::Status InferenceContext::Profile(ProfilingCommandQueue* queue,
     for (auto& src_id : nodes_[i].inputs) {
       read_size += GetTensor(src_id)->GetMemorySizeInBytes();
     }
+    const auto& gpu_op = nodes_[i].cl_operation.GetGpuOperation();
+    read_size += gpu_op.const_args_size_;
     uint64_t write_size = 0;
     for (auto& dst_id : nodes_[i].outputs) {
       write_size += GetTensor(dst_id)->GetMemorySizeInBytes();
     }
+    result->dispatches[i].flops = gpu_op.flops_;
     result->dispatches[i].read_mem_size = read_size;
     result->dispatches[i].write_mem_size = write_size;
-    const auto& gpu_op = nodes_[i].cl_operation.GetGpuOperation();
-    result->dispatches[i].flops = gpu_op.flops_;
   }
 
   return absl::OkStatus();
