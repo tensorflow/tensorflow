@@ -1612,9 +1612,6 @@ TfLiteStatus ParseMinimum(const Operator*, ErrorReporter*,
   return kTfLiteOk;
 }
 
-// We have this parse function instead of directly returning kTfLiteOk from the
-// switch-case in ParseOpData because this function is used as part of the
-// selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseMirrorPad(const Operator* op, ErrorReporter* error_reporter,
                             BuiltinDataAllocator* allocator,
                             void** builtin_data) {
