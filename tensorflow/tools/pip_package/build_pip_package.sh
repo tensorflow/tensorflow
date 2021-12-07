@@ -219,7 +219,6 @@ function prepare_src() {
   # TODO(b/150440817): support autocomplete for tf.keras
   # Copy over keras API folder to the root directory
   # so that autocomplete works as expected for all keras subimports.
-
   # if [ -d "${TMPDIR}/tensorflow/_api/v1/" ]
   # then
   #   cp -r ${TMPDIR}/tensorflow/python/keras/api/_v1/keras/ ${TMPDIR}/tensorflow/keras/
