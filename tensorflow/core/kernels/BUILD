@@ -6190,7 +6190,6 @@ filegroup(
         "sendrecv_ops.cc",
         "sendrecv_ops.h",
         "sequence_ops.cc",
-        "sequence_ops.h",
         "shape_ops.cc",
         "shape_ops.h",
         "slice_op.cc",
