@@ -118,7 +118,6 @@ pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs);
 template <typename T>
 std::vector<T> IterableToVector(const pybind11::iterable& iterable) {
   std::vector<T> output;
-  output.reserve(std::distance(iterable.begin(), iterable.end()));
   for (auto item : iterable) {
     output.push_back(item.cast<T>());
   }
