@@ -38,7 +38,7 @@ cc_library(
         "//tensorflow/core/common_runtime:function",
         "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/common_runtime:function_optimization_registry",
-        "//tensorflow/core/common_runtime:optimization_registry",
+        "//tensorflow/core/common_runtime:lower_functional_ops",
         "//tensorflow/core/common_runtime:placer",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/grappler:grappler_item",
