@@ -18,6 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_IMPL_H_
 #define TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_IMPL_H_
 
+#include <cstdint>
+
+#include "tensorflow/core/platform/types.h"
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
@@ -474,6 +477,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
                                         bool is_mean, bool is_sqrtn,
                                         bool has_num_segments, T default_value)
       : OpKernel(context),
+        dtidx_(DataTypeToEnum<Index>::v()),
         is_mean_(is_mean),
         is_sqrtn_(is_sqrtn),
         has_num_segments_(has_num_segments),
@@ -503,10 +507,20 @@ class SparseSegmentReductionOpBase : public OpKernel {
     const auto segment_vec = segment_ids.vec<SegmentId>();
     // Note that the current implementation assumes that segment_vec values are
     // sorted.
+    const SegmentId last_segment_id =
+        num_indices > 0 ? segment_vec(num_indices - 1) : 0;
+    int64_t limit = dtidx_ == DataType::DT_INT32 ? kint32max : kint64max;
+
+    OP_REQUIRES(
+        context, last_segment_id < limit,
+        errors::InvalidArgument("Last segment id must be < kintmax, got ",
+                                last_segment_id, " limit ", limit));
+
     const SegmentId last_segment_id_plus_one =
         num_indices > 0
             ? internal::SubtleMustCopy(segment_vec(num_indices - 1)) + 1
             : 0;
+
     if (has_num_segments_) {
       OP_REQUIRES(
           context, output_rows >= last_segment_id_plus_one,
@@ -518,7 +532,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
                 errors::InvalidArgument("segment ids must be >= 0"));
 
     TensorShape output_shape = input.shape();
-    output_shape.set_dim(0, output_rows);
+    OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(0, output_rows));
 
     // Note that we do not initialize the output buffer with a default value, so
     // we need to explicitly set missing indices to the default value.
@@ -605,6 +619,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
   }
 
  private:
+  const DataType dtidx_;
   template <typename Tin>
   using EnableIfBfloat16OrHalf =
       typename std::enable_if<std::is_same<Tin, bfloat16>::value ||
