@@ -127,6 +127,7 @@ cc_library(
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":common",
         ":flags",
         ":jit_compilation_passes",
         ":xla_device",
@@ -153,6 +154,7 @@ cc_library(
     srcs = ["xla_gpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":common",
         ":flags",
         ":jit_compilation_passes",
         ":xla_device",
