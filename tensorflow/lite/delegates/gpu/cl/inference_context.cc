@@ -275,7 +275,7 @@ absl::Status ReserveGraphTensors(
 absl::Status ConvertOperations(
     const GpuInfo& gpu_info, const GraphFloat32& graph,
     const InferenceContext::CreateInferenceInfo& create_info,
-    TensorReserver* tensor_reserver, InferenceContext::GpuModel* gpu_model) {
+    TensorReserver* tensor_reserver, GpuModel* gpu_model) {
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
   const auto values = graph.values();
   for (auto value : values) {
@@ -385,7 +385,7 @@ absl::Status ConvertOperations(
   return absl::OkStatus();
 }
 
-absl::Status Merge(InferenceContext::GpuModel* gpu_model) {
+absl::Status Merge(GpuModel* gpu_model) {
   absl::flat_hash_set<ValueId> ready_tensors;
   for (const auto& input : gpu_model->input_ids_and_refs) {
     ready_tensors.insert(input.first);
@@ -432,8 +432,7 @@ absl::Status Merge(InferenceContext::GpuModel* gpu_model) {
   return absl::OkStatus();
 }
 
-void CopyExternals(const GraphFloat32& graph,
-                   InferenceContext::GpuModel* gpu_model) {
+void CopyExternals(const GraphFloat32& graph, GpuModel* gpu_model) {
   const auto inputs = graph.inputs();
   for (const auto& value : inputs) {
     gpu_model->input_ids_and_refs.push_back({value->id, value->tensor.ref});
@@ -453,7 +452,7 @@ void CopyExternals(const GraphFloat32& graph,
 // Serialized model will lose polymorphic properties for GpuOperations.
 // Here we will retrieve some information needed for generic execution of
 // GpuOperations. Specifically, BindArguments must be executed.
-absl::Status ResolvePolymorphicArgs(InferenceContext::GpuModel* gpu_model) {
+absl::Status ResolvePolymorphicArgs(GpuModel* gpu_model) {
   class DummySpatialTensor : public GpuSpatialTensor {
    public:
     DummySpatialTensor() = default;
@@ -497,8 +496,7 @@ absl::Status ResolvePolymorphicArgs(InferenceContext::GpuModel* gpu_model) {
 
 absl::Status GraphToGpuModel(
     const InferenceContext::CreateInferenceInfo& create_info,
-    const GraphFloat32& graph, const GpuInfo& gpu_info,
-    InferenceContext::GpuModel* gpu_model) {
+    const GraphFloat32& graph, const GpuInfo& gpu_info, GpuModel* gpu_model) {
   TensorReserver tensor_reserver;
   RETURN_IF_ERROR(
       ReserveGraphTensors(create_info, gpu_info, graph, &tensor_reserver));
