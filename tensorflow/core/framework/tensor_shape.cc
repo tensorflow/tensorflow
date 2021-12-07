@@ -46,8 +46,8 @@ void TensorShape::CheckDimsEqual(int NDIMS) const {
                           << " from a tensor of " << dims() << " dimensions";
 }
 
-void TensorShape::CheckDimsAtLeast(int NDIMS) const {
-  CHECK_GE(NDIMS, dims()) << "Asking for tensor of at least " << NDIMS
+void TensorShape::CheckDimsAtMost(int NDIMS) const {
+  CHECK_GE(NDIMS, dims()) << "Asking for tensor of at most " << NDIMS
                           << " dimensions from a tensor of " << dims()
                           << " dimensions";
 }
