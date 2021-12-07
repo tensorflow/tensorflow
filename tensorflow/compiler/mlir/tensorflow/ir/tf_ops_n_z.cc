@@ -3442,9 +3442,24 @@ static LogicalResult Verify(XlaVariadicSortOp op) {
 
 static LogicalResult Verify(SetStaticDimensionBoundsOp op) {
   mlir::ShapedType input_type = op.input().getType().cast<mlir::ShapedType>();
-  if (input_type.hasRank() && input_type.getRank() > 2) {
+  mlir::ShapedType static_shape_type =
+      op.static_shape().getType().cast<mlir::ShapedType>();
+  int input_type_rank = input_type.hasRank() ? input_type.getRank() : -1;
+  if (input_type_rank > 2) {
     return op.emitOpError() << "was used with an input tensor with rank > 2, "
                                "only tensors of rank 1,2 are supported";
+  }
+
+  if (!static_shape_type.hasRank() || static_shape_type.getRank() != 1) {
+    return op.emitOpError(
+        "static shape must be a ranked tensor of rank 1 (vector)");
+  }
+  if (input_type_rank != -1 && static_shape_type.hasStaticShape()) {
+    if (static_shape_type.getShape()[0] != input_type_rank) {
+      return op.emitOpError(
+          "static shape must have num_elements == rank of input "
+          "tensor");
+    }
   }
 
   return success();
