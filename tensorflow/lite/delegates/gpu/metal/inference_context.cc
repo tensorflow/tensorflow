@@ -205,7 +205,7 @@ absl::Status ReserveGraphTensors(
             "Currently external tensors can be used only for graph "
             "inputs/outputs");
       }
-      // tensor_desc = it_immutable_external->second->GetDescriptor();
+      tensor_desc = it_immutable_external->second->GetDescriptor();
       RETURN_IF_ERROR(CheckExternalTensorDescription(gpu_info, tensor_desc,
                                                      shape, data_type));
     } else if (it_mutable_external != create_info.preallocated.end()) {
