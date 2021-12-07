@@ -316,6 +316,21 @@ void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
   LOG(FATAL) << "Node " << node_name << " not found in any engine.";
 }
 
+tensorflow::TensorShapeProto ComputeTRTNodeIOShape(
+    std::vector<PartialTensorShape>& partial_tensorshape_vect,
+    std::vector<tensorflow::TensorShapeProto>& shape_proto_vect,
+    const PartialTensorShape& conn_shape, int port_number) {
+  tensorflow::TensorShapeProto tmp_shape_proto;
+  conn_shape.AsProto(&tmp_shape_proto);
+
+  if (partial_tensorshape_vect.size() <= port_number) {
+    shape_proto_vect.resize(port_number + 1);
+    partial_tensorshape_vect.resize(port_number + 1);
+  }
+
+  return tmp_shape_proto;
+}
+
 // Function to insert a TRT engine node into the graph.
 // Create engine nodes in the following way:
 // 1. Each invocation of CreateTRTNode creates an engine node for infos[pos]
@@ -334,7 +349,9 @@ Status CreateTRTNode(const ConversionParams& params,
                      std::vector<Node*>* engine_nodes) {
   const auto& info = infos.at(pos);
   std::vector<tensorflow::TensorShapeProto> input_shape_protos;
+  std::vector<tensorflow::TensorShapeProto> output_shape_protos;
   std::vector<PartialTensorShape> input_shapes;
+  std::vector<PartialTensorShape> output_shapes;
   std::vector<NodeDefBuilder::NodeOut> inputs;
   std::vector<Node*> input_nodes;
   std::vector<Node*> control_input_nodes;
@@ -367,19 +384,33 @@ Status CreateTRTNode(const ConversionParams& params,
     } else {
       // Data edges
       if (!conn.is_input_edge) {
-        // Set the data types of output edge.
+        // Set the shapes and data types of the output edge.
+        tensorflow::TensorShapeProto out_shape = ComputeTRTNodeIOShape(
+            /*partial_tensorshape_vect=*/output_shapes,
+            /*shape_proto_vect=*/output_shape_protos,
+            /*conn_shape=*/conn.inside_shape,
+            /*port_number=*/conn.port_number);
+
+        output_shape_protos.at(conn.port_number) = out_shape;
+        output_shapes.at(conn.port_number) = conn.inside_shape;
+
         if (out_types.size() <= conn.port_number) {
           out_types.resize(conn.port_number + 1);
         }
         out_types.at(conn.port_number) = conn.connection_type;
+        VLOG(2) << "Collected output shape "
+                << output_shape_protos.at(conn.port_number).DebugString();
       } else {
-        // Set the shapes and data types of input edge.
-        if (input_shapes.size() <= conn.port_number) {
-          input_shape_protos.resize(conn.port_number + 1);
-          input_shapes.resize(conn.port_number + 1);
-        }
-        conn.outside_shape.AsProto(&input_shape_protos.at(conn.port_number));
+        // Set the shapes of the input edge.
+        tensorflow::TensorShapeProto in_shape = ComputeTRTNodeIOShape(
+            /*partial_tensorshape_vect=*/input_shapes,
+            /*shape_proto_vect=*/input_shape_protos,
+            /*conn_shape=*/conn.outside_shape,
+            /*port_number=*/conn.port_number);
+
+        input_shape_protos.at(conn.port_number) = in_shape;
         input_shapes.at(conn.port_number) = conn.outside_shape;
+
         // Shape must be fully defined (excluding batch dimension) for static
         // mode.
         if (params.use_implicit_batch &&
@@ -452,7 +483,9 @@ Status CreateTRTNode(const ConversionParams& params,
   NodeDef trt_node;
   NameAttrList function;
   function.set_name(StrCat(info.engine_name, "_native_segment"));
+
   node_builder.Attr("input_shapes", input_shape_protos)
+      .Attr("output_shapes", output_shape_protos)
       .Attr("static_engine",
             info.engine_type == EngineInfo::EngineType::TRTStatic)
       .Attr("segment_func", function)
@@ -474,6 +507,7 @@ Status CreateTRTNode(const ConversionParams& params,
   }
 
   Status status = node_builder.Finalize(&trt_node);
+
   if (!status.ok()) {
     LOG(ERROR) << "Node construction failed with" << status;
     return status;
