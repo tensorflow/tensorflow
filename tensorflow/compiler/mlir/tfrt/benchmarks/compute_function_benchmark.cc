@@ -352,5 +352,39 @@ BM(Cpurt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
 BM(CpurtV(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
 BM(Tfrt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
 
+static const char* const mlir_factorized4 = R"(
+func @compute(%arg0: tensor<94367x1xf32>,
+              %arg1: tensor<94367x105xf32>) -> tensor<94367x105xf32> {
+    %cst = "tf.Const"()
+         {value = dense<2.400000e+01> : tensor<f32>,
+          device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : () -> tensor<f32>
+    %0 = "tf.Sqrt"(%arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<94367x1xf32>) -> tensor<94367x1xf32>
+    %1 = "tf.Maximum"(%0, %cst)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<94367x1xf32>, tensor<f32>) -> tensor<94367x1xf32>
+    %2 = "tf.Mul"(%arg1, %cst)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<94367x105xf32>, tensor<f32>) -> tensor<94367x105xf32>
+    %3 = "tf.RealDiv"(%2, %1)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+        : (tensor<94367x105xf32>, tensor<94367x1xf32>) -> tensor<94367x105xf32>
+    return %3 : tensor<94367x105xf32>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsFactorized4() {
+  return {
+      InputTensorSpec(DT_FLOAT, {94367, 1}),    // %arg0
+      InputTensorSpec(DT_FLOAT, {94367, 105}),  // %arg1
+  };
+}
+
+BM(Cpurt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
+BM(CpurtV(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
+BM(Tfrt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
+
 }  // namespace
 }  // namespace tensorflow
