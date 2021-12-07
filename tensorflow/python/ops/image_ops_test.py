@@ -2294,7 +2294,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
       # TODO(b/200850176): test fails with XLA.
       return
     with self.session():
-      with self.assertRaises(errors_impl.InvalidArgumentError):
+      with self.assertRaises(errors_impl.InternalError):
         v = image_ops.pad_to_bounding_box(
             image=np.ones((1, 1, 1)),
             target_height=5191549470,
@@ -3231,7 +3231,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testLargeDim(self):
     with self.session():
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaises(errors.InternalError):
         x = np.ones((5, 1, 1, 2))
         v = image_ops.resize_images_v2(x, [1610637938, 1610637938],
                                        image_ops.ResizeMethod.BILINEAR)
@@ -6106,7 +6106,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testImageCropAndResizeWithInvalidInput(self):
     with self.session():
-      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      with self.assertRaises((errors.InternalError, ValueError)):
         op = image_ops_impl.crop_and_resize_v2(
             image=np.ones((1, 1, 1, 1)),
             boxes=np.ones((11, 4)),
