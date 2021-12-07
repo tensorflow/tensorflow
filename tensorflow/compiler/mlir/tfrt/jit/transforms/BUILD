@@ -50,7 +50,6 @@ cc_library(
         "tf_cpurt_fusion.cc",
         "tf_cpurt_legalize_i1_type.cc",
         "tf_cpurt_math_approximation.cc",
-        "tf_cpurt_pad_tiled_ops.cc",
         "tf_cpurt_passes.cc",
         "tf_cpurt_peel_tiled_loops.cc",
         "tf_cpurt_sink_unused_outputs.cc",

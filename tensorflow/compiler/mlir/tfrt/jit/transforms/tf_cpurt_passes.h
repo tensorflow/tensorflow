@@ -47,9 +47,6 @@ std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateCpuRtLegalizeI1TypesPass();
 
-// Pass to pad linalg ops.
-std::unique_ptr<mlir::FunctionPass> CreatePadTiledOpsPass();
-
 // Pass to sink unused outputs of `tiled_loop` into the loop body.
 std::unique_ptr<mlir::FunctionPass> CreateSinkUnusedOutputs();
 
