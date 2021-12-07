@@ -356,6 +356,7 @@ cc_library(
     hdrs = ["flags.h"],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:dump_graph",
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -373,6 +374,7 @@ cc_library(
     hdrs = ["flags.h"],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:dump_graph",
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

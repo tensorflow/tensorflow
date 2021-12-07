@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -196,6 +197,8 @@ void AllocateAndParseFlags() {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
     return true;
   };
+  // Dump graphs in TFG dialect.
+  bool use_tfg_graph_dumper = false;
 
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_enable_lazy_compilation",
@@ -259,7 +262,10 @@ void AllocateAndParseFlags() {
            "When tf_mlir_enable_mlir_bridge is true, this field can enable "
            "the MLIR bridge's safe mode. When the MLIR bridge is in safe mode, "
            "it only runs for graphs that use features MLIR bridge currently "
-           "supports.")});
+           "supports."),
+       Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
+            "When tf_dump_graphs_in_tfg is true, graphs after transformations "
+            "are dumped in MLIR TFG dialect and not in GraphDef")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -284,6 +290,11 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
+
+  if (use_tfg_graph_dumper) {
+    UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(
+        MlirDumpConfig::Dialect::kTFG));
+  }
 
   AllocateAndParseCpurtFlags();
 }
