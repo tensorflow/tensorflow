@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -501,16 +500,8 @@ Status MutableGraphView::UpdateNode(
     std::vector<string> attr_strs;
     attr_strs.reserve(attrs.size());
     for (const auto& attr : attrs) {
-      std::string attr_second_text;
-      ::tensorflow::protobuf::TextFormat::Printer printer;
-      printer.SetSingleLineMode(true);
-      printer.PrintToString(attr.second, &attr_second_text);
-      if (!attr_second_text.empty() &&
-          attr_second_text[attr_second_text.size() - 1] == ' ') {
-        attr_second_text.resize(attr_second_text.size() - 1);
-      }
-      string attr_str =
-          absl::Substitute("('$0', $1)", attr.first, attr_second_text);
+      string attr_str = absl::Substitute("('$0', $1)", attr.first,
+                                         attr.second.ShortDebugString());
       attr_strs.push_back(attr_str);
     }
     string params =
