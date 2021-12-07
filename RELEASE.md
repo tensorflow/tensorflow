@@ -75,6 +75,15 @@
       layer which applies the hashing trick to the concatenation of crossed
       scalar inputs. This provides a stateless way to try adding feature crosses
       of integer or string data to a model.
+  * `tf.random.Generator` for keras initializers and all RNG code.
+    * Added 3 new APIs for enable/disable/check the usage of
+      `tf.random.Generator` in keras backend, which will be the new backend for
+      all the RNG in Keras. We plan to switch on the new code path by default in
+      tf 2.8, and the behavior change will likely to cause some breakage on user
+      side (eg if the test is checking against some golden nubmer). These 3 APIs
+      will allow user to disable and switch back to legacy behavior if they
+      prefer. In future (eg tf 2.10), we expect to totally remove the legacy
+      code path (stateful random Ops), and these 3 APIs will be removed as well.
 
 # Thanks to our Contributors
 
