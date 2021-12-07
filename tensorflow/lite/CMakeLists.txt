@@ -367,6 +367,7 @@ endif()
   )
 endif()
 if(_TFLITE_ENABLE_NNAPI)
+  find_package(fp16_headers REQUIRED)
   populate_tflite_source_vars("delegates/nnapi"
     TFLITE_DELEGATES_NNAPI_SRCS
     FILTER "(_test_list|_disabled)\\.(cc|h)$"
