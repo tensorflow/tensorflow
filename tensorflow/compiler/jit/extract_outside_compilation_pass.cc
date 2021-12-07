@@ -619,7 +619,7 @@ Status PostprocessLiftedArgsForWhile(
 
   // Add edges from outside compilation nodes to While node.
   std::vector<Node*> outside_compilation_nodes;
-  outside_compilation_attr_to_node.reserve(
+  outside_compilation_nodes.reserve(
           lifted_arg_nodes_and_outside_compilation_nodes.size()
   );
   std::transform(
@@ -1229,7 +1229,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   attrs["_device_ordinal"] = device_ordinal_attr;
   std::unique_ptr<FunctionBody> fbody;
   const FunctionDef* shape_inference_graph =
-          fld->Find(shape_inference_graph_name);
+      fld->Find(shape_inference_graph_name);
   TF_RET_CHECK(shape_inference_graph);
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*shape_inference_graph,
                                              AttrSlice(&attrs), fld, &fbody));
@@ -1334,9 +1334,9 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   // Replace original shape inference graph.
   FunctionDef fdef_replace;
   TF_RETURN_IF_ERROR(
-          GraphToFunctionDef(*g, shape_inference_graph_name, &fdef_replace));
+      GraphToFunctionDef(*g, shape_inference_graph_name, &fdef_replace));
   TF_RETURN_IF_ERROR(
-          fld->ReplaceFunction(shape_inference_graph_name, fdef_replace));
+      fld->ReplaceFunction(shape_inference_graph_name, fdef_replace));
 
   return Status::OK();
 }
