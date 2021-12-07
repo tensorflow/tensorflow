@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/coordination_service.grpc.pb.h"

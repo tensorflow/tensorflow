@@ -19,7 +19,7 @@ namespace tensorflow {
 
 GrpcCoordinationServiceImpl::GrpcCoordinationServiceImpl(
     const WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
-    : env_(env), rpc_handler_(env) {
+    : env_(env) {
   server_builder->RegisterService(&service_);
   cq_ = server_builder->AddCompletionQueue();
 }
