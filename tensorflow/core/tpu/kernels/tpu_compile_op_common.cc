@@ -135,6 +135,8 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
     proto.set_status_code(compile_status.code());
     proto.set_status_error_message(compile_status.error_message());
     status_payload = proto.SerializeAsString();
+    metrics::UpdateTpuErrorCounter("TpuCompileOp",
+                                   error_name(compile_status.code()));
   }
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
                                 TpuCompileInterface::kTpuCompileErrorPayloadKey,
