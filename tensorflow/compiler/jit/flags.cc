@@ -350,7 +350,7 @@ MlirCommonFlags* GetMlirCommonFlags() {
   return mlir_flags;
 }
 
-void ResetMlirCommonFlags() { ResetFlags(); }
+void ResetJitCompilerFlags() { ResetFlags(); }
 
 const CpuRtFlags& GetCpuRtFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
