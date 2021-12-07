@@ -85,12 +85,16 @@ def TFGraphDialect : Dialect {
     // Cached accessor for the control type.
     ControlType getControlType() { return control_ty_; }
 
+    // Print an operation that belongs to this dialect if unregistered.
+    void printCustomTfOp(Operation *op, OpAsmPrinter &printer) const;
+
     // Returns the hook to parse an operation belonging to this dialect, even
     // if unregistered.
     Optional<ParseOpHook> getParseOperationHook(StringRef opName) const
       override;
 
-    // Print an operation that belongs to this dialect if unregistered.
+    // Returns the took to print an operation belonging to this dialect, even
+    // if unregistered.
     llvm::unique_function<void(Operation *, OpAsmPrinter &)>
     getOperationPrinter(Operation *op) const override;
 
