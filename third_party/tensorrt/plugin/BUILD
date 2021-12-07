@@ -47,6 +47,8 @@ cuda_library(
         "plugin/efficientNMSPlugin/efficientNMSPlugin.h",
     ],
     copts = cuda_default_copts(),
+    include_prefix = "third_party/tensorrt/plugin/efficientNMSPlugin",
+    strip_include_prefix = "plugin/efficientNMSPlugin",
     visibility = ["//visibility:public"],
     deps = [
         ":nms_plugin_hdrs",
