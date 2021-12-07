@@ -269,7 +269,7 @@ class GpuSolver {
                       DeviceLapackInfo* dev_lapack_info, int batch_size);
 
   // Computes matrix inverses for a batch of small matrices with size n < 32.
-  // Returns Status::OK() if the kernel was launched successfully.
+  // Returns Status::OK() if the kernel was launched successfully. See:
   template <typename Scalar>
   Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
                        const Scalar* const host_a_inverse_dev_ptrs[],

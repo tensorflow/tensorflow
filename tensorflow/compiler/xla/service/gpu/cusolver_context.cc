@@ -263,7 +263,6 @@ GpuSolverContext::~GpuSolverContext() {
 }
 
 #if !defined(TENSORFLOW_USE_ROCM)
-
 #define CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 

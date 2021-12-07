@@ -309,7 +309,6 @@ struct AvgPoolMeanReducer {
 
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && \
     !defined(__HIPCC__)
-
 #ifdef EIGEN_VECTORIZE_AVX512
 #define pequal(a, b)   \
   _mm512_castsi512_ps( \

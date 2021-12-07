@@ -324,8 +324,8 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
 
     uplo = lower ? CUBLAS_FILL_MODE_UPPER : CUBLAS_FILL_MODE_LOWER;
     trans = adjoint ? CUBLAS_OP_C : CUBLAS_OP_N;
-#elif TENSORFLOW_USE_ROCM
 
+#elif TENSORFLOW_USE_ROCM
     rocblas_side side = rocblas_side_right;
     rocblas_fill uplo;
     rocblas_operation trans;
@@ -341,6 +341,7 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
     uplo = lower ? rocblas_fill_upper : rocblas_fill_lower;
     trans = adjoint ? rocblas_operation_conjugate_transpose
                     : rocblas_operation_none;
+
 #endif
 
     auto solver = absl::make_unique<GpuSolver>(context);
