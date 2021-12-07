@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 
+#include "tensorflow/core/platform/threadpool.h"
+
 namespace tensorflow {
 
 GrpcCoordinationServiceImpl::GrpcCoordinationServiceImpl(
-    const WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
-    : env_(env) {
+    thread::ThreadPool* compute_pool, ::grpc::ServerBuilder* server_builder)
+    : compute_pool_(*compute_pool) {
   server_builder->RegisterService(&service_);
   cq_ = server_builder->AddCompletionQueue();
 }

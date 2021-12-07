@@ -46,7 +46,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
       Call<GrpcCoordinationServiceImpl, grpc::CoordinationService::AsyncService,
            RequestMessage, ResponseMessage>;
 
-  GrpcCoordinationServiceImpl(const WorkerEnv* env,
+  GrpcCoordinationServiceImpl(thread::ThreadPool* compute_pool,
                               ::grpc::ServerBuilder* server_builder);
   ~GrpcCoordinationServiceImpl() override {}
 
@@ -59,7 +59,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
  private:
 #define HANDLER(method)                                                        \
   void method##Handler(CoordCall<method##Request, method##Response>* call) {   \
-    env_->compute_pool->Schedule([this, call]() {                              \
+    compute_pool_.Schedule([this, call]() {                                    \
       rpc_handler_.method##Async(&call->request, &call->response,              \
                                  [call](const Status& s) {                     \
                                    call->ClearCancelCallback();                \
@@ -84,7 +84,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   HANDLER(DeleteKeyValue);
 #undef HANDLER
 
-  const WorkerEnv* const env_;  // Not owned.
+  thread::ThreadPool& compute_pool_;
   CoordinationServiceRpcHandler rpc_handler_;
 
   std::unique_ptr<::grpc::Alarm> shutdown_alarm_;
