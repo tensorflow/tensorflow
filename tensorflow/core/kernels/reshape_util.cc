@@ -23,8 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -99,7 +101,9 @@ void ReshapeSparseTensor(OpKernelContext *context,
                   target_shape_in.shape().DebugString()));
 
   const int64 output_rank = target_shape_in.NumElements();
-  const TensorShape input_shape(input_shape_in.vec<int64>());
+  TensorShape input_shape;
+  OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                              input_shape_in.vec<int64>(), &input_shape));
   const int64 dense_size = input_shape.num_elements();
   const int64 nnz = input_indices_in.shape().dim_size(0);
 
