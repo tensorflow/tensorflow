@@ -47,7 +47,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 
-
 namespace tflite {
 namespace gpu {
 namespace metal {
@@ -212,9 +211,9 @@ class Delegate {
     for (auto& input : graph_inputs_) {
       if (input.tensor_id == tensor_index) {
         if (bphwc4_buffers_[input.id] != buffer) {
-          bphwc_buffers_updated_ = true;
+          bphwc4_buffers_[input.id] = buffer;
+          input.updated = true;
         }
-        bphwc4_buffers_[input.id] = buffer;
         input.set_externally = true;
         return absl::OkStatus();
       }
@@ -222,9 +221,9 @@ class Delegate {
     for (auto& output : graph_outputs_) {
       if (output.tensor_id == tensor_index) {
         if (bphwc4_buffers_[output.id] != buffer) {
-          bphwc_buffers_updated_ = true;
+          bphwc4_buffers_[output.id] = buffer;
+          output.updated = true;
         }
-        bphwc4_buffers_[output.id] = buffer;
         output.set_externally = true;
         return absl::OkStatus();
       }
@@ -370,6 +369,7 @@ class Delegate {
           tensor_id,           // .tensor_id
           input_tensor.shape,  // .shape
           false,               // .set_externally
+          true,                // .updated
       });
 
       // Create BHWC F32 buffer
@@ -396,6 +396,7 @@ class Delegate {
           tensor_id,            // .tensor_id
           output_tensor.shape,  // .shape
           false,                // .set_externally
+          true,                 // .updated
       });
 
       // Create BHWC F32 buffer
@@ -484,9 +485,22 @@ class Delegate {
       [input_encoder endEncoding];
     }
 
-    if (bphwc_buffers_updated_) {
-      inference_context_.UpdatePreallocatedTensors(bphwc4_buffers_);
-      bphwc_buffers_updated_ = false;
+    // Update buffers that may be was updated externaly
+    std::map<ValueId, id<MTLBuffer>> bphwc4_buffers_for_update;
+    for (auto& input : graph_inputs_) {
+      if (input.updated) {
+        bphwc4_buffers_for_update[input.id] = bphwc4_buffers_[input.id];
+        input.updated = false;
+      }
+    }
+    for (auto& output : graph_outputs_) {
+      if (output.updated) {
+        bphwc4_buffers_for_update[output.id] = bphwc4_buffers_[output.id];
+        output.updated = false;
+      }
+    }
+    if (!bphwc4_buffers_for_update.empty()) {
+      inference_context_.UpdatePreallocatedTensors(bphwc4_buffers_for_update);
     }
 
     @autoreleasepool {
@@ -606,7 +620,6 @@ class Delegate {
   // We will memcpy cpu<->gpu and use metal for other conversions(layout changes, for example)
   std::map<ValueId, id<MTLBuffer>> in_out_bhwc_f32_buffers_;
   std::map<ValueId, id<MTLBuffer>> bphwc4_buffers_;
-  bool bphwc_buffers_updated_ = true;
   TFLBufferConvert* converter_to_BPHWC4_ = nil;
   TFLBufferConvert* converter_from_BPHWC4_ = nil;
 
@@ -615,6 +628,7 @@ class Delegate {
     int64_t tensor_id;
     BHWC shape;
     bool set_externally;  // a user fills/retrieves data on this MTLBuffer buffer
+    bool updated;         // buffer was updated by user
   };
   std::vector<BufferDescriptor> graph_inputs_;
   std::vector<BufferDescriptor> graph_outputs_;
