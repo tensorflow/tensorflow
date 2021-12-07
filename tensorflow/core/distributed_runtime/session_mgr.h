@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SESSION_MGR_H_
 
 #include <functional>
+#include <string>
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
@@ -44,16 +45,16 @@ class SessionMgr {
       WorkerCacheFactory;
 
   explicit SessionMgr(
-      WorkerEnv* worker_env, const string& default_worker_name,
+      WorkerEnv* worker_env, const std::string& default_worker_name,
       std::unique_ptr<WorkerCacheInterface> default_worker_cache,
       WorkerCacheFactory worker_cache_factory);
   ~SessionMgr() {}
 
   // Allocates state for a new session.
-  Status CreateSession(const string& session, const ServerDef& server_def,
+  Status CreateSession(const std::string& session, const ServerDef& server_def,
                        bool isolate_session_state);
   Status CreateSession(
-      const string& session, const ServerDef& server_def,
+      const std::string& session, const ServerDef& server_def,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
       bool isolate_session_state);
 
@@ -65,9 +66,9 @@ class SessionMgr {
   // happens, old sessions associated with the master will be automatically
   // removed before the new session is created.
   Status CreateSession(
-      const string& session, const ServerDef& server_def,
+      const std::string& session, const ServerDef& server_def,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
-      bool isolate_session_state, string master_task,
+      bool isolate_session_state, std::string master_task,
       int64_t master_incarnation,
       const CoordinationServiceConfig& coordination_service_config);
 
@@ -75,23 +76,23 @@ class SessionMgr {
 
   // Updates state (worker cache, devices) of worker session identified by
   // session name (`session`) based on a new server_def and set of devices.
-  Status UpdateSession(const string& session, const ServerDef& server_def,
+  Status UpdateSession(const std::string& session, const ServerDef& server_def,
                        const protobuf::RepeatedPtrField<DeviceAttributes>&
                            cluster_device_attributes);
 
   // Locates the worker session for a given session handle
-  Status WorkerSessionForSession(const string& session_handle,
+  Status WorkerSessionForSession(const std::string& session_handle,
                                  std::shared_ptr<WorkerSession>* out_session);
   std::shared_ptr<WorkerSession> LegacySession();
 
-  Status DeleteSession(const string& session);
+  Status DeleteSession(const std::string& session);
 
   // Provides access to the coordination service. This method should only be
   // called after the agent has been initialized during session creation, or an
   // invalid nullptr is returned. Note: the agent is thread-safe and mutable.
   CoordinationServiceAgent* GetCoordinationServiceAgent();
 
-  static string WorkerNameFromServerDef(const ServerDef& server_def);
+  static std::string WorkerNameFromServerDef(const ServerDef& server_def);
 
   void SetLogging(bool active);
 
@@ -125,20 +126,22 @@ class SessionMgr {
   const WorkerCacheFactory worker_cache_factory_;
 
   Status WorkerSessionForSessionLocked(
-      const string& session_handle, std::shared_ptr<WorkerSession>* out_session)
+      const std::string& session_handle,
+      std::shared_ptr<WorkerSession>* out_session)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
   // A map from session identifier to internal session structure.
-  std::map<string, std::shared_ptr<WorkerSession>> sessions_ TF_GUARDED_BY(mu_);
+  std::map<std::string, std::shared_ptr<WorkerSession>> sessions_
+      TF_GUARDED_BY(mu_);
 
   // Incarnation and WorkerSession handle associated with a master task.
   struct MasterAssociatedSession {
     const int64_t master_incarnation;
-    const string session_handle;
+    const std::string session_handle;
   };
   // A map from master task name to its associated worker sessions.
-  std::unordered_multimap<string, MasterAssociatedSession>
+  std::unordered_multimap<std::string, MasterAssociatedSession>
       master_to_associated_sessions_ TF_GUARDED_BY(mu_);
 };
 
