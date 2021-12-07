@@ -780,7 +780,9 @@ tf_cc_test(
     ],
     deps = [
         ":common",
+        ":layout_util",
         ":side_effect_util",
+        ":xla_argument",
         ":xla_compiler",
         ":xla_expression",
         ":xla_resource",
