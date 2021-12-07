@@ -4319,3 +4319,19 @@ func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> t
   %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf16>
   return %0 : tensor<?xf16>
 }
+
+// -----
+
+func @testSetStaticDimensionBounds(%arg0: f32, %arg1: tensor<?xi32>) -> tensor<?x?x?xi32> {
+  // expected-error @below {{'tf.SetStaticDimensionBounds' op operand #0 must be tensor of tf.dtype values, but got 'f32'}}
+  %dyn_arg0 = "tf.SetStaticDimensionBounds" (%arg0, %arg1) :(f32, tensor<?xi32>) -> tensor<?x?x?xi32>
+  return %dyn_arg0 : tensor<?x?x?xi32>
+}
+
+// -----
+
+func @testSetStaticDimensionBounds(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?x?xi32> {
+  // expected-error @below {{'tf.SetStaticDimensionBounds' op was used with an input tensor with rank > 2, only tensors of rank 1,2 are supported}}
+  %dyn_arg0 = "tf.SetStaticDimensionBounds" (%arg0, %arg1) :(tensor<?x?x?xi32>, tensor<?xi32>) -> tensor<?x?x?xi32>
+  return %dyn_arg0 : tensor<?x?x?xi32>
+}

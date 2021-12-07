@@ -1611,6 +1611,8 @@ tpu_call([w_dyn])
     TF_I32OrI64Tensor:$static_shape
   );
 
+  let verifier = [{ return Verify(*this); }];
+
   let results = (outs
     TF_Tensor:$output
   );

@@ -3435,6 +3435,21 @@ static LogicalResult Verify(XlaVariadicSortOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// SetStaticDimensionBoundsOp
+//===----------------------------------------------------------------------===//
+//
+
+static LogicalResult Verify(SetStaticDimensionBoundsOp op) {
+  mlir::ShapedType input_type = op.input().getType().cast<mlir::ShapedType>();
+  if (input_type.hasRank() && input_type.getRank() > 2) {
+    return op.emitOpError() << "was used with an input tensor with rank > 2, "
+                               "only tensors of rank 1,2 are supported";
+  }
+
+  return success();
+}
+
 }  // namespace TF
 }  // namespace mlir
 
