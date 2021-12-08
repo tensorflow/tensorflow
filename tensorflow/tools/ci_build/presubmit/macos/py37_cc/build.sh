@@ -50,7 +50,7 @@ function run_build () {
     -- //tensorflow/python/... # ${DEFAULT_BAZEL_TARGETS} -//tensorflow/java/... -//tensorflow/lite/java/...
 
   # Print build time statistics, including critical path.
-  "${BAZEL_WRAPPER_PATH}" analyze-profile "${KOKORO_ARTIFACTS_DIR}/profile.json"
+  bazel analyze-profile "${KOKORO_ARTIFACTS_DIR}/profile.json"
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"
