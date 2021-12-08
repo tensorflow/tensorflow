@@ -217,12 +217,12 @@ def op_priority(op_type):
     return 7
 
   if op_type in ('Identity', 'Cast', 'Reshape', 'ExpandDims', 'StopGradient',
-                 'PreventGradient', 'Squeeze'):
+                 'PreventGradient', 'Squeeze', 'Gather', 'GatherNd'):
     # Operations without numerical effects.
     # They will be only if trace_level>=6
     return 6
   if op_type in ('ConcatV2', 'Concat', 'StridedSlice', 'Slice', 'Pack', 'Tile',
-                 'CollectivePermute', 'SplitV'):
+                 'CollectivePermute', 'SplitV', 'DynamicPartition'):
     # Operations that merge or slice an input, will be traced if trace_level>=5
     return 5
   if op_type in ('Pad', 'RandomUniformInt', 'GreaterEqual'):
@@ -238,10 +238,12 @@ def op_priority(op_type):
     # trace_level>=2
     return 2
   if op_type in ('Mul', 'Square', 'MatMul', 'RandomUniform', 'Select',
-                 'Maximum', 'Mean', 'Variance'):
+                 'Maximum', 'Mean', 'Variance', 'Exp', 'Rsqrt'):
     # Multiplication and some other operations, will be traced if trace_level>=1
     return 1
-  return 0
+
+  # Unclassified op_types default to being traced at level 2 and above.
+  return 2
 
 
 def read_tensor_tracer_event_file(event_file):
