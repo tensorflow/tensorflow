@@ -43,9 +43,6 @@ for f in $(ls pip_pkg/tf_nightly_cpu-*dev*macosx*.whl); do
   copy_to_new_project_name "${f}" tf_nightly python
 done
 
-# TODO(mihaimaruseac): Debug info, remove later
-${PYTHON_BIN_PATH} -m pip debug --verbose
-
 # Upload the built packages to pypi.
 for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
 
