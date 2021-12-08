@@ -390,7 +390,7 @@ void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
   TFLITE_LOG(INFO) << "Validating acceleration";
   const NnApi* nnapi = NnApiImplementation();
   if (nnapi && nnapi->nnapi_exists &&
-      nnapi->nnapi_runtime_feature_level >=
+      nnapi->android_sdk_version >=
           validation_params.value().MinAndroidSdkVersion()) {
     EXPECT_EQ(CountPartitionsDelegatedTo(interpreter_.get(), delegate_), 1)
         << "Expecting operation to be accelerated but cannot find a partition "

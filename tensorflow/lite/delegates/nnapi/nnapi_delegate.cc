@@ -678,7 +678,7 @@ TfLiteStatus GetTargetFeatureLevel(
     TFLITE_LOG(TFLITE_LOG_INFO,
                "Changing NNAPI Feature Level %lld to "
                "supported by target devices: %lld",
-               nnapi->nnapi_runtime_feature_level, devices_feature_level);
+               nnapi->android_sdk_version, devices_feature_level);
 
     *target_feature_level = devices_feature_level;
   }
@@ -702,7 +702,7 @@ bool ShouldUseTargetDevices(StatefulNnApiDelegate::Options delegate_options,
     if (nnapi_cpu == device_name_ptr) return false;
   }
   return (delegate_options.disallow_nnapi_cpu &&
-          nnapi->nnapi_runtime_feature_level >=
+          nnapi->android_sdk_version >=
               delegate::nnapi::kMinSdkVersionForNNAPI12) ||
          has_selected_accelerator;
 }
@@ -721,8 +721,7 @@ bool ShouldUseTargetDevices(StatefulNnApiDelegate::Options delegate_options,
 TfLiteStatus GetTargetDevices(TfLiteContext* context, TfLiteDelegate* delegate,
                               const NnApi* nnapi, int* nnapi_errno,
                               std::vector<ANeuralNetworksDevice*>* result) {
-  if (nnapi->nnapi_runtime_feature_level <
-      delegate::nnapi::kMinSdkVersionForNNAPI12) {
+  if (nnapi->android_sdk_version < delegate::nnapi::kMinSdkVersionForNNAPI12) {
     return kTfLiteError;
   }
 
@@ -2178,7 +2177,7 @@ bool ExpectIsRestrictedScalesCompliant(const TfLiteContext* context,
 // (i.e. if the returned MappingFn is null, then the node is not supported).
 bool NNAPIDelegateKernel::Validate(
     const TfLiteContext* context, const TfLiteRegistration* registration,
-    int target_feature_level, const TfLiteNode* node,
+    int android_sdk_version, const TfLiteNode* node,
     bool is_accelerator_specified, NnapiDelegateVendorPlugin* vendor_plugin,
     std::vector<NNAPIValidationFailure>* map_failures) {
   OpValidationContext val_ctx{true, map_failures};
@@ -2192,7 +2191,7 @@ bool NNAPIDelegateKernel::Validate(
   switch (builtin_code) {
     case kTfLiteBuiltinAdd: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      if (target_feature_level >= kMinSdkVersionForNNAPI13) {
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
         ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
         if (IsInt32(context->tensors[node->inputs->data[0]].type)) {
           Expect(reinterpret_cast<TfLiteAddParams*>(node->builtin_data)
@@ -2208,7 +2207,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinArgMin: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
       // Those operators were introduced in NNAPI 1.2.
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const TfLiteType input_type =
           context->tensors[node->inputs->data[(0)]].type;
@@ -2251,7 +2250,7 @@ bool NNAPIDelegateKernel::Validate(
       } else {
         ExpectMaxOpVersion(version, 2, &val_ctx);
       }
-      if (target_feature_level >= kMinSdkVersionForNNAPI13) {
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
         ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
         if (IsInt32(context->tensors[node->inputs->data[0]].type)) {
           Expect(reinterpret_cast<TfLiteMulParams*>(node->builtin_data)
@@ -2285,7 +2284,7 @@ bool NNAPIDelegateKernel::Validate(
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectIsFloatOperator(context, node, &val_ctx);
 
-      if (target_feature_level < kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         auto builtin = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
         Expect(builtin->activation == kTfLiteActNone,
                NNAPIValidationFailureType::kUnsupportedOperandValue,
@@ -2296,7 +2295,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinConv2d: {
       ExpectMaxOpVersion(version, 5, &val_ctx);
-      if (target_feature_level < kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(!IsHybridOperator(context, builtin_code, node),
                NNAPIValidationFailureType::kUnsupportedHybridOperator,
                "Hybrid operators not supported before NNAPI 1.2", &val_ctx);
@@ -2315,7 +2314,7 @@ bool NNAPIDelegateKernel::Validate(
         }
       }
       const auto input_type = context->tensors[node->inputs->data[0]].type;
-      if (target_feature_level < kMinSdkVersionForNNAPI12 &&
+      if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
           input_type == kTfLiteUInt8) {
         ExpectIsRestrictedScalesCompliant(context, node, &val_ctx);
       }
@@ -2326,7 +2325,7 @@ bool NNAPIDelegateKernel::Validate(
              "Conv2D with omitted bias not supported", &val_ctx);
       if (builtin->dilation_width_factor != 1 ||
           builtin->dilation_height_factor != 1) {
-        Expect(target_feature_level >= kMinSdkVersionForNNAPI12,
+        Expect(android_sdk_version >= kMinSdkVersionForNNAPI12,
                NNAPIValidationFailureType::kUnsupportedOperandValue,
                "NNAPI supports dilated Conv2D since NNAPI 1.2.", &val_ctx);
       }
@@ -2334,7 +2333,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinDepthwiseConv2d: {
       ExpectMaxOpVersion(version, 3, &val_ctx);
 
-      if (target_feature_level < kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         ExpectIsFloatOrUint8Operator(context, node, &val_ctx);
 
         const auto input_type = context->tensors[node->inputs->data[0]].type;
@@ -2358,21 +2357,21 @@ bool NNAPIDelegateKernel::Validate(
       Expect(output_type != kTfLiteInt16,
              NNAPIValidationFailureType::kUnsupportedOutputType,
              "Unsupported output of type kTfLiteInt16", &val_ctx);
-      if (target_feature_level < kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(!IsHybridOperator(context, builtin_code, node),
                NNAPIValidationFailureType::kUnsupportedHybridOperator,
                "Hybrid operators not supported before NNAPI 1.2", &val_ctx);
         ExpectIsFloatOrUint8Operator(context, node, &val_ctx);
       }
       const auto input_type = context->tensors[node->inputs->data[0]].type;
-      if (target_feature_level < kMinSdkVersionForNNAPI12 &&
+      if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
           input_type == kTfLiteUInt8) {
         ExpectIsRestrictedScalesCompliant(context, node, &val_ctx);
       }
       auto builtin =
           reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
       if (builtin->keep_num_dims) {
-        ExpectMinAndroidSdkVersion(target_feature_level,
+        ExpectMinAndroidSdkVersion(android_sdk_version,
                                    kMinSdkVersionForNNAPI13, &val_ctx);
       }
     } break;
@@ -2396,7 +2395,7 @@ bool NNAPIDelegateKernel::Validate(
       Expect(input_rank <= 4,
              NNAPIValidationFailureType::kUnsupportedOperandRank,
              "Input rank should be <= 4", &val_ctx);
-      if (target_feature_level < kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(
             input_rank == 2 || input_rank == 4,
             NNAPIValidationFailureType::kUnsupportedOperandRank,
@@ -2406,7 +2405,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinReshape: {
       ExpectOpVersion(version, 1, &val_ctx);
-      if (target_feature_level < kNNAPIRuntimeFeatureLevel6) {
+      if (android_sdk_version < kNNAPIRuntimeFeatureLevel6) {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       } else {
         ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
@@ -2449,7 +2448,7 @@ bool NNAPIDelegateKernel::Validate(
                NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
                "The size input tensor must be constant.", &val_ctx);
       }
-      if (target_feature_level < kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(output_dims->data[1] == output_dims->data[2],
                NNAPIValidationFailureType::kUnsupportedOperandValue,
                "Require width == height due to driver differences in NNAPI "
@@ -2458,7 +2457,7 @@ bool NNAPIDelegateKernel::Validate(
       }
       auto builtin =
           reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
-      if (target_feature_level <= kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version <= kMinSdkVersionForNNAPI12) {
         Expect(!builtin->align_corners,
                NNAPIValidationFailureType::kUnsupportedOperandValue,
                "NNAPI does not support align_corners == true.", &val_ctx);
@@ -2466,7 +2465,7 @@ bool NNAPIDelegateKernel::Validate(
                NNAPIValidationFailureType::kUnsupportedOperandValue,
                "NNAPI does not support half_pixel_centers == true.", &val_ctx);
       }
-      if (target_feature_level < kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(input.type == kTfLiteFloat32,
                NNAPIValidationFailureType::kUnsupportedInputType,
                "NNAPI 1.0 & 1.1 only supports float input.", &val_ctx);
@@ -2474,7 +2473,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinResizeNearestNeighbor: {
       ExpectMaxOpVersion(version, 3, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       Expect(node->inputs->size >= 2,
@@ -2488,7 +2487,7 @@ bool NNAPIDelegateKernel::Validate(
       }
       auto builtin = reinterpret_cast<TfLiteResizeNearestNeighborParams*>(
           node->builtin_data);
-      if (target_feature_level <= kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version <= kMinSdkVersionForNNAPI12) {
         Expect(!builtin->align_corners,
                NNAPIValidationFailureType::kUnsupportedOperandValue,
                "NNAPI does not support align_corners == true.", &val_ctx);
@@ -2499,10 +2498,10 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinSqueeze: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI11,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
       auto builtin = reinterpret_cast<TfLiteSqueezeParams*>(node->builtin_data);
-      if (target_feature_level == kMinSdkVersionForNNAPI11) {
+      if (android_sdk_version == kMinSdkVersionForNNAPI11) {
         Expect(builtin->num_squeeze_dims != 0,
                NNAPIValidationFailureType::kUnsupportedOperandValue,
                "NNAPI 1.1 does not support null squeeze_dims properly.",
@@ -2511,7 +2510,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinUnidirectionalSequenceLstm: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
 
       Expect(!IsHybridOperator(context, builtin_code, node),
@@ -2525,7 +2524,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinL2Normalization: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
 
-      if (target_feature_level < kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         ExpectIsFloatOperator(context, node, &val_ctx);
 
         const auto& input = context->tensors[node->inputs->data[0]];
@@ -2548,7 +2547,7 @@ bool NNAPIDelegateKernel::Validate(
               ->type == kTfLiteLshProjectionSparse) {
         // NNAPI does not support sparse projection correctly pre-Q
         // (b/111751836).
-        Expect(target_feature_level >= kMinSdkVersionForNNAPI12,
+        Expect(android_sdk_version >= kMinSdkVersionForNNAPI12,
                NNAPIValidationFailureType::kUnsupportedInputType,
                "NNAPI does not support sparse projection correctly pre-Q",
                &val_ctx);
@@ -2573,7 +2572,7 @@ bool NNAPIDelegateKernel::Validate(
                            kTfLiteUInt8, kTfLiteInt8);
 
       if (input_type == kTfLiteUInt8 &&
-          target_feature_level < kMinSdkVersionForNNAPI12) {
+          android_sdk_version < kMinSdkVersionForNNAPI12) {
         auto first_param = context->tensors[node->inputs->data[0]].params;
         for (int i = 1; i < node->inputs->size; i++) {
           auto curr_param = context->tensors[node->inputs->data[i]].params;
@@ -2590,7 +2589,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinDequantize: {
       // Allow dequantizing fp16->fp32.
-      if (target_feature_level >= kMinSdkVersionForNNAPI13 &&
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13 &&
           context->tensors[node->inputs->data[0]].type == kTfLiteFloat16 &&
           context->tensors[node->inputs->data[0]].allocation_type !=
               kTfLiteMmapRo) {
@@ -2601,12 +2600,12 @@ bool NNAPIDelegateKernel::Validate(
              "Supported op versions are 1 and 2 only", &val_ctx);
 
       const auto& input = context->tensors[node->inputs->data[0]];
-      if (target_feature_level < kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         EXPECT_INPUT_TYPE_IN(input.type, kTfLiteUInt8);
       } else {
         EXPECT_INPUT_TYPE_IN(input.type, kTfLiteUInt8, kTfLiteInt8);
 
-        if (target_feature_level == kMinSdkVersionForNNAPI12 &&
+        if (android_sdk_version == kMinSdkVersionForNNAPI12 &&
             input.type == kTfLiteInt8) {
           const auto zero_point = input.params.zero_point;
           Expect(zero_point == 0,
@@ -2619,7 +2618,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinDensify: {
       // Allow densifying sparse weights.
-      if (target_feature_level >= kMinSdkVersionForNNAPI13 &&
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13 &&
           context->tensors[node->inputs->data[0]].allocation_type ==
               kTfLiteMmapRo) {
         return true;
@@ -2642,7 +2641,7 @@ bool NNAPIDelegateKernel::Validate(
           context->tensors[node->inputs->data[0]].type;
       Expect(IsFloat(input_type) ||
                  (IsQuantized(input_type) &&
-                  target_feature_level >= kMinSdkVersionForNNAPI12),
+                  android_sdk_version >= kMinSdkVersionForNNAPI12),
              NNAPIValidationFailureType::kUnsupportedInputType,
              " NNAPI only support float tanh.", &val_ctx);
     } break;
@@ -2650,11 +2649,11 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMaxOpVersion(version, 3, &val_ctx);
       const TfLiteType input_type =
           context->tensors[node->inputs->data[0]].type;
-      Expect((target_feature_level >= kMinSdkVersionForNNAPI11 &&
+      Expect((android_sdk_version >= kMinSdkVersionForNNAPI11 &&
               IsFloat(input_type)) ||
-                 (target_feature_level >= kMinSdkVersionForNNAPI12 &&
+                 (android_sdk_version >= kMinSdkVersionForNNAPI12 &&
                   IsQuantized(input_type)) ||
-                 (target_feature_level >= kMinSdkVersionForNNAPI13 &&
+                 (android_sdk_version >= kMinSdkVersionForNNAPI13 &&
                   IsInt32(input_type)),
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float sub.", &val_ctx);
@@ -2674,7 +2673,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinDiv: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI11,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
       Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
              NNAPIValidationFailureType::kUnsupportedInputType,
@@ -2684,7 +2683,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinPadv2: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI11,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
 
       const TfLiteIntArrayView input_shape(
@@ -2701,12 +2700,12 @@ bool NNAPIDelegateKernel::Validate(
       if (node->inputs->size == 3) {
         // This is going to be mapped with a PadV2
         Expect(
-            target_feature_level >= kMinSdkVersionForNNAPI12,
+            android_sdk_version >= kMinSdkVersionForNNAPI12,
             NNAPIValidationFailureType::kUnsupportedOperatorVariant,
             "Specification of the padding value is supported from NNAPI 1.2.",
             &val_ctx);
       } else {  // this is going to be mapped as Pad
-        if (target_feature_level < kMinSdkVersionForNNAPI12) {
+        if (android_sdk_version < kMinSdkVersionForNNAPI12) {
           Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
                  NNAPIValidationFailureType::kUnsupportedInputType,
                  "Only Float32 inputs are supported before NNAPI 1.2",
@@ -2716,7 +2715,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinUnidirectionalSequenceRnn: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect(!IsHybridOperator(context, builtin_code, node),
              NNAPIValidationFailureType::kUnsupportedHybridOperator,
@@ -2724,12 +2723,12 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinSpaceToBatchNd: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI11,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
     } break;
     case kTfLiteBuiltinBatchToSpaceNd: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI11,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
       auto crops = context->tensors[node->inputs->data[2]];
       auto crops_data = crops.data.i32;
@@ -2741,12 +2740,12 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinStridedSlice: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI11,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
     } break;
     case kTfLiteBuiltinTranspose: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI11,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
       // Note that the permutation input tensor value dictates the output
       // dimensions.
@@ -2762,15 +2761,15 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinLog:
     case kTfLiteBuiltinPow: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       ExpectIsFloatOperator(context, node, &val_ctx);
     } break;
     case kTfLiteBuiltinRsqrt: {
       ExpectOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
-      if (target_feature_level < kNNAPIRuntimeFeatureLevel7) {
+      if (android_sdk_version < kNNAPIRuntimeFeatureLevel7) {
         ExpectIsFloatOperator(context, node, &val_ctx);
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
@@ -2778,7 +2777,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinSlice: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       const auto begin_type = context->tensors[node->inputs->data[1]].type;
@@ -2794,13 +2793,13 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinSin: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       ExpectIsFloatOperator(context, node, &val_ctx);
     } break;
     case kTfLiteBuiltinTransposeConv: {
       ExpectMaxOpVersion(version, 3, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect((node->inputs->size > 1) &&
                  (context->tensors[node->inputs->data[0]].allocation_type ==
@@ -2812,7 +2811,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinSqrt: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       ExpectIsFloatOperator(context, node, &val_ctx);
     } break;
@@ -2848,7 +2847,7 @@ bool NNAPIDelegateKernel::Validate(
             NNAPIValidationFailureType::kUnsupportedInputType,
             "NNAPI only support float32 weights.", &val_ctx);
       }
-      Expect(target_feature_level >= kMinSdkVersionForNNAPI11,
+      Expect(android_sdk_version >= kMinSdkVersionForNNAPI11,
              NNAPIValidationFailureType::kUnsupportedOperandRank,
              "SVDF does not support rank > 1 on NNAPI 1.0.", &val_ctx);
       Expect(context->tensors[node->inputs->data[/*kWeightsFeatureTensor*/ 1]]
@@ -2859,11 +2858,11 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinLstm: {
       ExpectMaxOpVersion(version, 3, &val_ctx);
       Expect(
-          target_feature_level >= kMinSdkVersionForNNAPI11,
+          android_sdk_version >= kMinSdkVersionForNNAPI11,
           NNAPIValidationFailureType::kUnsupportedAndroidVersion,
           "NNAPI 1.0 has a bug for optional tensors which would affect LSTM.",
           &val_ctx);
-      Expect(target_feature_level >= kMinSdkVersionForNNAPI12 ||
+      Expect(android_sdk_version >= kMinSdkVersionForNNAPI12 ||
                  !IsHybridOperator(context, builtin_code, node),
              NNAPIValidationFailureType::kUnsupportedHybridOperator,
              "Hybrid operators not supported before NNAPI 1.2.", &val_ctx);
@@ -2916,11 +2915,11 @@ bool NNAPIDelegateKernel::Validate(
         return val_ctx.is_valid;
       } else {
         if (node->inputs->size == 24) {
-          ExpectMinAndroidSdkVersion(target_feature_level,
+          ExpectMinAndroidSdkVersion(android_sdk_version,
                                      kMinSdkVersionForNNAPI12, &val_ctx);
         }
 
-        if (target_feature_level >= kMinSdkVersionForNNAPI13) {
+        if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
           Expect(weight_type == kTfLiteFloat32 || weight_type == kTfLiteUInt8 ||
                      weight_type == kTfLiteInt8,
                  NNAPIValidationFailureType::kUnsupportedInputType,
@@ -2934,9 +2933,9 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinMean: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI11,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
-      if (target_feature_level >= kMinSdkVersionForNNAPI12) {
+      if (android_sdk_version >= kMinSdkVersionForNNAPI12) {
         Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32 ||
                    IsQuantized(context->tensors[node->inputs->data[0]].type),
                NNAPIValidationFailureType::kUnsupportedInputType,
@@ -2966,7 +2965,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinMaximum:
     case kTfLiteBuiltinMinimum: {
       ExpectMaxOpVersion(version, 3, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteUInt8,
@@ -2986,13 +2985,13 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinCast: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const TfLiteType input_type =
           context->tensors[node->inputs->data[0]].type;
       const TfLiteType output_type =
           context->tensors[node->outputs->data[0]].type;
-      if (target_feature_level >= kMinSdkVersionForNNAPI13) {
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
         EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteInt32,
                              kTfLiteUInt8, kTfLiteInt8);
 
@@ -3018,7 +3017,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinLeakyRelu:
     case kTfLiteBuiltinPrelu: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteUInt8,
@@ -3026,7 +3025,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinTile: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteInt8,
@@ -3041,7 +3040,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinLogicalAnd:
     case kTfLiteBuiltinLogicalNot: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       Expect(input_type == kTfLiteBool,
@@ -3055,7 +3054,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinEqual:
     case kTfLiteBuiltinNotEqual: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteUInt8,
@@ -3063,14 +3062,14 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinNeg: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteInt32);
     } break;
     case kTfLiteBuiltinTopkV2: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto& input_type = context->tensors[node->inputs->data[0]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteInt32,
@@ -3083,7 +3082,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinSelect: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto value_type = context->tensors[node->inputs->data[1]].type;
       EXPECT_INPUT_TYPE_IN(value_type, kTfLiteFloat32, kTfLiteInt32,
@@ -3099,7 +3098,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinGather: {
       ExpectOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       const auto& positions = context->tensors[node->inputs->data[1]];
@@ -3116,7 +3115,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinBidirectionalSequenceLstm: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect(!IsHybridOperator(context, builtin_code, node),
              NNAPIValidationFailureType::kUnsupportedHybridOperator,
@@ -3124,7 +3123,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinExpandDims: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteFloat16,
@@ -3136,11 +3135,11 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinSplit: {
       ExpectOpVersion(version, 3, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       // Tensor indices: split_dim: 0, value: 1
       const TfLiteTensor& input = context->tensors[node->inputs->data[1]];
-      if (target_feature_level >= kMinSdkVersionForNNAPI13) {
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
         EXPECT_INPUT_TYPE_IN(input.type, kTfLiteFloat32, kTfLiteUInt8,
                              kTfLiteInt8, kTfLiteInt32);
       } else {
@@ -3154,7 +3153,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinSplitV: {
       ExpectOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI13,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
                                  &val_ctx);
       // Tensor indices: value: 0, size_splits: 1, axis: 2
       const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
@@ -3187,7 +3186,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinLogSoftmax: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       Expect(input_type == kTfLiteFloat32,
@@ -3196,7 +3195,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinQuantize: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto value_type = context->tensors[node->inputs->data[0]].type;
       Expect(value_type == kTfLiteFloat32 || IsQuantized(value_type),
@@ -3210,7 +3209,7 @@ bool NNAPIDelegateKernel::Validate(
                "Quantization scale should be > 0.", &val_ctx);
       }
       const auto output_type = context->tensors[node->outputs->data[0]].type;
-      if (target_feature_level < kMinSdkVersionForNNAPI13) {
+      if (android_sdk_version < kMinSdkVersionForNNAPI13) {
         Expect(output_type == kTfLiteUInt8,
                NNAPIValidationFailureType::kUnsupportedOutputType,
                "Output should be kTfLiteUInt8.", &val_ctx);
@@ -3227,7 +3226,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinReduceAny: {
       ExpectOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect(context->tensors[node->outputs->data[0]].dims->size != 0,
              NNAPIValidationFailureType::kUnsupportedOutputType,
@@ -3236,7 +3235,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinReduceMin:
     case kTfLiteBuiltinReduceMax: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_tensor = context->tensors[node->inputs->data[0]];
       const auto input_type = input_tensor.type;
@@ -3255,7 +3254,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinReduceProd:
     case kTfLiteBuiltinSum: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI12,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect(context->tensors[node->outputs->data[0]].dims->size != 0,
              NNAPIValidationFailureType::kUnsupportedOutputType,
@@ -3267,7 +3266,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinElu: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI13,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       Expect(input_type == kTfLiteFloat32,
@@ -3276,7 +3275,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinFill: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI13,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
                                  &val_ctx);
       const auto& dims_tensor = context->tensors[node->inputs->data[0]];
       Expect(IsConstantTensor(&dims_tensor),
@@ -3320,10 +3319,10 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinPack: {
       ExpectOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI13,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
-      if (target_feature_level >= kNNAPIRuntimeFeatureLevel6) {
+      if (android_sdk_version >= kNNAPIRuntimeFeatureLevel6) {
         EXPECT_INPUT_TYPE_IN(input_type, kTfLiteInt32, kTfLiteFloat32,
                              kTfLiteInt8, kTfLiteUInt8);
       } else {
@@ -3339,7 +3338,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinUnpack: {
       ExpectOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI13,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteUInt8,
@@ -3361,13 +3360,13 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinSquaredDifference: {
       ExpectOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level, kMinSdkVersionForNNAPI11,
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
       const auto input0_type = context->tensors[node->inputs->data[0]].type;
-      if (target_feature_level >= kMinSdkVersionForNNAPI13) {
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
         EXPECT_INPUT_TYPE_IN(input0_type, kTfLiteFloat32, kTfLiteUInt8,
                              kTfLiteInt8, kTfLiteInt32);
-      } else if (target_feature_level >= kMinSdkVersionForNNAPI12) {
+      } else if (android_sdk_version >= kMinSdkVersionForNNAPI12) {
         EXPECT_INPUT_TYPE_IN(input0_type, kTfLiteFloat32, kTfLiteUInt8);
       } else {
         EXPECT_INPUT_TYPE_IN(input0_type, kTfLiteFloat32);
@@ -3382,7 +3381,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinBatchMatmul: {
       ExpectOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level,
+      ExpectMinAndroidSdkVersion(android_sdk_version,
                                  kNNAPIRuntimeFeatureLevel6, &val_ctx);
       const auto& input0 = context->tensors[node->inputs->data[0]];
       const auto& input1 = context->tensors[node->inputs->data[1]];
@@ -3401,7 +3400,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinMirrorPad: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level,
+      ExpectMinAndroidSdkVersion(android_sdk_version,
                                  kNNAPIRuntimeFeatureLevel7, &val_ctx);
       ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
 
@@ -3417,7 +3416,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinReverseV2: {
       ExpectMaxOpVersion(version, 3, &val_ctx);
-      ExpectMinAndroidSdkVersion(target_feature_level,
+      ExpectMinAndroidSdkVersion(android_sdk_version,
                                  kNNAPIRuntimeFeatureLevel7, &val_ctx);
       ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
       Expect(node->inputs->size == 2,
@@ -3434,7 +3433,7 @@ bool NNAPIDelegateKernel::Validate(
 
 TfLiteStatus NNAPIDelegateKernel::Map(
     TfLiteContext* context, int builtin_code, int version,
-    int target_feature_level, const NNAPIOpMappingArgs& mapping_args,
+    int android_sdk_version, const NNAPIOpMappingArgs& mapping_args,
     ANeuralNetworksOperationType* nn_op_type,
     NnapiDelegateVendorPlugin* vendor_plugin) {
   auto add_zero_bias = [mapping_args](int input_id, int filter_id,
@@ -3806,7 +3805,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       // Transpose convolution doesn't have hybrid variation.
       const bool hybrid_op = false;
 
-      if (target_feature_level >= kMinSdkVersionForNNAPI13) {
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
         mapping_args.builder->AddTensorInput(
             input_tensor_id, hybrid_op,
             input_tensor_flags | NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED);
@@ -4126,7 +4125,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
             ANEURALNETWORKS_TENSOR_FLOAT32, kTfLiteFloat32, alpha_tensor.dims,
             alpha_value, alpha_tensor.params, &new_tensor_index);
       } else if (input_type == kTfLiteInt8 &&
-                 target_feature_level >= kMinSdkVersionForNNAPI13) {
+                 android_sdk_version >= kMinSdkVersionForNNAPI13) {
         alpha_tensor.params.scale = builtin->alpha;
         std::vector<int8_t> alpha_value = {1};
         mapping_args.builder->AddNewInputConstantTensor(
@@ -4330,7 +4329,7 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
       std::vector<int>(context->tensors_size, -1);
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(params->delegate);
-  if (nnapi_->nnapi_runtime_feature_level >= kMinSdkVersionForNNAPI12 &&
+  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
       ShouldUseTargetDevices(delegate_options, nnapi_)) {
     TF_LITE_ENSURE_STATUS(GetTargetDevices(context, params->delegate, nnapi_,
                                            nnapi_errno, &nnapi_devices_));
@@ -4455,7 +4454,7 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
                                     "configuring NNAPI caching", nnapi_errno);
   }
   // Set compilation timeout if applicable.
-  if (nnapi_->nnapi_runtime_feature_level >= kMinSdkVersionForNNAPI13) {
+  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI13) {
     if (delegate_options.max_compilation_timeout_duration_ns > 0) {
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context,
@@ -4493,7 +4492,7 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
   }
   // Create burst object to be reused across a sequence of executions
   if (should_use_burst_mode &&
-      nnapi_->nnapi_runtime_feature_level >= kMinSdkVersionForNNAPI12 &&
+      nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
       nnapi_->ANeuralNetworksBurst_create) {
     ANeuralNetworksBurst* burst = nullptr;
     const int create_burst_result =
@@ -4626,7 +4625,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
           nnapi_errno);
     }
     // Set compilation timeout if applicable.
-    if (nnapi_->nnapi_runtime_feature_level >= kMinSdkVersionForNNAPI13) {
+    if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI13) {
       if (delegate_options.max_execution_timeout_duration_ns > 0) {
         RETURN_TFLITE_ERROR_IF_NN_ERROR(
             context,
@@ -4896,7 +4895,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
   }
 
   // Invoke ANN in blocking fashion.
-  if (nnapi_->nnapi_runtime_feature_level < kMinSdkVersionForNNAPI12) {
+  if (nnapi_->android_sdk_version < kMinSdkVersionForNNAPI12) {
     ANeuralNetworksEvent* event = nullptr;
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
         context,
@@ -5434,7 +5433,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     // operations. Since SDK level 30, h_swish is supported as a single
     // operation.
     if (reg->builtin_code == kTfLiteBuiltinHardSwish &&
-        nnapi_->nnapi_runtime_feature_level < kMinSdkVersionForNNAPI13) {
+        nnapi_->android_sdk_version < kMinSdkVersionForNNAPI13) {
       builder.TransformHardSwishIntoSupportedOps(
           node->inputs->data[0], node->outputs->data[0], need_int8_conversion,
           node_index);
@@ -5966,7 +5965,7 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
 
   auto allow_fp16 =
       context->allow_fp32_relax_to_fp16 | delegate_options.allow_fp16;
-  if (nnapi_->nnapi_runtime_feature_level >= kMinSdkVersionForNNAPI11) {
+  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI11) {
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
         context,
         nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
@@ -6050,8 +6049,7 @@ void StatefulNnApiDelegate::StatefulNnApiDelegateConstructorImpl(
       options.max_execution_timeout_duration_ns;
   delegate_data_.max_execution_loop_timeout_duration_ns =
       options.max_execution_loop_timeout_duration_ns;
-  if (delegate_data_.nnapi->nnapi_runtime_feature_level >=
-      kMinSdkVersionForNNAPI11) {
+  if (delegate_data_.nnapi->android_sdk_version >= kMinSdkVersionForNNAPI11) {
     delegate_data_.allow_dynamic_dimensions = options.allow_dynamic_dimensions;
   }
   delegate_data_.use_burst_computation = options.use_burst_computation;
@@ -6336,18 +6334,18 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   *nnapi_errno = 0;
 
   // Do not check nodes_ if NN API is unavailable.
-  if (nnapi->nnapi_runtime_feature_level < kMinSdkVersionForNNAPI ||
+  if (nnapi->android_sdk_version < kMinSdkVersionForNNAPI ||
       !nnapi->nnapi_exists) {
     return kTfLiteOk;
   }
 
-  int target_feature_level = nnapi->nnapi_runtime_feature_level;
+  int target_feature_level = nnapi->android_sdk_version;
   const StatefulNnApiDelegate::Options delegate_options =
       StatefulNnApiDelegate::GetOptions(delegate);
   // For NNAPI 1.2+, check if there is any accelerator available.
   // If not, don't delegate to NNAPI's CPU reference implementation unless
   // it has been specified as target accelerator.
-  if (nnapi->nnapi_runtime_feature_level >= kMinSdkVersionForNNAPI12) {
+  if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
     if (ShouldUseTargetDevices(delegate_options, nnapi)) {
       std::vector<ANeuralNetworksDevice*> devices;
       TF_LITE_ENSURE_STATUS(
@@ -6495,8 +6493,8 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   const char* cache_dir = delegate_options.cache_dir;
   const char* model_token = delegate_options.model_token;
   delegates::SerializationParams params = {model_token, cache_dir};
-  if (nnapi->nnapi_runtime_feature_level >= kMinSdkVersionForNNAPI12 &&
-      cache_dir && model_token) {
+  if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12 && cache_dir &&
+      model_token) {
     delegate_data->cache.reset(new delegates::Serialization(params));
   }
 
@@ -6521,7 +6519,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   int num_partitions;
   TfLiteDelegateParams* params_array;
   if (is_accelerator_specified &&
-      nnapi->nnapi_runtime_feature_level >= kMinSdkVersionForNNAPI12) {
+      nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
     // Filtering out nodes not supported by target accelerators.
     // Cannot query supported operation before NNAPI 1.2
     TF_LITE_ENSURE_STATUS(GetNodesSupportedByAccelerator(
