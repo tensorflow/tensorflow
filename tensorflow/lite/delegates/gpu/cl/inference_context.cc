@@ -536,25 +536,7 @@ absl::Status InferenceContext::InitFromGraph(
   GpuModel gpu_model;
   RETURN_IF_ERROR(GraphToGpuModel(create_info, graph,
                                   env->GetDevicePtr()->GetInfo(), &gpu_model));
-
-  for (const auto& input : gpu_model.input_ids_and_refs) {
-    input_ids_.push_back(input.first);
-  }
-  for (const auto& variable_input : gpu_model.variable_ids_and_refs) {
-    variable_ids_and_refs_[variable_input.first] = variable_input.second;
-  }
-  for (const auto& output : gpu_model.output_ids_and_refs) {
-    output_ids_.push_back(output.first);
-  }
-  nodes_.resize(gpu_model.nodes.size());
-  for (int i = 0; i < gpu_model.nodes.size(); ++i) {
-    nodes_[i].cl_operation.Init(std::move(gpu_model.nodes[i].gpu_operation));
-    nodes_[i].inputs = gpu_model.nodes[i].inputs;
-    nodes_[i].outputs = gpu_model.nodes[i].outputs;
-    nodes_[i].name = gpu_model.nodes[i].name;
-  }
-  const_tensors_descs_ = std::move(gpu_model.const_tensors);
-  tensors_descs_ = std::move(gpu_model.tensors);
+  CopyFromGpuModel(&gpu_model);
 
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
@@ -660,6 +642,27 @@ absl::Status InferenceContext::RestoreDeserialized(
   InitRecordableQueue(env);
   ReleaseCPURepresentation();
   return absl::OkStatus();
+}
+
+void InferenceContext::CopyFromGpuModel(GpuModel* gpu_model) {
+  for (const auto& input : gpu_model->input_ids_and_refs) {
+    input_ids_.push_back(input.first);
+  }
+  for (const auto& variable_input : gpu_model->variable_ids_and_refs) {
+    variable_ids_and_refs_[variable_input.first] = variable_input.second;
+  }
+  for (const auto& output : gpu_model->output_ids_and_refs) {
+    output_ids_.push_back(output.first);
+  }
+  nodes_.resize(gpu_model->nodes.size());
+  for (int i = 0; i < gpu_model->nodes.size(); ++i) {
+    nodes_[i].cl_operation.Init(std::move(gpu_model->nodes[i].gpu_operation));
+    nodes_[i].inputs = gpu_model->nodes[i].inputs;
+    nodes_[i].outputs = gpu_model->nodes[i].outputs;
+    nodes_[i].name = gpu_model->nodes[i].name;
+  }
+  const_tensors_descs_ = std::move(gpu_model->const_tensors);
+  tensors_descs_ = std::move(gpu_model->tensors);
 }
 
 void InferenceContext::InitRecordableQueue(Environment* env) {

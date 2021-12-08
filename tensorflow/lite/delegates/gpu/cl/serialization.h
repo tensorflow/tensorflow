@@ -33,8 +33,7 @@ flatbuffers::Offset<data::GpuModel> EncodeGpuModel(
     const InferenceContext& inference, const std::vector<int64_t>& in_refs,
     std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
 
-absl::Status DecodeGpuModel(const data::GpuModel* fb_gpu_model,
-                            InferenceContext* inference);
+absl::Status Decode(const data::GpuModel* fb_gpu_model, GpuModel* gpu_model);
 
 flatbuffers::Offset<data::InferenceContext> Encode(
     const CLDevice& device, const InferenceContext& inference,

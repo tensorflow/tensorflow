@@ -150,9 +150,6 @@ class InferenceContext {
       const InferenceContext& inference, const std::vector<int64_t>& in_refs,
       std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
 
-  friend absl::Status DecodeGpuModel(const data::GpuModel* fb_gpu_model,
-                                     InferenceContext* inference);
-
   friend flatbuffers::Offset<data::InferenceContext> Encode(
       const CLDevice& device, const InferenceContext& inference,
       const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
@@ -161,6 +158,8 @@ class InferenceContext {
                              ProgramCache* program_cache,
                              const data::InferenceContext* fb_inference,
                              InferenceContext* inference);
+
+  void CopyFromGpuModel(GpuModel* gpu_model);
 
   absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
 
