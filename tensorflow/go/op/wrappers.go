@@ -19973,21 +19973,31 @@ func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, gro
 //
 // `num_segments` should equal the number of distinct segment IDs.
 //
+// Caution: On CPU, values in `segment_ids` are always validated to be less than
+// `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+// does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+// result in safe but unspecified behavior, which may include ignoring
+// out-of-bound indices or outputting a tensor with a 0 stored in the first
+// dimension of its shape if `num_segments` is 0.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 // </div>
 //
-// ``` python
-// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-// tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
-// # ==> [[ 5, 5, 5, 5],
-// #       [5, 6, 7, 8]]
-// ```
+// >>> c = [[1,2,3,4], [5,6,7,8], [4,3,2,1]]
+// >>> tf.math.unsorted_segment_sum(c, [0, 1, 0], num_segments=2).numpy()
+// array([[5, 5, 5, 5],
+//        [5, 6, 7, 8]], dtype=int32)
+//
 //
 //
 // Arguments:
 //
 //	segment_ids: A tensor whose shape is a prefix of `data.shape`.
+// The values must be less than `num_segments`.
+//
+// Caution: The values are always validated to be in range on CPU, never validated
+// on GPU.
 //
 //
 // Returns Has same shape as data, except for the first `segment_ids.rank`
@@ -20102,19 +20112,28 @@ func ResourceScatterNdSub(scope *Scope, ref tf.Output, indices tf.Output, update
 //
 // For example:
 //
-// ``` python
-// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-// tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
-// # ==> [[ 1,  2, 2, 1],
-// #       [5,  6, 7, 8]]
-// ```
+// >>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+// >>> tf.math.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+// array([[1, 2, 2, 1],
+//        [5, 6, 7, 8]], dtype=int32)
 //
 // If the given segment ID `i` is negative, then the corresponding value is
 // dropped, and will not be included in the result.
 //
+// Caution: On CPU, values in `segment_ids` are always validated to be less than
+// `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+// does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+// result in safe but unspecified behavior, which may include ignoring
+// out-of-bound indices or outputting a tensor with a 0 stored in the first
+// dimension of its shape if `num_segments` is 0.
+//
 // Arguments:
 //
 //	segment_ids: A tensor whose shape is a prefix of `data.shape`.
+// The values must be less than `num_segments`.
+//
+// Caution: The values are always validated to be in range on CPU, never validated
+// on GPU.
 //
 //
 // Returns Has same shape as data, except for the first `segment_ids.rank`
@@ -30441,21 +30460,30 @@ func VariableShape(scope *Scope, input tf.Output, optional ...VariableShapeAttr)
 //
 // For example:
 //
-// ``` python
-// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-// tf.unsorted_segment_prod(c, tf.constant([0, 1, 0]), num_segments=2)
-// # ==> [[ 4,  6, 6, 4],
-// #       [5,  6, 7, 8]]
-// ```
+// >>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+// >>> tf.math.unsorted_segment_prod(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+// array([[4, 6, 6, 4],
+//        [5, 6, 7, 8]], dtype=int32)
 //
 // If there is no entry for a given segment ID `i`, it outputs 1.
 //
 // If the given segment ID `i` is negative, then the corresponding value is
 // dropped, and will not be included in the result.
+// Caution: On CPU, values in `segment_ids` are always validated to be less than
+// `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+// does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+// result in safe but unspecified behavior, which may include ignoring
+// out-of-bound indices or outputting a tensor with a 0 stored in the first
+// dimension of its shape if `num_segments` is 0.
+//
 //
 // Arguments:
 //
 //	segment_ids: A tensor whose shape is a prefix of `data.shape`.
+// The values must be less than `num_segments`.
+//
+// Caution: The values are always validated to be in range on CPU, never validated
+// on GPU.
 //
 //
 // Returns Has same shape as data, except for the first `segment_ids.rank`
@@ -50764,23 +50792,32 @@ func TPUReplicatedOutput(scope *Scope, input tf.Output, num_replicas int64) (out
 // If the given segment ID `i` is negative, then the corresponding value is
 // dropped, and will not be included in the result.
 //
+// Caution: On CPU, values in `segment_ids` are always validated to be less than
+// `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+// does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+// result in safe but unspecified behavior, which may include ignoring
+// out-of-bound indices or outputting a tensor with a 0 stored in the first
+// dimension of its shape if `num_segments` is 0.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentMax.png" alt>
 // </div>
 //
 // For example:
 //
-// ``` python
-// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-// tf.unsorted_segment_max(c, tf.constant([0, 1, 0]), num_segments=2)
-// # ==> [[ 4,  3, 3, 4],
-// #       [5,  6, 7, 8]]
-// ```
+// >>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+// >>> tf.math.unsorted_segment_max(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+// array([[4, 3, 3, 4],
+//        [5,  6, 7, 8]], dtype=int32)
 //
 //
 // Arguments:
 //
 //	segment_ids: A tensor whose shape is a prefix of `data.shape`.
+// The values must be less than `num_segments`.
+//
+// Caution: The values are always validated to be in range on CPU, never validated
+// on GPU.
 //
 //
 // Returns Has same shape as data, except for the first `segment_ids.rank`
