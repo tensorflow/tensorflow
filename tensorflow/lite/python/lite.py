@@ -32,7 +32,8 @@ from google.protobuf.message import DecodeError
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
 from tensorflow.lite.python import lite_constants as constants
-from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
+from tensorflow.lite.python.convert import convert_graphdef as _convert_graphdef
+from tensorflow.lite.python.convert import convert_graphdef_with_arrays as _convert_graphdef_with_arrays
 from tensorflow.lite.python.convert import convert_jax_hlo as _convert_jax_hlo
 from tensorflow.lite.python.convert import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
@@ -41,9 +42,6 @@ from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
 from tensorflow.lite.python.convert import mlir_sparsify as _mlir_sparsify
 from tensorflow.lite.python.convert import OpsSet
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
-from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
-from tensorflow.lite.python.convert import toco_convert_impl as _toco_convert_impl
-from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import SubComponent
@@ -372,7 +370,7 @@ class QuantizationMode(object):
       }
     else:
       # Note this might still trigger (uint8) quantization to be compatible with
-      # TOCO.
+      # the old converter.
       return {
           "inference_type": inference_ty if inference_ty else _dtypes.float32,
           "inference_input_type": inference_input_ty,
@@ -483,7 +481,7 @@ class TFLiteConverterBase(object):
     self._experimental_tf_quantization_mode = None
 
     # When the value is true, the MLIR quantantizer triggers dynamic range
-    # quantization in MLIR instead of the old TOCO quantizer. Used only if
+    # quantization in MLIR instead of the old quantizer. Used only if
     # experimental_new_quantizer is on.
     # TODO(b/204727097): Enable _experimental_new_dynamic_range_quantizer
     # by default and remove the flag once feature parity with the old quantizer
@@ -945,14 +943,14 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       logging.warning(
           "Please consider switching to the new converter by setting "
           "experimental_new_converter=True. "
-          "The old converter (TOCO) is deprecated.")
+          "The old converter is deprecated.")
     else:
       logging.info("Using new converter: If you encounter a problem "
                    "please file a bug. You can opt-out "
                    "by setting experimental_new_converter=False")
 
     # Converts model.
-    result = _toco_convert_impl(
+    result = _convert_graphdef(
         input_data=graph_def,
         input_tensors=input_tensors,
         output_tensors=output_tensors,
@@ -1497,7 +1495,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       created for any op that is unknown. The developer needs to provide these
       to the TensorFlow Lite runtime with a custom resolver. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion. (default True)
+      MLIR-based conversion. (default True)
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
       (default True)
@@ -1890,7 +1888,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       logging.warning(
           "Please consider switching to the new converter by setting "
           "experimental_new_converter=True. "
-          "The old converter (TOCO) is deprecated.")
+          "The old converter is deprecated.")
     else:
       logging.info("Using experimental converter: If you encountered a problem "
                    "please file a bug. You can opt-out "
@@ -1899,13 +1897,13 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self._validate_quantized_input_stats(converter_kwargs, quant_mode)
     # Converts model.
     if self._has_valid_tensors():
-      result = _toco_convert_impl(
+      result = _convert_graphdef(
           input_data=optimized_graph,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
           **converter_kwargs)
     else:
-      result = _toco_convert_graph_def(
+      result = _convert_graphdef_with_arrays(
           input_data=optimized_graph,
           input_arrays_with_shape=self._input_arrays_with_shape,
           output_arrays=self._output_arrays,
@@ -1962,8 +1960,8 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     if not super(TFLiteConverterBaseV1, self)._is_unknown_shapes_allowed():
       return False
 
-    # `conversion_summary_dir` calls TOCO. Unknown shapes are only supported by
-    # the MLIR converter.
+    # `conversion_summary_dir` calls the old converter. Unknown shapes are only
+    # supported by the MLIR converter.
     if self.conversion_summary_dir:
       logging.warning(
           "`conversion_summary_dir` does not work with unknown shapes. "
@@ -2338,7 +2336,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     post_training_quantize: Deprecated. Please use `optimizations` instead and
       set it to `{tf.lite.Optimize.DEFAULT}`. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion. (default True)
+      MLIR-based conversion. (default True)
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
       (default True)
@@ -2613,7 +2611,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
 
 @_tf_export(v1=["lite.TocoConverter"])
 class TocoConverter(object):
-  """Convert a TensorFlow model into `output_format` using TOCO.
+  """Convert a TensorFlow model into `output_format`.
 
   This class has been deprecated. Please use `lite.TFLiteConverter` instead.
   """
