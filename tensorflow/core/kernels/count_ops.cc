@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -22,6 +24,9 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+// Don't allocate too large `BatchedMap<T>` objects
+static int kMaxBatches = std::numeric_limits<int>::max();
 
 template <class T>
 using BatchedMap = std::vector<absl::flat_hash_map<int64_t, T>>;
@@ -235,6 +240,10 @@ class SparseCount : public OpKernel {
 
     bool is_1d = shape.NumElements() == 1;
     int num_batches = is_1d ? 1 : shape_vector(0);
+    OP_REQUIRES(
+        context, 0 < num_batches && num_batches < kMaxBatches,
+        errors::InvalidArgument("Cannot allocate ", num_batches,
+                                " batches, is the dense shape too wide?"));
 
     const auto values_values = values.flat<T>();
     const auto weight_values = weights.flat<W>();
