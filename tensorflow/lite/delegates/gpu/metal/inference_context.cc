@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/substitute.h"
@@ -868,6 +872,20 @@ void InferenceContext::Profile(id<MTLDevice> device, ProfilingInfo* result) {
       auto& dispatch_info = result->dispatches[k];
       dispatch_info.label = nodes_[k].name;
       dispatch_info.duration = (end - start) / static_cast<float>(kRuns);
+
+      uint64_t read_size = 0;
+      for (auto& src_id : nodes_[k].inputs) {
+        read_size += GetTensor(src_id)->GetMemorySizeInBytes();
+      }
+      const auto& gpu_op = nodes_[k].task.GetGpuOperation();
+      read_size += gpu_op.const_args_size_;
+      uint64_t write_size = 0;
+      for (auto& dst_id : nodes_[k].outputs) {
+        write_size += GetTensor(dst_id)->GetMemorySizeInBytes();
+      }
+      dispatch_info.flops = gpu_op.flops_;
+      dispatch_info.read_mem_size = read_size;
+      dispatch_info.write_mem_size = write_size;
     }
   }
 }
