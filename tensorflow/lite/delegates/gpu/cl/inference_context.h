@@ -90,6 +90,22 @@ class InferenceContext {
     TensorStorageType storage_type;
     ModelHints hints;
 
+    // User can require specific layout for some tensors.
+    // This will guarantee that tensors with specific ids have exact specified
+    // layout.
+    // Some restrictions apply:
+    //   1) ValueId must be input or output id of GraphFloat32
+    //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+    //      for example for precision F16, data_type must be FLOAT16
+    //   3) Layout must be without Batch dimension if tensor.shape.b == 1
+    //      Layout must be with Batch dimension if tensor.shape.b != 1
+    // InitFromGraph will fail if gpu can not allocate tensor with requested
+    // tensor descriptor
+    // WARNING: This is an experimental API and subject to change.
+    // IMPORTANT: tensors ids from predefined/external_immutable_tensors should
+    // not intersect.
+    absl::flat_hash_map<ValueId, TensorDescriptor> predefined;
+
     // User can provide immutable external tensors for inference context.
     // Some restrictions apply:
     //   1) ValueId must be input or output id of GraphFloat32
@@ -101,6 +117,8 @@ class InferenceContext {
     // InitFromGraph will fail if gpu can not allocate tensor with requested
     // tensor descriptor
     // WARNING: This is an experimental API and subject to change.
+    // IMPORTANT: tensors ids from predefined/external_immutable_tensors should
+    // not intersect.
     absl::flat_hash_map<ValueId, GpuSpatialTensor*> external_immutable_tensors;
   };
 

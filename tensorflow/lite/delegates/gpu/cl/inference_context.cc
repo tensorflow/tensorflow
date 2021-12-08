@@ -235,14 +235,35 @@ absl::Status ReserveGraphTensors(
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
   for (auto& t : tensors) {
     const auto shape = graph.GetValue(t->id)->tensor.shape;
+    auto it_predefined = create_info.predefined.find(t->id);
     auto it_immutable_external =
         create_info.external_immutable_tensors.find(t->id);
     TensorDescriptor tensor_desc;
-    if (it_immutable_external != create_info.external_immutable_tensors.end()) {
+    if (it_predefined != create_info.predefined.end()) {
+      if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
+        return absl::InvalidArgumentError(
+            "Currently predefined can be used only for graph inputs/outputs");
+      }
+      if (it_immutable_external !=
+          create_info.external_immutable_tensors.end()) {
+        return absl::InvalidArgumentError(
+            "The same tensor id can not be used in predefined and "
+            "external_immutable_tensors");
+      }
+      tensor_desc = it_predefined->second;
+      RETURN_IF_ERROR(CheckExternalTensorDescription(gpu_info, tensor_desc,
+                                                     shape, data_type));
+    } else if (it_immutable_external !=
+               create_info.external_immutable_tensors.end()) {
       if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
         return absl::InvalidArgumentError(
             "Currently external tensors can be used only for graph "
             "inputs/outputs");
+      }
+      if (it_predefined != create_info.predefined.end()) {
+        return absl::InvalidArgumentError(
+            "The same tensor id can not be used in predefined and "
+            "external_immutable_tensors");
       }
       tensor_desc = it_immutable_external->second->GetDescriptor();
       RETURN_IF_ERROR(CheckExternalTensorDescription(gpu_info, tensor_desc,
