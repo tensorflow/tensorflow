@@ -21,6 +21,7 @@ import os as _os
 import platform as _platform
 import subprocess as _subprocess
 import tempfile as _tempfile
+import warnings
 
 import six
 
@@ -488,6 +489,8 @@ def build_conversion_flags(inference_type=dtypes.float32,
                            disable_per_channel_quantization=False,
                            enable_mlir_dynamic_range_quantizer=False,
                            tf_quantization_mode=None,
+                           disable_infer_tensor_range=False,
+                           use_fake_quant_num_bits=False,
                            **_):
   """Builds protocol buffer describing a conversion of a model.
 
@@ -562,6 +565,9 @@ def build_conversion_flags(inference_type=dtypes.float32,
       If False, the old converter dynamic range quantizer is used.
     tf_quantization_mode: Indicates the mode of TF Quantization when the
       output model is used for TF Quantization.
+    disable_infer_tensor_range: Disable infering tensor ranges.
+    use_fake_quant_num_bits: Allow quantization parameters to be calculated from
+      num_bits attribute.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -619,6 +625,8 @@ def build_conversion_flags(inference_type=dtypes.float32,
       enable_mlir_dynamic_range_quantizer)
   if tf_quantization_mode:
     conversion_flags.tf_quantization_mode = tf_quantization_mode
+  conversion_flags.disable_infer_tensor_range = disable_infer_tensor_range
+  conversion_flags.use_fake_quant_num_bits = use_fake_quant_num_bits
   return conversion_flags
 
 
@@ -735,7 +743,8 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
       else:
         # We should ideally raise an error here, but we don't as it would break
         # several models/projects that depend on this workflow.
-        pass
+        warnings.warn("Statistics for quantized inputs were expected, but not "
+                      "specified; continuing anyway.")
 
     if input_shapes is None:
       shape = input_tensor.shape

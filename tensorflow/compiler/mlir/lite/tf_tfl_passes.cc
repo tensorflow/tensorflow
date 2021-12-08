@@ -277,10 +277,11 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
         pass_manager->nest<mlir::FuncOp>(), layout_optimization_options);
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
-    pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreatePrepareTFPass(
-        pass_config.unfold_batch_matmul,
-        /*allow_bf16_and_f16_type_legalization=*/!pass_config
-            .runtime_verification));
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul,
+                                       /*allow_bf16_and_f16_type_legalization=*/
+                                       !pass_config.runtime_verification,
+                                       toco_flags.use_fake_quant_num_bits()));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     if (pass_config.shape_inference) {
       // Add a shape inference pass to optimize away the unnecessary casts.
