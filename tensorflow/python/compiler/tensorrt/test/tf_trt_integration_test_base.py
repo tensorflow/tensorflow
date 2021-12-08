@@ -15,6 +15,7 @@
 """Utilities to test TF-TensorRT integration."""
 
 import collections
+import copy
 import errno
 import gc
 import itertools
@@ -116,6 +117,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   @property
   def trt_incompatible_op(self):
     return math_ops.erfc
+
+  @property
+  def trt_incompatible_binary_op(self):
+    return math_ops.igamma
 
   @property
   def precision_modes(self):
@@ -624,6 +629,59 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         for k, v in expected_input_map.items()
         if k not in removed_const_nodes
     }
+
+    def dependency_optimization(input_map):
+      """Transitive reduction of the control dependencies."""
+      # 1. Topological sort.
+      working_edges = copy.deepcopy(input_map)
+      # Populate a set with all the nodes wiithout incoming edges.
+      working_set = {
+        name for name in working_edges if len(working_edges[name]) == 0}
+      sorted_nodes = []
+      while working_set:
+        # Take a node from the set and add it to the sorted list.
+        node0 = working_set.pop()
+        sorted_nodes.append(node0)
+        # Remove outgoing edges and add nodes to the set if they have no
+        # incoming edge remaining.
+        for node1 in list(working_edges.keys()):
+          for edge_name in (node0, "^" + node0):
+            if edge_name in working_edges[node1]:
+              working_edges[node1].remove(edge_name)
+              if not working_edges[node1]:
+                working_set.add(node1)
+      if sum(len(edges) for edges in working_edges.values()):
+        raise ValueError("Input map doesn't represent a DAG!")
+
+      # 2. Transitive reduction.
+      for i in range(len(sorted_nodes) - 1):
+        dep_name = "^" + sorted_nodes[i]
+        # Identify nodes which have a control edge from the current one.
+        targets = [
+          j for j in range(i + 1, len(sorted_nodes))
+          if dep_name in input_map[sorted_nodes[j]]]
+        if not targets:
+          continue
+        # Compute max path lengths until the last target node.
+        path_lengths = {sorted_nodes[i]: 0}
+        for j in range(i + 1, targets[-1] + 1):
+          j_name = sorted_nodes[j]
+          length = None
+          for edge_name in input_map[j_name]:
+            _, name = _InputName(edge_name)
+            if name in path_lengths and \
+              (length is None or path_lengths[name] >= length):
+              length = path_lengths[name] + 1
+          if length is not None:
+            path_lengths[j_name] = length
+        # Remove the control dependency of targets if there is a path of
+        # length strictly greater than 1 from the current node.
+        for j in targets:
+          j_name = sorted_nodes[j]
+          if path_lengths[j_name] > 1:
+            input_map[j_name].remove(dep_name)
+
+    dependency_optimization(expected_input_map)
 
     # Compute the actual mapping from each node to its input nodes. If a cast
     # op doesn't exist in the original graph, we replace the use of the cast op
