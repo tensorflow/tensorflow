@@ -138,7 +138,7 @@ void TFGraphDialect::initialize() {
 void TFGraphDialect::printCustomTfOp(Operation *op,
                                      OpAsmPrinter &printer) const {
   raw_ostream &os = printer.getStream();
-  ControlType control_ty = this->control_ty_;
+  ControlType control_ty = getControlType();
 
   // Check that all control dependencies are after the regular values,
   // otherwise print the generic form. We don't expect this to happen but
