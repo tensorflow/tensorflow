@@ -185,6 +185,27 @@ class SparseCount : public OpKernel {
                 errors::InvalidArgument(
                     "Input indices must be a 2-dimensional tensor. Got: ",
                     indices.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(values.shape()),
+                errors::InvalidArgument("Input values must be a vector. Got: ",
+                                        values.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(shape.shape()),
+                errors::InvalidArgument("Input shape must be a vector. Got: ",
+                                        shape.shape().DebugString()));
+    OP_REQUIRES(context,
+                values.shape().dim_size(0) == indices.shape().dim_size(0),
+                errors::InvalidArgument(
+                    "Number of values must match first dimension of indices.",
+                    "Got ", values.shape().dim_size(0),
+                    " values, indices shape: ", indices.shape().DebugString()));
+    OP_REQUIRES(
+        context, shape.shape().dim_size(0) == indices.shape().dim_size(1),
+        errors::InvalidArgument(
+            "Number of dimensions must match second dimension of indices.",
+            "Got ", shape.shape().dim_size(0),
+            " dimensions, indices shape: ", indices.shape().DebugString()));
+    OP_REQUIRES(context, shape.NumElements() > 0,
+                errors::InvalidArgument(
+                    "The shape argument requires at least one element."));
 
     if (use_weights) {
       OP_REQUIRES(
@@ -194,10 +215,6 @@ class SparseCount : public OpKernel {
               weights.shape().DebugString(),
               "; values shape: ", values.shape().DebugString()));
     }
-
-    OP_REQUIRES(context, shape.NumElements() != 0,
-                errors::InvalidArgument(
-                    "The shape argument requires at least one element."));
 
     bool is_1d = shape.NumElements() == 1;
     auto shape_vector = shape.flat<int64>();
@@ -224,16 +241,6 @@ class SparseCount : public OpKernel {
     auto per_batch_counts = BatchedMap<W>(num_batches);
 
     T max_value = 0;
-
-    OP_REQUIRES(context, num_values <= indices.shape().dim_size(0),
-                errors::InvalidArgument(
-                    "The first dimension of indices must be equal to or "
-                    "greather than number of values. ( ",
-                    indices.shape().dim_size(0), " vs. ", num_values, " )"));
-    OP_REQUIRES(context, indices.shape().dim_size(1) > 0,
-                errors::InvalidArgument("The second dimension of indices must "
-                                        "be greater than 0. Received: ",
-                                        indices.shape().dim_size(1)));
 
     for (int idx = 0; idx < num_values; ++idx) {
       int batch = is_1d ? 0 : indices_values(idx, 0);
