@@ -13,7 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
+#include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_clustering.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
@@ -25,6 +30,11 @@ namespace {
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
 using llvm::ArrayRef;
+
+using mlir::TF::ConstOp;
+using mlir::TF::HashTableV2Op;
+using mlir::TF::ReadVariableOp;
+
 using mlir::TFDevice::Cluster;
 using mlir::TFDevice::ClusteringPolicySet;
 using mlir::TFDevice::CreateClusterOp;
@@ -74,8 +84,54 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
     // If opset is not empty restrict operations that are enabled for
     // clustering.
-    auto filter = [&](mlir::Operation* op) -> bool {
+    auto opset_filter = [&](mlir::Operation* op) -> bool {
       return opset.empty() || opset.contains(op->getName().getStringRef());
+    };
+
+    // Find operations that could be hoisted from the function body into the
+    // TFRT resource initialization function. Currently it is an approximation
+    // of hoisting rules in the TFRT, we just find all the operations that
+    // depend only on ConstOp, ReadVariableOp or HashTableV2Op operations. We
+    // don't do any side effects analysis and conservatively can mark as
+    // hoistable operations that will not be hoisted by TFRT because of side
+    // effect dependencies.
+    //
+    // TODO(ezhulenev): This should be shared with TFRT hoisting implementation.
+
+    // Initialize a set of operations that we assume we will hoist.
+    llvm::DenseSet<mlir::Operation*> hoisted_ops;
+    getFunction().walk([&](mlir::Operation* op) {
+      if (mlir::isa<ReadVariableOp, ConstOp, HashTableV2Op>(op))
+        hoisted_ops.insert(op);
+    });
+
+    // Initialize work list with users of ReadVariableOp results.
+    llvm::SmallVector<mlir::Operation*> work_list;
+    for (mlir::Operation* hoisted : hoisted_ops)
+      work_list.append(hoisted->user_begin(), hoisted->user_end());
+
+    // Traverse all users until we find all operations that could be hoisted.
+    while (!work_list.empty()) {
+      mlir::Operation* op = work_list.pop_back_val();
+
+      // Add operation to hoisted ops set if all operands can be hoisted.
+      bool all_operands_hoisted =
+          llvm::all_of(op->getOperands(), [&](mlir::Value value) {
+            return hoisted_ops.contains(value.getDefiningOp());
+          });
+      if (!all_operands_hoisted) continue;
+
+      hoisted_ops.insert(op);
+      work_list.append(op->user_begin(), op->user_end());
+    }
+
+    auto hoist_filter = [&](mlir::Operation* op) {
+      return !hoisted_ops.contains(op);
+    };
+
+    // Combine together opset and hoist filters.
+    auto filter = [&](mlir::Operation* op) -> bool {
+      return opset_filter(op) && hoist_filter(op);
     };
 
     // Annotate all formed clusters with an attribute.
