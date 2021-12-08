@@ -918,12 +918,24 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
       mhlo::ReshapeOp reshape_op, mhlo::ReshapeOp::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     if (!VerifyHloOpBufferOrTensorSemantics(reshape_op)) return failure();
-    auto operand_type = adaptor.operand().getType().cast<ShapedType>();
+    auto operand = adaptor.operand();
+    auto operand_type = operand.getType().cast<ShapedType>();
+    auto elem_type = operand_type.getElementType();
     auto result_type = reshape_op.getType().cast<ShapedType>();
 
     if (!result_type.hasStaticShape()) return failure();
 
     result_type = typeConverter->convertType(result_type).cast<ShapedType>();
+
+    if (result_type.getRank() == 0 && !operand_type.hasStaticShape()) {
+      // This means all dimensions of the operand need to be 1. We add a cast to
+      // cast the dynamic dimensions to 1.
+      auto static_type = RankedTensorType::get(
+          llvm::SmallVector<int64_t>(operand_type.getRank(), 1), elem_type);
+      operand = rewriter.create<tensor::CastOp>(reshape_op.getLoc(),
+                                                static_type, operand);
+      operand_type = static_type;
+    }
 
     // Compute the reassociation maps for the linalg operation. This will
     // succeed if the reshape can be done with a single expand_shape or
@@ -932,41 +944,49 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
             getReassociationIndicesForReshape(operand_type, result_type)) {
       if (result_type.getRank() < operand_type.getRank()) {
         rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
-            reshape_op, result_type, adaptor.operand(), *reassociation_map);
+            reshape_op, result_type, operand, *reassociation_map);
       } else {
         rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
-            reshape_op, result_type, adaptor.operand(), *reassociation_map);
+            reshape_op, result_type, operand, *reassociation_map);
       }
       return success();
     }
 
-    // Otherwise, we need to first reduce all source dimensions into one and
-    // then expand to the destination dimensions.
-    auto get_identity_exprs = [&rewriter](int n) {
+    Value collapsed_op = operand;
+    Location loc = reshape_op.getLoc();
+    auto get_identity_exprs = [&rewriter](int64_t n) {
       SmallVector<AffineExpr, 4> exprs;
       for (int i = 0; i < n; ++i) exprs.push_back(rewriter.getAffineDimExpr(i));
       return exprs;
     };
-    Location loc = reshape_op.getLoc();
-    int64_t total_elems = result_type.getNumElements();
-    auto elem_type = operand_type.getElementType();
-    SmallVector<ReassociationExprs, 4> collapsing_map = {
-        // Use operand_type here because we need to collapse all operands
-        // dimensions.
-        get_identity_exprs(operand_type.getRank())};
-    SmallVector<ReassociationExprs, 4> expanding_map = {
-        // Use result_type here because we need to expand to all result
-        // dimensions.
-        get_identity_exprs(result_type.getRank())};
+    // Otherwise, we need to first reduce all source dimensions into one and
+    // then expand to the destination dimensions. If there is only a single
+    // source dimension, the reduce step can be skipped. TensorCollapseShape
+    // expects a different rank of operand and result.
+    if (operand_type.getRank() != 1) {
+      SmallVector<ReassociationExprs, 4> collapsing_map = {
+          // Use operand_type here because we need to collapse all operands
+          // dimensions.
+          get_identity_exprs(operand_type.getRank())};
 
-    Value collapsed_op = rewriter.create<linalg::TensorCollapseShapeOp>(
-        loc, adaptor.operand(), collapsing_map);
+      collapsed_op = rewriter.create<linalg::TensorCollapseShapeOp>(
+          loc, operand, collapsing_map);
+    }
     // Cast to a known static type if the input has dynamic dimensions.
+    int64_t total_elems = result_type.getNumElements();
     auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
     collapsed_op =
         rewriter.create<tensor::CastOp>(loc, collapsed_type, collapsed_op);
-    rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
-        reshape_op, result_type, collapsed_op, expanding_map);
+    if (result_type.getRank() == 1) {
+      rewriter.replaceOp(reshape_op, collapsed_op);
+    } else {
+      SmallVector<ReassociationExprs, 4> expanding_map = {
+          // Use result_type here because we need to expand to all result
+          // dimensions.
+          get_identity_exprs(result_type.getRank())};
+      rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
+          reshape_op, result_type, collapsed_op, expanding_map);
+    }
     return success();
   }
 };
