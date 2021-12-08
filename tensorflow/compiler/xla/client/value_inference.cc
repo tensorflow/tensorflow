@@ -789,6 +789,18 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
           "Upper-bound inferencing on custom call %s is not supported",
           root->DebugString());
     }
+    case HloOpcode::kGather: {
+      return PostorderDFSNode()
+          .AddDependency(root->operand_ids(0),
+                         PostorderDFSNodeType::kConstantUpperBound, context)
+          .AddDependency(root->operand_ids(1),
+                         PostorderDFSNodeType::kConstantValue, context)
+          .AddVisit([root, this](absl::Span<Literal> operands) {
+            return HloProtoEvaluator(evaluator, *root)
+                .WithOperands(operands)
+                .Evaluate();
+          });
+    }
     default:
       return AnalyzeConstantValueFallback(
           handle, PostorderDFSNodeType::kConstantUpperBound, context);
@@ -866,6 +878,18 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
                     .WithOperands(operands)
                     .Evaluate();
               });
+    }
+    case HloOpcode::kGather: {
+      return PostorderDFSNode()
+          .AddDependency(root->operand_ids(0),
+                         PostorderDFSNodeType::kConstantLowerBound, context)
+          .AddDependency(root->operand_ids(1),
+                         PostorderDFSNodeType::kConstantValue, context)
+          .AddVisit([root, this](absl::Span<Literal> operands) {
+            return HloProtoEvaluator(evaluator, *root)
+                .WithOperands(operands)
+                .Evaluate();
+          });
     }
     default:
       return AnalyzeConstantValueFallback(
