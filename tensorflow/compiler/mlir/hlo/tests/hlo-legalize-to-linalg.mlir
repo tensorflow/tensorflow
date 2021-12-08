@@ -114,6 +114,21 @@ func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @float_cbrt
+func @float_cbrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %tensor_result = "mhlo.cbrt"(%operand)
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: %[[ABS:.+]] = math.abs %arg1
+  // CHECK: %[[THIRD:.+]] = arith.constant 0.333333343
+  // CHECK: %[[POW:.+]] = math.powf %[[ABS]], %[[THIRD]]
+  // CHECK: %[[RESULT:.+]] = math.copysign %[[POW]], %arg1
+  // CHECK: linalg.yield %[[RESULT]]
+  return %tensor_result : tensor<2x2xf32>
+}
+
+// -----
+
+
 // CHECK-LABEL: func @float_sub
 func @float_sub(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
