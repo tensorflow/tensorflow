@@ -598,6 +598,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
           .AddVisit([](Literal operand) { return operand; });
     }
     case HloOpcode::kReduce:
+    case HloOpcode::kSort:
     case HloOpcode::kScatter:
     case HloOpcode::kReduceWindow: {
       const HloComputationProto* computation_proto =
