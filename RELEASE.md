@@ -104,6 +104,8 @@ This release contains contributions from many people at Google, as well as:
   * RNG behavior change for all `tf.keras.initializers` classes. For any class constructed with a fixed seed, it will no longer generate same value when invoked multiple times. Instead, it will return different value, but a determinisitic sequence. This change will make the initialize behavior align between v1 and v2.
   * Metrics update and collection logic in default `Model.train_step()` is now
     customizable via overriding `Model.compute_metrics()`.
+  * Losses computation logic in default `Model.train_step()` is now
+    customizable via overriding `Model.compute_loss()`.
 
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with TF SavedModel's Signature concept.
