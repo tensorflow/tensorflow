@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/statusor.h"
 
 using llvm::APInt;
 using llvm::makeArrayRef;
@@ -966,31 +965,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
     }
 
-    case HloOpcode::kConvert: {
-      // Convert to boolean is special, it requires a comparison to 0 instead of
-      // a truncation to i1, otherwise it is a 1-1 translation.
-      auto ranked_type = result_type.dyn_cast<mlir::RankedTensorType>();
-      mlir::IntegerType integer_type =
-          (ranked_type)
-              ? ranked_type.getElementType().dyn_cast<mlir::IntegerType>()
-              : nullptr;
-      if (!integer_type || integer_type.getWidth() != 1) {
-        // Simple case: 1-1 mapping.
-        return {func_builder->create<mlir::mhlo::ConvertOp>(
-            loc, result_type, operands, attributes)};
-      }
-
-      // Return type is boolean, let's use `operand != 0` instead of Convert.
-      xla::Shape input_shape = instruction->operand(0)->shape();
-      TF_ASSIGN_OR_RETURN(mlir::Type type,
-                          ConvertTensorShapeToType<mlir::RankedTensorType>(
-                              input_shape, *func_builder));
-      auto zero = func_builder->create<mlir::mhlo::ConstOp>(
-          loc, func_builder->getZeroAttr(type));
-      return {func_builder->create<mlir::mhlo::CompareOp>(
-          loc, operands[0], zero, func_builder->getStringAttr("NE"))};
-    }
-
 #define NO_ATTRIBUTE_CASE(hlo_op_code, mlir_op)                               \
   case HloOpcode::hlo_op_code: {                                              \
     return func_builder                                                       \
@@ -1007,6 +981,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kBitcastConvert, BitcastConvertOp);
       NO_ATTRIBUTE_CASE(kCbrt, CbrtOp);
       NO_ATTRIBUTE_CASE(kClz, ClzOp);
+      NO_ATTRIBUTE_CASE(kConvert, ConvertOp);
       NO_ATTRIBUTE_CASE(kCeil, CeilOp);
       NO_ATTRIBUTE_CASE(kClamp, ClampOp);
       NO_ATTRIBUTE_CASE(kComplex, ComplexOp);
