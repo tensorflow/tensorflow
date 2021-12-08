@@ -491,6 +491,22 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "xla_compilation_cache_disable_test",
+    srcs = [
+        "xla_compilation_cache_disable_test.cc",
+    ],
+    deps = [
+        ":flags",
+        ":xla_compilation_cache",
+        ":xla_cpu_jit",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "jit_compilation_passes",
     srcs = ["jit_compilation_pass_registration.cc"],
