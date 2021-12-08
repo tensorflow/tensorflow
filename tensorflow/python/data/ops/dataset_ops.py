@@ -19,7 +19,6 @@ import multiprocessing
 import sys
 import threading
 import warnings
-import weakref
 
 import numpy as np
 import six
@@ -83,6 +82,12 @@ StructuredFunctionWrapper = structured_function.StructuredFunctionWrapper
 wrap_function = lazy_loader.LazyLoader(
     "wrap_function", globals(),
     "tensorflow.python.eager.wrap_function")
+# Loaded lazily due to a circular dependency
+# dataset_ops->def_function->func_graph->autograph->dataset_ops
+# TODO(kathywu): Use a regular import.
+def_function = lazy_loader.LazyLoader(
+    "def_function", globals(),
+    "tensorflow.python.eager.def_function")
 # Loaded lazily due to a circular dependency
 # dataset_ops->parsing_ops->dataset_ops
 # TODO(varshaan): Use a regular import.
@@ -223,16 +228,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       variant_tensor: A DT_VARIANT tensor that represents the dataset.
     """
     self._variant_tensor_attr = variant_tensor
-    weak_self = weakref.proxy(self)
-    self._variant_tracker = self._track_trackable(
-        _VariantTracker(
-            self._variant_tensor,
-            # _trace_variant_creation only works when executing eagerly, so we
-            # don't want to run it immediately. We also want the _VariantTracker
-            # to have a weak reference to the Dataset to avoid creating
-            # reference cycles and making work for the garbage collector.
-            lambda: weak_self._trace_variant_creation()()),  # pylint: disable=unnecessary-lambda,protected-access
-        name="_variant_tracker")
     self._graph_attr = ops.get_default_graph()
 
     # Initialize the options for this dataset and its inputs.
@@ -329,11 +324,23 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           node_value = parsing_ops.parse_tensor(
               tensor_proto.SerializeToString(), dtypes.string).numpy()
         asset_tracker[node.name] = ([
-            self._track_trackable(
-                tracking.Asset(n), name=node.name + "_" + str(i))
+            self._track_trackable(tracking.Asset(n),
+                                  name=node.name + "_" + str(i), overwrite=True)
             for i, n in enumerate(node_value)
         ])
     return asset_tracker
+
+  def _list_extra_dependencies_for_serialization(self, serialization_cache):
+    del serialization_cache  # Unused.
+    # _trace_variant_creation only works when executing eagerly, so we don't
+    # want to run it in the object initialization.
+    @def_function.function(input_signature=[], autograph=False)
+    def _creator():
+      resource = self._trace_variant_creation()()  # pylint: disable=protected-access
+      return resource
+    _creator.get_concrete_function()  # Trigger asset tracking
+
+    return {"_variant_tracker": _VariantTracker(self._variant_tensor, _creator)}
 
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
@@ -4425,7 +4432,19 @@ class _VariantTracker(tracking.CapturableResource):
     """
     super(_VariantTracker, self).__init__(device="CPU")
     self._resource_handle = variant_tensor
+    if not isinstance(resource_creator, def_function.Function):
+      # Internal validation -- _VariantTracker assumes that resource creator is
+      # already a tf.function.
+      raise TypeError("Resource creator should already be a tf.function.")
     self._create_resource = resource_creator
+
+  def _list_functions_for_serialization(self, unused_cache):
+    functions = (super(_VariantTracker, self)
+                 ._list_functions_for_serialization(unused_cache))
+    # Overwrite the _create_resource function, since `self._create_resource`
+    # is already a tf.function.
+    functions["_create_resource"] = self._create_resource
+    return functions
 
 
 class TensorDataset(DatasetSource):
