@@ -32,6 +32,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
@@ -135,12 +136,13 @@ class DefFunctionTest(xla_test.XLATestCase):
 
   def testNestedCallUnsupportedOps(self):
     if 'tpu' in self.device.lower():
-      self.skipTest('XLA TPU supports tf.unique')
+      self.skipTest('Outside compilation will extract string_length to CPU')
 
     with ops.device('device:{}:0'.format(self.device)):
 
       def fn(x):
-        return array_ops.unique(x).y
+        return string_ops.string_length(
+            string_ops.string_format('{}', x))
 
       xla_func = def_function.function(fn, jit_compile=True)
 
@@ -155,23 +157,18 @@ class DefFunctionTest(xla_test.XLATestCase):
         func(inputs)
 
   def testUnsupportedOps(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('XLA TPU supports tf.unique')
-
     with ops.device('device:{}:0'.format(self.device)):
 
       def fn(x):
-        return array_ops.unique(x).y  # Unique is not supported by XLA
+        return string_ops.string_length(
+            string_ops.string_format('{}', x))
 
-      func = def_function.function(fn, jit_compile=False)
       xla_func = def_function.function(fn, jit_compile=True)
 
-      inputs = constant_op.constant([1, 2, 2, 3, 3])
-      self.assertAllClose([1, 2, 3], func(inputs))
       with self.assertRaisesRegex(
           errors.InvalidArgumentError, 'legalization failed'
           if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
-        xla_func(inputs)
+        xla_func(constant_op.constant([3.1, 3.2]))
 
   @test_util.disable_mlir_bridge('TODO(b/203146273): MLIR bridge does not'
                                  'support CollectiveReduceV2')
@@ -224,52 +221,24 @@ class DefFunctionTest(xla_test.XLATestCase):
                     g.experimental_get_compiler_ir(inputs, inputs)())
 
   def testPythonStackTrace(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('XLA TPU supports tf.unique')
-
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function(jit_compile=True)
       def fn(x):
-        return array_ops.unique(x).y  # COMMENT2
+        return string_ops.string_length(
+            string_ops.string_format('{}', x))  # COMMENT2
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT2'):
         fn(inputs)
 
-  @test_util.disable_mlir_bridge('TODO(b/181176476): Wrong stack trace for '
-                                 'failed legalization in MLIR bridge')
-  def testPythonStackTraceControlFlow(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('XLA TPU supports tf.unique')
-
-    with ops.device('device:{}:0'.format(self.device)):
-
-      @def_function.function(jit_compile=True)
-      def f(x):
-        x = ops.convert_to_tensor(x)
-
-        def body(i, a):
-          return i + 1 + array_ops.unique([i]).y[0], \
-              control_flow_ops.cond(i > 2, lambda: a + (x**2), lambda: a + 3)
-
-        return control_flow_ops.while_loop(
-            lambda i, *_: i < 10,
-            body, (constant_op.constant(0), constant_op.constant(3.)),
-            maximum_iterations=10)[1]
-
-      with self.assertRaisesRegex(errors.InvalidArgumentError, r'\.y\[0\]'):
-        f(constant_op.constant(100.0))
-
   def testPythonStackTraceUncompiledWithinCompiled(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('XLA TPU supports tf.unique')
-
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function
       def fn(x):
-        return array_ops.unique(x).y  # COMMENT3
+        return string_ops.string_length(
+            string_ops.string_format('{}', x))  # COMMENT3
 
       @def_function.function(jit_compile=True)
       def outer(x):
@@ -282,14 +251,12 @@ class DefFunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
                                  'support stack traces')
   def testPythonStackTraceCompiledWithinUncompiled(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('XLA TPU supports tf.unique')
-
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function(jit_compile=True)
       def fn(x):
-        return array_ops.unique(x).y  # COMMENT1
+        return string_ops.string_length(
+            string_ops.string_format('{}', x))  # COMMENT1
 
       @def_function.function
       def outer(x):
@@ -302,14 +269,12 @@ class DefFunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
                                  'support stack traces')
   def testPythonStackTraceCompiledWithinCompiled(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('XLA TPU supports tf.unique')
-
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function(jit_compile=True)
       def fn(x):
-        return array_ops.unique(x).y  # COMMENT4
+        return string_ops.string_length(
+            string_ops.string_format('{}', x))  # COMMENT4
 
       @def_function.function
       def outer(x):
@@ -464,16 +429,14 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertAllClose([2, 3, 3, 4, 4], c.f1(inputs, 1))
 
   def testMethodCompilationUnsupportedFunc(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('XLA TPU supports tf.unique')
-
     with ops.device('device:{}:0'.format(self.device)):
 
       class C(object):
 
         @def_function.function(jit_compile=True)
         def f1(self, x):
-          return array_ops.unique(x).y
+          return string_ops.string_length(
+              string_ops.string_format('{}', x))
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       c = C()
@@ -681,6 +644,34 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       f()
       self.assertAllClose(v, [3.1, 2.3])
+
+  @test_util.disable_mlir_bridge('TODO(b/199737685): MLIR bridge does not'
+                                 'support tf.unique via jit_compile')
+  def testUniqueErrMsg(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('We do not check shapes on TPU')
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x, y):
+        return array_ops.unique(x).y + array_ops.unique(y).y
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'Fail to proof the equality'):
+        f(constant_op.constant([3.1, 3.2]),
+          constant_op.constant([3.3, 3.2]))
+
+  @test_util.disable_mlir_bridge('TODO(b/199737685): MLIR bridge does not'
+                                 'support tf.unique via jit_compile')
+  def testUniqueCompilability(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        return array_ops.unique(x).y
+
+      self.assertAllClose(f(constant_op.constant([3.1, 3.2, 3.2])), [3.1, 3.2])
 
   def testUpdateVariableMemoryUsage(self):
     with ops.device('device:{}:0'.format(self.device)):

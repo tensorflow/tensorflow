@@ -143,6 +143,13 @@ class RecursiveCompilabilityChecker {
     // legalization issues are fixed.
     bool allow_where_op = true;
 
+    // Whether to allow the compilation of UniqueOp. Compilation of the UniqueOp
+    // generates output with bounded dynamic shape that may cause failures with
+    // auto clustering.
+    // TODO(b/209813421): Enable tf.unique during
+    // autoclustering once all failures are rfixed.
+    bool allow_unique_op = true;
+
     // Whether ops that are marked as outside compiled are always considered
     // compilable.
     // TODO(b/191502757):  Make this behavior true by default and remove this

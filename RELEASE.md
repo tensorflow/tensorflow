@@ -238,6 +238,8 @@ This release contains contributions from many people at Google, as well as:
     * Add a new API that allows custom call functions to signal errors. The old API will be deprecated in a future release. See https://www.tensorflow.org/xla/custom_call for details.
     * XLA:GPU reductions are deterministic by default (reductions within `jit_compile=True` are now deterministic).
     * XLA:GPU works with Horovod (OSS contribution by Trent Lo from NVidia)
+    * XLA:CPU and XLA:GPU can compile tf.unique and tf.where when shapes are
+      provably correct at compile time.
 *   `tf.saved_model.save`:
     *   When saving a model, not specifying a namespace whitelist for custom ops with a namespace will now default to allowing rather than rejecting them all.
 * Deterministic Op Functionality (enabled by setting the environment variable `TF_DETERMINISTIC_OPS` to `"true"` or `"1"`):
