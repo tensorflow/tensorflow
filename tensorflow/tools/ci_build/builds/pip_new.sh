@@ -716,12 +716,16 @@ run_all_tests
 if [[ ${OS_TYPE} == "ubuntu" ]] && \
    ! [[ ${CONTAINER_TYPE} == "rocm" ]] ; then
   # Avoid Python3.6 abnormality by installing auditwheel here.
-  set +e
-  pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
-  pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-  sudo pip3 install auditwheel==2.0.0 || \
-    sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-  set -e
+  # TODO(rameshsampath) - Cleanup and remove the need for auditwheel install
+  # Python 3.10 requires auditwheel > 2 and its already installed in common.sh
+  if [[ $PY_MAJOR_MINOR_VER -ne "3.10" ]]; then
+    set +e
+    pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
+    pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+    sudo pip3 install auditwheel==2.0.0 || \
+      sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+    set -e
+  fi
   auditwheel --version
 
   for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
