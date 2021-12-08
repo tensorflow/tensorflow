@@ -29,6 +29,9 @@ export TF_PYTHON_VERSION='python3.7'
 export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
 export TF_BUILD_BOTH_CPU_PACKAGES=1
 
+# TODO(mihaimaruseac): Debug info, remove later
+${PYTHON_BIN_PATH} -m pip debug --verbose
+
 # Export optional variables for running pip.sh
 export TF_BUILD_FLAGS="--config=release_cpu_macos"
 export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
