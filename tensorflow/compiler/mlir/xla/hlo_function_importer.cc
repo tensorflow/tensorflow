@@ -229,7 +229,7 @@ StatusOr<Value> HloFunctionImporter::ImportInstructions(
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     const xla::HloInstruction* instr,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
-    mlir::OpBuilder* builder) {
+    mlir::OpBuilder* builder, DynamicShapeHandlingMode mode) {
   mlir::Block* block = builder->getBlock();
   if (block == nullptr)
     return InvalidArgument(
@@ -238,15 +238,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   HloFunctionImporter importer(
       block->getParent()->getParentOfType<mlir::ModuleOp>(), {}, builder);
 
-  return importer.ImportInstructionWithLayout(instr, operands, builder);
+  return importer.ImportInstructionWithLayout(instr, operands, builder, mode);
 }
 
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
-    mlir::OpBuilder* func_builder) {
-  TF_ASSIGN_OR_RETURN(auto result_type, ConvertShapeToType<RankedTensorType>(
-                                            instruction->shape(), *builder_));
+    mlir::OpBuilder* func_builder, DynamicShapeHandlingMode mode) {
+  const Shape& instruction_shape = instruction->shape();
+  const Shape& shape = mode == DynamicShapeHandlingMode::kConvertToStatic
+                           ? xla::ShapeUtil::MakeStaticShape(instruction_shape)
+                           : instruction_shape;
+  TF_ASSIGN_OR_RETURN(auto result_type,
+                      ConvertShapeToType<RankedTensorType>(shape, *builder_));
   mlir::Location loc = GenerateInstructionLocation(instruction, func_builder);
 
   llvm::SmallVector<NamedAttribute, 10> attributes;
@@ -1087,10 +1091,10 @@ void SetXlaShape(mlir::Operation* op, const Shape& shape) {
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionWithLayout(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
-    mlir::OpBuilder* func_builder) {
+    mlir::OpBuilder* func_builder, DynamicShapeHandlingMode mode) {
   TF_ASSIGN_OR_RETURN(
       mlir::Operation * op,
-      ImportInstructionImpl(instruction, operands, func_builder));
+      ImportInstructionImpl(instruction, operands, func_builder, mode));
   if (op == nullptr) return op;
 
   // See MlirToHloConversionOptions for more about layouts.
