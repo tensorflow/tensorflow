@@ -541,9 +541,7 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index,
 //===----------------------------------------------------------------------===//
 def TFL_AbsOp : TFL_Op<"abs", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultShape]> {
   let summary = "Absolute value operator";
 
   let description = [{
