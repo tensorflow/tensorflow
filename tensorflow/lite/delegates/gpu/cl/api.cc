@@ -662,7 +662,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
                           const InferenceEnvironmentOptions& env_options,
                           const GraphFloat32& graph) {
     context_ = absl::make_unique<InferenceContext>();
-    InferenceContext::CreateInferenceInfo create_info;
+    CreateGpuModelInfo create_info;
     create_info.precision = GetPrecision(*environment_, options);
     create_info.storage_type =
         GetStorageTypeFromOptions(*environment_, options);
@@ -923,7 +923,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
 
     RETURN_IF_ERROR(RunGraphTransforms(&model));
     InferenceContext context;
-    InferenceContext::CreateInferenceInfo create_info;
+    CreateGpuModelInfo create_info;
     create_info.precision = GetPrecision(environment_, options);
     create_info.storage_type = GetStorageTypeFromOptions(environment_, options);
     if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {

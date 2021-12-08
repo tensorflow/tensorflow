@@ -226,10 +226,10 @@ absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
   return absl::OkStatus();
 }
 
-absl::Status ReserveGraphTensors(
-    const InferenceContext::CreateInferenceInfo& create_info,
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    TensorReserver* tensor_reserver) {
+absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
+                                 const GpuInfo& gpu_info,
+                                 const GraphFloat32& graph,
+                                 TensorReserver* tensor_reserver) {
   ValueId max_id = 0;
   auto tensors = graph.values();
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
@@ -293,10 +293,11 @@ absl::Status ReserveGraphTensors(
   return absl::OkStatus();
 }
 
-absl::Status ConvertOperations(
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    const InferenceContext::CreateInferenceInfo& create_info,
-    TensorReserver* tensor_reserver, GpuModel* gpu_model) {
+absl::Status ConvertOperations(const GpuInfo& gpu_info,
+                               const GraphFloat32& graph,
+                               const CreateGpuModelInfo& create_info,
+                               TensorReserver* tensor_reserver,
+                               GpuModel* gpu_model) {
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
   const auto values = graph.values();
   for (auto value : values) {
@@ -515,9 +516,9 @@ absl::Status ResolvePolymorphicArgs(GpuModel* gpu_model) {
   return absl::OkStatus();
 }
 
-absl::Status GraphToGpuModel(
-    const InferenceContext::CreateInferenceInfo& create_info,
-    const GraphFloat32& graph, const GpuInfo& gpu_info, GpuModel* gpu_model) {
+absl::Status GraphToGpuModel(const CreateGpuModelInfo& create_info,
+                             const GraphFloat32& graph, const GpuInfo& gpu_info,
+                             GpuModel* gpu_model) {
   TensorReserver tensor_reserver;
   RETURN_IF_ERROR(
       ReserveGraphTensors(create_info, gpu_info, graph, &tensor_reserver));
@@ -552,7 +553,7 @@ void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
 }
 
 absl::Status InferenceContext::InitFromGraph(
-    const CreateInferenceInfo& create_info, const GraphFloat32& graph,
+    const CreateGpuModelInfo& create_info, const GraphFloat32& graph,
     Environment* env, std::vector<uint8_t>* serialized_model) {
   GpuModel gpu_model;
   RETURN_IF_ERROR(GraphToGpuModel(create_info, graph,
@@ -625,7 +626,7 @@ absl::Status InferenceContext::InitFromGraph(
 
 absl::Status InferenceContext::RestoreDeserialized(
     const absl::Span<const uint8_t> serialized_model, Environment* env,
-    CreateInferenceInfo* create_info) {
+    CreateGpuModelInfo* create_info) {
   flatbuffers::Verifier verifier(serialized_model.data(),
                                  serialized_model.size());
   if (!data::VerifyInferenceContextBuffer(verifier)) {
@@ -695,7 +696,7 @@ void InferenceContext::InitRecordableQueue(Environment* env) {
 }
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
-    const CreateInferenceInfo& create_info, GraphFloat32* graph,
+    const CreateGpuModelInfo& create_info, GraphFloat32* graph,
     Environment* env, std::vector<uint8_t>* serialized_model) {
   RETURN_IF_ERROR(RunGraphTransforms(graph));
   RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env, serialized_model));

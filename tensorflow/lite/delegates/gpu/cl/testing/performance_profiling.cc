@@ -40,7 +40,7 @@ absl::Status RunPredefinedLayoutSample(const std::string& model_name) {
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = env.IsSupported(CalculationsPrecision::F16)
                               ? CalculationsPrecision::F16
                               : CalculationsPrecision::F32;
@@ -84,7 +84,7 @@ absl::Status RunExternalImmutableSample(const std::string& model_name) {
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = env.IsSupported(CalculationsPrecision::F16)
                               ? CalculationsPrecision::F16
                               : CalculationsPrecision::F32;
@@ -138,7 +138,7 @@ absl::Status RunSerializedTest(const std::string& model_name) {
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = env.IsSupported(CalculationsPrecision::F16)
                               ? CalculationsPrecision::F16
                               : CalculationsPrecision::F32;
@@ -236,7 +236,7 @@ absl::Status RunModelSample(const std::string& model_name) {
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = env.IsSupported(CalculationsPrecision::F16)
                               ? CalculationsPrecision::F16
                               : CalculationsPrecision::F32;

@@ -56,6 +56,43 @@ struct GpuNode {
   GpuNode& operator=(const GpuNode&) = delete;
 };
 
+struct CreateGpuModelInfo {
+  CalculationsPrecision precision;
+  TensorStorageType storage_type;
+  ModelHints hints;
+
+  // User can require specific layout for some tensors.
+  // This will guarantee that tensors with specific ids have exact specified
+  // layout.
+  // Some restrictions apply:
+  //   1) ValueId must be input or output id of GraphFloat32
+  //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+  //      for example for precision F16, data_type must be FLOAT16
+  //   3) Layout must be without Batch dimension if tensor.shape.b == 1
+  //      Layout must be with Batch dimension if tensor.shape.b != 1
+  // InitFromGraph will fail if gpu can not allocate tensor with requested
+  // tensor descriptor
+  // WARNING: This is an experimental API and subject to change.
+  // IMPORTANT: tensors ids from predefined/external_immutable_tensors should
+  // not intersect.
+  absl::flat_hash_map<ValueId, TensorDescriptor> predefined;
+
+  // User can provide immutable external tensors for inference context.
+  // Some restrictions apply:
+  //   1) ValueId must be input or output id of GraphFloat32
+  //   2) Provided ptrs must be valid during life of InferenceContext.
+  //   3) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+  //      for example for precision F16, data_type must be FLOAT16
+  //   4) Layout must be without Batch dimension if tensor.shape.b == 1
+  //      Layout must be with Batch dimension if tensor.shape.b != 1
+  // InitFromGraph will fail if gpu can not allocate tensor with requested
+  // tensor descriptor
+  // WARNING: This is an experimental API and subject to change.
+  // IMPORTANT: tensors ids from predefined/external_immutable_tensors should
+  // not intersect.
+  absl::flat_hash_map<ValueId, GpuSpatialTensor*> external_immutable_tensors;
+};
+
 struct GpuModel {
   std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
   std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
@@ -85,44 +122,7 @@ struct CLNode {
 
 class InferenceContext {
  public:
-  struct CreateInferenceInfo {
-    CalculationsPrecision precision;
-    TensorStorageType storage_type;
-    ModelHints hints;
-
-    // User can require specific layout for some tensors.
-    // This will guarantee that tensors with specific ids have exact specified
-    // layout.
-    // Some restrictions apply:
-    //   1) ValueId must be input or output id of GraphFloat32
-    //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
-    //      for example for precision F16, data_type must be FLOAT16
-    //   3) Layout must be without Batch dimension if tensor.shape.b == 1
-    //      Layout must be with Batch dimension if tensor.shape.b != 1
-    // InitFromGraph will fail if gpu can not allocate tensor with requested
-    // tensor descriptor
-    // WARNING: This is an experimental API and subject to change.
-    // IMPORTANT: tensors ids from predefined/external_immutable_tensors should
-    // not intersect.
-    absl::flat_hash_map<ValueId, TensorDescriptor> predefined;
-
-    // User can provide immutable external tensors for inference context.
-    // Some restrictions apply:
-    //   1) ValueId must be input or output id of GraphFloat32
-    //   2) Provided ptrs must be valid during life of InferenceContext.
-    //   3) data_type must be equal to DeduceDataTypeFromPrecision(precision);
-    //      for example for precision F16, data_type must be FLOAT16
-    //   4) Layout must be without Batch dimension if tensor.shape.b == 1
-    //      Layout must be with Batch dimension if tensor.shape.b != 1
-    // InitFromGraph will fail if gpu can not allocate tensor with requested
-    // tensor descriptor
-    // WARNING: This is an experimental API and subject to change.
-    // IMPORTANT: tensors ids from predefined/external_immutable_tensors should
-    // not intersect.
-    absl::flat_hash_map<ValueId, GpuSpatialTensor*> external_immutable_tensors;
-  };
-
-  absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
+  absl::Status InitFromGraph(const CreateGpuModelInfo& create_info,
                              const GraphFloat32& graph, Environment* env,
                              std::vector<uint8_t>* serialized_model = nullptr);
 
@@ -130,7 +130,7 @@ class InferenceContext {
   // initialization. These transformations are either impossible or useless in
   // other backends.
   absl::Status InitFromGraphWithTransforms(
-      const CreateInferenceInfo& create_info, GraphFloat32* graph,
+      const CreateGpuModelInfo& create_info, GraphFloat32* graph,
       Environment* env, std::vector<uint8_t>* serialized_model = nullptr);
 
   absl::Status AddToQueue(CLCommandQueue* queue);
@@ -153,7 +153,7 @@ class InferenceContext {
 
   absl::Status RestoreDeserialized(
       const absl::Span<const uint8_t> serialized_model, Environment* env,
-      CreateInferenceInfo* create_info = nullptr);
+      CreateGpuModelInfo* create_info = nullptr);
 
  private:
   enum class TensorMemoryType {
