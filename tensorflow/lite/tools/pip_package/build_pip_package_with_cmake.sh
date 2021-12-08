@@ -158,9 +158,9 @@ case "${TENSORFLOW_TARGET}" in
                        bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     ;;
   *)
-    if [[ -n "${TENSORFLOW_TARGET}" ]] && [[ -n "${TENSORFLOW_TARGET_ARCH}" ]]; then
-      ${PYTHON} setup.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
-                         bdist_wheel --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH}
+    if [[ -n "${WHEEL_PLATFORM_NAME}" ]]; then
+      ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                         bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     else
       ${PYTHON} setup.py bdist bdist_wheel
     fi
