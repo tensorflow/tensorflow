@@ -185,6 +185,27 @@ class SparseCount : public OpKernel {
                 errors::InvalidArgument(
                     "Input indices must be a 2-dimensional tensor. Got: ",
                     indices.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(values.shape()),
+                errors::InvalidArgument("Input values must be a vector. Got: ",
+                                        values.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(shape.shape()),
+                errors::InvalidArgument("Input shape must be a vector. Got: ",
+                                        shape.shape().DebugString()));
+    OP_REQUIRES(context,
+                values.shape().dim_size(0) == indices.shape().dim_size(0),
+                errors::InvalidArgument(
+                    "Number of values must match first dimension of indices.",
+                    "Got ", values.shape().dim_size(0),
+                    " values, indices shape: ", indices.shape().DebugString()));
+    OP_REQUIRES(
+        context, shape.shape().dim_size(0) == indices.shape().dim_size(1),
+        errors::InvalidArgument(
+            "Number of dimensions must match second dimension of indices.",
+            "Got ", shape.shape().dim_size(0),
+            " dimensions, indices shape: ", indices.shape().DebugString()));
+    OP_REQUIRES(context, shape.NumElements() > 0,
+                errors::InvalidArgument(
+                    "The shape argument requires at least one element."));
 
     if (use_weights) {
       OP_REQUIRES(
@@ -194,10 +215,6 @@ class SparseCount : public OpKernel {
               weights.shape().DebugString(),
               "; values shape: ", values.shape().DebugString()));
     }
-
-    OP_REQUIRES(context, shape.NumElements() != 0,
-                errors::InvalidArgument(
-                    "The shape argument requires at least one element."));
 
     bool is_1d = shape.NumElements() == 1;
     auto shape_vector = shape.flat<int64>();
