@@ -5739,7 +5739,7 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     v1=["tensor_scatter_nd_update", "tensor_scatter_update"])
 @dispatch.add_dispatch_support
 def tensor_scatter_nd_update(tensor, indices, updates, name=None):
-  """"Scatter `updates` into an existing tensor according to `indices`.
+  """Scatter `updates` into an existing tensor according to `indices`.
 
   This operation creates a new tensor by applying sparse `updates` to the
   input `tensor`. This is similar to an index assignment.
