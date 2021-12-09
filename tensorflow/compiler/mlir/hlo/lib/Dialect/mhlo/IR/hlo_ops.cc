@@ -5470,11 +5470,20 @@ char NonSpatialDimToString(NonSpatialDim dim) {
 void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
   // TODO(b/202040055): we should check the attribute invariant and print the
   // "raw" form if they are violated, otherwise we'll crash here.
+  constexpr int64_t kUnknownDim = std::numeric_limits<int64_t>::min();
   auto print_dim =
-      [&p](ArrayRef<int64_t> spatial_dims,
-           ArrayRef<std::pair<int64_t, NonSpatialDim>> non_spatial_dims) {
-        llvm::SmallVector<int64_t> dims(non_spatial_dims.size() +
-                                        spatial_dims.size());
+      [&](ArrayRef<int64_t> spatial_dims,
+          ArrayRef<std::pair<int64_t, NonSpatialDim>> non_spatial_dims) {
+        int64_t num_dims = 0;
+        if (!spatial_dims.empty()) {
+          num_dims =
+              *std::max_element(spatial_dims.begin(), spatial_dims.end()) + 1;
+        }
+        for (const auto& dim : non_spatial_dims) {
+          num_dims = std::max(num_dims, dim.first + 1);
+        }
+
+        llvm::SmallVector<int64_t> dims(num_dims, kUnknownDim);
         // Fill each element of dims with a (< 0) NonSpatialDim enum or a (>=0)
         // spatial dimension index.
         for (const std::pair<int64_t, NonSpatialDim>& non_spatial_dim :
@@ -5489,7 +5498,9 @@ void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
         // surrounded by square brackets, e.g., [b, 0, 1, 2, f]
         p << '[';
         llvm::interleaveComma(dims, p, [&](int64_t dim) {
-          if (dim >= 0) {
+          if (dim == kUnknownDim) {
+            p << "?";
+          } else if (dim >= 0) {
             p << dim;
           } else {
             p << NonSpatialDimToString(static_cast<NonSpatialDim>(dim));
@@ -5621,8 +5632,13 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
           return parser.emitError(dim_location)
                  << "Duplicate entries for spatial dimension " << spatial_dim;
         max_parsed_spatial_dim = std::max(spatial_dim, max_parsed_spatial_dim);
+      } else if (!parser.parseOptionalQuestion()) {
+        // Do nothing other than increment `index` at the bottom of the loop;
+        // '?' means "unknown dimension", and it's not represented in the
+        // return value of this function.
       } else {
-        // We did not parse an integer. We expect a keyword token.
+        // We did not parse an integer or question mark. We expect a keyword
+        // token.
         StringRef keyword;
         if (parser.parseKeyword(&keyword)) {
           return failure();
