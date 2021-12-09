@@ -481,14 +481,15 @@ CreateDefaultExecutionContext(
 #if XLA_ENABLE_XCCL
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
 CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
-                           const NcclCollectiveConfig& xccl_config,
-                           StatusOr<LockedNcclClique>* locked_clique_or) {
+                           const NcclCollectiveConfig& xccl_config) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
+
   TF_ASSIGN_OR_RETURN(std::vector<GlobalDeviceId> participants,
                       GetParticipatingDevices(
                           global_device_id, *params.device_assn,
                           xccl_config.replica_groups, xccl_config.group_mode));
+
   if (IsGlobalNcclConfig() &&
       (participants.size() != params.device_assn->replica_count())) {
     return InvalidArgument(
@@ -496,25 +497,28 @@ CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
         "environment configuration.");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<LocalParticipant> local_participants,
-      GetLocalParticipants(participants, params.gpu_global_device_ids));
-  const RendezvousKey rendezvous_key(
-      params.run_id, std::move(participants), local_participants.size(),
-      xccl_config.collective_op_kind, xccl_config.op_id);
-  int device_ordinal = params.stream->parent()->device_ordinal();
-  NcclCliqueParticipantData participant(rendezvous_key, device_ordinal,
-                                        params.stream);
-  *locked_clique_or = AcquireNcclClique(participant, local_participants,
-                                        params.nccl_unique_id_callback);
+  auto it = absl::c_find(participants, global_device_id);
+  TF_RET_CHECK(it != participants.end());
+  int rank = it - participants.begin();
 
-  if (!locked_clique_or->ok()) {
-    return locked_clique_or->status();
-  }
+  OpId op_id(xccl_config.op_id);
+  size_t num_local_participants = GetNumLocalParticipants(
+      participants, /*local_devices=*/params.gpu_global_device_ids);
+
+  bool is_local = participants.size() == num_local_participants;
+  TF_ASSIGN_OR_RETURN(
+      const NcclUniqueIdCallback* unique_id_callback,
+      GetNcclUniqueIdCallback(params.nccl_unique_id_callback, is_local));
+
+  TF_ASSIGN_OR_RETURN(
+      NcclComm::Lock comm,
+      AcquireNcclComm(params.run_id, op_id, std::move(participants),
+                      num_local_participants, *unique_id_callback, rank));
+
   return CreateExecutionContext(
       [&](tfrt::RequestContextBuilder& request_context_builder) {
         request_context_builder.context_data().emplace<XcclContext>(
-            locked_clique_or->ValueOrDie().clique);
+            std::move(comm));
         return Status::OK();
       });
 }
@@ -609,11 +613,9 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Create execution context.
   std::unique_ptr<tfrt::ExecutionContext> exec_ctx;
 #if XLA_ENABLE_XCCL
-  StatusOr<LockedNcclClique> locked_clique_or;  // Destruction = freeing lock.
   if (xccl_config_.has_value()) {
-    TF_ASSIGN_OR_RETURN(
-        exec_ctx,
-        CreateXcclExecutionContext(params, *xccl_config_, &locked_clique_or));
+    TF_ASSIGN_OR_RETURN(exec_ctx,
+                        CreateXcclExecutionContext(params, *xccl_config_));
     if (!id_to_collective_permute_source_target_.empty()) {
       auto& xccl_ctx = exec_ctx->request_ctx()->GetData<XcclContext>();
       TF_ASSIGN_OR_RETURN(

@@ -17,7 +17,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_test_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -166,11 +165,6 @@ DeviceAssignment MakeDeviceAssn(std::vector<int64_t> devices) {
     assn(i, 0) = devices[i];
   }
   return assn;
-}
-
-// Shorter alias for this function.
-absl::flat_hash_set<GlobalDeviceId> OpenNcclChannels() {
-  return gpu::DevicesWithOpenNcclChannels();
 }
 
 template <typename T>
@@ -358,79 +352,6 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
                           /*num_replicas=*/devices.size(), &device_assn,
                           /*run_hlo_passes=*/true, /*use_threads=*/true));
   }
-}
-
-// Check that the NCCL data structures in our all-reduce implementation are
-// cached as we expect.
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
-  const int64_t kNumElems = 1024;
-
-  std::vector<float> input_vec(kNumElems);
-  absl::c_iota(input_vec, 0);
-  auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
-
-  // Create three Executables, touching devices {0,1}, {1,2}, and {0,1,2}.
-  struct ExecutableInfo {
-    std::unique_ptr<Executable> executable;
-    DeviceAssignment device_assn;
-    HloRunner::ReplicatedExecuteOptions opts;
-  };
-  std::vector<ExecutableInfo> executables;
-  const auto devices_vec =
-      std::vector<std::vector<int64_t>>{{0, 1}, {1, 2}, {0, 1, 2}};
-  executables.reserve(devices_vec.size());
-  for (const auto& devices : devices_vec) {
-    executables.emplace_back();
-    auto& e = executables.back();
-
-    e.device_assn = MakeDeviceAssn(devices);
-
-    auto config = GetModuleConfigForTest();
-    config.set_replica_count(devices.size());
-    config.set_static_device_assignment(e.device_assn);
-    auto module = MakeCrsModule(input_literal.shape(),
-                                /*replica_groups=*/{}, config);
-    e.executable =
-        test_runner_
-            .CreateExecutable(std::move(module), /*run_hlo_passes=*/true)
-            .ValueOrDie();
-
-    e.opts.num_replicas = devices.size();
-    e.opts.use_threads = true;
-    e.opts.arguments.push_back(&input_literal);
-  }
-
-  auto run_executable = [&](int64_t i) {
-    auto& e = executables[i];
-    TF_ASSERT_OK(
-        test_runner_
-            .ExecuteReplicated(e.executable.get(), e.opts, &e.device_assn)
-            .status());
-  };
-
-  // Run the executables and check that channels are opened as we expect.
-  run_executable(0);
-  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({0, 1}));
-
-  run_executable(2);
-  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({0, 1, 2}));
-
-  run_executable(1);
-  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({0, 1, 2}));
-
-  // Tear down the executables and check that channels are closed as we expect.
-  // Note that after we tear down an executable *all* the nccl channels may go
-  // away, so we rerun all of the executables that haven't been torn down.
-  executables[2].executable.reset();
-  run_executable(0);
-  run_executable(1);
-  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({0, 1, 2}));
-
-  executables[0].executable.reset();
-  run_executable(1);
-  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({1, 2}));
-
-  executables[1].executable.reset();
 }
 
 // Runs the same executable many times concurrently.  The all-reduces should not

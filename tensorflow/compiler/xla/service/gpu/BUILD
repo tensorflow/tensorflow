@@ -543,30 +543,6 @@ tf_cuda_library(
 
 # First level of nested select. NCCL requires both if_cuda and if_nccl.
 filegroup(
-    name = "nccl_test_utils_src",
-    srcs = if_nccl(
-        ["nccl_test_utils.cc"],
-        ["nccl_test_utils_dummy.cc"],
-    ),
-)
-
-tf_cuda_library(
-    name = "nccl_test_utils",
-    srcs = if_cuda_or_rocm(
-        [":nccl_test_utils_src"],
-        ["nccl_test_utils_dummy.cc"],
-    ),
-    hdrs = ["nccl_test_utils.h"],
-    deps = [
-        "@com_google_absl//absl/container:flat_hash_set",
-        "//tensorflow/compiler/xla/service:global_device_id",
-    ] + if_nccl([
-        ":virtual_nccl_utils",
-    ]),
-)
-
-# First level of nested select. NCCL requires both if_cuda and if_nccl.
-filegroup(
     name = "nccl_utils_srcs",
     srcs = if_nccl(["nccl_utils.cc"]),
 )
@@ -583,11 +559,9 @@ tf_cuda_library(
     hdrs = if_cuda_or_rocm([":nccl_utils_hdrs"]),
     deps = if_cuda_or_rocm([
         ":gpu_executable_run_options",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "//tensorflow/compiler/xla:refcounting_hash_map",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -595,8 +569,6 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/gpu:gpu_types_header",
-        "//tensorflow/stream_executor/lib",
     ]) + if_nccl([
         ":virtual_nccl",
         ":virtual_rccl",
