@@ -238,34 +238,31 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
     auto it_predefined = create_info.predefined.find(t->id);
     auto it_immutable_external =
         create_info.external_immutable_tensors.find(t->id);
+    auto it_mutable_external = create_info.external_mutable_tensors.find(t->id);
+    int external_categories_count = 0;
     TensorDescriptor tensor_desc;
     if (it_predefined != create_info.predefined.end()) {
-      if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
-        return absl::InvalidArgumentError(
-            "Currently predefined can be used only for graph inputs/outputs");
-      }
-      if (it_immutable_external !=
-          create_info.external_immutable_tensors.end()) {
-        return absl::InvalidArgumentError(
-            "The same tensor id can not be used in predefined and "
-            "external_immutable_tensors");
-      }
+      external_categories_count++;
       tensor_desc = it_predefined->second;
-      RETURN_IF_ERROR(CheckExternalTensorDescription(gpu_info, tensor_desc,
-                                                     shape, data_type));
-    } else if (it_immutable_external !=
-               create_info.external_immutable_tensors.end()) {
+    }
+    if (it_immutable_external != create_info.external_immutable_tensors.end()) {
+      external_categories_count++;
+      tensor_desc = it_immutable_external->second->GetDescriptor();
+    }
+    if (it_mutable_external != create_info.external_mutable_tensors.end()) {
+      external_categories_count++;
+      tensor_desc = it_mutable_external->second;
+    }
+    if (external_categories_count > 1) {
+      return absl::InvalidArgumentError(
+          "Tensors ids from predefined / external_immutable_tensors / "
+          "external_mutable_tensors should not intersect.");
+    }
+    if (external_categories_count == 1) {
       if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
         return absl::InvalidArgumentError(
-            "Currently external tensors can be used only for graph "
-            "inputs/outputs");
+            "Currently external can be used only for graph inputs/outputs");
       }
-      if (it_predefined != create_info.predefined.end()) {
-        return absl::InvalidArgumentError(
-            "The same tensor id can not be used in predefined and "
-            "external_immutable_tensors");
-      }
-      tensor_desc = it_immutable_external->second->GetDescriptor();
       RETURN_IF_ERROR(CheckExternalTensorDescription(gpu_info, tensor_desc,
                                                      shape, data_type));
     } else {
@@ -572,6 +569,16 @@ absl::Status InferenceContext::InitFromGraph(
     }
     external_immutable_tensors_[external_tensor.first] = cl_spatial_tensor;
   }
+  std::map<ValueId, Tensor> temp_external_tensors;
+  for (const auto& external_tensor : create_info.external_mutable_tensors) {
+    RETURN_IF_ERROR(CreateTensor(
+        env->context(), tensors_descs_[external_tensor.first].shape,
+        tensors_descs_[external_tensor.first],
+        &temp_external_tensors[external_tensor.first]));
+    external_mutable_tensors_[external_tensor.first] =
+        &temp_external_tensors[external_tensor.first];
+  }
+  PrepareExternal();
   execution_hints_.Init(env->device().GetInfo());
   RETURN_IF_ERROR(
       AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
@@ -593,7 +600,14 @@ absl::Status InferenceContext::InitFromGraph(
   }
   RETURN_IF_ERROR(
       Tune(tuning_type, env->device().GetInfo(), env->profiling_queue()));
-  InitRecordableQueue(env);
+  if (external_mutable_tensors_.empty()) {
+    // using recordable queue only when no mutable external tensors
+    InitRecordableQueue(env);
+  }
+
+  for (auto& external_tensor : external_mutable_tensors_) {
+    external_tensor.second = nullptr;
+  }
 
   gpu_info_ = env->device().GetInfo();
 
@@ -641,6 +655,7 @@ absl::Status InferenceContext::RestoreDeserialized(
   creation_context.context = &env->context();
   creation_context.queue = env->queue();
   creation_context.cache = env->program_cache();
+  std::map<ValueId, Tensor> temp_external_tensors;
   if (create_info) {
     for (const auto& external_tensor :
          create_info->external_immutable_tensors) {
@@ -650,7 +665,16 @@ absl::Status InferenceContext::RestoreDeserialized(
       }
       external_immutable_tensors_[external_tensor.first] = cl_spatial_tensor;
     }
+    for (const auto& external_tensor : create_info->external_mutable_tensors) {
+      RETURN_IF_ERROR(CreateTensor(
+          env->context(), tensors_descs_[external_tensor.first].shape,
+          tensors_descs_[external_tensor.first],
+          &temp_external_tensors[external_tensor.first]));
+      external_mutable_tensors_[external_tensor.first] =
+          &temp_external_tensors[external_tensor.first];
+    }
   }
+  PrepareExternal();
 
   execution_hints_.Init(env->device().GetInfo());
 
@@ -661,7 +685,13 @@ absl::Status InferenceContext::RestoreDeserialized(
     RETURN_IF_ERROR(node.cl_operation.RestoreDeserialized(creation_context));
   }
   RETURN_IF_ERROR(UpdateParams());
-  InitRecordableQueue(env);
+  if (external_mutable_tensors_.empty()) {
+    // using recordable queue only when no mutable external tensors
+    InitRecordableQueue(env);
+  }
+  for (auto& external_tensor : external_mutable_tensors_) {
+    external_tensor.second = nullptr;
+  }
   ReleaseCPURepresentation();
   return absl::OkStatus();
 }
@@ -729,6 +759,9 @@ InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
     const GpuInfo& gpu_info, ValueId id) {
   if (external_immutable_tensors_.find(id) !=
       external_immutable_tensors_.end()) {
+    return TensorMemoryType::kExternal;
+  } else if (external_mutable_tensors_.find(id) !=
+             external_mutable_tensors_.end()) {
     return TensorMemoryType::kExternal;
   } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return TensorMemoryType::kConst;
@@ -986,8 +1019,54 @@ absl::Status InferenceContext::UpdateParams() {
   return absl::OkStatus();
 }
 
+absl::Status InferenceContext::SetTensor(const ValueId& tensor_id,
+                                         Tensor* tensor_ptr) {
+  auto it = external_mutable_tensors_.find(tensor_id);
+  if (it == external_mutable_tensors_.end()) {
+    return absl::InvalidArgumentError("No external tensor with this id.");
+  }
+  external_mutable_tensors_[tensor_id] = tensor_ptr;
+  for (int node_index : external_tensor_to_nodes_[tensor_id]) {
+    auto& node = nodes_[node_index];
+    for (int i = 0; i < node.inputs.size(); ++i) {
+      if (node.inputs[i] == tensor_id) {
+        RETURN_IF_ERROR(node.cl_operation.SetSrcTensor(i, tensor_ptr));
+      }
+    }
+    for (int i = 0; i < node.outputs.size(); ++i) {
+      if (node.outputs[i] == tensor_id) {
+        RETURN_IF_ERROR(node.cl_operation.SetDstTensor(i, tensor_ptr));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+void InferenceContext::PrepareExternal() {
+  for (auto& external : external_mutable_tensors_) {
+    for (int i = 0; i < nodes_.size(); ++i) {
+      bool has_tensor = false;
+      const auto& src_ids = nodes_[i].inputs;
+      for (int i = 0; i < src_ids.size(); ++i) {
+        if (src_ids[i] == external.first) {
+          has_tensor = true;
+        }
+      }
+      const auto& dst_ids = nodes_[i].outputs;
+      for (int i = 0; i < dst_ids.size(); ++i) {
+        if (dst_ids[i] == external.first) {
+          has_tensor = true;
+        }
+      }
+      if (has_tensor) {
+        external_tensor_to_nodes_[external.first].push_back(i);
+      }
+    }
+  }
+}
+
 absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
-  if (recordable_queue_->IsSupported()) {
+  if (recordable_queue_ && recordable_queue_->IsSupported()) {
     return recordable_queue_->Execute(queue);
   }
   if (execution_hints_.need_manual_release) {
@@ -1115,6 +1194,9 @@ Tensor* InferenceContext::GetTensor(ValueId id) {
   if (external_immutable_tensors_.find(id) !=
       external_immutable_tensors_.end()) {
     return external_immutable_tensors_[id];
+  } else if (external_mutable_tensors_.find(id) !=
+             external_mutable_tensors_.end()) {
+    return external_mutable_tensors_[id];
   } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return &const_tensors_[id];
   } else if (variable_ids_and_refs_.find(id) != variable_ids_and_refs_.end()) {

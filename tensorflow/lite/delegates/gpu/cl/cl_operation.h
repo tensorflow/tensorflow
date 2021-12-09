@@ -68,6 +68,9 @@ class ClOperation {
   // should be called after changes of inputs/outputs.
   absl::Status UpdateParams();
 
+  absl::Status SetSrcTensor(int index, Tensor* tensor);
+  absl::Status SetDstTensor(int index, Tensor* tensor);
+
   absl::Status AddToQueue(CLCommandQueue* queue) {
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     return queue->Dispatch(kernel_, operation_->work_groups_count_,

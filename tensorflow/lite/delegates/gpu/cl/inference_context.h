@@ -73,8 +73,8 @@ struct CreateGpuModelInfo {
   // InitFromGraph will fail if gpu can not allocate tensor with requested
   // tensor descriptor
   // WARNING: This is an experimental API and subject to change.
-  // IMPORTANT: tensors ids from predefined/external_immutable_tensors should
-  // not intersect.
+  // IMPORTANT: tensors ids from predefined / external_immutable_tensors /
+  // external_mutable_tensors should not intersect.
   absl::flat_hash_map<ValueId, TensorDescriptor> predefined;
 
   // User can provide immutable external tensors for inference context.
@@ -88,9 +88,25 @@ struct CreateGpuModelInfo {
   // InitFromGraph will fail if gpu can not allocate tensor with requested
   // tensor descriptor
   // WARNING: This is an experimental API and subject to change.
-  // IMPORTANT: tensors ids from predefined/external_immutable_tensors should
-  // not intersect.
+  // IMPORTANT: tensors ids from predefined / external_immutable_tensors /
+  // external_mutable_tensors should not intersect.
   absl::flat_hash_map<ValueId, GpuSpatialTensor*> external_immutable_tensors;
+
+  // User can provide mutable external tensors for inference context.
+  // HINT: Highly recommended to use other options if possible, this options
+  // will be with the worst performance.
+  // Some restrictions apply:
+  //   1) ValueId must be input or output id of GraphFloat32
+  //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+  //      for example for precision F16, data_type must be FLOAT16
+  //   3) Layout must be without Batch dimension if tensor.shape.b == 1
+  //      Layout must be with Batch dimension if tensor.shape.b != 1
+  // InitFromGraph will fail if gpu can not allocate tensor with requested
+  // tensor descriptor
+  // WARNING: This is an experimental API and subject to change.
+  // IMPORTANT: tensors ids from predefined / external_immutable_tensors /
+  // external_mutable_tensors should not intersect.
+  absl::flat_hash_map<ValueId, TensorDescriptor> external_mutable_tensors;
 };
 
 struct GpuModel {
@@ -155,6 +171,10 @@ class InferenceContext {
       const absl::Span<const uint8_t> serialized_model, Environment* env,
       CreateGpuModelInfo* create_info = nullptr);
 
+  // Can be used only with ids from external_mutable_tensors in create_info
+  // Must be called after initialization and before execution
+  absl::Status SetTensor(const ValueId& tensor_id, Tensor* tensor_ptr);
+
  private:
   enum class TensorMemoryType {
     kStrongShape,
@@ -202,6 +222,7 @@ class InferenceContext {
   absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
                     ProfilingCommandQueue* profiling_queue);
   absl::Status UpdateParams();
+  void PrepareExternal();
 
   void InitRecordableQueue(Environment* env);
 
@@ -234,6 +255,8 @@ class InferenceContext {
   std::vector<CLNode> nodes_;
 
   absl::flat_hash_map<ValueId, Tensor*> external_immutable_tensors_;
+  absl::flat_hash_map<ValueId, Tensor*> external_mutable_tensors_;
+  absl::flat_hash_map<ValueId, std::vector<int>> external_tensor_to_nodes_;
   absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
   absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
   std::map<ValueId, Tensor> const_tensors_;
@@ -252,7 +275,7 @@ class InferenceContext {
   std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::vector<ValueId> output_ids_;
 
-  std::unique_ptr<RecordableQueue> recordable_queue_;
+  std::unique_ptr<RecordableQueue> recordable_queue_ = nullptr;
 
   GpuInfo gpu_info_;
 };
