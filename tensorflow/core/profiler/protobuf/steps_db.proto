@@ -67,8 +67,8 @@ message FlowDbResult {
 message AllReduceInfo {
   // Unique id for all-reduce ops.
   uint64 id = 1;
-  // The name of the hlo op.
-  string name = 2;
+  // The name of the hlo op. This field is no longer set by the profiler.
+  string name = 2 [deprecated = true];
   // For all-reduce nodes from different modules, if they have the same
   // all_reduce_id, they will be 'Allreduce'd'. If empty, AllReduce will not be
   // applied across modules.
