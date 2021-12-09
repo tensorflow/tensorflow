@@ -625,7 +625,7 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
   let arguments = (ins AnyAttr:$value, HLO_Tensor:$operand);
   let results = (outs HLO_Tensor);
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",
