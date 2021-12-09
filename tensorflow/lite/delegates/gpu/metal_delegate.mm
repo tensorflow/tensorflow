@@ -24,6 +24,7 @@ limitations under the License.
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -211,9 +212,9 @@ class Delegate {
     }
     for (auto& input : graph_inputs_) {
       if (input.tensor_id == tensor_index) {
-        if (in_out_tensors_[input.id].GetBufferHandle() != buffer) {
-          RETURN_IF_ERROR(in_out_tensors_[input.id].SetBufferHandle(buffer));
-          input.updated = true;
+        if (in_out_tensors_[input.id]->GetBufferHandle() != buffer) {
+          RETURN_IF_ERROR(in_out_tensors_[input.id]->SetBufferHandle(buffer));
+          RETURN_IF_ERROR(inference_context_.SetTensor(input.id, in_out_tensors_[input.id].get()));
         }
         input.set_externally = true;
         return absl::OkStatus();
@@ -221,9 +222,10 @@ class Delegate {
     }
     for (auto& output : graph_outputs_) {
       if (output.tensor_id == tensor_index) {
-        if (in_out_tensors_[output.id].GetBufferHandle() != buffer) {
-          RETURN_IF_ERROR(in_out_tensors_[output.id].SetBufferHandle(buffer));
-          output.updated = true;
+        if (in_out_tensors_[output.id]->GetBufferHandle() != buffer) {
+          RETURN_IF_ERROR(in_out_tensors_[output.id]->SetBufferHandle(buffer));
+          RETURN_IF_ERROR(
+              inference_context_.SetTensor(output.id, in_out_tensors_[output.id].get()));
         }
         output.set_externally = true;
         return absl::OkStatus();
@@ -358,17 +360,17 @@ class Delegate {
     create_info.precision = precision;
     create_info.storage_type = GetFastestStorageType(gpu_info);
     create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+    const DataType external_data_type = DeduceDataTypeFromPrecision(create_info.precision);
+    const TensorStorageType external_storage_type = TensorStorageType::BUFFER;
     for (auto& value : graph.inputs()) {
-      DataType data_type = DeduceDataTypeFromPrecision(create_info.precision);
-      TensorStorageType storage_type = TensorStorageType::BUFFER;
       Layout layout = value->tensor.shape.b == 1 ? Layout::HWC : Layout::BHWC;
-      create_info.preallocated[value->id] = TensorDescriptor{data_type, storage_type, layout};
+      create_info.external_mutable_tensors[value->id] =
+          TensorDescriptor{external_data_type, external_storage_type, layout};
     }
     for (auto& value : graph.outputs()) {
-      DataType data_type = DeduceDataTypeFromPrecision(create_info.precision);
-      TensorStorageType storage_type = TensorStorageType::BUFFER;
       Layout layout = value->tensor.shape.b == 1 ? Layout::HWC : Layout::BHWC;
-      create_info.preallocated[value->id] = TensorDescriptor{data_type, storage_type, layout};
+      create_info.external_mutable_tensors[value->id] =
+          TensorDescriptor{external_data_type, external_storage_type, layout};
     }
 
     // TODO(impjdi): Merge logic with above.
@@ -387,7 +389,7 @@ class Delegate {
           tensor_id,           // .tensor_id
           input_tensor.shape,  // .shape
           false,               // .set_externally
-          true,                // .updated
+
       });
 
       // Create BHWC F32 buffer
@@ -401,9 +403,11 @@ class Delegate {
           static_cast<int>(storage_type_size * GetElementsSizeForPHWC4(input_tensor.shape));
       id<MTLBuffer> bphwc4_buffer =
           [metal_device_ newBufferWithLength:bphwc4_length options:MTLResourceStorageModeShared];
+      MetalSpatialTensor metal_tensor;
       RETURN_IF_ERROR(CreateSharedBufferTensor(bphwc4_buffer, input_tensor.shape,
-                                               create_info.preallocated[input],
-                                               &in_out_tensors_[input]));
+                                               create_info.external_mutable_tensors[input],
+                                               &metal_tensor));
+      in_out_tensors_[input] = absl::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
     }
 
     std::vector<::tflite::gpu::ValueId> output_ids;
@@ -418,7 +422,6 @@ class Delegate {
           tensor_id,            // .tensor_id
           output_tensor.shape,  // .shape
           false,                // .set_externally
-          true,                 // .updated
       });
 
       // Create BHWC F32 buffer
@@ -431,9 +434,11 @@ class Delegate {
           static_cast<int>(storage_type_size * GetElementsSizeForPHWC4(output_tensor.shape));
       id<MTLBuffer> bphwc4_buffer =
           [metal_device_ newBufferWithLength:bphwc4_length options:MTLResourceStorageModeShared];
+      MetalSpatialTensor metal_tensor;
       RETURN_IF_ERROR(CreateSharedBufferTensor(bphwc4_buffer, output_tensor.shape,
-                                               create_info.preallocated[output],
-                                               &in_out_tensors_[output]));
+                                               create_info.external_mutable_tensors[output],
+                                               &metal_tensor));
+      in_out_tensors_[output] = absl::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
     }
 
     // allocate converter bhwc->bphwc4
@@ -454,6 +459,10 @@ class Delegate {
 
     RETURN_IF_ERROR(
         inference_context_.InitFromGraphWithTransforms(create_info, &graph, metal_device_));
+    for (auto& external_tensor : in_out_tensors_) {
+      RETURN_IF_ERROR(
+          inference_context_.SetTensor(external_tensor.first, external_tensor.second.get()));
+    }
     return absl::OkStatus();
   }
 
@@ -491,26 +500,8 @@ class Delegate {
       [converter_to_BPHWC4_ convertWithEncoder:input_encoder
                                          shape:input.shape
                                   sourceBuffer:in_out_bhwc_f32_buffers_[input.id]
-                               convertedBuffer:in_out_tensors_[input.id].GetBufferHandle()];
+                               convertedBuffer:in_out_tensors_[input.id]->GetBufferHandle()];
       [input_encoder endEncoding];
-    }
-
-    // Update tensors that may be was updated externaly
-    std::map<ValueId, id<MTLBuffer>> bphwc4_buffers_for_update;
-    for (auto& input : graph_inputs_) {
-      if (input.updated) {
-        bphwc4_buffers_for_update[input.id] = in_out_tensors_[input.id].GetBufferHandle();
-        input.updated = false;
-      }
-    }
-    for (auto& output : graph_outputs_) {
-      if (output.updated) {
-        bphwc4_buffers_for_update[output.id] = in_out_tensors_[output.id].GetBufferHandle();
-        output.updated = false;
-      }
-    }
-    if (!bphwc4_buffers_for_update.empty()) {
-      inference_context_.UpdatePreallocatedTensors(bphwc4_buffers_for_update);
     }
 
     @autoreleasepool {
@@ -530,7 +521,7 @@ class Delegate {
       id<MTLComputeCommandEncoder> output_encoder = [command_buffer computeCommandEncoder];
       [converter_from_BPHWC4_ convertWithEncoder:output_encoder
                                            shape:output.shape
-                                    sourceBuffer:in_out_tensors_[output.id].GetBufferHandle()
+                                    sourceBuffer:in_out_tensors_[output.id]->GetBufferHandle()
                                  convertedBuffer:in_out_bhwc_f32_buffers_[output.id]];
       [output_encoder endEncoding];
     }
@@ -631,7 +622,7 @@ class Delegate {
   std::map<ValueId, id<MTLBuffer>> in_out_bhwc_f32_buffers_;
   // input and output tensors can be set externally with help of
   // TFLGpuDelegateBindMetalBufferToTensor
-  std::map<ValueId, MetalSpatialTensor> in_out_tensors_;
+  std::map<ValueId, std::unique_ptr<MetalSpatialTensor>> in_out_tensors_;
   TFLBufferConvert* converter_to_BPHWC4_ = nil;
   TFLBufferConvert* converter_from_BPHWC4_ = nil;
 
@@ -640,7 +631,6 @@ class Delegate {
     int64_t tensor_id;
     BHWC shape;
     bool set_externally;  // a user fills/retrieves data on this MTLBuffer buffer
-    bool updated;         // buffer was updated by user
   };
   std::vector<BufferDescriptor> graph_inputs_;
   std::vector<BufferDescriptor> graph_outputs_;

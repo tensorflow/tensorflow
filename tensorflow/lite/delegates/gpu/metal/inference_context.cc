@@ -201,7 +201,7 @@ absl::Status ReserveGraphTensors(
     const auto shape = graph.GetValue(t->id)->tensor.shape;
     auto it_immutable_external =
         create_info.external_immutable_tensors.find(t->id);
-    auto it_mutable_external = create_info.preallocated.find(t->id);
+    auto it_mutable_external = create_info.external_mutable_tensors.find(t->id);
     TensorDescriptor tensor_desc;
     if (it_immutable_external != create_info.external_immutable_tensors.end()) {
       if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
@@ -212,7 +212,8 @@ absl::Status ReserveGraphTensors(
       tensor_desc = it_immutable_external->second->GetDescriptor();
       RETURN_IF_ERROR(CheckExternalTensorDescription(gpu_info, tensor_desc,
                                                      shape, data_type));
-    } else if (it_mutable_external != create_info.preallocated.end()) {
+    } else if (it_mutable_external !=
+               create_info.external_mutable_tensors.end()) {
       if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
         return absl::InvalidArgumentError(
             "Currently external tensors can be used only for graph "
@@ -487,13 +488,27 @@ absl::Status InferenceContext::InitFromGraph(
     }
     external_immutable_tensors_[external_tensor.first] = metal_spatial_tensor;
   }
+  std::map<ValueId, MetalSpatialTensor> temp_external_tensors;
+  for (const auto& external_tensor : create_info.external_mutable_tensors) {
+    RETURN_IF_ERROR(
+        CreateTensor(device_id, tensors_descs_[external_tensor.first].shape,
+                     tensors_descs_[external_tensor.first],
+                     &temp_external_tensors[external_tensor.first]));
+    external_mutable_tensors_[external_tensor.first] =
+        &temp_external_tensors[external_tensor.first];
+  }
+  PrepareExternal();
   RETURN_IF_ERROR(CompileOperations(&metal_device));
-  RETURN_IF_ERROR(AllocateTensors(&metal_device, create_info.preallocated));
+  RETURN_IF_ERROR(AllocateTensors(&metal_device));
   BindTensorsToOperations();
   RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
   RETURN_IF_ERROR(Tune(TuningType::kFast, &metal_device));
 
-  bool add_icb_support = false;
+  for (auto& external_tensor : external_mutable_tensors_) {
+    external_tensor.second = nullptr;
+  }
+
+  bool add_icb_support = false && external_mutable_tensors_.empty();
   if (add_icb_support) {
     if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
       MTLIndirectCommandBufferDescriptor* icb_desc =
@@ -525,27 +540,7 @@ absl::Status InferenceContext::CompileOperations(MetalDevice* device) {
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AllocateTensors(
-    MetalDevice* device,
-    const std::map<ValueId, TensorDescriptor>& preallocated) {
-  std::set<ValueId> preallocated_ids;
-  for (auto& prealloc : preallocated) {
-    preallocated_ids.insert(prealloc.first);
-  }
-  for (int i = 0; i < nodes_.size(); ++i) {
-    auto& node = nodes_[i];
-    if (HasIntersection(node.inputs, preallocated_ids) ||
-        HasIntersection(node.outputs, preallocated_ids)) {
-      task_ids_with_preallocated_tensors_.push_back(i);
-    }
-  }
-
-  for (auto& tensor_id : preallocated_ids) {
-    const auto& t = tensors_descs_[tensor_id];
-    RETURN_IF_ERROR(CreateSharedBufferTensor(
-        nil, t.shape, t, &preallocated_tensors_[tensor_id]));
-  }
-
+absl::Status InferenceContext::AllocateTensors(MetalDevice* device) {
   RETURN_IF_ERROR(AllocateMemoryForConstTensors(device));
   RETURN_IF_ERROR(AllocateMemoryForBuffers(device));
   RETURN_IF_ERROR(AllocateMemoryForStrongShapes(device));
@@ -556,9 +551,9 @@ MetalSpatialTensor* InferenceContext::GetTensor(ValueId tensor_id) {
   if (external_immutable_tensors_.find(tensor_id) !=
       external_immutable_tensors_.end()) {
     return external_immutable_tensors_[tensor_id];
-  } else if (preallocated_tensors_.find(tensor_id) !=
-             preallocated_tensors_.end()) {
-    return &preallocated_tensors_[tensor_id];
+  } else if (external_mutable_tensors_.find(tensor_id) !=
+             external_mutable_tensors_.end()) {
+    return external_mutable_tensors_[tensor_id];
   } else if (const_tensors_.find(tensor_id) != const_tensors_.end()) {
     return &const_tensors_[tensor_id];
   } else if (graph_ids_to_shared_buffer_tensors_.find(tensor_id) !=
@@ -624,7 +619,8 @@ InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
   if (external_immutable_tensors_.find(id) !=
       external_immutable_tensors_.end()) {
     return TensorMemoryType::kExternal;
-  } else if (preallocated_tensors_.find(id) != preallocated_tensors_.end()) {
+  } else if (external_mutable_tensors_.find(id) !=
+             external_mutable_tensors_.end()) {
     return TensorMemoryType::kExternal;
   } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return TensorMemoryType::kConst;
@@ -930,28 +926,49 @@ void InferenceContext::EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
   [command_buffer commit];
 }
 
-void InferenceContext::UpdatePreallocatedTensors(
-    const std::map<ValueId, id<MTLBuffer>>& preallocated) {
-  for (const auto& it : preallocated) {
-    auto status = preallocated_tensors_[it.first].SetBufferHandle(it.second);
+absl::Status InferenceContext::SetTensor(const ValueId& tensor_id,
+                                         MetalSpatialTensor* tensor_ptr) {
+  auto it = external_mutable_tensors_.find(tensor_id);
+  if (it == external_mutable_tensors_.end()) {
+    return absl::InvalidArgumentError("No external tensor with this id.");
   }
-  for (auto& task_index : task_ids_with_preallocated_tensors_) {
-    auto& task = nodes_[task_index].task;
-    const auto& src_ids = nodes_[task_index].inputs;
-    for (int i = 0; i < src_ids.size(); ++i) {
-      const auto& it = preallocated_tensors_.find(src_ids[i]);
-      if (it != preallocated_tensors_.end()) {
-        task.SetSrcTensor(&it->second, i);
+  external_mutable_tensors_[tensor_id] = tensor_ptr;
+  for (int node_index : external_tensor_to_nodes_[tensor_id]) {
+    auto& node = nodes_[node_index];
+    for (int i = 0; i < node.inputs.size(); ++i) {
+      if (node.inputs[i] == tensor_id) {
+        node.task.SetSrcTensor(tensor_ptr, i);
       }
     }
-    const auto& dst_ids = nodes_[task_index].outputs;
-    for (int i = 0; i < dst_ids.size(); ++i) {
-      const auto& it = preallocated_tensors_.find(dst_ids[i]);
-      if (it != preallocated_tensors_.end()) {
-        task.SetDstTensor(&it->second, i);
+    for (int i = 0; i < node.outputs.size(); ++i) {
+      if (node.outputs[i] == tensor_id) {
+        node.task.SetDstTensor(tensor_ptr, i);
       }
     }
-    task.Update();
+  }
+  return absl::OkStatus();
+}
+
+void InferenceContext::PrepareExternal() {
+  for (auto& external : external_mutable_tensors_) {
+    for (int i = 0; i < nodes_.size(); ++i) {
+      bool has_tensor = false;
+      const auto& src_ids = nodes_[i].inputs;
+      for (int i = 0; i < src_ids.size(); ++i) {
+        if (src_ids[i] == external.first) {
+          has_tensor = true;
+        }
+      }
+      const auto& dst_ids = nodes_[i].outputs;
+      for (int i = 0; i < dst_ids.size(); ++i) {
+        if (dst_ids[i] == external.first) {
+          has_tensor = true;
+        }
+      }
+      if (has_tensor) {
+        external_tensor_to_nodes_[external.first].push_back(i);
+      }
+    }
   }
 }
 
