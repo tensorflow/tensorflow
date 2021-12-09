@@ -62,12 +62,18 @@ bool IsOpNotQuantizable(Operation* op) {
       op->hasAttrOfType<StringAttr>(kQuantTraitAttr) &&
       op->getAttrOfType<StringAttr>(kQuantTraitAttr).getValue().str() ==
           QuantTraitValues[QuantizationTrait::FullyQuantizable];
-  bool prop_enforced_no_quantizable =
-      op->hasTrait<OpTrait::quant::NoQuantizableResult>();
+
+  // Constant ops do not have QuantizableResult attribute but they can deal with
+  // quantized tensors.
+  if (llvm::isa<ConstantOp, arith::ConstantOp, quant::StatisticsOp>(op))
+    return false;
+
+  bool prop_enforced_quantizable =
+      op->hasTrait<OpTrait::quant::QuantizableResult>();
 
   return op->hasTrait<OpTrait::IsTerminator>() ||
          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op) ||
-         (!attr_enforced_quantizable && prop_enforced_no_quantizable);
+         (!attr_enforced_quantizable && !prop_enforced_quantizable);
 }
 
 // This method expands the range to be larger than or equal to 1.0e-6, if it is
