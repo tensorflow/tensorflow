@@ -20,6 +20,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <string>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -48,40 +49,20 @@ namespace mlir {
 
 namespace quant {
 
+namespace {
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
 using QType = quant::QuantizedType;
 
-const char kQuantTraitAttr[] = "_tfl_quant_trait";
-const absl::string_view QuantTraitValues[] = {"fully_quantizable",
-                                              "not_quantizable"};
-
-bool IsOpNotQuantizable(Operation* op) {
-  // If it is terminator or not quantizable or any ops form the mlir quant
-  // ops dialect, we shouldn't rewrite.
-  bool attr_enforced_quantizable =
-      op->hasAttrOfType<StringAttr>(kQuantTraitAttr) &&
-      op->getAttrOfType<StringAttr>(kQuantTraitAttr).getValue().str() ==
-          QuantTraitValues[QuantizationTrait::FullyQuantizable];
-
-  // Constant ops do not have QuantizableResult attribute but they can deal with
-  // quantized tensors.
-  if (llvm::isa<ConstantOp, arith::ConstantOp, quant::StatisticsOp>(op))
-    return false;
-
-  bool prop_enforced_quantizable =
-      op->hasTrait<OpTrait::quant::QuantizableResult>();
-
-  return op->hasTrait<OpTrait::IsTerminator>() ||
-         llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op) ||
-         (!attr_enforced_quantizable && !prop_enforced_quantizable);
-}
+constexpr char kQuantTraitAttr[] = "_tfl_quant_trait";
+constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
+                                                  "not_quantizable"};
 
 // This method expands the range to be larger than or equal to 1.0e-6, if it is
 // very small (< 1.0e-6). This is to prevent very large quantized value by this
 // range.
-static void ExpandVerySmallRange(ArrayRef<double> mins, ArrayRef<double> maxs,
-                                 SmallVectorImpl<double>* effective_mins,
-                                 SmallVectorImpl<double>* effective_maxs) {
+void ExpandVerySmallRange(ArrayRef<double> mins, ArrayRef<double> maxs,
+                          SmallVectorImpl<double>* effective_mins,
+                          SmallVectorImpl<double>* effective_maxs) {
   for (auto arg : llvm::zip(mins, maxs)) {
     double min = std::get<0>(arg);
     double max = std::get<1>(arg);
@@ -142,6 +123,92 @@ QuantizedType ResetMinMaxFromNumBits(QuantizedType type, int num_bits,
     llvm_unreachable("Unsupported QuantizedType in ResetMinMaxFromNumBits");
   }
   return type;
+}
+
+// Repeats the content of `data` multiple times to resize to `target_size`.
+// Note that this only broadcast across one dimension.
+template <typename T>
+bool BroadcastVector(int target_size, SmallVectorImpl<T>& data) {
+  int size = data.size();
+  if (size != target_size) {
+    if (target_size % size != 0) return true;
+    data.reserve(target_size);
+    for (int i = 1, e = target_size / size; i != e; ++i) {
+      data.insert(data.end(), data.begin(), data.begin() + size);
+    }
+  }
+  return false;
+}
+
+// Changes the axis of the input per-channel quantized type to match the
+// dimension of the target type. Returns nullptr if it fails.
+quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
+    ArrayRef<int64_t> shape, quant::UniformQuantizedPerAxisType qtype,
+    Type target, int quant_dim) {
+  auto shaped = target.dyn_cast<RankedTensorType>();
+  if (!shaped) return {};
+  ArrayRef<int64_t> new_shape = shaped.getShape();
+
+  SmallVector<double, 4> scales(qtype.getScales().begin(),
+                                qtype.getScales().end());
+  SmallVector<int64_t, 4> zero_points(qtype.getZeroPoints().begin(),
+                                      qtype.getZeroPoints().end());
+
+  if (new_shape.size() == shape.size()) {  // same rank
+    // Broadcast the scales and zero points to match the target size, which is
+    // usually the axis-th dimension of the target type. Currently, it covers
+    // two cases:
+    // - for Transpose, the data layout is changed so the `dim[axis]` still
+    // equals to the `scales_size`. The broadcast skips;
+    // - for Reshape, the data layout isn't changed but the innermost dimension
+    // is expand to cover the last two original dimensions. Thus we just need to
+    // be repeated the `scales` dim[2] times to covers the new dim length.
+    //
+    // TODO(b/141709944): after the fix, the `scales` can be for dim[2], thus we
+    // have to repeat each elements in the `scales` locally dim[3] times.
+    if (BroadcastVector<double>(shaped.getDimSize(quant_dim), scales) ||
+        BroadcastVector<int64_t>(shaped.getDimSize(quant_dim), zero_points)) {
+      return {};
+    }
+  } else if ((new_shape.size() == shape.size() + 1) && new_shape.back() == 1) {
+    // This is a trivial shift left, then we shift the quant_dim as well.
+    if (std::equal(shape.begin(), shape.end(), new_shape.begin()) &&
+        quant_dim == -1) {
+      quant_dim = shape.size() + quant_dim;
+    } else {
+      return {};
+    }
+  } else {
+    return {};
+  }
+
+  return quant::UniformQuantizedPerAxisType::get(
+      qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
+      scales, zero_points, quant_dim, qtype.getStorageTypeMin(),
+      qtype.getStorageTypeMax());
+}
+
+}  // namespace
+
+bool IsOpNotQuantizable(Operation* op) {
+  // If it is terminator or not quantizable or any ops form the mlir quant
+  // ops dialect, we shouldn't rewrite.
+  bool attr_enforced_quantizable =
+      op->hasAttrOfType<StringAttr>(kQuantTraitAttr) &&
+      op->getAttrOfType<StringAttr>(kQuantTraitAttr).getValue().str() ==
+          QuantTraitValues[QuantizationTrait::FullyQuantizable];
+
+  // Constant ops do not have QuantizableResult attribute but they can deal with
+  // quantized tensors.
+  if (llvm::isa<ConstantOp, arith::ConstantOp, quant::StatisticsOp>(op))
+    return false;
+
+  bool prop_enforced_quantizable =
+      op->hasTrait<OpTrait::quant::QuantizableResult>();
+
+  return op->hasTrait<OpTrait::IsTerminator>() ||
+         llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op) ||
+         (!attr_enforced_quantizable && !prop_enforced_quantizable);
 }
 
 // Returns the quantized type for the
@@ -265,69 +332,6 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                        legacy_float_scale, use_fake_quant_num_bits);
   if (!final_type) return {};
   return TypeAttr::get(final_type);
-}
-
-// Repeats the content of `data` multiple times to resize to `target_size`.
-// Note that this only broadcast across one dimension.
-template <typename T>
-static bool BroadcastVector(int target_size, SmallVectorImpl<T>& data) {
-  int size = data.size();
-  if (size != target_size) {
-    if (target_size % size != 0) return true;
-    data.reserve(target_size);
-    for (int i = 1, e = target_size / size; i != e; ++i) {
-      data.insert(data.end(), data.begin(), data.begin() + size);
-    }
-  }
-  return false;
-}
-
-// Changes the axis of the input per-channel quantized type to match the
-// dimension of the target type. Returns nullptr if it fails.
-static quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
-    ArrayRef<int64_t> shape, quant::UniformQuantizedPerAxisType qtype,
-    Type target, int quant_dim) {
-  auto shaped = target.dyn_cast<RankedTensorType>();
-  if (!shaped) return {};
-  ArrayRef<int64_t> new_shape = shaped.getShape();
-
-  SmallVector<double, 4> scales(qtype.getScales().begin(),
-                                qtype.getScales().end());
-  SmallVector<int64_t, 4> zero_points(qtype.getZeroPoints().begin(),
-                                      qtype.getZeroPoints().end());
-
-  if (new_shape.size() == shape.size()) {  // same rank
-    // Broadcast the scales and zero points to match the target size, which is
-    // usually the axis-th dimension of the target type. Currently, it covers
-    // two cases:
-    // - for Transpose, the data layout is changed so the `dim[axis]` still
-    // equals to the `scales_size`. The broadcast skips;
-    // - for Reshape, the data layout isn't changed but the innermost dimension
-    // is expand to cover the last two original dimensions. Thus we just need to
-    // be repeated the `scales` dim[2] times to covers the new dim length.
-    //
-    // TODO(b/141709944): after the fix, the `scales` can be for dim[2], thus we
-    // have to repeat each elements in the `scales` locally dim[3] times.
-    if (BroadcastVector<double>(shaped.getDimSize(quant_dim), scales) ||
-        BroadcastVector<int64_t>(shaped.getDimSize(quant_dim), zero_points)) {
-      return {};
-    }
-  } else if ((new_shape.size() == shape.size() + 1) && new_shape.back() == 1) {
-    // This is a trivial shift left, then we shift the quant_dim as well.
-    if (std::equal(shape.begin(), shape.end(), new_shape.begin()) &&
-        quant_dim == -1) {
-      quant_dim = shape.size() + quant_dim;
-    } else {
-      return {};
-    }
-  } else {
-    return {};
-  }
-
-  return quant::UniformQuantizedPerAxisType::get(
-      qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
-      scales, zero_points, quant_dim, qtype.getStorageTypeMin(),
-      qtype.getStorageTypeMax());
 }
 
 TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
@@ -493,7 +497,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
   llvm::SmallVector<double, 4> scales(axis_size, 1.0);
   for (auto op_type : op_types) {
     if (auto type = op_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
-      for (auto index_scale : llvm::enumerate(type.getScales())) {
+      for (const auto& index_scale : llvm::enumerate(type.getScales())) {
         scales[index_scale.index()] *= index_scale.value();
       }
     } else if (auto type = op_type.dyn_cast<quant::UniformQuantizedType>()) {
