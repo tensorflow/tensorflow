@@ -23,8 +23,6 @@ from tensorflow_estimator.python.estimator.export import export_output
 
 # Include attrs that start with single underscore.
 _HAS_DYNAMIC_ATTRIBUTES = True
-export_output.__all__ = [
-    s for s in dir(export_output) if not s.startswith('__')
-]
+export_output.__all__ = [s for s in dir(export_output) if not s.startswith("__")]
 
 from tensorflow_estimator.python.estimator.export.export_output import *

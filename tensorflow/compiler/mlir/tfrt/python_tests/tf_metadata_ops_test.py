@@ -25,18 +25,17 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 # Metadata operations that are noop at runtime, but exist in the Tensorflow
 # graphs purely to facilitate graph construction and transformations.
 class TfMetadataOpsTest(test.TestCase):
-
-  def test_stop_gradient(self):
-    mlir_function = """
+    def test_stop_gradient(self):
+        mlir_function = """
       func @test(%arg0: tensor<?xf32>) -> tensor<?xf32> {
         %0 = "tf.StopGradient"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
         return %0 : tensor<?xf32>
       }"""
-    compiled = cpurt.compile(mlir_function, 'test')
-    arg0 = np.random.uniform(0.0, 1.0, size=(10)).astype(np.float32)
-    [res] = cpurt.execute(compiled, [arg0])
-    np.testing.assert_allclose(res, arg0, rtol=0.0)
+        compiled = cpurt.compile(mlir_function, "test")
+        arg0 = np.random.uniform(0.0, 1.0, size=(10)).astype(np.float32)
+        [res] = cpurt.execute(compiled, [arg0])
+        np.testing.assert_allclose(res, arg0, rtol=0.0)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

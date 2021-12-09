@@ -27,11 +27,10 @@ _CallbackToPython = Any
 def start(
     callback_to_python: _CallbackToPython,
     backends: Sequence[Client],
-    max_queue_size_bytes: int = ...) -> OutfeedReceiverForPython: ...
+    max_queue_size_bytes: int = ...,
+) -> OutfeedReceiverForPython: ...
 
 class OutfeedReceiverForPython:
-  def add_outfeed(
-      builder: XlaBuilder,
-      token: XlaOp,
-      consumer_id: int,
-      arrays: Sequence[XlaOp]) -> XlaOp: ...
+    def add_outfeed(
+        builder: XlaBuilder, token: XlaOp, consumer_id: int, arrays: Sequence[XlaOp]
+    ) -> XlaOp: ...

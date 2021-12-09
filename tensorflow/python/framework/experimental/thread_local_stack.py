@@ -19,17 +19,17 @@ import threading
 
 # TODO(srbs): Move this to C++.
 class ThreadLocalStack(threading.local):
-  """A thread-local stack of objects for providing implicit defaults."""
+    """A thread-local stack of objects for providing implicit defaults."""
 
-  def __init__(self):
-    super(ThreadLocalStack, self).__init__()
-    self._stack = []
+    def __init__(self):
+        super(ThreadLocalStack, self).__init__()
+        self._stack = []
 
-  def peek(self):
-    return self._stack[-1] if self._stack else None
+    def peek(self):
+        return self._stack[-1] if self._stack else None
 
-  def push(self, ctx):
-    return self._stack.append(ctx)
+    def push(self, ctx):
+        return self._stack.append(ctx)
 
-  def pop(self):
-    self._stack.pop()
+    def pop(self):
+        self._stack.pop()

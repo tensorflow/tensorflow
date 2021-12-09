@@ -22,21 +22,21 @@ from tensorflow.python.platform import googletest
 
 
 class ConstArgTest(xla_test.XLATestCase):
-  # Pass constant value to XlaDynamicSlice's size parameter that must be found
-  # by xla::ValueInference. Most often, constants are passed to op kernels
-  # using XlaExpression with kind kConstant. To require value inference, this
-  # model obfuscates the constant using operations `>=` and `where_v2`.
+    # Pass constant value to XlaDynamicSlice's size parameter that must be found
+    # by xla::ValueInference. Most often, constants are passed to op kernels
+    # using XlaExpression with kind kConstant. To require value inference, this
+    # model obfuscates the constant using operations `>=` and `where_v2`.
 
-  def testValueInference(self):
-    with self.session() as session:
-      with self.test_scope():
-        a = array_ops.placeholder(dtypes.int32, [], name="a")
-        size = array_ops.reshape(array_ops.where_v2(a >= 0, 1, 0), [1])
-        output = xla.dynamic_slice([11, 12, 13], [0], size)
-      result = session.run(output, {a: 1})
-      expected = [11]
-      self.assertEqual(result, expected)
+    def testValueInference(self):
+        with self.session() as session:
+            with self.test_scope():
+                a = array_ops.placeholder(dtypes.int32, [], name="a")
+                size = array_ops.reshape(array_ops.where_v2(a >= 0, 1, 0), [1])
+                output = xla.dynamic_slice([11, 12, 13], [0], size)
+            result = session.run(output, {a: 1})
+            expected = [11]
+            self.assertEqual(result, expected)
 
 
 if __name__ == "__main__":
-  googletest.main()
+    googletest.main()

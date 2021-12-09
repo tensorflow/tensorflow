@@ -32,136 +32,133 @@ Composite = composite.Composite
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
-    'output', None,
-    'Path to write the genereated register op file and MLIR file.')
+    "output", None, "Path to write the genereated register op file and MLIR file."
+)
 
-flags.DEFINE_bool('gen_register_op', True,
-                  'Generate register op cc file or tfr mlir file.')
+flags.DEFINE_bool(
+    "gen_register_op", True, "Generate register op cc file or tfr mlir file."
+)
 
 
 @Composite(
-    'NewMirrorPad',
-    inputs=['input_: T', 'paddings: Tpaddings'],
+    "NewMirrorPad",
+    inputs=["input_: T", "paddings: Tpaddings"],
     attrs=['mode: {"REFLECT", "SYMMETRIC"}'],
-    derived_attrs=['T: type', 'Tpaddings: {int32, int64} = DT_INT32'],
-    outputs=['output: T'])
+    derived_attrs=["T: type", "Tpaddings: {int32, int64} = DT_INT32"],
+    outputs=["output: T"],
+)
 def _composite_mirror_pad(input_, paddings, mode):
-  shape = input_.shape.as_list()
-  for i in range(len(shape)):
-    rdims = tf.raw_ops.OneHot(
-        indices=i, depth=len(shape), on_value=True, off_value=False, axis=-1)
-    rarray = tf.raw_ops.Reverse(tensor=input_, dims=rdims)
+    shape = input_.shape.as_list()
+    for i in range(len(shape)):
+        rdims = tf.raw_ops.OneHot(
+            indices=i, depth=len(shape), on_value=True, off_value=False, axis=-1
+        )
+        rarray = tf.raw_ops.Reverse(tensor=input_, dims=rdims)
 
-    left_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 0])
-    right_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 1])
+        left_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 0])
+        right_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 1])
 
-    if mode == 'REFLECT':
-      left_padding, _ = tf.raw_ops.SplitV(
-          value=rarray,
-          size_splits=[left_padding_size, -1],
-          axis=i,
-          num_split=2)
-      _, right_padding = tf.raw_ops.SplitV(
-          value=rarray,
-          size_splits=[-1, right_padding_size],
-          axis=i,
-          num_split=2)
-    else:
-      _, left_padding = tf.raw_ops.SplitV(
-          value=rarray,
-          size_splits=[-1, left_padding_size],
-          axis=i,
-          num_split=2)
-      right_padding, _ = tf.raw_ops.SplitV(
-          value=rarray,
-          size_splits=[right_padding_size, -1],
-          axis=i,
-          num_split=2)
+        if mode == "REFLECT":
+            left_padding, _ = tf.raw_ops.SplitV(
+                value=rarray, size_splits=[left_padding_size, -1], axis=i, num_split=2
+            )
+            _, right_padding = tf.raw_ops.SplitV(
+                value=rarray, size_splits=[-1, right_padding_size], axis=i, num_split=2
+            )
+        else:
+            _, left_padding = tf.raw_ops.SplitV(
+                value=rarray, size_splits=[-1, left_padding_size], axis=i, num_split=2
+            )
+            right_padding, _ = tf.raw_ops.SplitV(
+                value=rarray, size_splits=[right_padding_size, -1], axis=i, num_split=2
+            )
 
-    input_ = tf.raw_ops.Concat(
-        concat_dim=i, values=[left_padding, input_, right_padding])
-  return input_
+        input_ = tf.raw_ops.Concat(
+            concat_dim=i, values=[left_padding, input_, right_padding]
+        )
+    return input_
 
 
-@tf.RegisterGradient('NewMirrorPad')
+@tf.RegisterGradient("NewMirrorPad")
 def _mirror_pad_grad(op, grad):
-  mode = op.get_attr('mode')
-  return [gen_array_ops.mirror_pad_grad(grad, op.inputs[1], mode=mode), None]
+    mode = op.get_attr("mode")
+    return [gen_array_ops.mirror_pad_grad(grad, op.inputs[1], mode=mode), None]
 
 
 @Composite(
-    'NewMirrorPadGrad',
-    inputs=['input_: T', 'paddings: Tpaddings'],
+    "NewMirrorPadGrad",
+    inputs=["input_: T", "paddings: Tpaddings"],
     attrs=['mode: {"REFLECT", "SYMMETRIC"}'],
-    derived_attrs=['T: type', 'Tpaddings: {int32, int64} = DT_INT32'],
-    outputs=['output: T'])
+    derived_attrs=["T: type", "Tpaddings: {int32, int64} = DT_INT32"],
+    outputs=["output: T"],
+)
 def _composite_mirror_pad_grad(input_, paddings, mode):
-  shape = input_.shape.as_list()
-  for i in range(len(shape)):
-    rdims = tf.raw_ops.OneHot(
-        indices=i, depth=len(shape), on_value=True, off_value=False, axis=-1)
-    left_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 0])
-    right_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 1])
+    shape = input_.shape.as_list()
+    for i in range(len(shape)):
+        rdims = tf.raw_ops.OneHot(
+            indices=i, depth=len(shape), on_value=True, off_value=False, axis=-1
+        )
+        left_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 0])
+        right_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 1])
 
-    split_outputs = tf.raw_ops.SplitV(
-        value=input_,
-        size_splits=[left_padding_size, -1, right_padding_size],
-        axis=i,
-        num_split=3)
-    left_padding = split_outputs[0]
-    core = split_outputs[1]
-    right_padding = split_outputs[2]
-    reversed_left_padding = tf.raw_ops.Reverse(tensor=left_padding, dims=rdims)
-    reversed_right_padding = tf.raw_ops.Reverse(
-        tensor=right_padding, dims=rdims)
-    zero_like = tf.raw_ops.ZerosLike(x=core)
-    left_offset, _ = tf.raw_ops.SplitV(
-        value=zero_like,
-        size_splits=[-1, left_padding_size],
-        axis=i,
-        num_split=2)
-    right_offset, _ = tf.raw_ops.SplitV(
-        value=zero_like,
-        size_splits=[-1, right_padding_size],
-        axis=i,
-        num_split=2)
+        split_outputs = tf.raw_ops.SplitV(
+            value=input_,
+            size_splits=[left_padding_size, -1, right_padding_size],
+            axis=i,
+            num_split=3,
+        )
+        left_padding = split_outputs[0]
+        core = split_outputs[1]
+        right_padding = split_outputs[2]
+        reversed_left_padding = tf.raw_ops.Reverse(tensor=left_padding, dims=rdims)
+        reversed_right_padding = tf.raw_ops.Reverse(tensor=right_padding, dims=rdims)
+        zero_like = tf.raw_ops.ZerosLike(x=core)
+        left_offset, _ = tf.raw_ops.SplitV(
+            value=zero_like, size_splits=[-1, left_padding_size], axis=i, num_split=2
+        )
+        right_offset, _ = tf.raw_ops.SplitV(
+            value=zero_like, size_splits=[-1, right_padding_size], axis=i, num_split=2
+        )
 
-    if mode == 'REFLECT':
-      from_left_padding = tf.raw_ops.Concat(
-          concat_dim=i, values=[left_offset, reversed_left_padding])
-      from_right_padding = tf.raw_ops.Concat(
-          concat_dim=i, values=[reversed_right_padding, right_offset])
-    else:
-      from_left_padding = tf.raw_ops.Concat(
-          concat_dim=i, values=[reversed_left_padding, left_offset])
-      from_right_padding = tf.raw_ops.Concat(
-          concat_dim=i, values=[right_offset, reversed_right_padding])
-    input_ = tf.raw_ops.AddN(
-        inputs=[from_left_padding, core, from_right_padding])
+        if mode == "REFLECT":
+            from_left_padding = tf.raw_ops.Concat(
+                concat_dim=i, values=[left_offset, reversed_left_padding]
+            )
+            from_right_padding = tf.raw_ops.Concat(
+                concat_dim=i, values=[reversed_right_padding, right_offset]
+            )
+        else:
+            from_left_padding = tf.raw_ops.Concat(
+                concat_dim=i, values=[reversed_left_padding, left_offset]
+            )
+            from_right_padding = tf.raw_ops.Concat(
+                concat_dim=i, values=[right_offset, reversed_right_padding]
+            )
+        input_ = tf.raw_ops.AddN(inputs=[from_left_padding, core, from_right_padding])
 
-  return input_
+    return input_
 
 
-@tf.RegisterGradient('NewMirrorPadGrad')
+@tf.RegisterGradient("NewMirrorPadGrad")
 def _mirror_pad_grad_grad(op, grad):
-  mode = op.get_attr('mode')
-  return [gen_array_ops.mirror_pad(grad, op.inputs[1], mode=mode), None]
+    mode = op.get_attr("mode")
+    return [gen_array_ops.mirror_pad(grad, op.inputs[1], mode=mode), None]
 
 
 def main(_):
-  if FLAGS.gen_register_op:
-    assert FLAGS.output.endswith('.cc')
-    generated_code = gen_register_op(sys.modules[__name__], '_composite_')
-  else:
-    assert FLAGS.output.endswith('.mlir')
-    generated_code = tfr_gen_from_module(sys.modules[__name__], '_composite_')
+    if FLAGS.gen_register_op:
+        assert FLAGS.output.endswith(".cc")
+        generated_code = gen_register_op(sys.modules[__name__], "_composite_")
+    else:
+        assert FLAGS.output.endswith(".mlir")
+        generated_code = tfr_gen_from_module(sys.modules[__name__], "_composite_")
 
-  dirname = os.path.dirname(FLAGS.output)
-  if not os.path.exists(dirname):
-    os.makedirs(dirname)
-  with open(FLAGS.output, 'w') as f:
-    f.write(generated_code)
+    dirname = os.path.dirname(FLAGS.output)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    with open(FLAGS.output, "w") as f:
+        f.write(generated_code)
 
 
-if __name__ == '__main__':
-  app.run(main=main)
+if __name__ == "__main__":
+    app.run(main=main)

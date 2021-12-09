@@ -23,12 +23,12 @@ import tensorflow as tf
 # Keras code load should be triggered so that it will inject proper
 # functionality like registering the optimizer class for SavedModel.
 class KerasInjectionTest(tf.test.TestCase):
+    def test_keras_optimizer_injected(self):
+        # Make sure keras optimizers are registed without accessing keras code
+        self.assertIn(
+            "optimizer", tf.__internal__.saved_model.load.registered_identifiers()
+        )
 
-  def test_keras_optimizer_injected(self):
-    # Make sure keras optimizers are registed without accessing keras code
-    self.assertIn('optimizer',
-                  tf.__internal__.saved_model.load.registered_identifiers())
 
-
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()

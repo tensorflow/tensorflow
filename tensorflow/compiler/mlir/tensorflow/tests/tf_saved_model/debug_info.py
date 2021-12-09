@@ -21,18 +21,16 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common
 
 
 class TestModule(tf.Module):
-
-  @tf.function(input_signature=[
-      tf.TensorSpec([], tf.float32),
-      tf.TensorSpec([], tf.float32)
-  ])
-  def some_function(self, x, y):
-    return x + y
-    # Basic check that the debug info file is being correctly saved and loaded.
-    #
-    # CHECK: "tf.AddV2"{{.*}}loc(#[[LOC:.*]])
-    # CHECK: #[[LOC]] = loc({{.*}}callsite("{{[^"]*}}/debug_info.py{{.*}}":{{[0-9]+}}:{{[0-9]+}}
+    @tf.function(
+        input_signature=[tf.TensorSpec([], tf.float32), tf.TensorSpec([], tf.float32)]
+    )
+    def some_function(self, x, y):
+        return x + y
+        # Basic check that the debug info file is being correctly saved and loaded.
+        #
+        # CHECK: "tf.AddV2"{{.*}}loc(#[[LOC:.*]])
+        # CHECK: #[[LOC]] = loc({{.*}}callsite("{{[^"]*}}/debug_info.py{{.*}}":{{[0-9]+}}:{{[0-9]+}}
 
 
-if __name__ == '__main__':
-  common.do_test(TestModule, show_debug_info=True)
+if __name__ == "__main__":
+    common.do_test(TestModule, show_debug_info=True)

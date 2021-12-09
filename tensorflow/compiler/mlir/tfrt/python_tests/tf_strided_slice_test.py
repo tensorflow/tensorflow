@@ -23,9 +23,8 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 class TfStridedSliceTest(test.TestCase):
-
-  def test_strided_slice_1d_to_0d(self):
-    mlir_function = """
+    def test_strided_slice_1d_to_0d(self):
+        mlir_function = """
       func @test(%arg0: tensor<3xi32>) -> tensor<i32> {
         %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>}
                  : () -> tensor<1xi32>
@@ -43,11 +42,11 @@ class TfStridedSliceTest(test.TestCase):
         return %0 : tensor<i32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
-    arg0 = np.array([1, 2, 3], dtype=np.int32)
-    [res] = cpurt.execute(compiled, [arg0])
-    np.testing.assert_allclose(res, arg0[0], atol=0.0)
+        compiled = cpurt.compile(mlir_function, "test")
+        arg0 = np.array([1, 2, 3], dtype=np.int32)
+        [res] = cpurt.execute(compiled, [arg0])
+        np.testing.assert_allclose(res, arg0[0], atol=0.0)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

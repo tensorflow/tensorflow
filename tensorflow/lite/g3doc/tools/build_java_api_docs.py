@@ -27,19 +27,23 @@ from tensorflow_docs.api_generator import gen_java
 FLAGS = flags.FLAGS
 
 # These flags are required by infrastructure, not all of them are used.
-flags.DEFINE_string('output_dir', '/tmp/lite_api/',
-                    ("Use this branch as the root version and don't"
-                     ' create in version directory'))
+flags.DEFINE_string(
+    "output_dir",
+    "/tmp/lite_api/",
+    ("Use this branch as the root version and don't" " create in version directory"),
+)
 
-flags.DEFINE_string('site_path', 'lite/api_docs/java',
-                    'Path prefix in the _toc.yaml')
+flags.DEFINE_string("site_path", "lite/api_docs/java", "Path prefix in the _toc.yaml")
 
-flags.DEFINE_string('code_url_prefix', None,
-                    '[UNUSED] The url prefix for links to code.')
+flags.DEFINE_string(
+    "code_url_prefix", None, "[UNUSED] The url prefix for links to code."
+)
 
 flags.DEFINE_bool(
-    'search_hints', True,
-    '[UNUSED] Include metadata search hints in the generated files')
+    "search_hints",
+    True,
+    "[UNUSED] Include metadata search hints in the generated files",
+)
 
 # This tool expects to live within a directory structure that hosts multiple
 # repositories, like so:
@@ -49,88 +53,87 @@ flags.DEFINE_bool(
 #   /android/sdk (android.googlesource.com/platform/prebuilts/sdk
 #     - Note that this needs a branch with an api/ dir, such as *-release)
 # Internally, both the monorepo and the external build system do this for you.
-SOURCE_PATH_CORE = pathlib.Path('tensorflow/lite/java/src/main/java')
-SOURCE_PATH_SUPPORT = pathlib.Path('tensorflow_lite_support/java/src/java')
-SOURCE_PATH_METADATA = pathlib.Path(
-    'tensorflow_lite_support/metadata/java/src/java')
-SOURCE_PATH_ODML = pathlib.Path('tensorflow_lite_support/odml/java/image/src')
-SOURCE_PATH_ANDROID_SDK = pathlib.Path('android/sdk/api/26.txt')
+SOURCE_PATH_CORE = pathlib.Path("tensorflow/lite/java/src/main/java")
+SOURCE_PATH_SUPPORT = pathlib.Path("tensorflow_lite_support/java/src/java")
+SOURCE_PATH_METADATA = pathlib.Path("tensorflow_lite_support/metadata/java/src/java")
+SOURCE_PATH_ODML = pathlib.Path("tensorflow_lite_support/odml/java/image/src")
+SOURCE_PATH_ANDROID_SDK = pathlib.Path("android/sdk/api/26.txt")
 
 # This (key) ordering is preserved in the TOC output.
 SECTION_LABELS = {
-    'org.tensorflow.lite': 'Core',
-    'org.tensorflow.lite.support': 'Support Library',
-    'org.tensorflow.lite.task': 'Task Library',
+    "org.tensorflow.lite": "Core",
+    "org.tensorflow.lite.support": "Support Library",
+    "org.tensorflow.lite.task": "Task Library",
     # If we ever need other ODML packages, drop the `.image` here.
-    'com.google.android.odml.image': 'ODML',
+    "com.google.android.odml.image": "ODML",
 }
 
-EXTERNAL_APIS = {'https://developer.android.com': SOURCE_PATH_ANDROID_SDK}
+EXTERNAL_APIS = {"https://developer.android.com": SOURCE_PATH_ANDROID_SDK}
 
 
 def overlay(from_root: pathlib.Path, to_root: pathlib.Path):
-  """Recursively copy from_root/* into to_root/."""
-  # When Python3.8 lands, replace with shutil.copytree(..., dirs_exist_ok=True)
-  for from_path in from_root.rglob('*'):
-    to_path = to_root / from_path.relative_to(from_root)
-    if from_path.is_file():
-      assert not to_path.exists(), f'{to_path} exists!'
-      shutil.copyfile(from_path, to_path)
-    else:
-      to_path.mkdir(exist_ok=True)
+    """Recursively copy from_root/* into to_root/."""
+    # When Python3.8 lands, replace with shutil.copytree(..., dirs_exist_ok=True)
+    for from_path in from_root.rglob("*"):
+        to_path = to_root / from_path.relative_to(from_root)
+        if from_path.is_file():
+            assert not to_path.exists(), f"{to_path} exists!"
+            shutil.copyfile(from_path, to_path)
+        else:
+            to_path.mkdir(exist_ok=True)
 
 
 def resolve_nested_dir(path: pathlib.Path, root: pathlib.Path) -> pathlib.Path:
-  """Returns the path that exists, out of foo/... and foo/foo/..., with root."""
-  nested = path.parts[0] / path
-  root_path = root / path
-  root_nested_path = root / nested
-  if root_path.exists():
-    return root_path
-  elif root_nested_path.exists():
-    return root_nested_path
-  raise ValueError(f'Could not find {path} or {nested}')
+    """Returns the path that exists, out of foo/... and foo/foo/..., with root."""
+    nested = path.parts[0] / path
+    root_path = root / path
+    root_nested_path = root / nested
+    if root_path.exists():
+        return root_path
+    elif root_nested_path.exists():
+        return root_nested_path
+    raise ValueError(f"Could not find {path} or {nested}")
 
 
-def exists_maybe_nested(paths: Iterable[pathlib.Path],
-                        root: pathlib.Path) -> bool:
-  """Evaluates whether all paths exist, either as-is, or nested."""
-  # Due to differing directory structures between GitHub & Google, we need to
-  # check if a path exists as-is, or with the first section repeated.
-  for path in paths:
-    try:
-      resolve_nested_dir(path, root)
-    except ValueError:
-      return False
-  return True
+def exists_maybe_nested(paths: Iterable[pathlib.Path], root: pathlib.Path) -> bool:
+    """Evaluates whether all paths exist, either as-is, or nested."""
+    # Due to differing directory structures between GitHub & Google, we need to
+    # check if a path exists as-is, or with the first section repeated.
+    for path in paths:
+        try:
+            resolve_nested_dir(path, root)
+        except ValueError:
+            return False
+    return True
 
 
 def main(unused_argv):
-  root = pathlib.Path(__file__).resolve()
-  all_deps = [SOURCE_PATH_CORE, SOURCE_PATH_SUPPORT, SOURCE_PATH_ODML]
-  # Keep searching upwards for a root that hosts the various dependencies. We
-  # test `root.name` to ensure we haven't hit /.
-  while root.name and not exists_maybe_nested(all_deps, root):
-    root = root.parent
-  assert exists_maybe_nested(all_deps, root), 'Could not find dependencies.'
+    root = pathlib.Path(__file__).resolve()
+    all_deps = [SOURCE_PATH_CORE, SOURCE_PATH_SUPPORT, SOURCE_PATH_ODML]
+    # Keep searching upwards for a root that hosts the various dependencies. We
+    # test `root.name` to ensure we haven't hit /.
+    while root.name and not exists_maybe_nested(all_deps, root):
+        root = root.parent
+    assert exists_maybe_nested(all_deps, root), "Could not find dependencies."
 
-  with tempfile.TemporaryDirectory() as merge_tmp_dir:
-    # Merge the combined API sources into a single location.
-    merged_temp_dir = pathlib.Path(merge_tmp_dir)
-    overlay(resolve_nested_dir(SOURCE_PATH_CORE, root), merged_temp_dir)
-    overlay(resolve_nested_dir(SOURCE_PATH_SUPPORT, root), merged_temp_dir)
-    overlay(resolve_nested_dir(SOURCE_PATH_METADATA, root), merged_temp_dir)
-    overlay(resolve_nested_dir(SOURCE_PATH_ODML, root), merged_temp_dir)
+    with tempfile.TemporaryDirectory() as merge_tmp_dir:
+        # Merge the combined API sources into a single location.
+        merged_temp_dir = pathlib.Path(merge_tmp_dir)
+        overlay(resolve_nested_dir(SOURCE_PATH_CORE, root), merged_temp_dir)
+        overlay(resolve_nested_dir(SOURCE_PATH_SUPPORT, root), merged_temp_dir)
+        overlay(resolve_nested_dir(SOURCE_PATH_METADATA, root), merged_temp_dir)
+        overlay(resolve_nested_dir(SOURCE_PATH_ODML, root), merged_temp_dir)
 
-    gen_java.gen_java_docs(
-        package=['org.tensorflow.lite', 'com.google.android.odml'],
-        source_path=merged_temp_dir,
-        output_dir=pathlib.Path(FLAGS.output_dir),
-        site_path=pathlib.Path(FLAGS.site_path),
-        section_labels=SECTION_LABELS,
-        federated_docs={k: root / v for k, v in EXTERNAL_APIS.items()})
+        gen_java.gen_java_docs(
+            package=["org.tensorflow.lite", "com.google.android.odml"],
+            source_path=merged_temp_dir,
+            output_dir=pathlib.Path(FLAGS.output_dir),
+            site_path=pathlib.Path(FLAGS.site_path),
+            section_labels=SECTION_LABELS,
+            federated_docs={k: root / v for k, v in EXTERNAL_APIS.items()},
+        )
 
 
-if __name__ == '__main__':
-  flags.mark_flags_as_required(['output_dir'])
-  app.run(main)
+if __name__ == "__main__":
+    flags.mark_flags_as_required(["output_dir"])
+    app.run(main)

@@ -21,11 +21,27 @@
   systems (e.g. GCE, AWS, etc...).
 """
 
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver
-from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import GCEClusterResolver
-from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import KubernetesClusterResolver
-from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import SlurmClusterResolver
-from tensorflow.python.distribute.cluster_resolver.tfconfig_cluster_resolver import TFConfigClusterResolver
-from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import (
+    ClusterResolver,
+)
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import (
+    SimpleClusterResolver,
+)
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import (
+    UnionClusterResolver,
+)
+from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import (
+    GCEClusterResolver,
+)
+from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import (
+    KubernetesClusterResolver,
+)
+from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import (
+    SlurmClusterResolver,
+)
+from tensorflow.python.distribute.cluster_resolver.tfconfig_cluster_resolver import (
+    TFConfigClusterResolver,
+)
+from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import (
+    TPUClusterResolver,
+)

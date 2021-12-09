@@ -23,43 +23,42 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 def softmax(x):
-  z = x - np.max(x, axis=-1, keepdims=True)
-  numerator = np.exp(z)
-  denominator = np.sum(numerator, axis=-1, keepdims=True)
-  result = numerator / denominator
-  return result
+    z = x - np.max(x, axis=-1, keepdims=True)
+    numerator = np.exp(z)
+    denominator = np.sum(numerator, axis=-1, keepdims=True)
+    result = numerator / denominator
+    return result
 
 
 class TfSoftmaxTest(test.TestCase):
-
-  def test_dynamic_softmax(self):
-    mlir_function = """
+    def test_dynamic_softmax(self):
+        mlir_function = """
         func @test(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
           %0 = "tf.Softmax"(%input) : (tensor<?x?xf32>) -> tensor<?x?xf32>
           return %0 : tensor<?x?xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
+        compiled = cpurt.compile(mlir_function, "test", vectorize=True)
 
-    arg0 = np.random.uniform(1, 5, size=(8, 8)).astype(np.float32)
+        arg0 = np.random.uniform(1, 5, size=(8, 8)).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg0])
-    np.testing.assert_allclose(res, softmax(arg0), atol=0.00001)
+        [res] = cpurt.execute(compiled, [arg0])
+        np.testing.assert_allclose(res, softmax(arg0), atol=0.00001)
 
-  def test_static_softmax(self):
-    mlir_function = """
+    def test_static_softmax(self):
+        mlir_function = """
         func @test(%input: tensor<10x8xf32>) -> tensor<10x8xf32> {
           %0 = "tf.Softmax"(%input) : (tensor<10x8xf32>) -> tensor<10x8xf32>
           return %0 : tensor<10x8xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
+        compiled = cpurt.compile(mlir_function, "test", vectorize=True)
 
-    arg0 = np.random.uniform(1, 5, size=(10, 8)).astype(np.float32)
+        arg0 = np.random.uniform(1, 5, size=(10, 8)).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg0])
-    np.testing.assert_allclose(res, softmax(arg0), atol=0.00001)
+        [res] = cpurt.execute(compiled, [arg0])
+        np.testing.assert_allclose(res, softmax(arg0), atol=0.00001)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

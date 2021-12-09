@@ -25,4 +25,3 @@ Overall, the different analyses have the functions listed below:
  * liveness, reaching_definitions: dataflow analyses based on the program's CFG
      and using the symbol information gathered by activity analysis
 """
-

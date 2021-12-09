@@ -21,27 +21,29 @@ from tensorflow.python.platform import test
 
 
 class TestNPUtils(test.TestCase):
+    def test_to_categorical(self):
+        num_classes = 5
+        shapes = [(1,), (3,), (4, 3), (5, 4, 3), (3, 1), (3, 2, 1)]
+        expected_shapes = [
+            (1, num_classes),
+            (3, num_classes),
+            (4, 3, num_classes),
+            (5, 4, 3, num_classes),
+            (3, num_classes),
+            (3, 2, num_classes),
+        ]
+        labels = [np.random.randint(0, num_classes, shape) for shape in shapes]
+        one_hots = [np_utils.to_categorical(label, num_classes) for label in labels]
+        for label, one_hot, expected_shape in zip(labels, one_hots, expected_shapes):
+            # Check shape
+            self.assertEqual(one_hot.shape, expected_shape)
+            # Make sure there is only one 1 in a row
+            self.assertTrue(np.all(one_hot.sum(axis=-1) == 1))
+            # Get original labels back from one hots
+            self.assertTrue(
+                np.all(np.argmax(one_hot, -1).reshape(label.shape) == label)
+            )
 
-  def test_to_categorical(self):
-    num_classes = 5
-    shapes = [(1,), (3,), (4, 3), (5, 4, 3), (3, 1), (3, 2, 1)]
-    expected_shapes = [(1, num_classes), (3, num_classes), (4, 3, num_classes),
-                       (5, 4, 3, num_classes), (3, num_classes),
-                       (3, 2, num_classes)]
-    labels = [np.random.randint(0, num_classes, shape) for shape in shapes]
-    one_hots = [
-        np_utils.to_categorical(label, num_classes) for label in labels]
-    for label, one_hot, expected_shape in zip(labels,
-                                              one_hots,
-                                              expected_shapes):
-      # Check shape
-      self.assertEqual(one_hot.shape, expected_shape)
-      # Make sure there is only one 1 in a row
-      self.assertTrue(np.all(one_hot.sum(axis=-1) == 1))
-      # Get original labels back from one hots
-      self.assertTrue(np.all(
-          np.argmax(one_hot, -1).reshape(label.shape) == label))
 
-
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

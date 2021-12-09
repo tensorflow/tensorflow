@@ -21,5 +21,5 @@ from tensorflow.python.platform.test import *  # pylint: disable=wildcard-import
 
 # TODO(akshayka): Do away with this file.
 def main(argv=None):  # pylint: disable=function-redefined
-  _ops.enable_eager_execution()
-  _test.main(argv)
+    _ops.enable_eager_execution()
+    _test.main(argv)

@@ -25,61 +25,62 @@ _CMAKE_ATVAR_REGEX = re.compile(r"@([A-Za-z_0-9]*)@")
 
 
 def _parse_args(argv):
-  """Parses arguments with the form KEY=VALUE into a dictionary."""
-  result = {}
-  for arg in argv:
-    k, v = arg.split("=")
-    result[k] = v
-  return result
+    """Parses arguments with the form KEY=VALUE into a dictionary."""
+    result = {}
+    for arg in argv:
+        k, v = arg.split("=")
+        result[k] = v
+    return result
 
 
 def _expand_variables(input_str, cmake_vars):
-  """Expands ${VARIABLE}s and @VARIABLE@s in 'input_str', using dictionary 'cmake_vars'.
+    """Expands ${VARIABLE}s and @VARIABLE@s in 'input_str', using dictionary 'cmake_vars'.
 
-  Args:
-    input_str: the string containing ${VARIABLE} or @VARIABLE@ expressions to expand.
-    cmake_vars: a dictionary mapping variable names to their values.
+    Args:
+      input_str: the string containing ${VARIABLE} or @VARIABLE@ expressions to expand.
+      cmake_vars: a dictionary mapping variable names to their values.
 
-  Returns:
-    The expanded string.
-  """
-  def replace(match):
-    if match.group(1) in cmake_vars:
-      return cmake_vars[match.group(1)]
-    return ""
-  return _CMAKE_ATVAR_REGEX.sub(replace,_CMAKE_VAR_REGEX.sub(replace, input_str))
+    Returns:
+      The expanded string.
+    """
+
+    def replace(match):
+        if match.group(1) in cmake_vars:
+            return cmake_vars[match.group(1)]
+        return ""
+
+    return _CMAKE_ATVAR_REGEX.sub(replace, _CMAKE_VAR_REGEX.sub(replace, input_str))
 
 
 def _expand_cmakedefines(line, cmake_vars):
-  """Expands #cmakedefine declarations, using a dictionary 'cmake_vars'."""
+    """Expands #cmakedefine declarations, using a dictionary 'cmake_vars'."""
 
-  # Handles #cmakedefine lines
-  match = _CMAKE_DEFINE_REGEX.match(line)
-  if match:
-    name = match.group(1)
-    suffix = match.group(2) or ""
-    if name in cmake_vars:
-      return "#define {}{}\n".format(name,
-                                     _expand_variables(suffix, cmake_vars))
-    else:
-      return "/* #undef {} */\n".format(name)
+    # Handles #cmakedefine lines
+    match = _CMAKE_DEFINE_REGEX.match(line)
+    if match:
+        name = match.group(1)
+        suffix = match.group(2) or ""
+        if name in cmake_vars:
+            return "#define {}{}\n".format(name, _expand_variables(suffix, cmake_vars))
+        else:
+            return "/* #undef {} */\n".format(name)
 
-  # Handles #cmakedefine01 lines
-  match = _CMAKE_DEFINE01_REGEX.match(line)
-  if match:
-    name = match.group(1)
-    value = cmake_vars.get(name, "0")
-    return "#define {} {}\n".format(name, value)
+    # Handles #cmakedefine01 lines
+    match = _CMAKE_DEFINE01_REGEX.match(line)
+    if match:
+        name = match.group(1)
+        value = cmake_vars.get(name, "0")
+        return "#define {} {}\n".format(name, value)
 
-  # Otherwise return the line unchanged.
-  return _expand_variables(line, cmake_vars)
+    # Otherwise return the line unchanged.
+    return _expand_variables(line, cmake_vars)
 
 
 def main():
-  cmake_vars = _parse_args(sys.argv[1:])
-  for line in sys.stdin:
-    sys.stdout.write(_expand_cmakedefines(line, cmake_vars))
+    cmake_vars = _parse_args(sys.argv[1:])
+    for line in sys.stdin:
+        sys.stdout.write(_expand_cmakedefines(line, cmake_vars))
 
 
 if __name__ == "__main__":
-  main()
+    main()

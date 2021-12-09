@@ -21,55 +21,52 @@ from tensorflow.tools.common import traverse
 
 
 class TestVisitor(object):
+    def __init__(self):
+        self.call_log = []
 
-  def __init__(self):
-    self.call_log = []
-
-  def __call__(self, path, parent, children):
-    self.call_log += [(path, parent, children)]
+    def __call__(self, path, parent, children):
+        self.call_log += [(path, parent, children)]
 
 
 class TraverseTest(googletest.TestCase):
+    def test_cycle(self):
+        class Cyclist(object):
+            pass
 
-  def test_cycle(self):
+        Cyclist.cycle = Cyclist
 
-    class Cyclist(object):
-      pass
-    Cyclist.cycle = Cyclist
+        visitor = TestVisitor()
+        traverse.traverse(Cyclist, visitor)
+        # We simply want to make sure we terminate.
 
-    visitor = TestVisitor()
-    traverse.traverse(Cyclist, visitor)
-    # We simply want to make sure we terminate.
+    def test_module(self):
+        visitor = TestVisitor()
+        traverse.traverse(test_module1, visitor)
 
-  def test_module(self):
-    visitor = TestVisitor()
-    traverse.traverse(test_module1, visitor)
+        called = [parent for _, parent, _ in visitor.call_log]
 
-    called = [parent for _, parent, _ in visitor.call_log]
+        self.assertIn(test_module1.ModuleClass1, called)
+        self.assertIn(test_module2.ModuleClass2, called)
 
-    self.assertIn(test_module1.ModuleClass1, called)
-    self.assertIn(test_module2.ModuleClass2, called)
+    def test_class(self):
+        visitor = TestVisitor()
+        traverse.traverse(TestVisitor, visitor)
+        self.assertEqual(TestVisitor, visitor.call_log[0][1])
+        # There are a bunch of other members, but make sure that the ones we know
+        # about are there.
+        self.assertIn("__init__", [name for name, _ in visitor.call_log[0][2]])
+        self.assertIn("__call__", [name for name, _ in visitor.call_log[0][2]])
 
-  def test_class(self):
-    visitor = TestVisitor()
-    traverse.traverse(TestVisitor, visitor)
-    self.assertEqual(TestVisitor,
-                     visitor.call_log[0][1])
-    # There are a bunch of other members, but make sure that the ones we know
-    # about are there.
-    self.assertIn('__init__', [name for name, _ in visitor.call_log[0][2]])
-    self.assertIn('__call__', [name for name, _ in visitor.call_log[0][2]])
+        # There are more classes descended into, at least __class__ and
+        # __class__.__base__, neither of which are interesting to us, and which may
+        # change as part of Python version etc., so we don't test for them.
 
-    # There are more classes descended into, at least __class__ and
-    # __class__.__base__, neither of which are interesting to us, and which may
-    # change as part of Python version etc., so we don't test for them.
-
-  def test_non_class(self):
-    integer = 5
-    visitor = TestVisitor()
-    traverse.traverse(integer, visitor)
-    self.assertEqual([], visitor.call_log)
+    def test_non_class(self):
+        integer = 5
+        visitor = TestVisitor()
+        traverse.traverse(integer, visitor)
+        self.assertEqual([], visitor.call_log)
 
 
-if __name__ == '__main__':
-  googletest.main()
+if __name__ == "__main__":
+    googletest.main()

@@ -23,9 +23,8 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 class TfConstTest(test.TestCase):
-
-  def test_const_i32(self):
-    mlir_function = """
+    def test_const_i32(self):
+        mlir_function = """
       func @test() -> tensor<1xi32> {
         %0 = "tf.Const"() {
                value = dense<1> : tensor<1xi32>
@@ -33,12 +32,12 @@ class TfConstTest(test.TestCase):
         return %0 : tensor<1xi32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
-    [res] = cpurt.execute(compiled, [])
-    np.testing.assert_allclose(res, 1, rtol=0.0)
+        compiled = cpurt.compile(mlir_function, "test")
+        [res] = cpurt.execute(compiled, [])
+        np.testing.assert_allclose(res, 1, rtol=0.0)
 
-  def test_constant_folding_i32(self):
-    mlir_function = """
+    def test_constant_folding_i32(self):
+        mlir_function = """
       func @test() -> tensor<2xi32> {
         %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
         %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -47,9 +46,10 @@ class TfConstTest(test.TestCase):
         return %2 : tensor<2xi32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
-    [res] = cpurt.execute(compiled, [])
-    np.testing.assert_allclose(res, [0, 1], rtol=0.0)
+        compiled = cpurt.compile(mlir_function, "test")
+        [res] = cpurt.execute(compiled, [])
+        np.testing.assert_allclose(res, [0, 1], rtol=0.0)
 
-if __name__ == '__main__':
-  test.main()
+
+if __name__ == "__main__":
+    test.main()

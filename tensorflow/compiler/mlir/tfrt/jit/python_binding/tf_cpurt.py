@@ -21,7 +21,8 @@ from tensorflow.compiler.mlir.tfrt.jit.python_binding import _tf_cpurt_executor
 
 
 class TfCpurtExecutor(_tf_cpurt_executor.TfCpurtExecutor):
-  """Python binding of `tensorflow::TfCpurtExecutor` class."""
+    """Python binding of `tensorflow::TfCpurtExecutor` class."""
+
 
 class Specialization(_tf_cpurt_executor.Specialization):
-  """Python binding of `tensorflow::TfCpurtExecutor::Specialization` enum."""
+    """Python binding of `tensorflow::TfCpurtExecutor::Specialization` enum."""

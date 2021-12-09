@@ -22,13 +22,13 @@ from tensorflow.python.platform import test
 
 
 class TestOpsDefsTest(test_utils.OpsDefsTest):
+    def test_test_ops(self):
+        attr = tf.function(test_ops.test_attr)(T=tf.float32)
+        self.assertAllClose(attr.numpy(), 100.0)
 
-  def test_test_ops(self):
-    attr = tf.function(test_ops.test_attr)(T=tf.float32)
-    self.assertAllClose(attr.numpy(), 100.0)
 
-
-if __name__ == '__main__':
-  os.environ['TF_MLIR_TFR_LIB_DIR'] = (
-      'tensorflow/compiler/mlir/tfr/examples/customization')
-  test.main()
+if __name__ == "__main__":
+    os.environ[
+        "TF_MLIR_TFR_LIB_DIR"
+    ] = "tensorflow/compiler/mlir/tfr/examples/customization"
+    test.main()

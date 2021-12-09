@@ -23,9 +23,8 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 class TfBroadcastToTest(test.TestCase):
-
-  def test_broadcast_return(self):
-    mlir_function = """
+    def test_broadcast_return(self):
+        mlir_function = """
       func @test(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>)
            -> (tensor<?x?xf32>, tensor<?x?xf32>) {
         %1 = "tf.BroadcastTo"(%arg0, %arg1)
@@ -35,15 +34,15 @@ class TfBroadcastToTest(test.TestCase):
         return %1, %2 : tensor<?x?xf32>, tensor<?x?xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
+        compiled = cpurt.compile(mlir_function, "test")
 
-    arg0 = np.random.uniform(0, 10.0, size=1).astype(np.float32)
-    arg1 = np.random.uniform(0, 10, size=2).astype(np.int32)
+        arg0 = np.random.uniform(0, 10.0, size=1).astype(np.float32)
+        arg1 = np.random.uniform(0, 10, size=2).astype(np.int32)
 
-    [res1, res2] = cpurt.execute(compiled, [arg0, arg1])
-    np.testing.assert_allclose(res1, np.broadcast_to(arg0, arg1), atol=0.0)
-    np.testing.assert_allclose(res2, np.broadcast_to(arg0, arg1) * 2, atol=0.0)
+        [res1, res2] = cpurt.execute(compiled, [arg0, arg1])
+        np.testing.assert_allclose(res1, np.broadcast_to(arg0, arg1), atol=0.0)
+        np.testing.assert_allclose(res2, np.broadcast_to(arg0, arg1) * 2, atol=0.0)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

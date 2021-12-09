@@ -32,35 +32,36 @@ Composite = composite.Composite
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
-    'output', None,
-    'Path to write the genereated register op file and MLIR file.')
+    "output", None, "Path to write the genereated register op file and MLIR file."
+)
 
-flags.DEFINE_bool('gen_register_op', True,
-                  'Generate register op cc file or tfr mlir file.')
+flags.DEFINE_bool(
+    "gen_register_op", True, "Generate register op cc file or tfr mlir file."
+)
 
 
 # The original kernel is defined in 'tensorflow/python/framework/ops_test.py'
 # and prints out the current graph def version.
-@Composite('TestAttr')
+@Composite("TestAttr")
 def _override_test_attr_op():
-  ret = array_ops.Const(value=100.0, dtype=dtypes.float32)
-  return ret
+    ret = array_ops.Const(value=100.0, dtype=dtypes.float32)
+    return ret
 
 
 def main(_):
-  if FLAGS.gen_register_op:
-    assert FLAGS.output.endswith('.cc')
-    generated_code = gen_register_op(sys.modules[__name__], '_override_')
-  else:
-    assert FLAGS.output.endswith('.mlir')
-    generated_code = tfr_gen_from_module(sys.modules[__name__], '_override_')
+    if FLAGS.gen_register_op:
+        assert FLAGS.output.endswith(".cc")
+        generated_code = gen_register_op(sys.modules[__name__], "_override_")
+    else:
+        assert FLAGS.output.endswith(".mlir")
+        generated_code = tfr_gen_from_module(sys.modules[__name__], "_override_")
 
-  dirname = os.path.dirname(FLAGS.output)
-  if not os.path.exists(dirname):
-    os.makedirs(dirname)
-  with open(FLAGS.output, 'w') as f:
-    f.write(generated_code)
+    dirname = os.path.dirname(FLAGS.output)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    with open(FLAGS.output, "w") as f:
+        f.write(generated_code)
 
 
-if __name__ == '__main__':
-  app.run(main=main)
+if __name__ == "__main__":
+    app.run(main=main)

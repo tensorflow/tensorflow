@@ -24,53 +24,44 @@ CompiledFunctionCache = xla_extension.CompiledFunctionCache
 CompiledFunction = xla_extension.CompiledFunction
 
 class GlobalJitState:
-  disable_jit: bool
-  enable_x64: bool
-  extra_jit_context: Any
+    disable_jit: bool
+    enable_x64: bool
+    extra_jit_context: Any
 
 class ThreadLocalJitState:
-  disable_jit: bool
-  enable_x64: bool
-  extra_jit_context: Any
+    disable_jit: bool
+    enable_x64: bool
+    extra_jit_context: Any
 
 def global_state() -> GlobalJitState: ...
 def thread_local_state() -> ThreadLocalJitState: ...
-
 def jit_is_enabled() -> bool: ...
 def get_enable_x64() -> bool: ...
-
 def set_disable_jit_cpp_flag(__arg: bool) -> None: ...
 def get_disable_jit_cpp_flag() -> bool: ...
 def set_disable_jit_thread_local(__arg: bool) -> None: ...
 def get_disable_jit_thread_local() -> bool: ...
 def set_disable_jit(__arg: bool) -> None: ...
 def get_disable_jit() -> bool: ...
-
 def set_disable_x64_cpp_flag(__arg: bool) -> None: ...
 def get_disable_x64_cpp_flag() -> bool: ...
 def set_disable_x64_thread_local(__arg: bool) -> None: ...
 def get_disable_x64_thread_local() -> bool: ...
-
-def jit(fun: Callable[..., Any],
-        cache_miss: Callable[..., Any],
-        get_device: Callable[..., Any],
-        static_argnums: Sequence[int],
-        static_argnames: Sequence[str] = ...,
-        donate_argnums: Sequence[int] = ...,
-        cache: Optional[CompiledFunctionCache] = ...) -> CompiledFunction: ...
-
-def device_put(
-    __obj: Any,
-    __jax_enable_x64: bool,
-    __to_device: Client) -> Any: ...
+def jit(
+    fun: Callable[..., Any],
+    cache_miss: Callable[..., Any],
+    get_device: Callable[..., Any],
+    static_argnums: Sequence[int],
+    static_argnames: Sequence[str] = ...,
+    donate_argnums: Sequence[int] = ...,
+    cache: Optional[CompiledFunctionCache] = ...,
+) -> CompiledFunction: ...
+def device_put(__obj: Any, __jax_enable_x64: bool, __to_device: Client) -> Any: ...
 
 class ArgSignature:
-  dtype: np.dtype
-  shape: Tuple[int, ...]
-  weak_type: bool
+    dtype: np.dtype
+    shape: Tuple[int, ...]
+    weak_type: bool
 
-def _ArgSignatureOfValue(
-    __arg: Any,
-    __jax_enable_x64: bool) -> ArgSignature: ...
-
+def _ArgSignatureOfValue(__arg: Any, __jax_enable_x64: bool) -> ArgSignature: ...
 def _is_float0(__arg: Any) -> bool: ...

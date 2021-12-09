@@ -21,13 +21,13 @@ from mlir.ir import *
 
 
 def run(f):
-  with Context() as context:
-    register_mhlo_dialect(context)
-    f()
-  return f
+    with Context() as context:
+        register_mhlo_dialect(context)
+        f()
+    return f
 
 
 @run
 def test_token_type():
-  """Check that the Token type is available."""
-  assert str(TokenType.get()) == "!mhlo.token"
+    """Check that the Token type is available."""
+    assert str(TokenType.get()) == "!mhlo.token"

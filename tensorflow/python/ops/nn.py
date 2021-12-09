@@ -27,6 +27,7 @@ from tensorflow.python.ops import nn_grad as _nn_grad
 from tensorflow.python.ops import nn_ops as _nn_ops
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
+
 # pylint: enable=unused-import
 
 # Bring more nn-associated functionality into this package.
@@ -37,4 +38,5 @@ from tensorflow.python.ops.nn_impl import *
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
+
 # pylint: enable=wildcard-import,unused-import

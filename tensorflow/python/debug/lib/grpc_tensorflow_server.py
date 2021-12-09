@@ -40,118 +40,113 @@ from tensorflow.python.training import server_lib
 
 
 def parse_cluster_spec(cluster_spec, cluster, verbose=False):
-  """Parse content of cluster_spec string and inject info into cluster protobuf.
+    """Parse content of cluster_spec string and inject info into cluster protobuf.
 
-  Args:
-    cluster_spec: cluster specification string, e.g.,
-          "local|localhost:2222;localhost:2223"
-    cluster: cluster protobuf.
-    verbose: If verbose logging is requested.
+    Args:
+      cluster_spec: cluster specification string, e.g.,
+            "local|localhost:2222;localhost:2223"
+      cluster: cluster protobuf.
+      verbose: If verbose logging is requested.
 
-  Raises:
-    ValueError: if the cluster_spec string is invalid.
-  """
+    Raises:
+      ValueError: if the cluster_spec string is invalid.
+    """
 
-  job_strings = cluster_spec.split(",")
+    job_strings = cluster_spec.split(",")
 
-  if not cluster_spec:
-    raise ValueError("Empty cluster_spec string")
+    if not cluster_spec:
+        raise ValueError("Empty cluster_spec string")
 
-  for job_string in job_strings:
-    job_def = cluster.job.add()
+    for job_string in job_strings:
+        job_def = cluster.job.add()
 
-    if job_string.count("|") != 1:
-      raise ValueError("Not exactly one instance of '|' in cluster_spec")
+        if job_string.count("|") != 1:
+            raise ValueError("Not exactly one instance of '|' in cluster_spec")
 
-    job_name = job_string.split("|")[0]
+        job_name = job_string.split("|")[0]
 
-    if not job_name:
-      raise ValueError("Empty job_name in cluster_spec")
+        if not job_name:
+            raise ValueError("Empty job_name in cluster_spec")
 
-    job_def.name = job_name
+        job_def.name = job_name
 
-    if verbose:
-      logging.info("Added job named \"%s\"", job_name)
+        if verbose:
+            logging.info('Added job named "%s"', job_name)
 
-    job_tasks = job_string.split("|")[1].split(";")
-    for i in range(len(job_tasks)):
-      if not job_tasks[i]:
-        raise ValueError("Empty task string at position %d" % i)
+        job_tasks = job_string.split("|")[1].split(";")
+        for i in range(len(job_tasks)):
+            if not job_tasks[i]:
+                raise ValueError("Empty task string at position %d" % i)
 
-      job_def.tasks[i] = job_tasks[i]
+            job_def.tasks[i] = job_tasks[i]
 
-      if verbose:
-        logging.info("  Added task \"%s\" to job \"%s\"",
-                     job_tasks[i], job_name)
+            if verbose:
+                logging.info('  Added task "%s" to job "%s"', job_tasks[i], job_name)
 
 
 def main(unused_args):
-  # Create Protobuf ServerDef
-  server_def = tensorflow_server_pb2.ServerDef(protocol="grpc")
+    # Create Protobuf ServerDef
+    server_def = tensorflow_server_pb2.ServerDef(protocol="grpc")
 
-  # Cluster info
-  parse_cluster_spec(FLAGS.cluster_spec, server_def.cluster, FLAGS.verbose)
+    # Cluster info
+    parse_cluster_spec(FLAGS.cluster_spec, server_def.cluster, FLAGS.verbose)
 
-  # Job name
-  if not FLAGS.job_name:
-    raise ValueError("Empty job_name")
-  server_def.job_name = FLAGS.job_name
+    # Job name
+    if not FLAGS.job_name:
+        raise ValueError("Empty job_name")
+    server_def.job_name = FLAGS.job_name
 
-  # Task index
-  if FLAGS.task_id < 0:
-    raise ValueError("Invalid task_id: %d" % FLAGS.task_id)
-  server_def.task_index = FLAGS.task_id
+    # Task index
+    if FLAGS.task_id < 0:
+        raise ValueError("Invalid task_id: %d" % FLAGS.task_id)
+    server_def.task_index = FLAGS.task_id
 
-  config = config_pb2.ConfigProto(gpu_options=config_pb2.GPUOptions(
-      per_process_gpu_memory_fraction=FLAGS.gpu_memory_fraction))
+    config = config_pb2.ConfigProto(
+        gpu_options=config_pb2.GPUOptions(
+            per_process_gpu_memory_fraction=FLAGS.gpu_memory_fraction
+        )
+    )
 
-  # Create GRPC Server instance
-  server = server_lib.Server(server_def, config=config)
+    # Create GRPC Server instance
+    server = server_lib.Server(server_def, config=config)
 
-  # join() is blocking, unlike start()
-  server.join()
+    # join() is blocking, unlike start()
+    server.join()
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.register("type", "bool", lambda v: v.lower() == "true")
-  parser.add_argument(
-      "--cluster_spec",
-      type=str,
-      default="",
-      help="""\
+    parser = argparse.ArgumentParser()
+    parser.register("type", "bool", lambda v: v.lower() == "true")
+    parser.add_argument(
+        "--cluster_spec",
+        type=str,
+        default="",
+        help="""\
       Cluster spec: SPEC.     SPEC is <JOB>(,<JOB>)*,"     JOB  is
       <NAME>|<HOST:PORT>(;<HOST:PORT>)*,"     NAME is a valid job name
       ([a-z][0-9a-z]*),"     HOST is a hostname or IP address,"     PORT is a
       port number." E.g., local|localhost:2222;localhost:2223,
       ps|ps0:2222;ps1:2222\
-      """
-  )
-  parser.add_argument(
-      "--job_name",
-      type=str,
-      default="",
-      help="Job name: e.g., local"
-  )
-  parser.add_argument(
-      "--task_id",
-      type=int,
-      default=0,
-      help="Task index, e.g., 0"
-  )
-  parser.add_argument(
-      "--gpu_memory_fraction",
-      type=float,
-      default=1.0,
-      help="Fraction of GPU memory allocated",)
-  parser.add_argument(
-      "--verbose",
-      type="bool",
-      nargs="?",
-      const=True,
-      default=False,
-      help="Verbose mode"
-  )
+      """,
+    )
+    parser.add_argument(
+        "--job_name", type=str, default="", help="Job name: e.g., local"
+    )
+    parser.add_argument("--task_id", type=int, default=0, help="Task index, e.g., 0")
+    parser.add_argument(
+        "--gpu_memory_fraction",
+        type=float,
+        default=1.0,
+        help="Fraction of GPU memory allocated",
+    )
+    parser.add_argument(
+        "--verbose",
+        type="bool",
+        nargs="?",
+        const=True,
+        default=False,
+        help="Verbose mode",
+    )
 
-  FLAGS, unparsed = parser.parse_known_args()
-  app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    FLAGS, unparsed = parser.parse_known_args()
+    app.run(main=main, argv=[sys.argv[0]] + unparsed)

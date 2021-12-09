@@ -23,9 +23,8 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 class TfMeanTest(test.TestCase):
-
-  def test_mean_2d(self):
-    mlir_function = """
+    def test_mean_2d(self):
+        mlir_function = """
       func @mean(%arg0: tensor<?x?xf32>) -> tensor<?x1xf32> {
         %dim = "tf.Const"() {value = dense<1> : tensor<1xi32>}
                : () -> tensor<1xi32>
@@ -33,13 +32,13 @@ class TfMeanTest(test.TestCase):
              : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?x1xf32>
         return %0 : tensor<?x1xf32>
       }"""
-    compiled = cpurt.compile(mlir_function, 'mean')
-    arg0 = np.random.uniform(0.0, 1.0, size=(100, 200)).astype(np.float32)
-    [res] = cpurt.execute(compiled, [arg0])
-    mean = np.mean(arg0, axis=1, keepdims=True)
-    np.testing.assert_allclose(res, mean, rtol=1e-05)
+        compiled = cpurt.compile(mlir_function, "mean")
+        arg0 = np.random.uniform(0.0, 1.0, size=(100, 200)).astype(np.float32)
+        [res] = cpurt.execute(compiled, [arg0])
+        mean = np.mean(arg0, axis=1, keepdims=True)
+        np.testing.assert_allclose(res, mean, rtol=1e-05)
 
 
-if __name__ == '__main__':
-  np.random.seed(0)
-  test.main()
+if __name__ == "__main__":
+    np.random.seed(0)
+    test.main()

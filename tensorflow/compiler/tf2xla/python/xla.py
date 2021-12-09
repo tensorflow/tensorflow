@@ -67,12 +67,12 @@ constant = constant_op.constant
 
 
 def _unary_op(fn):
-  """Wrapper that restricts `fn` to have the correct signature."""
+    """Wrapper that restricts `fn` to have the correct signature."""
 
-  def unary_op_wrapper(x, name=None):
-    return fn(x, name=name)
+    def unary_op_wrapper(x, name=None):
+        return fn(x, name=name)
 
-  return unary_op_wrapper
+    return unary_op_wrapper
 
 
 abs = _unary_op(math_ops.abs)
@@ -116,19 +116,19 @@ bessel_i1e = _unary_op(special_math_ops.bessel_i1e)
 
 
 def _broadcasting_binary_op(fn):
-  """Wraps a binary Tensorflow operator and performs XLA-style broadcasting."""
+    """Wraps a binary Tensorflow operator and performs XLA-style broadcasting."""
 
-  def broadcasting_binary_op_wrapper(x, y, broadcast_dims=None, name=None):
-    """Inner wrapper function."""
-    broadcast_dims = broadcast_dims or []
-    broadcast_dims = ops.convert_to_tensor(broadcast_dims, dtypes.int64)
-    # Rather than relying on having static shape information in the TensorFlow
-    # graph, we use an XlaBroadcastHelper op that can compute the correct shapes
-    # at JIT compilation time.
-    x, y = gen_xla_ops.xla_broadcast_helper(x, y, broadcast_dims)
-    return fn(x, y, name=name)
+    def broadcasting_binary_op_wrapper(x, y, broadcast_dims=None, name=None):
+        """Inner wrapper function."""
+        broadcast_dims = broadcast_dims or []
+        broadcast_dims = ops.convert_to_tensor(broadcast_dims, dtypes.int64)
+        # Rather than relying on having static shape information in the TensorFlow
+        # graph, we use an XlaBroadcastHelper op that can compute the correct shapes
+        # at JIT compilation time.
+        x, y = gen_xla_ops.xla_broadcast_helper(x, y, broadcast_dims)
+        return fn(x, y, name=name)
 
-  return broadcasting_binary_op_wrapper
+    return broadcasting_binary_op_wrapper
 
 
 # Map from TF signed types to TF unsigned types.
@@ -149,33 +149,33 @@ _UNSIGNED_TO_SIGNED_TABLE = {
 
 
 def _shift_right_logical_helper(x, y, name=None):
-  """Performs an integer right logical shift irrespective of input type."""
-  assert y.dtype == x.dtype
-  dtype = x.dtype
-  signed = dtype in _SIGNED_TO_UNSIGNED_TABLE
-  if signed:
-    unsigned_dtype = _SIGNED_TO_UNSIGNED_TABLE[dtype]
-    x = math_ops.cast(x, unsigned_dtype)
-    y = math_ops.cast(y, unsigned_dtype)
-  output = bitwise_ops.right_shift(x, y, name=name)
-  if signed:
-    output = math_ops.cast(output, dtype)
-  return output
+    """Performs an integer right logical shift irrespective of input type."""
+    assert y.dtype == x.dtype
+    dtype = x.dtype
+    signed = dtype in _SIGNED_TO_UNSIGNED_TABLE
+    if signed:
+        unsigned_dtype = _SIGNED_TO_UNSIGNED_TABLE[dtype]
+        x = math_ops.cast(x, unsigned_dtype)
+        y = math_ops.cast(y, unsigned_dtype)
+    output = bitwise_ops.right_shift(x, y, name=name)
+    if signed:
+        output = math_ops.cast(output, dtype)
+    return output
 
 
 def _shift_right_arithmetic_helper(x, y, name=None):
-  """Performs an integer right arithmetic shift irrespective of input type."""
-  assert y.dtype == x.dtype
-  dtype = x.dtype
-  unsigned = dtype in _UNSIGNED_TO_SIGNED_TABLE
-  if unsigned:
-    signed_dtype = _UNSIGNED_TO_SIGNED_TABLE[dtype]
-    x = math_ops.cast(x, signed_dtype)
-    y = math_ops.cast(y, signed_dtype)
-  output = bitwise_ops.right_shift(x, y, name=name)
-  if unsigned:
-    output = math_ops.cast(output, dtype)
-  return output
+    """Performs an integer right arithmetic shift irrespective of input type."""
+    assert y.dtype == x.dtype
+    dtype = x.dtype
+    unsigned = dtype in _UNSIGNED_TO_SIGNED_TABLE
+    if unsigned:
+        signed_dtype = _UNSIGNED_TO_SIGNED_TABLE[dtype]
+        x = math_ops.cast(x, signed_dtype)
+        y = math_ops.cast(y, signed_dtype)
+    output = bitwise_ops.right_shift(x, y, name=name)
+    if unsigned:
+        output = math_ops.cast(output, dtype)
+    return output
 
 
 add = _broadcasting_binary_op(math_ops.add)
@@ -210,12 +210,12 @@ zeta = _broadcasting_binary_op(math_ops.zeta)
 
 
 def _binary_op(fn):
-  """Wrapper that restricts `fn` to have the correct signature."""
+    """Wrapper that restricts `fn` to have the correct signature."""
 
-  def binary_op_wrapper(x, y, name=None):
-    return fn(x, y, name=name)
+    def binary_op_wrapper(x, y, name=None):
+        return fn(x, y, name=name)
 
-  return binary_op_wrapper
+    return binary_op_wrapper
 
 
 transpose = _binary_op(array_ops.transpose)
@@ -225,67 +225,81 @@ bitcast_convert_type = array_ops.bitcast
 
 
 def broadcast(x, dims, name=None):
-  x = ops.convert_to_tensor(x)
-  shape = array_ops.concat([constant_op.constant(dims),
-                            array_ops.shape(x)],
-                           axis=0)
-  return array_ops.broadcast_to(x, shape, name=name)
+    x = ops.convert_to_tensor(x)
+    shape = array_ops.concat([constant_op.constant(dims), array_ops.shape(x)], axis=0)
+    return array_ops.broadcast_to(x, shape, name=name)
 
 
 def clamp(a, x, b, name=None):
-  return min(max(a, x, name=name), b, name=name)
+    return min(max(a, x, name=name), b, name=name)
 
 
 concatenate = array_ops.concat
 
 
-def conv(lhs,
-         rhs,
-         window_strides,
-         padding,
-         lhs_dilation,
-         rhs_dilation,
-         dimension_numbers,
-         feature_group_count=1,
-         precision_config=None,
-         preferred_element_type=None,
-         name=None,
-         use_v2=False,
-         batch_group_count=1):
-  """Wraps the XLA ConvGeneralDilated operator.
+def conv(
+    lhs,
+    rhs,
+    window_strides,
+    padding,
+    lhs_dilation,
+    rhs_dilation,
+    dimension_numbers,
+    feature_group_count=1,
+    precision_config=None,
+    preferred_element_type=None,
+    name=None,
+    use_v2=False,
+    batch_group_count=1,
+):
+    """Wraps the XLA ConvGeneralDilated operator.
 
-  ConvGeneralDilated is the most general form of XLA convolution and is
-  documented at
-  https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
+    ConvGeneralDilated is the most general form of XLA convolution and is
+    documented at
+    https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
 
-  Args:
-    lhs: the input tensor
-    rhs: the kernel tensor
-    window_strides: the inter-window strides
-    padding: the padding to apply at the start and end of each input dimensions
-    lhs_dilation: dilation to apply between input elements
-    rhs_dilation: dilation to apply between kernel elements
-    dimension_numbers: a `ConvolutionDimensionNumbers` proto.
-    feature_group_count: number of feature groups for grouped convolution.
-    precision_config: a `xla.PrecisionConfig` proto.
-    preferred_element_type: the result `dtype`.
-    name: an optional name for the operator.
-    use_v2: an optional request to use the XlaConvV2 op even if not necessary.
-    batch_group_count: number of batch groups or grouped filters.
+    Args:
+      lhs: the input tensor
+      rhs: the kernel tensor
+      window_strides: the inter-window strides
+      padding: the padding to apply at the start and end of each input dimensions
+      lhs_dilation: dilation to apply between input elements
+      rhs_dilation: dilation to apply between kernel elements
+      dimension_numbers: a `ConvolutionDimensionNumbers` proto.
+      feature_group_count: number of feature groups for grouped convolution.
+      precision_config: a `xla.PrecisionConfig` proto.
+      preferred_element_type: the result `dtype`.
+      name: an optional name for the operator.
+      use_v2: an optional request to use the XlaConvV2 op even if not necessary.
+      batch_group_count: number of batch groups or grouped filters.
 
-  Returns:
-    A tensor representing the output of the convolution.
-  """
-  precision_config_proto = ""
-  if precision_config:
-    precision_config_proto = precision_config.SerializeToString()
-  needs_v2 = (
-      preferred_element_type or (lhs.dtype != rhs.dtype) or
-      batch_group_count > 1)
-  if preferred_element_type is None:
-    preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  if needs_v2 or use_v2:
-    return gen_xla_ops.xla_conv_v2(
+    Returns:
+      A tensor representing the output of the convolution.
+    """
+    precision_config_proto = ""
+    if precision_config:
+        precision_config_proto = precision_config.SerializeToString()
+    needs_v2 = (
+        preferred_element_type or (lhs.dtype != rhs.dtype) or batch_group_count > 1
+    )
+    if preferred_element_type is None:
+        preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
+    if needs_v2 or use_v2:
+        return gen_xla_ops.xla_conv_v2(
+            lhs,
+            rhs,
+            window_strides=window_strides,
+            padding=padding,
+            lhs_dilation=lhs_dilation,
+            rhs_dilation=rhs_dilation,
+            feature_group_count=feature_group_count,
+            batch_group_count=batch_group_count,
+            dimension_numbers=dimension_numbers.SerializeToString(),
+            precision_config=precision_config_proto,
+            preferred_element_type=preferred_element_type,
+            name=name,
+        )
+    return gen_xla_ops.xla_conv(
         lhs,
         rhs,
         window_strides=window_strides,
@@ -293,69 +307,61 @@ def conv(lhs,
         lhs_dilation=lhs_dilation,
         rhs_dilation=rhs_dilation,
         feature_group_count=feature_group_count,
-        batch_group_count=batch_group_count,
         dimension_numbers=dimension_numbers.SerializeToString(),
         precision_config=precision_config_proto,
-        preferred_element_type=preferred_element_type,
-        name=name)
-  return gen_xla_ops.xla_conv(
-      lhs,
-      rhs,
-      window_strides=window_strides,
-      padding=padding,
-      lhs_dilation=lhs_dilation,
-      rhs_dilation=rhs_dilation,
-      feature_group_count=feature_group_count,
-      dimension_numbers=dimension_numbers.SerializeToString(),
-      precision_config=precision_config_proto,
-      name=name)
+        name=name,
+    )
 
 
 convert_element_type = math_ops.cast
 
 
 def dot(lhs, rhs, name=None):
-  return math_ops.tensordot(lhs, rhs, axes=1, name=name)
+    return math_ops.tensordot(lhs, rhs, axes=1, name=name)
 
 
-def dot_general(lhs,
-                rhs,
-                dimension_numbers,
-                precision_config=None,
-                preferred_element_type=None,
-                name=None,
-                use_v2=False):
-  precision_config_proto = ""
-  if precision_config:
-    precision_config_proto = precision_config.SerializeToString()
-  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
-  if preferred_element_type is None:
-    preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  if needs_v2 or use_v2:
-    return gen_xla_ops.xla_dot_v2(
+def dot_general(
+    lhs,
+    rhs,
+    dimension_numbers,
+    precision_config=None,
+    preferred_element_type=None,
+    name=None,
+    use_v2=False,
+):
+    precision_config_proto = ""
+    if precision_config:
+        precision_config_proto = precision_config.SerializeToString()
+    needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
+    if preferred_element_type is None:
+        preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
+    if needs_v2 or use_v2:
+        return gen_xla_ops.xla_dot_v2(
+            lhs,
+            rhs,
+            dimension_numbers=dimension_numbers.SerializeToString(),
+            precision_config=precision_config_proto,
+            preferred_element_type=preferred_element_type,
+            name=name,
+        )
+    return gen_xla_ops.xla_dot(
         lhs,
         rhs,
         dimension_numbers=dimension_numbers.SerializeToString(),
         precision_config=precision_config_proto,
-        preferred_element_type=preferred_element_type,
-        name=name)
-  return gen_xla_ops.xla_dot(
-      lhs,
-      rhs,
-      dimension_numbers=dimension_numbers.SerializeToString(),
-      precision_config=precision_config_proto,
-      name=name)
+        name=name,
+    )
 
 
 def self_adjoint_eig(a, lower, max_iter, epsilon):
-  return gen_xla_ops.xla_self_adjoint_eig(a, lower, max_iter, epsilon)
+    return gen_xla_ops.xla_self_adjoint_eig(a, lower, max_iter, epsilon)
 
 
 def svd(a, max_iter, epsilon, precision_config=None):
-  precision_config_proto = ""
-  if precision_config:
-    precision_config_proto = precision_config.SerializeToString()
-  return gen_xla_ops.xla_svd(a, max_iter, epsilon, precision_config_proto)
+    precision_config_proto = ""
+    if precision_config:
+        precision_config_proto = precision_config.SerializeToString()
+    return gen_xla_ops.xla_svd(a, max_iter, epsilon, precision_config_proto)
 
 
 dynamic_slice = gen_xla_ops.xla_dynamic_slice
@@ -368,37 +374,38 @@ pad = gen_xla_ops.xla_pad
 
 
 def random_normal(mu, sigma, dims, name=None):
-  mu = ops.convert_to_tensor(mu)
-  return random_ops.random_normal(
-      dims, mean=mu, stddev=sigma, dtype=mu.dtype, name=name)
+    mu = ops.convert_to_tensor(mu)
+    return random_ops.random_normal(
+        dims, mean=mu, stddev=sigma, dtype=mu.dtype, name=name
+    )
 
 
 def random_uniform(minval, maxval, dims, name=None):
-  minval = ops.convert_to_tensor(minval)
-  return random_ops.random_uniform(
-      dims, minval, maxval, dtype=minval.dtype, name=name)
+    minval = ops.convert_to_tensor(minval)
+    return random_ops.random_uniform(
+        dims, minval, maxval, dtype=minval.dtype, name=name
+    )
 
 
 def rng_bit_generator(algorithm, initial_state, shape, dtype):
-  """Stateless PRNG bit generator.
+    """Stateless PRNG bit generator.
 
-  Wraps the XLA RngBitGenerator operator, documented at
-    https://www.tensorflow.org/performance/xla/operation_semantics#rngbitgenerator.
+    Wraps the XLA RngBitGenerator operator, documented at
+      https://www.tensorflow.org/performance/xla/operation_semantics#rngbitgenerator.
 
-  Args:
-    algorithm: The PRNG algorithm to use, one of
-      tf.random.Algorithm.{PHILOX, THREEFRY, AUTO_SELECT}.
-    initial_state: Initial state for the PRNG algorithm. For THREEFRY, it
-      should be a u64[2] and for PHILOX a u64[3].
-    shape: The output shape of the generated data.
-    dtype: The type of the tensor.
+    Args:
+      algorithm: The PRNG algorithm to use, one of
+        tf.random.Algorithm.{PHILOX, THREEFRY, AUTO_SELECT}.
+      initial_state: Initial state for the PRNG algorithm. For THREEFRY, it
+        should be a u64[2] and for PHILOX a u64[3].
+      shape: The output shape of the generated data.
+      dtype: The type of the tensor.
 
-  Returns:
-    a tuple with a new state and generated data of the given shape.
-  """
-  alg_int = stateless_random_ops.convert_alg_to_int(algorithm)
-  return gen_xla_ops.xla_rng_bit_generator(alg_int, initial_state, shape,
-                                           dtype=dtype)
+    Returns:
+      a tuple with a new state and generated data of the given shape.
+    """
+    alg_int = stateless_random_ops.convert_alg_to_int(algorithm)
+    return gen_xla_ops.xla_rng_bit_generator(alg_int, initial_state, shape, dtype=dtype)
 
 
 recv = gen_xla_ops.xla_recv
@@ -408,49 +415,52 @@ variadic_reduce = gen_xla_ops.xla_variadic_reduce_v2
 ops.no_gradient("XlaVariadicReduce")
 
 
-def reduce_window(operand,
-                  init,
-                  reducer,
-                  window_dimensions,
-                  window_strides=None,
-                  base_dilations=None,
-                  window_dilations=None,
-                  padding=None,
-                  name=None):
-  """Wraps the XLA ReduceWindow operator.
+def reduce_window(
+    operand,
+    init,
+    reducer,
+    window_dimensions,
+    window_strides=None,
+    base_dilations=None,
+    window_dilations=None,
+    padding=None,
+    name=None,
+):
+    """Wraps the XLA ReduceWindow operator.
 
-  ReduceWindow is documented at
-  https://www.tensorflow.org/performance/xla/operation_semantics#reducewindow .
+    ReduceWindow is documented at
+    https://www.tensorflow.org/performance/xla/operation_semantics#reducewindow .
 
-  Args:
-    operand: the input tensor
-    init: a scalar tensor representing the initial value for the reduction
-    reducer: a reduction function that combines a pair of scalars.
-    window_dimensions: shape of the window, as a list of integers
-    window_strides: inter-window strides, as a list of integers. Optional; if
-      omitted, defaults to strides of 1.
-    padding: padding to apply to 'operand'. List of (low, high) pairs of
-      integers that specify the padding to apply before and after each
-      dimension. Optional; if omitted, defaults to no padding.
-    name: the operator name, or None.
+    Args:
+      operand: the input tensor
+      init: a scalar tensor representing the initial value for the reduction
+      reducer: a reduction function that combines a pair of scalars.
+      window_dimensions: shape of the window, as a list of integers
+      window_strides: inter-window strides, as a list of integers. Optional; if
+        omitted, defaults to strides of 1.
+      padding: padding to apply to 'operand'. List of (low, high) pairs of
+        integers that specify the padding to apply before and after each
+        dimension. Optional; if omitted, defaults to no padding.
+      name: the operator name, or None.
 
-  Returns:
-    A tensor that represents the output of the reduce_window operator.
-  """
-  window_strides = window_strides or [1] * len(window_dimensions)
-  base_dilations = base_dilations or [1] * len(window_dimensions)
-  window_dilations = window_dilations or [1] * len(window_dimensions)
-  padding = padding or [(0, 0)] * len(window_dimensions)
-  return gen_xla_ops.xla_reduce_window(
-      input=operand,
-      init_value=init,
-      window_dimensions=window_dimensions,
-      window_strides=window_strides,
-      base_dilations=base_dilations,
-      window_dilations=window_dilations,
-      padding=padding,
-      computation=reducer,
-      name=name)
+    Returns:
+      A tensor that represents the output of the reduce_window operator.
+    """
+    window_strides = window_strides or [1] * len(window_dimensions)
+    base_dilations = base_dilations or [1] * len(window_dimensions)
+    window_dilations = window_dilations or [1] * len(window_dimensions)
+    padding = padding or [(0, 0)] * len(window_dimensions)
+    return gen_xla_ops.xla_reduce_window(
+        input=operand,
+        init_value=init,
+        window_dimensions=window_dimensions,
+        window_strides=window_strides,
+        base_dilations=base_dilations,
+        window_dilations=window_dilations,
+        padding=padding,
+        computation=reducer,
+        name=name,
+    )
 
 
 replica_id = gen_xla_ops.xla_replica_id
@@ -486,14 +496,14 @@ remove_dynamic_dimension_size = gen_xla_ops.xla_remove_dynamic_dimension_size
 
 
 def reshape(x, new_sizes, dimensions=None, name=None):
-  if dimensions is not None:
-    x = array_ops.transpose(x, dimensions)
-  x = array_ops.reshape(x, new_sizes, name=name)
-  return x
+    if dimensions is not None:
+        x = array_ops.transpose(x, dimensions)
+    x = array_ops.reshape(x, new_sizes, name=name)
+    return x
 
 
 def select(condition, x, y, name=None):
-  return array_ops.where(condition, x, y, name)
+    return array_ops.where(condition, x, y, name)
 
 
 select_and_scatter = gen_xla_ops.xla_select_and_scatter
@@ -501,11 +511,11 @@ send = gen_xla_ops.xla_send
 
 
 def slice(x, start_dims, limit_dims, strides):
-  spec = [
-      _slice(start, limit, stride)
-      for (start, limit, stride) in zip(start_dims, limit_dims, strides)
-  ]
-  return x[tuple(spec)]
+    spec = [
+        _slice(start, limit, stride)
+        for (start, limit, stride) in zip(start_dims, limit_dims, strides)
+    ]
+    return x[tuple(spec)]
 
 
 sharding = gen_xla_ops.xla_sharding
@@ -513,16 +523,16 @@ sharding = gen_xla_ops.xla_sharding
 
 @ops.RegisterGradient("XlaSharding")
 def _sharding_grad(op, grad):
-  """Gradient for XlaSharding op."""
-  sharding_attr = op.get_attr("sharding")
-  grad_sharding = gen_xla_ops.xla_sharding(
-      grad,
-      sharding=sharding_attr,
-      unspecified_dims=op.get_attr("unspecified_dims"))
-  # pylint: disable=protected-access
-  grad_sharding.op._set_attr("_XlaSharding",
-                             attr_value_pb2.AttrValue(s=sharding_attr))
-  return [grad_sharding]
+    """Gradient for XlaSharding op."""
+    sharding_attr = op.get_attr("sharding")
+    grad_sharding = gen_xla_ops.xla_sharding(
+        grad, sharding=sharding_attr, unspecified_dims=op.get_attr("unspecified_dims")
+    )
+    # pylint: disable=protected-access
+    grad_sharding.op._set_attr(
+        "_XlaSharding", attr_value_pb2.AttrValue(s=sharding_attr)
+    )
+    return [grad_sharding]
 
 
 spmd_full_to_shard_shape = gen_xla_ops.xla_spmd_full_to_shard_shape
@@ -531,23 +541,25 @@ spmd_shard_to_full_shape = gen_xla_ops.xla_spmd_shard_to_full_shape
 
 @ops.RegisterGradient("XlaSpmdFullToShardShape")
 def _spmd_full_to_shard_shape_grad(op, grad):
-  s2f = gen_xla_ops.xla_spmd_shard_to_full_shape(
-      grad,
-      manual_sharding=op.get_attr("manual_sharding"),
-      full_shape=op.inputs[0].shape.as_list(),
-      dim=op.get_attr("dim"),
-      unspecified_dims=op.get_attr("unspecified_dims"))
-  return [s2f]
+    s2f = gen_xla_ops.xla_spmd_shard_to_full_shape(
+        grad,
+        manual_sharding=op.get_attr("manual_sharding"),
+        full_shape=op.inputs[0].shape.as_list(),
+        dim=op.get_attr("dim"),
+        unspecified_dims=op.get_attr("unspecified_dims"),
+    )
+    return [s2f]
 
 
 @ops.RegisterGradient("XlaSpmdShardToFullShape")
 def _spmd_shard_to_full_shape_grad(op, grad):
-  f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
-      grad,
-      manual_sharding=op.get_attr("manual_sharding"),
-      dim=op.get_attr("dim"),
-      unspecified_dims=op.get_attr("unspecified_dims"))
-  return [f2s]
+    f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
+        grad,
+        manual_sharding=op.get_attr("manual_sharding"),
+        dim=op.get_attr("dim"),
+        unspecified_dims=op.get_attr("unspecified_dims"),
+    )
+    return [f2s]
 
 
 sort = gen_xla_ops.xla_sort
@@ -557,24 +569,39 @@ while_loop = gen_xla_ops.xla_while
 dequantize = gen_xla_ops.xla_dequantize
 
 
-def gather(operand, start_indices, dimension_numbers, slice_sizes,
-           indices_are_sorted=False, name=None):
-  return gen_xla_ops.xla_gather(
-      operand,
-      start_indices,
-      slice_sizes=slice_sizes,
-      dimension_numbers=dimension_numbers.SerializeToString(),
-      indices_are_sorted=indices_are_sorted,
-      name=name)
+def gather(
+    operand,
+    start_indices,
+    dimension_numbers,
+    slice_sizes,
+    indices_are_sorted=False,
+    name=None,
+):
+    return gen_xla_ops.xla_gather(
+        operand,
+        start_indices,
+        slice_sizes=slice_sizes,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        indices_are_sorted=indices_are_sorted,
+        name=name,
+    )
 
 
-def scatter(operand, scatter_indices, updates, update_computation,
-            dimension_numbers, indices_are_sorted=False, name=None):
-  return gen_xla_ops.xla_scatter(
-      operand,
-      scatter_indices,
-      updates,
-      update_computation=update_computation,
-      dimension_numbers=dimension_numbers.SerializeToString(),
-      indices_are_sorted=indices_are_sorted,
-      name=name)
+def scatter(
+    operand,
+    scatter_indices,
+    updates,
+    update_computation,
+    dimension_numbers,
+    indices_are_sorted=False,
+    name=None,
+):
+    return gen_xla_ops.xla_scatter(
+        operand,
+        scatter_indices,
+        updates,
+        update_computation=update_computation,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        indices_are_sorted=indices_are_sorted,
+        name=name,
+    )

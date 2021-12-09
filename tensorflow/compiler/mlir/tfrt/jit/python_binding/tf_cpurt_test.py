@@ -21,7 +21,7 @@ from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
 
 
 def log_1d():
-  return """
+    return """
   func @log_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
     %0 = "tf.Log"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
     return %0 : tensor<?xf32>
@@ -32,16 +32,15 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 class TfCpurtTest(googletest.TestCase):
+    def test_log_1d(self):
+        compiled = cpurt.compile(log_1d(), "log_1d")
 
-  def test_log_1d(self):
-    compiled = cpurt.compile(log_1d(), "log_1d")
+        shape = np.random.randint(0, 10, size=(1))
+        arg = np.random.uniform(0, 10.0, size=shape).astype(np.float32)
 
-    shape = np.random.randint(0, 10, size=(1))
-    arg = np.random.uniform(0, 10.0, size=shape).astype(np.float32)
-
-    [res] = cpurt.execute(compiled, [arg])
-    np.testing.assert_allclose(res, np.log(arg), atol=1e-07)
+        [res] = cpurt.execute(compiled, [arg])
+        np.testing.assert_allclose(res, np.log(arg), atol=1e-07)
 
 
 if __name__ == "__main__":
-  googletest.main()
+    googletest.main()

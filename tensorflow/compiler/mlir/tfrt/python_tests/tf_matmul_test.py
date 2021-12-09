@@ -21,7 +21,7 @@ from tensorflow.python.platform import test
 
 
 def matmul():
-  return """
+    return """
   func @matmul(%arg0: tensor<?x?xf32>,
                %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %0 = "tf.MatMul"(%arg0, %arg1) {
@@ -36,48 +36,48 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 def verify_matmul(compiled, m, k, n):
-  lhs = np.random.uniform(0.0, 1.0, size=(m, k)).astype(np.float32)
-  rhs = np.random.uniform(0.0, 1.0, size=(k, n)).astype(np.float32)
+    lhs = np.random.uniform(0.0, 1.0, size=(m, k)).astype(np.float32)
+    rhs = np.random.uniform(0.0, 1.0, size=(k, n)).astype(np.float32)
 
-  [res] = cpurt.execute(compiled, [lhs, rhs])
-  np.testing.assert_allclose(res, np.matmul(lhs, rhs), rtol=1e-05)
+    [res] = cpurt.execute(compiled, [lhs, rhs])
+    np.testing.assert_allclose(res, np.matmul(lhs, rhs), rtol=1e-05)
 
 
 class TfMatMulTest(test.TestCase):
 
-  # Matmul: [1, k] x [k, 1]
-  def test_dot_product(self):
-    compiled = cpurt.compile(matmul(), "matmul")
-    for _ in range(100):
-      k = np.random.randint(1, 10)
-      verify_matmul(compiled, 1, k, 1)
+    # Matmul: [1, k] x [k, 1]
+    def test_dot_product(self):
+        compiled = cpurt.compile(matmul(), "matmul")
+        for _ in range(100):
+            k = np.random.randint(1, 10)
+            verify_matmul(compiled, 1, k, 1)
 
-  # Matmul: [1, k] x [k, n]
-  def test_vec_mat(self):
-    compiled = cpurt.compile(matmul(), "matmul")
-    for _ in range(100):
-      k = np.random.randint(1, 10)
-      n = np.random.randint(1, 10)
-      verify_matmul(compiled, 1, k, n)
+    # Matmul: [1, k] x [k, n]
+    def test_vec_mat(self):
+        compiled = cpurt.compile(matmul(), "matmul")
+        for _ in range(100):
+            k = np.random.randint(1, 10)
+            n = np.random.randint(1, 10)
+            verify_matmul(compiled, 1, k, n)
 
-  # Matmul: [n, k] x [k, 1]
-  def test_mat_vec(self):
-    compiled = cpurt.compile(matmul(), "matmul")
-    for _ in range(100):
-      m = np.random.randint(1, 10)
-      k = np.random.randint(1, 10)
-      verify_matmul(compiled, m, k, 1)
+    # Matmul: [n, k] x [k, 1]
+    def test_mat_vec(self):
+        compiled = cpurt.compile(matmul(), "matmul")
+        for _ in range(100):
+            m = np.random.randint(1, 10)
+            k = np.random.randint(1, 10)
+            verify_matmul(compiled, m, k, 1)
 
-  # Matmul: [m, k] x [k, n]
-  def test_matmul(self):
-    compiled = cpurt.compile(matmul(), "matmul")
-    for _ in range(100):
-      m = np.random.randint(1, 10)
-      k = np.random.randint(1, 10)
-      n = np.random.randint(1, 10)
-      verify_matmul(compiled, m, k, n)
+    # Matmul: [m, k] x [k, n]
+    def test_matmul(self):
+        compiled = cpurt.compile(matmul(), "matmul")
+        for _ in range(100):
+            m = np.random.randint(1, 10)
+            k = np.random.randint(1, 10)
+            n = np.random.randint(1, 10)
+            verify_matmul(compiled, m, k, n)
 
 
 if __name__ == "__main__":
-  np.random.seed(0)
-  test.main()
+    np.random.seed(0)
+    test.main()

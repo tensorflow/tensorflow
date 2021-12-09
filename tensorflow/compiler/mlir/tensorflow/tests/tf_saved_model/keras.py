@@ -21,28 +21,29 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common
 
 
 def mnist_model():
-  """Creates a MNIST model."""
-  model = tf.keras.models.Sequential()
-  model.add(tf.keras.layers.Flatten())
-  model.add(tf.keras.layers.Dense(128, activation='relu'))
-  model.add(tf.keras.layers.Dense(10, activation='softmax'))
-  return model
+    """Creates a MNIST model."""
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.Flatten())
+    model.add(tf.keras.layers.Dense(128, activation="relu"))
+    model.add(tf.keras.layers.Dense(10, activation="softmax"))
+    return model
 
 
 class TestModule(tf.Module):
+    def __init__(self):
+        super(TestModule, self).__init__()
+        self.model = mnist_model()
 
-  def __init__(self):
-    super(TestModule, self).__init__()
-    self.model = mnist_model()
-
-  # CHECK: func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<1x28x28x1xf32> {tf._user_specified_name = "x", tf_saved_model.index_path = [0]}
-  # CHECK: attributes {{.*}} tf_saved_model.exported_names = ["my_predict"]
-  @tf.function(input_signature=[
-      tf.TensorSpec([1, 28, 28, 1], tf.float32),
-  ])
-  def my_predict(self, x):
-    return self.model(x)
+    # CHECK: func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<1x28x28x1xf32> {tf._user_specified_name = "x", tf_saved_model.index_path = [0]}
+    # CHECK: attributes {{.*}} tf_saved_model.exported_names = ["my_predict"]
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec([1, 28, 28, 1], tf.float32),
+        ]
+    )
+    def my_predict(self, x):
+        return self.model(x)
 
 
-if __name__ == '__main__':
-  common.do_test(TestModule, exported_names=['my_predict'])
+if __name__ == "__main__":
+    common.do_test(TestModule, exported_names=["my_predict"])

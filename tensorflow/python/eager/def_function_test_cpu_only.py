@@ -23,26 +23,25 @@ from tensorflow.python.platform import test
 
 
 class DefFunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
-  """Test that jit_compile=True correctly throws an exception if XLA is not available.
+    """Test that jit_compile=True correctly throws an exception if XLA is not available.
 
-  This test should only be run without `--config=cuda`, as that implicitly links
-  in XLA JIT.
-  """
+    This test should only be run without `--config=cuda`, as that implicitly links
+    in XLA JIT.
+    """
 
-  def testJitCompileRaisesExceptionWhenXlaIsUnsupported(self):
-    if test.is_built_with_rocm() or test_util.is_xla_enabled():
-      return
+    def testJitCompileRaisesExceptionWhenXlaIsUnsupported(self):
+        if test.is_built_with_rocm() or test_util.is_xla_enabled():
+            return
 
-    with self.assertRaisesRegex(errors.UnimplementedError,
-                                'check target linkage'):
+        with self.assertRaisesRegex(errors.UnimplementedError, "check target linkage"):
 
-      @def_function.function(jit_compile=True)
-      def fn(x):
-        return x + x
+            @def_function.function(jit_compile=True)
+            def fn(x):
+                return x + x
 
-      fn([1, 1, 2, 3])
+            fn([1, 1, 2, 3])
 
 
-if __name__ == '__main__':
-  ops.enable_eager_execution()
-  test.main()
+if __name__ == "__main__":
+    ops.enable_eager_execution()
+    test.main()

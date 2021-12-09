@@ -20,18 +20,16 @@ import collections
 # TODO(mdan): This is where macro override controls fit.
 
 
-class DispatchContext(collections.namedtuple(
-    'DispatchContext',
-    ('options',))):
-  """Allows passing additional parameters to the specific implementations.
+class DispatchContext(collections.namedtuple("DispatchContext", ("options",))):
+    """Allows passing additional parameters to the specific implementations.
 
-  Attributes:
-    options: Optional dict of extra arguments that may be required by specific
-      implementations.
-  """
+    Attributes:
+      options: Optional dict of extra arguments that may be required by specific
+        implementations.
+    """
 
-  def option(self, name):
-    return self.options[name]
+    def option(self, name):
+        return self.options[name]
 
 
 NO_CTX = DispatchContext(options={})

@@ -20,6 +20,7 @@ rule, then this function is overridden and will instead cause Tensorflow graphs
 to be compiled with XLA.
 """
 
+
 def is_xla_enabled():
-  """Returns true to state XLA should be enabled for Tensorflow tests."""
-  return True
+    """Returns true to state XLA should be enabled for Tensorflow tests."""
+    return True

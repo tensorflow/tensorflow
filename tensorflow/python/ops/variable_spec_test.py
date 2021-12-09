@@ -24,41 +24,43 @@ VariableSpec = resource_variable_ops.VariableSpec
 
 
 class VariableSpecTest(test.TestCase):
+    def test_properties(self):
+        spec = VariableSpec(
+            shape=(1, 2, 3), dtype=dtypes.float64, name="vs", trainable=True
+        )
+        self.assertEqual("vs", spec.name)
+        self.assertEqual(tensor_shape.TensorShape((1, 2, 3)), spec.shape)
+        self.assertEqual(dtypes.float64, spec.dtype)
+        self.assertEqual(True, spec.trainable)
 
-  def test_properties(self):
-    spec = VariableSpec(shape=(1, 2, 3), dtype=dtypes.float64, name='vs',
-                        trainable=True)
-    self.assertEqual('vs', spec.name)
-    self.assertEqual(tensor_shape.TensorShape((1, 2, 3)), spec.shape)
-    self.assertEqual(dtypes.float64, spec.dtype)
-    self.assertEqual(True, spec.trainable)
+    def test_compatibility(self):
+        spec = VariableSpec(shape=None)
+        spec2 = VariableSpec(shape=[None, 15])
+        spec3 = VariableSpec(shape=[None])
 
-  def test_compatibility(self):
-    spec = VariableSpec(shape=None)
-    spec2 = VariableSpec(shape=[None, 15])
-    spec3 = VariableSpec(shape=[None])
+        self.assertTrue(spec.is_compatible_with(spec2))
+        self.assertFalse(spec2.is_compatible_with(spec3))
 
-    self.assertTrue(spec.is_compatible_with(spec2))
-    self.assertFalse(spec2.is_compatible_with(spec3))
+        var = resource_variable_ops.UninitializedVariable(
+            shape=[3, 15], dtype=dtypes.float32
+        )
+        var2 = resource_variable_ops.UninitializedVariable(
+            shape=[3], dtype=dtypes.int32
+        )
 
-    var = resource_variable_ops.UninitializedVariable(
-        shape=[3, 15], dtype=dtypes.float32)
-    var2 = resource_variable_ops.UninitializedVariable(
-        shape=[3], dtype=dtypes.int32)
+        self.assertTrue(spec2.is_compatible_with(var))
+        self.assertFalse(spec3.is_compatible_with(var2))
 
-    self.assertTrue(spec2.is_compatible_with(var))
-    self.assertFalse(spec3.is_compatible_with(var2))
+        spec4 = VariableSpec(shape=None, dtype=dtypes.int32)
+        spec5 = VariableSpec(shape=[None], dtype=dtypes.int32)
 
-    spec4 = VariableSpec(shape=None, dtype=dtypes.int32)
-    spec5 = VariableSpec(shape=[None], dtype=dtypes.int32)
+        self.assertFalse(spec.is_compatible_with(spec4))
+        self.assertTrue(spec4.is_compatible_with(spec5))
+        self.assertTrue(spec4.is_compatible_with(var2))
 
-    self.assertFalse(spec.is_compatible_with(spec4))
-    self.assertTrue(spec4.is_compatible_with(spec5))
-    self.assertTrue(spec4.is_compatible_with(var2))
-
-    tensor = constant_op.constant([1, 2, 3])
-    self.assertFalse(spec4.is_compatible_with(tensor))
+        tensor = constant_op.constant([1, 2, 3])
+        self.assertFalse(spec4.is_compatible_with(tensor))
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

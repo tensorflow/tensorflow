@@ -30,17 +30,16 @@ import sys
 # loaded. Setting the mode to RTLD_GLOBAL to make the symbols visible, so that
 # custom op libraries imported using `tf.load_op_library()` can access symbols
 # defined in _pywrap_tensorflow.so.
-_use_rtld_global = (hasattr(sys, 'getdlopenflags')
-                    and hasattr(sys, 'setdlopenflags'))
+_use_rtld_global = hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags")
 if _use_rtld_global:
-  _default_dlopen_flags = sys.getdlopenflags()
+    _default_dlopen_flags = sys.getdlopenflags()
 
 
 def set_dlopen_flags():
-  if _use_rtld_global:
-    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
+    if _use_rtld_global:
+        sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
 
 
 def reset_dlopen_flags():
-  if _use_rtld_global:
-    sys.setdlopenflags(_default_dlopen_flags)
+    if _use_rtld_global:
+        sys.setdlopenflags(_default_dlopen_flags)

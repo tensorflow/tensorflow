@@ -21,9 +21,9 @@ from tensorflow.python.platform import test
 
 ConvolutionTest = cudnn_deterministic_base.ConvolutionTest
 
-if __name__ == '__main__':
-  # Note that the effect of setting the following environment variable to
-  # 'true' is not tested. Unless we can find a simpler pattern for testing these
-  # environment variables, it would require another test file to be added.
-  os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
-  test.main()
+if __name__ == "__main__":
+    # Note that the effect of setting the following environment variable to
+    # 'true' is not tested. Unless we can find a simpler pattern for testing these
+    # environment variables, it would require another test file to be added.
+    os.environ["TF_CUDNN_DETERMINISTIC"] = "1"
+    test.main()

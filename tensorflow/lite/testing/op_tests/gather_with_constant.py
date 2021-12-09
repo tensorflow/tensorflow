@@ -22,29 +22,35 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 @register_make_test_function()
 def make_gather_with_constant_tests(options):
-  """Make a set of test which feed a constant to gather."""
+    """Make a set of test which feed a constant to gather."""
 
-  test_parameters = [{
-      "input_shape": [[3]],
-      "reference_shape": [[2]],
-  }, {
-      "input_shape": [[2, 3]],
-      "reference_shape": [[2, 3]],
-  }]
+    test_parameters = [
+        {
+            "input_shape": [[3]],
+            "reference_shape": [[2]],
+        },
+        {
+            "input_shape": [[2, 3]],
+            "reference_shape": [[2, 3]],
+        },
+    ]
 
-  def build_graph(parameters):
-    """Build a graph where the inputs to Gather are constants."""
-    reference = tf.compat.v1.placeholder(
-        dtype=tf.int32, shape=parameters["reference_shape"])
-    gather_input = tf.constant(
-        create_tensor_data(tf.int32, parameters["input_shape"]))
-    gather_indices = tf.constant([0, 1], tf.int32)
-    out = tf.equal(reference, tf.gather(gather_input, gather_indices))
-    return [reference], [out]
+    def build_graph(parameters):
+        """Build a graph where the inputs to Gather are constants."""
+        reference = tf.compat.v1.placeholder(
+            dtype=tf.int32, shape=parameters["reference_shape"]
+        )
+        gather_input = tf.constant(
+            create_tensor_data(tf.int32, parameters["input_shape"])
+        )
+        gather_indices = tf.constant([0, 1], tf.int32)
+        out = tf.equal(reference, tf.gather(gather_input, gather_indices))
+        return [reference], [out]
 
-  def build_inputs(parameters, sess, inputs, outputs):
-    reference_values = np.zeros(parameters["reference_shape"], dtype=np.int32)
-    return [reference_values], sess.run(
-        outputs, feed_dict={inputs[0]: reference_values})
+    def build_inputs(parameters, sess, inputs, outputs):
+        reference_values = np.zeros(parameters["reference_shape"], dtype=np.int32)
+        return [reference_values], sess.run(
+            outputs, feed_dict={inputs[0]: reference_values}
+        )
 
-  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+    make_zip_of_tests(options, test_parameters, build_graph, build_inputs)

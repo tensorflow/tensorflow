@@ -29,28 +29,28 @@ from tensorflow.python.platform import test
 Composite = composite.Composite
 
 
-@composite.Composite(
-    'TestNoOp', derived_attrs=['T: numbertype'], outputs=['o1: T'])
+@composite.Composite("TestNoOp", derived_attrs=["T: numbertype"], outputs=["o1: T"])
 def _composite_no_op():
-  pass
+    pass
 
 
 @Composite(
-    'TestCompositeOp',
-    inputs=['x: T', 'y: T'],
-    attrs=['act: {"", "relu"}', 'trans: bool = true'],
-    derived_attrs=['T: numbertype'],
-    outputs=['o1: T', 'o2: T'])
+    "TestCompositeOp",
+    inputs=["x: T", "y: T"],
+    attrs=['act: {"", "relu"}', "trans: bool = true"],
+    derived_attrs=["T: numbertype"],
+    outputs=["o1: T", "o2: T"],
+)
 def _composite_op(x, y, act, trans):
-  return x + act, y + trans
+    return x + act, y + trans
 
 
 class TFRGenTensorTest(test.TestCase):
-  """MLIR Generation Tests for MLIR TFR Program."""
+    """MLIR Generation Tests for MLIR TFR Program."""
 
-  def test_op_reg_gen(self):
-    cxx_code = gen_register_op(sys.modules[__name__])
-    cxx_code_exp = r"""
+    def test_op_reg_gen(self):
+        cxx_code = gen_register_op(sys.modules[__name__])
+        cxx_code_exp = r"""
       CHECK: #include "tensorflow/core/framework/op.h"
       CHECK-EMPTY
       CHECK: namespace tensorflow {
@@ -70,8 +70,8 @@ class TFRGenTensorTest(test.TestCase):
       CHECK-EMPTY
       CHECK:  }  // namespace tensorflow
     """
-    self.assertTrue(fw.check(str(cxx_code), cxx_code_exp), str(cxx_code))
+        self.assertTrue(fw.check(str(cxx_code), cxx_code_exp), str(cxx_code))
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

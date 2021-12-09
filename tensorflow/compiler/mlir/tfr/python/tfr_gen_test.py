@@ -30,241 +30,245 @@ from tensorflow.python.platform import test
 
 Composite = composite.Composite
 
-#--- test fn for mlir location ---
+# --- test fn for mlir location ---
 
 
-@Composite('TestInputNOp')
+@Composite("TestInputNOp")
 def _tfr_loc_test(x):
-  n = 10
-  x_sum = x[0]
-  for i in range(1, n):
-    x_sum = math_ops.Add(x_sum, x[i])
-  return x_sum
+    n = 10
+    x_sum = x[0]
+    for i in range(1, n):
+        x_sum = math_ops.Add(x_sum, x[i])
+    return x_sum
 
 
-#--- test fn for tfr tensors ---
+# --- test fn for tfr tensors ---
 
 
-@composite.Composite('TestNoOp')
+@composite.Composite("TestNoOp")
 def _tfr_tensor_empty_arg():
-  pass
+    pass
 
 
-@composite.Composite('TestIdentityOp')
+@composite.Composite("TestIdentityOp")
 def _tfr_tensor_tensor(x):
-  return x
+    return x
 
 
-@composite.Composite('TestIdentityNOp')
+@composite.Composite("TestIdentityNOp")
 def _tfr_tensor_tensor_list(x):
-  return x
+    return x
 
 
-@composite.Composite('TestInputNOp')
+@composite.Composite("TestInputNOp")
 def _tfr_tensor_tensor_list_get_elt(x):
-  return x[1]
+    return x[1]
 
 
-@composite.Composite('TestOutputNOp')
+@composite.Composite("TestOutputNOp")
 def _tfr_tensor_tensor_list_output(x):
-  return [x, x]
+    return [x, x]
 
 
-@composite.Composite('TestTwoInputsOp')
+@composite.Composite("TestTwoInputsOp")
 def _tfr_tensor_tensor_list_split(x, y, pred):
-  z, _ = array_ops.Split(axis=0, value=x, num_split=2)
-  (y, pred)  # pylint: disable=pointless-statement
-  return z
-
-
-@composite.Composite('TestTwoOutputsOp')
-def _tfr_tensor_two_output(x):
-  z = array_ops.Split(axis=0, value=x, num_split=2)
-  return z[0], z[1]
-
-
-@composite.Composite('TestNumAttrsOp')
-def _tfr_tensor_tensor_with_cst(x1, y1, x2, y2):
-  x = array_ops.OneHot(
-      indices=[0, 2, -1, x1], depth=y1, on_value=True, off_value=False)
-  (x, x2, y2)  # pylint: disable=pointless-statement
-  return
-
-#--- test fn for scf control flow ---
-
-
-@composite.Composite('TestTwoInputsOp')
-def _tfr_control_flow_if(x, y, pred):
-  if pred:
-    return x
-  else:
-    return y
-
-
-@composite.Composite('TestThreeInputsOp')
-def _tfr_control_flow_nested_if(x, y, z, select):
-  if select == 'x':
-    return x
-  elif select == 'y':
-    return y
-  else:
+    z, _ = array_ops.Split(axis=0, value=x, num_split=2)
+    (y, pred)  # pylint: disable=pointless-statement
     return z
 
 
-@composite.Composite('TestInputNOp')
+@composite.Composite("TestTwoOutputsOp")
+def _tfr_tensor_two_output(x):
+    z = array_ops.Split(axis=0, value=x, num_split=2)
+    return z[0], z[1]
+
+
+@composite.Composite("TestNumAttrsOp")
+def _tfr_tensor_tensor_with_cst(x1, y1, x2, y2):
+    x = array_ops.OneHot(
+        indices=[0, 2, -1, x1], depth=y1, on_value=True, off_value=False
+    )
+    (x, x2, y2)  # pylint: disable=pointless-statement
+    return
+
+
+# --- test fn for scf control flow ---
+
+
+@composite.Composite("TestTwoInputsOp")
+def _tfr_control_flow_if(x, y, pred):
+    if pred:
+        return x
+    else:
+        return y
+
+
+@composite.Composite("TestThreeInputsOp")
+def _tfr_control_flow_nested_if(x, y, z, select):
+    if select == "x":
+        return x
+    elif select == "y":
+        return y
+    else:
+        return z
+
+
+@composite.Composite("TestInputNOp")
 def _tfr_control_flow_range_for(x):
-  # TODO(fengliuai): use len(x) instead
-  n = 10
-  x_sum = x[0]
-  for i in range(1, n):
-    x_sum = math_ops.Add(x_sum, x[i])
-  return x_sum
+    # TODO(fengliuai): use len(x) instead
+    n = 10
+    x_sum = x[0]
+    for i in range(1, n):
+        x_sum = math_ops.Add(x_sum, x[i])
+    return x_sum
 
 
-@composite.Composite('TestInputNOp')
+@composite.Composite("TestInputNOp")
 def _tfr_control_flow_tensor_list_size(ins):
-  n = len(ins)
-  if n == 0:
-    return array_ops.Const(value=[[0, 1], [2, 3]], dtype=dtypes.int64)
-  else:
-    return math_ops.AddN(ins)
+    n = len(ins)
+    if n == 0:
+        return array_ops.Const(value=[[0, 1], [2, 3]], dtype=dtypes.int64)
+    else:
+        return math_ops.AddN(ins)
 
 
-#--- test fn for tf ops ---
+# --- test fn for tf ops ---
 
 
-@composite.Composite('TestComplexTFOp')
+@composite.Composite("TestComplexTFOp")
 def _tfr_tf_ops_complex(lhs, rhs):
-  left_padding, _ = array_ops.SplitV(
-      value=lhs, size_splits=[rhs, -1], axis=0, num_split=2)
-  _, right_padding = array_ops.SplitV(
-      value=lhs, size_splits=[rhs, rhs], axis=1, num_split=2)
-  return [left_padding, right_padding]
+    left_padding, _ = array_ops.SplitV(
+        value=lhs, size_splits=[rhs, -1], axis=0, num_split=2
+    )
+    _, right_padding = array_ops.SplitV(
+        value=lhs, size_splits=[rhs, rhs], axis=1, num_split=2
+    )
+    return [left_padding, right_padding]
 
 
-@composite.Composite('TestIdentityOp')
+@composite.Composite("TestIdentityOp")
 def _tfr_tf_ops_tensor(x):
-  return array_ops.Identity(x)
+    return array_ops.Identity(x)
 
 
-@composite.Composite('TestTwoInputsOp')
+@composite.Composite("TestTwoInputsOp")
 def _tfr_tf_ops_tensors(x, y, pred):
-  if pred:
-    return math_ops.Add(x, y)
-  else:
-    return array_ops.Concat(0, [x, y])
+    if pred:
+        return math_ops.Add(x, y)
+    else:
+        return array_ops.Concat(0, [x, y])
 
 
-@composite.Composite('TestInputNOp')
+@composite.Composite("TestInputNOp")
 def _tfr_tf_ops_with_defaults(ins):
-  return test_ops.TestTwoInputsOp(ins[0], ins[1])
+    return test_ops.TestTwoInputsOp(ins[0], ins[1])
 
 
-#--- test fn for tfr attributes ---
+# --- test fn for tfr attributes ---
 
 
-@composite.Composite('TestNumAttrsOp')
+@composite.Composite("TestNumAttrsOp")
 def _tfr_attrs_num_type(x, y, x1, y1):
-  # int
-  z0 = [x, y]
-  z1 = x == y
-  z2 = x < y
-  z3 = x <= y
-  z4 = x > y
-  z5 = x >= y
-  z6 = x != y
-  z7 = x + y
-  z8 = x - y
-  z8 += x
-  z8 += 1
-  (z0, z1, z2, z3, z4, z5, z6, z7, z8)  # pylint: disable=pointless-statement
+    # int
+    z0 = [x, y]
+    z1 = x == y
+    z2 = x < y
+    z3 = x <= y
+    z4 = x > y
+    z5 = x >= y
+    z6 = x != y
+    z7 = x + y
+    z8 = x - y
+    z8 += x
+    z8 += 1
+    (z0, z1, z2, z3, z4, z5, z6, z7, z8)  # pylint: disable=pointless-statement
 
-  # float
-  z9 = x1 > y1
-  z10 = x1 + y1
-  z11 = [x1, y1]
-  (z9, z10, z11)  # pylint: disable=pointless-statement
-  return
+    # float
+    z9 = x1 > y1
+    z10 = x1 + y1
+    z11 = [x1, y1]
+    (z9, z10, z11)  # pylint: disable=pointless-statement
+    return
 
 
-@composite.Composite('TestNonNumAttrsOp')
+@composite.Composite("TestNonNumAttrsOp")
 def _tfr_attrs_tfr_type(x, y, z):
-  z1 = x == y
-  z2 = x == 'test'
-  z3 = y == z
-  (z1, z2, z3)  # pylint: disable=pointless-statement
-  return
+    z1 = x == y
+    z2 = x == "test"
+    z3 = y == z
+    (z1, z2, z3)  # pylint: disable=pointless-statement
+    return
 
 
-#--- test fn for shapes ---
+# --- test fn for shapes ---
 
 
-@composite.Composite('TestIdentityOp')
+@composite.Composite("TestIdentityOp")
 def _tfr_shapes(x):
-  s1 = x.shape
-  s3 = x.shape.as_list()
+    s1 = x.shape
+    s3 = x.shape.as_list()
 
-  for i in range(len(s3)):
-    s3[i]  # pylint: disable=pointless-statement
+    for i in range(len(s3)):
+        s3[i]  # pylint: disable=pointless-statement
 
-  for i in range(1, len(s3), 2):
-    s3[i]  # pylint: disable=pointless-statement
+    for i in range(1, len(s3), 2):
+        s3[i]  # pylint: disable=pointless-statement
 
-  s5 = array_ops.Shape(x)
-  (s1, s3, s5)  # pylint: disable=pointless-statement
-  return x
-
-
-#--- test fn for nested functions ---
+    s5 = array_ops.Shape(x)
+    (s1, s3, s5)  # pylint: disable=pointless-statement
+    return x
 
 
-@composite.Composite('TestIdentityNOp')
+# --- test fn for nested functions ---
+
+
+@composite.Composite("TestIdentityNOp")
 def _tfr_temp_op(x):
-  return x
+    return x
 
 
-@composite.Composite('TestIdentityOp')
+@composite.Composite("TestIdentityOp")
 def _tfr_temp_use_op(x):
-  y = _tfr_temp_op([x])
-  return y[0]
+    y = _tfr_temp_op([x])
+    return y[0]
 
-#--- test fn for quant built-ins ---
+
+# --- test fn for quant built-ins ---
 
 
 # pylint: disable=undefined-variable
-@composite.Composite('TestIdentityOp')
+@composite.Composite("TestIdentityOp")
 def _tfr_quant_test(x):
-  y = _tfr_quant_raw_data(x)
-  s, z = _tfr_quant_qparam(x)
-  s = _tfr_quant_scale_factor(1.0, [s, s])
-  s = _tfr_quant_scale_factor(1.0, [s])
-  y = math_ops.Sub(y, z)
-  qmin, qmax = _tfr_quant_act_range('RELU', 1.0, 0)
-  (qmin, qmax)  # pylint: disable=pointless-statement
-  d = _tfr_quant_rescale(y, s, 0)
-  e = math_ops.Cast(x=d, DstT=dtypes.int16)
-  f = math_ops.Cast(x=e, DstT=dtypes.int8)
-  return f
+    y = _tfr_quant_raw_data(x)
+    s, z = _tfr_quant_qparam(x)
+    s = _tfr_quant_scale_factor(1.0, [s, s])
+    s = _tfr_quant_scale_factor(1.0, [s])
+    y = math_ops.Sub(y, z)
+    qmin, qmax = _tfr_quant_act_range("RELU", 1.0, 0)
+    (qmin, qmax)  # pylint: disable=pointless-statement
+    d = _tfr_quant_rescale(y, s, 0)
+    e = math_ops.Cast(x=d, DstT=dtypes.int16)
+    f = math_ops.Cast(x=e, DstT=dtypes.int8)
+    return f
 
 
-@composite.Composite('TestIdentityNOp')
+@composite.Composite("TestIdentityNOp")
 def _tfr_quant_test_n(x):
-  y = _tfr_quant_raw_data(x)
-  return y
+    y = _tfr_quant_raw_data(x)
+    return y
 
 
 class TFRGenTestBase(test.TestCase):
-
-  def _check_code(self, tfr_code, exp_tfr_code):
-    return self.assertTrue(fw.check(str(tfr_code), exp_tfr_code), str(tfr_code))
+    def _check_code(self, tfr_code, exp_tfr_code):
+        return self.assertTrue(fw.check(str(tfr_code), exp_tfr_code), str(tfr_code))
 
 
 class TFRGenTensorTest(TFRGenTestBase):
-  """MLIR Generation Tests for MLIR TFR Program."""
+    """MLIR Generation Tests for MLIR TFR Program."""
 
-  def test_tfr_loc(self):
-    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_loc', [test_ops])
-    mlir_code_exp = r"""
+    def test_tfr_loc(self):
+        mlir_code = tfr_gen(sys.modules[__name__], "_tfr_loc", [test_ops])
+        mlir_code_exp = r"""
       CHECK-LABEL: tfr.func @tf__test_input_n_op(%x: !tfr.tensor_list) -> (!tfr.tensor) {
       CHECK-NEXT:   %[[n:.*]] = arith.constant 10 : i64
       CHECK-SAME        loc("tfr_gen_test.py":%{{.*}}:6)
@@ -297,11 +301,11 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT: }
       CHECK-SAME        loc("tfr_gen_test.py":%{{def_line:.*}}:0)
     """
-    self._check_code(mlir_code, mlir_code_exp)
+        self._check_code(mlir_code, mlir_code_exp)
 
-  def test_tfr_tensors(self):
-    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_tensor', [test_ops])
-    mlir_code_exp = r"""
+    def test_tfr_tensors(self):
+        mlir_code = tfr_gen(sys.modules[__name__], "_tfr_tensor", [test_ops])
+        mlir_code_exp = r"""
       CHECK-LABEL: tfr.func @tf__test_no_op() -> () {
       CHECK-NEXT:    tfr.return
       CHECK-NEXT: }
@@ -375,11 +379,11 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT: tfr.return
       CHECK-NEXT: }
     """
-    self._check_code(mlir_code, mlir_code_exp)
+        self._check_code(mlir_code, mlir_code_exp)
 
-  def test_tfr_control_flow(self):
-    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_control_flow', [test_ops])
-    mlir_code_exp = r"""
+    def test_tfr_control_flow(self):
+        mlir_code = tfr_gen(sys.modules[__name__], "_tfr_control_flow", [test_ops])
+        mlir_code_exp = r"""
       CHECK-LABEL: tfr.func @tf__test_two_inputs_op(%x: !tfr.tensor, %y: !tfr.tensor,
       CHECK-SAME:     %pred: i1{tfr.name="pred",tfr.default=false}) -> (!tfr.tensor) {
       CHECK-NEXT: %[[if:.*]] = scf.if %pred -> (!tfr.tensor) {
@@ -436,11 +440,11 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK: %[[attr:.*]] = tfr.constant i64 -> !tfr.attr
       CHECK: %Const = tfr.call @tf__const(%{{.*}}, %[[attr]]) : (!tfr.attr, !tfr.attr) -> (!tfr.tensor)
     """
-    self._check_code(mlir_code, mlir_code_exp)
+        self._check_code(mlir_code, mlir_code_exp)
 
-  def test_tfr_tf_ops(self):
-    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_tf_ops', [test_ops])
-    mlir_code_exp = r"""
+    def test_tfr_tf_ops(self):
+        mlir_code = tfr_gen(sys.modules[__name__], "_tfr_tf_ops", [test_ops])
+        mlir_code_exp = r"""
       CHECK-LABEL: tfr.func @tf__test_complex_tf_op(%lhs: !tfr.tensor, %rhs: !tfr.tensor) -> (!tfr.tensor_list) {
       CHECK-NEXT:   %[[cst:.*]] = arith.constant 1 : i64
       CHECK-NEXT:   %[[zero:.*]] = arith.constant 0 : i64
@@ -527,11 +531,11 @@ class TFRGenTensorTest(TFRGenTestBase):
 
       CHECK-LABEL: tfr.func @tf__test_two_outputs_op_(!tfr.tensor<T>) -> (!tfr.tensor<T>,!tfr.tensor<T>) attributes {T,f32_,i1_,i32_,i64_}
     """
-    self._check_code(mlir_code, mlir_code_exp)
+        self._check_code(mlir_code, mlir_code_exp)
 
-  def test_tfr_attrs(self):
-    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_attrs', [test_ops])
-    mlir_code_exp = r"""
+    def test_tfr_attrs(self):
+        mlir_code = tfr_gen(sys.modules[__name__], "_tfr_attrs", [test_ops])
+        mlir_code_exp = r"""
       CHECK-LABEL: tfr.func @tf__test_num_attrs_op(
       CHECK-SAME:     %x: i64{tfr.name="x1",tfr.default=-10},
       CHECK-SAME:     %y: i64{tfr.name="y1",tfr.default=1},
@@ -568,11 +572,11 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT: tfr.return
       CHECK-NEXT: }
     """
-    self._check_code(mlir_code, mlir_code_exp)
+        self._check_code(mlir_code, mlir_code_exp)
 
-  def test_tf_tensor_shape(self):
-    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_shapes', [test_ops])
-    mlir_code_exp = r"""
+    def test_tf_tensor_shape(self):
+        mlir_code = tfr_gen(sys.modules[__name__], "_tfr_shapes", [test_ops])
+        mlir_code_exp = r"""
       CHECK-LABEL: tfr.func @tf__test_identity_op(%x: !tfr.tensor) -> (!tfr.tensor) {
       CHECK-NEXT:   %[[shape:.*]] = tfr.get_shape %x -> !shape.shape
 
@@ -601,22 +605,22 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT:   tfr.return %x : !tfr.tensor
       CHECK-NEXT: }
     """
-    self._check_code(mlir_code, mlir_code_exp)
+        self._check_code(mlir_code, mlir_code_exp)
 
-  def test_temp_function(self):
-    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_temp', [test_ops])
-    mlir_code_exp = r"""
+    def test_temp_function(self):
+        mlir_code = tfr_gen(sys.modules[__name__], "_tfr_temp", [test_ops])
+        mlir_code_exp = r"""
       CHECK-LABEL: tfr.func @tf__test_identity_n_op(%x: !tfr.tensor_list) -> (!tfr.tensor_list)
 
       CHECK-LABEL: tfr.func @tf__test_identity_op(%x: !tfr.tensor) -> (!tfr.tensor) {
       CHECK-NEXT:   %[[list:.*]] = "tfr.build_list"(%x) : (!tfr.tensor) -> !tfr.tensor_list
       CHECK-NEXT:   %[[call:.*]] = tfr.call @tf__test_identity_n_op(%[[list]]) : (!tfr.tensor_list)
     """
-    self._check_code(mlir_code, mlir_code_exp)
+        self._check_code(mlir_code, mlir_code_exp)
 
-  def test_quant_builtins(self):
-    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_quant', [test_ops])
-    mlir_code_exp = r"""
+    def test_quant_builtins(self):
+        mlir_code = tfr_gen(sys.modules[__name__], "_tfr_quant", [test_ops])
+        mlir_code_exp = r"""
       CHECK-LABEL: tfr.func @tf__test_identity_op(%x: !tfr.tensor) -> (!tfr.tensor) {
       CHECK-NEXT:   %[[raw_data:.*]] = tfr.quant_raw_data(%x) : (!tfr.tensor) -> (!tfr.tensor)
       CHECK-NEXT:   %[[qparam:.*]]:2 = tfr.quant_qparam(%x) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
@@ -638,8 +642,8 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK:        tfr.return %[[raw_data:.*]] : !tfr.tensor_list
       CHECK:       }
     """
-    self._check_code(mlir_code, mlir_code_exp)
+        self._check_code(mlir_code, mlir_code_exp)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

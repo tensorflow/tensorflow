@@ -29,9 +29,8 @@ specializations = [
 
 
 class TfBinaryBcastTest(test.TestCase):
-
-  def test_bcast_2d_1d(self):
-    mlir_function = """
+    def test_bcast_2d_1d(self):
+        mlir_function = """
       func @test(%arg0: tensor<?x4xf32>,
                  %arg1: tensor<4xf32>,
                  %arg2: tensor<4xf32>) -> tensor<?x4xf32> {
@@ -46,22 +45,22 @@ class TfBinaryBcastTest(test.TestCase):
         return %3 : tensor<?x4xf32>
       }"""
 
-    n = np.random.randint(1, 10)
+        n = np.random.randint(1, 10)
 
-    arg0 = np.random.uniform(0, 10.0, size=(n, 4)).astype(np.float32)
-    arg1 = np.random.uniform(0, 10.0, size=(4)).astype(np.float32)
-    arg2 = np.random.uniform(0, 10.0, size=(4)).astype(np.float32)
+        arg0 = np.random.uniform(0, 10.0, size=(n, 4)).astype(np.float32)
+        arg1 = np.random.uniform(0, 10.0, size=(4)).astype(np.float32)
+        arg2 = np.random.uniform(0, 10.0, size=(4)).astype(np.float32)
 
-    for specialize in specializations:
-      for vectorize in [True, False]:
-        compiled = cpurt.compile(mlir_function, 'test', specialize, vectorize)
+        for specialize in specializations:
+            for vectorize in [True, False]:
+                compiled = cpurt.compile(mlir_function, "test", specialize, vectorize)
 
-        [res] = cpurt.execute(compiled, [arg0, arg1, arg2])
-        ref = np.arctan2((np.log1p(arg0) - arg1) * arg2, arg2)
-        np.testing.assert_allclose(res, ref, atol=1e-05)
+                [res] = cpurt.execute(compiled, [arg0, arg1, arg2])
+                ref = np.arctan2((np.log1p(arg0) - arg1) * arg2, arg2)
+                np.testing.assert_allclose(res, ref, atol=1e-05)
 
-  def test_bcast_2d_2d(self):
-    mlir_function = """
+    def test_bcast_2d_2d(self):
+        mlir_function = """
       func @test(%arg0: tensor<?x?xf32>,
                  %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
         %0 = "tf.Mul"(%arg0, %arg1)
@@ -69,29 +68,29 @@ class TfBinaryBcastTest(test.TestCase):
         return %0 : tensor<?x?xf32>
       }"""
 
-    m = np.random.randint(1, 10)
-    n = np.random.randint(1, 10)
+        m = np.random.randint(1, 10)
+        n = np.random.randint(1, 10)
 
-    lhs0 = np.random.uniform(0, 10.0, size=(1, 1)).astype(np.float32)
-    lhs1 = np.random.uniform(0, 10.0, size=(1, n)).astype(np.float32)
-    lhs2 = np.random.uniform(0, 10.0, size=(m, 1)).astype(np.float32)
-    lhs3 = np.random.uniform(0, 10.0, size=(m, n)).astype(np.float32)
+        lhs0 = np.random.uniform(0, 10.0, size=(1, 1)).astype(np.float32)
+        lhs1 = np.random.uniform(0, 10.0, size=(1, n)).astype(np.float32)
+        lhs2 = np.random.uniform(0, 10.0, size=(m, 1)).astype(np.float32)
+        lhs3 = np.random.uniform(0, 10.0, size=(m, n)).astype(np.float32)
 
-    rhs0 = np.random.uniform(0, 10.0, size=(1, 1)).astype(np.float32)
-    rhs1 = np.random.uniform(0, 10.0, size=(1, n)).astype(np.float32)
-    rhs2 = np.random.uniform(0, 10.0, size=(m, 1)).astype(np.float32)
-    rhs3 = np.random.uniform(0, 10.0, size=(m, n)).astype(np.float32)
+        rhs0 = np.random.uniform(0, 10.0, size=(1, 1)).astype(np.float32)
+        rhs1 = np.random.uniform(0, 10.0, size=(1, n)).astype(np.float32)
+        rhs2 = np.random.uniform(0, 10.0, size=(m, 1)).astype(np.float32)
+        rhs3 = np.random.uniform(0, 10.0, size=(m, n)).astype(np.float32)
 
-    for specialize in specializations:
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+        for specialize in specializations:
+            compiled = cpurt.compile(mlir_function, "test", specialize)
 
-      for lhs in [lhs0, lhs1, lhs2, lhs3]:
-        for rhs in [rhs0, rhs1, rhs2, rhs3]:
-          [res] = cpurt.execute(compiled, [lhs, rhs])
-          np.testing.assert_allclose(res, lhs * rhs, atol=1e-07)
+            for lhs in [lhs0, lhs1, lhs2, lhs3]:
+                for rhs in [rhs0, rhs1, rhs2, rhs3]:
+                    [res] = cpurt.execute(compiled, [lhs, rhs])
+                    np.testing.assert_allclose(res, lhs * rhs, atol=1e-07)
 
-  def test_bcast_2d_1d_0d(self):
-    mlir_function = """
+    def test_bcast_2d_1d_0d(self):
+        mlir_function = """
       func @compute(%arg0: tensor<?x4xf32>,
                     %arg1: tensor<4xf32>,
                     %arg2: tensor<f32>) -> tensor<?x4xf32> {
@@ -104,24 +103,24 @@ class TfBinaryBcastTest(test.TestCase):
         return %2 : tensor<?x4xf32>
       }"""
 
-    for specialize in specializations:
-      compiled = cpurt.compile(mlir_function, 'compute', specialize)
+        for specialize in specializations:
+            compiled = cpurt.compile(mlir_function, "compute", specialize)
 
-      arg0 = np.random.uniform(0, 10.0, size=(1, 4)).astype(np.float32)
-      arg1 = np.random.uniform(0, 10.0, size=(4)).astype(np.float32)
-      arg2 = np.random.uniform(0, 10.0, size=()).astype(np.float32)
+            arg0 = np.random.uniform(0, 10.0, size=(1, 4)).astype(np.float32)
+            arg1 = np.random.uniform(0, 10.0, size=(4)).astype(np.float32)
+            arg2 = np.random.uniform(0, 10.0, size=()).astype(np.float32)
 
-      [res] = cpurt.execute(compiled, [arg0, arg1, arg2])
+            [res] = cpurt.execute(compiled, [arg0, arg1, arg2])
 
-      # Reference implementation with numpy
-      t_0 = np.add(arg1, arg2)
-      t_1 = np.add(arg0, t_0)
-      t_2 = np.add(t_1, t_0)
+            # Reference implementation with numpy
+            t_0 = np.add(arg1, arg2)
+            t_1 = np.add(arg0, t_0)
+            t_2 = np.add(t_1, t_0)
 
-      np.testing.assert_allclose(res, t_2, atol=0.0)
+            np.testing.assert_allclose(res, t_2, atol=0.0)
 
-  def test_bcast_3d_3d(self):
-    mlir_function = """
+    def test_bcast_3d_3d(self):
+        mlir_function = """
       func @test(%arg0: tensor<?x?x12xf32>,
                  %arg1: tensor<?x?x12xf32>) -> tensor<?x?x12xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
@@ -129,21 +128,21 @@ class TfBinaryBcastTest(test.TestCase):
         return %0 : tensor<?x?x12xf32>
       }"""
 
-    d0 = np.random.randint(1, 10)
-    d1 = np.random.randint(1, 10)
+        d0 = np.random.randint(1, 10)
+        d1 = np.random.randint(1, 10)
 
-    arg0 = np.random.uniform(0, 10.0, size=(d0, d1, 12)).astype(np.float32)
-    arg1 = np.random.uniform(0, 10.0, size=(d0, d1, 12)).astype(np.float32)
+        arg0 = np.random.uniform(0, 10.0, size=(d0, d1, 12)).astype(np.float32)
+        arg1 = np.random.uniform(0, 10.0, size=(d0, d1, 12)).astype(np.float32)
 
-    for specialize in specializations:
-      for vectorize in [True, False]:
-        compiled = cpurt.compile(mlir_function, 'test', specialize, vectorize)
+        for specialize in specializations:
+            for vectorize in [True, False]:
+                compiled = cpurt.compile(mlir_function, "test", specialize, vectorize)
 
-        [res] = cpurt.execute(compiled, [arg0, arg1])
-        np.testing.assert_allclose(res, arg0 + arg1, atol=0.0)
+                [res] = cpurt.execute(compiled, [arg0, arg1])
+                np.testing.assert_allclose(res, arg0 + arg1, atol=0.0)
 
-  def test_bcast_unranked_0d(self):
-    mlir_function = """
+    def test_bcast_unranked_0d(self):
+        mlir_function = """
       func @compute(%arg0: tensor<*xf32> {cpurt.constraint = "rank"},
                     %arg1: tensor<f32>) -> tensor<*xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
@@ -151,17 +150,17 @@ class TfBinaryBcastTest(test.TestCase):
         return %0 : tensor<*xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'compute')
+        compiled = cpurt.compile(mlir_function, "compute")
 
-    arg0 = np.random.uniform(0, 10.0, size=(4, 4)).astype(np.float32)
-    arg1 = np.random.uniform(0, 10.0, size=()).astype(np.float32)
+        arg0 = np.random.uniform(0, 10.0, size=(4, 4)).astype(np.float32)
+        arg1 = np.random.uniform(0, 10.0, size=()).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg0, arg1])
+        [res] = cpurt.execute(compiled, [arg0, arg1])
 
-    np.testing.assert_allclose(res, np.add(arg0, arg1), atol=0.0)
+        np.testing.assert_allclose(res, np.add(arg0, arg1), atol=0.0)
 
-  def test_bcast_unranked_unranked(self):
-    mlir_function = """
+    def test_bcast_unranked_unranked(self):
+        mlir_function = """
       func @compute(%arg0: tensor<*xf32> {cpurt.constraint = "rank"},
                     %arg1: tensor<*xf32> {cpurt.constraint = "rank"})
           -> tensor<*xf32> {
@@ -170,18 +169,18 @@ class TfBinaryBcastTest(test.TestCase):
         return %0 : tensor<*xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'compute')
+        compiled = cpurt.compile(mlir_function, "compute")
 
-    arg0 = np.random.uniform(0, 10.0, size=(1, 4)).astype(np.float32)
-    arg1 = np.random.uniform(0, 10.0, size=(4, 1)).astype(np.float32)
+        arg0 = np.random.uniform(0, 10.0, size=(1, 4)).astype(np.float32)
+        arg1 = np.random.uniform(0, 10.0, size=(4, 1)).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg0, arg1])
+        [res] = cpurt.execute(compiled, [arg0, arg1])
 
-    np.testing.assert_allclose(res, np.add(arg0, arg1), atol=0.0)
+        np.testing.assert_allclose(res, np.add(arg0, arg1), atol=0.0)
 
-  # Test that the non-broadcastable shapes error is handled at run time.
-  def test_bcast_1d_1d_error(self):
-    mlir_function = """
+    # Test that the non-broadcastable shapes error is handled at run time.
+    def test_bcast_1d_1d_error(self):
+        mlir_function = """
       func @compute(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>)
           -> tensor<?xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
@@ -189,18 +188,18 @@ class TfBinaryBcastTest(test.TestCase):
         return %0 : tensor<?xf32>
       }"""
 
-    arg0 = np.random.uniform(0, 10.0, size=(2)).astype(np.float32)
-    arg1 = np.random.uniform(0, 10.0, size=(3)).astype(np.float32)
+        arg0 = np.random.uniform(0, 10.0, size=(2)).astype(np.float32)
+        arg1 = np.random.uniform(0, 10.0, size=(3)).astype(np.float32)
 
-    for specialize in specializations:
-      compiled = cpurt.compile(mlir_function, 'compute', specialize)
+        for specialize in specializations:
+            compiled = cpurt.compile(mlir_function, "compute", specialize)
 
-      with self.assertRaisesRegex(Exception, 'required broadcastable shapes'):
-        cpurt.execute(compiled, [arg0, arg1])
+            with self.assertRaisesRegex(Exception, "required broadcastable shapes"):
+                cpurt.execute(compiled, [arg0, arg1])
 
-  # Test that 0-ranked operands are correctly specialized.
-  def test_bcast_value_rank0(self):
-    mlir_function = """
+    # Test that 0-ranked operands are correctly specialized.
+    def test_bcast_value_rank0(self):
+        mlir_function = """
       func @compute(%arg0: tensor<*xi32>,
                     %arg1: tensor<i32> {cpurt.constraint = "value"})
           -> tensor<*xi32> {
@@ -208,20 +207,20 @@ class TfBinaryBcastTest(test.TestCase):
              : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
         return %0 : tensor<*xi32>
       }"""
-    compiled = cpurt.compile(mlir_function, 'compute')
-    # Test that the same compiled module with two different value-specialized
-    # arguments is handled correctly.
-    tensor = np.random.uniform(0, 10.0, size=(3)).astype(np.int32)
-    rhs0 = np.random.uniform(0, 10.0, size=()).astype(np.int32)
-    rhs1 = np.random.uniform(0, 10.0, size=()).astype(np.int32)
-    [res0] = cpurt.execute(compiled, [tensor, rhs0])
-    [res1] = cpurt.execute(compiled, [tensor, rhs1])
-    np.testing.assert_allclose(res0, np.add(tensor, rhs0), atol=0.0)
-    np.testing.assert_allclose(res1, np.add(tensor, rhs1), atol=0.0)
+        compiled = cpurt.compile(mlir_function, "compute")
+        # Test that the same compiled module with two different value-specialized
+        # arguments is handled correctly.
+        tensor = np.random.uniform(0, 10.0, size=(3)).astype(np.int32)
+        rhs0 = np.random.uniform(0, 10.0, size=()).astype(np.int32)
+        rhs1 = np.random.uniform(0, 10.0, size=()).astype(np.int32)
+        [res0] = cpurt.execute(compiled, [tensor, rhs0])
+        [res1] = cpurt.execute(compiled, [tensor, rhs1])
+        np.testing.assert_allclose(res0, np.add(tensor, rhs0), atol=0.0)
+        np.testing.assert_allclose(res1, np.add(tensor, rhs1), atol=0.0)
 
-  # Test that the function does not compile when value-specializing an f32.
-  def test_bcast_value_die_if_unsinkable(self):
-    mlir_function = """
+    # Test that the function does not compile when value-specializing an f32.
+    def test_bcast_value_die_if_unsinkable(self):
+        mlir_function = """
       func @compute(%arg0: tensor<*xf32>,
                     %arg1: tensor<f32> {cpurt.constraint = "value"})
           -> tensor<*xf32> {
@@ -230,10 +229,9 @@ class TfBinaryBcastTest(test.TestCase):
         return %0 : tensor<*xf32>
       }"""
 
-    with self.assertRaisesRegex(Exception,
-                                'Cannot sink operand type: tensor<f32>'):
-      cpurt.compile(mlir_function, 'compute')
+        with self.assertRaisesRegex(Exception, "Cannot sink operand type: tensor<f32>"):
+            cpurt.compile(mlir_function, "compute")
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

@@ -20,9 +20,8 @@ from tensorflow.compiler.xla.service import generate_test_hlo_checks
 
 
 class GenerateTestHloChecksTest(absltest.TestCase):
-
-  def test_replacement(self):
-    input_hlo = """
+    def test_replacement(self):
+        input_hlo = """
 %param.0 # Do not replace if it's not CHECK'd.
 // CHECK: %computation { # Do not replace computations
 // CHECK: %param.0 = parameter(0) # Replace
@@ -35,8 +34,9 @@ class GenerateTestHloChecksTest(absltest.TestCase):
 // CHECK-NEXT: %get-tuple-element.1 = get-tuple-element(%parameter.0)
 // CHECK-NEXT: ROOT %bitcast-convert = bitcast-convert(%get-tuple-element.1)
 """
-    self.assertEqual(
-        generate_test_hlo_checks.replace_instruction_names(input_hlo), """
+        self.assertEqual(
+            generate_test_hlo_checks.replace_instruction_names(input_hlo),
+            """
 %param.0 # Do not replace if it's not CHECK'd.
 // CHECK: %computation { # Do not replace computations
 // CHECK: [[INSTR_0:%[^ ]+]] = parameter(0) # Replace
@@ -48,8 +48,9 @@ class GenerateTestHloChecksTest(absltest.TestCase):
 // CHECK-NEXT: [[INSTR_0:%[^ ]+]] = parameter(0)
 // CHECK-NEXT: [[INSTR_1:%[^ ]+]] = get-tuple-element([[INSTR_0]])
 // CHECK-NEXT: ROOT [[INSTR_2:%[^ ]+]] = bitcast-convert([[INSTR_1]])
-""")
+""",
+        )
 
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

@@ -63,7 +63,9 @@ from tensorflow.python.debug.wrappers.hooks import DumpingDebugHook
 from tensorflow.python.debug.wrappers.hooks import GrpcDebugHook
 from tensorflow.python.debug.wrappers.hooks import LocalCLIDebugHook
 from tensorflow.python.debug.wrappers.hooks import TensorBoardDebugHook
-from tensorflow.python.debug.wrappers.local_cli_wrapper import LocalCLIDebugWrapperSession
+from tensorflow.python.debug.wrappers.local_cli_wrapper import (
+    LocalCLIDebugWrapperSession,
+)
 
 from tensorflow.python.util import all_util as _all_util
 

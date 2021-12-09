@@ -23,36 +23,35 @@ from tensorflow.python.training.experimental import loss_scale as loss_scale_mod
 
 
 def serialize(loss_scale):
-  return generic_utils.serialize_keras_object(loss_scale)
+    return generic_utils.serialize_keras_object(loss_scale)
 
 
 def deserialize(config, custom_objects=None):
-  loss_scale_module_objects = {
-      'FixedLossScale': loss_scale_module.FixedLossScale,
-      'DynamicLossScale': loss_scale_module.DynamicLossScale,
-  }
+    loss_scale_module_objects = {
+        "FixedLossScale": loss_scale_module.FixedLossScale,
+        "DynamicLossScale": loss_scale_module.DynamicLossScale,
+    }
 
-  return generic_utils.deserialize_keras_object(
-      config,
-      module_objects=loss_scale_module_objects,
-      custom_objects=custom_objects,
-      printable_module_name='loss scale'
-  )
+    return generic_utils.deserialize_keras_object(
+        config,
+        module_objects=loss_scale_module_objects,
+        custom_objects=custom_objects,
+        printable_module_name="loss scale",
+    )
 
 
 def get(identifier):
-  """Get a loss scale object."""
-  if isinstance(identifier, dict):
-    return deserialize(identifier)
+    """Get a loss scale object."""
+    if isinstance(identifier, dict):
+        return deserialize(identifier)
 
-  if isinstance(identifier, (int, float)):
-    return loss_scale_module.FixedLossScale(identifier)
-  if identifier == 'dynamic':
-    return loss_scale_module.DynamicLossScale()
-  if isinstance(identifier, loss_scale_module.LossScale):
-    return identifier
-  elif identifier is None:
-    return None
-  else:
-    raise ValueError('Could not interpret loss scale identifier: %s' %
-                     identifier)
+    if isinstance(identifier, (int, float)):
+        return loss_scale_module.FixedLossScale(identifier)
+    if identifier == "dynamic":
+        return loss_scale_module.DynamicLossScale()
+    if isinstance(identifier, loss_scale_module.LossScale):
+        return identifier
+    elif identifier is None:
+        return None
+    else:
+        raise ValueError("Could not interpret loss scale identifier: %s" % identifier)

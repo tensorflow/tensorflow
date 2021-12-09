@@ -21,25 +21,23 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common
 
 
 class Child(tf.Module):
-
-  def __init__(self):
-    super(Child, self).__init__()
-    self.my_variable = tf.Variable(3.)
+    def __init__(self):
+        super(Child, self).__init__()
+        self.my_variable = tf.Variable(3.0)
 
 
 # Creates a dag object graph.
 # There is only one instance of `Child`, but it is reachable via two names.
 # Thus, self.my_variable is reachable via two paths.
 class TestModule(tf.Module):
+    def __init__(self):
+        super(TestModule, self).__init__()
+        self.child1 = Child()
+        self.child2 = self.child1
 
-  def __init__(self):
-    super(TestModule, self).__init__()
-    self.child1 = Child()
-    self.child2 = self.child1
-
-  # CHECK: tf_saved_model.global_tensor
-  # CHECK-SAME: tf_saved_model.exported_names = ["child1.my_variable", "child2.my_variable"]
+    # CHECK: tf_saved_model.global_tensor
+    # CHECK-SAME: tf_saved_model.exported_names = ["child1.my_variable", "child2.my_variable"]
 
 
-if __name__ == '__main__':
-  common.do_test(TestModule)
+if __name__ == "__main__":
+    common.do_test(TestModule)

@@ -36,121 +36,122 @@ from tensorflow.python.training import training_util
 
 
 class RamFilesystemTest(test_util.TensorFlowTestCase):
+    def test_create_and_delete_directory(self):
+        file_io.create_dir_v2("ram://testdirectory")
+        file_io.delete_recursively_v2("ram://testdirectory")
 
-  def test_create_and_delete_directory(self):
-    file_io.create_dir_v2('ram://testdirectory')
-    file_io.delete_recursively_v2('ram://testdirectory')
+    def test_create_and_delete_directory_tree_recursive(self):
+        file_io.create_dir_v2("ram://testdirectory")
+        file_io.create_dir_v2("ram://testdirectory/subdir1")
+        file_io.create_dir_v2("ram://testdirectory/subdir2")
+        file_io.create_dir_v2("ram://testdirectory/subdir1/subdir3")
+        with gfile.GFile("ram://testdirectory/subdir1/subdir3/a.txt", "w") as f:
+            f.write("Hello, world.")
+        file_io.delete_recursively_v2("ram://testdirectory")
+        self.assertEqual(gfile.Glob("ram://testdirectory/*"), [])
 
-  def test_create_and_delete_directory_tree_recursive(self):
-    file_io.create_dir_v2('ram://testdirectory')
-    file_io.create_dir_v2('ram://testdirectory/subdir1')
-    file_io.create_dir_v2('ram://testdirectory/subdir2')
-    file_io.create_dir_v2('ram://testdirectory/subdir1/subdir3')
-    with gfile.GFile('ram://testdirectory/subdir1/subdir3/a.txt', 'w') as f:
-      f.write('Hello, world.')
-    file_io.delete_recursively_v2('ram://testdirectory')
-    self.assertEqual(gfile.Glob('ram://testdirectory/*'), [])
+    def test_write_file(self):
+        with gfile.GFile("ram://a.txt", "w") as f:
+            f.write("Hello, world.")
+            f.write("Hello, world.")
 
-  def test_write_file(self):
-    with gfile.GFile('ram://a.txt', 'w') as f:
-      f.write('Hello, world.')
-      f.write('Hello, world.')
+        with gfile.GFile("ram://a.txt", "r") as f:
+            self.assertEqual(f.read(), "Hello, world." * 2)
 
-    with gfile.GFile('ram://a.txt', 'r') as f:
-      self.assertEqual(f.read(), 'Hello, world.' * 2)
+    def test_append_file_with_seek(self):
+        with gfile.GFile("ram://c.txt", "w") as f:
+            f.write("Hello, world.")
 
-  def test_append_file_with_seek(self):
-    with gfile.GFile('ram://c.txt', 'w') as f:
-      f.write('Hello, world.')
+        with gfile.GFile("ram://c.txt", "w+") as f:
+            f.seek(offset=0, whence=2)
+            f.write("Hello, world.")
 
-    with gfile.GFile('ram://c.txt', 'w+') as f:
-      f.seek(offset=0, whence=2)
-      f.write('Hello, world.')
+        with gfile.GFile("ram://c.txt", "r") as f:
+            self.assertEqual(f.read(), "Hello, world." * 2)
 
-    with gfile.GFile('ram://c.txt', 'r') as f:
-      self.assertEqual(f.read(), 'Hello, world.' * 2)
+    def test_list_dir(self):
+        for i in range(10):
+            with gfile.GFile("ram://a/b/%d.txt" % i, "w") as f:
+                f.write("")
+            with gfile.GFile("ram://c/b/%d.txt" % i, "w") as f:
+                f.write("")
 
-  def test_list_dir(self):
-    for i in range(10):
-      with gfile.GFile('ram://a/b/%d.txt' % i, 'w') as f:
-        f.write('')
-      with gfile.GFile('ram://c/b/%d.txt' % i, 'w') as f:
-        f.write('')
+        matches = ["%d.txt" % i for i in range(10)]
+        self.assertEqual(gfile.ListDirectory("ram://a/b/"), matches)
 
-    matches = ['%d.txt' % i for i in range(10)]
-    self.assertEqual(gfile.ListDirectory('ram://a/b/'), matches)
+    def test_glob(self):
+        for i in range(10):
+            with gfile.GFile("ram://a/b/%d.txt" % i, "w") as f:
+                f.write("")
+            with gfile.GFile("ram://c/b/%d.txt" % i, "w") as f:
+                f.write("")
 
-  def test_glob(self):
-    for i in range(10):
-      with gfile.GFile('ram://a/b/%d.txt' % i, 'w') as f:
-        f.write('')
-      with gfile.GFile('ram://c/b/%d.txt' % i, 'w') as f:
-        f.write('')
+        matches = ["ram://a/b/%d.txt" % i for i in range(10)]
+        self.assertEqual(gfile.Glob("ram://a/b/*"), matches)
 
-    matches = ['ram://a/b/%d.txt' % i for i in range(10)]
-    self.assertEqual(gfile.Glob('ram://a/b/*'), matches)
+        matches = []
+        self.assertEqual(gfile.Glob("ram://b/b/*"), matches)
 
-    matches = []
-    self.assertEqual(gfile.Glob('ram://b/b/*'), matches)
+        matches = ["ram://c/b/%d.txt" % i for i in range(10)]
+        self.assertEqual(gfile.Glob("ram://c/b/*"), matches)
 
-    matches = ['ram://c/b/%d.txt' % i for i in range(10)]
-    self.assertEqual(gfile.Glob('ram://c/b/*'), matches)
+    def test_file_exists(self):
+        with gfile.GFile("ram://exists/a/b/c.txt", "w") as f:
+            f.write("")
+        self.assertTrue(gfile.Exists("ram://exists/a"))
+        self.assertTrue(gfile.Exists("ram://exists/a/b"))
+        self.assertTrue(gfile.Exists("ram://exists/a/b/c.txt"))
 
-  def test_file_exists(self):
-    with gfile.GFile('ram://exists/a/b/c.txt', 'w') as f:
-      f.write('')
-    self.assertTrue(gfile.Exists('ram://exists/a'))
-    self.assertTrue(gfile.Exists('ram://exists/a/b'))
-    self.assertTrue(gfile.Exists('ram://exists/a/b/c.txt'))
+        self.assertFalse(gfile.Exists("ram://exists/b"))
+        self.assertFalse(gfile.Exists("ram://exists/a/c"))
+        self.assertFalse(gfile.Exists("ram://exists/a/b/k"))
 
-    self.assertFalse(gfile.Exists('ram://exists/b'))
-    self.assertFalse(gfile.Exists('ram://exists/a/c'))
-    self.assertFalse(gfile.Exists('ram://exists/a/b/k'))
+    def test_estimator(self):
+        def model_fn(features, labels, mode, params):
+            del params
+            x = core_layers.dense(features, 100)
+            x = core_layers.dense(x, 100)
+            x = core_layers.dense(x, 100)
+            x = core_layers.dense(x, 100)
+            y = core_layers.dense(x, 1)
+            loss = losses.mean_squared_error(labels, y)
+            opt = adam.AdamOptimizer(learning_rate=0.1)
+            train_op = opt.minimize(
+                loss, global_step=training_util.get_or_create_global_step()
+            )
 
-  def test_estimator(self):
+            return EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
 
-    def model_fn(features, labels, mode, params):
-      del params
-      x = core_layers.dense(features, 100)
-      x = core_layers.dense(x, 100)
-      x = core_layers.dense(x, 100)
-      x = core_layers.dense(x, 100)
-      y = core_layers.dense(x, 1)
-      loss = losses.mean_squared_error(labels, y)
-      opt = adam.AdamOptimizer(learning_rate=0.1)
-      train_op = opt.minimize(
-          loss, global_step=training_util.get_or_create_global_step())
+        def input_fn():
+            batch_size = 128
+            return (
+                constant_op.constant(
+                    np.random.randn(batch_size, 100), dtype=dtypes.float32
+                ),
+                constant_op.constant(
+                    np.random.randn(batch_size, 1), dtype=dtypes.float32
+                ),
+            )
 
-      return EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
+        config = RunConfig(model_dir="ram://estimator-0/", save_checkpoints_steps=1)
+        estimator = Estimator(config=config, model_fn=model_fn)
 
-    def input_fn():
-      batch_size = 128
-      return (constant_op.constant(np.random.randn(batch_size, 100),
-                                   dtype=dtypes.float32),
-              constant_op.constant(np.random.randn(batch_size, 1),
-                                   dtype=dtypes.float32))
+        estimator.train(input_fn=input_fn, steps=10)
+        estimator.train(input_fn=input_fn, steps=10)
+        estimator.train(input_fn=input_fn, steps=10)
+        estimator.train(input_fn=input_fn, steps=10)
 
-    config = RunConfig(
-        model_dir='ram://estimator-0/', save_checkpoints_steps=1)
-    estimator = Estimator(config=config, model_fn=model_fn)
+    def test_savedmodel(self):
+        class MyModule(module.Module):
+            @def_function.function(input_signature=[])
+            def foo(self):
+                return constant_op.constant([1])
 
-    estimator.train(input_fn=input_fn, steps=10)
-    estimator.train(input_fn=input_fn, steps=10)
-    estimator.train(input_fn=input_fn, steps=10)
-    estimator.train(input_fn=input_fn, steps=10)
+        saved_model.save(MyModule(), "ram://my_module")
 
-  def test_savedmodel(self):
-    class MyModule(module.Module):
-
-      @def_function.function(input_signature=[])
-      def foo(self):
-        return constant_op.constant([1])
-
-    saved_model.save(MyModule(), 'ram://my_module')
-
-    loaded = saved_model.load('ram://my_module')
-    self.assertAllEqual(loaded.foo(), [1])
+        loaded = saved_model.load("ram://my_module")
+        self.assertAllEqual(loaded.foo(), [1])
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

@@ -16,468 +16,489 @@
 from tensorflow.python.ops import gen_collective_ops
 
 
-def all_reduce(t,
-               group_size,
-               group_key,
-               instance_key,
-               merge_op='Add',
-               final_op='Id',
-               subdiv_offsets=(0,),
-               communication_hint='auto',
-               timeout=0):
-  """Reduces tensors collectively, across devices.
+def all_reduce(
+    t,
+    group_size,
+    group_key,
+    instance_key,
+    merge_op="Add",
+    final_op="Id",
+    subdiv_offsets=(0,),
+    communication_hint="auto",
+    timeout=0,
+):
+    """Reduces tensors collectively, across devices.
 
-  Args:
-    t: the tensor to be reduced.
-    group_size: the total number of tensors to be collectively reduced.
-      Each must reside on a different device.  Should be a positive integer.
-    group_key: an integer identifying the group of devices.
-    instance_key: an integer identifying the participating group of Ops.
-    merge_op: string naming the binary Op to be applied to compute each
-      partial reduction.
-    final_op: string naming the unary Op to be applied to each fully
-      reduced value.  Can be 'Id' for no operation.
-    subdiv_offsets: a list of integer offsets into the tensor at which each
-      independent subdivision should begin.  Use [0] if no subdivision should
-      be done.
-    communication_hint: preferred collective communication.  The implementation
-      may fall back to another mechanism.  Options include `auto`, `ring`, and
-      `nccl`.
-    timeout: a float. If set to a non zero, set a completion timeout to detect
-      staleness.  If the timer goes off, a DeadlineExceededError is raised.  The
-      timeout value in seconds. This feature is experimental.
+    Args:
+      t: the tensor to be reduced.
+      group_size: the total number of tensors to be collectively reduced.
+        Each must reside on a different device.  Should be a positive integer.
+      group_key: an integer identifying the group of devices.
+      instance_key: an integer identifying the participating group of Ops.
+      merge_op: string naming the binary Op to be applied to compute each
+        partial reduction.
+      final_op: string naming the unary Op to be applied to each fully
+        reduced value.  Can be 'Id' for no operation.
+      subdiv_offsets: a list of integer offsets into the tensor at which each
+        independent subdivision should begin.  Use [0] if no subdivision should
+        be done.
+      communication_hint: preferred collective communication.  The implementation
+        may fall back to another mechanism.  Options include `auto`, `ring`, and
+        `nccl`.
+      timeout: a float. If set to a non zero, set a completion timeout to detect
+        staleness.  If the timer goes off, a DeadlineExceededError is raised.  The
+        timeout value in seconds. This feature is experimental.
 
-  Returns:
-    An Op implementing the distributed reduction.
+    Returns:
+      An Op implementing the distributed reduction.
 
-  Raises:
-    ValueError: if any of the input parameter constraints are not met.
-  """
-  if group_size < 1:
-    raise ValueError('Parameter `group_size` to all_reduce must be at least 1. '
-                     f'Received: {group_size}.')
-  return gen_collective_ops.collective_reduce(
-      t,
-      group_size=group_size,
-      group_key=group_key,
-      instance_key=instance_key,
-      merge_op=merge_op,
-      final_op=final_op,
-      subdiv_offsets=subdiv_offsets,
-      communication_hint=communication_hint.lower(),
-      timeout_seconds=timeout)
-
-
-def all_reduce_v2(t,
-                  group_size,
-                  group_key,
-                  instance_key,
-                  merge_op='Add',
-                  final_op='Id',
-                  communication_hint='auto',
-                  timeout=0,
-                  ordering_token=None,
-                  max_subdivs_per_device=-1):
-  """Reduces tensors collectively, across devices.
-
-  Args:
-    t: the tensor to be reduced.
-    group_size: an int32 tensor. The total number of tensors to be collectively
-      reduced.  Each must reside on a different device.  Should be a positive
-      integer.
-    group_key: an int32 tensor identifying the group of devices.
-    instance_key: an int32 tensor identifying the participating group of Ops.
-    merge_op: string naming the binary Op to be applied to compute each partial
-      reduction.
-    final_op: string naming the unary Op to be applied to each fully reduced
-      value.  Can be 'Id' for no operation.
-    communication_hint: preferred collective communication.  The implementation
-      may fall back to another mechanism.  Options include `auto`, `ring`, and
-      `nccl`.
-    timeout: a float. If set to a non zero, set a completion timeout to detect
-      staleness.  If the timer goes off, a DeadlineExceededError is raised.  The
-      timeout value in seconds. This feature is experimental.
-    ordering_token: an optional resource tensor to pass to the op as inputs.
-      They aren't used by the kernel but allow AutoControlDependency to order
-      the collectives with control dependencies.
-    max_subdivs_per_device: int specifying the maximum number of subdivisions a
-      tensor on a device can be divided into. The runtime uses this contraint to
-      parallelize processing of each per-device tensor. Setting to -1 disables
-      subdivision and reverts to previous behavior of not sub-dividing tensor.
-      Setting to 0 uses sytem defaults.
-
-  Returns:
-    An Op implementing the distributed reduction.
-  """
-  if ordering_token is not None:
-    ordering_token = [ordering_token]
-  return gen_collective_ops.collective_reduce_v2(
-      t,
-      group_size=group_size,
-      group_key=group_key,
-      instance_key=instance_key,
-      merge_op=merge_op,
-      final_op=final_op,
-      communication_hint=communication_hint.lower(),
-      timeout_seconds=timeout,
-      ordering_token=ordering_token or [],
-      max_subdivs_per_device=max_subdivs_per_device)
+    Raises:
+      ValueError: if any of the input parameter constraints are not met.
+    """
+    if group_size < 1:
+        raise ValueError(
+            "Parameter `group_size` to all_reduce must be at least 1. "
+            f"Received: {group_size}."
+        )
+    return gen_collective_ops.collective_reduce(
+        t,
+        group_size=group_size,
+        group_key=group_key,
+        instance_key=instance_key,
+        merge_op=merge_op,
+        final_op=final_op,
+        subdiv_offsets=subdiv_offsets,
+        communication_hint=communication_hint.lower(),
+        timeout_seconds=timeout,
+    )
 
 
-def all_gather(t,
-               group_size,
-               group_key,
-               instance_key,
-               communication_hint='auto',
-               timeout=0):
-  """Accumulates tensors collectively, across devices, along first dimension.
+def all_reduce_v2(
+    t,
+    group_size,
+    group_key,
+    instance_key,
+    merge_op="Add",
+    final_op="Id",
+    communication_hint="auto",
+    timeout=0,
+    ordering_token=None,
+    max_subdivs_per_device=-1,
+):
+    """Reduces tensors collectively, across devices.
 
-  Args:
-    t: the tensor to participate in the accumulation.
-    group_size: the total number of tensors to be collectively accumulated.
-      Each must reside on a different device. Should be a positive integer.
-    group_key: an integer identifying the group of devices.
-    instance_key: an integer identifying the participating group of Ops.
-    communication_hint: preferred collective communication. The implementation
-      may fall back to another mechanism. Options include `auto`, `ring`, and
-      `nccl`.
-    timeout: a float. If set to a non zero, set a completion timeout to detect
-      staleness. If the timer goes off, a DeadlineExceededError is raised. The
-      timeout value in seconds. This feature is experimental.
+    Args:
+      t: the tensor to be reduced.
+      group_size: an int32 tensor. The total number of tensors to be collectively
+        reduced.  Each must reside on a different device.  Should be a positive
+        integer.
+      group_key: an int32 tensor identifying the group of devices.
+      instance_key: an int32 tensor identifying the participating group of Ops.
+      merge_op: string naming the binary Op to be applied to compute each partial
+        reduction.
+      final_op: string naming the unary Op to be applied to each fully reduced
+        value.  Can be 'Id' for no operation.
+      communication_hint: preferred collective communication.  The implementation
+        may fall back to another mechanism.  Options include `auto`, `ring`, and
+        `nccl`.
+      timeout: a float. If set to a non zero, set a completion timeout to detect
+        staleness.  If the timer goes off, a DeadlineExceededError is raised.  The
+        timeout value in seconds. This feature is experimental.
+      ordering_token: an optional resource tensor to pass to the op as inputs.
+        They aren't used by the kernel but allow AutoControlDependency to order
+        the collectives with control dependencies.
+      max_subdivs_per_device: int specifying the maximum number of subdivisions a
+        tensor on a device can be divided into. The runtime uses this contraint to
+        parallelize processing of each per-device tensor. Setting to -1 disables
+        subdivision and reverts to previous behavior of not sub-dividing tensor.
+        Setting to 0 uses sytem defaults.
 
-  Returns:
-    An Op implementing the distributed operation.
-
-  Raises:
-    ValueError: if any of the input parameter constraints are not met.
-  """
-  if group_size < 1:
-    raise ValueError('Parameter `group_size` to all_gather must be at least 1.'
-                     f' Received: {group_size}.')
-  return gen_collective_ops.collective_gather(
-      t,
-      shape=[0],
-      group_size=group_size,
-      group_key=group_key,
-      instance_key=instance_key,
-      communication_hint=communication_hint.lower(),
-      timeout_seconds=timeout)
-
-
-def all_gather_v2(t,
-                  group_size,
-                  group_key,
-                  instance_key,
-                  communication_hint='auto',
-                  timeout=0,
-                  ordering_token=None):
-  """Accumulates tensors collectively, across devices, along first dimension.
-
-  Args:
-    t: the tensor to participate in the accumulation.
-    group_size: an int32 tensor, the total number of tensors to be collectively
-      accumulated. Each must reside on a different device. Should be a positive
-      integer.
-    group_key: an int32 tensor identifying the group of devices.
-    instance_key: an int32 tensor identifying the participating group of Ops.
-    communication_hint: preferred collective communication. The implementation
-      may fall back to another mechanism. Options include `auto`, `ring`, and
-      `nccl`.
-    timeout: a float. If set to a non zero, set a completion timeout to detect
-      staleness. If the timer goes off, a DeadlineExceededError is raised. The
-      timeout value in seconds. This feature is experimental.
-    ordering_token: an optional resource tensor to pass to the op as inputs.
-      They aren't used by the kernel but allow AutoControlDependency to order
-      the collectives with control dependencies.
-
-  Returns:
-    An Op implementing the distributed operation.
-  """
-  if ordering_token is not None:
-    ordering_token = [ordering_token]
-  return gen_collective_ops.collective_gather_v2(
-      t,
-      group_size=group_size,
-      group_key=group_key,
-      instance_key=instance_key,
-      communication_hint=communication_hint.lower(),
-      timeout_seconds=timeout,
-      ordering_token=ordering_token or [])
+    Returns:
+      An Op implementing the distributed reduction.
+    """
+    if ordering_token is not None:
+        ordering_token = [ordering_token]
+    return gen_collective_ops.collective_reduce_v2(
+        t,
+        group_size=group_size,
+        group_key=group_key,
+        instance_key=instance_key,
+        merge_op=merge_op,
+        final_op=final_op,
+        communication_hint=communication_hint.lower(),
+        timeout_seconds=timeout,
+        ordering_token=ordering_token or [],
+        max_subdivs_per_device=max_subdivs_per_device,
+    )
 
 
-def broadcast_send(t,
-                   shape,
-                   dtype,
-                   group_size,
-                   group_key,
-                   instance_key,
-                   communication_hint='auto',
-                   timeout=0):
-  """Broadcasts one tensor to a group of others, across devices.
+def all_gather(
+    t, group_size, group_key, instance_key, communication_hint="auto", timeout=0
+):
+    """Accumulates tensors collectively, across devices, along first dimension.
 
-  Args:
-    t: the tensor to be sent.
-    shape: the shape of the tensor being sent, which must agree with t.
-    dtype: the type of the tensor being sent, which must agree with t.
-    group_size: one plus the number of receiving tensors, i.e. the total
-      number of devices participating.  Each tensor must reside on a
-      different device.
-    group_key: an integer identifying the group of devices.
-    instance_key: an integer identifying the participating group of Ops.
-    communication_hint: preferred collective communication.  The implementation
-      may fall back to another mechanism.  Options include `auto`, `ring`, and
-      `nccl`.
-    timeout: If set to a non zero, set a completion timeout to detect staleness.
-      If the timer goes off, a DeadlineExceededError is raised.
-      The timeout value in seconds. This feature is experimental.
+    Args:
+      t: the tensor to participate in the accumulation.
+      group_size: the total number of tensors to be collectively accumulated.
+        Each must reside on a different device. Should be a positive integer.
+      group_key: an integer identifying the group of devices.
+      instance_key: an integer identifying the participating group of Ops.
+      communication_hint: preferred collective communication. The implementation
+        may fall back to another mechanism. Options include `auto`, `ring`, and
+        `nccl`.
+      timeout: a float. If set to a non zero, set a completion timeout to detect
+        staleness. If the timer goes off, a DeadlineExceededError is raised. The
+        timeout value in seconds. This feature is experimental.
 
-  Returns:
-    An Op implementing the distributed broadcast send.
+    Returns:
+      An Op implementing the distributed operation.
 
-  Raises:
-    ValueError: if any of the input parameter constraints are not met.
-
-  Note that the shape and dtype arguments appear redundant since they
-  should be obtainable from t.  The are two reasons for including
-  them.  First, the shape and type of tensors passed via broadcast must
-  be known ahead of time in their most specific form so that the receive
-  side can allocate memory for the operation and shape/type inference can
-  carry forward from there.  Including the same declarations on the
-  send side clarifies a commitment already made.  Secondly, having nearly
-  identical use syntax for send and receive sides may simplify tool-driven
-  generation of broadcast.
-  """
-  if group_size <= 1:
-    raise ValueError(
-        'Parameter `group_size` to broadcast_send must be at least 2. '
-        f'Received: {group_size}.')
-  if t.shape != shape:
-    raise ValueError(
-        'Shape of broadcast_send tensor `t` not equal to declared shape. '
-        f'Received {t.shape}, expected {shape}.')
-  if t.dtype != dtype:
-    raise ValueError(
-        'Type of broadcast_send tensor `t` not equal to declared type. '
-        f'Received {t.dtype}, expected {dtype}.')
-  return gen_collective_ops.collective_bcast_send(
-      t,
-      shape=shape,
-      group_size=group_size,
-      group_key=group_key,
-      instance_key=instance_key,
-      communication_hint=communication_hint.lower(),
-      timeout_seconds=timeout)
+    Raises:
+      ValueError: if any of the input parameter constraints are not met.
+    """
+    if group_size < 1:
+        raise ValueError(
+            "Parameter `group_size` to all_gather must be at least 1."
+            f" Received: {group_size}."
+        )
+    return gen_collective_ops.collective_gather(
+        t,
+        shape=[0],
+        group_size=group_size,
+        group_key=group_key,
+        instance_key=instance_key,
+        communication_hint=communication_hint.lower(),
+        timeout_seconds=timeout,
+    )
 
 
-def broadcast_send_v2(t,
-                      group_size,
-                      group_key,
-                      instance_key,
-                      communication_hint='auto',
-                      timeout=0):
-  """Broadcasts one tensor to a group of others, across devices.
+def all_gather_v2(
+    t,
+    group_size,
+    group_key,
+    instance_key,
+    communication_hint="auto",
+    timeout=0,
+    ordering_token=None,
+):
+    """Accumulates tensors collectively, across devices, along first dimension.
 
-  Args:
-    t: the tensor to be sent.
-    group_size: an int32 tensor.  One plus the number of receiving tensors, i.e.
-        the total number of devices participating.  Each tensor must reside on a
+    Args:
+      t: the tensor to participate in the accumulation.
+      group_size: an int32 tensor, the total number of tensors to be collectively
+        accumulated. Each must reside on a different device. Should be a positive
+        integer.
+      group_key: an int32 tensor identifying the group of devices.
+      instance_key: an int32 tensor identifying the participating group of Ops.
+      communication_hint: preferred collective communication. The implementation
+        may fall back to another mechanism. Options include `auto`, `ring`, and
+        `nccl`.
+      timeout: a float. If set to a non zero, set a completion timeout to detect
+        staleness. If the timer goes off, a DeadlineExceededError is raised. The
+        timeout value in seconds. This feature is experimental.
+      ordering_token: an optional resource tensor to pass to the op as inputs.
+        They aren't used by the kernel but allow AutoControlDependency to order
+        the collectives with control dependencies.
+
+    Returns:
+      An Op implementing the distributed operation.
+    """
+    if ordering_token is not None:
+        ordering_token = [ordering_token]
+    return gen_collective_ops.collective_gather_v2(
+        t,
+        group_size=group_size,
+        group_key=group_key,
+        instance_key=instance_key,
+        communication_hint=communication_hint.lower(),
+        timeout_seconds=timeout,
+        ordering_token=ordering_token or [],
+    )
+
+
+def broadcast_send(
+    t,
+    shape,
+    dtype,
+    group_size,
+    group_key,
+    instance_key,
+    communication_hint="auto",
+    timeout=0,
+):
+    """Broadcasts one tensor to a group of others, across devices.
+
+    Args:
+      t: the tensor to be sent.
+      shape: the shape of the tensor being sent, which must agree with t.
+      dtype: the type of the tensor being sent, which must agree with t.
+      group_size: one plus the number of receiving tensors, i.e. the total
+        number of devices participating.  Each tensor must reside on a
         different device.
-    group_key: an int32 tensor identifying the group of devices.
-    instance_key: an int32 tensor identifying the participating group of Ops.
-    communication_hint: preferred collective communication.  The implementation
-      may fall back to another mechanism.  Options include `auto`, `ring`, and
-      `nccl`.
-    timeout: If set to a non zero, set a completion timeout to detect staleness.
-      If the timer goes off, a DeadlineExceededError is raised.
-      The timeout value in seconds. This feature is experimental.
+      group_key: an integer identifying the group of devices.
+      instance_key: an integer identifying the participating group of Ops.
+      communication_hint: preferred collective communication.  The implementation
+        may fall back to another mechanism.  Options include `auto`, `ring`, and
+        `nccl`.
+      timeout: If set to a non zero, set a completion timeout to detect staleness.
+        If the timer goes off, a DeadlineExceededError is raised.
+        The timeout value in seconds. This feature is experimental.
 
-  Returns:
-    An Op implementing the distributed broadcast send.
-  """
-  return gen_collective_ops.collective_bcast_send_v2(
-      t,
-      group_size=group_size,
-      group_key=group_key,
-      instance_key=instance_key,
-      communication_hint=communication_hint.lower(),
-      timeout_seconds=timeout)
+    Returns:
+      An Op implementing the distributed broadcast send.
 
+    Raises:
+      ValueError: if any of the input parameter constraints are not met.
 
-def broadcast_recv(shape,
-                   dtype,
-                   group_size,
-                   group_key,
-                   instance_key,
-                   communication_hint='auto',
-                   timeout=0):
-  """Receives a broadcasts tensor, across devices.
-
-  Args:
-    shape: Shape of the tensor to be received.
-    dtype: Type of the tensor to be received.
-    group_size: one plus the number of receiving tensors, i.e. the total
-      number of devices participating.  Each tensor must reside on a
-      different device.
-    group_key: an integer identifying the group of devices.
-    instance_key: an integer identifying the participating group of Ops.
-    communication_hint: preferred collective communication.  The implementation
-      may fall back to another mechanism.  Options include `auto`, `ring`, and
-      `nccl`.
-    timeout: If set to a non zero, set a completion timeout to detect staleness.
-      If the timer goes off, a DeadlineExceededError is raised.
-      The timeout value in seconds. This feature is experimental.
-
-  Returns:
-    An Op implementing the broadcast receive.
-
-  Raises:
-    ValueError: if any of the input parameter constraints are not met.
-  """
-  if group_size <= 1:
-    raise ValueError(
-        'Parameter `group_size` to broadcast_send must be at least 2. '
-        f'Received: {group_size}.')
-  return gen_collective_ops.collective_bcast_recv(
-      shape=shape,
-      T=dtype,
-      group_size=group_size,
-      group_key=group_key,
-      instance_key=instance_key,
-      communication_hint=communication_hint.lower(),
-      timeout_seconds=timeout)
+    Note that the shape and dtype arguments appear redundant since they
+    should be obtainable from t.  The are two reasons for including
+    them.  First, the shape and type of tensors passed via broadcast must
+    be known ahead of time in their most specific form so that the receive
+    side can allocate memory for the operation and shape/type inference can
+    carry forward from there.  Including the same declarations on the
+    send side clarifies a commitment already made.  Secondly, having nearly
+    identical use syntax for send and receive sides may simplify tool-driven
+    generation of broadcast.
+    """
+    if group_size <= 1:
+        raise ValueError(
+            "Parameter `group_size` to broadcast_send must be at least 2. "
+            f"Received: {group_size}."
+        )
+    if t.shape != shape:
+        raise ValueError(
+            "Shape of broadcast_send tensor `t` not equal to declared shape. "
+            f"Received {t.shape}, expected {shape}."
+        )
+    if t.dtype != dtype:
+        raise ValueError(
+            "Type of broadcast_send tensor `t` not equal to declared type. "
+            f"Received {t.dtype}, expected {dtype}."
+        )
+    return gen_collective_ops.collective_bcast_send(
+        t,
+        shape=shape,
+        group_size=group_size,
+        group_key=group_key,
+        instance_key=instance_key,
+        communication_hint=communication_hint.lower(),
+        timeout_seconds=timeout,
+    )
 
 
-def broadcast_recv_v2(shape,
-                      dtype,
-                      group_size,
-                      group_key,
-                      instance_key,
-                      communication_hint='auto',
-                      timeout=0):
-  """Receives a broadcasts tensor, across devices.
+def broadcast_send_v2(
+    t, group_size, group_key, instance_key, communication_hint="auto", timeout=0
+):
+    """Broadcasts one tensor to a group of others, across devices.
 
-  Args:
-    shape: an int tensor.  Shape of the tensor to be received.
-    dtype: Type of the tensor to be received.
-    group_size: an int32 tensor.  One plus the number of receiving tensors, i.e.
-        the total number of devices participating.  Each tensor must reside on a
+    Args:
+      t: the tensor to be sent.
+      group_size: an int32 tensor.  One plus the number of receiving tensors, i.e.
+          the total number of devices participating.  Each tensor must reside on a
+          different device.
+      group_key: an int32 tensor identifying the group of devices.
+      instance_key: an int32 tensor identifying the participating group of Ops.
+      communication_hint: preferred collective communication.  The implementation
+        may fall back to another mechanism.  Options include `auto`, `ring`, and
+        `nccl`.
+      timeout: If set to a non zero, set a completion timeout to detect staleness.
+        If the timer goes off, a DeadlineExceededError is raised.
+        The timeout value in seconds. This feature is experimental.
+
+    Returns:
+      An Op implementing the distributed broadcast send.
+    """
+    return gen_collective_ops.collective_bcast_send_v2(
+        t,
+        group_size=group_size,
+        group_key=group_key,
+        instance_key=instance_key,
+        communication_hint=communication_hint.lower(),
+        timeout_seconds=timeout,
+    )
+
+
+def broadcast_recv(
+    shape,
+    dtype,
+    group_size,
+    group_key,
+    instance_key,
+    communication_hint="auto",
+    timeout=0,
+):
+    """Receives a broadcasts tensor, across devices.
+
+    Args:
+      shape: Shape of the tensor to be received.
+      dtype: Type of the tensor to be received.
+      group_size: one plus the number of receiving tensors, i.e. the total
+        number of devices participating.  Each tensor must reside on a
         different device.
-    group_key: an int32 tensor identifying the group of devices.
-    instance_key: an int32 tensor identifying the participating group of Ops.
-    communication_hint: preferred collective communication.  The implementation
-      may fall back to another mechanism.  Options include `auto`, `ring`, and
-      `nccl`.
-    timeout: If set to a non zero, set a completion timeout to detect staleness.
-      If the timer goes off, a DeadlineExceededError is raised.
-      The timeout value in seconds. This feature is experimental.
+      group_key: an integer identifying the group of devices.
+      instance_key: an integer identifying the participating group of Ops.
+      communication_hint: preferred collective communication.  The implementation
+        may fall back to another mechanism.  Options include `auto`, `ring`, and
+        `nccl`.
+      timeout: If set to a non zero, set a completion timeout to detect staleness.
+        If the timer goes off, a DeadlineExceededError is raised.
+        The timeout value in seconds. This feature is experimental.
 
-  Returns:
-    An Op implementing the broadcast receive.
-  """
-  return gen_collective_ops.collective_bcast_recv_v2(
-      T=dtype,
-      group_size=group_size,
-      group_key=group_key,
-      instance_key=instance_key,
-      shape=shape,
-      communication_hint=communication_hint.lower(),
-      timeout_seconds=timeout)
+    Returns:
+      An Op implementing the broadcast receive.
 
-
-def initialize_communicator(group_key,
-                            rank,
-                            group_size,
-                            communication_hint='auto',
-                            timeout_seconds=0):
-  """Initializes a collective communicator.
-
-  This creates a collective communicator, which represents membership to a
-  collective group identified by the group_key. It should be called once per
-  member of the group, and each member needs to be on a different device.
-  It blocks until all members of the group run this op.
-
-  Communicators of a group can only be initialized once. Trying to initialize
-  communicators for an existing group key will result in an error.
-
-  Args:
-    group_key: an int32 `tf.Tensor` identifying the group.
-    rank: an `tf.Tensor` specifying the rank of this device in the group. If
-      specified, the rank is required to be unique in the group.
-    group_size: an int32 `tf.Tensor`. The size of the group.
-    communication_hint: preferred collective communication.  The implementation
-      may fall back to another mechanism.  Options include `auto`, `ring`, and
-      `nccl`.
-    timeout_seconds: If set to a non zero, set a completion timeout to detect
-      staleness. If the timer goes off, a DeadlineExceededError is raised. The
-      timeout value in seconds. This feature is experimental.
+    Raises:
+      ValueError: if any of the input parameter constraints are not met.
+    """
+    if group_size <= 1:
+        raise ValueError(
+            "Parameter `group_size` to broadcast_send must be at least 2. "
+            f"Received: {group_size}."
+        )
+    return gen_collective_ops.collective_bcast_recv(
+        shape=shape,
+        T=dtype,
+        group_size=group_size,
+        group_key=group_key,
+        instance_key=instance_key,
+        communication_hint=communication_hint.lower(),
+        timeout_seconds=timeout,
+    )
 
 
-  Returns:
-    A resource `tf.Tensor`.
-  """
-  return gen_collective_ops.collective_initialize_communicator(
-      group_key=group_key,
-      rank=rank,
-      group_size=group_size,
-      communication_hint=communication_hint,
-      timeout_seconds=timeout_seconds)
+def broadcast_recv_v2(
+    shape,
+    dtype,
+    group_size,
+    group_key,
+    instance_key,
+    communication_hint="auto",
+    timeout=0,
+):
+    """Receives a broadcasts tensor, across devices.
+
+    Args:
+      shape: an int tensor.  Shape of the tensor to be received.
+      dtype: Type of the tensor to be received.
+      group_size: an int32 tensor.  One plus the number of receiving tensors, i.e.
+          the total number of devices participating.  Each tensor must reside on a
+          different device.
+      group_key: an int32 tensor identifying the group of devices.
+      instance_key: an int32 tensor identifying the participating group of Ops.
+      communication_hint: preferred collective communication.  The implementation
+        may fall back to another mechanism.  Options include `auto`, `ring`, and
+        `nccl`.
+      timeout: If set to a non zero, set a completion timeout to detect staleness.
+        If the timer goes off, a DeadlineExceededError is raised.
+        The timeout value in seconds. This feature is experimental.
+
+    Returns:
+      An Op implementing the broadcast receive.
+    """
+    return gen_collective_ops.collective_bcast_recv_v2(
+        T=dtype,
+        group_size=group_size,
+        group_key=group_key,
+        instance_key=instance_key,
+        shape=shape,
+        communication_hint=communication_hint.lower(),
+        timeout_seconds=timeout,
+    )
 
 
-def all_reduce_v3(communicator,
-                  t,
-                  reduction='Add',
-                  group_assignment=None,
-                  timeout_seconds=None):
-  """Reduces tensors mutually.
+def initialize_communicator(
+    group_key, rank, group_size, communication_hint="auto", timeout_seconds=0
+):
+    """Initializes a collective communicator.
 
-  Args:
-    communicator: the resource `tf.Tensor` returned from
-      `initialize_communicator`.
-    t: the `tf.Tensor` to be reduced.
-    reduction: a string. The name of the operation to reduce the values.
-      Accpeted values are `"min"`, `"max"`, `"mul"`, `"add"`.
-    group_assignment: Optional int32 `tf.Tensor` with shape [num_groups,
-      num_ranks_per_group]. `group_assignment[i]` represents the ranks in the
-      `ith` subgroup.
-    timeout_seconds: If set to a non zero, set a completion timeout to detect
-      staleness. If the timer goes off, a DeadlineExceededError is raised. The
-      timeout value in seconds. This feature is experimental.
+    This creates a collective communicator, which represents membership to a
+    collective group identified by the group_key. It should be called once per
+    member of the group, and each member needs to be on a different device.
+    It blocks until all members of the group run this op.
 
-  Returns:
-    The reduced `tf.Tensor`.
-  """
-  if group_assignment is None:
-    group_assignment = []
-  return gen_collective_ops.collective_reduce_v3(
-      communicator=communicator,
-      input=t,
-      group_assignment=group_assignment,
-      reduction=reduction,
-      timeout_seconds=timeout_seconds)
+    Communicators of a group can only be initialized once. Trying to initialize
+    communicators for an existing group key will result in an error.
+
+    Args:
+      group_key: an int32 `tf.Tensor` identifying the group.
+      rank: an `tf.Tensor` specifying the rank of this device in the group. If
+        specified, the rank is required to be unique in the group.
+      group_size: an int32 `tf.Tensor`. The size of the group.
+      communication_hint: preferred collective communication.  The implementation
+        may fall back to another mechanism.  Options include `auto`, `ring`, and
+        `nccl`.
+      timeout_seconds: If set to a non zero, set a completion timeout to detect
+        staleness. If the timer goes off, a DeadlineExceededError is raised. The
+        timeout value in seconds. This feature is experimental.
+
+
+    Returns:
+      A resource `tf.Tensor`.
+    """
+    return gen_collective_ops.collective_initialize_communicator(
+        group_key=group_key,
+        rank=rank,
+        group_size=group_size,
+        communication_hint=communication_hint,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def all_reduce_v3(
+    communicator, t, reduction="Add", group_assignment=None, timeout_seconds=None
+):
+    """Reduces tensors mutually.
+
+    Args:
+      communicator: the resource `tf.Tensor` returned from
+        `initialize_communicator`.
+      t: the `tf.Tensor` to be reduced.
+      reduction: a string. The name of the operation to reduce the values.
+        Accpeted values are `"min"`, `"max"`, `"mul"`, `"add"`.
+      group_assignment: Optional int32 `tf.Tensor` with shape [num_groups,
+        num_ranks_per_group]. `group_assignment[i]` represents the ranks in the
+        `ith` subgroup.
+      timeout_seconds: If set to a non zero, set a completion timeout to detect
+        staleness. If the timer goes off, a DeadlineExceededError is raised. The
+        timeout value in seconds. This feature is experimental.
+
+    Returns:
+      The reduced `tf.Tensor`.
+    """
+    if group_assignment is None:
+        group_assignment = []
+    return gen_collective_ops.collective_reduce_v3(
+        communicator=communicator,
+        input=t,
+        group_assignment=group_assignment,
+        reduction=reduction,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def all_to_all_v3(communicator, t, group_assignment=None, timeout_seconds=None):
-  """Exchanges tensors mutually.
+    """Exchanges tensors mutually.
 
-  Args:
-    communicator: the resource `tf.Tensor` returned from
-      `initialize_communicator`.
-    t: a `tf.Tensor`. The first dimension should have the length as the size of
-      the group. `t[i]` is sent to `rank i` within the group.
-    group_assignment: Optional int32 `tf.Tensor` with shape [num_groups,
-      num_ranks_per_group]. `group_assignment[i]` represents the ranks in the
-      `ith` subgroup.
-    timeout_seconds: If set to a non zero, set a completion timeout to detect
-      staleness. If the timer goes off, a DeadlineExceededError is raised. The
-      timeout value in seconds. This feature is experimental.
+    Args:
+      communicator: the resource `tf.Tensor` returned from
+        `initialize_communicator`.
+      t: a `tf.Tensor`. The first dimension should have the length as the size of
+        the group. `t[i]` is sent to `rank i` within the group.
+      group_assignment: Optional int32 `tf.Tensor` with shape [num_groups,
+        num_ranks_per_group]. `group_assignment[i]` represents the ranks in the
+        `ith` subgroup.
+      timeout_seconds: If set to a non zero, set a completion timeout to detect
+        staleness. If the timer goes off, a DeadlineExceededError is raised. The
+        timeout value in seconds. This feature is experimental.
 
-  Returns:
-    a `tf.Tensor`. `t[i]` is sent from `rank i` within the group.
-  """
-  if group_assignment is None:
-    group_assignment = []
-  return gen_collective_ops.collective_all_to_all_v3(
-      communicator=communicator,
-      input=t,
-      group_assignment=group_assignment,
-      timeout_seconds=timeout_seconds)
+    Returns:
+      a `tf.Tensor`. `t[i]` is sent from `rank i` within the group.
+    """
+    if group_assignment is None:
+        group_assignment = []
+    return gen_collective_ops.collective_all_to_all_v3(
+        communicator=communicator,
+        input=t,
+        group_assignment=group_assignment,
+        timeout_seconds=timeout_seconds,
+    )

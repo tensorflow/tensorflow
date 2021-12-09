@@ -27,7 +27,7 @@ specializations = [
 
 
 def acos_1d():
-  return """
+    return """
   func @acos(%arg0: tensor<?xf32>) -> tensor<?xf32> {
     %0 = "tf.Acos"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
     return %0 : tensor<?xf32>
@@ -35,7 +35,7 @@ def acos_1d():
 
 
 def acos_2d():
-  return """
+    return """
   func @acos(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %0 = "tf.Acos"(%arg0): (tensor<?x?xf32>) -> tensor<?x?xf32>
     return %0 : tensor<?x?xf32>
@@ -46,26 +46,25 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 def test_acos(fn, rank):
-  for specialize in specializations:
-    compiled = cpurt.compile(fn(), "acos", specialize, vectorize=True)
+    for specialize in specializations:
+        compiled = cpurt.compile(fn(), "acos", specialize, vectorize=True)
 
-    for _ in range(100):
-      shape = np.random.randint(0, 10, size=(rank))
-      arg = np.random.uniform(0, 10.0, size=shape).astype(np.float32)
+        for _ in range(100):
+            shape = np.random.randint(0, 10, size=(rank))
+            arg = np.random.uniform(0, 10.0, size=shape).astype(np.float32)
 
-      [res] = cpurt.execute(compiled, [arg])
-      np.testing.assert_allclose(res, np.arccos(arg), atol=1e-06)
+            [res] = cpurt.execute(compiled, [arg])
+            np.testing.assert_allclose(res, np.arccos(arg), atol=1e-06)
 
 
 class TfACosTest(test.TestCase):
+    def test_1d(self):
+        test_acos(acos_1d, 1)
 
-  def test_1d(self):
-    test_acos(acos_1d, 1)
-
-  def test_2d(self):
-    test_acos(acos_2d, 2)
+    def test_2d(self):
+        test_acos(acos_2d, 2)
 
 
 if __name__ == "__main__":
-  np.random.seed(0)
-  test.main()
+    np.random.seed(0)
+    test.main()

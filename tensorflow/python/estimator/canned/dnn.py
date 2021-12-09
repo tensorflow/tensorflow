@@ -23,6 +23,6 @@ from tensorflow_estimator.python.estimator.canned import dnn
 
 # Include attrs that start with single underscore.
 _HAS_DYNAMIC_ATTRIBUTES = True
-dnn.__all__ = [s for s in dir(dnn) if not s.startswith('__')]
+dnn.__all__ = [s for s in dir(dnn) if not s.startswith("__")]
 
 from tensorflow_estimator.python.estimator.canned.dnn import *

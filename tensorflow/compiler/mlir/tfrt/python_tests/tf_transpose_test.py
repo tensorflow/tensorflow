@@ -29,10 +29,9 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 class TfTransposeTest(test.TestCase):
-
-  def test_transpose_2d(self):
-    for specialize in specializations:
-      mlir_function = """
+    def test_transpose_2d(self):
+        for specialize in specializations:
+            mlir_function = """
         func @test(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
           %0 = "tf.Const"() { value = dense<[1, 0]> : tensor<2xi32> }
                : () -> tensor<2xi32>
@@ -41,19 +40,19 @@ class TfTransposeTest(test.TestCase):
           return %1 : tensor<?x?xf32>
         }"""
 
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+            compiled = cpurt.compile(mlir_function, "test", specialize)
 
-      d0 = np.random.randint(1, 10)
-      d1 = np.random.randint(1, 10)
+            d0 = np.random.randint(1, 10)
+            d1 = np.random.randint(1, 10)
 
-      arg0 = np.random.uniform(0, 10.0, size=(d0, d1)).astype(np.float32)
+            arg0 = np.random.uniform(0, 10.0, size=(d0, d1)).astype(np.float32)
 
-      [res] = cpurt.execute(compiled, [arg0])
-      np.testing.assert_allclose(res, np.transpose(arg0), atol=0.0)
+            [res] = cpurt.execute(compiled, [arg0])
+            np.testing.assert_allclose(res, np.transpose(arg0), atol=0.0)
 
-  def test_transpose_3d(self):
-    for specialize in specializations:
-      mlir_function = """
+    def test_transpose_3d(self):
+        for specialize in specializations:
+            mlir_function = """
         func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
           %0 = "tf.Const"() { value = dense<[0, 2, 1]> : tensor<3xi32> }
                : () -> tensor<3xi32>
@@ -66,22 +65,22 @@ class TfTransposeTest(test.TestCase):
           return %3 : tensor<?x?x?xf32>
         }"""
 
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+            compiled = cpurt.compile(mlir_function, "test", specialize)
 
-      d0 = np.random.randint(1, 10)
-      d1 = np.random.randint(1, 10)
-      d2 = np.random.randint(1, 10)
+            d0 = np.random.randint(1, 10)
+            d1 = np.random.randint(1, 10)
+            d2 = np.random.randint(1, 10)
 
-      arg0 = np.random.uniform(0, 10.0, size=(d0, d1, d2)).astype(np.float32)
+            arg0 = np.random.uniform(0, 10.0, size=(d0, d1, d2)).astype(np.float32)
 
-      [res] = cpurt.execute(compiled, [arg0])
-      ref = np.transpose(np.transpose(arg0, (0, 2, 1)), (2, 1, 0))
-      np.testing.assert_allclose(res, ref, atol=0.0)
+            [res] = cpurt.execute(compiled, [arg0])
+            ref = np.transpose(np.transpose(arg0, (0, 2, 1)), (2, 1, 0))
+            np.testing.assert_allclose(res, ref, atol=0.0)
 
-  # Without value specialization, the below tf.Transpose won't compile because
-  # the permutation vector must be statically shaped.
-  def test_transpose_value_specialization_i32(self):
-    mlir_function = """
+    # Without value specialization, the below tf.Transpose won't compile because
+    # the permutation vector must be statically shaped.
+    def test_transpose_value_specialization_i32(self):
+        mlir_function = """
       func @compute(%arg0: tensor<*xf32>,
                     %arg1: tensor<?xi32> {cpurt.constraint = "value"})
           -> tensor<*xf32> {
@@ -89,21 +88,21 @@ class TfTransposeTest(test.TestCase):
              : (tensor<*xf32>, tensor<?xi32>) -> tensor<*xf32>
         return %0 : tensor<*xf32>
       }"""
-    compiled = cpurt.compile(mlir_function, 'compute')
-    tensor = np.random.uniform(0, 10.0, size=(3, 3)).astype(np.float32)
-    perm0 = np.array([1, 0]).astype(np.int32)
-    perm1 = np.array([0, 1]).astype(np.int32)
+        compiled = cpurt.compile(mlir_function, "compute")
+        tensor = np.random.uniform(0, 10.0, size=(3, 3)).astype(np.float32)
+        perm0 = np.array([1, 0]).astype(np.int32)
+        perm1 = np.array([0, 1]).astype(np.int32)
 
-    # Test that the same compiled module with two different value-specialized
-    # arguments is handled correctly, i.e. it is specialized twice.
-    [res0] = cpurt.execute(compiled, [tensor, perm0])
-    [res1] = cpurt.execute(compiled, [tensor, perm1])
-    np.testing.assert_allclose(res0, np.transpose(tensor, perm0), atol=0.0)
-    np.testing.assert_allclose(res1, np.transpose(tensor, perm1), atol=0.0)
+        # Test that the same compiled module with two different value-specialized
+        # arguments is handled correctly, i.e. it is specialized twice.
+        [res0] = cpurt.execute(compiled, [tensor, perm0])
+        [res1] = cpurt.execute(compiled, [tensor, perm1])
+        np.testing.assert_allclose(res0, np.transpose(tensor, perm0), atol=0.0)
+        np.testing.assert_allclose(res1, np.transpose(tensor, perm1), atol=0.0)
 
-  # Test value specialization of two i64 operands.
-  def test_transpose_value_specialization_i64(self):
-    mlir_function = """
+    # Test value specialization of two i64 operands.
+    def test_transpose_value_specialization_i64(self):
+        mlir_function = """
       func @compute(%arg0: tensor<*xf32>,
                     %arg1: tensor<?xi64> {cpurt.constraint = "value"},
                     %arg2: tensor<?xi64> {cpurt.constraint = "value"})
@@ -114,31 +113,32 @@ class TfTransposeTest(test.TestCase):
              : (tensor<*xf32>, tensor<?xi64>) -> tensor<*xf32>
         return %1 : tensor<*xf32>
       }"""
-    compiled = cpurt.compile(mlir_function, 'compute')
-    tensor = np.random.uniform(0, 10.0, size=(3, 3)).astype(np.float32)
-    perm0 = np.array([1, 0]).astype(np.int64)
-    perm1 = np.array([0, 1]).astype(np.int64)
+        compiled = cpurt.compile(mlir_function, "compute")
+        tensor = np.random.uniform(0, 10.0, size=(3, 3)).astype(np.float32)
+        perm0 = np.array([1, 0]).astype(np.int64)
+        perm1 = np.array([0, 1]).astype(np.int64)
 
-    [res] = cpurt.execute(compiled, [tensor, perm0, perm1])
-    np.testing.assert_allclose(
-        res, np.transpose(np.transpose(tensor, perm0), perm1), atol=0.0)
+        [res] = cpurt.execute(compiled, [tensor, perm0, perm1])
+        np.testing.assert_allclose(
+            res, np.transpose(np.transpose(tensor, perm0), perm1), atol=0.0
+        )
 
-  # Test that without the value constraint the function cannot compile
-  # because the permutation vector is not statically shaped.
-  def test_transpose_die_without_value_specialization(self):
-    mlir_function = """
+    # Test that without the value constraint the function cannot compile
+    # because the permutation vector is not statically shaped.
+    def test_transpose_die_without_value_specialization(self):
+        mlir_function = """
       func @compute(%arg0: tensor<*xf32>,
                     %arg1: tensor<?xi64>) -> tensor<*xf32> {
         %0 = "tf.Transpose"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<?xi64>) -> tensor<*xf32>
         return %0 : tensor<*xf32>
       }"""
-    try:
-      cpurt.compile(mlir_function, 'compute')
-    except Exception:  # pylint: disable=broad-except
-      return
-    raise RuntimeError('Compilation should have failed')
+        try:
+            cpurt.compile(mlir_function, "compute")
+        except Exception:  # pylint: disable=broad-except
+            return
+        raise RuntimeError("Compilation should have failed")
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

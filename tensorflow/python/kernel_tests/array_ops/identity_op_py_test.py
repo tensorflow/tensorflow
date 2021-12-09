@@ -23,39 +23,37 @@ from tensorflow.python.platform import test
 
 
 class IdentityOpTest(test.TestCase):
+    def testInt32_6(self):
+        value = self.evaluate(array_ops.identity([1, 2, 3, 4, 5, 6]))
+        self.assertAllEqual(np.array([1, 2, 3, 4, 5, 6]), value)
 
-  def testInt32_6(self):
-    value = self.evaluate(array_ops.identity([1, 2, 3, 4, 5, 6]))
-    self.assertAllEqual(np.array([1, 2, 3, 4, 5, 6]), value)
+    def testInt32_2_3(self):
+        inp = constant_op.constant([10, 20, 30, 40, 50, 60], shape=[2, 3])
+        value = self.evaluate(array_ops.identity(inp))
+        self.assertAllEqual(np.array([[10, 20, 30], [40, 50, 60]]), value)
 
-  def testInt32_2_3(self):
-    inp = constant_op.constant([10, 20, 30, 40, 50, 60], shape=[2, 3])
-    value = self.evaluate(array_ops.identity(inp))
-    self.assertAllEqual(np.array([[10, 20, 30], [40, 50, 60]]), value)
+    def testString(self):
+        source = [b"A", b"b", b"C", b"d", b"E", b"f"]
+        value = self.evaluate(array_ops.identity(source))
+        self.assertAllEqual(source, value)
 
-  def testString(self):
-    source = [b"A", b"b", b"C", b"d", b"E", b"f"]
-    value = self.evaluate(array_ops.identity(source))
-    self.assertAllEqual(source, value)
+    def testIdentityShape(self):
+        with self.cached_session():
+            shape = [2, 3]
+            array_2x3 = [[1, 2, 3], [6, 5, 4]]
+            tensor = constant_op.constant(array_2x3)
+            self.assertEqual(shape, tensor.get_shape())
+            self.assertEqual(shape, array_ops.identity(tensor).get_shape())
+            self.assertEqual(shape, array_ops.identity(array_2x3).get_shape())
+            self.assertEqual(shape, array_ops.identity(np.array(array_2x3)).get_shape())
 
-  def testIdentityShape(self):
-    with self.cached_session():
-      shape = [2, 3]
-      array_2x3 = [[1, 2, 3], [6, 5, 4]]
-      tensor = constant_op.constant(array_2x3)
-      self.assertEqual(shape, tensor.get_shape())
-      self.assertEqual(shape, array_ops.identity(tensor).get_shape())
-      self.assertEqual(shape, array_ops.identity(array_2x3).get_shape())
-      self.assertEqual(shape,
-                       array_ops.identity(np.array(array_2x3)).get_shape())
-
-  def testCompositeTensor(self):
-    original = sparse_tensor.SparseTensor([[3]], [1.0], [100])
-    copied = array_ops.identity(original)
-    self.assertAllEqual(original.indices, copied.indices)
-    self.assertAllEqual(original.values, copied.values)
-    self.assertAllEqual(original.dense_shape, copied.dense_shape)
+    def testCompositeTensor(self):
+        original = sparse_tensor.SparseTensor([[3]], [1.0], [100])
+        copied = array_ops.identity(original)
+        self.assertAllEqual(original.indices, copied.indices)
+        self.assertAllEqual(original.values, copied.values)
+        self.assertAllEqual(original.dense_shape, copied.dense_shape)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

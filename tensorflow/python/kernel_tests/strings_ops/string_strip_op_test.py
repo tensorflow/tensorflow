@@ -19,34 +19,34 @@ from tensorflow.python.platform import test
 
 
 class StringStripOpTest(test.TestCase):
-  """ Test cases for tf.strings.strip."""
+    """Test cases for tf.strings.strip."""
 
-  def test_string_strip(self):
-    strings = ["pigs on the wing", "animals"]
+    def test_string_strip(self):
+        strings = ["pigs on the wing", "animals"]
 
-    with self.cached_session() as sess:
-      output = string_ops.string_strip(strings)
-      output = self.evaluate(output)
-      self.assertAllEqual(output, [b"pigs on the wing", b"animals"])
+        with self.cached_session() as sess:
+            output = string_ops.string_strip(strings)
+            output = self.evaluate(output)
+            self.assertAllEqual(output, [b"pigs on the wing", b"animals"])
 
-  def test_string_strip_2d(self):
-    strings = [["pigs on the wing", "animals"],
-               [" hello ", "\n\tworld \r \n"]]
+    def test_string_strip_2d(self):
+        strings = [["pigs on the wing", "animals"], [" hello ", "\n\tworld \r \n"]]
 
-    with self.cached_session() as sess:
-      output = string_ops.string_strip(strings)
-      output = self.evaluate(output)
-      self.assertAllEqual(output, [[b"pigs on the wing", b"animals"],
-                                   [b"hello", b"world"]])
+        with self.cached_session() as sess:
+            output = string_ops.string_strip(strings)
+            output = self.evaluate(output)
+            self.assertAllEqual(
+                output, [[b"pigs on the wing", b"animals"], [b"hello", b"world"]]
+            )
 
-  def test_string_strip_with_empty_strings(self):
-    strings = [" hello ", "", "world ", " \t \r \n "]
+    def test_string_strip_with_empty_strings(self):
+        strings = [" hello ", "", "world ", " \t \r \n "]
 
-    with self.cached_session() as sess:
-      output = string_ops.string_strip(strings)
-      output = self.evaluate(output)
-      self.assertAllEqual(output, [b"hello", b"", b"world", b""])
+        with self.cached_session() as sess:
+            output = string_ops.string_strip(strings)
+            output = self.evaluate(output)
+            self.assertAllEqual(output, [b"hello", b"", b"world", b""])
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()
