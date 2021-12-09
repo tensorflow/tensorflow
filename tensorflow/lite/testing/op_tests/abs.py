@@ -38,13 +38,12 @@ def make_abs_tests(options):
       "dynamic_range_quantize": [False],
       "fully_quantize": [True],
       "input_range": [(-10, 10)],
+  }, {
+      "input_shape": [[], [1], [2, 3], [1, 1, 1, 1],
+                      [1, 3, 4, 3], [3, 15, 14, 3],
+                      [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      "dtype": [tf.int16],
   }]
-  if options.use_experimental_converter:
-    test_parameters = test_parameters + [{
-        "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
-                        [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
-        "dtype": [tf.int16],
-    }]
 
   def build_graph(parameters):
     input_tensor = tf.compat.v1.placeholder(
