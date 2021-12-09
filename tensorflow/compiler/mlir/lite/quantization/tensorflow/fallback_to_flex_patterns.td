@@ -27,6 +27,12 @@ def NoFallbackAttrNotSet : Constraint<CPred<
 class FloatValueEquals<string val> : Constraint<CPred<
   "FloatValueEquals($0, " # val # ")">>;
 
+class RankEquals<string rank> : Constraint<CPred<
+  "RankEquals($0, " # rank # ")">>;
+
+def IsFusibleWithBias : Constraint<CPred<
+  "IsFusibleWithBiasOp($0.getDefiningOp())">>;
+
 // Folds TF IdentityOp with constant input.
 def RemoveConstIdentityOp : Pat<
   (TF_IdentityOp (TF_ConstOp $input)),
@@ -66,3 +72,16 @@ def MatchRelu1Pattern2 : Pat<
       $cst_negone)),
   [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One),
    (NoFallbackAttrNotSet $max_op)]>;
+
+// Keeps Add and Sub ops if the second operand is bias.
+def KeepAddV2Op : Pat<
+  (TF_AddV2Op:$add_op $input, (TF_ConstOp:$bias_cst $bias)),
+  (MarkNoFallback (TF_AddV2Op $input, $bias_cst)),
+  [(IsFusibleWithBias $input), (RankEquals<"1"> $bias_cst),
+  (NoFallbackAttrNotSet $add_op)]>;
+
+def KeepSubOp : Pat<
+  (TF_SubOp:$sub_op $input, (TF_ConstOp:$bias_cst $bias)),
+  (MarkNoFallback (TF_SubOp $input, $bias_cst)),
+  [(IsFusibleWithBias $input), (RankEquals<"1"> $bias_cst),
+   (NoFallbackAttrNotSet $sub_op)]>;
