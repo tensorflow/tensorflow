@@ -67,6 +67,7 @@ EOF
   "${BAZEL_WRAPPER_PATH}" \
     --host_jvm_args=-Dbazel.DigestFunction=SHA256 \
     test \
+    --profile="${KOKORO_ARTIFACTS_DIR}/profile.json" \
     --test_output=all \
     tensorflow/tools/ci_build:${SANITY_OUT_TARGET}
 

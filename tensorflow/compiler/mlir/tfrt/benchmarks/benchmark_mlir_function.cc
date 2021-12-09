@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark_mlir_function.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <utility>
 
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Parser.h"  // from @llvm-project
@@ -148,6 +151,7 @@ void RunCpurtBenchmark(::testing::benchmark::State& state,
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
+    call_frame.args[0] = nullptr;  // reset kernel context argument
     (*executable)->Execute(call_frame, exec_ctx);
     if (auto err =
             (*executable)->ReturnResults(converter, exec_ctx, &call_frame))
@@ -243,7 +247,8 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
 
   // Create a HostContext for running TFRT functions. Concurrent work queue acts
   // similar to the Tensorflow `inter-op` thread pool, so we'll match the size.
-  auto host = CreateMultiThreadedHostContext(num_threads);
+  auto host = num_threads ? CreateMultiThreadedHostContext(num_threads)
+                          : CreateSingleThreadedHostContext();
   tfrt::RegisterStaticKernels(host->GetMutableRegistry());
 
   // Convert module to BEF.

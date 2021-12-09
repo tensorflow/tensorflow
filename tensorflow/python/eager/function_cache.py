@@ -35,6 +35,8 @@ from tensorflow.python.util import memory
 _ENCODE_VARIABLES_BY_RESOURCE_ID = True
 # TODO(b/201533914): Remove this flag and related args
 USE_FULL_TRACE_TYPE = True
+# TODO(b/182990542): Enable and remove flag when stable.
+DELETE_WITH_WEAKREF = False
 
 ExecutionContext = collections.namedtuple("ExecutionContext", [
     "parent_graph",
@@ -193,7 +195,8 @@ class FunctionCache:
       concrete: The concrete function to be added to the cache.
     """
     self._primary[key] = concrete
-    deletion_observer.add_listener(lambda: self.delete(key))
+    deletion_observer.add_listener(
+        lambda: self.delete(key) if DELETE_WITH_WEAKREF else None)
 
   def clear(self):
     """Removes all concrete functions from the cache."""

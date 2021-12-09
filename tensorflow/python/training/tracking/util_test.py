@@ -741,7 +741,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     load_status.assert_existing_objects_matched().run_restore_ops()
 
   @test_util.run_in_graph_and_eager_modes
-  def test_write_checkpoint_from_function(self):
+  def test_write_checkpoint_path_str_from_function(self):
+
     checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
     save_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(1.))
 
@@ -768,6 +769,58 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     status.assert_consumed()
     status.run_restore_ops()
     self.assertEqual(3., self.evaluate(load_checkpoint.v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_write_checkpoint_path_tensor_from_function(self):
+    # Same as the previous test, but the path is a tensor not a python string.
+    checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
+
+    checkpoint_prefix_tensor = constant_op.constant(checkpoint_prefix)
+
+    save_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(1.))
+
+    @def_function.function
+    def _write_checkpoint(prefix):
+      save_path = save_checkpoint.write(prefix)
+      return save_path
+
+    self.evaluate([save_checkpoint.v.initializer])
+    self.evaluate(_write_checkpoint(checkpoint_prefix_tensor))
+    load_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(0.))
+    # Use read() instead of restore() which allows us to check that all
+    # existing objects were loaded.
+    status = load_checkpoint.read(checkpoint_prefix)
+    status.assert_existing_objects_matched()
+    status.assert_consumed()
+    status.run_restore_ops()
+    self.assertEqual(1., self.evaluate(load_checkpoint.v))
+    self.evaluate(save_checkpoint.v.assign(3.))
+    self.evaluate(_write_checkpoint(checkpoint_prefix_tensor))
+    self.evaluate(save_checkpoint.v.assign(0.))
+    status = load_checkpoint.read(checkpoint_prefix)
+    status.assert_existing_objects_matched()
+    status.assert_consumed()
+    status.run_restore_ops()
+    self.assertEqual(3., self.evaluate(load_checkpoint.v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_write_checkpoint_path_tensor_does_not_exist_from_function(self):
+    # Same as the previous test, but the path is a tensor not a python string.
+    checkpoint_prefix = os.path.join(
+        self.get_temp_dir(), "DOES_NOT_EXIST", "ckpt")
+
+    checkpoint_prefix_tensor = constant_op.constant(checkpoint_prefix)
+
+    save_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(1.))
+
+    @def_function.function
+    def _write_checkpoint(prefix):
+      save_path = save_checkpoint.write(prefix)
+      return save_path
+
+    self.evaluate([save_checkpoint.v.initializer])
+    with self.assertRaises(errors_impl.NotFoundError):
+      self.evaluate(_write_checkpoint(checkpoint_prefix_tensor))
 
   def test_inititialize_with_data_structures(self):
     checkpoint = trackable_utils.Checkpoint(

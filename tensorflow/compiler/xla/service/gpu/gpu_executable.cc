@@ -46,10 +46,13 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform.h"
 
 #if BEF_EXECUTABLE
+#include "llvm/Support/SourceMgr.h"
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
@@ -455,6 +458,7 @@ static const char kDefaultHostDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
 
 struct CoreRuntimeAndWorkQueue {
+  mlir::MLIRContext* mlir_ctx;
   tfrt::CoreRuntime* core_runtime;
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue;
 };
@@ -462,44 +466,34 @@ struct CoreRuntimeAndWorkQueue {
 // TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc when
 // tensorflow/core/tfrt/runtime is generally available in OSS.
 StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
-  // TODO(hanbinyoon): Make these configurable.
-  int tfrt_num_threads = tensorflow::port::MaxParallelism();
-  int tfrt_num_blocking_threads = 16;
+  static auto runtime_and_queue_or =
+      [&]() -> StatusOr<CoreRuntimeAndWorkQueue> {
+    // TODO(hanbinyoon): Make these configurable.
+    int num_threads = tensorflow::port::MaxParallelism();
+    int num_blocking_threads = 16;
 
-  static StatusOr<CoreRuntimeAndWorkQueue>* runtime_and_queue_or =
-      [&](int num_threads, int num_blocking_threads) {
-        // Create work queue.
-        auto work_queue = tensorflow::tfrt_stub::WrapDefaultWorkQueue(
-            tfrt::CreateMultiThreadedWorkQueue(num_threads,
-                                               num_blocking_threads));
-        if (work_queue == nullptr) {
-          auto status =
-              tensorflow::errors::Internal("Failed to create TFRT work queue.");
-          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
-        }
-        auto* work_queue_ptr = work_queue.get();
+    // Create work queue.
+    auto work_queue = tensorflow::tfrt_stub::WrapDefaultWorkQueue(
+        tfrt::CreateMultiThreadedWorkQueue(num_threads, num_blocking_threads));
+    if (work_queue == nullptr) {
+      return tensorflow::errors::Internal("Failed to create TFRT work queue.");
+    }
+    auto* work_queue_ptr = work_queue.get();
+    auto* mlir_ctx = new mlir::MLIRContext;
 
-        // Create core runtime.
-        auto expected_core_runtime = tfrt::CoreRuntime::Create(
-            [](const tfrt::DecodedDiagnostic& diag) {
-              LOG(ERROR) << tfrt::StrCat(diag);
-            },
-            tfrt::CreateMallocAllocator(), std::move(work_queue),
-            kDefaultHostDeviceName);
-        if (!expected_core_runtime) {
-          auto error = expected_core_runtime.takeError();
-          auto status =
-              tensorflow::errors::Internal(llvm::toString(std::move(error)));
-          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
-        }
+    // Create core runtime.
+    auto expected_core_runtime = tfrt::CoreRuntime::Create(
+        tfrt::gpu::GetDiagHandler(mlir_ctx), tfrt::CreateMallocAllocator(),
+        std::move(work_queue), kDefaultHostDeviceName);
+    if (!expected_core_runtime) {
+      auto error = expected_core_runtime.takeError();
+      return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+    }
 
-        auto runtime_and_queue = CoreRuntimeAndWorkQueue{
-            expected_core_runtime->release(), work_queue_ptr};
-        return new StatusOr<CoreRuntimeAndWorkQueue>(runtime_and_queue);
-      }(tfrt_num_threads, tfrt_num_blocking_threads);
-
-  TF_RETURN_IF_ERROR(runtime_and_queue_or->status());
-  return runtime_and_queue_or->ValueOrDie();
+    return CoreRuntimeAndWorkQueue{mlir_ctx, expected_core_runtime->release(),
+                                   work_queue_ptr};
+  }();
+  return runtime_and_queue_or;
 }
 
 // TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc when
@@ -600,13 +594,21 @@ static Status ExecuteBef(const std::string& module_name,
   if (function->num_results() != 1)
     return InternalError("Unexpected result count.");
 
+  // Capture errors and augment with source.
+  std::string diag_str;
+  llvm::raw_string_ostream diag_os(diag_str);
+  llvm::SourceMgr src_mgr;
+  mlir::SourceMgrDiagnosticHandler handler(src_mgr, runtime_and_queue.mlir_ctx,
+                                           diag_os);
+
   // Execute the function.
   function->Execute(exec_ctx, args, {result});
 
   // Wait for async execution to complete.
   tfrt::Await(exec_ctx, llvm::makeArrayRef(result));
 
-  // Report error if any.
+  // Report error if any, from handler and result.
+  if (diag_os.tell()) return tensorflow::errors::Internal(diag_os.str());
   if (auto* error = result->GetErrorIfPresent())
     return tensorflow::errors::Internal(tfrt::StrCat(*error));
 

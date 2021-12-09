@@ -1821,4 +1821,51 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
   return Status::OK();
 }
 
+/*static*/ int64_t ShapeUtil::ArraySize(const Shape& shape) {
+  CHECK(shape.IsArray());
+  CHECK(!shape.layout().tiles().empty());
+
+  auto tile_dimensions = shape.layout().tiles(0).dimensions();
+  auto shape_dimensions = shape.dimensions();
+  auto minor_to_major = shape.layout().minor_to_major();
+  int64_t shape_dim_size = shape_dimensions.size();
+  int64_t tile_dim_size = tile_dimensions.size();
+
+  // Use the top-level tile for shape size calculation. We assume the
+  // sub-tiles won't cause additional padding.
+  int64_t num_of_elements = 1;
+  int64_t dim = 0;
+  for (dim = 0; dim < tile_dim_size; dim++) {
+    int64_t dim_size =
+        dim < shape_dim_size ? shape_dimensions[minor_to_major[dim]] : 1;
+    num_of_elements *=
+        RoundUpToNearest(dim_size, tile_dimensions[tile_dim_size - dim - 1]);
+  }
+  for (; dim < shape_dim_size; dim++) {
+    int64_t dim_size = shape_dimensions[minor_to_major[dim]];
+    num_of_elements *= dim_size;
+  }
+  if (shape.layout().element_size_in_bits() != 0) {
+    const int64_t kBitsPerByte = 8;
+    return CeilOfRatio(num_of_elements * shape.layout().element_size_in_bits(),
+                       static_cast<int64_t>(kBitsPerByte));
+  }
+  return num_of_elements * ByteSizeOfPrimitiveType(shape.element_type());
+}
+
+/*static*/ int64_t ShapeUtil::ArrayDataSize(const Shape& shape) {
+  CHECK(shape.IsArray());
+  absl::InlinedVector<int64_t, 4> indices;
+  for (int64_t dim : shape.dimensions()) {
+    indices.push_back(dim - 1);
+  }
+  int64_t size = LayoutUtil::LinearIndex(shape, indices) + 1;
+  if (shape.layout().element_size_in_bits() != 0) {
+    const int64_t kBitsPerByte = 8;
+    return CeilOfRatio(size * shape.layout().element_size_in_bits(),
+                       static_cast<int64_t>(kBitsPerByte));
+  }
+  return (size * ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()));
+}
+
 }  // namespace xla

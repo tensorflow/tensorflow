@@ -808,22 +808,6 @@ def tf_cc_shared_library(
             name_os_major = name_os
             name_os_full = name_os
 
-        if name_os != name_os_major:
-            native.genrule(
-                name = name_os + "_sym",
-                outs = [name_os],
-                srcs = [name_os_major],
-                output_to_bindir = 1,
-                cmd = "ln -sf $$(basename $<) $@",
-            )
-            native.genrule(
-                name = name_os_major + "_sym",
-                outs = [name_os_major],
-                srcs = [name_os_full],
-                output_to_bindir = 1,
-                cmd = "ln -sf $$(basename $<) $@",
-            )
-
         soname = name_os_major.split("/")[-1]
 
         data_extra = []
@@ -840,14 +824,15 @@ def tf_cc_shared_library(
             win_def_file = win_def_file,
         )
 
-        cc_shared_library_name = name + "_ccsharedlib"
+        cc_shared_library_name = name_os_full + "_ccsharedlib"
+        shared_lib_name = name_os_full + "_sharedlibname"
         cc_shared_library(
             name = cc_shared_library_name,
             roots = [cc_library_name],
             static_deps = static_deps,
             data = data + data_extra,
-            shared_lib_name = name_os_full,
-            user_link_flags = linkopts + _rpath_user_link_flags(name_os_full) + select({
+            shared_lib_name = shared_lib_name,
+            user_link_flags = linkopts + _rpath_user_link_flags(shared_lib_name) + select({
                 clean_dep("//tensorflow:ios"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
@@ -863,10 +848,31 @@ def tf_cc_shared_library(
             visibility = visibility,
         )
         native.alias(
-            name = name_os_full,
+            name = shared_lib_name,
             actual = cc_shared_library_name,
             visibility = visibility,
         )
+        filegroup(
+            name = name_os_full,
+            srcs = [shared_lib_name],
+            output_group = "custom_name_shared_library",
+        )
+
+        if name_os != name_os_major:
+            native.genrule(
+                name = name_os + "_sym",
+                outs = [name_os],
+                srcs = [name_os_major],
+                output_to_bindir = 1,
+                cmd = "ln -sf $$(basename $<) $@",
+            )
+            native.genrule(
+                name = name_os_major + "_sym",
+                outs = [name_os_major],
+                srcs = [name_os_full],
+                output_to_bindir = 1,
+                cmd = "ln -sf $$(basename $<) $@",
+            )
 
     flat_names = [item for sublist in names for item in sublist]
     if name not in flat_names:
@@ -1619,10 +1625,16 @@ def tf_java_test(
         kernels = [],
         *args,
         **kwargs):
+    cc_library_name = name + "_cclib"
+    cc_library(
+        # TODO(b/183579145): Remove when cc_shared_library supports CcInfo or JavaInfo providers .
+        name = cc_library_name,
+        srcs = tf_binary_additional_srcs(fullversion = True) + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
+    )
     native.java_test(
         name = name,
         srcs = srcs,
-        deps = deps + tf_binary_additional_srcs(fullversion = True) + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
+        deps = deps + [cc_library_name],
         *args,
         **kwargs
     )
@@ -3001,8 +3013,177 @@ def pybind_extension(
         compatible_with = compatible_with,
     )
 
-# buildozer: enable=function-docstring-args
+# copybara:comment_begin(oss only)
+def pybind_ccsharedlib_extension(
+        name,
+        srcs,
+        module_name,
+        hdrs = [],
+        static_deps = [],
+        deps = [],
+        additional_exported_symbols = [],
+        compatible_with = None,
+        copts = [],
+        data = [],
+        defines = [],
+        deprecation = None,
+        features = [],
+        link_in_framework = False,
+        licenses = None,
+        linkopts = [],
+        pytype_deps = [],
+        pytype_srcs = [],
+        restricted_to = None,
+        srcs_version = "PY3",
+        testonly = None,
+        visibility = None):
+    """Builds a generic Python extension module."""
+    _ignore = [module_name]
+    p = name.rfind("/")
+    if p == -1:
+        sname = name
+        prefix = ""
+    else:
+        sname = name[p + 1:]
+        prefix = name[:p + 1]
+    so_file = "%s%s.so" % (prefix, sname)
+    pyd_file = "%s%s.pyd" % (prefix, sname)
+    exported_symbols = [
+        "init%s" % sname,
+        "init_%s" % sname,
+        "PyInit_%s" % sname,
+    ] + additional_exported_symbols
 
+    exported_symbols_file = "%s-exported-symbols.lds" % name
+    version_script_file = "%s-version-script.lds" % name
+
+    exported_symbols_output = "\n".join(["_%s" % symbol for symbol in exported_symbols])
+    version_script_output = "\n".join([" %s;" % symbol for symbol in exported_symbols])
+
+    native.genrule(
+        name = name + "_exported_symbols",
+        outs = [exported_symbols_file],
+        cmd = "echo '%s' >$@" % exported_symbols_output,
+        output_licenses = ["unencumbered"],
+        visibility = ["//visibility:private"],
+        testonly = testonly,
+    )
+
+    native.genrule(
+        name = name + "_version_script",
+        outs = [version_script_file],
+        cmd = "echo '{global:\n%s\n local: *;};' >$@" % version_script_output,
+        output_licenses = ["unencumbered"],
+        visibility = ["//visibility:private"],
+        testonly = testonly,
+    )
+
+    # TODO(rostam): Add libtensorflow_framework.so to `dynamic_deps`.
+    if link_in_framework:
+        srcs += tf_binary_additional_srcs()
+
+    cc_library_name = so_file + "_cclib"
+    cc_library(
+        name = cc_library_name,
+        hdrs = hdrs,
+        srcs = srcs,
+        deps = deps,
+        compatible_with = compatible_with,
+        copts = copts + [
+            "-fno-strict-aliasing",
+            "-fexceptions",
+        ] + select({
+            clean_dep("//tensorflow:windows"): [],
+            "//conditions:default": [
+                "-fvisibility=hidden",
+            ],
+        }),
+        defines = defines,
+        features = features + ["-use_header_modules"],
+        restricted_to = restricted_to,
+    )
+    cc_shared_library_name = name + "_ccsharedlib"
+    cc_shared_library(
+        name = cc_shared_library_name,
+        roots = [cc_library_name],
+        static_deps = static_deps,
+        data = data,
+        additional_linker_inputs = [
+            exported_symbols_file,
+            version_script_file,
+        ],
+        compatible_with = compatible_with,
+        deprecation = deprecation,
+        features = features + ["-use_header_modules"],
+        licenses = licenses,
+        restricted_to = restricted_to,
+        shared_lib_name = so_file,
+        testonly = testonly,
+        user_link_flags = linkopts + _rpath_user_link_flags(name) + select({
+            clean_dep("//tensorflow:macos"): [
+                # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
+                # not being exported.  There should be a better way to deal with this.
+                "-Wl,-w",
+                "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+            ],
+            clean_dep("//tensorflow:windows"): [],
+            "//conditions:default": [
+                "-Wl,--version-script",
+                "$(location %s)" % version_script_file,
+            ],
+        }),
+        visibility = visibility,
+    )
+    native.alias(
+        name = so_file,
+        actual = cc_shared_library_name,
+        compatible_with = compatible_with,
+        deprecation = deprecation,
+        features = features + ["-use_header_modules"],
+        restricted_to = restricted_to,
+        testonly = testonly,
+        visibility = visibility,
+    )
+
+    # Solution to avoid the error "variable '$<' : more than one input file."
+    filegroup_name = name + "_filegroup"
+    filegroup(
+        name = filegroup_name,
+        srcs = [so_file],
+        output_group = "custom_name_shared_library",
+    )
+
+    native.genrule(
+        name = name + "_pyd_copy",
+        srcs = [filegroup_name],
+        outs = [pyd_file],
+        cmd = "cp $< $@",
+        output_to_bindir = True,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
+        testonly = testonly,
+    )
+    native.py_library(
+        name = name,
+        data = select({
+            "@org_tensorflow//tensorflow:windows": [pyd_file],
+            "//conditions:default": [so_file],
+        }) + pytype_srcs,
+        deps = pytype_deps,
+        srcs_version = srcs_version,
+        licenses = licenses,
+        testonly = testonly,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
+    )
+
+# copybara:comment_end
+
+# buildozer: enable=function-docstring-args
 def tf_python_pybind_extension(
         name,
         srcs,

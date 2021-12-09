@@ -706,7 +706,7 @@ func @reshape_3D_2D(%arg0: tensor<12x1x42xi32>) -> tensor<12x42xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x1x42xi32>) -> tensor<12x42xi32>
   return %0 : tensor<12x42xi32>
 }
-// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1], [2]]
+// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0], [1, 2]]
 
 // -----
 
@@ -724,7 +724,7 @@ func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x42xi32>) -> tensor<12x1x42x1xi32>
   return %0 : tensor<12x1x42x1xi32>
 }
-// CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0, 1], [2, 3]]
+// CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0], [1, 2, 3]]
 
 // -----
 
@@ -776,6 +776,49 @@ func @reshape_dynamic_in(%arg0: tensor<?x?xf32>) -> tensor<2x4x5xf32> {
 // CHECK: %[[FLATTEN:.*]] = linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1]] : tensor<?x?xf32> into tensor<?xf32>
 // CHECK: %[[CAST:.*]] = tensor.cast %[[FLATTEN]] : tensor<?xf32> to tensor<40xf32>
 // CHECK: linalg.tensor_expand_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<40xf32> into tensor<2x4x5xf32>
+
+// -----
+
+// CHECK-LABEL: func @reshape_1D_2D_dynamic
+func @reshape_1D_2D_dynamic(%arg0: tensor<?xi32>) -> tensor<1x3xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<?xi32>) -> tensor<1x3xi32>
+  return %0 : tensor<1x3xi32>
+}
+// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<?xi32> to tensor<3xi32>
+// CHECK: linalg.tensor_expand_shape %[[CAST]] {{\[}}[0, 1]] : tensor<3xi32> into tensor<1x3xi32>
+
+// -----
+
+// CHECK-LABEL: func @reshape_2D_1D_dynamic
+func @reshape_2D_1D_dynamic(%arg0: tensor<?x?xi32>) -> tensor<3xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<?x?xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+// CHECK: %[[FLATTEN:.*]] = linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1]] : tensor<?x?xi32> into tensor<?xi32>
+// CHECK: %[[CAST:.*]] = tensor.cast %[[FLATTEN]] : tensor<?xi32> to tensor<3xi32>
+// CHECK: return %[[CAST:.*]] : tensor<3xi32>
+
+// -----
+
+// CHECK-LABEL: func @reshape_1D_0D_dynamic
+func @reshape_1D_0D_dynamic(%arg0: tensor<?xi32>) -> tensor<i32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<?xi32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<?xi32> to tensor<1xi32>
+// CHECK: %[[COLLAPSE:.*]] = linalg.tensor_collapse_shape %[[CAST]] {{\[}}] : tensor<1xi32> into tensor<i32>
+// CHECK: return %[[COLLAPSE:.*]] : tensor<i32>
+
+// -----
+
+// CHECK-LABEL: func @reshape_2D_0D_dynamic
+func @reshape_2D_0D_dynamic(%arg0: tensor<?x?xi32>) -> tensor<i32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<?x?xi32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<?x?xi32> to tensor<1x1xi32>
+// CHECK: %[[COLLAPSE:.*]] = linalg.tensor_collapse_shape %[[CAST]] {{\[}}] : tensor<1x1xi32> into tensor<i32>
+// CHECK: return %[[COLLAPSE:.*]] : tensor<i32>
 
 // -----
 

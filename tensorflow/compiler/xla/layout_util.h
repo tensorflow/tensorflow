@@ -188,6 +188,14 @@ class LayoutUtil {
   // Compute a hash for `layout`.
   static size_t Hash(const Layout& layout);
 
+  // Returns the linearized index of the cell at the given indices. The unit
+  // of the offset is in elements of the shape.
+  //
+  // NOTE: this method only uses the top-level tile and disregards the sub-tile
+  // in the layout. This method is also performance critical.
+  static int64_t LinearIndex(const Shape& shape,
+                             absl::Span<const int64_t> indices);
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
 };

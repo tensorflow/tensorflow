@@ -23,10 +23,19 @@ limitations under the License.
 
 namespace xla {
 
+// Converts an MHLO/CHLO module string to an mlir::Module.
+StatusOr<mlir::OwningModuleRef> ParseMlirModuleString(
+    absl::string_view mlir_module_str, mlir::MLIRContext& context);
+
 // Converts an CHLO/MHLO module to XLA HLO.
 Status MlirToXlaComputation(mlir::ModuleOp module,
                             XlaComputation& xla_computation,
                             bool use_tuple_args, bool return_tuple);
+
+// Converts an MHLO/CHLO module string to an XLA computation.
+Status ParseMlirModuleStringAndConvertToXlaComputation(
+    absl::string_view mlir_module_str, XlaComputation& xla_computation,
+    bool use_tuple_args, bool return_tuple);
 
 }  // namespace xla
 

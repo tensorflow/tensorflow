@@ -821,6 +821,31 @@ def convert_with_tensorrt(args):
         output_saved_model_dir=args.output_dir)
 
 
+def freeze_model(args):
+  """Function triggered by freeze_model command.
+
+  Args:
+    args: A namespace parsed from command line.
+  """
+  checkpoint_path = (
+      args.checkpoint_path
+      or os.path.join(args.dir, 'variables/variables'))
+  if not args.variables_to_feed:
+    variables_to_feed = []
+  elif args.variables_to_feed.lower() == 'all':
+    variables_to_feed = None  # We will identify them after.
+  else:
+    variables_to_feed = args.variables_to_feed.split(',')
+
+  saved_model_aot_compile.freeze_model(
+      checkpoint_path=checkpoint_path,
+      meta_graph_def=saved_model_utils.get_meta_graph_def(
+          args.dir, args.tag_set),
+      signature_def_key=args.signature_def_key,
+      variables_to_feed=variables_to_feed,
+      output_prefix=args.output_prefix)
+
+
 def aot_compile_cpu(args):
   """Function triggered by aot_compile_cpu command.
 
@@ -1059,6 +1084,70 @@ def add_convert_subparser(subparsers):
   parser_convert_with_tensorrt.set_defaults(func=convert_with_tensorrt)
 
 
+def _parse_common_freeze_and_aot(parser_compile):
+  """Parse arguments shared by freeze model and aot_compile."""
+  parser_compile.add_argument(
+      '--dir',
+      type=str,
+      required=True,
+      help='directory containing the SavedModel to convert')
+  parser_compile.add_argument(
+      '--output_prefix',
+      type=str,
+      required=True,
+      help=('output directory + filename prefix for the resulting header(s) '
+            'and object file(s)'))
+  parser_compile.add_argument(
+      '--tag_set',
+      type=str,
+      required=True,
+      help='tag-set of graph in SavedModel to convert, separated by \',\'')
+  parser_compile.add_argument(
+      '--signature_def_key',
+      type=str,
+      default=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+      help=('signature_def key to use.  '
+            'default: DEFAULT_SERVING_SIGNATURE_DEF_KEY'))
+  parser_compile.add_argument(
+      '--checkpoint_path',
+      type=str,
+      default=None,
+      help='Custom checkpoint to use (default: use the SavedModel variables)')
+  parser_compile.add_argument(
+      '--variables_to_feed',
+      type=str,
+      default='',
+      help=('The names of variables that will be fed into the network.  '
+            'Options are: empty (default; all variables are frozen, none may '
+            'be fed), \'all\' (all variables may be fed), or a '
+            'comma-delimited list of names of variables that may be fed.  In '
+            'the last case, the non-fed variables will be frozen in the graph.'
+            '**NOTE** Any variables passed to `variables_to_feed` *must be set '
+            'by the user*.  These variables will NOT be frozen and their '
+            'values will be uninitialized in the compiled object '
+            '(this applies to all input arguments from the signature as '
+            'well).'))
+
+
+def add_freeze_model_subparser(subparsers):
+  """Add parser for `freeze_model`."""
+  compile_msg = '\n'.join(
+      ['Usage example:',
+       'To freeze a SavedModel in preparation for tfcompile:',
+       '$saved_model_cli freeze_model \\',
+       '   --dir /tmp/saved_model \\',
+       '   --tag_set serve \\',
+       '   --output_prefix /tmp/saved_model_xla_aot',
+      ])
+
+  parser_compile = subparsers.add_parser(
+      'freeze_model',
+      description=compile_msg,
+      formatter_class=argparse.RawTextHelpFormatter)
+  _parse_common_freeze_and_aot(parser_compile)
+  parser_compile.set_defaults(func=freeze_model)
+
+
 def add_aot_compile_cpu_subparser(subparsers):
   """Add parser for `aot_compile_cpu`."""
   compile_msg = '\n'.join(
@@ -1089,28 +1178,7 @@ def add_aot_compile_cpu_subparser(subparsers):
       'aot_compile_cpu',
       description=compile_msg,
       formatter_class=argparse.RawTextHelpFormatter)
-  parser_compile.add_argument(
-      '--dir',
-      type=str,
-      required=True,
-      help='directory containing the SavedModel to convert')
-  parser_compile.add_argument(
-      '--output_prefix',
-      type=str,
-      required=True,
-      help=('output directory + filename prefix for the resulting header(s) '
-            'and object file(s)'))
-  parser_compile.add_argument(
-      '--tag_set',
-      type=str,
-      required=True,
-      help='tag-set of graph in SavedModel to convert, separated by \',\'')
-  parser_compile.add_argument(
-      '--signature_def_key',
-      type=str,
-      default=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
-      help=('signature_def key to use.  '
-            'default: DEFAULT_SERVING_SIGNATURE_DEF_KEY'))
+  _parse_common_freeze_and_aot(parser_compile)
   parser_compile.add_argument(
       '--target_triple',
       type=str,
@@ -1128,11 +1196,6 @@ def add_aot_compile_cpu_subparser(subparsers):
             'a complete list of options, run (for x86 targets): '
             '`llc -march=x86 -mcpu=help`'))
   parser_compile.add_argument(
-      '--checkpoint_path',
-      type=str,
-      default=None,
-      help='Custom checkpoint to use (default: use the SavedModel variables)')
-  parser_compile.add_argument(
       '--cpp_class',
       type=str,
       required=True,
@@ -1143,20 +1206,6 @@ def add_aot_compile_cpu_subparser(subparsers):
             'may precede the class name, separated by double-colons.  '
             'The class will be generated in the given namespace(s), or if no '
             'namespaces are given, within the global namespace.'))
-  parser_compile.add_argument(
-      '--variables_to_feed',
-      type=str,
-      default='',
-      help=('The names of variables that will be fed into the network.  '
-            'Options are: empty (default; all variables are frozen, none may '
-            'be fed), \'all\' (all variables may be fed), or a '
-            'comma-delimited list of names of variables that may be fed.  In '
-            'the last case, the non-fed variables will be frozen in the graph.'
-            '**NOTE** Any variables passed to `variables_to_feed` *must be set '
-            'by the user*.  These variables will NOT be frozen and their '
-            'values will be uninitialized in the compiled object '
-            '(this applies to all input arguments from the signature as '
-            'well).'))
   parser_compile.add_argument(
       '--multithreading',
       type=str,
@@ -1197,6 +1246,8 @@ def create_parser():
   # aot_compile_cpu command
   add_aot_compile_cpu_subparser(subparsers)
 
+  # freeze_model command
+  add_freeze_model_subparser(subparsers)
   return parser
 
 

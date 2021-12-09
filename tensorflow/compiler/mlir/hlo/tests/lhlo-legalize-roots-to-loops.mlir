@@ -1,5 +1,4 @@
-// TODO(b/203645380): Re-enable the test.
-// RUN: true || mlir-hlo-opt %s -lhlo-legalize-roots-to-parallel-loops -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -lhlo-legalize-roots-to-parallel-loops -split-input-file | FileCheck %s
 
 
 // CHECK-LABEL: @non_fusion_elemwise_gpu

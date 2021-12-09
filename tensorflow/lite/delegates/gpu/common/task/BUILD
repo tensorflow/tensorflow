@@ -80,6 +80,9 @@ cc_library(
 cc_library(
     name = "gpu_tensor",
     hdrs = ["gpu_tensor.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+    ],
 )
 
 cc_library(

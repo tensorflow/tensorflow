@@ -52,6 +52,8 @@ def HLOClient_Dialect : Dialect {
     and provide conversion patterns to fully materialize into lower level
     dialects.
   }];
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 class HLOClient_Op<string mnemonic, list<OpTrait> traits> :

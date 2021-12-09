@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -62,14 +63,16 @@ class SparseSoftmaxOp : public OpKernel {
                 errors::InvalidArgument(
                     "Input should have rank >= 2, but received shape: ",
                     shape_t->SummarizeValue(3)));
+    TensorShape shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                                shape_t->flat<int64_t>(), &shape));
 
     const int64_t nnz = indices_t->dim_size(0);
     const int rank = static_cast<int>(indices_t->dim_size(1));
     SparseTensor st;
     OP_REQUIRES_OK(
-        context, SparseTensor::Create(
-                     tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
-                     TensorShape(shape_t->flat<int64_t>()), &st));
+        context, SparseTensor::Create(tensor::DeepCopy(*indices_t),
+                                      tensor::DeepCopy(*values_t), shape, &st));
 
     Tensor *output_values = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({nnz}),

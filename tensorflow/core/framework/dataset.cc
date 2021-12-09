@@ -621,7 +621,9 @@ Status DatasetBase::ComputeNumSources() {
 }
 
 Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
-  int64 cardinality = Cardinality();
+  CardinalityOptions options;
+  options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
+  int64 cardinality = Cardinality(options);
   if (cardinality == kInfiniteCardinality ||
       cardinality == kUnknownCardinality) {
     return tensorflow::errors::FailedPrecondition(

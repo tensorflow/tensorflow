@@ -19,10 +19,6 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
-# Pick a version of xcode
-export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
-sudo xcode-select -s "${DEVELOPER_DIR}"
-
 # Set up and install MacOS pip dependencies.
 setup_venv_macos python3.7
 

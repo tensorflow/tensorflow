@@ -60,8 +60,9 @@ struct TransferReadOfOneDimExpandShape
         vector_read.getLoc(),
         mlir::VectorType::get(expand_src_type.getShape(),
                               expand_src_type.getElementType()),
-        expand_src, mlir::ValueRange{zero}, map, vector_read.padding(),
-        rewriter.getBoolArrayAttr({true}));
+        expand_src, mlir::ValueRange{zero}, mlir::AffineMapAttr::get(map),
+        vector_read.padding(),
+        /*mask=*/mlir::Value(), rewriter.getBoolArrayAttr({true}));
     rewriter.replaceOpWithNewOp<mlir::vector::ShapeCastOp>(
         vector_read, vector_read.getType(), new_read);
     return success();

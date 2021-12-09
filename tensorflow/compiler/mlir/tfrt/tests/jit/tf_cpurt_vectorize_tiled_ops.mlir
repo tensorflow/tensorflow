@@ -25,7 +25,7 @@ func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
         %0 = arith.addf %a, %b : f32
         linalg.yield %0 : f32
     } -> tensor<2xf32>
-    %update = tensor.insert_slice %sum_sub into %C_[%i] [%c2] [1]
+    %update = tensor.insert_slice %sum_sub into %C_[%i] [2] [1]
       : tensor<2xf32> into tensor<8xf32>
     linalg.yield %update : tensor<8xf32>
   }

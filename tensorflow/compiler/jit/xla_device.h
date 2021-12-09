@@ -71,9 +71,9 @@ class XlaDevice : public LocalDevice {
     se::Platform* platform() const;
     xla::LocalClient* client() const;
     const DeviceType& jit_device_type() const;
-    const XlaHelpers::ShapeRepresentationFn& default_shape_representation_fn()
-        const {
-      return shape_determination_fns_.at(0).shape_representation_fn;
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns&
+    default_shape_determination_fns() const {
+      return shape_determination_fns_.at(0);
     }
     const PaddedShapeFn& padded_shape_fn() const { return padded_shape_fn_; }
 

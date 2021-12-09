@@ -52,24 +52,6 @@ def LinalgTrivialCopyRemoval
   }];
 }
 
-def LinalgMatmulSpecialization
-    : FunctionPass<"tf-cpurt-linalg-matmul-specialization"> {
-  let summary = "Specialize linalg.matmul to dot, matvec or vecmat at runtime";
-  let constructor = "tensorflow::CreateLinalgMatmulSpecializationPass()";
-  let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::scf::SCFDialect"
-  ];
-
-  let description = [{
-    Specialize linalg.matmul at runtime to:
-      1. linalg.dot    for vector x vector multiplication
-      2. linalg.matvec for matrix x vector multiplication
-      3. linalg.vecmat for vector x matrix multiplication
-  }];
-}
-
 def CodegenCWise : FunctionPass<"tf-cpurt-codegen-cwise"> {
   let summary = "Tile elementwise ops on tensors";
   let constructor = "tensorflow::CreateCodegenStrategyForCWisePass()";
@@ -81,14 +63,6 @@ def CodegenCWise : FunctionPass<"tf-cpurt-codegen-cwise"> {
 def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
   let summary = "Optimize away padding in tiled loops";
   let constructor = "tensorflow::CreatePeelTiledLoopsPass()";
-  let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
-  ];
-}
-
-def CodegenMatmul : FunctionPass<"tf-cpurt-codegen-matmul"> {
-  let summary = "Tile-promote-vectorize linalg.matmul on buffers";
-  let constructor = "tensorflow::CreateCodegenStrategyForMatMulPass()";
   let dependentDialects = [
     "mlir::linalg::LinalgDialect",
   ];
@@ -185,12 +159,6 @@ def Clustering : FunctionPass<"tf-cpurt-clustering"> {
                "all operations included in the given clustering tier.",
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
-}
-
-def PadTiledOps : FunctionPass<"tf-cpurt-pad-tiled-ops"> {
-  let summary = "Pad tiled Linalg ops inside `tiled_loop`";
-  let constructor = "tensorflow::CreatePadTiledOpsPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
 def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {

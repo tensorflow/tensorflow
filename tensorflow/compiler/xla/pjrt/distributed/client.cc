@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 
+#include <algorithm>
 #include <chrono>  // NOLINT
 #include <random>
+#include <string>
+#include <utility>
 
+#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "grpcpp/channel.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -26,13 +32,74 @@ limitations under the License.
 #include "tensorflow/core/platform/random.h"
 
 namespace xla {
+class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
+ public:
+  DistributedRuntimeClientImpl(std::shared_ptr<::grpc::Channel> channel,
+                               const Options& options);
+  explicit DistributedRuntimeClientImpl(
+      std::shared_ptr<::grpc::Channel> channel)
+      : DistributedRuntimeClientImpl(channel, Options()) {}
+  ~DistributedRuntimeClientImpl() override;
 
-DistributedRuntimeClient::DistributedRuntimeClient(
+  xla::Status Connect() override;
+  xla::Status Shutdown() override;
+  xla::Status EnumerateDevices(const LocalTopologyProto& local_topology,
+                               GlobalTopologyProto* global_topology) override;
+  xla::StatusOr<std::string> BlockingKeyValueGet(
+      std::string key, absl::Duration timeout) override;
+  xla::Status KeyValueSet(std::string key, std::string value) override;
+
+ private:
+  // Entry point for the heartbeat thread.
+  void HeartbeatLoop();
+
+  const std::unique_ptr<grpc::DistributedRuntimeService::Stub> stub_;
+  const DistributedRuntimeClient::Options options_;
+
+  // Possible states of the client.
+  // The only legal transitions are downwards in the order below. i.e., there is
+  // no way to reopen a closed client.
+  enum class State {
+    // The client has not yet connected to the server, i.e., had a Connect()
+    // RPC succeed.
+    kNotConnected,
+
+    // The client is connected to the server and as far as we are aware the
+    // connection is healthy.
+    kConnected,
+
+    // The client is in the process of shutting down, i.e., Shutdown() has been
+    // called.
+    kShuttingDown,
+
+    // The client has shut down its server connection, either due to an error
+    // or due to an explicit shutdown.
+    kClosed,
+  };
+
+  static absl::string_view StateToString(State state);
+
+  // state_ is protected by a mutex because the heartbeat thread needs to look
+  // at it.
+  absl::Mutex mu_;
+  State state_ ABSL_GUARDED_BY(mu_) = State::kNotConnected;
+
+  // A unique session ID, assigned by the server during Connect().
+  uint64 session_id_;
+
+  // Notification that tells the heartbeat thread to stop running.
+  absl::Notification stop_heartbeats_;
+
+  // Thread responsible for performing heartbeats.
+  std::unique_ptr<tensorflow::Thread> heartbeat_thread_;
+};
+
+DistributedRuntimeClientImpl::DistributedRuntimeClientImpl(
     std::shared_ptr<::grpc::Channel> channel, const Options& options)
     : stub_(grpc::DistributedRuntimeService::NewStub(std::move(channel))),
       options_(options) {}
 
-DistributedRuntimeClient::~DistributedRuntimeClient() {
+DistributedRuntimeClientImpl::~DistributedRuntimeClientImpl() {
   bool connected;
   {
     absl::MutexLock lock(&mu_);
@@ -52,7 +119,7 @@ DistributedRuntimeClient::~DistributedRuntimeClient() {
   }
 }
 
-/*static*/ absl::string_view DistributedRuntimeClient::StateToString(
+/*static*/ absl::string_view DistributedRuntimeClientImpl::StateToString(
     State state) {
   switch (state) {
     case State::kNotConnected:
@@ -66,7 +133,7 @@ DistributedRuntimeClient::~DistributedRuntimeClient() {
   }
 }
 
-xla::Status DistributedRuntimeClient::Connect() {
+xla::Status DistributedRuntimeClientImpl::Connect() {
   {
     absl::MutexLock lock(&mu_);
     if (state_ != State::kNotConnected) {
@@ -130,7 +197,7 @@ xla::Status DistributedRuntimeClient::Connect() {
   return xla::Status::OK();
 }
 
-xla::Status DistributedRuntimeClient::EnumerateDevices(
+xla::Status DistributedRuntimeClientImpl::EnumerateDevices(
     const LocalTopologyProto& local_topology,
     GlobalTopologyProto* global_topology) {
   {
@@ -159,7 +226,7 @@ xla::Status DistributedRuntimeClient::EnumerateDevices(
   return xla::Status::OK();
 }
 
-xla::Status DistributedRuntimeClient::Shutdown() {
+xla::Status DistributedRuntimeClientImpl::Shutdown() {
   LOG(INFO) << "Waiting for all distributed JAX tasks to shut down.";
   ::grpc::ClientContext ctx;
   {
@@ -190,7 +257,7 @@ xla::Status DistributedRuntimeClient::Shutdown() {
   return xla::Status::OK();
 }
 
-xla::StatusOr<std::string> DistributedRuntimeClient::BlockingKeyValueGet(
+xla::StatusOr<std::string> DistributedRuntimeClientImpl::BlockingKeyValueGet(
     std::string key, absl::Duration timeout) {
   {
     absl::MutexLock lock(&mu_);
@@ -216,8 +283,8 @@ xla::StatusOr<std::string> DistributedRuntimeClient::BlockingKeyValueGet(
   return response.value();
 }
 
-xla::Status DistributedRuntimeClient::KeyValueSet(std::string key,
-                                                  std::string value) {
+xla::Status DistributedRuntimeClientImpl::KeyValueSet(std::string key,
+                                                      std::string value) {
   {
     absl::MutexLock lock(&mu_);
     if (state_ != State::kConnected) {
@@ -238,7 +305,7 @@ xla::Status DistributedRuntimeClient::KeyValueSet(std::string key,
   return FromGrpcStatus(status);
 }
 
-void DistributedRuntimeClient::HeartbeatLoop() {
+void DistributedRuntimeClientImpl::HeartbeatLoop() {
   int num_missing_heartbeats = 0;
   while (true) {
     stop_heartbeats_.WaitForNotificationWithTimeout(
@@ -285,4 +352,9 @@ void DistributedRuntimeClient::HeartbeatLoop() {
   }
 }
 
+std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
+    std::shared_ptr<::grpc::Channel> channel,
+    const DistributedRuntimeClient::Options& options) {
+  return std::make_unique<xla::DistributedRuntimeClientImpl>(channel, options);
+}
 }  // namespace xla

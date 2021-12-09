@@ -40,6 +40,7 @@ class XlaConvOp : public XlaOpKernel {
                 precision_config_.ParsePartialFromString(precision_config_attr),
                 errors::InvalidArgument("Error parsing precision config."));
     preferred_element_type_ = absl::nullopt;
+    batch_group_count_ = 1;
   }
 
   void Compile(XlaOpKernelContext* context) override {
@@ -79,12 +80,13 @@ class XlaConvOp : public XlaOpKernel {
     xla::XlaOp output = xla::ConvGeneralDilated(
         context->Input(0), context->Input(1), window_strides, padding,
         lhs_dilation, rhs_dilation, dnums_, feature_group_count,
-        /*batch_group_count=*/1, &precision_config_, preferred_element_type_);
+        batch_group_count_, &precision_config_, preferred_element_type_);
     context->SetOutput(0, output);
   }
 
  protected:
   absl::optional<xla::PrimitiveType> preferred_element_type_;
+  int64_t batch_group_count_;
 
  private:
   xla::ConvolutionDimensionNumbers dnums_;
@@ -111,6 +113,9 @@ class XlaConvV2Op : public XlaConvOp {
     OP_REQUIRES_OK(context, DataTypeToPrimitiveType(preferred_element_dtype,
                                                     &preferred_element_type));
     preferred_element_type_ = preferred_element_type;
+
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("batch_group_count", &batch_group_count_));
   }
 
  private:

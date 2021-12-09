@@ -1058,6 +1058,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/data:standalone",
     ],
 )
 

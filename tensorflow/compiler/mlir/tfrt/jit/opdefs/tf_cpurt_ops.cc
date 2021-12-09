@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_cpurt_ops.h"
 
+#include <algorithm>
+
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpDefinition.h"
@@ -30,13 +32,53 @@ namespace tf_cpurt {
 // CpuRuntimeDialect Dialect
 //===----------------------------------------------------------------------===//
 
-CpuRuntimeDialect::CpuRuntimeDialect(mlir::MLIRContext *context)
+CpuRuntimeDialect::CpuRuntimeDialect(mlir::MLIRContext* context)
     : Dialect(/*name*/ "tf_cpurt", context,
               mlir::TypeID::get<CpuRuntimeDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tfrt/tf_cpurt_ops.cc.inc"
       >();
+}
+
+// Computes the number of elements in the tensor type. Optimistically use `1` as
+// a size of all unknown dimensions. These heuristics match cost estimates of
+// the fallback_async::ExecuteOp operations.
+static int64_t GetRankedTensorSize(TensorType tensor) {
+  assert(tensor.hasRank() && "shape must be ranked");
+  if (!tensor.hasRank()) return 0;
+
+  int64_t size = 1;  // scalars (rank 0) have size 1
+  for (int64_t dim : tensor.getShape()) size *= std::max<int64_t>(1, dim);
+  return size;
+}
+
+int64_t FallbackExecuteOp::cost() {
+  Operation* self = getOperation();
+
+  // Find the referenced kernel function.
+  auto kernel_fn = SymbolTable::lookupNearestSymbolFrom<FuncOp>(self, kernel());
+  if (!kernel_fn) return 1;
+
+  int64_t cost = 0;
+
+  // Get the sum of sizes of all ranked inputs.
+  //
+  // TODO(ezhulenev): Once we have a proper cost model for MLIR operations,
+  // use it to compute a more precise cost estimation.
+  for (Type type : kernel_fn.getArgumentTypes()) {
+    TensorType tensor = type.dyn_cast<TensorType>();
+    if (!tensor || !tensor.hasRank()) continue;
+
+    cost += GetRankedTensorSize(tensor);
+  }
+
+  // Scale the cost by the number of operations in the function body. The choice
+  // of log2 function is arbitrary, seems to work well in benchmarks.
+  double scale = std::log2(kernel_fn.body().front().getOperations().size());
+  cost *= scale;
+
+  return std::max<int64_t>(1, cost);
 }
 
 }  // namespace tf_cpurt

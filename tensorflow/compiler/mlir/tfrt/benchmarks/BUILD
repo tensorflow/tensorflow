@@ -22,9 +22,9 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//third_party/eigen3",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -183,12 +183,9 @@ cc_library(
 )
 
 tf_cc_binary(
-    name = "softmax_benchmark",
+    name = "softmax_op_benchmark",
     testonly = 1,
-    srcs = [
-        "softmax_benchmark.cc",
-        "softmax_benchmark.h",
-    ],
+    srcs = ["softmax_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
@@ -197,59 +194,109 @@ tf_cc_binary(
     ]),
     deps = [
         ":benchmark",
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
+        ":benchmark_mlir_function",
+        "@llvm-project//llvm:Support",
     ],
 )
 
 tf_cc_binary(
-    name = "reduction_1D_all_benchmark",
+    name = "sum_1d_op_benchmark",
     testonly = 1,
-    srcs = ["reduction_1D_all_benchmark.cc"],
+    srcs = ["sum_1d_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
         "no_oss",
         "manual",
     ]),
-    deps = [":reduction_benchmark"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
 )
 
 tf_cc_binary(
-    name = "reduction_2D_all_benchmark",
+    name = "sum_2d_op_benchmark",
     testonly = 1,
-    srcs = ["reduction_2D_all_benchmark.cc"],
+    srcs = ["sum_2d_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
         "no_oss",
         "manual",
     ]),
-    deps = [":reduction_benchmark"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
 )
 
 tf_cc_binary(
-    name = "reduction_2D_row_benchmark",
+    name = "sum_col_op_benchmark",
     testonly = 1,
-    srcs = ["reduction_2D_row_benchmark.cc"],
+    srcs = ["sum_col_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
         "no_oss",
         "manual",
     ]),
-    deps = [":reduction_benchmark"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
 )
 
 tf_cc_binary(
-    name = "reduction_2D_column_benchmark",
+    name = "sum_row_op_benchmark",
     testonly = 1,
-    srcs = ["reduction_2D_column_benchmark.cc"],
+    srcs = ["sum_row_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
         "no_oss",
         "manual",
     ]),
-    deps = [":reduction_benchmark"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
+)
+
+tf_cc_binary(
+    name = "mean_row_op_benchmark",
+    testonly = 1,
+    srcs = ["mean_row_op_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
+)
+
+tf_cc_binary(
+    name = "fused_reduction_benchmark",
+    testonly = 1,
+    srcs = ["fused_reduction_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        "@llvm-project//llvm:Support",
+    ],
 )

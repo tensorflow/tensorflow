@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
-#include "mlir/Transforms/Bufferize.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
@@ -77,7 +77,7 @@ using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
 using ::tfrt::IndirectAsyncValue;
 using ::tfrt::KernelRegistry;
-using ::tfrt::MakeConstructedAsyncValueRef;
+using ::tfrt::MakeAvailableAsyncValueRef;
 using ::tfrt::MakeErrorAsyncValueRef;
 using ::tfrt::MakeStringError;
 using ::tfrt::RCArray;
@@ -373,7 +373,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // All entry memrefs must have alignment compatible with Tensorflow.
     opts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
     opts.num_worker_threads = workers->NumThreads();
-    opts.type_converter = mlir::BufferizeTypeConverter();
+    opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
     opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
 
     // Register a custom pipeline for lowering from Tensorflow dialect.
@@ -417,21 +417,12 @@ static AsyncValueRef<Chain> Compile(StringAttribute device,
   Expected<AsyncValuePtr<JitExecutable>> executable =
       CompileImpl(kernel, exec_ctx);
 
-  // Return immediately if can't compile the kernel.
+  // Return error if can't schedule the compilation task.
   if (auto err = executable.takeError())
     return MakeErrorAsyncValueRef(StrCat(err));
 
-  // Signal compilation completion using an async chain.
-  auto compiled = MakeConstructedAsyncValueRef<Chain>();
-
-  executable->AndThen([executable = *executable, res = compiled.CopyRef()]() {
-    if (executable.IsError())
-      res.SetError(executable.GetError());
-    else
-      res.SetStateConcrete();
-  });
-
-  return compiled;
+  // Immediately return an available chain once we schedule the compilation.
+  return MakeAvailableAsyncValueRef<Chain>();
 }
 
 // -------------------------------------------------------------------------- //
@@ -508,8 +499,12 @@ static void ExecuteImpl(Executable& executable,
   TraceMe trace_me([&] {
     int64_t id = exec_ctx.request_ctx()->id();
     absl::string_view name(executable.name().data(), executable.name().size());
-    return TraceMeEncode("tf_cpurt.Execute",
-                         {{"id", id}, {"executable", name}});
+    return TraceMeEncode(
+        "tf_cpurt.Execute",
+        {{"id", id},
+         {"executable", name},
+         {"specialized", executable.specialized() ? "true" : "false"},
+         {"num_worker_threads", executable.num_worker_threads()}});
   });
 
   // Keep track of memory address to tensor mapping for result conversion.

@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements conversion of `linalg.tiled_loop` to buffer form.
 
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -291,9 +292,9 @@ struct BufferizeVectorTransferWriteOp
 
 }  // namespace
 
-void populateTiledLoopBufferizePattern(MLIRContext *context,
-                                       BufferizeTypeConverter *converter,
-                                       RewritePatternSet *patterns) {
+void populateTiledLoopBufferizePattern(
+    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
+    RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
     BufferizeExtractSliceOp,

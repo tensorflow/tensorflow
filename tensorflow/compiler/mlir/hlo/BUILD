@@ -883,23 +883,6 @@ cc_library(
 )
 
 cc_library(
-    name = "mhlo_control_flow_to_scf",
-    srcs = ["lib/Dialect/mhlo/transforms/mhlo_control_flow_to_scf.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
-    deps = [
-        ":hlo",
-        ":pass_details",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-cc_library(
     name = "mhlo_mark_shape_calc",
     srcs = ["lib/Dialect/mhlo/transforms/mhlo_mark_shape_calc.cc"],
     deps = [
@@ -930,7 +913,23 @@ cc_library(
     deps = [
         ":hlo",
         ":lhlo",
-        ":map_hlo_to_lhlo_op",
+        ":map_lhlo_to_hlo_op",
+        ":map_mhlo_to_scalar_op",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ComplexDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "map_mhlo_to_scalar_op",
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"],
+    deps = [
+        ":hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ComplexDialect",
@@ -953,6 +952,15 @@ cc_library(
 cc_library(
     name = "map_hlo_to_lhlo_op",
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+    ],
+)
+
+cc_library(
+    name = "map_lhlo_to_hlo_op",
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_lhlo_to_hlo_op.h"],
     deps = [
         ":hlo",
         ":lhlo",
@@ -1115,8 +1123,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        ":lhlo",
-        ":map_lmhlo_to_scalar_op",
+        ":map_mhlo_to_scalar_op",
         ":pass_details",
         ":type_conversion",
         "@llvm-project//llvm:Support",
@@ -1253,6 +1260,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
@@ -1280,6 +1288,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
@@ -1733,7 +1742,6 @@ cc_library(
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
         ":mhlo_canonicalize_reduction",
-        ":mhlo_control_flow_to_scf",
         ":mhlo_flatten_tuple",
         ":mhlo_fusion",
         ":mhlo_mark_shape_calc",

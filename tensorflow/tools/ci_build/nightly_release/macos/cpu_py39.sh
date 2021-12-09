@@ -19,10 +19,6 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
-# Pick a version of xcode
-export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
-sudo xcode-select -s "${DEVELOPER_DIR}"
-
 # Set up py39 via pyenv and check it worked
 export PYENV_VERSION=3.9.4
 setup_python_from_pyenv_macos "${PYENV_VERSION}"

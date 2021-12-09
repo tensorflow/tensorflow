@@ -56,13 +56,15 @@ ENTRY computation {
   EXPECT_THAT(root->operand(0), op::Slice());
   auto reshape = root->operand(0)->operand(0);
   EXPECT_THAT(reshape, op::Reshape());
-  EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
-  const int64_t batch_dim = reshape->operand(0)
+  auto previous_reshape = reshape->operand(0);
+  EXPECT_THAT(previous_reshape, op::Reshape());
+  EXPECT_THAT(previous_reshape->operand(0)->operand(1), op::Convolution());
+  const int64_t batch_dim = previous_reshape->operand(0)
                                 ->operand(1)
                                 ->convolution_dimension_numbers()
                                 .output_batch_dimension();
   // Verify that the transform has increased the batch size.
-  EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 1);
+  EXPECT_GT(previous_reshape->operand(0)->shape().dimensions(batch_dim), 1);
 }
 
 TEST_F(SpaceToBatchConverterTest, SimpleBatch1ConvXpose) {
@@ -91,9 +93,11 @@ ENTRY computation {
   EXPECT_THAT(root->operand(0), op::Slice());
   auto reshape = root->operand(0)->operand(0);
   EXPECT_THAT(reshape, op::Reshape());
+  auto previous_reshape = reshape->operand(0);
+  EXPECT_THAT(previous_reshape, op::Reshape());
   // This should be the original root transpose - which we handle transparently.
-  EXPECT_THAT(reshape->operand(0), op::Select());
-  EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
+  EXPECT_THAT(previous_reshape->operand(0), op::Select());
+  EXPECT_THAT(previous_reshape->operand(0)->operand(1), op::Convolution());
 }
 
 TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
@@ -195,13 +199,15 @@ TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
   EXPECT_THAT(root->operand(0), op::Slice());
   auto reshape = root->operand(0)->operand(0);
   EXPECT_THAT(reshape, op::Reshape());
-  EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
-  const int64_t batch_dim = reshape->operand(0)
+  auto previous_reshape = reshape->operand(0);
+  EXPECT_THAT(previous_reshape, op::Reshape());
+  EXPECT_THAT(previous_reshape->operand(0)->operand(1), op::Convolution());
+  const int64_t batch_dim = previous_reshape->operand(0)
                                 ->operand(1)
                                 ->convolution_dimension_numbers()
                                 .output_batch_dimension();
 
-  EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 4);
+  EXPECT_GT(previous_reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
 
 TEST_F(SpaceToBatchConverterTest, Batch1WithBaseDilation) {
@@ -230,13 +236,15 @@ ENTRY computation {
   EXPECT_THAT(root->operand(0), op::Slice());
   auto reshape = root->operand(0)->operand(0);
   EXPECT_THAT(reshape, op::Reshape());
-  EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
-  const int64_t batch_dim = reshape->operand(0)
+  auto previous_reshape = reshape->operand(0);
+  EXPECT_THAT(previous_reshape, op::Reshape());
+  EXPECT_THAT(previous_reshape->operand(0)->operand(1), op::Convolution());
+  const int64_t batch_dim = previous_reshape->operand(0)
                                 ->operand(1)
                                 ->convolution_dimension_numbers()
                                 .output_batch_dimension();
 
-  EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 4);
+  EXPECT_GT(previous_reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
 
 }  // namespace

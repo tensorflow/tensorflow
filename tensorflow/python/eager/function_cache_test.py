@@ -148,6 +148,9 @@ class FunctionCacheTest(test.TestCase):
     self.assertIsNone(key_a.most_specific_common_subtype([key_b]))
 
   def testWeakRefDeletionAlsoDeletesConcreteFunction(self):
+    if not function_cache.DELETE_WITH_WEAKREF:
+      self.skipTest("Weakref-Based Deletion is disabled")
+
     dummy_object = DummyClass()
     key, deletion_observer = function_cache.make_cache_key(dummy_object)
 
@@ -159,6 +162,9 @@ class FunctionCacheTest(test.TestCase):
     self.assertIsNone(cache.lookup(key, False))
 
   def testMultipleObjectsWeakRefDeletion(self):
+    if not function_cache.DELETE_WITH_WEAKREF:
+      self.skipTest("Weakref-Based Deletion is disabled")
+
     dummy_object_1 = DummyClass()
     dummy_object_2 = DummyClass()
     key, deletion_observer = function_cache.make_cache_key(
@@ -175,6 +181,8 @@ class FunctionCacheTest(test.TestCase):
     self.assertIsNone(cache.lookup(key, False))
 
   def testObjectDeletedDuringFunctionCallDoesntAddConcreteFunction(self):
+    if not function_cache.DELETE_WITH_WEAKREF:
+      self.skipTest("Weakref-Based Deletion is disabled")
 
     def second(o):
       return function_cache.make_cache_key(o)

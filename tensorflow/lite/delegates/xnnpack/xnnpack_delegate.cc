@@ -1058,6 +1058,58 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckTensorQInt8OrQUInt8Type(TfLiteContext* context,
+                                                   const TfLiteTensor& tensor,
+                                                   int tensor_index,
+                                                   int node_index) {
+    switch (tensor.type) {
+#ifndef XNN_NO_QS8_OPERATORS
+      case kTfLiteInt8: {
+        const auto* quantization_params =
+            static_cast<const TfLiteAffineQuantization*>(
+                tensor.quantization.params);
+        if (tensor.quantization.type != kTfLiteAffineQuantization ||
+            quantization_params->quantized_dimension != 0 ||
+            quantization_params->scale == nullptr ||
+            quantization_params->scale->size != 1) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              context,
+              "unsupported quantization type %d in tensor #%d in node #%d",
+              tensor.quantization.type, tensor_index, node_index);
+          return kTfLiteError;
+        }
+        break;
+      }
+#endif  // !defined(XNN_NO_QS8_OPERATORS)
+#ifndef XNN_NO_QU8_OPERATORS
+      case kTfLiteUInt8: {
+        const auto* quantization_params =
+            static_cast<const TfLiteAffineQuantization*>(
+                tensor.quantization.params);
+        if (tensor.quantization.type != kTfLiteAffineQuantization ||
+            quantization_params->quantized_dimension != 0 ||
+            quantization_params->scale == nullptr ||
+            quantization_params->zero_point == nullptr ||
+            quantization_params->scale->size != 1 ||
+            quantization_params->zero_point->size != 1) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              context,
+              "unsupported quantization type %d in tensor #%d in node #%d",
+              tensor.quantization.type, tensor_index, node_index);
+          return kTfLiteError;
+        }
+        break;
+      }
+#endif  // !defined(XNN_NO_QU8_OPERATORS)
+      default:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported type %s in tensor #%d in node #%d",
+            TfLiteTypeGetName(tensor.type), tensor_index, node_index);
+        return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckTensorFloat32OrQUInt8Type(TfLiteContext* context,
                                                      const TfLiteTensor& tensor,
                                                      int tensor_index,
@@ -1552,6 +1604,9 @@ class Subgraph {
         return VisitPreluNode(subgraph, logging_context, node_index, node,
                               context->tensors, quasi_static_tensors,
                               xnnpack_tensors);
+      case kTfLiteBuiltinQuantize:
+        return VisitQuantizeNode(subgraph, logging_context, node_index, node,
+                                 context->tensors, xnnpack_tensors);
       case kTfLiteBuiltinRelu:
         return VisitReluNode(
             subgraph, logging_context, node_index, node, context->tensors, 0.0f,
@@ -2587,7 +2642,7 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input_tensor, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
                                            node->inputs->data[0]));
@@ -2625,7 +2680,7 @@ class Subgraph {
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
     const int expected_output_dims = reducer_params->keep_dims ? 4 : 2;
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor,
@@ -3142,6 +3197,39 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate PRELU node #%d",
                            node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitQuantizeNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorQInt8OrQUInt8Type(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_convert(
+          subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate CONVERT node #%d", node_index);
         return kTfLiteError;
       }
     }
@@ -3786,7 +3874,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       if (is_supported_int8_tensor) {
         const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
             input_tensor.quantization.params);
-        if (quant_params == nullptr || quant_params->scale->size != 1) {
+        if (quant_params == nullptr) {
           is_supported_int8_tensor = false;
         }
       }
@@ -3982,14 +4070,23 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                     input_tensor.quantization.params);
             // Such conditions have been checked when preparing to unpack INT8
             // tensors.
-            TFLITE_DCHECK(quant_params != nullptr &&
-                          quant_params->scale->size == 1);
+            TFLITE_DCHECK(quant_params != nullptr);
 
-            DequantizeInt8(reinterpret_cast<const int8_t*>(packed_data),
-                           reinterpret_cast<float*>(unpacked_data),
-                           GetTensorShape(&input_tensor),
-                           input_tensor.params.zero_point,
-                           input_tensor.params.scale);
+            if (quant_params->scale->size == 1) {
+              // Per-tensor quantization
+              DequantizeInt8(reinterpret_cast<const int8_t*>(packed_data),
+                             reinterpret_cast<float*>(unpacked_data),
+                             GetTensorShape(&input_tensor),
+                             input_tensor.params.zero_point,
+                             input_tensor.params.scale);
+            } else {
+              // Per-channel quantization
+              PerChannelDequantizeInt8(
+                  reinterpret_cast<const int8_t*>(packed_data),
+                  reinterpret_cast<float*>(unpacked_data),
+                  GetTensorShape(&input_tensor), quant_params->zero_point->data,
+                  quant_params->scale->data, quant_params->quantized_dimension);
+            }
             break;
           }
           default:

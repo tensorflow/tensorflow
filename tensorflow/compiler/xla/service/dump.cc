@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dump.h"
 
+#include <memory>
+
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
@@ -169,8 +172,9 @@ struct CanonicalDebugOptions {
   bool dump_hlo_metadata;
 };
 
-Status WriteStringToFile(tensorflow::Env* env, const string& fname,
-                         const tensorflow::StringPiece& data, bool compressed) {
+static Status WriteStringToFile(tensorflow::Env* env, const string& fname,
+                                const tensorflow::StringPiece& data,
+                                bool compressed) {
   if (!compressed) {
     return tensorflow::WriteStringToFile(env, fname, data);
   }
@@ -185,9 +189,8 @@ Status WriteStringToFile(tensorflow::Env* env, const string& fname,
   return gz_file.Close();
 }
 
-absl::optional<std::string> DumpToFileInDirImpl(
-    string_view filename, string_view contents,
-    const CanonicalDebugOptions& opts, bool compress = false) {
+static absl::optional<std::string> GetDumpFilePath(
+    string_view filename, const CanonicalDebugOptions& opts) {
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write " << filename
                << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
@@ -244,18 +247,27 @@ absl::optional<std::string> DumpToFileInDirImpl(
     }
   }
 
-  string file_path =
-      tensorflow::io::JoinPath(dir, SanitizeFileName(string(filename)));
-  auto status = WriteStringToFile(env, file_path, contents, compress);
+  return tensorflow::io::JoinPath(dir, SanitizeFileName(string(filename)));
+}
+
+static absl::optional<std::string> DumpToFileInDirImpl(
+    string_view filename, string_view contents,
+    const CanonicalDebugOptions& opts, bool compress = false) {
+  auto file_path = GetDumpFilePath(filename, opts);
+  if (!file_path) return absl::nullopt;
+
+  auto status = WriteStringToFile(tensorflow::Env::Default(), *file_path,
+                                  contents, compress);
   if (!status.ok()) {
-    LOG(ERROR) << "Could not write XLA debug data to " << file_path << ": "
+    LOG(ERROR) << "Could not write XLA debug data to " << *file_path << ": "
                << status;
+    return absl::nullopt;
   }
 
   return file_path;
 }
 
-absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
+static absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
     string_view filename, string_view contents,
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
@@ -270,12 +282,10 @@ absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
 }
 
 // Returns full file paths of all dumps of the module.
-std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
-                                           const BufferAssignment* buffer_assn,
-                                           const HloExecutionProfile* profile,
-                                           string_view prefix,
-                                           string_view suffix,
-                                           const CanonicalDebugOptions& opts) {
+static std::vector<std::string> DumpHloModuleImpl(
+    const HloModule& module, const BufferAssignment* buffer_assn,
+    const HloExecutionProfile* profile, string_view prefix, string_view suffix,
+    const CanonicalDebugOptions& opts) {
   string filename = FilenameFor(module, prefix, suffix);
 
   std::vector<absl::optional<std::string>> file_paths;
@@ -368,9 +378,9 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
   return dumped_file_paths;
 }
 
-void DumpHloModuleMetadata(const HloModuleMetadataProto& metadata,
-                           const CanonicalDebugOptions& opts,
-                           absl::flat_hash_set<int64_t>* dumped_module_ids) {
+static void DumpHloModuleMetadata(
+    const HloModuleMetadataProto& metadata, const CanonicalDebugOptions& opts,
+    absl::flat_hash_set<int64_t>* dumped_module_ids) {
   // Return if metadata for this module has already been dumped.
   if (!dumped_module_ids->insert(metadata.canonical_module_id()).second) {
     return;
@@ -475,6 +485,21 @@ void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
   DumpToFileInDirOrStdoutImpl(
       FilenameFor(unique_id, module_name, file_prefix, file_suffix), contents,
       CanonicalDebugOptions(debug_options));
+}
+
+void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
+                             mlir::Operation* op) {
+  CanonicalDebugOptions opts(module.config().debug_options());
+  if (opts.dumping_to_stdout()) return op->dump();
+
+  auto file_path =
+      GetDumpFilePath(FilenameFor(module, file_prefix, "mlir"), opts);
+  if (!file_path) return;
+
+  // TODO(csigg): Change tag to file_prefix once BEF handles fused locs.
+  llvm::StringRef tag = "";
+  if (failed(mlir::generateLocationsFromIR(*file_path, tag, op, llvm::None)))
+    LOG(ERROR) << "Failed to dump op to " << *file_path;
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,

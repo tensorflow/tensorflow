@@ -211,7 +211,8 @@ llvm::Value* VectorSupportLibrary::ComputeOffsetPointer(
     base_pointer =
         b()->CreateBitCast(base_pointer, scalar_pointer_type(), name());
   }
-  return b()->CreateInBoundsGEP(base_pointer, {offset_elements}, name());
+  return b()->CreateInBoundsGEP(scalar_type(), base_pointer, offset_elements,
+                                name());
 }
 
 llvm::Value* VectorSupportLibrary::LoadVector(llvm::Value* pointer) {
@@ -219,8 +220,8 @@ llvm::Value* VectorSupportLibrary::LoadVector(llvm::Value* pointer) {
     pointer = b()->CreateBitCast(pointer, vector_pointer_type(), name());
   }
   return b()->CreateAlignedLoad(
-      pointer, llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)),
-      name());
+      vector_type(), pointer,
+      llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)), name());
 }
 
 llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
@@ -228,8 +229,8 @@ llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
   return b()->CreateAlignedLoad(
-      pointer, llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)),
-      name());
+      scalar_type(), pointer,
+      llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)), name());
 }
 
 void VectorSupportLibrary::StoreVector(llvm::Value* value,
@@ -258,8 +259,8 @@ llvm::Value* VectorSupportLibrary::LoadBroadcast(llvm::Value* pointer) {
   if (pointer->getType() != scalar_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
-  return b()->CreateVectorSplat(vector_size(), b()->CreateLoad(pointer),
-                                name());
+  return b()->CreateVectorSplat(
+      vector_size(), b()->CreateLoad(scalar_type(), pointer), name());
 }
 
 llvm::Value* VectorSupportLibrary::AddReduce(llvm::Value* vector) {
@@ -420,7 +421,9 @@ LlvmVariable::LlvmVariable(llvm::Type* type, llvm::IRBuilder<>* b) : b_(b) {
   alloca_ = llvm_ir::EmitAllocaAtFunctionEntry(type, "", b_);
 }
 
-llvm::Value* LlvmVariable::Get() const { return b_->CreateLoad(alloca_); }
+llvm::Value* LlvmVariable::Get() const {
+  return b_->CreateLoad(alloca_->getType()->getPointerElementType(), alloca_);
+}
 
 void LlvmVariable::Set(llvm::Value* new_value) {
   b_->CreateStore(new_value, alloca_);

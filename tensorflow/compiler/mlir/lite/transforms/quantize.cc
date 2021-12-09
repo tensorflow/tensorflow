@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <string>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -122,7 +123,7 @@ struct TFLQuantizationBase
     // it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           quantized_op->hasTrait<OpTrait::quant::DynamicRangeQuantizableOp>();
+           dyn_cast<DynamicRangeQuantizedOpInterface>(quantized_op);
   }
 
   static bool AllowHybridResult(Operation* quantized_op) {
@@ -130,7 +131,7 @@ struct TFLQuantizationBase
     // supports it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           quantized_op->hasTrait<OpTrait::quant::DynamicRangeQuantizableOp>();
+           dyn_cast<DynamicRangeQuantizedOpInterface>(quantized_op);
   }
 };
 
@@ -254,7 +255,8 @@ void QuantizePass::runOnFunction() {
 
   // TODO(b/202451048): separate full and weight-only post-training dynamic
   // range quantization
-  if (quant_specs.weight_quantization || enable_dynamic_range_quantization) {
+  if (quant_specs.weight_quantization || enable_dynamic_range_quantization ||
+      quant_specs.use_fake_quant_num_bits) {
     patterns.insert<TFLDynamicRangeQuantization>(ctx, quant_params);
   } else {
     patterns.insert<TFLFullQuantization, TFLFullQuantizationReverse>(

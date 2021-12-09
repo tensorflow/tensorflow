@@ -60,6 +60,8 @@ namespace xla {
 
 namespace {
 
+constexpr char kShardingAttr[] = "mhlo.sharding";
+
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
 // direction. Longterm solution is to add a function attribute to maintain the
@@ -227,7 +229,7 @@ StatusOr<Value> HloFunctionImporter::ImportInstructions(
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     const xla::HloInstruction* instr,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
-    mlir::OpBuilder* builder) {
+    mlir::OpBuilder* builder, DynamicShapeHandlingMode mode) {
   mlir::Block* block = builder->getBlock();
   if (block == nullptr)
     return InvalidArgument(
@@ -236,18 +238,29 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   HloFunctionImporter importer(
       block->getParent()->getParentOfType<mlir::ModuleOp>(), {}, builder);
 
-  return importer.ImportInstructionWithLayout(instr, operands, builder);
+  return importer.ImportInstructionWithLayout(instr, operands, builder, mode);
 }
 
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
-    mlir::OpBuilder* func_builder) {
-  TF_ASSIGN_OR_RETURN(auto result_type, ConvertShapeToType<RankedTensorType>(
-                                            instruction->shape(), *builder_));
+    mlir::OpBuilder* func_builder, DynamicShapeHandlingMode mode) {
+  const Shape& instruction_shape = instruction->shape();
+  const Shape& shape = mode == DynamicShapeHandlingMode::kConvertToStatic
+                           ? xla::ShapeUtil::MakeStaticShape(instruction_shape)
+                           : instruction_shape;
+  TF_ASSIGN_OR_RETURN(auto result_type,
+                      ConvertShapeToType<RankedTensorType>(shape, *builder_));
   mlir::Location loc = GenerateInstructionLocation(instruction, func_builder);
 
   llvm::SmallVector<NamedAttribute, 10> attributes;
+  if (instruction->has_sharding()) {
+    attributes.push_back(builder_->getNamedAttr(
+        kShardingAttr,
+        builder_->getStringAttr(
+            instruction->sharding().ToProto().SerializeAsString())));
+  }
+
   switch (instruction->opcode()) {
     case HloOpcode::kParameter: {
       return nullptr;
@@ -347,6 +360,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCustomCall: {
       auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+      const auto& called_computations = custom_call->called_computations();
+      if (!called_computations.empty()) {
+        llvm::SmallVector<mlir::Attribute> callees;
+        callees.reserve(called_computations.size());
+        for (HloComputation* callee : called_computations) {
+          TF_ASSIGN_OR_RETURN(FuncOp function, ImportAsFunc(*callee));
+          callees.push_back(mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                                         function.getName()));
+        }
+        attributes.push_back(builder_->getNamedAttr(
+            "called_computations",
+            mlir::ArrayAttr::get(builder_->getContext(), callees)));
+      }
       if (custom_call->layout_constrained()) {
         TF_ASSIGN_OR_RETURN(
             mlir::ArrayAttr operand_layouts,
@@ -600,7 +626,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       int num_branches = instruction->branch_count();
       auto op = func_builder->create<mlir::mhlo::CaseOp>(
           loc, rets, operands, attributes, num_branches);
-      for (auto index_and_computation :
+      for (const auto& index_and_computation :
            llvm::enumerate(instruction->branch_computations())) {
         auto index = index_and_computation.index();
         HloComputation* computation = index_and_computation.value();
@@ -624,7 +650,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getI64IntegerAttr(all_gather->all_gather_dimension())));
       attributes.push_back(
           ConvertReplicaGroups(all_gather->replica_groups(), builder_));
-      attributes.push_back(ConvertChannelHandle(all_gather->channel_id()));
+      if (all_gather->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(all_gather->channel_id().value()));
       return func_builder
           ->create<mlir::mhlo::AllGatherOp>(loc, result_type, operands,
                                             attributes)
@@ -634,12 +662,47 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
       attributes.push_back(
           ConvertReplicaGroups(all_reduce->replica_groups(), builder_));
-      attributes.push_back(ConvertChannelHandle(all_reduce->channel_id()));
+      if (all_reduce->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(all_reduce->channel_id().value()));
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
                                         &all_reduce_op.computation()));
       return all_reduce_op.getOperation();
+    }
+    case HloOpcode::kAllToAll: {
+      // TODO(b/207152612): all-to-all HLO can either have pre-split operands
+      // (and returns a tuple) or a single operand that is split across
+      // `split_dimension` into the number of replicas in a group. Only the
+      // latter case (array all-to-all) is supported in importer right now and
+      // the former (tuple all-to-all) is not supported yet.
+      auto all_to_all = Cast<HloAllToAllInstruction>(instruction);
+      if (all_to_all->shape().IsTuple())
+        return tensorflow::errors::Unimplemented(
+            "Importing tuple all-to-all HLO is not supported yet");
+
+      // Check invariants of array all-to-all. This is a sanity check and is
+      // verified by the HLO verifier.
+      if (!all_to_all->split_dimension().has_value() || operands.size() != 1 ||
+          all_to_all->replica_groups().empty())
+        return tensorflow::errors::InvalidArgument(
+            "Array all-to-all should have a split dimension, one operand and "
+            "non-empty replica groups");
+
+      auto replica_groups_attr =
+          ConvertReplicaGroups(all_to_all->replica_groups(), builder_)
+              .getValue()
+              .cast<DenseIntElementsAttr>();
+      uint64_t split_dim = all_to_all->split_dimension().value();
+      uint64_t concat_dim = split_dim;
+      uint64_t split_count = all_to_all->replica_groups()[0].replica_ids_size();
+
+      return func_builder
+          ->create<mlir::mhlo::AllToAllOp>(loc, result_type, operands[0],
+                                           split_dim, concat_dim, split_count,
+                                           replica_groups_attr)
+          .getOperation();
     }
     case HloOpcode::kReduce: {
       // Operands in the first half are reduction inputs and the remaining
@@ -757,6 +820,24 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ->create<mlir::mhlo::TriangularSolveOp>(loc, result_type, operands,
                                                   attributes)
           .getOperation();
+    }
+    case HloOpcode::kReduceScatter: {
+      auto reduce_scatter = Cast<HloReduceScatterInstruction>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "scatter_dimension",
+          builder_->getI64IntegerAttr(reduce_scatter->scatter_dimension())));
+      attributes.push_back(
+          ConvertReplicaGroups(reduce_scatter->replica_groups(), builder_));
+      if (reduce_scatter->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(reduce_scatter->channel_id().value()));
+      auto reduce_scatter_op =
+          func_builder->create<mlir::mhlo::ReduceScatterOp>(
+              loc, result_type, operands, attributes);
+      TF_RETURN_IF_ERROR(ImportAsRegion(*reduce_scatter->to_apply(),
+                                        &reduce_scatter_op.computation()));
+
+      return reduce_scatter_op.getOperation();
     }
     case HloOpcode::kReduceWindow: {
       llvm::SmallVector<Type, 4> return_types = {result_type};
@@ -1010,10 +1091,10 @@ void SetXlaShape(mlir::Operation* op, const Shape& shape) {
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionWithLayout(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
-    mlir::OpBuilder* func_builder) {
+    mlir::OpBuilder* func_builder, DynamicShapeHandlingMode mode) {
   TF_ASSIGN_OR_RETURN(
       mlir::Operation * op,
-      ImportInstructionImpl(instruction, operands, func_builder));
+      ImportInstructionImpl(instruction, operands, func_builder, mode));
   if (op == nullptr) return op;
 
   // See MlirToHloConversionOptions for more about layouts.
@@ -1114,7 +1195,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
     mlir::Builder* builder) {
   std::vector<int64_t> attr(source_target_pairs.size() * 2);
-  for (auto p : llvm::enumerate(source_target_pairs)) {
+  for (const auto& p : llvm::enumerate(source_target_pairs)) {
     attr[2 * p.index()] = p.value().first;
     attr[2 * p.index() + 1] = p.value().second;
   }

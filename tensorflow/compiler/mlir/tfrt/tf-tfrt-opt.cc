@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_cpurt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_test_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -45,6 +46,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::mhlo::MhloDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
+  registry.insert<mlir::tf_cpurt::CpuRuntimeDialect>();
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
   tensorflow::RegisterTPUDialects(&registry);

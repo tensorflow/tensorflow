@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/substitute.h"
@@ -146,6 +150,46 @@ class TensorReserver {
   ValueId next_;
 };
 
+absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
+                                            const TensorDescriptor& tensor_desc,
+                                            const BHWC& shape,
+                                            DataType data_type) {
+  if (tensor_desc.data_type != data_type) {
+    return absl::InvalidArgumentError(
+        "Global precision and precision of predefined/external tensors must be "
+        "synchronized.");
+  }
+  const bool tensor_supported_layout = tensor_desc.layout == Layout::HWDC ||
+                                       tensor_desc.layout == Layout::BHWDC ||
+                                       tensor_desc.layout == Layout::HWC ||
+                                       tensor_desc.layout == Layout::BHWC;
+  if (!tensor_supported_layout) {
+    return absl::InvalidArgumentError(
+        "Currently no support of this layouts for spatial tensors.");
+  }
+  const bool has_depth =
+      tensor_desc.layout == Layout::HWDC || tensor_desc.layout == Layout::BHWDC;
+  if (has_depth) {
+    return absl::InvalidArgumentError(
+        "Currently no support of Depth dimension in predefined/external "
+        "tensors.");
+  }
+  const bool has_batch =
+      tensor_desc.layout == Layout::BHWC || tensor_desc.layout == Layout::BHWDC;
+  if (has_batch && shape.b == 1) {
+    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
+  }
+  if (!has_batch && shape.b != 1) {
+    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
+  }
+  if (!CanCreateTensorWithShape(gpu_info, shape, tensor_desc).ok()) {
+    return absl::UnavailableError(
+        "Current device can not allocate tensor with this shape for "
+        "predefined/external descriptor.");
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ReserveGraphTensors(
     const InferenceContext::CreateInferenceInfo& create_info,
     const GpuInfo& gpu_info, const GraphFloat32& graph,
@@ -155,48 +199,33 @@ absl::Status ReserveGraphTensors(
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
   for (auto& t : tensors) {
     const auto shape = graph.GetValue(t->id)->tensor.shape;
-    auto it_preallocated = create_info.preallocated.find(t->id);
+    auto it_immutable_external =
+        create_info.external_immutable_tensors.find(t->id);
+    auto it_mutable_external = create_info.preallocated.find(t->id);
     TensorDescriptor tensor_desc;
-    if (it_preallocated != create_info.preallocated.end()) {
+    if (it_immutable_external != create_info.external_immutable_tensors.end()) {
       if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
         return absl::InvalidArgumentError(
-            "Currently preallocated can be used only for graph inputs/outputs");
+            "Currently external tensors can be used only for graph "
+            "inputs/outputs");
       }
-      tensor_desc = it_preallocated->second;
-      if (tensor_desc.data_type != data_type) {
+      tensor_desc = it_immutable_external->second->GetDescriptor();
+      RETURN_IF_ERROR(CheckExternalTensorDescription(gpu_info, tensor_desc,
+                                                     shape, data_type));
+    } else if (it_mutable_external != create_info.preallocated.end()) {
+      if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
         return absl::InvalidArgumentError(
-            "Global precision and precision of preallocated tensors must be "
-            "synchronized.");
+            "Currently external tensors can be used only for graph "
+            "inputs/outputs");
       }
-      const bool tensor_supported_layout =
-          tensor_desc.layout == Layout::HWDC ||
-          tensor_desc.layout == Layout::BHWDC ||
-          tensor_desc.layout == Layout::HWC ||
-          tensor_desc.layout == Layout::BHWC;
-      if (!tensor_supported_layout) {
-        return absl::InvalidArgumentError(
-            "Currently no support of this layouts for spatial tensors.");
-      }
-      const bool has_depth = tensor_desc.layout == Layout::HWDC ||
-                             tensor_desc.layout == Layout::BHWDC;
-      if (has_depth) {
-        return absl::InvalidArgumentError(
-            "Currently no support of Depth dimension in predefined tensors.");
-      }
-      const bool has_batch = tensor_desc.layout == Layout::BHWC ||
-                             tensor_desc.layout == Layout::BHWDC;
-      if (has_batch && shape.b == 1) {
-        return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
-      }
-      if (!has_batch && shape.b != 1) {
-        return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
-      }
+      tensor_desc = it_mutable_external->second;
+      RETURN_IF_ERROR(CheckExternalTensorDescription(
+          gpu_info, it_mutable_external->second, shape, data_type));
     } else {
       TensorStorageType storage_type = create_info.storage_type;
       Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
       if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
-        // Temporary disabled because no support of SINGLE_TEXTURE_2D in Metal
-        if (false && shape.c < 4 &&
+        if (shape.c < 4 &&
             CanCreateTensorWithShape(
                 gpu_info, shape,
                 TensorDescriptor{data_type,
@@ -450,6 +479,14 @@ absl::Status InferenceContext::InitFromGraph(
   const_tensors_descs_ = std::move(gpu_model.const_tensors);
   tensors_descs_ = std::move(gpu_model.tensors);
 
+  for (const auto& external_tensor : create_info.external_immutable_tensors) {
+    auto* metal_spatial_tensor =
+        dynamic_cast<MetalSpatialTensor*>(external_tensor.second);
+    if (!metal_spatial_tensor) {
+      return absl::InvalidArgumentError("Expected MetalSpatialTensor.");
+    }
+    external_immutable_tensors_[external_tensor.first] = metal_spatial_tensor;
+  }
   RETURN_IF_ERROR(CompileOperations(&metal_device));
   RETURN_IF_ERROR(AllocateTensors(&metal_device, create_info.preallocated));
   BindTensorsToOperations();
@@ -516,7 +553,11 @@ absl::Status InferenceContext::AllocateTensors(
 }
 
 MetalSpatialTensor* InferenceContext::GetTensor(ValueId tensor_id) {
-  if (preallocated_tensors_.find(tensor_id) != preallocated_tensors_.end()) {
+  if (external_immutable_tensors_.find(tensor_id) !=
+      external_immutable_tensors_.end()) {
+    return external_immutable_tensors_[tensor_id];
+  } else if (preallocated_tensors_.find(tensor_id) !=
+             preallocated_tensors_.end()) {
     return &preallocated_tensors_[tensor_id];
   } else if (const_tensors_.find(tensor_id) != const_tensors_.end()) {
     return &const_tensors_[tensor_id];
@@ -580,8 +621,11 @@ absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
 
 InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
     ValueId id) {
-  if (preallocated_tensors_.find(id) != preallocated_tensors_.end()) {
-    return TensorMemoryType::kPreallocated;
+  if (external_immutable_tensors_.find(id) !=
+      external_immutable_tensors_.end()) {
+    return TensorMemoryType::kExternal;
+  } else if (preallocated_tensors_.find(id) != preallocated_tensors_.end()) {
+    return TensorMemoryType::kExternal;
   } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return TensorMemoryType::kConst;
   } else if (IsBufferBased(tensors_descs_[id].storage_type)) {
@@ -828,6 +872,20 @@ void InferenceContext::Profile(id<MTLDevice> device, ProfilingInfo* result) {
       auto& dispatch_info = result->dispatches[k];
       dispatch_info.label = nodes_[k].name;
       dispatch_info.duration = (end - start) / static_cast<float>(kRuns);
+
+      uint64_t read_size = 0;
+      for (auto& src_id : nodes_[k].inputs) {
+        read_size += GetTensor(src_id)->GetMemorySizeInBytes();
+      }
+      const auto& gpu_op = nodes_[k].task.GetGpuOperation();
+      read_size += gpu_op.const_args_size_;
+      uint64_t write_size = 0;
+      for (auto& dst_id : nodes_[k].outputs) {
+        write_size += GetTensor(dst_id)->GetMemorySizeInBytes();
+      }
+      dispatch_info.flops = gpu_op.flops_;
+      dispatch_info.read_mem_size = read_size;
+      dispatch_info.write_mem_size = write_size;
     }
   }
 }
