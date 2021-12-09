@@ -4,6 +4,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "if_windows",
     "tf_cc_binary",
     "tf_cc_test",
@@ -27,7 +28,10 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = if_google(
+        ["//tensorflow:internal"],
+        ["//visibility:public"],
+    ),
     licenses = ["notice"],
 )
 
