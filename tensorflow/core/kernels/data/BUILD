@@ -417,6 +417,7 @@ tf_kernel_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:finalization_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data:unbounded_thread_pool",
@@ -1365,6 +1366,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/data:captured_function.h",
         "//tensorflow/core/data:dataset_utils.h",
+        "//tensorflow/core/data:finalization_utils.h",
         "//tensorflow/core/data:utils.h",
         "//tensorflow/core/data:name_utils.h",
         "//tensorflow/core/data:rewrite_utils.h",
@@ -1389,6 +1391,7 @@ filegroup(
         ":portable_all_op_kernels_headers",
         "//tensorflow/core/data:captured_function.cc",
         "//tensorflow/core/data:dataset_utils.cc",
+        "//tensorflow/core/data:finalization_utils.cc",
         "//tensorflow/core/data:name_utils.cc",
         "//tensorflow/core/data:utils.cc",
         "//tensorflow/core/data:rewrite_utils.cc",
