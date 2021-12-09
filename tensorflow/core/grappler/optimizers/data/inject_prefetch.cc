@@ -32,6 +32,11 @@ namespace grappler {
 namespace {
 
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
+constexpr std::array<const char*, 8> kAsyncTransforms = {
+    "ParallelBatchDataset",        "ParallelInterleaveDataset",
+    "ParallelInterleaveDatasetV2", "ParallelInterleaveDatasetV3",
+    "ParallelInterleaveDatasetV4", "ParallelMapDataset",
+    "ParallelMapDatasetV2",        "PrefetchDataset"};
 constexpr std::array<const char*, 7> kDatasetsToSkip = {
     "AssertNextDataset",        "ExperimentalAssertNextDataset",
     "OptionsDataset",           "ModelDataset",
@@ -57,10 +62,13 @@ bool ShouldInjectPrefetch(const NodeDef* last_node,
                "rewrite failed to find a dataset node.";
     return false;
   }
-  if (last_node->op() == kPrefetchDataset) {
-    VLOG(1)
-        << "The optimization inject_prefetch is not applied because the "
-           "last transformation of the input pipeline is already `prefetch`.";
+  if (absl::c_any_of(kAsyncTransforms, [last_node](const char* dataset) {
+        return data::MatchesAnyVersion(dataset, last_node->op());
+      })) {
+    VLOG(1) << "The optimization inject_prefetch is not applied because the "
+               "last transformation of the input pipeline is an asynchronous "
+               "transformation: "
+            << last_node->op();
     return false;
   }
   return true;
