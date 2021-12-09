@@ -144,6 +144,7 @@ StatusOr<Node*> ReplaceArgNodesWithRecvAtHostNode(
     // Record out edges and remove `n` before adding those edges to RecvAtHost.
     // This is to avoid multiple producers.
     std::vector<OutEdgeInfo> out_edge_info;
+    out_edge_info.reserve(n->out_edges().size());
     for (auto edge : n->out_edges()) {
       out_edge_info.push_back(
           {edge->dst(), edge->src_output(), edge->dst_input()});
@@ -472,6 +473,7 @@ StatusOr<std::vector<DataType>> UpdateTypesAttribute(
         lifted_arg_nodes_and_outside_compilation_nodes,
     const string& type_attr_name, Node* n) {
   std::vector<DataType> data_types;
+  data_types.reserve(lifted_arg_nodes_and_outside_compilation_nodes.size());
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), type_attr_name, &data_types));
   for (auto pair : lifted_arg_nodes_and_outside_compilation_nodes) {
     Node* outside_compilation_node = pair.second;
@@ -610,6 +612,8 @@ Status PostprocessLiftedArgsForWhile(
 
   // Add edges from outside compilation nodes to While node.
   std::vector<Node*> outside_compilation_nodes;
+  outside_compilation_nodes.reserve(
+      lifted_arg_nodes_and_outside_compilation_nodes.size());
   std::transform(
       lifted_arg_nodes_and_outside_compilation_nodes.begin(),
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
@@ -623,6 +627,8 @@ Status PostprocessLiftedArgsForWhile(
   // In body_graph, create new _Arg/_Retval nodes, and replace lifted arg
   // nodes with the new _Arg nodes.
   std::vector<Node*> lifted_arg_nodes;
+  lifted_arg_nodes.reserve(
+      lifted_arg_nodes_and_outside_compilation_nodes.size());
   std::transform(
       lifted_arg_nodes_and_outside_compilation_nodes.begin(),
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
@@ -727,6 +733,10 @@ Status PostprocessLiftedArgsForIf(
   // Merge lifted args from then and else branches.
   std::vector<Node*> outside_compilation_nodes;
   std::vector<Node*> then_branch_lifted_arg_nodes;
+  outside_compilation_nodes.reserve(
+      then_branch_lifted_arg_nodes_and_outside_compilation_nodes.size());
+  then_branch_lifted_arg_nodes.reserve(
+      then_branch_lifted_arg_nodes_and_outside_compilation_nodes.size());
   for (const auto& pair :
        then_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
     outside_compilation_nodes.push_back(pair.second);
@@ -757,6 +767,7 @@ Status PostprocessLiftedArgsForIf(
 
   // Append lifted args' types to If node's Tin attribute.
   std::vector<DataType> data_types;
+  data_types.reserve(outside_compilation_nodes.size());
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tin", &data_types));
   for (Node* n : outside_compilation_nodes) {
     data_types.push_back(n->output_type(0));
@@ -851,6 +862,8 @@ Status PostprocessLiftedArgsForCall(
   }
 
   std::vector<Node*> lifted_arg_nodes;
+  lifted_arg_nodes.reserve(
+      lifted_arg_nodes_and_outside_compilation_nodes.size());
   std::transform(
       lifted_arg_nodes_and_outside_compilation_nodes.begin(),
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
@@ -892,6 +905,8 @@ Status PostprocessLiftedArgsForCall(
 
   // Add edges from outside compilation nodes to call node.
   std::vector<Node*> outside_compilation_nodes;
+  outside_compilation_nodes.reserve(
+      lifted_arg_nodes_and_outside_compilation_nodes.size());
   std::transform(
       lifted_arg_nodes_and_outside_compilation_nodes.begin(),
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
@@ -1231,6 +1246,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
     // This is an "top-level" outside compilation. Clear the graph, and copy
     // SendFromHost and all its predecessors from `host_graph`.
     std::vector<Node*> nodes;
+    nodes.reserve(g->num_op_nodes());
     for (Node* n : g->op_nodes()) {
       nodes.push_back(n);
     }
