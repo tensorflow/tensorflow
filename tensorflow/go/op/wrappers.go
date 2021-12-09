@@ -40753,8 +40753,8 @@ func EncodeBase64Pad(value bool) EncodeBase64Attr {
 
 // Encode strings into web-safe base64 format.
 //
-// Refer to the following article for more information on base64 format:
-// en.wikipedia.org/wiki/Base64. Base64 strings may have padding with '=' at the
+// Refer to [this article](https://en.wikipedia.org/wiki/Base64) for more information on
+// base64 format. Base64 strings may have padding with '=' at the
 // end so that the encoded has length multiple of 4. See Padding section of the
 // link above.
 //
@@ -47770,8 +47770,9 @@ func DeserializeSparse(scope *Scope, serialized_sparse tf.Output, dtype tf.DataT
 
 // Decode web-safe base64-encoded strings.
 //
-// Input may or may not have padding at the end. See EncodeBase64 for padding.
-// Web-safe means that input must use - and _ instead of + and /.
+// Input may or may not have padding at the end. See
+// [EncodeBase64](https://www.tensorflow.org/api_docs/python/tf/io/encode_base64)
+// for padding. Web-safe means that input must use - and _ instead of + and /.
 //
 // Arguments:
 //	input: Base64 strings to decode.
