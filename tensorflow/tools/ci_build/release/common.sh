@@ -304,11 +304,11 @@ function setup_python_from_pyenv_macos {
     PY_VERSION=$1
   fi
 
-  git clone --branch 1.2.27 https://github.com/pyenv/pyenv.git
+  git clone --branch v2.2.2 https://github.com/pyenv/pyenv.git
 
   PYENV_ROOT="$(pwd)/pyenv"
   export PYENV_ROOT
-  export PATH="$PYENV_ROOT/bin:$PATH"
+  export PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
 
   eval "$(pyenv init -)"
 
