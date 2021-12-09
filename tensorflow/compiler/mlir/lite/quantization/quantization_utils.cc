@@ -643,6 +643,9 @@ QuantizedType DownCastScale(QuantizedType type, double min, double max,
 QuantizedType DownCastScale(QuantizedType type,
                             const SmallVectorImpl<double>& mins,
                             const SmallVectorImpl<double>& maxs, Location loc) {
+  // The given type can be null. For example, there can be an invalid scale and
+  // so on.
+  if (!type) return type;
   SmallVector<double, 4> scales(mins.size());
   SmallVector<int64_t, 4> zero_points(mins.size());
   if (auto q_type = type.dyn_cast<UniformQuantizedType>()) {
