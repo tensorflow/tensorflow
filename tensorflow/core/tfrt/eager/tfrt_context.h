@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 class EagerContext;
 class DynamicDeviceMgr;
-}
+}  // namespace tensorflow
 namespace tfrt {
 class HostContext;
 class CoreRuntime;

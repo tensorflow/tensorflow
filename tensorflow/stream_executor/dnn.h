@@ -30,9 +30,9 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "google/protobuf/wrappers.pb.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "google/protobuf/wrappers.pb.h"
 #include "tensorflow/stream_executor/data_type.h"
 #include "tensorflow/stream_executor/device_description.h"
 #include "tensorflow/stream_executor/device_memory.h"

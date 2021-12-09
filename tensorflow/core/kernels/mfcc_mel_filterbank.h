@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
 
 #include <vector>
+
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {

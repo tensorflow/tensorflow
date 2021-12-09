@@ -175,7 +175,6 @@ void MatrixBatchVectorMultiply(const int16_t* hidden,
                                int32_t n_hidden, int32_t n_output,
                                int32_t output_zp, int8_t* proj_output);
 
-
 // Apply Layer Normalization (https://arxiv.org/abs/1607.06450) to a Quantized
 // vector.
 // Parameters:
@@ -328,7 +327,6 @@ inline void BatchVectorBatchVectorDotProduct(const T* vector1, const T* vector2,
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
                                       int n_batch, int32_t* result);
-
 
 // Same as above, but inputs are 16bit integer and output is 16bit integer.
 void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,

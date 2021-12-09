@@ -21,7 +21,6 @@ limitations under the License.
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -70,7 +69,6 @@ template <>
 struct proxy_type_pod<GPUDevice, 1> {
   typedef ::tensorflow::int8 type;
 };
-
 
 /// If POD we use proxy_type_pod, otherwise this maps to identity.
 template <typename Device, typename T>

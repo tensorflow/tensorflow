@@ -19,10 +19,10 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 
 namespace tensorflow {
 namespace profiler {

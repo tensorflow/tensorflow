@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/ctc/ctc_loss_util.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tensorflow {
 namespace ctc {

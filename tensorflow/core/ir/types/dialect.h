@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_TYPE_DIALECT_H_
 #define TENSORFLOW_CORE_IR_TYPE_DIALECT_H_
 
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"   // from @llvm-project
+#include "mlir/IR/Diagnostics.h"    // from @llvm-project
+#include "mlir/IR/Dialect.h"        // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 
 // Include the dialect class generated from dialect.td.

@@ -166,7 +166,7 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
 
   // Returns a reference to our status. If this contains a T, then
   // returns Status::OK().
-  const Status& status() const &;
+  const Status& status() const&;
   Status status() &&;
 
   // Returns a reference to our current value, or CHECK-fails if !this->ok().
@@ -189,9 +189,9 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   // warnings about possible uses of the statusor object after the move.
   // C++ style guide waiver for ref-qualified overloads granted in cl/143176389
   // See go/ref-qualifiers for more details on such overloads.
-  const T& ValueOrDie() const &;
+  const T& ValueOrDie() const&;
   T& ValueOrDie() &;
-  const T&& ValueOrDie() const &&;
+  const T&& ValueOrDie() const&&;
   T&& ValueOrDie() &&;
 
   // Returns a reference to the current value.
@@ -289,7 +289,7 @@ inline StatusOr<T>& StatusOr<T>::operator=(StatusOr<U>&& other) {
 }
 
 template <typename T>
-const Status& StatusOr<T>::status() const & {
+const Status& StatusOr<T>::status() const& {
   return this->status_;
 }
 template <typename T>
@@ -300,7 +300,7 @@ Status StatusOr<T>::status() && {
 }
 
 template <typename T>
-const T& StatusOr<T>::ValueOrDie() const & {
+const T& StatusOr<T>::ValueOrDie() const& {
   this->EnsureOk();
   return this->data_;
 }
@@ -312,7 +312,7 @@ T& StatusOr<T>::ValueOrDie() & {
 }
 
 template <typename T>
-const T&& StatusOr<T>::ValueOrDie() const && {
+const T&& StatusOr<T>::ValueOrDie() const&& {
   this->EnsureOk();
   return std::move(this->data_);
 }

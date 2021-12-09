@@ -45,7 +45,6 @@ TF_CALL_complex128(DEFINE_TYPE);
 #undef DEFINE_DIM
 #undef DEFINE_TYPE
 
-
 }  // end namespace functor
 }  // end namespace tensorflow
 

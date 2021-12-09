@@ -57,10 +57,9 @@ class KeypointDetector {
 
   // Adds a grid of candidate keypoints to the given box, up to
   // max_num_keypoints or kNumToAddAsCandidates^2, whichever is lower.
-  int AddExtraCandidatesForBoxes(
-      const std::vector<BoundingBox>& boxes,
-      const int max_num_keypoints,
-      Keypoint* const keypoints) const;
+  int AddExtraCandidatesForBoxes(const std::vector<BoundingBox>& boxes,
+                                 const int max_num_keypoints,
+                                 Keypoint* const keypoints) const;
 
   // Scan the frame for potential keypoints using the FAST keypoint detector.
   // Quadrant is an argument 0-3 which refers to the quadrant of the image in
@@ -70,43 +69,38 @@ class KeypointDetector {
                         const int max_num_keypoints, Keypoint* const keypoints);
 
   int FindFastKeypoints(const ImageData& image_data,
-                        const int max_num_keypoints,
-                        Keypoint* const keypoints);
+                        const int max_num_keypoints, Keypoint* const keypoints);
 
   // Score a bunch of candidate keypoints.  Assigns the scores to the input
   // candidate_keypoints array entries.
-  void ScoreKeypoints(const ImageData& image_data,
-                      const int num_candidates,
+  void ScoreKeypoints(const ImageData& image_data, const int num_candidates,
                       Keypoint* const candidate_keypoints);
 
   void SortKeypoints(const int num_candidates,
-                    Keypoint* const candidate_keypoints) const;
+                     Keypoint* const candidate_keypoints) const;
 
   // Selects a set of keypoints falling within the supplied box such that the
   // most highly rated keypoints are picked first, and so that none of them are
   // too close together.
-  int SelectKeypointsInBox(
-      const BoundingBox& box,
-      const Keypoint* const candidate_keypoints,
-      const int num_candidates,
-      const int max_keypoints,
-      const int num_existing_keypoints,
-      const Keypoint* const existing_keypoints,
-      Keypoint* const final_keypoints) const;
+  int SelectKeypointsInBox(const BoundingBox& box,
+                           const Keypoint* const candidate_keypoints,
+                           const int num_candidates, const int max_keypoints,
+                           const int num_existing_keypoints,
+                           const Keypoint* const existing_keypoints,
+                           Keypoint* const final_keypoints) const;
 
   // Selects from the supplied sorted keypoint pool a set of keypoints that will
   // best cover the given set of boxes, such that each box is covered at a
   // resolution proportional to its size.
-  void SelectKeypoints(
-      const std::vector<BoundingBox>& boxes,
-      const Keypoint* const candidate_keypoints,
-      const int num_candidates,
-      FramePair* const frame_change) const;
+  void SelectKeypoints(const std::vector<BoundingBox>& boxes,
+                       const Keypoint* const candidate_keypoints,
+                       const int num_candidates,
+                       FramePair* const frame_change) const;
 
   // Copies and compacts the found keypoints in the second frame of prev_change
   // into the array at new_keypoints.
   static int CopyKeypoints(const FramePair& prev_change,
-                          Keypoint* const new_keypoints);
+                           Keypoint* const new_keypoints);
 
   const KeypointDetectorConfig* const config_;
 

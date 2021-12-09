@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LINALG_EINSUM_OP_H_
 #define TENSORFLOW_CORE_KERNELS_LINALG_EINSUM_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU

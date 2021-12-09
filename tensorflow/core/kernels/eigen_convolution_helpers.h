@@ -59,9 +59,8 @@ class TensorEvaluatorHasPartialPacket {
   template <typename TensorEvaluatorT, typename PacketT, typename IndexT>
   static auto functionExistsSfinae(...) -> std::false_type;
 
-  typedef decltype(
-      functionExistsSfinae<TensorEvaluatorType, PacketType, IndexType>(
-          nullptr)) status;
+  typedef decltype(functionExistsSfinae<TensorEvaluatorType, PacketType,
+                                        IndexType>(nullptr)) status;
 
   static constexpr bool value = status::value;
 };

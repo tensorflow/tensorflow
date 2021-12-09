@@ -46,6 +46,7 @@ limitations under the License.
 
 #include <complex>
 #include <memory>
+
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {

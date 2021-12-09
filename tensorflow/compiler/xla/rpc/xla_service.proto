@@ -54,78 +54,64 @@ service XlaService {
   //
   // If the handle given is not currently allocated, a NOT_FOUND status is
   // returned.
-  rpc Unregister(UnregisterRequest) returns (UnregisterResponse) {
-  }
+  rpc Unregister(UnregisterRequest) returns (UnregisterResponse) {}
 
   // Deconstructs a tuple. Returns a newly created GlobalDataHandle for each
   // element in the tuple.
   rpc DeconstructTuple(DeconstructTupleRequest)
-      returns (DeconstructTupleResponse) {
-  }
+      returns (DeconstructTupleResponse) {}
 
   // Unpack requests that a global data handle, with a tuple shape, has global
   // data handles created for each of its constituent members. This is the
   // equivalent of the "destructuring assignment" present in various programming
   // languages.
-  rpc Unpack(UnpackRequest) returns (UnpackResponse) {
-  }
+  rpc Unpack(UnpackRequest) returns (UnpackResponse) {}
 
   // Requests the shape of the referenced global data.
-  rpc GetShape(GetShapeRequest) returns (GetShapeResponse) {
-  }
+  rpc GetShape(GetShapeRequest) returns (GetShapeResponse) {}
 
   // Requests the statistics of the given computation.
   rpc GetComputationGraphStats(ComputationGraphStatsRequest)
-      returns (ComputationStatsResponse) {
-  }
+      returns (ComputationStatsResponse) {}
 
   // Loads a variable number of values with a given element type from ColumnIO.
-  rpc LoadData(LoadDataRequest) returns (LoadDataResponse) {
-  }
+  rpc LoadData(LoadDataRequest) returns (LoadDataResponse) {}
 
   // Transfers the given global data to the client in the form of a Literal.
   rpc TransferToClient(TransferToClientRequest)
-      returns (TransferToClientResponse) {
-  }
+      returns (TransferToClientResponse) {}
 
   // Transfers the given literal to the server to be stored in a global
   // allocation, which is returned.
   rpc TransferToServer(TransferToServerRequest)
-      returns (TransferToServerResponse) {
-  }
+      returns (TransferToServerResponse) {}
 
   // Transfers the given literal to the Infeed buffer of the device.
   rpc TransferToInfeed(TransferToInfeedRequest)
-      returns (TransferToInfeedResponse) {
-  }
+      returns (TransferToInfeedResponse) {}
 
   // Transferred literal from the Outfeed buffer of the device.
   rpc TransferFromOutfeed(TransferFromOutfeedRequest)
-      returns (TransferFromOutfeedResponse) {
-  }
+      returns (TransferFromOutfeedResponse) {}
 
   // Resets the device, clearing all existing state on the device.
-  rpc ResetDevice(ResetDeviceRequest) returns (ResetDeviceResponse) {
-  }
+  rpc ResetDevice(ResetDeviceRequest) returns (ResetDeviceResponse) {}
 
   // Computes the value of a constant expression. The request contains the
   // computation graph for the constant expression.
   rpc ComputeConstantGraph(ComputeConstantGraphRequest)
-      returns (ComputeConstantResponse) {
-  }
+      returns (ComputeConstantResponse) {}
 
   // Requests one or more device handles from the target. The returned device
   // handles can be used to specify the device on which to execute computations
   // or transfer data.
   rpc GetDeviceHandles(GetDeviceHandlesRequest)
-      returns (GetDeviceHandlesResponse) {
-  }
+      returns (GetDeviceHandlesResponse) {}
 
   // Creates a channel handle that can be used to transfer data between
   // two computations via a pair of Send and Recv instructions.
   rpc CreateChannelHandle(CreateChannelHandleRequest)
-      returns (CreateChannelHandleResponse) {
-  }
+      returns (CreateChannelHandleResponse) {}
 
   // Compiles the provided computation into executable. Returns the handle of
   // the executable.
@@ -140,12 +126,10 @@ service XlaService {
   // global data for each computation. Returns a list of global data output and
   // execution timing.
   rpc ExecuteGraphParallel(ExecuteGraphParallelRequest)
-      returns (ExecuteParallelResponse) {
-  }
+      returns (ExecuteParallelResponse) {}
 
   // Waits until the given execution (aysnchronously launched) is complete, and
   // returns the global data output.
   rpc WaitForExecution(WaitForExecutionRequest)
-      returns (WaitForExecutionResponse) {
-  }
+      returns (WaitForExecutionResponse) {}
 }

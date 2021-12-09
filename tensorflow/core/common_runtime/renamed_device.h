@@ -91,7 +91,6 @@ class RenamedDevice : public Device {
     return underlying_device_->has_eigen_cpu_device();
   }
 
-
   PerOpGpuDevice* MakeGpuDevice() override {
     return underlying_device_->MakeGpuDevice();
   }

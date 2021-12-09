@@ -36,7 +36,8 @@ class JniLongField {
       CHECK_ALWAYS(cls != 0, "Unable to find class");
       field_ID_ = env->GetFieldID(cls, field_name_, "J");
       CHECK_ALWAYS(field_ID_ != 0,
-          "Unable to find field %s. (Check proguard cfg)", field_name_);
+                   "Unable to find field %s. (Check proguard cfg)",
+                   field_name_);
     }
 
     return env->GetLongField(thiz, field_ID_);
@@ -48,7 +49,7 @@ class JniLongField {
       CHECK_ALWAYS(cls != 0, "Unable to find class");
       field_ID_ = env->GetFieldID(cls, field_name_, "J");
       CHECK_ALWAYS(field_ID_ != 0,
-          "Unable to find field %s (Check proguard cfg)", field_name_);
+                   "Unable to find field %s (Check proguard cfg)", field_name_);
     }
 
     env->SetLongField(thiz, field_ID_, value);

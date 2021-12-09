@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_NNAPI_ACCELERATION_TEST_UTIL_H_
 
 #include <gtest/gtest.h>
+
 #include "absl/types/optional.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 

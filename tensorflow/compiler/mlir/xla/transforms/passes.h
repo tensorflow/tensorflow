@@ -19,10 +19,10 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"         // from @llvm-project
+#include "mlir/IR/PatternMatch.h"        // from @llvm-project
+#include "mlir/Pass/Pass.h"              // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"      // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {

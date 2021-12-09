@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "flatbuffers/idl.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffers.h"           // from @flatbuffers
+#include "flatbuffers/idl.h"                   // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"

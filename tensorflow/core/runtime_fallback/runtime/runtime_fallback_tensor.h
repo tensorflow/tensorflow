@@ -20,11 +20,11 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
-#include "tfrt/support/forward_decls.h"  // from @tf_runtime
-#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/host_tensor.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"      // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"   // from @tf_runtime
+#include "tfrt/tensor/host_tensor.h"         // from @tf_runtime
 #include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor.h"              // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

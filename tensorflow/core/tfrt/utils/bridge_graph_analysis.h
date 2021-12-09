@@ -27,5 +27,4 @@ inline tensorflow::Status CheckTpuMlirBridgeCompatibility(
 
 }  // namespace tfrt
 
-
 #endif  // TENSORFLOW_CORE_TFRT_UTILS_BRIDGE_GRAPH_ANALYSIS_H_

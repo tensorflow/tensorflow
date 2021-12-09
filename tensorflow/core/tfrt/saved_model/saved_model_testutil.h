@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#include "tfrt/tensor/btf_util.h"  // from @tf_runtime
+#include "tfrt/tensor/btf_util.h"            // from @tf_runtime
 
 ABSL_DECLARE_FLAG(bool, enable_optimizer);
 ABSL_DECLARE_FLAG(std::string, force_data_format);

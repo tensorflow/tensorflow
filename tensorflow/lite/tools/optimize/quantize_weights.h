@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_set.h"
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"

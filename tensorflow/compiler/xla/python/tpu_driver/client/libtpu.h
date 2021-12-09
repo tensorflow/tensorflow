@@ -95,8 +95,8 @@ typedef struct TpuDriver*(PrototypeTpuDriver_Open)(const char* worker);
 typedef void(PrototypeTpuDriver_Close)(struct TpuDriver* driver);
 typedef struct TpuStatus*(PrototypeTpuDriver_Reset)(struct TpuDriver* driver);
 
-typedef struct TpuSystemInfo*(PrototypeTpuDriver_QuerySystemInfo)(
-    struct TpuDriver* driver);
+typedef struct TpuSystemInfo*(
+    PrototypeTpuDriver_QuerySystemInfo)(struct TpuDriver* driver);
 
 typedef void(PrototypeTpuDriver_FreeSystemInfo)(struct TpuSystemInfo* info);
 
@@ -106,17 +106,21 @@ const int32_t MemoryRegion_HBM = 1;
 typedef int64_t(PrototypeTpuDriver_ComputeLinearizedBytesFromShape)(
     struct TpuDriver* driver, const struct TpuAllocationShape shape);
 
-typedef struct TpuStatus*(PrototypeTpuDriver_LinearizeShape)(
-    struct TpuDriver* driver, void* dst, const void* src,
-    const struct TpuAllocationShape shape);
+typedef struct TpuStatus*(
+    PrototypeTpuDriver_LinearizeShape)(struct TpuDriver* driver, void* dst,
+                                       const void* src,
+                                       const struct TpuAllocationShape shape);
 
-typedef struct TpuStatus*(PrototypeTpuDriver_DelinearizeShape)(
-    struct TpuDriver* driver, void* dst, const void* src,
-    const struct TpuAllocationShape shape);
+typedef struct TpuStatus*(
+    PrototypeTpuDriver_DelinearizeShape)(struct TpuDriver* driver, void* dst,
+                                         const void* src,
+                                         const struct TpuAllocationShape shape);
 
-typedef struct TpuCompiledProgramHandle*(PrototypeTpuDriver_CompileProgram)(
-    struct TpuDriver* driver, const struct HloProto hlo_proto,
-    int32_t num_replicas, int32_t eventc, struct TpuEvent** eventv);
+typedef struct TpuCompiledProgramHandle*(
+    PrototypeTpuDriver_CompileProgram)(struct TpuDriver* driver,
+                                       const struct HloProto hlo_proto,
+                                       int32_t num_replicas, int32_t eventc,
+                                       struct TpuEvent** eventv);
 
 typedef struct TpuCompiledProgramHandle*(
     PrototypeTpuDriver_CompileProgramFromText)(struct TpuDriver* driver,
@@ -132,64 +136,85 @@ typedef struct TpuCompiledProgramHandle*(
 typedef void(PrototypeTpuDriver_FreeCompiledProgramHandle)(
     struct TpuCompiledProgramHandle* handle);
 
-typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_LoadProgram)(
-    struct TpuDriver* driver, int32_t core_id,
-    const struct TpuCompiledProgramHandle* compiled_program_handle,
-    int32_t eventc, struct TpuEvent** eventv);
+typedef struct TpuLoadedProgramHandle*(
+    PrototypeTpuDriver_LoadProgram)(struct TpuDriver* driver, int32_t core_id,
+                                    const struct TpuCompiledProgramHandle*
+                                        compiled_program_handle,
+                                    int32_t eventc, struct TpuEvent** eventv);
 
 /* Note: We are not responsible for freeing the event within the
  * TpuLoadedProgramHandle. You have to call FreeEvent separately to ensure that
  * memory does not leak.
  */
-typedef struct TpuEvent*(PrototypeTpuDriver_UnloadProgram)(
-    struct TpuDriver* driver,
-    struct TpuLoadedProgramHandle* loaded_program_handle, int32_t eventc,
-    struct TpuEvent** eventv);
+typedef struct TpuEvent*(
+    PrototypeTpuDriver_UnloadProgram)(struct TpuDriver* driver,
+                                      struct TpuLoadedProgramHandle*
+                                          loaded_program_handle,
+                                      int32_t eventc, struct TpuEvent** eventv);
 
-typedef struct TpuEvent*(PrototypeTpuDriver_ExecuteProgram)(
-    struct TpuDriver* driver, struct TpuLoadedProgramHandle* handle,
-    int32_t inputc, struct TpuBufferHandle** input_buffer_handle,
-    int32_t outputc, struct TpuBufferHandle** output_buffer_handle,
-    struct DeviceAssignment device_assignment, int32_t eventc,
-    struct TpuEvent** eventv);
+typedef struct TpuEvent*(
+    PrototypeTpuDriver_ExecuteProgram)(struct TpuDriver* driver,
+                                       struct TpuLoadedProgramHandle* handle,
+                                       int32_t inputc,
+                                       struct TpuBufferHandle**
+                                           input_buffer_handle,
+                                       int32_t outputc,
+                                       struct TpuBufferHandle**
+                                           output_buffer_handle,
+                                       struct DeviceAssignment
+                                           device_assignment,
+                                       int32_t eventc,
+                                       struct TpuEvent** eventv);
 
-typedef struct TpuBufferHandle*(PrototypeTpuDriver_AllocateTuple)(
-    struct TpuDriver* driver, int32_t core_id, int32_t memory_region,
-    int32_t bufferc, struct TpuBufferHandle** buffer_handle, int32_t eventc,
-    struct TpuEvent** eventv);
+typedef struct TpuBufferHandle*(
+    PrototypeTpuDriver_AllocateTuple)(struct TpuDriver* driver, int32_t core_id,
+                                      int32_t memory_region, int32_t bufferc,
+                                      struct TpuBufferHandle** buffer_handle,
+                                      int32_t eventc, struct TpuEvent** eventv);
 
-typedef struct TpuBufferHandle*(PrototypeTpuDriver_Allocate)(
-    struct TpuDriver* driver, int32_t core_id, int32_t memory_region,
-    int64_t num_bytes, int32_t eventc, struct TpuEvent** eventv);
+typedef struct TpuBufferHandle*(
+    PrototypeTpuDriver_Allocate)(struct TpuDriver* driver, int32_t core_id,
+                                 int32_t memory_region, int64_t num_bytes,
+                                 int32_t eventc, struct TpuEvent** eventv);
 
-typedef struct TpuBufferHandle*(PrototypeTpuDriver_AllocateShape)(
-    struct TpuDriver* driver, int32_t core_id, int32_t memory_region,
-    const struct TpuAllocationShape shape, int32_t eventc,
-    struct TpuEvent** eventv);
+typedef struct TpuBufferHandle*(
+    PrototypeTpuDriver_AllocateShape)(struct TpuDriver* driver, int32_t core_id,
+                                      int32_t memory_region,
+                                      const struct TpuAllocationShape shape,
+                                      int32_t eventc, struct TpuEvent** eventv);
 
 /* Note: We are not responsible for freeing the event within the
  * TpuBufferHandle. You have to call FreeEvent separately to ensure that memory
  * does not leak.
  */
-typedef struct TpuEvent*(PrototypeTpuDriver_Deallocate)(
-    struct TpuDriver* driver, struct TpuBufferHandle* buffer_handle,
-    int32_t eventc, struct TpuEvent** eventv);
+typedef struct TpuEvent*(
+    PrototypeTpuDriver_Deallocate)(struct TpuDriver* driver,
+                                   struct TpuBufferHandle* buffer_handle,
+                                   int32_t eventc, struct TpuEvent** eventv);
 
-typedef struct TpuEvent*(PrototypeTpuDriver_TransferToDevice)(
-    struct TpuDriver* driver, const void* src, struct TpuBufferHandle* dst,
-    int32_t eventc, struct TpuEvent** eventv);
+typedef struct TpuEvent*(
+    PrototypeTpuDriver_TransferToDevice)(struct TpuDriver* driver,
+                                         const void* src,
+                                         struct TpuBufferHandle* dst,
+                                         int32_t eventc,
+                                         struct TpuEvent** eventv);
 
-typedef struct TpuEvent*(PrototypeTpuDriver_TransferFromDevice)(
-    struct TpuDriver* driver, struct TpuBufferHandle* src, void* dst,
-    int32_t eventc, struct TpuEvent** eventv);
+typedef struct TpuEvent*(
+    PrototypeTpuDriver_TransferFromDevice)(struct TpuDriver* driver,
+                                           struct TpuBufferHandle* src,
+                                           void* dst, int32_t eventc,
+                                           struct TpuEvent** eventv);
 
-typedef struct TpuEvent*(PrototypeTpuDriver_TransferFromDeviceToDevice)(
-    struct TpuDriver* driver, struct TpuBufferHandle* src,
-    struct TpuBufferHandle* dst, int32_t eventc, struct TpuEvent** eventv);
+typedef struct TpuEvent*(
+    PrototypeTpuDriver_TransferFromDeviceToDevice)(struct TpuDriver* driver,
+                                                   struct TpuBufferHandle* src,
+                                                   struct TpuBufferHandle* dst,
+                                                   int32_t eventc,
+                                                   struct TpuEvent** eventv);
 
 typedef struct CompiledProgramShape*(
-    PrototypeTpuDriver_GetCompiledProgramShape)(
-    struct TpuCompiledProgramHandle* handle);
+    PrototypeTpuDriver_GetCompiledProgramShape)(struct TpuCompiledProgramHandle*
+                                                    handle);
 
 typedef void(PrototypeTpuDriver_FreeCompiledProgramShape)(
     struct CompiledProgramShape* shape);
@@ -262,9 +287,9 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Version TpuDriver_Version;
 #endif
 
 struct TpuDriverFn {
-  PrototypeTpuDriver_Open* TpuDriver_Open;                          // NOLINT
-  PrototypeTpuDriver_Close* TpuDriver_Close;                        // NOLINT
-  PrototypeTpuDriver_Reset* TpuDriver_Reset;                        // NOLINT
+  PrototypeTpuDriver_Open* TpuDriver_Open;    // NOLINT
+  PrototypeTpuDriver_Close* TpuDriver_Close;  // NOLINT
+  PrototypeTpuDriver_Reset* TpuDriver_Reset;  // NOLINT
   PrototypeTpuDriver_ComputeLinearizedBytesFromShape*
       TpuDriver_ComputeLinearizedBytesFromShape;                    // NOLINT
   PrototypeTpuDriver_QuerySystemInfo* TpuDriver_QuerySystemInfo;    // NOLINT
@@ -273,7 +298,7 @@ struct TpuDriverFn {
   PrototypeTpuDriver_DelinearizeShape* TpuDriver_DelinearizeShape;  // NOLINT
   PrototypeTpuDriver_CompileProgram* TpuDriver_CompileProgram;      // NOLINT
   PrototypeTpuDriver_CompileProgramFromText*
-      TpuDriver_CompileProgramFromText;                             // NOLINT
+      TpuDriver_CompileProgramFromText;  // NOLINT
   PrototypeTpuDriver_FreeCompiledProgramHandle*
       TpuDriver_FreeCompiledProgramHandle;                          // NOLINT
   PrototypeTpuDriver_LoadProgram* TpuDriver_LoadProgram;            // NOLINT
@@ -287,7 +312,7 @@ struct TpuDriverFn {
   PrototypeTpuDriver_TransferFromDevice*
       TpuDriver_TransferFromDevice;  // NOLINT
   PrototypeTpuDriver_TransferFromDeviceToDevice*
-      TpuDriver_TransferFromDeviceToDevice;                         // NOLINT
+      TpuDriver_TransferFromDeviceToDevice;  // NOLINT
   PrototypeTpuDriver_GetCompiledProgramShape*
       TpuDriver_GetCompiledProgramShape;  // NOLINT
   PrototypeTpuDriver_FreeCompiledProgramShape*
@@ -297,7 +322,7 @@ struct TpuDriverFn {
   PrototypeTpuDriver_FreeEvent* TpuDriver_FreeEvent;                // NOLINT
   PrototypeTpuDriver_FreeStatus* TpuDriver_FreeStatus;              // NOLINT
 
-  PrototypeTpuDriver_Version* TpuDriver_Version;                    // NOLINT
+  PrototypeTpuDriver_Version* TpuDriver_Version;  // NOLINT
 };
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_

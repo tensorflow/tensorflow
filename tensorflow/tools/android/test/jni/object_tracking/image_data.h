@@ -152,8 +152,8 @@ class ImageData {
           pyramid_sqrt2_[level] = new Image<uint8_t>(
               upper_level.GetWidth() / 2, upper_level.GetHeight() / 2);
         }
-        pyramid_sqrt2_[level]->DownsampleAveraged(
-            upper_level.data(), upper_level.stride(), 2);
+        pyramid_sqrt2_[level]->DownsampleAveraged(upper_level.data(),
+                                                  upper_level.stride(), 2);
       }
       pyramid_sqrt2_computed_[level] = true;
     }
@@ -210,24 +210,24 @@ class ImageData {
   void Precompute() {
     // Create the smoothed pyramids.
     for (int i = 0; i < kNumPyramidLevels * 2; i += 2) {
-      (void) GetPyramidSqrt2Level(i);
+      (void)GetPyramidSqrt2Level(i);
     }
     TimeLog("Created smoothed pyramids");
 
     // Create the smoothed pyramids.
     for (int i = 1; i < kNumPyramidLevels * 2; i += 2) {
-      (void) GetPyramidSqrt2Level(i);
+      (void)GetPyramidSqrt2Level(i);
     }
     TimeLog("Created smoothed sqrt pyramids");
 
     // Create the spatial derivatives for frame 1.
     for (int i = 0; i < kNumPyramidLevels; ++i) {
-      (void) GetSpatialX(i);
-      (void) GetSpatialY(i);
+      (void)GetSpatialX(i);
+      (void)GetSpatialY(i);
     }
     TimeLog("Created spatial derivatives");
 
-    (void) GetIntegralImage();
+    (void)GetIntegralImage();
     TimeLog("Got integral image!");
   }
 

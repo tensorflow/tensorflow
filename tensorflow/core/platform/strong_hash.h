@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STRONG_HASH_H_
 #define TENSORFLOW_CORE_PLATFORM_STRONG_HASH_H_
 
-#include "highwayhash/sip_hash.h"  // from @highwayhash
+#include "highwayhash/sip_hash.h"       // from @highwayhash
 #include "highwayhash/state_helpers.h"  // from @highwayhash
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"

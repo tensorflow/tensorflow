@@ -34,7 +34,8 @@ namespace metal {
 class Texture2D : public GPUObject {
  public:
   Texture2D() {}  // just for using Texture2D as a class members
-  Texture2D(id<MTLTexture> texture, int width, int height, MTLPixelFormat pixel_format);
+  Texture2D(id<MTLTexture> texture, int width, int height,
+            MTLPixelFormat pixel_format);
 
   // Move only
   Texture2D(Texture2D&& texture);
@@ -56,7 +57,8 @@ class Texture2D : public GPUObject {
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
 
-  absl::Status CreateFromTexture2DDescriptor(const Texture2DDescriptor& desc, id<MTLDevice> device);
+  absl::Status CreateFromTexture2DDescriptor(const Texture2DDescriptor& desc,
+                                             id<MTLDevice> device);
 
  private:
   void Release();
@@ -68,16 +70,19 @@ class Texture2D : public GPUObject {
 };
 
 // Creates new 4-channel 2D texture with f32 elements
-absl::Status CreateTexture2DRGBA32F(int width, int height, id<MTLDevice> device, Texture2D* result);
+absl::Status CreateTexture2DRGBA32F(int width, int height, id<MTLDevice> device,
+                                    Texture2D* result);
 
 // Creates new 4-channel 2D texture with f16 elements
-absl::Status CreateTexture2DRGBA16F(int width, int height, id<MTLDevice> device, Texture2D* result);
+absl::Status CreateTexture2DRGBA16F(int width, int height, id<MTLDevice> device,
+                                    Texture2D* result);
 
-absl::Status CreateTexture2DRGBA(DataType type, int width, int height, id<MTLDevice> device,
-                                 Texture2D* result);
-
-absl::Status CreateTexture2DRGBA(DataType type, int width, int height, void* data,
+absl::Status CreateTexture2DRGBA(DataType type, int width, int height,
                                  id<MTLDevice> device, Texture2D* result);
+
+absl::Status CreateTexture2DRGBA(DataType type, int width, int height,
+                                 void* data, id<MTLDevice> device,
+                                 Texture2D* result);
 
 template <typename T>
 absl::Status Texture2D::WriteData(id<MTLDevice> device,

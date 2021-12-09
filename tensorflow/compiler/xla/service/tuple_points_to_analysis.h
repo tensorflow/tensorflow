@@ -281,8 +281,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // Populates instruction-defined buffers and aliases for each instruction
   // in 'instructions'.
-  Status PopulateDefinedBuffersAndAliases(const decltype(
-      std::declval<HloComputation>().instructions())& instructions);
+  Status PopulateDefinedBuffersAndAliases(
+      const decltype(std::declval<HloComputation>()
+                         .instructions())& instructions);
 
   // Creates an empty PointsToSet in the points_to_ map for the given
   // instruction.

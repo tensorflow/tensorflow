@@ -18,9 +18,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace functor {
@@ -45,7 +45,6 @@ struct SetZeroFunctor<Eigen::ThreadPoolDevice, T> {
                   typename TTypes<T>::Flat out);
 };
 
-
 template <>
 struct SetZeroFunctor<Eigen::ThreadPoolDevice, tstring> {
   void operator()(const Eigen::ThreadPoolDevice& d,
@@ -64,7 +63,6 @@ struct SetOneFunctor<Eigen::ThreadPoolDevice, T> {
   void operator()(const Eigen::ThreadPoolDevice& d,
                   typename TTypes<T>::Flat out);
 };
-
 
 template <>
 struct SetOneFunctor<Eigen::ThreadPoolDevice, tstring> {

@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Types.h"      // from @llvm-project
+#include "mlir/IR/Value.h"      // from @llvm-project
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/ir/ops.h"

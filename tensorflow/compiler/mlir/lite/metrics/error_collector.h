@@ -33,9 +33,9 @@ class ErrorCollector {
                          ConverterErrorDataComparison>;
 
  public:
-  const ConverterErrorDataSet &CollectedErrors() { return collected_errors_; }
+  const ConverterErrorDataSet& CollectedErrors() { return collected_errors_; }
 
-  void ReportError(const ConverterErrorData &error) {
+  void ReportError(const ConverterErrorData& error) {
     collected_errors_.insert(error);
   }
 

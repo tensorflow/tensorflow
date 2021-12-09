@@ -20,11 +20,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_TFTEXT_UTILS_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"            // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"          // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"        // from @llvm-project
+#include "mlir/IR/Location.h"            // from @llvm-project
+#include "mlir/IR/Value.h"               // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"

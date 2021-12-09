@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"      // from @llvm-project
 
 namespace mlir {
 namespace TFL {

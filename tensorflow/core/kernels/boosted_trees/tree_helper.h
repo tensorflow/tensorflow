@@ -18,10 +18,10 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/QR"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/Eigen/QR"
 
 namespace tensorflow {
 

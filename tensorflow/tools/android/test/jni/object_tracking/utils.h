@@ -36,46 +36,44 @@ limitations under the License.
 // floating point errors in bounds-checks.
 #define EPSILON 0.00001f
 
-#define SAFE_DELETE(pointer) {\
-  if ((pointer) != NULL) {\
-    LOGV("Safe deleting pointer: %s", #pointer);\
-    delete (pointer);\
-    (pointer) = NULL;\
-  } else {\
-    LOGV("Pointer already null: %s", #pointer);\
-  }\
-}
-
+#define SAFE_DELETE(pointer)                       \
+  {                                                \
+    if ((pointer) != NULL) {                       \
+      LOGV("Safe deleting pointer: %s", #pointer); \
+      delete (pointer);                            \
+      (pointer) = NULL;                            \
+    } else {                                       \
+      LOGV("Pointer already null: %s", #pointer);  \
+    }                                              \
+  }
 
 #ifdef __GOOGLE__
 
-#define CHECK_ALWAYS(condition, format, ...) {\
-  CHECK(condition) << StringPrintf(format, ##__VA_ARGS__);\
-}
+#define CHECK_ALWAYS(condition, format, ...) \
+  { CHECK(condition) << StringPrintf(format, ##__VA_ARGS__); }
 
-#define SCHECK(condition, format, ...) {\
-  DCHECK(condition) << StringPrintf(format, ##__VA_ARGS__);\
-}
+#define SCHECK(condition, format, ...) \
+  { DCHECK(condition) << StringPrintf(format, ##__VA_ARGS__); }
 
 #else
 
-#define CHECK_ALWAYS(condition, format, ...) {\
-  if (!(condition)) {\
-    LOGE("CHECK FAILED (%s): " format, #condition, ##__VA_ARGS__);\
-    abort();\
-  }\
-}
+#define CHECK_ALWAYS(condition, format, ...)                         \
+  {                                                                  \
+    if (!(condition)) {                                              \
+      LOGE("CHECK FAILED (%s): " format, #condition, ##__VA_ARGS__); \
+      abort();                                                       \
+    }                                                                \
+  }
 
 #ifdef SANITY_CHECKS
-#define SCHECK(condition, format, ...) {\
-  CHECK_ALWAYS(condition, format, ##__VA_ARGS__);\
-}
+#define SCHECK(condition, format, ...) \
+  { CHECK_ALWAYS(condition, format, ##__VA_ARGS__); }
 #else
-#define SCHECK(condition, format, ...) {}
+#define SCHECK(condition, format, ...) \
+  {}
 #endif  // SANITY_CHECKS
 
 #endif  // __GOOGLE__
-
 
 #ifndef MAX
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
@@ -108,60 +106,50 @@ inline static int64_t CurrentRealTimeMillis() {
 #endif
 }
 
-
-template<typename T>
+template <typename T>
 inline static T Square(const T a) {
   return a * a;
 }
 
-
-template<typename T>
+template <typename T>
 inline static T Clip(const T a, const T floor, const T ceil) {
   SCHECK(ceil >= floor, "Bounds mismatch!");
   return (a <= floor) ? floor : ((a >= ceil) ? ceil : a);
 }
 
-
-template<typename T>
+template <typename T>
 inline static int Floor(const T a) {
   return static_cast<int>(a);
 }
 
-
-template<typename T>
+template <typename T>
 inline static int Ceil(const T a) {
   return Floor(a) + 1;
 }
 
-
-template<typename T>
+template <typename T>
 inline static bool InRange(const T a, const T min, const T max) {
   return (a >= min) && (a <= max);
 }
-
 
 inline static bool ValidIndex(const int a, const int max) {
   return (a >= 0) && (a < max);
 }
 
-
 inline bool NearlyEqual(const float a, const float b, const float tolerance) {
   return std::abs(a - b) < tolerance;
 }
-
 
 inline bool NearlyEqual(const float a, const float b) {
   return NearlyEqual(a, b, EPSILON);
 }
 
-
-template<typename T>
+template <typename T>
 inline static int Round(const float a) {
   return (a - static_cast<float>(floor(a) > 0.5f) ? ceil(a) : floor(a));
 }
 
-
-template<typename T>
+template <typename T>
 inline static void Swap(T* const a, T* const b) {
   // Cache out the VALUE of what's at a.
   T tmp = *a;
@@ -170,18 +158,15 @@ inline static void Swap(T* const a, T* const b) {
   *b = tmp;
 }
 
-
-static inline float randf() {
-  return rand() / static_cast<float>(RAND_MAX);
-}
+static inline float randf() { return rand() / static_cast<float>(RAND_MAX); }
 
 static inline float randf(const float min_value, const float max_value) {
   return randf() * (max_value - min_value) + min_value;
 }
 
 static inline uint16_t RealToFixed115(const float real_number) {
-  SCHECK(InRange(real_number, 0.0f, 2048.0f),
-        "Value out of range! %.2f", real_number);
+  SCHECK(InRange(real_number, 0.0f, 2048.0f), "Value out of range! %.2f",
+         real_number);
 
   static const float kMult = 32.0f;
   const float round_add = (real_number > 0.0f) ? 0.5f : -0.5f;
@@ -195,8 +180,8 @@ static inline float FixedToFloat115(const uint16_t fp_number) {
 
 static inline int RealToFixed1616(const float real_number) {
   static const float kMult = 65536.0f;
-  SCHECK(InRange(real_number, -kMult, kMult),
-        "Value out of range! %.2f", real_number);
+  SCHECK(InRange(real_number, -kMult, kMult), "Value out of range! %.2f",
+         real_number);
 
   const float round_add = (real_number > 0.0f) ? 0.5f : -0.5f;
   return static_cast<int>(real_number * kMult + round_add);
@@ -207,7 +192,7 @@ static inline float FixedToFloat1616(const int fp_number) {
   return (static_cast<float>(fp_number) / kDiv);
 }
 
-template<typename T>
+template <typename T>
 // produces numbers in range [0,2*M_PI] (rather than -PI,PI)
 inline T FastAtan2(const T y, const T x) {
   static const T coeff_1 = (T)(M_PI / 4.0);
@@ -252,7 +237,6 @@ inline float ComputeMeanCpu(const float* const values, const int num_vals) {
   return sum / static_cast<float>(num_vals);
 }
 
-
 inline float ComputeMean(const float* const values, const int num_vals) {
   return
 #ifdef __ARM_NEON
@@ -261,9 +245,7 @@ inline float ComputeMean(const float* const values, const int num_vals) {
                       ComputeMeanCpu(values, num_vals);
 }
 
-
-inline float ComputeStdDevCpu(const float* const values,
-                              const int num_vals,
+inline float ComputeStdDevCpu(const float* const values, const int num_vals,
                               const float mean) {
   // Get Std dev.
   float squared_sum = 0.0f;
@@ -273,9 +255,7 @@ inline float ComputeStdDevCpu(const float* const values,
   return sqrt(squared_sum / static_cast<float>(num_vals));
 }
 
-
-inline float ComputeStdDev(const float* const values,
-                           const int num_vals,
+inline float ComputeStdDev(const float* const values, const int num_vals,
                            const float mean) {
   return
 #ifdef __ARM_NEON
@@ -283,7 +263,6 @@ inline float ComputeStdDev(const float* const values,
 #endif
                       ComputeStdDevCpu(values, num_vals, mean);
 }
-
 
 // TODO(andrewharp): Accelerate with NEON.
 inline float ComputeWeightedMean(const float* const values,
@@ -298,7 +277,6 @@ inline float ComputeWeightedMean(const float* const values,
   return sum / num_vals;
 }
 
-
 inline float ComputeCrossCorrelationCpu(const float* const values1,
                                         const float* const values2,
                                         const int num_vals) {
@@ -312,7 +290,6 @@ inline float ComputeCrossCorrelationCpu(const float* const values1,
   return cross_correlation;
 }
 
-
 inline float ComputeCrossCorrelation(const float* const values1,
                                      const float* const values2,
                                      const int num_vals) {
@@ -323,7 +300,6 @@ inline float ComputeCrossCorrelation(const float* const values1,
 #endif
                       ComputeCrossCorrelationCpu(values1, values2, num_vals);
 }
-
 
 inline void NormalizeNumbers(float* const values, const int num_vals) {
   // Find the mean and then subtract so that the new mean is 0.0.
@@ -349,18 +325,16 @@ inline void NormalizeNumbers(float* const values, const int num_vals) {
   }
 }
 
-
 // Returns the determinant of a 2x2 matrix.
-template<class T>
+template <class T>
 inline T FindDeterminant2x2(const T* const a) {
   // Determinant: (ad - bc)
   return a[0] * a[3] - a[1] * a[2];
 }
 
-
 // Finds the inverse of a 2x2 matrix.
 // Returns true upon success, false if the matrix is not invertible.
-template<class T>
+template <class T>
 inline bool Invert2x2(const T* const a, float* const a_inv) {
   const float det = static_cast<float>(FindDeterminant2x2(a));
   if (fabs(det) < EPSILON) {

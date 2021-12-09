@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DEBUG_DEBUGGER_STATE_IMPL_H_
 #define TENSORFLOW_CORE_DEBUG_DEBUGGER_STATE_IMPL_H_
 
-#include "tensorflow/core/common_runtime/debugger_state_interface.h"
-
 #include <unordered_set>
 #include <vector>
+
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 
 namespace tensorflow {
 

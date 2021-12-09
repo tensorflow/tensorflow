@@ -17,14 +17,14 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_CUPTI_TRACER_H_
 
 #include "absl/types/optional.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
-#include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
 #include "tensorflow/core/profiler/utils/buffer_pool.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -66,7 +66,7 @@ class HumanReadableProfileBuilder {
     int64_t flop_count;  // -1 if unknown
     int64_t transcendental_count;
     int64_t bytes_accessed;  // -1 if unknown
-    float optimal_seconds;  // -1 if unknown
+    float optimal_seconds;   // -1 if unknown
   };
 
   double CyclesToSeconds(int64_t cycles) const {

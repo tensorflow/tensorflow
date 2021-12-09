@@ -37,15 +37,14 @@ typedef std::map<const std::string, TrackedObject*> TrackedObjectMap;
 
 inline std::ostream& operator<<(std::ostream& stream,
                                 const TrackedObjectMap& map) {
-  for (TrackedObjectMap::const_iterator iter = map.begin();
-      iter != map.end(); ++iter) {
+  for (TrackedObjectMap::const_iterator iter = map.begin(); iter != map.end();
+       ++iter) {
     const TrackedObject& tracked_object = *iter->second;
     const std::string& key = iter->first;
     stream << key << ": " << tracked_object;
   }
   return stream;
 }
-
 
 // ObjectTracker is the highest-level class in the tracking/detection framework.
 // It handles basic image processing, keypoint detection, keypoint tracking,
@@ -109,9 +108,7 @@ class ObjectTracker {
                        const int64_t timestamp) const;
 
   // Returns the number of frames that have been passed to NextFrame().
-  inline int GetNumFrames() const {
-    return num_frames_;
-  }
+  inline int GetNumFrames() const { return num_frames_; }
 
   inline bool HaveObject(const std::string& id) const {
     return objects_.find(id) != objects_.end();
@@ -120,8 +117,8 @@ class ObjectTracker {
   // Returns the TrackedObject associated with the given id.
   inline const TrackedObject* GetObject(const std::string& id) const {
     TrackedObjectMap::const_iterator iter = objects_.find(id);
-    CHECK_ALWAYS(iter != objects_.end(),
-                 "Unknown object key! \"%s\"", id.c_str());
+    CHECK_ALWAYS(iter != objects_.end(), "Unknown object key! \"%s\"",
+                 id.c_str());
     TrackedObject* const object = iter->second;
     return object;
   }
@@ -129,8 +126,8 @@ class ObjectTracker {
   // Returns the TrackedObject associated with the given id.
   inline TrackedObject* GetObject(const std::string& id) {
     TrackedObjectMap::iterator iter = objects_.find(id);
-    CHECK_ALWAYS(iter != objects_.end(),
-                 "Unknown object key! \"%s\"", id.c_str());
+    CHECK_ALWAYS(iter != objects_.end(), "Unknown object key! \"%s\"",
+                 id.c_str());
     TrackedObject* const object = iter->second;
     return object;
   }
@@ -184,7 +181,8 @@ class ObjectTracker {
 
   inline int GetNthIndexFromStart(const int offset) const {
     SCHECK(offset >= 0 && offset < curr_num_frame_pairs_,
-          "Offset out of range!  %d out of %d.", offset, curr_num_frame_pairs_);
+           "Offset out of range!  %d out of %d.", offset,
+           curr_num_frame_pairs_);
     return (first_frame_index_ + offset) % kNumFrames;
   }
 
@@ -220,8 +218,8 @@ class ObjectTracker {
  private:
   void TrackTarget(TrackedObject* const object);
 
-  bool GetBestObjectForDetection(
-      const Detection& detection, TrackedObject** match) const;
+  bool GetBestObjectForDetection(const Detection& detection,
+                                 TrackedObject** match) const;
 
   void ProcessDetections(std::vector<Detection>* const detections);
 

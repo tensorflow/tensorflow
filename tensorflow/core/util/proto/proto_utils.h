@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_PROTO_PROTO_UTILS_H_
 #define TENSORFLOW_CORE_UTIL_PROTO_PROTO_UTILS_H_
 
-#include "google/protobuf/duration.pb.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "google/protobuf/duration.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"

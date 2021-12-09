@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_FORMAT_H_
 
 #include <stdint.h>
+
 #include <string>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/table_builder.h"

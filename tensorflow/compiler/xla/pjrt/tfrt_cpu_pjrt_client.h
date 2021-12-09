@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
@@ -39,7 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"     // from @tf_runtime
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 

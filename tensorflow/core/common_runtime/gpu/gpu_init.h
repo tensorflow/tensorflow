@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_INIT_H_
 
 #include <string>
+
 #include "tensorflow/core/lib/core/status.h"
 
 namespace stream_executor {

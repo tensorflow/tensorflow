@@ -29,8 +29,7 @@ namespace tf_tracking {
 // For keeping track of keypoints.
 struct Keypoint {
   Keypoint() : pos_(0.0f, 0.0f), score_(0.0f), type_(0) {}
-  Keypoint(const float x, const float y)
-      : pos_(x, y), score_(0.0f), type_(0) {}
+  Keypoint(const float x, const float y) : pos_(x, y), score_(0.0f), type_(0) {}
 
   Point2f pos_;
   float score_;
@@ -38,8 +37,8 @@ struct Keypoint {
 };
 
 inline std::ostream& operator<<(std::ostream& stream, const Keypoint keypoint) {
-  return stream << "[" << keypoint.pos_ << ", "
-      << keypoint.score_ << ", " << keypoint.type_ << "]";
+  return stream << "[" << keypoint.pos_ << ", " << keypoint.score_ << ", "
+                << keypoint.type_ << "]";
 }
 
 }  // namespace tf_tracking

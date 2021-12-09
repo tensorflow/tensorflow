@@ -35,8 +35,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LAUNCH_DIM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LAUNCH_DIM_H_
 
-#include "tensorflow/stream_executor/platform/port.h"
-
 #include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/platform/port.h"
 

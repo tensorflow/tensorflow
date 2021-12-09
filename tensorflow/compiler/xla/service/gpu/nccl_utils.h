@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 #if BEF_THUNKS
-#include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/gpu/gpu_types.h"                 // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#endif  // BEF_THUNKS
+#endif                                          // BEF_THUNKS
 
 #if TENSORFLOW_USE_ROCM
 // Local hipify of cuda symbols

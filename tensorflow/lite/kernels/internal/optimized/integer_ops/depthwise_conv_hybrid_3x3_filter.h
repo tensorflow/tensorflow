@@ -113,21 +113,19 @@ static_assert(offsetof(DepthwiseConvParams, float_output_activation_max) ==
                   OFFSET_FLOAT_OUTPUT_ACTIVATION_MAX,
               "");
 
-
 template <DepthwiseConvOutputRounding output_rounding, int32 kDepth,
-    int32 kStrideWidth, int32 kStrideHeight>
-    struct DepthwiseConvHybridWindowPerChannel {};
+          int32 kStrideWidth, int32 kStrideHeight>
+struct DepthwiseConvHybridWindowPerChannel {};
 
 template <DepthwiseConvOutputRounding output_rounding, EdgeType kEdgeType,
-    int kPadWidth, int kPadHeight>
-    struct DepthwiseConvHybridPartialPerChannel {};
+          int kPadWidth, int kPadHeight>
+struct DepthwiseConvHybridPartialPerChannel {};
 
 template <>
 struct DepthwiseConvHybridWindowPerChannel<DepthwiseConvOutputRounding::kUpward,
-    8, 1, 1> {
+                                           8, 1, 1> {
  public:
-  static inline void Run(const float* input_scale,
-                         const int8* input_ptr,
+  static inline void Run(const float* input_scale, const int8* input_ptr,
                          const int8* filter_ptr, const float* bias_ptr,
                          float* output_ptr, int64_t input_depth,
                          int64_t input_row_size, int32 output_window_height,
@@ -1060,7 +1058,7 @@ struct DepthwiseConvHybridWindowPerChannel<DepthwiseConvOutputRounding::kUpward,
 
 template <>
 struct DepthwiseConvHybridWindowPerChannel<DepthwiseConvOutputRounding::kUpward,
-    8, 2, 2> {
+                                           8, 2, 2> {
   static inline void Run(const float* input_scale, const int8* input_ptr,
                          const int8* filter_ptr, const float* bias_ptr,
                          float* output_ptr, int64_t input_depth,
@@ -2069,10 +2067,10 @@ struct DepthwiseConvHybridWindowPerChannel<DepthwiseConvOutputRounding::kUpward,
 template <>
 struct DepthwiseConvHybridPartialPerChannel<
     DepthwiseConvOutputRounding::kUpward, EdgeType::kCenter, 1, 1> {
-    static inline void Run(const float* input_scale, const int8* input_ptr,
-                           const int8* filter_ptr, const float* bias_ptr,
-                           float* output_ptr, const float* per_channel_scales,
-                           const DepthwiseConvParams* params_ptr) {
+  static inline void Run(const float* input_scale, const int8* input_ptr,
+                         const int8* filter_ptr, const float* bias_ptr,
+                         float* output_ptr, const float* per_channel_scales,
+                         const DepthwiseConvParams* params_ptr) {
     TFLITE_DCHECK_EQ(params_ptr->filter_offset, 0);
 #define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
 #define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
@@ -2796,16 +2794,12 @@ struct DepthwiseConvHybridThroughDepthPerChannel {
       int32 output_window_height, int32 output_window_width,
       const float* per_channel_scales, const DepthwiseConvParams& params) {
     for (; start_depth <= end_depth - 8; start_depth += 8) {
-      DepthwiseConvHybridWindowPerChannel<output_rounding, 8, kStrideWidth,
-          kStrideHeight>::Run(input_scale,
-                              input_ptr, filter_ptr,
-                              bias_ptr, output_ptr,
-                              input_depth,
-                              input_row_size,
-                              output_window_height,
-                              output_window_width,
-                              per_channel_scales,
-                              &params);
+      DepthwiseConvHybridWindowPerChannel<
+          output_rounding, 8, kStrideWidth,
+          kStrideHeight>::Run(input_scale, input_ptr, filter_ptr, bias_ptr,
+                              output_ptr, input_depth, input_row_size,
+                              output_window_height, output_window_width,
+                              per_channel_scales, &params);
       input_ptr += 8;
       output_ptr += 8;
       filter_ptr += 8;
@@ -2820,7 +2814,7 @@ template <DepthwiseConvOutputRounding output_rounding, int32 kStrideWidth,
 struct DepthwiseConvHybridMultiRowPerChannel {
   using ConvKernel =
       DepthwiseConvHybridThroughDepthPerChannel<output_rounding, kStrideWidth,
-      kStrideHeight>;
+                                                kStrideHeight>;
 
   static inline void Run(const float* input_scale, const int8* input_data,
                          int32 start_x, int32 end_x, const int8* filter_data,
@@ -2874,12 +2868,10 @@ struct DepthwiseConvHybridMultiRowPerChannel {
           ShuffleInput(input_ptr, params.input_depth, params.input_width,
                        params.input_height, 64, shuffle_params.input_width,
                        shuffle_params.input_height, shuffle_workspace);
-          ConvKernel::Run(input_scale,
-                          shuffle_workspace, filter_ptr, bias_ptr, output_ptr,
-                          0, 64, 64, shuffle_row_size,
-                          shuffle_params.output_height,
-                          shuffle_params.output_width, per_channel_scales_ptr,
-                          params);
+          ConvKernel::Run(
+              input_scale, shuffle_workspace, filter_ptr, bias_ptr, output_ptr,
+              0, 64, 64, shuffle_row_size, shuffle_params.output_height,
+              shuffle_params.output_width, per_channel_scales_ptr, params);
           input_ptr += 64;
           output_ptr += 64;
           filter_ptr += 64;
@@ -2899,26 +2891,23 @@ struct DepthwiseConvHybridMultiRowPerChannel {
         }
 
         // Handle leftover depth.
-        ConvKernel::Run(input_scale, input_ptr,
-                        filter_ptr, bias_ptr, output_ptr, depth,
-                        params.output_depth, params.input_depth,
-                        params.input_row_size, shuffle_params.output_height,
-                        shuffle_params.output_width, per_channel_scales_ptr,
-                        params);
+        ConvKernel::Run(
+            input_scale, input_ptr, filter_ptr, bias_ptr, output_ptr, depth,
+            params.output_depth, params.input_depth, params.input_row_size,
+            shuffle_params.output_height, shuffle_params.output_width,
+            per_channel_scales_ptr, params);
         input_data +=
             shuffle_params.output_width * kStrideWidth * params.input_depth;
         output_data += shuffle_params.output_width * params.output_depth;
       }
     }
 
-
     const int32 output_leftover_width = end_x - out_x;
     if (output_leftover_width > 0) {
-      ConvKernel::Run(input_scale, input_data, filter_data,
-                      bias_data, output_data, 0, params.output_depth,
-                      params.input_depth, params.input_row_size,
-                      shuffle_params.output_height, output_leftover_width,
-                      per_channel_scales, params);
+      ConvKernel::Run(input_scale, input_data, filter_data, bias_data,
+                      output_data, 0, params.output_depth, params.input_depth,
+                      params.input_row_size, shuffle_params.output_height,
+                      output_leftover_width, per_channel_scales, params);
     }
   }
 };
@@ -2930,17 +2919,18 @@ struct DepthwiseConvHybridMultiRowPerChannel {
 //   * Horizontal edges.
 //   * Vertical edges.
 template <DepthwiseConvOutputRounding output_rounding>
-    inline void DepthwiseConvHybridHandlePaddingPerChannel(
-        const float* input_scale, const int8* input_data,
-        const int8* filter_data, const float* bias_data, float* output_data,
-        const float* per_channel_scales, const DepthwiseConvParams& params) {
+inline void DepthwiseConvHybridHandlePaddingPerChannel(
+    const float* input_scale, const int8* input_data, const int8* filter_data,
+    const float* bias_data, float* output_data, const float* per_channel_scales,
+    const DepthwiseConvParams& params) {
   if (params.input_width == 1 && params.input_height == 1) {
     const int8* filter_ptr =
         filter_data + params.filter_row_size + params.output_depth;
     DepthwiseConvHybridPartialPerChannel<output_rounding, EdgeType::kCenter, 1,
-        1>::Run(input_scale, input_data,
-                filter_ptr, bias_data, output_data,
-                per_channel_scales, &params);
+                                         1>::Run(input_scale, input_data,
+                                                 filter_ptr, bias_data,
+                                                 output_data,
+                                                 per_channel_scales, &params);
     return;
   }
 
@@ -2955,10 +2945,11 @@ template <DepthwiseConvOutputRounding output_rounding>
       filter_data + params.filter_row_size + params.output_depth;
   float* output_ptr = output_data;
 
-  DepthwiseConvHybridPartialPerChannel<
-      output_rounding, EdgeType::kCorner, 1, 1>::Run(
-          input_scale, input_ptr, filter_ptr, bias_data,
-          output_ptr, per_channel_scales, &params);
+  DepthwiseConvHybridPartialPerChannel<output_rounding, EdgeType::kCorner, 1,
+                                       1>::Run(input_scale, input_ptr,
+                                               filter_ptr, bias_data,
+                                               output_ptr, per_channel_scales,
+                                               &params);
 
   input_ptr += (params.stride_width - 1) * params.input_depth;
   filter_ptr = filter_data + params.filter_row_size;
@@ -2966,18 +2957,21 @@ template <DepthwiseConvOutputRounding output_rounding>
 
   for (int32 out_x = out_x_start_corner + 1; out_x < out_x_end_corner;
        out_x++) {
-    DepthwiseConvHybridPartialPerChannel<
-        output_rounding, EdgeType::kHorizontal, 1, 1>::Run(
-            input_scale, input_ptr, filter_ptr, bias_data, output_ptr,
-            per_channel_scales, &params);
+    DepthwiseConvHybridPartialPerChannel<output_rounding, EdgeType::kHorizontal,
+                                         1, 1>::Run(input_scale, input_ptr,
+                                                    filter_ptr, bias_data,
+                                                    output_ptr,
+                                                    per_channel_scales,
+                                                    &params);
     input_ptr += params.stride_width * params.input_depth;
     output_ptr += params.output_depth;
   }
 
-  DepthwiseConvHybridPartialPerChannel<
-      output_rounding, EdgeType::kCorner, 1, 1>::Run(
-          input_scale, input_ptr, filter_ptr, bias_data, output_ptr,
-          per_channel_scales, &params);
+  DepthwiseConvHybridPartialPerChannel<output_rounding, EdgeType::kCorner, 1,
+                                       1>::Run(input_scale, input_ptr,
+                                               filter_ptr, bias_data,
+                                               output_ptr, per_channel_scales,
+                                               &params);
 
   // Handle left side.
   input_ptr = input_data + (params.stride_width - 1) * params.input_row_size;
@@ -2986,10 +2980,12 @@ template <DepthwiseConvOutputRounding output_rounding>
 
   for (int32 out_y = out_y_start_corner + 1; out_y < out_y_end_corner;
        out_y++) {
-    DepthwiseConvHybridPartialPerChannel<
-        output_rounding, EdgeType::kVertical, 1, 1>::Run(
-            input_scale, input_ptr, filter_ptr, bias_data, output_ptr,
-            per_channel_scales, &params);
+    DepthwiseConvHybridPartialPerChannel<output_rounding, EdgeType::kVertical,
+                                         1, 1>::Run(input_scale, input_ptr,
+                                                    filter_ptr, bias_data,
+                                                    output_ptr,
+                                                    per_channel_scales,
+                                                    &params);
     input_ptr += params.stride_width * params.input_row_size;
     output_ptr += params.output_row_size;
   }
@@ -3003,10 +2999,12 @@ template <DepthwiseConvOutputRounding output_rounding>
 
   for (int32 out_y = out_y_start_corner + 1; out_y < out_y_end_corner;
        out_y++) {
-    DepthwiseConvHybridPartialPerChannel<
-        output_rounding, EdgeType::kVertical, 1, 1>::Run(
-            input_scale, input_ptr, filter_ptr, bias_data, output_ptr,
-            per_channel_scales, &params);
+    DepthwiseConvHybridPartialPerChannel<output_rounding, EdgeType::kVertical,
+                                         1, 1>::Run(input_scale, input_ptr,
+                                                    filter_ptr, bias_data,
+                                                    output_ptr,
+                                                    per_channel_scales,
+                                                    &params);
     input_ptr += params.stride_width * params.input_row_size;
     output_ptr += params.output_row_size;
   }
@@ -3015,12 +3013,13 @@ template <DepthwiseConvOutputRounding output_rounding>
   input_ptr = input_data + (params.input_height - 2) * params.input_row_size;
   filter_ptr = filter_data + params.output_depth;
   output_ptr =
-     output_data + (params.output_height - 1) * params.output_row_size;
+      output_data + (params.output_height - 1) * params.output_row_size;
 
-  DepthwiseConvHybridPartialPerChannel<
-      output_rounding, EdgeType::kCorner, 1, 1>::Run(
-          input_scale, input_ptr, filter_ptr, bias_data, output_ptr,
-          per_channel_scales, &params);
+  DepthwiseConvHybridPartialPerChannel<output_rounding, EdgeType::kCorner, 1,
+                                       1>::Run(input_scale, input_ptr,
+                                               filter_ptr, bias_data,
+                                               output_ptr, per_channel_scales,
+                                               &params);
 
   input_ptr += (params.stride_width == 1) ? 0 : params.input_depth;
   filter_ptr = filter_data;
@@ -3028,17 +3027,20 @@ template <DepthwiseConvOutputRounding output_rounding>
 
   for (int32 out_x = out_x_start_corner + 1; out_x < out_x_end_corner;
        out_x++) {
-    DepthwiseConvHybridPartialPerChannel<
-        output_rounding, EdgeType::kHorizontal, 1, 1>::Run(
-            input_scale, input_ptr, filter_ptr, bias_data, output_ptr,
-            per_channel_scales, &params);
+    DepthwiseConvHybridPartialPerChannel<output_rounding, EdgeType::kHorizontal,
+                                         1, 1>::Run(input_scale, input_ptr,
+                                                    filter_ptr, bias_data,
+                                                    output_ptr,
+                                                    per_channel_scales,
+                                                    &params);
     input_ptr += params.stride_width * params.input_depth;
     output_ptr += params.output_depth;
   }
-  DepthwiseConvHybridPartialPerChannel<
-      output_rounding, EdgeType::kCorner, 1, 1>::Run(
-          input_scale, input_ptr, filter_ptr, bias_data, output_ptr,
-          per_channel_scales, &params);
+  DepthwiseConvHybridPartialPerChannel<output_rounding, EdgeType::kCorner, 1,
+                                       1>::Run(input_scale, input_ptr,
+                                               filter_ptr, bias_data,
+                                               output_ptr, per_channel_scales,
+                                               &params);
 }
 
 template <DepthwiseConvOutputRounding output_rounding>
@@ -3064,7 +3066,8 @@ inline void DepthwiseConvHybrid3x3FilterPerChannel(
   params.input_width = input_shape.Dims(2);
   params.input_height = input_shape.Dims(1);
   params.input_row_size = params.input_depth * params.input_width;
-  params.stride_width = stride_width;  params.stride_height = stride_height;
+  params.stride_width = stride_width;
+  params.stride_height = stride_height;
   params.output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
   params.output_width = output_shape.Dims(2);
   params.output_height = output_shape.Dims(1);
@@ -3111,8 +3114,8 @@ inline void DepthwiseConvHybrid3x3FilterPerChannel(
   }
 
   using conv_multirow_func_t =
-      decltype(
-          &DepthwiseConvHybridMultiRowPerChannel<output_rounding, 1, 1>::Run);
+      decltype(&DepthwiseConvHybridMultiRowPerChannel<output_rounding, 1,
+                                                      1>::Run);
   conv_multirow_func_t conv_multirow_func =
       DepthwiseConvHybridMultiRowPerChannel<output_rounding, 1, 1>::Run;
   if (stride_width == 2) {
@@ -3154,8 +3157,8 @@ inline void DepthwiseConvHybrid3x3FilterPerChannel(
     int32 end_y = row_end;
     if (pad_width == 1 && pad_height == 1) {
       DepthwiseConvHybridHandlePaddingPerChannel<output_rounding>(
-          input_scales + b, input_ptr, filter_data,
-          bias_data, output_ptr, per_channel_scales, params);
+          input_scales + b, input_ptr, filter_data, bias_data, output_ptr,
+          per_channel_scales, params);
 
       // Update extents now that the edges have been handled.
       out_x = 1;
@@ -3189,8 +3192,8 @@ inline void DepthwiseConvHybrid3x3FilterPerChannel(
     // Handle 8 rows at a time.
     if (params.input_width < four_row_shuffle_params.input_width) {
       for (; out_y <= end_y - 8; out_y += 8) {
-        conv_multirow_func(input_scales + b, input_ptr,
-                           out_x, end_x, filter_data, bias_data, output_ptr,
+        conv_multirow_func(input_scales + b, input_ptr, out_x, end_x,
+                           filter_data, bias_data, output_ptr,
                            per_channel_scales, params, eight_row_shuffle_params,
                            shuffle_workspace);
         input_ptr += 8 * stride_height * params.input_row_size;
@@ -3201,8 +3204,8 @@ inline void DepthwiseConvHybrid3x3FilterPerChannel(
     // Handle 4 rows at a time.
     if (params.input_width < two_row_shuffle_params.input_width) {
       for (; out_y <= end_y - 4; out_y += 4) {
-        conv_multirow_func(input_scales + b, input_ptr,
-                           out_x, end_x, filter_data, bias_data, output_ptr,
+        conv_multirow_func(input_scales + b, input_ptr, out_x, end_x,
+                           filter_data, bias_data, output_ptr,
                            per_channel_scales, params, four_row_shuffle_params,
                            shuffle_workspace);
         input_ptr += 4 * stride_height * params.input_row_size;
@@ -3212,19 +3215,17 @@ inline void DepthwiseConvHybrid3x3FilterPerChannel(
 
     // Handle 2 rows at a time.
     for (; out_y <= end_y - 2; out_y += 2) {
-      conv_multirow_func(input_scales + b, input_ptr,
-                         out_x, end_x, filter_data, bias_data, output_ptr,
-                         per_channel_scales, params, two_row_shuffle_params,
-                         shuffle_workspace);
+      conv_multirow_func(input_scales + b, input_ptr, out_x, end_x, filter_data,
+                         bias_data, output_ptr, per_channel_scales, params,
+                         two_row_shuffle_params, shuffle_workspace);
       input_ptr += 2 * stride_height * params.input_row_size;
       output_ptr += 2 * params.output_row_size;
     }
     // Handle one row at a time.
     for (; out_y < end_y; out_y++) {
-      conv_multirow_func(input_scales + b, input_ptr,
-                         out_x, end_x, filter_data, bias_data, output_ptr,
-                         per_channel_scales, params, one_row_shuffle_params,
-                         shuffle_workspace);
+      conv_multirow_func(input_scales + b, input_ptr, out_x, end_x, filter_data,
+                         bias_data, output_ptr, per_channel_scales, params,
+                         one_row_shuffle_params, shuffle_workspace);
       input_ptr += stride_height * params.input_row_size;
       output_ptr += params.output_row_size;
     }

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"

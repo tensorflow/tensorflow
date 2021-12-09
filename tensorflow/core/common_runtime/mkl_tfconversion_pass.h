@@ -21,7 +21,9 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include <sys/types.h>
+
 #include <memory>
+
 #include "tensorflow/core/graph/graph.h"
 
 #ifdef _WIN32

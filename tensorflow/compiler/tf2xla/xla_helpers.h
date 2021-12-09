@@ -106,8 +106,6 @@ class XlaHelpers {
 // Creates an identity shape representation function.
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn();
 
-
-
 struct XlaOutputDescription {
   // Type and shape of the output. The shape is the unflattened shape.
   // When `type` is DT_RESOURCE, `shape` is the shape of the resource

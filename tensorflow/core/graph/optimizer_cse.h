@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_OPTIMIZER_CSE_H_
 
 #include <sys/types.h>
+
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {

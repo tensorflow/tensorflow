@@ -19,9 +19,9 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
 
 namespace tensorflow {
 namespace profiler {

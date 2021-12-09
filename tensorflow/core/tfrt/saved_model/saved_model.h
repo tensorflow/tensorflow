@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/model_metadata.h"
 #include "tensorflow/core/tfrt/utils/statusor.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
-#include "tfrt/host_context/function.h"  // from @tf_runtime
+#include "tfrt/host_context/function.h"                  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
-#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
+#include "tfrt/host_context/resource_context.h"          // from @tf_runtime
 
 namespace tfrt {
 

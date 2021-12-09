@@ -27,10 +27,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_BIT_CAST_H_
 
 #include "absl/base/casts.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace xla {
 

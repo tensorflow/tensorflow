@@ -22,8 +22,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_INPUTS_FILE_INPUT_YIELDER_H_
 
 #include <stddef.h>
+
 #include <limits>
 #include <vector>
+
 #include "tensorflow/core/grappler/inputs/input_yielder.h"
 #include "tensorflow/core/platform/types.h"
 

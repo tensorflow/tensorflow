@@ -39,8 +39,8 @@ __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
   // params is a tensor of shape
   // [batch_size, outer_size, gather_dim_size, slice_size].
   GPU_1D_KERNEL_LOOP(i, out_size) {
-    Index batch_i = 0;  // The batch index into params to use for i.
-    Index outer_i = 0;  // The outer index into params to use for i.
+    Index batch_i = 0;    // The batch index into params to use for i.
+    Index outer_i = 0;    // The outer index into params to use for i.
     Index indices_i = 0;  // The index into indices to use for i.
     Index slice_i = 0;  // Index into the current slice in params to use for i.
 
@@ -75,9 +75,10 @@ __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
     } else {
       // Read params[batch_i, outer_i, gather_i, slice_i] and write it to the
       // i'th position in out.
-      Index params_i = (
-          (batch_i * outer_size + outer_i) * gather_dim_size + gather_i
-      ) * slice_size + slice_i;
+      Index params_i =
+          ((batch_i * outer_size + outer_i) * gather_dim_size + gather_i) *
+              slice_size +
+          slice_i;
       out[i] = params[params_i];
     }
   }

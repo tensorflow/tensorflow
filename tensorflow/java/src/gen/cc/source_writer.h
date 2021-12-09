@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_JAVA_SRC_GEN_CC_SOURCE_WRITER_H_
 #define TENSORFLOW_JAVA_SRC_GEN_CC_SOURCE_WRITER_H_
 
-#include <string>
-#include <stack>
 #include <list>
 #include <set>
+#include <stack>
+#include <string>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
@@ -171,10 +171,9 @@ class SourceWriter {
    public:
     GenericNamespace() = default;
     explicit GenericNamespace(const GenericNamespace* parent)
-      : generic_names_(parent->generic_names_) {}
-    std::list<const Type*> declared_types() {
-      return declared_types_;
-    }
+        : generic_names_(parent->generic_names_) {}
+    std::list<const Type*> declared_types() { return declared_types_; }
+
    protected:
     virtual void DoVisit(const Type& type);
 
@@ -187,11 +186,10 @@ class SourceWriter {
   class TypeImporter : public TypeVisitor {
    public:
     explicit TypeImporter(const string& current_package)
-      : current_package_(current_package) {}
+        : current_package_(current_package) {}
     virtual ~TypeImporter() = default;
-    const std::set<string> imports() {
-      return imports_;
-    }
+    const std::set<string> imports() { return imports_; }
+
    protected:
     virtual void DoVisit(const Type& type);
 

@@ -28,6 +28,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_GEMM_FUNCTORS_H_
 
 #include <string.h>
+
 #include <map>
 #include <vector>
 

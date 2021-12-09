@@ -55,45 +55,31 @@ class TrackedObject {
 
   inline bool IsVisible() const {
     return tracked_correlation_ >= kMinimumCorrelationForTracking ||
-        num_consecutive_frames_below_threshold_ < kMaxNumDetectionFailures;
+           num_consecutive_frames_below_threshold_ < kMaxNumDetectionFailures;
   }
 
-  inline float GetCorrelation() {
-    return tracked_correlation_;
-  }
+  inline float GetCorrelation() { return tracked_correlation_; }
 
-  inline MatchScore GetMatchScore() {
-    return tracked_match_score_;
-  }
+  inline MatchScore GetMatchScore() { return tracked_match_score_; }
 
-  inline BoundingBox GetPosition() const {
-    return last_known_position_;
-  }
+  inline BoundingBox GetPosition() const { return last_known_position_; }
 
   inline BoundingBox GetLastDetectionPosition() const {
     return last_detection_position_;
   }
 
-  inline const ObjectModelBase* GetModel() const {
-    return object_model_;
-  }
+  inline const ObjectModelBase* GetModel() const { return object_model_; }
 
-  inline const std::string& GetName() const {
-    return id_;
-  }
+  inline const std::string& GetName() const { return id_; }
 
   inline void Draw() const {
 #ifdef __RENDER_OPENGL__
     if (tracked_correlation_ < kMinimumCorrelationForTracking) {
       glColor4f(MAX(0.0f, -tracked_correlation_),
-                MAX(0.0f, tracked_correlation_),
-                0.0f,
-                1.0f);
+                MAX(0.0f, tracked_correlation_), 0.0f, 1.0f);
     } else {
       glColor4f(MAX(0.0f, -tracked_correlation_),
-                MAX(0.0f, tracked_correlation_),
-                1.0f,
-                1.0f);
+                MAX(0.0f, tracked_correlation_), 1.0f, 1.0f);
     }
 
     // Render the box itself.
@@ -172,12 +158,11 @@ class TrackedObject {
 
 inline std::ostream& operator<<(std::ostream& stream,
                                 const TrackedObject& tracked_object) {
-  stream << tracked_object.id_
-      << " " << tracked_object.last_known_position_
-      << " " << tracked_object.position_last_computed_time_
-      << " " << tracked_object.num_consecutive_frames_below_threshold_
-      << " " << tracked_object.object_model_
-      << " " << tracked_object.tracked_correlation_;
+  stream << tracked_object.id_ << " " << tracked_object.last_known_position_
+         << " " << tracked_object.position_last_computed_time_ << " "
+         << tracked_object.num_consecutive_frames_below_threshold_ << " "
+         << tracked_object.object_model_ << " "
+         << tracked_object.tracked_correlation_;
   return stream;
 }
 

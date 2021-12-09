@@ -148,7 +148,7 @@ class tstring {
             typename std::enable_if<std::is_same<T, absl::AlphaNum>::value,
                                     T>::type* = nullptr>
   operator T() const;  // NOLINT TODO(b/147740521): Remove.
-#endif  // PLATFORM_GOOGLE
+#endif                 // PLATFORM_GOOGLE
 
   // Attributes
   size_t size() const;

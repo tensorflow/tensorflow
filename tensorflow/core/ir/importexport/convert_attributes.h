@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"    // from @llvm-project
+#include "mlir/IR/Builders.h"      // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/ir/dialect.h"

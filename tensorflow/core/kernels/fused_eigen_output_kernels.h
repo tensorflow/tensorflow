@@ -26,10 +26,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_FUSED_EIGEN_OUTPUT_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_FUSED_EIGEN_OUTPUT_KERNELS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -102,11 +102,12 @@ struct Relu6 {
 // Applies `Elu` to the passed input expression.
 struct Elu {
   template <typename XprType>
-  static auto apply(XprType expr) -> decltype(
-      (expr < std::declval<typename XprType::Scalar>())
-          .select(expr.exp() -
-                      expr.constant(std::declval<typename XprType::Scalar>()),
-                  expr)) {
+  static auto apply(XprType expr)
+      -> decltype((expr < std::declval<typename XprType::Scalar>())
+                      .select(expr.exp() -
+                                  expr.constant(
+                                      std::declval<typename XprType::Scalar>()),
+                              expr)) {
     return (expr < static_cast<typename XprType::Scalar>(0))
         .select(expr.exp() -
                     expr.constant(static_cast<typename XprType::Scalar>(1)),
@@ -117,11 +118,12 @@ struct Elu {
 // Applies `LeakyRelu` to the passed input expression.
 struct LeakyRelu {
   template <typename XprType>
-  static auto apply(XprType expr, const float leakyrelu_alpha) -> decltype(
-      (expr < std::declval<typename XprType::Scalar>())
-          .select(expr *
-                      expr.constant(std::declval<typename XprType::Scalar>()),
-                  expr)) {
+  static auto apply(XprType expr, const float leakyrelu_alpha)
+      -> decltype((expr < std::declval<typename XprType::Scalar>())
+                      .select(expr *
+                                  expr.constant(
+                                      std::declval<typename XprType::Scalar>()),
+                              expr)) {
     return (expr < static_cast<typename XprType::Scalar>(0))
         .select(expr * expr.constant(static_cast<typename XprType::Scalar>(
                            leakyrelu_alpha)),

@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_TENSOR_HELPER_H_
 
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"     // from @llvm-project
+#include "mlir/IR/Value.h"         // from @llvm-project
 
 namespace mlir {
 

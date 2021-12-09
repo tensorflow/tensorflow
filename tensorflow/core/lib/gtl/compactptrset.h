@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_GTL_COMPACTPTRSET_H_
 
 #include <type_traits>
+
 #include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace tensorflow {

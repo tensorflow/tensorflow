@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TRAINING_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_TRAINING_OPS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace functor {

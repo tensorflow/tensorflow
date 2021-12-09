@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_GTL_FLATSET_H_
 
 #include <stddef.h>
+
 #include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <utility>
+
 #include "tensorflow/core/lib/gtl/flatrep.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"

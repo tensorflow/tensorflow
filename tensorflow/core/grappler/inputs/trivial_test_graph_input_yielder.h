@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/grappler/inputs/input_yielder.h"
 
 namespace tensorflow {

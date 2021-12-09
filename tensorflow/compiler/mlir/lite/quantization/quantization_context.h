@@ -17,13 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_CONTEXT_H_
 
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"      // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"    // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"               // from @llvm-project
+#include "mlir/IR/Operation.h"                // from @llvm-project
+#include "mlir/IR/Value.h"                    // from @llvm-project
+#include "mlir/Support/LogicalResult.h"       // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/device_target.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 

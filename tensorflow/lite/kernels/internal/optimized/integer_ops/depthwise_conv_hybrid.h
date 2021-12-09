@@ -38,14 +38,13 @@ inline void DepthwiseConvInitAccBuffer(int num_output_pixels, int output_depth,
 
 // Initializes the accumulator buffer with bias values.
 inline void DepthwiseConvHybridGeneral(
-    const DepthwiseParams& params,
-    const float* input_scales, const RuntimeShape& input_shape,
-    const int8* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& bias_shape,
-    const float* bias_data, const RuntimeShape& output_shape,
-    float* output_data, const float* per_channel_scales,
-    const int32_t* input_offsets, int thread_start, int thread_end,
-    int thread_dim) {
+    const DepthwiseParams& params, const float* input_scales,
+    const RuntimeShape& input_shape, const int8* input_data,
+    const RuntimeShape& filter_shape, const int8* filter_data,
+    const RuntimeShape& bias_shape, const float* bias_data,
+    const RuntimeShape& output_shape, float* output_data,
+    const float* per_channel_scales, const int32_t* input_offsets,
+    int thread_start, int thread_end, int thread_dim) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -278,8 +277,8 @@ inline void DepthwiseConvHybridWithRounding(
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
-// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
-// Jetson TX-2. This compiler does not support the offsetof() macro.
+  // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+  // Jetson TX-2. This compiler does not support the offsetof() macro.
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
   const int stride_width = params.stride_width;
@@ -290,7 +289,7 @@ inline void DepthwiseConvHybridWithRounding(
   // Call kernel optimized for depthwise convolutions using 3x3 filters if
   // parameters are supported.
   if (optimized_ops::depthwise_conv::Fast3x3FilterKernelSupported<
-      optimized_ops::depthwise_conv::QuantizationType::kNonPerChannelUint8>(
+          optimized_ops::depthwise_conv::QuantizationType::kNonPerChannelUint8>(
           input_shape, filter_shape, stride_width, stride_height,
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, 0, nullptr)) {
@@ -298,10 +297,10 @@ inline void DepthwiseConvHybridWithRounding(
         "DepthwiseConvHybridInt8/8bit/3x3");
     optimized_ops::depthwise_conv::DepthwiseConvHybrid3x3FilterPerChannel<
         DepthwiseConvOutputRounding::kUpward>(
-            params, input_scales, input_shape, input_data,
-            filter_shape, filter_data, bias_shape, bias_data, output_shape,
-            output_data, per_channel_scales, input_offsets,
-            thread_start, thread_end, thread_dim);
+        params, input_scales, input_shape, input_data, filter_shape,
+        filter_data, bias_shape, bias_data, output_shape, output_data,
+        per_channel_scales, input_offsets, thread_start, thread_end,
+        thread_dim);
     return;
   }
 #endif
@@ -309,10 +308,9 @@ inline void DepthwiseConvHybridWithRounding(
   gemmlowp::ScopedProfilingLabel specialized_label(
       "DepthwiseConvHybridInt8/8bit/General");
   depthwise_conv::DepthwiseConvHybridGeneral(
-      params, input_scales, input_shape, input_data,
-      filter_shape, filter_data, bias_shape, bias_data, output_shape,
-      output_data, per_channel_scales, input_offsets,
-      thread_start, thread_end, thread_dim);
+      params, input_scales, input_shape, input_data, filter_shape, filter_data,
+      bias_shape, bias_data, output_shape, output_data, per_channel_scales,
+      input_offsets, thread_start, thread_end, thread_dim);
 }
 
 inline void DepthwiseConvHybridImpl(
@@ -325,28 +323,21 @@ inline void DepthwiseConvHybridImpl(
     int thread_start, int thread_end, int thread_dim) {
   return DepthwiseConvHybridWithRounding<
       DepthwiseConvOutputRounding::kAwayFromZero>(
-          params, input_scales, input_shape, input_data,
-          filter_shape, filter_data, bias_shape, bias_data, output_shape,
-          output_data, per_channel_scales, input_offsets,
-          thread_start, thread_end, thread_dim);
+      params, input_scales, input_shape, input_data, filter_shape, filter_data,
+      bias_shape, bias_data, output_shape, output_data, per_channel_scales,
+      input_offsets, thread_start, thread_end, thread_dim);
 }
 
 template <typename T, typename TS>
 struct DepthwiseConvHybridWorkerTask : cpu_backend_threadpool::Task {
-  DepthwiseConvHybridWorkerTask(const DepthwiseParams& params,
-                                const float* input_scales,
-                                const RuntimeShape& input_shape,
-                                const T* input_data,
-                                const RuntimeShape& filter_shape,
-                                const T* filter_data,
-                                const RuntimeShape& bias_shape,
-                                const TS* bias_data,
-                                const RuntimeShape& output_shape,
-                                float* output_data,
-                                const float* per_channel_scales,
-                                const int32_t* input_offsets,
-                                int thread_start, int thread_end,
-                                int thread_dim)
+  DepthwiseConvHybridWorkerTask(
+      const DepthwiseParams& params, const float* input_scales,
+      const RuntimeShape& input_shape, const T* input_data,
+      const RuntimeShape& filter_shape, const T* filter_data,
+      const RuntimeShape& bias_shape, const TS* bias_data,
+      const RuntimeShape& output_shape, float* output_data,
+      const float* per_channel_scales, const int32_t* input_offsets,
+      int thread_start, int thread_end, int thread_dim)
       : params(params),
         input_scales(input_scales),
         input_shape(input_shape),
@@ -364,11 +355,11 @@ struct DepthwiseConvHybridWorkerTask : cpu_backend_threadpool::Task {
         thread_dim(thread_dim) {}
 
   void Run() override {
-    DepthwiseConvHybridImpl(params, input_scales, input_shape,
-                            input_data, filter_shape, filter_data,
-                            bias_shape, bias_data, output_shape,
-                            output_data, per_channel_scales, input_offsets,
-                            thread_start, thread_end, thread_dim);
+    DepthwiseConvHybridImpl(params, input_scales, input_shape, input_data,
+                            filter_shape, filter_data, bias_shape, bias_data,
+                            output_shape, output_data, per_channel_scales,
+                            input_offsets, thread_start, thread_end,
+                            thread_dim);
   }
 
  private:
@@ -421,10 +412,10 @@ inline void DepthwiseConvHybridPerChannel(
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
-    DepthwiseConvHybridImpl(params, input_scales, input_shape,
-                            input_data, filter_shape, filter_data, bias_shape,
-                            bias_data, output_shape, output_data,
-                            per_channel_scales, input_offsets,
+    DepthwiseConvHybridImpl(params, input_scales, input_shape, input_data,
+                            filter_shape, filter_data, bias_shape, bias_data,
+                            output_shape, output_data, per_channel_scales,
+                            input_offsets,
                             /*thread_start=*/0, /*thread_end=*/output_rows,
                             /*thread_dim=*/1);
   } else {
@@ -436,11 +427,10 @@ inline void DepthwiseConvHybridPerChannel(
     for (int i = 0; i < thread_count; ++i) {
       int thread_end =
           thread_start + (thread_dim_size - thread_start) / (thread_count - i);
-      tasks.emplace_back(params, input_scales, input_shape,
-                         input_data, filter_shape, filter_data, bias_shape,
-                         bias_data, output_shape, output_data,
-                         per_channel_scales, input_offsets, thread_start,
-                         thread_end, thread_dim);
+      tasks.emplace_back(params, input_scales, input_shape, input_data,
+                         filter_shape, filter_data, bias_shape, bias_data,
+                         output_shape, output_data, per_channel_scales,
+                         input_offsets, thread_start, thread_end, thread_dim);
       thread_start = thread_end;
     }
     cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),

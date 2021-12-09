@@ -20,10 +20,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/strided_slice_op.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/strided_slice_op.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

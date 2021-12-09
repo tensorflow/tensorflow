@@ -31,7 +31,7 @@ enum class LinearStorageType { BUFFER, TEXTURE_2D };
 
 struct TensorLinearDescriptor : public GPUObjectDescriptor {
   LinearStorageType storage_type;
-  DataType element_type;  // FLOAT32 or FLOAT16
+  DataType element_type;                        // FLOAT32 or FLOAT16
   MemoryType memory_type = MemoryType::GLOBAL;  // applicable for BUFFER
 
   // optional

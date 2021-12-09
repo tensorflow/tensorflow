@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_SNAPPY_SNAPPY_INPUTBUFFER_H_
 
 #include <string>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/platform/env.h"

@@ -20,12 +20,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_SUBGRAPH_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_SUBGRAPH_TEST_UTIL_H_
 
+#include <gtest/gtest.h>
 #include <stdint.h>
 
 #include <memory>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_test_util.h"
@@ -126,9 +126,7 @@ class ControlFlowOpTest : public InterpreterTest {
  public:
   ControlFlowOpTest() : builder_(new SubgraphBuilder) {}
 
-  ~ControlFlowOpTest() override {
-    builder_.reset();
-  }
+  ~ControlFlowOpTest() override { builder_.reset(); }
 
  protected:
   std::unique_ptr<SubgraphBuilder> builder_;

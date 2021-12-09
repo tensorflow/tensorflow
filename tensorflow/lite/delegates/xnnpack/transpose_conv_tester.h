@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_CONV_TESTER_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_CONV_TESTER_H_
 
+#include <gtest/gtest.h>
+
 #include <cstdint>
 #include <functional>
 #include <random>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 

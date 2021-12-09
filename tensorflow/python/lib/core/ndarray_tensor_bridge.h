@@ -16,13 +16,12 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_BRIDGE_H_
 
 // Must be included first.
-#include "tensorflow/python/lib/core/numpy.h"
-
 #include <functional>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/python/lib/core/numpy.h"
 
 namespace tensorflow {
 

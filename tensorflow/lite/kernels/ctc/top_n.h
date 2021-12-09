@@ -42,6 +42,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_CTC_TOP_N_H_
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <functional>
 #include <string>

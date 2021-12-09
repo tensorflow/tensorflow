@@ -24,18 +24,13 @@ namespace tf_tracking {
 // consecutive frames.
 class FramePair {
  public:
-  FramePair()
-      : start_time_(0),
-        end_time_(0),
-        number_of_keypoints_(0) {}
+  FramePair() : start_time_(0), end_time_(0), number_of_keypoints_(0) {}
 
   // Cleans up the FramePair so that they can be reused.
   void Init(const int64_t start_time, const int64_t end_time);
 
-  void AdjustBox(const BoundingBox box,
-                 float* const translation_x,
-                 float* const translation_y,
-                 float* const scale_x,
+  void AdjustBox(const BoundingBox box, float* const translation_x,
+                 float* const translation_y, float* const scale_x,
                  float* const scale_y) const;
 
  private:
@@ -54,8 +49,7 @@ class FramePair {
                                const Point2f* const deltas) const;
 
   // Weights points based on the query_point and cutoff_dist.
-  int FillWeights(const BoundingBox& box,
-                  float* const weights) const;
+  int FillWeights(const BoundingBox& box, float* const weights) const;
 
   // Fills in the array of deltas with the translations of the points
   // between frames.
@@ -66,10 +60,8 @@ class FramePair {
   // a degenerate scale is detected.
   // Translation is the amount the center of the box has moved from one frame to
   // the next.
-  int FillScales(const Point2f& old_center,
-                 const Point2f& translation,
-                 float* const weights,
-                 Point2f* const scales) const;
+  int FillScales(const Point2f& old_center, const Point2f& translation,
+                 float* const weights, Point2f* const scales) const;
 
   // TODO(andrewharp): Make these private.
  public:

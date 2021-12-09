@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"   // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 
 namespace mlir {

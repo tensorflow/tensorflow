@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_FUNCTIONAL_OPS_H_
 
 #include "absl/base/call_once.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -28,13 +29,11 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
-#include "absl/container/flat_hash_map.h"
 
 namespace tensorflow {
 // Holds node's shape information for Concat/Split.
 using EdgeShapes = absl::flat_hash_map<const Edge*, std::vector<int>>;
-using GroupedEdges =
-    absl::flat_hash_map<std::string, std::vector<const Edge*>>;
+using GroupedEdges = absl::flat_hash_map<std::string, std::vector<const Edge*>>;
 
 // Contains attrs "T", "sharding", "_tpu_replicate" for each XlaSharding op that
 // we find as part of searching for inputs to models that are replicated.
@@ -45,8 +44,7 @@ using XlaShardingInfoMap = absl::flat_hash_map<
 // for each TpuReplicatedInput op that we find as part of searching for inputs
 // to models that are replicated.
 using TpuReplicatedInputInfoMap =
-    absl::flat_hash_map<std::string,
-                           std::tuple<tensorflow::DataType, Node*>>;
+    absl::flat_hash_map<std::string, std::tuple<tensorflow::DataType, Node*>>;
 
 namespace tpu_functional_internal {
 

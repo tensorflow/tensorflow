@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"                    // from @llvm-project
+#include "mlir/IR/Operation.h"                     // from @llvm-project
+#include "mlir/IR/Types.h"                         // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"                     // from @llvm-project
+#include "mlir/Support/LogicalResult.h"            // from @llvm-project
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace mlir {

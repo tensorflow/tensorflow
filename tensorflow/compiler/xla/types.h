@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <complex>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace xla {
 
@@ -33,10 +33,10 @@ using ::tensorflow::int8;
 
 using ::tensorflow::bfloat16;
 
-using ::tensorflow::uint8;
 using ::tensorflow::uint16;
 using ::tensorflow::uint32;
 using ::tensorflow::uint64;
+using ::tensorflow::uint8;
 
 using complex64 = std::complex<float>;
 using complex128 = std::complex<double>;

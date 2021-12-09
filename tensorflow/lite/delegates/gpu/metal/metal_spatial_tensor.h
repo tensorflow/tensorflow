@@ -32,16 +32,12 @@ namespace metal {
 class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
  public:
   MetalSpatialTensor()
-      : memory_(nullptr),
-        texture_mem_(nullptr),
-        memory_owner_(true),
-        texture_mem_owner_(true) {}
-  MetalSpatialTensor(id<MTLBuffer> buffer, id<MTLTexture> texture,
-                     bool memory_owner, bool texture_mem_owner,
-                     const BHWC& shape, const TensorDescriptor& descriptor);
-  MetalSpatialTensor(id<MTLBuffer> buffer, id<MTLTexture> texture,
-                     bool memory_owner, bool texture_mem_owner,
-                     const BHWDC& shape, const TensorDescriptor& descriptor);
+      : memory_(nullptr), texture_mem_(nullptr), memory_owner_(true), texture_mem_owner_(true) {}
+  MetalSpatialTensor(id<MTLBuffer> buffer, id<MTLTexture> texture, bool memory_owner,
+                     bool texture_mem_owner, const BHWC& shape, const TensorDescriptor& descriptor);
+  MetalSpatialTensor(id<MTLBuffer> buffer, id<MTLTexture> texture, bool memory_owner,
+                     bool texture_mem_owner, const BHWDC& shape,
+                     const TensorDescriptor& descriptor);
 
   // Move only
   MetalSpatialTensor(MetalSpatialTensor&& tensor);
@@ -68,12 +64,10 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const;
 
-  absl::Status WriteData(
-      id<MTLDevice> device,
-      const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
-  absl::Status WriteData(
-      id<MTLDevice> device,
-      const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
+  absl::Status WriteData(id<MTLDevice> device,
+                         const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+  absl::Status WriteData(id<MTLDevice> device,
+                         const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   template <DataType T>
   absl::Status WriteData(id<MTLDevice> device, const tflite::gpu::Tensor<BHWC, T>& src);
   template <DataType T>
@@ -83,8 +77,7 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   template <DataType T>
   absl::Status ReadData(id<MTLDevice> device, tflite::gpu::Tensor<BHWDC, T>* dst) const;
 
-  absl::Status CreateFromDescriptor(const TensorDescriptor& desc,
-                                    id<MTLDevice> device);
+  absl::Status CreateFromDescriptor(const TensorDescriptor& desc, id<MTLDevice> device);
 
   absl::Status SetBufferHandle(id<MTLBuffer> buffer);
   id<MTLBuffer> GetBufferHandle() const;
@@ -118,12 +111,10 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
 };
 
 absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
-                          const TensorDescriptor& descriptor,
-                          MetalSpatialTensor* result);
+                          const TensorDescriptor& descriptor, MetalSpatialTensor* result);
 
 absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
-                          const TensorDescriptor& descriptor,
-                          MetalSpatialTensor* result);
+                          const TensorDescriptor& descriptor, MetalSpatialTensor* result);
 
 absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
                                       const TensorDescriptor& descriptor,

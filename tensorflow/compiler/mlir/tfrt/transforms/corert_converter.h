@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"                 // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
-#include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
+#include "tfrt/basic_kernels/opdefs/types.h"        // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
-#include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
+#include "tfrt/core_runtime/opdefs/types.h"         // from @tf_runtime
 #include "tfrt/distributed_runtime/opdefs/types.h"  // from @tf_runtime
 
 namespace tensorflow {

@@ -21,12 +21,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/ctc/ctc_loss_util.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tensorflow {
 namespace ctc {

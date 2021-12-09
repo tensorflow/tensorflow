@@ -20,12 +20,12 @@ limitations under the License.
 #ifndef NNAPI_DELEGATE_DISABLED
 
 #include <fcntl.h>
+#include <gtest/gtest.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
 #include <memory>
 
-#include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"

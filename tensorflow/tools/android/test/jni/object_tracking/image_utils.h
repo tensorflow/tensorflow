@@ -88,9 +88,8 @@ inline static void MarkImage(const int x, const int y, const int radius,
 }
 
 #ifdef __ARM_NEON
-void CalculateGNeon(
-    const float* const vals_x, const float* const vals_y,
-    const int num_vals, float* const G);
+void CalculateGNeon(const float* const vals_x, const float* const vals_y,
+                    const int num_vals, float* const G);
 #endif
 
 // Puts the image gradient matrix about a pixel into the 2x2 float array G.
@@ -129,7 +128,6 @@ inline void CalculateGInt16(const int16_t* const vals_x,
   G[2] = G[1];
 }
 
-
 // Puts the image gradient matrix about a pixel into the 2x2 float array G.
 // Looks up interpolated pixels, then calls above method for implementation.
 inline void CalculateG(const int window_radius, const float center_x,
@@ -139,8 +137,8 @@ inline void CalculateG(const int window_radius, const float center_x,
 
   // Hardcoded to allow for a max window radius of 5 (9 pixels x 9 pixels).
   static const int kMaxWindowRadius = 5;
-  SCHECK(window_radius <= kMaxWindowRadius,
-        "Window %d > %d!", window_radius, kMaxWindowRadius);
+  SCHECK(window_radius <= kMaxWindowRadius, "Window %d > %d!", window_radius,
+         kMaxWindowRadius);
 
   // Diameter of window is 2 * radius + 1 for center pixel.
   static const int kWindowBufferSize =
@@ -180,10 +178,9 @@ inline float ImageCrossCorrelation(const Image<float>& image1,
                                    const Image<float>& image2,
                                    const int x_offset, const int y_offset) {
   SCHECK(image1.GetWidth() == image2.GetWidth() &&
-         image1.GetHeight() == image2.GetHeight(),
-        "Dimension mismatch! %dx%d vs %dx%d",
-        image1.GetWidth(), image1.GetHeight(),
-        image2.GetWidth(), image2.GetHeight());
+             image1.GetHeight() == image2.GetHeight(),
+         "Dimension mismatch! %dx%d vs %dx%d", image1.GetWidth(),
+         image1.GetHeight(), image2.GetWidth(), image2.GetHeight());
 
   const int num_pixels = image1.GetWidth() * image1.GetHeight();
   const float* data1 = image1.data();
@@ -201,15 +198,14 @@ inline void CopyArea(const Image<uint8_t>& image,
   const int patch_width = patch_image->GetWidth();
   const int patch_height = patch_image->GetHeight();
 
-  const float x_dist_between_samples = patch_width > 0 ?
-      area_to_copy.GetWidth() / (patch_width - 1) : 0;
+  const float x_dist_between_samples =
+      patch_width > 0 ? area_to_copy.GetWidth() / (patch_width - 1) : 0;
 
-  const float y_dist_between_samples = patch_height > 0 ?
-      area_to_copy.GetHeight() / (patch_height - 1) : 0;
+  const float y_dist_between_samples =
+      patch_height > 0 ? area_to_copy.GetHeight() / (patch_height - 1) : 0;
 
   for (int y_index = 0; y_index < patch_height; ++y_index) {
-    const float sample_y =
-        y_index * y_dist_between_samples + area_to_copy.top_;
+    const float sample_y = y_index * y_dist_between_samples + area_to_copy.top_;
 
     for (int x_index = 0; x_index < patch_width; ++x_index) {
       const float sample_x =
@@ -225,7 +221,6 @@ inline void CopyArea(const Image<uint8_t>& image,
     }
   }
 }
-
 
 // Takes a floating point image and normalizes it in-place.
 //
@@ -276,10 +271,8 @@ inline void NormalizeImage(Image<float>* const image) {
 
 #ifdef SANITY_CHECKS
     LOGV("corrected_mean: %1.2f  std_dev: %1.2f", corrected_mean, std_dev);
-    const float correlation =
-        ComputeCrossCorrelation(image->data(),
-                                image->data(),
-                                image->data_size_);
+    const float correlation = ComputeCrossCorrelation(
+        image->data(), image->data(), image->data_size_);
 
     if (std::abs(correlation - 1.0f) > EPSILON) {
       LOG(ERROR) << "Bad image!" << std::endl;

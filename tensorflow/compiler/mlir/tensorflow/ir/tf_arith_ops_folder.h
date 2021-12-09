@@ -17,13 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ARITH_OPS_FOLDER_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"         // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/TypeRange.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"       // from @llvm-project
+#include "mlir/IR/Location.h"           // from @llvm-project
+#include "mlir/IR/OpDefinition.h"       // from @llvm-project
+#include "mlir/IR/TypeRange.h"          // from @llvm-project
+#include "mlir/IR/Value.h"              // from @llvm-project
 
 namespace mlir {
 

@@ -26,6 +26,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_GTL_MANUAL_CONSTRUCTOR_H_
 
 #include <stddef.h>
+
 #include <new>
 #include <utility>
 

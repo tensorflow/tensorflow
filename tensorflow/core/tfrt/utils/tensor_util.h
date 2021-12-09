@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/tfrt/utils/statusor.h"
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#include "tfrt/tensor/tensor.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"   // from @tf_runtime
+#include "tfrt/tensor/tensor.h"               // from @tf_runtime
 
 namespace tfrt {
 

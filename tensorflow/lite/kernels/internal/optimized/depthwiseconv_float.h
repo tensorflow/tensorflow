@@ -1108,7 +1108,6 @@ inline void DepthwiseConvImpl(
   }
 }
 
-
 }  // namespace optimized_ops
 }  // namespace tflite
 

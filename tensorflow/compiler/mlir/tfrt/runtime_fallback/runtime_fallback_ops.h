@@ -18,11 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_RUNTIME_FALLBACK_RUNTIME_FALLBACK_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_RUNTIME_FALLBACK_RUNTIME_FALLBACK_OPS_H_
 
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"                       // from @llvm-project
+#include "mlir/IR/OpDefinition.h"                  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"                 // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
-#include "tfrt/tensor/opdefs/tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/opdefs/tensor.h"             // from @tf_runtime
 
 namespace mlir {
 namespace tfd {

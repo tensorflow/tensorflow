@@ -87,11 +87,14 @@ struct gebp_kernel<QInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs,
 
 template <typename Index, typename DataMapper, int mr, int nr,
           bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE void gebp_kernel<QInt8, QInt8, Index, DataMapper, mr, nr,
-                                   ConjugateLhs, ConjugateRhs>::
-operator()(const DataMapper& res, const QInt8* blockA, const QInt8* blockB,
-           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
-           Index strideB, Index offsetA, Index offsetB) {
+EIGEN_DONT_INLINE void
+gebp_kernel<QInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+            ConjugateRhs>::operator()(const DataMapper& res,
+                                      const QInt8* blockA, const QInt8* blockB,
+                                      Index rows, Index depth, Index cols,
+                                      QInt32 alpha, Index strideA,
+                                      Index strideB, Index offsetA,
+                                      Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
 
@@ -160,11 +163,14 @@ struct gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
 
 template <typename Index, typename DataMapper, int mr, int nr,
           bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr,
-                                   ConjugateLhs, ConjugateRhs>::
-operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
-           Index strideB, Index offsetA, Index offsetB) {
+EIGEN_DONT_INLINE void
+gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+            ConjugateRhs>::operator()(const DataMapper& res,
+                                      const QInt8* blockA, const QUInt8* blockB,
+                                      Index rows, Index depth, Index cols,
+                                      QInt32 alpha, Index strideA,
+                                      Index strideB, Index offsetA,
+                                      Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
 
@@ -233,11 +239,14 @@ struct gebp_kernel<QUInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs,
 
 template <typename Index, typename DataMapper, int mr, int nr,
           bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE void gebp_kernel<QUInt8, QInt8, Index, DataMapper, mr, nr,
-                                   ConjugateLhs, ConjugateRhs>::
-operator()(const DataMapper& res, const QUInt8* blockA, const QInt8* blockB,
-           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
-           Index strideB, Index offsetA, Index offsetB) {
+EIGEN_DONT_INLINE void
+gebp_kernel<QUInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+            ConjugateRhs>::operator()(const DataMapper& res,
+                                      const QUInt8* blockA, const QInt8* blockB,
+                                      Index rows, Index depth, Index cols,
+                                      QInt32 alpha, Index strideA,
+                                      Index strideB, Index offsetA,
+                                      Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
 
@@ -305,11 +314,14 @@ struct gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr, ConjugateLhs,
 
 template <typename Index, typename DataMapper, int mr, int nr,
           bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE void gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr,
-                                   ConjugateLhs, ConjugateRhs>::
-operator()(const DataMapper& res, const QInt16* blockA, const QInt16* blockB,
-           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
-           Index strideB, Index offsetA, Index offsetB) {
+EIGEN_DONT_INLINE void
+gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr, ConjugateLhs,
+            ConjugateRhs>::operator()(const DataMapper& res,
+                                      const QInt16* blockA,
+                                      const QInt16* blockB, Index rows,
+                                      Index depth, Index cols, QInt32 alpha,
+                                      Index strideA, Index strideB,
+                                      Index offsetA, Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
 

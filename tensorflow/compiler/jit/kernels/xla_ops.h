@@ -32,7 +32,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-
 // XlaLocalLaunchBase is almost the same as XlaLocalLaunchOp.
 // The only difference is that it does not require arguments to follow
 // the "constants, then regular args, then resources" order.

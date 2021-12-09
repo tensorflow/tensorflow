@@ -19,10 +19,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_TENSOR_H_
 
 #include "tensorflow/core/framework/tensor.h"
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
+#include "tfrt/dtype/dtype.h"            // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
-#include "tfrt/tensor/tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor.h"          // from @tf_runtime
+#include "tfrt/tensor/tensor_shape.h"    // from @tf_runtime
 
 namespace tensorflow {
 

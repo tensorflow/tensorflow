@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_PRELU_TESTER_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_PRELU_TESTER_H_
 
+#include <gtest/gtest.h>
+
 #include <cstdint>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {

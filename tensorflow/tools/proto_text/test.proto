@@ -107,5 +107,4 @@ enum ForeignEnum {
   FOREIGN_BAZ = 6;
 }
 
-message TestEmptyMessage {
-}
+message TestEmptyMessage {}

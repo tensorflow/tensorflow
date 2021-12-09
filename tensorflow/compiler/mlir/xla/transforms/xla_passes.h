@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"          // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 
 namespace mlir {
@@ -28,7 +28,6 @@ template <typename T>
 class OperationPass;
 
 namespace mhlo {
-
 
 // Prepare module for export to XLA HLO protos/instruction.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport();

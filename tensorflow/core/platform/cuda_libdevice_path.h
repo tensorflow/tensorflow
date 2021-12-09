@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
 
 #include <vector>
+
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

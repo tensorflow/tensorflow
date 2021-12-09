@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 
-
 // Report Error for unsupported type by op 'op_name' and returns kTfLiteError.
 #define TF_LITE_UNSUPPORTED_TYPE(context, type, op_name)                    \
   do {                                                                      \

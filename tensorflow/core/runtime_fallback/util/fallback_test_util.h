@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
-#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
+#include "tfrt/host_context/resource_context.h"   // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

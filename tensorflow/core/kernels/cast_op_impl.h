@@ -27,7 +27,6 @@ namespace functor {
 
 CAST_FUNCTORS(Eigen::ThreadPoolDevice);
 
-
 }  // namespace functor
 
 #define CURRY_TYPES3_NO_HALF(FN, arg0, arg1) \
@@ -140,7 +139,6 @@ CastFunctorType GetGpuCastFromComplex128(DataType dst_dtype);
 CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 }  // namespace tensorflow
 

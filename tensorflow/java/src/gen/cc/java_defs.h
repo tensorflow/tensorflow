@@ -45,33 +45,15 @@ class Annotation;
 // supertypes are only useful when declaring a type.
 class Type {
  public:
-  enum Kind {
-    PRIMITIVE, CLASS, INTERFACE, ENUM, GENERIC, ANNOTATION
-  };
-  static const Type Byte() {
-    return Type(Type::PRIMITIVE, "byte");
-  }
-  static const Type Char() {
-    return Type(Type::PRIMITIVE, "char");
-  }
-  static const Type Short() {
-    return Type(Type::PRIMITIVE, "short");
-  }
-  static const Type Int() {
-    return Type(Type::PRIMITIVE, "int");
-  }
-  static const Type Long() {
-    return Type(Type::PRIMITIVE, "long");
-  }
-  static const Type Float() {
-    return Type(Type::PRIMITIVE, "float");
-  }
-  static const Type Double() {
-    return Type(Type::PRIMITIVE, "double");
-  }
-  static const Type Boolean() {
-    return Type(Type::PRIMITIVE, "boolean");
-  }
+  enum Kind { PRIMITIVE, CLASS, INTERFACE, ENUM, GENERIC, ANNOTATION };
+  static const Type Byte() { return Type(Type::PRIMITIVE, "byte"); }
+  static const Type Char() { return Type(Type::PRIMITIVE, "char"); }
+  static const Type Short() { return Type(Type::PRIMITIVE, "short"); }
+  static const Type Int() { return Type(Type::PRIMITIVE, "int"); }
+  static const Type Long() { return Type(Type::PRIMITIVE, "long"); }
+  static const Type Float() { return Type(Type::PRIMITIVE, "float"); }
+  static const Type Double() { return Type(Type::PRIMITIVE, "double"); }
+  static const Type Boolean() { return Type(Type::PRIMITIVE, "boolean"); }
   static const Type Void() {
     // For simplicity, we consider 'void' as a primitive type, like the Java
     // Reflection API does
@@ -154,7 +136,7 @@ class Type {
 
  protected:
   Type(Kind kind, const string& name, const string& package = "")
-    : kind_(kind), name_(name), package_(package) {}
+      : kind_(kind), name_(name), package_(package) {}
 
  private:
   Kind kind_;
@@ -184,7 +166,7 @@ class Annotation : public Type {
   string attributes_;
 
   Annotation(const string& name, const string& package)
-    : Type(Kind::ANNOTATION, name, package) {}
+      : Type(Kind::ANNOTATION, name, package) {}
 };
 
 // A definition of a Java variable
@@ -209,7 +191,7 @@ class Variable {
   bool variadic_;
 
   Variable(const string& name, const Type& type, bool variadic)
-    : name_(name), type_(type), variadic_(variadic) {}
+      : name_(name), type_(type), variadic_(variadic) {}
 };
 
 // A definition of a Java class method
@@ -246,7 +228,7 @@ class Method {
   std::list<Annotation> annotations_;
 
   Method(const string& name, const Type& return_type, bool constructor)
-    : name_(name), return_type_(return_type), constructor_(constructor) {}
+      : name_(name), return_type_(return_type), constructor_(constructor) {}
 };
 
 // A definition of a documentation bloc for a Java element (JavaDoc)

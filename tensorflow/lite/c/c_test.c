@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_experimental.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
 
 // This file exists just to verify that the above header files above can build,
 // link, and run as "C" code.
@@ -29,7 +29,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-static void CheckFailed(const char *expression, const char *filename,
+static void CheckFailed(const char* expression, const char* filename,
                         int line_number) {
   fprintf(stderr, "ERROR: CHECK failed: %s:%d: %s\n", filename, line_number,
           expression);
@@ -51,11 +51,11 @@ static void CheckFailed(const char *expression, const char *filename,
 #define ASSERT_EQ(expected, actual) CHECK((expected) == (actual))
 #define ASSERT_NE(expected, actual) CHECK((expected) != (actual))
 #define ASSERT_STREQ(expected, actual) \
-    ASSERT_EQ(0, strcmp((expected), (actual)))
+  ASSERT_EQ(0, strcmp((expected), (actual)))
 
 // Test the TfLiteVersion function.
 static void TestVersion(void) {
-  const char *version = TfLiteVersion();
+  const char* version = TfLiteVersion();
   printf("Version = %s\n", version);
   CHECK(version[0] != '\0');
 }
@@ -81,8 +81,7 @@ static void TestSmokeTest(void) {
   ASSERT_EQ(TfLiteInterpreterGetOutputTensorCount(interpreter), 1);
 
   int input_dims[1] = {2};
-  ASSERT_EQ(TfLiteInterpreterResizeInputTensor(
-                interpreter, 0, input_dims, 1),
+  ASSERT_EQ(TfLiteInterpreterResizeInputTensor(interpreter, 0, input_dims, 1),
             kTfLiteOk);
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
 
@@ -101,8 +100,7 @@ static void TestSmokeTest(void) {
   ASSERT_EQ(input_params.zero_point, 0);
 
   float input[2] = {1.f, 3.f};
-  ASSERT_EQ(TfLiteTensorCopyFromBuffer(input_tensor, input,
-                                       2 * sizeof(float)),
+  ASSERT_EQ(TfLiteTensorCopyFromBuffer(input_tensor, input, 2 * sizeof(float)),
             kTfLiteOk);
 
   ASSERT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
@@ -123,8 +121,7 @@ static void TestSmokeTest(void) {
   ASSERT_EQ(output_params.zero_point, 0);
 
   float output[2];
-  ASSERT_EQ(TfLiteTensorCopyToBuffer(output_tensor, output,
-                                     2 * sizeof(float)),
+  ASSERT_EQ(TfLiteTensorCopyToBuffer(output_tensor, output, 2 * sizeof(float)),
             kTfLiteOk);
   ASSERT_EQ(output[0], 3.f);
   ASSERT_EQ(output[1], 9.f);

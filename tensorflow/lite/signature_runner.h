@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/internal/signature_def.h"
 
 namespace tflite {
-class Interpreter;  // Class for friend declarations.
+class Interpreter;               // Class for friend declarations.
 class SignatureRunnerJNIHelper;  // Class for friend declarations.
 class TensorHandle;              // Class for friend declarations.
 

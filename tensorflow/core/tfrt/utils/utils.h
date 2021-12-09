@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/utils/statusor.h"
-#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
+#include "tfrt/bef/bef_buffer.h"         // from @tf_runtime
+#include "tfrt/dtype/dtype.h"            // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tensorflow {

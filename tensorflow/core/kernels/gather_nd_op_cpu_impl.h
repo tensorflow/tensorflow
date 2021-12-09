@@ -123,13 +123,14 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
   }
 };
 
-#define REGISTER_GATHER_ND_FULL(T, Index)                                     \
-  template Index GatherNdSlice<CPUDevice, T, Index, CPU_PROVIDED_IXDIM>::     \
-  operator()(const CPUDevice& d, const Index slice_size,                      \
-             typename TTypes<int32>::Scalar Tscratch,                         \
-             typename TTypes<T, CPU_PROVIDED_IXDIM + 1>::ConstTensor Tparams, \
-             typename TTypes<Index>::ConstMatrix Tindices,                    \
-             typename TTypes<T>::Matrix Tout);
+#define REGISTER_GATHER_ND_FULL(T, Index)                              \
+  template Index                                                       \
+  GatherNdSlice<CPUDevice, T, Index, CPU_PROVIDED_IXDIM>::operator()(  \
+      const CPUDevice& d, const Index slice_size,                      \
+      typename TTypes<int32>::Scalar Tscratch,                         \
+      typename TTypes<T, CPU_PROVIDED_IXDIM + 1>::ConstTensor Tparams, \
+      typename TTypes<Index>::ConstMatrix Tindices,                    \
+      typename TTypes<T>::Matrix Tout);
 
 #define REGISTER_GATHER_ND_CPU(type)    \
   REGISTER_GATHER_ND_FULL(type, int32); \

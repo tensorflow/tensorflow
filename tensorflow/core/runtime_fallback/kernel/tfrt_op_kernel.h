@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/attr_util.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
 #include "tfrt/common/compat/eigen/thread_pool_device.h"  // from @tf_runtime
-#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_attrs.h"                   // from @tf_runtime
 
 namespace tfrt {
 class AsyncKernelFrame;

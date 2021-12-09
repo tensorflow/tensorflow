@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_ENV_H_
 
 #include <vector>
+
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

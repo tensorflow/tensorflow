@@ -110,8 +110,8 @@ CreateModuleConfig(
     absl::Span<const xla::Shape> argument_shapes,
     absl::optional<const xla::Shape> result_layout,
     absl::optional<const xla::DeviceAssignment> device_assignment,
-    int replica_count,
-    int num_partitions, const xla::DebugOptions* debug_options);
+    int replica_count, int num_partitions,
+    const xla::DebugOptions* debug_options);
 
 xla::ShapeTree<xla::HloSharding> GetSubtree(
     const xla::ShapeTree<xla::HloSharding>& tuple_shape_tree,

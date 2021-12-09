@@ -33,7 +33,6 @@ TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS);
 
 #undef DEFINE_CPU_KERNELS
 
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_

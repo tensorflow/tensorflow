@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_IO_BLOCK_BUILDER_H_
 #define TENSORFLOW_LIB_IO_BLOCK_BUILDER_H_
 
+#include <stdint.h>
+
 #include <vector>
 
-#include <stdint.h>
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 

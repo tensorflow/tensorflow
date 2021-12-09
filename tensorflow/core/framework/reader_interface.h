@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"

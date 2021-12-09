@@ -26,22 +26,25 @@ limitations under the License.
 #define ZERO 0
 
 #ifdef SANITY_CHECKS
-  #define CHECK_PIXEL(IMAGE, X, Y) {\
-    SCHECK((IMAGE)->ValidPixel((X), (Y)), \
-          "CHECK_PIXEL(%d,%d) in %dx%d image.", \
-          static_cast<int>(X), static_cast<int>(Y), \
-          (IMAGE)->GetWidth(), (IMAGE)->GetHeight());\
+#define CHECK_PIXEL(IMAGE, X, Y)                                            \
+  {                                                                         \
+    SCHECK((IMAGE)->ValidPixel((X), (Y)),                                   \
+           "CHECK_PIXEL(%d,%d) in %dx%d image.", static_cast<int>(X),       \
+           static_cast<int>(Y), (IMAGE)->GetWidth(), (IMAGE)->GetHeight()); \
   }
 
-  #define CHECK_PIXEL_INTERP(IMAGE, X, Y) {\
-    SCHECK((IMAGE)->validInterpPixel((X), (Y)), \
-          "CHECK_PIXEL_INTERP(%.2f, %.2f) in %dx%d image.", \
-          static_cast<float>(X), static_cast<float>(Y), \
-          (IMAGE)->GetWidth(), (IMAGE)->GetHeight());\
+#define CHECK_PIXEL_INTERP(IMAGE, X, Y)                                       \
+  {                                                                           \
+    SCHECK((IMAGE)->validInterpPixel((X), (Y)),                               \
+           "CHECK_PIXEL_INTERP(%.2f, %.2f) in %dx%d image.",                  \
+           static_cast<float>(X), static_cast<float>(Y), (IMAGE)->GetWidth(), \
+           (IMAGE)->GetHeight());                                             \
   }
 #else
-  #define CHECK_PIXEL(image, x, y) {}
-  #define CHECK_PIXEL_INTERP(IMAGE, X, Y) {}
+#define CHECK_PIXEL(image, x, y) \
+  {}
+#define CHECK_PIXEL_INTERP(IMAGE, X, Y) \
+  {}
 #endif
 
 namespace tf_tracking {
@@ -56,14 +59,12 @@ class RowData {
       : row_data_(row_data), max_col_(max_col) {}
 
   inline T& operator[](const int col) const {
-    SCHECK(InRange(col, 0, max_col_),
-          "Column out of range: %d (%d max)", col, max_col_);
+    SCHECK(InRange(col, 0, max_col_), "Column out of range: %d (%d max)", col,
+           max_col_);
     return row_data_[col];
   }
 
-  inline operator T*() const {
-    return row_data_;
-  }
+  inline operator T*() const { return row_data_; }
 
  private:
   T* const row_data_;
@@ -114,15 +115,14 @@ class Image {
   // Arguments fp_x and fp_y tell the subpixel position in fixed point format,
   // patchwidth/patchheight give the size of the patch in pixels and
   // to_data must be a valid pointer to a *contiguous* destination data array.
-  template<class DstType>
-  bool ExtractPatchAtSubpixelFixed1616(const int fp_x,
-                                       const int fp_y,
+  template <class DstType>
+  bool ExtractPatchAtSubpixelFixed1616(const int fp_x, const int fp_y,
                                        const int patchwidth,
                                        const int patchheight,
                                        DstType* to_data) const;
 
-  Image<T>* Crop(
-      const int left, const int top, const int right, const int bottom) const;
+  Image<T>* Crop(const int left, const int top, const int right,
+                 const int bottom) const;
 
   inline int GetWidth() const { return width_; }
   inline int GetHeight() const { return height_; }
@@ -161,26 +161,24 @@ class Image {
 
   // Safe lookup with boundary enforcement.
   inline T GetPixelClipped(const int x, const int y) const {
-    return (*this)[Clip(y, ZERO, height_less_one_)]
-                  [Clip(x, ZERO, width_less_one_)];
+    return (
+        *this)[Clip(y, ZERO, height_less_one_)][Clip(x, ZERO, width_less_one_)];
   }
 
 #ifdef SANITY_CHECKS
   inline RowData<T> operator[](const int row) {
-    SCHECK(InRange(row, 0, height_less_one_),
-          "Row out of range: %d (%d max)", row, height_less_one_);
+    SCHECK(InRange(row, 0, height_less_one_), "Row out of range: %d (%d max)",
+           row, height_less_one_);
     return RowData<T>(image_data_ + row * stride_, width_less_one_);
   }
 
   inline const RowData<T> operator[](const int row) const {
-    SCHECK(InRange(row, 0, height_less_one_),
-          "Row out of range: %d (%d max)", row, height_less_one_);
+    SCHECK(InRange(row, 0, height_less_one_), "Row out of range: %d (%d max)",
+           row, height_less_one_);
     return RowData<T>(image_data_ + row * stride_, width_less_one_);
   }
 #else
-  inline T* operator[](const int row) {
-    return image_data_ + row * stride_;
-  }
+  inline T* operator[](const int row) { return image_data_ + row * stride_; }
 
   inline const T* operator[](const int row) const {
     return image_data_ + row * stride_;
@@ -238,16 +236,16 @@ class Image {
   // rotational symmetry in their response because they also consider the
   // diagonal neighbors.
   template <typename U>
-  inline T ScharrPixelX(const Image<U>& original,
-                        const int center_x, const int center_y) const;
+  inline T ScharrPixelX(const Image<U>& original, const int center_x,
+                        const int center_y) const;
 
   // Optimized Scharr filter on a single pixel in the X direction.
   // Scharr filters are like central-difference operators, but have more
   // rotational symmetry in their response because they also consider the
   // diagonal neighbors.
   template <typename U>
-  inline T ScharrPixelY(const Image<U>& original,
-                        const int center_x, const int center_y) const;
+  inline T ScharrPixelY(const Image<U>& original, const int center_x,
+                        const int center_y) const;
 
   // Convolve the image with a Scharr filter in the X direction.
   // Much faster than an equivalent generic convolution.
@@ -272,8 +270,7 @@ class Image {
   // Generic function for convolving pixel with 3x3 filter.
   // Filter pixels should be in row major order.
   template <typename U>
-  inline T ConvolvePixel3x3(const Image<U>& original,
-                            const int* const filter,
+  inline T ConvolvePixel3x3(const Image<U>& original, const int* const filter,
                             const int center_x, const int center_y,
                             const int total) const;
 

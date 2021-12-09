@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_STRING_UTIL_H_
 
 #include <Python.h>
+
 #include <string>
 
 namespace tflite {

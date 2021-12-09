@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_TEST_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_TEST_H_
 
-#include <vector>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
+#include <vector>
+
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 

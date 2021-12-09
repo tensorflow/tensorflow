@@ -18,14 +18,15 @@ limitations under the License.
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <map>
 #include <numeric>
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/scope.h"

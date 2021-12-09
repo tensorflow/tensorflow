@@ -48,7 +48,6 @@ using ::mlir::tf_type::VariantType;                // NOLINT
   using tftype##Type = mlir::tf_type::tftype##Type;
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
 
-
 }  // end namespace TF
 }  // end namespace mlir
 

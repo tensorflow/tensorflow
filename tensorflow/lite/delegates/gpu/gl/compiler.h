@@ -46,9 +46,9 @@ class Compiler {
       const ShaderCodeCallback& callback) = 0;
 };
 
-std::unique_ptr<Compiler> NewCompiler(
-    const NodeShader* node_shader, const GpuInfo* gpu_info,
-    const CompilationOptions& options);
+std::unique_ptr<Compiler> NewCompiler(const NodeShader* node_shader,
+                                      const GpuInfo* gpu_info,
+                                      const CompilationOptions& options);
 
 }  // namespace gl
 }  // namespace gpu

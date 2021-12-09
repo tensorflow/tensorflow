@@ -187,7 +187,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
   const bool nccl_;
   const DeviceMgr* dev_mgr_;
-  DeviceResolverInterface* dev_resolver_;  // Not owned.
+  DeviceResolverInterface* dev_resolver_;         // Not owned.
   NcclCommunicatorInterface* nccl_communicator_;  // Not owned.
   string task_name_;
   string gpu_ring_order_;

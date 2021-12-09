@@ -27,7 +27,7 @@ class DenseHostTensor;
 class CpuDevice;
 class Device;
 class ExecutionContext;
-}
+}  // namespace tfrt
 
 namespace tensorflow {
 class KernelFallbackTensor;

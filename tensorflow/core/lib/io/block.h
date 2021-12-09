@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include "tensorflow/core/lib/io/iterator.h"
 
 namespace tensorflow {

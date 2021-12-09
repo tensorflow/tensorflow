@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_COLOCATION_H_
 
 #include <unordered_map>
+
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {

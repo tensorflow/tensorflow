@@ -212,12 +212,10 @@ class Input {
       : Input(Initializer(v)) {}
 
   Input(const Initializer& init)  // NOLINT(runtime/explicit)
-      : status_(init.status),
-        tensor_(init.tensor) {}
+      : status_(init.status), tensor_(init.tensor) {}
 
   Input(const Tensor& t)  // NOLINT(runtime/explicit)
-      : status_(Status::OK()),
-        tensor_(t) {}
+      : status_(Status::OK()), tensor_(t) {}
 
   Input(const std::initializer_list<Initializer>&
             init) {  // NOLINT(runtime/explicit)

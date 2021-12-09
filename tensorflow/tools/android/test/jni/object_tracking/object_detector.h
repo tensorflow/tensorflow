@@ -50,13 +50,12 @@ namespace tf_tracking {
 // concentrentically, scaling down by scale_factor until the minimum threshold
 // size is passed.
 // Squares that do not fall completely within image_bounds will not be added.
-static inline void FillWithSquares(
-    const BoundingBox& image_bounds,
-    const BoundingBox& position,
-    const float starting_square_size,
-    const float smallest_square_size,
-    const float scale_factor,
-    std::vector<BoundingSquare>* const squares) {
+static inline void FillWithSquares(const BoundingBox& image_bounds,
+                                   const BoundingBox& position,
+                                   const float starting_square_size,
+                                   const float smallest_square_size,
+                                   const float scale_factor,
+                                   std::vector<BoundingSquare>* const squares) {
   BoundingSquare descriptor_area =
       GetCenteredSquare(position, starting_square_size);
 
@@ -69,12 +68,12 @@ static inline void FillWithSquares(
     }
     descriptor_area.Scale(scale_factor);
   } while (descriptor_area.size_ >= smallest_square_size - EPSILON);
-  LOGV("Created %zu squares starting from size %.2f to min size %.2f "
-       "using scale factor: %.2f",
-       squares->size(), starting_square_size, smallest_square_size,
-       scale_factor);
+  LOGV(
+      "Created %zu squares starting from size %.2f to min size %.2f "
+      "using scale factor: %.2f",
+      squares->size(), starting_square_size, smallest_square_size,
+      scale_factor);
 }
-
 
 // Represents a potential detection of a specific ObjectExemplar and Descriptor
 // at a specific position in the image.
@@ -94,17 +93,11 @@ class Detection {
 
   virtual ~Detection() {}
 
-  inline BoundingBox GetObjectBoundingBox() const {
-    return bounding_box_;
-  }
+  inline BoundingBox GetObjectBoundingBox() const { return bounding_box_; }
 
-  inline MatchScore GetMatchScore() const {
-    return match_score_;
-  }
+  inline MatchScore GetMatchScore() const { return match_score_; }
 
-  inline const ObjectModelBase* GetObjectModel() const {
-    return object_model_;
-  }
+  inline const ObjectModelBase* GetObjectModel() const { return object_model_; }
 
   inline bool Intersects(const Detection& other) {
     // Check if any of the four axes separates us, there must be at least one.
@@ -133,8 +126,7 @@ inline std::ostream& operator<<(std::ostream& stream,
 class ObjectDetectorBase {
  public:
   explicit ObjectDetectorBase(const ObjectDetectorConfig* const config)
-      : config_(config),
-        image_data_(NULL) {}
+      : config_(config), image_data_(NULL) {}
 
   virtual ~ObjectDetectorBase();
 
@@ -214,9 +206,7 @@ class ObjectDetector : public ObjectDetectorBase {
     }
   }
 
-  virtual bool AllowSpontaneousDetections() {
-    return false;
-  }
+  virtual bool AllowSpontaneousDetections() { return false; }
 
  protected:
   std::map<std::string, ModelType*> object_models_;

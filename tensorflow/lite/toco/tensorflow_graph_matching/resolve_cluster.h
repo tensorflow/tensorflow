@@ -19,10 +19,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/toco/tensorflow_graph_matching/cluster.h"
-#include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_svdf.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/lite/toco/tensorflow_graph_matching/cluster.h"
+#include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_svdf.h"
 
 namespace toco {
 

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <vector>
+
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/prefetch.h"

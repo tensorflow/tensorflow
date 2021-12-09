@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 

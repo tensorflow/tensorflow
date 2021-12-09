@@ -65,22 +65,21 @@ class OpticalFlow {
   // If reversed, the coordinates are in the context of the latest
   // frame, not the frame before it.
   // All coordinates used in parameters are global, not scaled.
-  bool FindFlowAtPointReversible(
-      const int level, const float u_x, const float u_y,
-      const bool reverse_flow,
-      float* final_x, float* final_y) const;
+  bool FindFlowAtPointReversible(const int level, const float u_x,
+                                 const float u_y, const bool reverse_flow,
+                                 float* final_x, float* final_y) const;
 
   // Finds the flow using a specific level, filterable by forward-backward
   // error. All coordinates used in parameters are global, not scaled.
-  bool FindFlowAtPointSingleLevel(const int level,
-                                  const float u_x, const float u_y,
-                                  const bool filter_by_fb_error,
-                                  float* flow_x, float* flow_y) const;
+  bool FindFlowAtPointSingleLevel(const int level, const float u_x,
+                                  const float u_y,
+                                  const bool filter_by_fb_error, float* flow_x,
+                                  float* flow_y) const;
 
   // Pyramidal optical-flow using all levels.
   bool FindFlowAtPointPyramidal(const float u_x, const float u_y,
-                                const bool filter_by_fb_error,
-                                float* flow_x, float* flow_y) const;
+                                const bool filter_by_fb_error, float* flow_x,
+                                float* flow_y) const;
 
  private:
   const OpticalFlowConfig* const config_;

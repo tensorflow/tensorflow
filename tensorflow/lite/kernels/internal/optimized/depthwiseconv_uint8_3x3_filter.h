@@ -13016,14 +13016,14 @@ inline void DepthwiseConvDotProduct3x3Impl(
   // need to account for it. The workspace fill stage does not need to
   // understand striding, and implicitly handles striding through the parameters
   // that it is given.
-  using pack_macro_block_func_t = decltype(
-      &PackMacroBlock<implementation, quantization_type,
-                      DepthwiseConvDepthMultiplication::kNoMultiplication,
-                      0>::Run);
-  using kernel_macro_block_func_t = decltype(
-      &KernelMacroBlock<implementation, quantization_type,
-                        DepthwiseConvDepthMultiplication::kNoMultiplication,
-                        1>::Run);
+  using pack_macro_block_func_t =
+      decltype(&PackMacroBlock<
+               implementation, quantization_type,
+               DepthwiseConvDepthMultiplication::kNoMultiplication, 0>::Run);
+  using kernel_macro_block_func_t =
+      decltype(&KernelMacroBlock<
+               implementation, quantization_type,
+               DepthwiseConvDepthMultiplication::kNoMultiplication, 1>::Run);
   pack_macro_block_func_t pack_macro_block_func;
   kernel_macro_block_func_t kernel_macro_block_func;
   {

@@ -35,9 +35,9 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
-#include "third_party/fft2d/fft.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "third_party/fft2d/fft.h"
 
 namespace tensorflow {
 

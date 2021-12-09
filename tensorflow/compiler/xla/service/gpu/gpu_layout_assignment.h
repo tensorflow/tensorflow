@@ -33,8 +33,7 @@ class GpuLayoutAssignment : public LayoutAssignment {
       ComputationLayout* entry_computation_layout,
       se::StreamExecutor* stream_executor,
       ChannelLayoutConstraints* channel_constraints = nullptr)
-      : LayoutAssignment(entry_computation_layout,
-                         channel_constraints),
+      : LayoutAssignment(entry_computation_layout, channel_constraints),
         stream_executor_(stream_executor) {}
   ~GpuLayoutAssignment() override {}
 

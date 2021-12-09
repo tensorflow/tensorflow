@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -122,7 +122,6 @@ struct Assign<scatter_op::UpdateOp::MAX> {
     p = p.cwiseMax(u);
   }
 };
-
 
 }  // namespace internal
 }  // namespace scatter_op
@@ -268,7 +267,6 @@ template <typename Index>
 struct ScatterFunctor<GPUDevice, Variant, Index, scatter_op::UpdateOp::ASSIGN>
     : ScatterFunctorVariantAssignBase<GPUDevice, Index> {};
 
-
 template <typename T, typename Index>
 struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
   Index operator()(OpKernelContext* c, const CPUDevice& d,
@@ -310,7 +308,6 @@ struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
 template <typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterFunctor<CPUDevice, T, Index, op>
     : ScatterFunctorBase<CPUDevice, T, Index, op> {};
-
 
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterScalarFunctor {
@@ -378,7 +375,6 @@ struct ScatterScalarFunctor<GPUDevice, Variant, Index,
                             scatter_op::UpdateOp::ASSIGN>
     : ScatterScalarFunctorVariantAssignBase<GPUDevice, Index> {};
 
-
 template <typename T, typename Index>
 struct ScatterScalarFunctorBase<CPUDevice, T, Index,
                                 scatter_op::UpdateOp::ASSIGN> {
@@ -406,7 +402,6 @@ struct ScatterScalarFunctorBase<CPUDevice, T, Index,
 template <typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterScalarFunctor<CPUDevice, T, Index, op>
     : ScatterScalarFunctorBase<CPUDevice, T, Index, op> {};
-
 
 }  // namespace functor
 }  // namespace tensorflow

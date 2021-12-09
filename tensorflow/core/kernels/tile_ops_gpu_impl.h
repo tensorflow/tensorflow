@@ -35,6 +35,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
+
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/kernels/tile_ops_impl.h"
 

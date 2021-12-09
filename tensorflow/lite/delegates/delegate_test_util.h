@@ -15,16 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_DELEGATE_TEST_UTIL_
 #define TENSORFLOW_LITE_DELEGATES_DELEGATE_TEST_UTIL_
 
+#include <gtest/gtest.h>
 #include <stdint.h>
 
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
 namespace delegates {

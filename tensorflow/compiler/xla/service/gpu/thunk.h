@@ -109,9 +109,9 @@ class Thunk {
     se::Stream* stream;
     se::Stream* async_comms_stream;
     RunId run_id;
-    const DeviceAssignment* device_assn;                          // never null
-    const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
-    const NcclUniqueIdCallback* nccl_unique_id_callback;          // may be null
+    const DeviceAssignment* device_assn;                       // never null
+    const std::vector<GlobalDeviceId>* gpu_global_device_ids;  // may be null
+    const NcclUniqueIdCallback* nccl_unique_id_callback;       // may be null
 
     StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
   };

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <android/log.h>
 #include <string.h>
+
 #include <ostream>
 #include <sstream>
 #include <string>

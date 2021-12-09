@@ -41,7 +41,7 @@ limitations under the License.
 namespace llvm {
 class FastMathFlags;
 class TargetOptions;
-};
+};  // namespace llvm
 
 namespace xla {
 namespace llvm_ir {

@@ -26,11 +26,11 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
-#include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
-#include "tfrt/tensor/opdefs/host_tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/opdefs/tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/opdefs/tensor_shape.h"  // from @tf_runtime
+#include "tfrt/gpu/kernels/gpu_ops.h"                 // from @tf_runtime
+#include "tfrt/tensor/opdefs/host_tensor.h"           // from @tf_runtime
+#include "tfrt/tensor/opdefs/tensor.h"                // from @tf_runtime
+#include "tfrt/tensor/opdefs/tensor_shape.h"          // from @tf_runtime
 
 namespace xla {
 namespace gpu {

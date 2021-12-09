@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_BATCHED_H_
 #define TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_BATCHED_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -26,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -60,8 +59,8 @@ SliceIndex HandleCopiesBatched(OpKernelContext* ctx,
   SliceIndex result = -1;
   auto work = [&](int64_t start, int64_t end) {
     const int64_t r_start = start % (outer_size * indices_size);
-    SliceIndex batch_idx = static_cast<SliceIndex>(
-        start / (outer_size * indices_size));
+    SliceIndex batch_idx =
+        static_cast<SliceIndex>(start / (outer_size * indices_size));
     SliceIndex outer_idx = static_cast<SliceIndex>(r_start / indices_size);
     SliceIndex indices_idx = static_cast<SliceIndex>(r_start % indices_size);
 
@@ -85,8 +84,8 @@ SliceIndex HandleCopiesBatched(OpKernelContext* ctx,
             &params(b_next, o_next, indices(b_offset_next + i_next), 0));
         port::prefetch<port::PREFETCH_HINT_T0>(&out(b_next, o_next, i_next, 0));
       }
-      const Index index = internal::SubtleMustCopy(
-          indices(batch_offset + indices_idx));
+      const Index index =
+          internal::SubtleMustCopy(indices(batch_offset + indices_idx));
       if (!FastBoundsCheck(index, limit)) {
         mutex_lock l(mu);
         result = batch_offset + indices_idx;
@@ -98,10 +97,9 @@ SliceIndex HandleCopiesBatched(OpKernelContext* ctx,
       // ahead-of-time compilation binary size).
       if (is_simple_type<T>::value) {
         // Avoid auto-promotion to Index from SliceIndex by casting.
-        memcpy(
-            &out(batch_idx, outer_idx, indices_idx, 0),
-            &params(batch_idx, outer_idx, static_cast<SliceIndex>(index), 0),
-            slice_bytes);
+        memcpy(&out(batch_idx, outer_idx, indices_idx, 0),
+               &params(batch_idx, outer_idx, static_cast<SliceIndex>(index), 0),
+               slice_bytes);
       } else {
         // For non-"simple" types (e.g. strings).
         out.template chip<0>(batch_idx)

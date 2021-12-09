@@ -307,7 +307,6 @@ bool IsControlInput(const TensorId& tensor_id);
 // True iff 'name1' and 'name2' refer to the same input.
 bool IsSameInput(const string& name1, const string& name2);
 
-
 // Add a prefix to a node name with a custom delimiter.
 string AddPrefixToNodeName(const string& name, const string& prefix,
                            const string& delimiter);

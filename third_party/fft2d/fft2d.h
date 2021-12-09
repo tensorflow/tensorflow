@@ -30,7 +30,6 @@ extern void rdft2dsort(int, int, int, double **);
 extern void ddct8x8s(int isgn, double **a);
 extern void ddct16x16s(int isgn, double **a);
 
-
 #ifdef __cplusplus
 }
 #endif

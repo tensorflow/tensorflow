@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <complex>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/Core"
 
 extern "C" {
 

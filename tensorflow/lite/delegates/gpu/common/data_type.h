@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_DATA_TYPE_H_
 
 #include <stddef.h>
+
 #include <string>
 
 namespace tflite {

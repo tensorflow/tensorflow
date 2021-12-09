@@ -24,13 +24,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/kernels/ctc/ctc_beam_entry.h"
 #include "tensorflow/lite/kernels/ctc/ctc_beam_scorer.h"
 #include "tensorflow/lite/kernels/ctc/ctc_decoder.h"
 #include "tensorflow/lite/kernels/ctc/ctc_loss_util.h"
 #include "tensorflow/lite/kernels/ctc/top_n.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
 namespace custom {

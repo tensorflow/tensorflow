@@ -62,7 +62,6 @@ class SDBSQueue;
 // age (i.e. the batch's oldest request) along with a configurable preference
 // for scheduling larger batches first.
 
-
 template <typename TaskType>
 class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
                                        SerialDeviceBatchScheduler<TaskType>> {

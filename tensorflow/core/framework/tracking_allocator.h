@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TRACKING_ALLOCATOR_H_
 
 #include <unordered_map>
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"

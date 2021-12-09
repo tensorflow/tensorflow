@@ -16,6 +16,7 @@
 #define TENSORFLOW_CORE_KERNELS_BOOSTED_TREES_QUANTILES_QUANTILE_STREAM_RESOURCE_H_
 
 #include <vector>
+
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/boosted_trees/quantiles/weighted_quantiles_stream.h"
 #include "tensorflow/core/platform/macros.h"

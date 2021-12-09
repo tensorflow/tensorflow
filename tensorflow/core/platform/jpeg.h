@@ -22,7 +22,7 @@ limitations under the License.
 #include <sys/types.h>
 
 extern "C" {
-#include "jerror.h"  // from @libjpeg_turbo
+#include "jerror.h"   // from @libjpeg_turbo
 #include "jpeglib.h"  // from @libjpeg_turbo
 }
 

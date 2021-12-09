@@ -38,17 +38,11 @@ class Sprite {
   }
 
   // Also, try to only delete a Sprite when holding an OpenGl context.
-  ~Sprite() {
-    glDeleteTextures(1, &texture_);
-  }
+  ~Sprite() { glDeleteTextures(1, &texture_); }
 
-  inline int GetWidth() const {
-    return actual_width_;
-  }
+  inline int GetWidth() const { return actual_width_; }
 
-  inline int GetHeight() const {
-    return actual_height_;
-  }
+  inline int GetHeight() const { return actual_height_; }
 
   // Draw the sprite at 0,0 - original width/height in the current reference
   // frame. Any transformations desired must be applied before calling this
@@ -58,20 +52,16 @@ class Sprite {
     const float float_height = static_cast<float>(actual_height_);
 
     // Where it gets rendered to.
-    const float vertices[] = { 0.0f, 0.0f, 0.0f,
-                               0.0f, float_height, 0.0f,
-                               float_width, 0.0f, 0.0f,
-                               float_width, float_height, 0.0f,
-                               };
+    const float vertices[] = {
+        0.0f,        0.0f, 0.0f, 0.0f,        float_height, 0.0f,
+        float_width, 0.0f, 0.0f, float_width, float_height, 0.0f,
+    };
 
     // The coordinates the texture gets drawn from.
     const float max_x = float_width / texture_width_;
     const float max_y = float_height / texture_height_;
     const float textureVertices[] = {
-        0, 0,
-        0, max_y,
-        max_x, 0,
-        max_x, max_y,
+        0, 0, 0, max_y, max_x, 0, max_x, max_y,
     };
 
     glEnable(GL_TEXTURE_2D);
@@ -136,8 +126,7 @@ class Sprite {
     // memory.
     // TODO(andrewharp): Figure out if data can be pulled directly from the
     // source image with some alignment modifications.
-    if (left != 0 || top != 0 ||
-        actual_width_ != texture_source.GetWidth() ||
+    if (left != 0 || top != 0 || actual_width_ != texture_source.GetWidth() ||
         actual_height_ != texture_source.GetHeight()) {
       texture_data = new uint8_t[actual_width_ * actual_height_];
 
@@ -152,29 +141,15 @@ class Sprite {
       texture_data = const_cast<uint8_t*>(texture_source.data());
     }
 
-    glTexImage2D(GL_TEXTURE_2D,
-                 0,
-                 GL_LUMINANCE,
-                 texture_width_,
-                 texture_height_,
-                 0,
-                 GL_LUMINANCE,
-                 GL_UNSIGNED_BYTE,
-                 NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, texture_width_,
+                 texture_height_, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(GL_TEXTURE_2D,
-                    0,
-                    0,
-                    0,
-                    actual_width_,
-                    actual_height_,
-                    GL_LUMINANCE,
-                    GL_UNSIGNED_BYTE,
-                    texture_data);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, actual_width_, actual_height_,
+                    GL_LUMINANCE, GL_UNSIGNED_BYTE, texture_data);
 
     if (allocated_data) {
-      delete(texture_data);
+      delete (texture_data);
     }
 
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

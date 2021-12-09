@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_MKL_H_
 
 #include <iostream>
+
 #include "tensorflow/core/platform/types.h"
 #ifdef ENABLE_MKL
 #include "third_party/intel_mkl_ml/include/mkl_cblas.h"

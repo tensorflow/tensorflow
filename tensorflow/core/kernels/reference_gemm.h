@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/Core"
 
 // This is an unoptimized but debuggable implementation of the GEMM matrix
 // multiply function, used to compare to faster but more opaque versions, or

@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_DIAGNOSTICS_H_
 
 #include <tuple>
-#include "tensorflow/stream_executor/platform/port.h"
 
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"

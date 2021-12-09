@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_ABI_H_
 
 #include <string>
+
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

@@ -39,7 +39,7 @@ limitations under the License.
   }
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/eigen_spatial_convolutions-inl.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_SPATIAL_CONVOLUTIONS_H_

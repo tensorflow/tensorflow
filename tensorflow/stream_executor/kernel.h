@@ -535,13 +535,13 @@ class TypedKernel : public KernelBase {
   // passed into this method must live at least as long as the kernel args
   // structure.
   void PackParams(KernelArgsArray<kNumberOfParameters> *args,
-                  Params &... params) const {
+                  Params &...params) const {
     PackOneParamFromList(args, params...);
   }
 
   template <typename T, typename... RestOfParams>
   void PackOneParamFromList(KernelArgsArray<kNumberOfParameters> *args,
-                            const T &arg, const RestOfParams &... rest) const {
+                            const T &arg, const RestOfParams &...rest) const {
     PackOneParam(args, arg);
     PackOneParamFromList(args, rest...);
   }
@@ -682,8 +682,8 @@ struct KernelInvocationChecker {
   template <int kArgumentNumber, bool kShouldStaticAssert>
   static constexpr bool CheckParam(
       typename std::enable_if<kArgumentNumber >= 0>::type *dummy = nullptr) {
-    typedef typename std::tuple_element<kArgumentNumber, ParamTuple>::type
-        ParamT;
+    typedef
+        typename std::tuple_element<kArgumentNumber, ParamTuple>::type ParamT;
     typedef typename std::tuple_element<kArgumentNumber, ArgTuple>::type ArgT;
     return Compatible<ParamT, ArgT, kShouldStaticAssert, kArgumentNumber>() &&
            CheckParam<kArgumentNumber - 1, kShouldStaticAssert>();
@@ -716,8 +716,9 @@ struct KernelParamsOk {
 // See above.
 template <typename... Params, typename... Args>
 struct KernelParamsOk<TypedKernel<Params...>, Args...> {
-  static constexpr bool kResult = KernelInvocationChecker<
-      std::tuple<Params...>, std::tuple<Args...>>::CheckAllNoStaticAssert();
+  static constexpr bool kResult =
+      KernelInvocationChecker<std::tuple<Params...>,
+                              std::tuple<Args...>>::CheckAllNoStaticAssert();
 };
 
 }  // namespace stream_executor

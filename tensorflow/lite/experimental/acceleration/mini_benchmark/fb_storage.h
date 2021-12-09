@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
-#include "flatbuffers/base.h"  // from @flatbuffers
+#include "flatbuffers/base.h"         // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"

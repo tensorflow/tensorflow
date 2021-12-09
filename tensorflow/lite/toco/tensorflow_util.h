@@ -18,9 +18,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/toco/model.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/lite/toco/model.h"
 
 namespace toco {
 

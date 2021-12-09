@@ -15,13 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_ASYNC_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_ASYNC_H_
 
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"                          // from @llvm-project
+#include "mlir/IR/OpDefinition.h"                     // from @llvm-project
+#include "mlir/IR/OpImplementation.h"                 // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"     // from @llvm-project
 #include "tfrt/compiler/opdefs/tfrt_op_interfaces.h"  // from @tf_runtime
-#include "tfrt/compiler/opdefs/tfrt_traits.h"  // from @tf_runtime
-#include "tfrt/core_runtime/opdefs/traits.h"  // from @tf_runtime
+#include "tfrt/compiler/opdefs/tfrt_traits.h"         // from @tf_runtime
+#include "tfrt/core_runtime/opdefs/traits.h"          // from @tf_runtime
 
 using namespace mlir;  // NOLINT
 

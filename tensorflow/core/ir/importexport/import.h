@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_IMPORT_H_
 
 #include "absl/strings/string_view.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"   // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/core/framework/function.h"

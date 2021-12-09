@@ -33,13 +33,14 @@ limitations under the License.
 //       runner->SetInputObject(0, OpenGlTexture{texture_ud, texture_format}));
 //   RETURN_IF_ERROR(runner->Run());
 
+#include <CL/cl.h>
+
 #include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#include <CL/cl.h>
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"

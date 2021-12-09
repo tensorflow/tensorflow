@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
+
 #include "tensorflow/lite/c/c_api_types.h"
 
 #ifndef TF_LITE_STATIC_MEMORY
@@ -159,7 +160,7 @@ void TfLiteTensorFree(TfLiteTensor* t) {
   t->dims = NULL;
 
   if (t->dims_signature) {
-    TfLiteIntArrayFree((TfLiteIntArray *) t->dims_signature);
+    TfLiteIntArrayFree((TfLiteIntArray*)t->dims_signature);
   }
   t->dims_signature = NULL;
 
@@ -189,16 +190,12 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 }
 
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
-  if (!src || !dst)
-    return kTfLiteOk;
-  if (src->bytes != dst->bytes)
-    return kTfLiteError;
-  if (src == dst)
-    return kTfLiteOk;
+  if (!src || !dst) return kTfLiteOk;
+  if (src->bytes != dst->bytes) return kTfLiteError;
+  if (src == dst) return kTfLiteOk;
 
   dst->type = src->type;
-  if (dst->dims)
-    TfLiteIntArrayFree(dst->dims);
+  if (dst->dims) TfLiteIntArrayFree(dst->dims);
   dst->dims = TfLiteIntArrayCopy(src->dims);
   memcpy(dst->data.raw, src->data.raw, src->bytes);
   dst->buffer_handle = src->buffer_handle;

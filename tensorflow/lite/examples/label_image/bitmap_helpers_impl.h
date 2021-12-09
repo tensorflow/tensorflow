@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_
 #define TENSORFLOW_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_
 
-#include "tensorflow/lite/examples/label_image/label_image.h"
-
 #include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/lite/examples/label_image/label_image.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/string_util.h"

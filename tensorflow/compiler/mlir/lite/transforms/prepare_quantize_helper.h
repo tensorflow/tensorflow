@@ -28,16 +28,16 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"          // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"        // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"      // from @llvm-project
+#include "mlir/IR/Attributes.h"                   // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"                 // from @llvm-project
+#include "mlir/IR/OpDefinition.h"                 // from @llvm-project
+#include "mlir/IR/PatternMatch.h"                 // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"                // from @llvm-project
+#include "mlir/IR/Value.h"                        // from @llvm-project
+#include "mlir/Support/LogicalResult.h"           // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"

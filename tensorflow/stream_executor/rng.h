@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_RNG_H_
 
 #include <limits.h>
+
 #include <complex>
 
 #include "tensorflow/stream_executor/platform/logging.h"

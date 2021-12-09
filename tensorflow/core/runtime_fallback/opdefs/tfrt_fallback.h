@@ -15,10 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_H_
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"                    // from @llvm-project
+#include "mlir/IR/Dialect.h"                       // from @llvm-project
+#include "mlir/IR/OpDefinition.h"                  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"              // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 
 using namespace mlir;  // NOLINT

@@ -62,7 +62,6 @@ class TransposeGpuOp : public TransposeOp {
                      gtl::ArraySlice<int32> perm, Tensor* out) override;
 };
 
-
 // Conjugating transpose ops.
 class ConjugateTransposeCpuOp : public TransposeOp {
  public:
@@ -98,7 +97,6 @@ class ConjugateTransposeGpuOp : public TransposeOp {
                      gtl::ArraySlice<int32> perm, Tensor* out) override;
   bool IsConjugate() const override { return true; }
 };
-
 
 }  // namespace tensorflow
 

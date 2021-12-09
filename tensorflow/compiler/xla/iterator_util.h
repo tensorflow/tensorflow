@@ -66,7 +66,7 @@ class UnwrappingIterator
   explicit UnwrappingIterator(NestedIter iter) : iter_(std::move(iter)) {}
 
   auto operator*() -> decltype(iter_->get()) { return iter_->get(); }
-  auto operator-> () -> decltype(iter_->get()) { return iter_->get(); }
+  auto operator->() -> decltype(iter_->get()) { return iter_->get(); }
   UnwrappingIterator& operator++() {
     ++iter_;
     return *this;

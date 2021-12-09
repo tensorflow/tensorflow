@@ -18,13 +18,14 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace llvm {
 class LLVMContext;
 class Module;
-}
+}  // namespace llvm
 
 namespace xla {
 namespace gpu {

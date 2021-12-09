@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_TEST_H_
 #define TENSORFLOW_CORE_PLATFORM_TEST_H_
 
+#include <gtest/gtest.h>  // IWYU pragma: export
+
 #include <memory>
 #include <vector>
 
-#include <gtest/gtest.h>  // IWYU pragma: export
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"

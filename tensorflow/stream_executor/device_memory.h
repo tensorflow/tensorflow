@@ -107,8 +107,8 @@ class DeviceMemoryBase {
   }
 
  private:
-  void *opaque_;  // Platform-dependent value representing allocated memory.
-  uint64_t size_;         // Size in bytes of this allocation.
+  void *opaque_;   // Platform-dependent value representing allocated memory.
+  uint64_t size_;  // Size in bytes of this allocation.
   uint64_t payload_ = 0;  // Payload data associated with this allocation.
 };
 

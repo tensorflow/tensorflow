@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/util/ctc/ctc_beam_scorer.h"
 #include "tensorflow/core/util/ctc/ctc_decoder.h"
 #include "tensorflow/core/util/ctc/ctc_loss_util.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tensorflow {
 namespace ctc {
@@ -145,8 +145,8 @@ class CTCBeamSearchDecoder : public CTCDecoder<T> {
   // scorer. This margin is expressed in terms of log-probability.
   // Default is to do no label selection.
   // For more detail: https://research.google.com/pubs/pub44823.html
-  int label_selection_size_ = 0;       // zero means unlimited
-  T label_selection_margin_ = -1;      // -1 means unlimited.
+  int label_selection_size_ = 0;   // zero means unlimited
+  T label_selection_margin_ = -1;  // -1 means unlimited.
 
   gtl::TopN<BeamEntry*, CTCBeamComparer> leaves_;
   std::unique_ptr<BeamRoot> beam_root_;
@@ -341,7 +341,7 @@ void CTCBeamSearchDecoder<T, CTCBeamState, CTCBeamComparer>::Step(
       const T logit = top_k ? top_k_logits[ind] : raw_input(ind);
       // Perform label selection: if input for this label looks very
       // unpromising, never evaluate it with a scorer.
-      // We may compare logits instead of log probabilities, 
+      // We may compare logits instead of log probabilities,
       // since the difference is the same in both cases.
       if (logit < label_selection_input_min) {
         continue;

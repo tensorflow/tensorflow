@@ -132,7 +132,6 @@ xla::XlaOp Einsum(
     xla::XlaOp x, absl::string_view einsum_config,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
 
-
 // Same as above but supporting numeric labels on dimensions. So "ab,cb->ac"
 // becomes:
 //   x_config = {0, 1}

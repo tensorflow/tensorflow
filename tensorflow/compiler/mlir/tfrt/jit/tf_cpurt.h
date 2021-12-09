@@ -18,15 +18,15 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
+#include "tfrt/dtype/dtype.h"    // from @tf_runtime
 
 namespace tensorflow {
 

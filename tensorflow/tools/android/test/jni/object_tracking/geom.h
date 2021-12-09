@@ -28,43 +28,38 @@ struct Size {
   int height;
 };
 
-
 class Point2f {
  public:
   Point2f() : x(0.0f), y(0.0f) {}
   Point2f(const float x, const float y) : x(x), y(y) {}
 
-  inline Point2f operator- (const Point2f& that) const {
+  inline Point2f operator-(const Point2f& that) const {
     return Point2f(this->x - that.x, this->y - that.y);
   }
 
-  inline Point2f operator+ (const Point2f& that) const {
+  inline Point2f operator+(const Point2f& that) const {
     return Point2f(this->x + that.x, this->y + that.y);
   }
 
-  inline Point2f& operator+= (const Point2f& that) {
+  inline Point2f& operator+=(const Point2f& that) {
     this->x += that.x;
     this->y += that.y;
     return *this;
   }
 
-  inline Point2f& operator-= (const Point2f& that) {
+  inline Point2f& operator-=(const Point2f& that) {
     this->x -= that.x;
     this->y -= that.y;
     return *this;
   }
 
-  inline Point2f operator- (const Point2f& that) {
+  inline Point2f operator-(const Point2f& that) {
     return Point2f(this->x - that.x, this->y - that.y);
   }
 
-  inline float LengthSquared() {
-    return Square(this->x) + Square(this->y);
-  }
+  inline float LengthSquared() { return Square(this->x) + Square(this->y); }
 
-  inline float Length() {
-    return sqrtf(LengthSquared());
-  }
+  inline float Length() { return sqrtf(LengthSquared()); }
 
   inline float DistanceSquared(const Point2f& that) {
     return Square(this->x - that.x) + Square(this->y - that.y);
@@ -85,11 +80,7 @@ inline std::ostream& operator<<(std::ostream& stream, const Point2f& point) {
 
 class BoundingBox {
  public:
-  BoundingBox()
-      : left_(0),
-        top_(0),
-        right_(0),
-        bottom_(0) {}
+  BoundingBox() : left_(0), top_(0), right_(0), bottom_(0) {}
 
   BoundingBox(const BoundingBox& bounding_box)
       : left_(bounding_box.left_),
@@ -100,14 +91,9 @@ class BoundingBox {
     SCHECK(top_ < bottom_, "Bounds out of whack! %.2f vs %.2f!", top_, bottom_);
   }
 
-  BoundingBox(const float left,
-              const float top,
-              const float right,
+  BoundingBox(const float left, const float top, const float right,
               const float bottom)
-      : left_(left),
-        top_(top),
-        right_(right),
-        bottom_(bottom) {
+      : left_(left), top_(top), right_(right), bottom_(bottom) {
     SCHECK(left_ < right_, "Bounds out of whack! %.2f vs %.2f!", left_, right_);
     SCHECK(top_ < bottom_, "Bounds out of whack! %.2f vs %.2f!", top_, bottom_);
   }
@@ -125,13 +111,9 @@ class BoundingBox {
     bounds_array[3] = bottom_;
   }
 
-  inline float GetWidth() const {
-    return right_ - left_;
-  }
+  inline float GetWidth() const { return right_ - left_; }
 
-  inline float GetHeight() const {
-    return bottom_ - top_;
-  }
+  inline float GetHeight() const { return bottom_ - top_; }
 
   inline float GetArea() const {
     const float width = GetWidth();
@@ -144,13 +126,10 @@ class BoundingBox {
   }
 
   inline Point2f GetCenter() const {
-    return Point2f((left_ + right_) / 2.0f,
-                   (top_ + bottom_) / 2.0f);
+    return Point2f((left_ + right_) / 2.0f, (top_ + bottom_) / 2.0f);
   }
 
-  inline bool ValidBox() const {
-    return GetArea() > 0.0f;
-  }
+  inline bool ValidBox() const { return GetArea() > 0.0f; }
 
   // Returns a bounding box created from the overlapping area of these two.
   inline BoundingBox Intersect(const BoundingBox& that) const {
@@ -168,13 +147,12 @@ class BoundingBox {
       return BoundingBox();
     }
 
-    return BoundingBox(new_left, new_top,  new_right, new_bottom);
+    return BoundingBox(new_left, new_top, new_right, new_bottom);
   }
 
   // Returns a bounding box that can contain both boxes.
   inline BoundingBox Union(const BoundingBox& that) const {
-    return BoundingBox(MIN(this->left_, that.left_),
-                       MIN(this->top_, that.top_),
+    return BoundingBox(MIN(this->left_, that.left_), MIN(this->top_, that.top_),
                        MAX(this->right_, that.right_),
                        MAX(this->bottom_, that.bottom_));
   }
@@ -196,19 +174,17 @@ class BoundingBox {
   }
 
   inline bool Intersects(const BoundingBox& that) const {
-    return InRange(that.left_, left_, right_)
-        || InRange(that.right_, left_, right_)
-        || InRange(that.top_, top_, bottom_)
-        || InRange(that.bottom_, top_, bottom_);
+    return InRange(that.left_, left_, right_) ||
+           InRange(that.right_, left_, right_) ||
+           InRange(that.top_, top_, bottom_) ||
+           InRange(that.bottom_, top_, bottom_);
   }
 
   // Returns whether another bounding box is completely inside of this bounding
   // box. Sharing edges is ok.
   inline bool Contains(const BoundingBox& that) const {
-    return that.left_ >= left_ &&
-        that.right_ <= right_ &&
-        that.top_ >= top_ &&
-        that.bottom_ <= bottom_;
+    return that.left_ >= left_ && that.right_ <= right_ && that.top_ >= top_ &&
+           that.bottom_ <= bottom_;
   }
 
   inline bool Contains(const Point2f& point) const {
@@ -247,12 +223,11 @@ class BoundingBox {
   float bottom_;
 };
 inline std::ostream& operator<<(std::ostream& stream, const BoundingBox& box) {
-  stream << "[" << box.left_ << " - " << box.right_
-         << ", " << box.top_ << " - " << box.bottom_
-         << ",  w:" << box.GetWidth() << " h:" << box.GetHeight() << "]";
+  stream << "[" << box.left_ << " - " << box.right_ << ", " << box.top_ << " - "
+         << box.bottom_ << ",  w:" << box.GetWidth() << " h:" << box.GetHeight()
+         << "]";
   return stream;
 }
-
 
 class BoundingSquare {
  public:
@@ -272,9 +247,7 @@ class BoundingSquare {
     return BoundingBox(x_, y_, x_ + size_, y_ + size_);
   }
 
-  inline bool ValidBox() {
-    return size_ > 0.0f;
-  }
+  inline bool ValidBox() { return size_ > 0.0f; }
 
   inline void Shift(const Point2f shift_amount) {
     x_ += shift_amount.x;
@@ -299,14 +272,12 @@ inline std::ostream& operator<<(std::ostream& stream,
   return stream;
 }
 
-
 inline BoundingSquare GetCenteredSquare(const BoundingBox& original_box,
                                         const float size) {
   const float width_diff = (original_box.GetWidth() - size) / 2.0f;
   const float height_diff = (original_box.GetHeight() - size) / 2.0f;
   return BoundingSquare(original_box.left_ + width_diff,
-                        original_box.top_ + height_diff,
-                        size);
+                        original_box.top_ + height_diff, size);
 }
 
 inline BoundingSquare GetCenteredSquare(const BoundingBox& original_box) {

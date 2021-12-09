@@ -26,8 +26,8 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"      // from @llvm-project
+#include "mlir/IR/Region.h"         // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/per_function_aggregate_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"

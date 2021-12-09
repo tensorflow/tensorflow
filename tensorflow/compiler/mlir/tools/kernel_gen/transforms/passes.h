@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/GPUDialect.h"      // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"               // from @llvm-project
+#include "mlir/Pass/Pass.h"                   // from @llvm-project
 
 namespace mlir {
 namespace kernel_gen {

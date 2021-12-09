@@ -64,7 +64,7 @@ struct Caller {
 };
 
 // For GL functions without a return value.
-template<>
+template <>
 struct Caller<void> {
   template <typename F, typename ErrorF, typename... Params>
   absl::Status operator()(const std::string& context, F func, ErrorF error_func,

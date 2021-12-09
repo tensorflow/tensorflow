@@ -23,9 +23,9 @@ limitations under the License.
 
 #include <cstdio>
 
+#include "hexagon/hexnn_soc_defines.h"
 #include "hexagon/remote.h"
 #include "hexagon/remote64.h"
-#include "hexagon/hexnn_soc_defines.h"
 
 namespace tflite {
 namespace delegates {

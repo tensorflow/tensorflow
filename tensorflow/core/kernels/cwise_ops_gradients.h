@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_CWISE_OPS_GRADIENTS_H_
 
 #define EIGEN_USE_THREADS
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cwise_ops.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace Eigen {
 namespace internal {
@@ -187,7 +187,6 @@ struct SimpleBinaryFunctor<CPUDevice, Functor> {
     out.device(d) = in0.binaryExpr(in1, typename Functor::func());
   }
 };
-
 
 template <typename T>
 struct tanh_grad : base<T, Eigen::internal::scalar_tanh_gradient_op<T>> {};

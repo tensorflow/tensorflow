@@ -20,9 +20,9 @@ limitations under the License.
 
 #define EIGEN_STACK_ALLOCATION_LIMIT 0
 #define EIGEN_USE_THREADS
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float StdRound(float input) {
 // On Android, std::round() isn't present, just round().

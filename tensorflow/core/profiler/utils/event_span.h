@@ -131,7 +131,7 @@ struct StepMarker {
   StepMarkerType type;
   std::string event_name;  // name of this event.
   std::string step_name;
-  Timespan span;           // timespan of this event.
+  Timespan span;  // timespan of this event.
   StepMarker(StepMarkerType step_marker_type, absl::string_view name,
              Timespan s)
       : type(step_marker_type), event_name(name), span(s) {}

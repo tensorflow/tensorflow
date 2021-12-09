@@ -39,7 +39,7 @@ class Registrar {
 
 #define XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER(mapper_instance, ctr) \
   static ::xla::cpu::orc_jit_memory_mapper::Registrar                     \
-      XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER_NAME(ctr)(mapper_instance)
+  XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER_NAME(ctr)(mapper_instance)
 
 // __COUNTER__ must go through another macro to be properly expanded
 #define XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER_NAME(ctr) \

@@ -187,7 +187,6 @@ void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
 
 }  // namespace functor
 
-
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_RANDOM_OP_CPU_H_

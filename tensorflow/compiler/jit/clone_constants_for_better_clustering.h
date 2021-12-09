@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_CLONE_CONSTANTS_FOR_BETTER_CLUSTERING_H_
 #define TENSORFLOW_COMPILER_JIT_CLONE_CONSTANTS_FOR_BETTER_CLUSTERING_H_
 
-#include "tensorflow/core/common_runtime/optimization_registry.h"
-
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {

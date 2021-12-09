@@ -15,9 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_HEXAGON_BUILDERS_TESTS_HEXAGON_DELEGATE_OP_MODEL_H_
 #define TENSORFLOW_LITE_DELEGATES_HEXAGON_BUILDERS_TESTS_HEXAGON_DELEGATE_OP_MODEL_H_
 
+#include <gtest/gtest.h>
+
 #include <algorithm>
 
-#include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #include "tensorflow/lite/interpreter.h"

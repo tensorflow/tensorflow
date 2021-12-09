@@ -82,7 +82,8 @@ class PoissonLossUpdater : public DualLossUpdater {
     if (*example_label < 0.0) {
       return errors::InvalidArgument(
           "Only non-negative labels can be used with the Poisson log loss. "
-          "Found example with label: ", *example_label);
+          "Found example with label: ",
+          *example_label);
     }
     return Status::OK();
   }
@@ -95,11 +96,11 @@ class PoissonLossUpdater : public DualLossUpdater {
                     const double weighted_example_norm,
                     const double current_dual) const {
     const double expx = exp(x);
-    const double numerator =
-        x - wx - num_loss_partitions * weighted_example_norm *
-        example_weight * (label - current_dual - expx);
+    const double numerator = x - wx -
+                             num_loss_partitions * weighted_example_norm *
+                                 example_weight * (label - current_dual - expx);
     const double denominator =
-       1 + num_loss_partitions * weighted_example_norm * example_weight * expx;
+        1 + num_loss_partitions * weighted_example_norm * example_weight * expx;
     return x - numerator / denominator;
   }
 };

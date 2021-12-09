@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <math.h>
 #include <string.h>
+
 #include <algorithm>
 
 #include "tensorflow/core/lib/random/philox_random.h"

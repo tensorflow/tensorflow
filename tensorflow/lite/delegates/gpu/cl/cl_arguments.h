@@ -34,8 +34,8 @@ class CLArguments : public ArgumentsBinder {
  public:
   CLArguments() = default;
 
-  absl::Status Init(const GpuInfo& gpu_info,
-                    CLContext* context, Arguments* args, std::string* code);
+  absl::Status Init(const GpuInfo& gpu_info, CLContext* context,
+                    Arguments* args, std::string* code);
   absl::Status Init(const GpuInfo& gpu_info, Arguments* args,
                     CLContext* context);
 

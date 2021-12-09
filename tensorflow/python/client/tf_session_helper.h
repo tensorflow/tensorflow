@@ -17,13 +17,12 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_
 
 // Must be included first
-#include "tensorflow/python/lib/core/numpy.h"
-
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/python/lib/core/numpy.h"
 
 namespace tensorflow {
 

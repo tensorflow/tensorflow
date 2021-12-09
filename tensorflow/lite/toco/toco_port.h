@@ -19,11 +19,12 @@ limitations under the License.
 // can build and use on google internal environments and on OSX.
 
 #include <string>
+
 #include "google/protobuf/text_format.h"
-#include "tensorflow/lite/toco/format_port.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/lite/toco/format_port.h"
 #if defined(PLATFORM_GOOGLE)
 #include "absl/strings/cord.h"
 #endif  // PLATFORM_GOOGLE
@@ -39,17 +40,16 @@ limitations under the License.
 namespace std {
 
 template <typename T>
-std::string to_string(T value)
-{
-    std::ostringstream os ;
-    os << value ;
-    return os.str() ;
+std::string to_string(T value) {
+  std::ostringstream os;
+  os << value;
+  return os.str();
 }
 
 #ifdef __ARM_ARCH_7A__
 double round(double x);
 #endif
-}
+}  // namespace std
 #endif
 
 namespace toco {

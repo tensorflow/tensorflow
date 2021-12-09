@@ -49,10 +49,7 @@ extern AverageEntry avg_entries[NUM_LOGS];
 extern int num_avg_entries;
 
 // Call this at the start of a logging phase.
-inline static void ResetTimeLog() {
-  num_time_logs = 0;
-}
-
+inline static void ResetTimeLog() { num_time_logs = 0; }
 
 // Log a message to be printed out when printTimeLog is called, along with the
 // amount of time in ms that has passed since the last call to this function.
@@ -68,11 +65,9 @@ inline static void TimeLog(const char* const str) {
   ++num_time_logs;
 }
 
-
 inline static float Blend(float old_val, float new_val) {
   return ALPHA * old_val + (1.0f - ALPHA) * new_val;
 }
-
 
 inline static float UpdateAverage(const char* str, const float new_val) {
   for (int entry_num = 0; entry_num < num_avg_entries; ++entry_num) {
@@ -94,7 +89,6 @@ inline static float UpdateAverage(const char* str, const float new_val) {
 
   return new_val;
 }
-
 
 // Prints out all the timeLog statements in chronological order with the
 // interval that passed between subsequent statements.  The total time between
@@ -120,16 +114,14 @@ inline static void PrintTimeLog() {
   const float total_time =
       (last_time->time_stamp - time_logs->time_stamp) / 1000000.0f;
 
-  LOGD("TOTAL TIME:                          %6.3fms    %6.4fms\n",
-       total_time, average_running_total);
+  LOGD("TOTAL TIME:                          %6.3fms    %6.4fms\n", total_time,
+       average_running_total);
   LOGD(" ");
 }
 #else
 inline static void ResetTimeLog() {}
 
-inline static void TimeLog(const char* const str) {
-  LOGV("%s", str);
-}
+inline static void TimeLog(const char* const str) { LOGV("%s", str); }
 
 inline static void PrintTimeLog() {}
 #endif

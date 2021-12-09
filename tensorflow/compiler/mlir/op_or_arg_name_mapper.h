@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Value.h"      // from @llvm-project
 
 namespace tensorflow {
 

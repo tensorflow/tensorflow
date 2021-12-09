@@ -16,19 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_REMAINING_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_REMAINING_OPS_H_
 
-#include "mlir/Dialect/Traits.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"                          // from @llvm-project
+#include "mlir/IR/Attributes.h"                           // from @llvm-project
+#include "mlir/IR/Builders.h"                             // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"                           // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"                         // from @llvm-project
+#include "mlir/IR/Matchers.h"                             // from @llvm-project
+#include "mlir/IR/OpImplementation.h"                     // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"                        // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"               // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
-#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
-#include "mlir/Interfaces/LoopLikeInterface.h"  // from @llvm-project
-#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"         // from @llvm-project
+#include "mlir/Interfaces/LoopLikeInterface.h"            // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"         // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"

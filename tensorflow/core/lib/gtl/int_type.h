@@ -153,6 +153,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_GTL_INT_TYPE_H_
 
 #include <stddef.h>
+
 #include <functional>
 #include <iosfwd>
 #include <ostream>  // NOLINT

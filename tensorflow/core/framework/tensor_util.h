@@ -76,10 +76,10 @@ class TensorProtoFieldHelper : public std::false_type {};
   template <>                                                                 \
   class TensorProtoFieldHelper<TYPE> : public std::true_type {                \
    public:                                                                    \
-    typedef decltype(                                                         \
-        std::declval<TensorProto>().FIELDNAME##_val(0)) FieldType;            \
-    typedef decltype(                                                         \
-        std::declval<TensorProto>().FIELDNAME##_val()) RepeatedFieldType;     \
+    typedef decltype(std::declval<TensorProto>().FIELDNAME##_val(             \
+        0)) FieldType;                                                        \
+    typedef decltype(std::declval<TensorProto>()                              \
+                         .FIELDNAME##_val()) RepeatedFieldType;               \
     typedef decltype(std::declval<TensorProto>().mutable_##FIELDNAME##_val()) \
         MutableRepeatedFieldType;                                             \
     static MutableRepeatedFieldType GetMutableField(TensorProto* proto) {     \

@@ -20,11 +20,11 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 
-#include "third_party/gpus/cuda/include/cufft.h"
 #include "tensorflow/stream_executor/fft.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
+#include "third_party/gpus/cuda/include/cufft.h"
 
 namespace stream_executor {
 
@@ -77,8 +77,8 @@ class CUDAFftPlan : public fft::Plan {
                           uint64_t* elem_count, fft::Type type,
                           ScratchAllocator* scratch_allocator);
 
-  port::Status UpdateScratchAllocator(Stream *stream,
-                                      ScratchAllocator *scratch_allocator);
+  port::Status UpdateScratchAllocator(Stream* stream,
+                                      ScratchAllocator* scratch_allocator);
 
   ScratchAllocator* GetScratchAllocator() const { return scratch_allocator_; }
 
@@ -120,17 +120,17 @@ class CUDAFft : public fft::FftSupport {
 
   // This is for complex to complex FFT, when the direction is required.
   template <typename FuncT, typename InputT, typename OutputT>
-  bool DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
+  bool DoFftWithDirectionInternal(Stream* stream, fft::Plan* plan,
                                   FuncT cufft_exec,
-                                  const DeviceMemory<InputT> &input,
-                                  DeviceMemory<OutputT> *output);
+                                  const DeviceMemory<InputT>& input,
+                                  DeviceMemory<OutputT>* output);
 
   // This is for complex to real or real to complex FFT, when the direction
   // is implied.
   template <typename FuncT, typename InputT, typename OutputT>
-  bool DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufft_exec,
-                     const DeviceMemory<InputT> &input,
-                     DeviceMemory<OutputT> *output);
+  bool DoFftInternal(Stream* stream, fft::Plan* plan, FuncT cufft_exec,
+                     const DeviceMemory<InputT>& input,
+                     DeviceMemory<OutputT>* output);
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDAFft);
 };

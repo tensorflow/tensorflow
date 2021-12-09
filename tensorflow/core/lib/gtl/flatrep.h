@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
 
 #include <string.h>
+
 #include <utility>
+
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
 

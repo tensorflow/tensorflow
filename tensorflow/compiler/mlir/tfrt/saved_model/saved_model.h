@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
-#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
+#include "tfrt/bef/bef_buffer.h"              // from @tf_runtime
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 
 namespace tfrt {

@@ -53,14 +53,14 @@ Image<T>::Image(const Size& size)
 // set to false.
 template <typename T>
 Image<T>::Image(const int width, const int height, T* const image_data,
-      const bool own_data) :
-    width_less_one_(width - 1),
-    height_less_one_(height - 1),
-    data_size_(width * height),
-    own_data_(own_data),
-    width_(width),
-    height_(height),
-    stride_(width) {
+                const bool own_data)
+    : width_less_one_(width - 1),
+      height_less_one_(height - 1),
+      data_size_(width * height),
+      own_data_(own_data),
+      width_(width),
+      height_(height),
+      stride_(width) {
   image_data_ = image_data;
   SCHECK(image_data_ != NULL, "Can't create image with NULL data!");
 }
@@ -73,10 +73,9 @@ Image<T>::~Image() {
   image_data_ = NULL;
 }
 
-template<typename T>
-template<class DstType>
-bool Image<T>::ExtractPatchAtSubpixelFixed1616(const int fp_x,
-                                               const int fp_y,
+template <typename T>
+template <class DstType>
+bool Image<T>::ExtractPatchAtSubpixelFixed1616(const int fp_x, const int fp_y,
                                                const int patchwidth,
                                                const int patchheight,
                                                DstType* to_data) const {
@@ -84,8 +83,7 @@ bool Image<T>::ExtractPatchAtSubpixelFixed1616(const int fp_x,
   const int trunc_x = fp_x >> 16;
   const int trunc_y = fp_y >> 16;
 
-  if (trunc_x < 0 || trunc_y < 0 ||
-      (trunc_x + patchwidth) >= width_less_one_ ||
+  if (trunc_x < 0 || trunc_y < 0 || (trunc_x + patchwidth) >= width_less_one_ ||
       (trunc_y + patchheight) >= height_less_one_) {
     return false;
   }
@@ -93,9 +91,8 @@ bool Image<T>::ExtractPatchAtSubpixelFixed1616(const int fp_x,
   // Now walk over destination patch and fill from interpolated source image.
   for (int y = 0; y < patchheight; ++y, to_data += patchwidth) {
     for (int x = 0; x < patchwidth; ++x) {
-      to_data[x] =
-          static_cast<DstType>(GetPixelInterpFixed1616(fp_x + (x << 16),
-                                                       fp_y + (y << 16)));
+      to_data[x] = static_cast<DstType>(
+          GetPixelInterpFixed1616(fp_x + (x << 16), fp_y + (y << 16)));
     }
   }
 
@@ -103,8 +100,8 @@ bool Image<T>::ExtractPatchAtSubpixelFixed1616(const int fp_x,
 }
 
 template <typename T>
-Image<T>* Image<T>::Crop(
-    const int left, const int top, const int right, const int bottom) const {
+Image<T>* Image<T>::Crop(const int left, const int top, const int right,
+                         const int bottom) const {
   SCHECK(left >= 0 && left < width_, "out of bounds at %d!", left);
   SCHECK(right >= 0 && right < width_, "out of bounds at %d!", right);
   SCHECK(top >= 0 && top < height_, "out of bounds at %d!", top);
@@ -142,8 +139,8 @@ inline float Image<T>::GetPixelInterp(const float x, const float y) const {
   const float c = 1.0f - d;
 
   SCHECK(ValidInterpPixel(x, y),
-        "x or y out of bounds! %.2f [0 - %d), %.2f [0 - %d)",
-        x, width_less_one_, y, height_less_one_);
+         "x or y out of bounds! %.2f [0 - %d), %.2f [0 - %d)", x,
+         width_less_one_, y, height_less_one_);
 
   const T* const pix_ptr = (*this)[floored_y] + floored_x;
 
@@ -161,14 +158,12 @@ inline float Image<T>::GetPixelInterp(const float x, const float y) const {
   //   |  x  |
   // d |p3 p4|
   //   -------
-  return  c * ((a * p1) + (b * p2)) +
-          d * ((a * p3) + (b * p4));
+  return c * ((a * p1) + (b * p2)) + d * ((a * p3) + (b * p4));
 }
 
-
 template <typename T>
-inline T Image<T>::GetPixelInterpFixed1616(
-    const int fp_x_whole, const int fp_y_whole) const {
+inline T Image<T>::GetPixelInterpFixed1616(const int fp_x_whole,
+                                           const int fp_y_whole) const {
   static const int kFixedPointOne = 0x00010000;
   static const int kFixedPointHalf = 0x00008000;
   static const int kFixedPointTruncateMask = 0xFFFF0000;
@@ -207,8 +202,8 @@ inline bool Image<T>::ValidPixel(const int x, const int y) const {
 
 template <typename T>
 inline BoundingBox Image<T>::GetContainingBox() const {
-  return BoundingBox(
-      0, 0, width_less_one_ - EPSILON, height_less_one_ - EPSILON);
+  return BoundingBox(0, 0, width_less_one_ - EPSILON,
+                     height_less_one_ - EPSILON);
 }
 
 template <typename T>
@@ -222,8 +217,8 @@ template <typename T>
 inline bool Image<T>::ValidInterpPixel(const float x, const float y) const {
   // Exclusive of max because we can be more efficient if we don't handle
   // interpolating on or past the last pixel.
-  return (x >= ZERO) && (x < width_less_one_) &&
-         (y >= ZERO) && (y < height_less_one_);
+  return (x >= ZERO) && (x < width_less_one_) && (y >= ZERO) &&
+         (y < height_less_one_);
 }
 
 template <typename T>
@@ -269,10 +264,10 @@ void Image<T>::DownsampleAveraged(const T* const original, const int stride,
 template <typename T>
 void Image<T>::DownsampleInterpolateNearest(const Image<T>& original) {
   // Calculating the scaling factors based on target image size.
-  const float factor_x = static_cast<float>(original.GetWidth()) /
-      static_cast<float>(width_);
-  const float factor_y = static_cast<float>(original.GetHeight()) /
-      static_cast<float>(height_);
+  const float factor_x =
+      static_cast<float>(original.GetWidth()) / static_cast<float>(width_);
+  const float factor_y =
+      static_cast<float>(original.GetHeight()) / static_cast<float>(height_);
 
   // Calculating initial offset in x-axis.
   const float offset_x = 0.5f * (original.GetWidth() - width_) / width_;
@@ -310,17 +305,16 @@ void Image<T>::DownsampleInterpolateLinear(const Image<T>& original) {
   // TODO(andrewharp): Turn this into a general compare sizes/bulk
   // copy method.
   if (original.GetWidth() == GetWidth() &&
-      original.GetHeight() == GetHeight() &&
-      original.stride() == stride()) {
+      original.GetHeight() == GetHeight() && original.stride() == stride()) {
     memcpy(image_data_, original.data(), data_size_ * sizeof(T));
     return;
   }
 
   // Calculating the scaling factors based on target image size.
-  const float factor_x = static_cast<float>(original.GetWidth()) /
-      static_cast<float>(width_);
-  const float factor_y = static_cast<float>(original.GetHeight()) /
-      static_cast<float>(height_);
+  const float factor_x =
+      static_cast<float>(original.GetWidth()) / static_cast<float>(width_);
+  const float factor_y =
+      static_cast<float>(original.GetHeight()) / static_cast<float>(height_);
 
   // Calculating initial offset in x-axis.
   const float offset_x = 0;
@@ -420,16 +414,13 @@ void Image<T>::DownsampleSmoothed3x3(const Image<T>& original) {
       int32_t pixel_sum = original[orig_y][orig_x] * 4;
 
       // Sides.
-      pixel_sum += (original[orig_y][max_x] +
-                    original[orig_y][min_x] +
-                    original[max_y][orig_x] +
-                    original[min_y][orig_x]) * 2;
+      pixel_sum += (original[orig_y][max_x] + original[orig_y][min_x] +
+                    original[max_y][orig_x] + original[min_y][orig_x]) *
+                   2;
 
       // Diagonals.
-      pixel_sum += (original[min_y][max_x] +
-                    original[min_y][min_x] +
-                    original[max_y][max_x] +
-                    original[max_y][min_x]);
+      pixel_sum += (original[min_y][max_x] + original[min_y][min_x] +
+                    original[max_y][max_x] + original[max_y][min_x]);
 
       (*this)[y][x] = pixel_sum >> 4;  // 16
     }
@@ -445,12 +436,12 @@ void Image<T>::DownsampleSmoothed5x5(const Image<T>& original) {
   // [1/16 1/4 3/8 1/4 1/16]^2 filter.
   // This works out to a [1 4 6 4 1]^2 / 256 array, precomputed below.
   static const int window_radius = 2;
-  static const int window_size = window_radius*2 + 1;
-  static const int window_weights[] = {1,  4,  6,  4, 1,   // 16 +
+  static const int window_size = window_radius * 2 + 1;
+  static const int window_weights[] = {1, 4,  6,  4,  1,   // 16 +
                                        4, 16, 24, 16, 4,   // 64 +
                                        6, 24, 36, 24, 6,   // 96 +
                                        4, 16, 24, 16, 4,   // 64 +
-                                       1,  4,  6,  4, 1};  // 16 = 256
+                                       1, 4,  6,  4,  1};  // 16 = 256
 
   // We'll multiply and sum with the whole numbers first, then divide by
   // the total weight to normalize at the last moment.
@@ -469,7 +460,7 @@ void Image<T>::DownsampleSmoothed5x5(const Image<T>& original) {
         const T* p = original[start_y] + start_x;
 
         for (int window_x = 0; window_x < window_size; ++window_x) {
-          pixel_sum +=  *p++ * *w++;
+          pixel_sum += *p++ * *w++;
         }
       }
 
@@ -482,38 +473,34 @@ void Image<T>::DownsampleSmoothed5x5(const Image<T>& original) {
 
 template <typename T>
 template <typename U>
-inline T Image<T>::ScharrPixelX(const Image<U>& original,
-                      const int center_x, const int center_y) const {
+inline T Image<T>::ScharrPixelX(const Image<U>& original, const int center_x,
+                                const int center_y) const {
   const int min_x = Clip(center_x - 1, ZERO, original.width_less_one_);
   const int max_x = Clip(center_x + 1, ZERO, original.width_less_one_);
   const int min_y = Clip(center_y - 1, ZERO, original.height_less_one_);
   const int max_y = Clip(center_y + 1, ZERO, original.height_less_one_);
 
   // Convolution loop unrolled for performance...
-  return (3 * (original[min_y][max_x]
-               + original[max_y][max_x]
-               - original[min_y][min_x]
-               - original[max_y][min_x])
-          + 10 * (original[center_y][max_x]
-                  - original[center_y][min_x])) / 32;
+  return (3 * (original[min_y][max_x] + original[max_y][max_x] -
+               original[min_y][min_x] - original[max_y][min_x]) +
+          10 * (original[center_y][max_x] - original[center_y][min_x])) /
+         32;
 }
 
 template <typename T>
 template <typename U>
-inline T Image<T>::ScharrPixelY(const Image<U>& original,
-                      const int center_x, const int center_y) const {
+inline T Image<T>::ScharrPixelY(const Image<U>& original, const int center_x,
+                                const int center_y) const {
   const int min_x = Clip(center_x - 1, 0, original.width_less_one_);
   const int max_x = Clip(center_x + 1, 0, original.width_less_one_);
   const int min_y = Clip(center_y - 1, 0, original.height_less_one_);
   const int max_y = Clip(center_y + 1, 0, original.height_less_one_);
 
   // Convolution loop unrolled for performance...
-  return (3 * (original[max_y][min_x]
-               + original[max_y][max_x]
-               - original[min_y][min_x]
-               - original[min_y][max_x])
-          + 10 * (original[max_y][center_x]
-                  - original[min_y][center_x])) / 32;
+  return (3 * (original[max_y][min_x] + original[max_y][max_x] -
+               original[min_y][min_x] - original[min_y][max_x]) +
+          10 * (original[max_y][center_x] - original[min_y][center_x])) /
+         32;
 }
 
 template <typename T>
@@ -598,9 +585,8 @@ void Image<T>::DerivativeY(const Image<U>& original) {
 template <typename T>
 template <typename U>
 inline T Image<T>::ConvolvePixel3x3(const Image<U>& original,
-                                    const int* const filter,
-                                    const int center_x, const int center_y,
-                                    const int total) const {
+                                    const int* const filter, const int center_x,
+                                    const int center_y, const int total) const {
   int32_t sum = 0;
   for (int filter_y = 0; filter_y < 3; ++filter_y) {
     const int y = Clip(center_y - 1 + filter_y, 0, original.GetHeight());
@@ -629,7 +615,7 @@ inline void Image<T>::Convolve3x3(const Image<U>& original,
 
 template <typename T>
 inline void Image<T>::FromArray(const T* const pixels, const int stride,
-                      const int factor) {
+                                const int factor) {
   if (factor == 1 && stride == width_) {
     // If not subsampling, memcpy per line should be faster.
     memcpy(this->image_data_, pixels, data_size_ * sizeof(T));

@@ -16,13 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_AGGREGATE_OPS_CPU_H_
 #define TENSORFLOW_CORE_KERNELS_AGGREGATE_OPS_CPU_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
-
 #include "tensorflow/core/kernels/aggregate_ops.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
 
 namespace tensorflow {
 
@@ -133,7 +131,6 @@ struct Add9Functor<CPUDevice, T> {
                                          in7, in8, in9);
   }
 };
-
 
 }  // namespace functor
 

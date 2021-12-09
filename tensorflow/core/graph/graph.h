@@ -70,8 +70,8 @@ struct OutputTensor;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;     // Declared below
-class NodeIter;         // Declared below
+class NeighborIter;  // Declared below
+class NodeIter;      // Declared below
 
 // Indicates where the graph instance is originated from.
 enum class ConstructionContext {

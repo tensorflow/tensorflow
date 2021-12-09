@@ -37,7 +37,8 @@ class IntegralImage : public Image<uint32_t> {
 
   void Recompute(const Image<uint8_t>& image_base) {
     SCHECK(image_base.GetWidth() == GetWidth() &&
-          image_base.GetHeight() == GetHeight(), "Dimensions don't match!");
+               image_base.GetHeight() == GetHeight(),
+           "Dimensions don't match!");
 
     // Sum along first row.
     {
@@ -109,10 +110,10 @@ class IntegralImage : public Image<uint32_t> {
   // Returns the sum of all pixels in the specified region.
   inline uint32_t GetRegionSum(const int x1, const int y1, const int x2,
                                const int y2) const {
-    SCHECK(x1 >= 0 && y1 >= 0 &&
-          x2 >= x1 && y2 >= y1 && x2 < GetWidth() && y2 < GetHeight(),
-          "indices out of bounds! %d-%d / %d, %d-%d / %d, ",
-          x1, x2, GetWidth(), y1, y2, GetHeight());
+    SCHECK(x1 >= 0 && y1 >= 0 && x2 >= x1 && y2 >= y1 && x2 < GetWidth() &&
+               y2 < GetHeight(),
+           "indices out of bounds! %d-%d / %d, %d-%d / %d, ", x1, x2,
+           GetWidth(), y1, y2, GetHeight());
 
     const uint32_t everything = (*this)[y2][x2];
 
@@ -125,7 +126,7 @@ class IntegralImage : public Image<uint32_t> {
 
       sum = everything - left - top + top_left;
       SCHECK(sum >= 0, "Both: %d - %d - %d + %d => %d! indices: %d %d %d %d",
-            everything, left, top, top_left, sum, x1, y1, x2, y2);
+             everything, left, top, top_left, sum, x1, y1, x2, y2);
     } else if (x1 > 0) {
       // Flush against top of image.
       // Subtract out the region to the left only.
@@ -148,14 +149,14 @@ class IntegralImage : public Image<uint32_t> {
   // Returns the 2bit code associated with this region, which represents
   // the overall gradient.
   inline Code GetCode(const BoundingBox& bounding_box) const {
-    return GetCode(bounding_box.left_, bounding_box.top_,
-                   bounding_box.right_, bounding_box.bottom_);
+    return GetCode(bounding_box.left_, bounding_box.top_, bounding_box.right_,
+                   bounding_box.bottom_);
   }
 
-  inline Code GetCode(const int x1, const int y1,
-                      const int x2, const int y2) const {
-    SCHECK(x1 < x2 && y1 < y2, "Bounds out of order!! TL:%d,%d BR:%d,%d",
-           x1, y1, x2, y2);
+  inline Code GetCode(const int x1, const int y1, const int x2,
+                      const int y2) const {
+    SCHECK(x1 < x2 && y1 < y2, "Bounds out of order!! TL:%d,%d BR:%d,%d", x1,
+           y1, x2, y2);
 
     // Gradient computed vertically.
     const int box_height = (y2 - y1) / 2;
@@ -172,7 +173,7 @@ class IntegralImage : public Image<uint32_t> {
     const Code final_code = (vertical_code << 1) | horizontal_code;
 
     SCHECK(InRange(final_code, static_cast<Code>(0), static_cast<Code>(3)),
-          "Invalid code! %d", final_code);
+           "Invalid code! %d", final_code);
 
     // Returns a value 0-3.
     return final_code;

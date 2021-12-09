@@ -64,8 +64,8 @@ class FlowCache {
   }
 
   // Finds the flow at a point, using the cache for performance.
-  bool FindFlowAtPoint(const float u_x, const float u_y,
-                       float* const flow_x, float* const flow_y) const {
+  bool FindFlowAtPoint(const float u_x, const float u_y, float* const flow_x,
+                       float* const flow_y) const {
     // Get the best guess from the cache.
     const Point2f guess_from_cache = LookupGuess(u_x, u_y);
 
@@ -74,9 +74,9 @@ class FlowCache {
 
     // Now refine the guess using the image pyramid.
     for (int pyramid_level = kMinNumPyramidLevelsToUseForAdjustment - 1;
-        pyramid_level >= 0; --pyramid_level) {
-      if (!optical_flow_.FindFlowAtPointSingleLevel(
-          pyramid_level, u_x, u_y, false, flow_x, flow_y)) {
+         pyramid_level >= 0; --pyramid_level) {
+      if (!optical_flow_.FindFlowAtPointSingleLevel(pyramid_level, u_x, u_y,
+                                                    false, flow_x, flow_y)) {
         return false;
       }
     }
@@ -88,8 +88,8 @@ class FlowCache {
   // position.
   // Returns true iff the displacement determination worked and the new position
   // is in the image.
-  bool FindNewPositionOfPoint(const float u_x, const float u_y,
-                              float* final_x, float* final_y) const {
+  bool FindNewPositionOfPoint(const float u_x, const float u_y, float* final_x,
+                              float* final_y) const {
     float flow_x;
     float flow_y;
     if (!FindFlowAtPoint(u_x, u_y, &flow_x, &flow_y)) {
@@ -118,12 +118,11 @@ class FlowCache {
   // Returns the median flow within the given bounding box as determined
   // by a grid_width x grid_height grid.
   Point2f GetMedianFlow(const BoundingBox& bounding_box,
-                        const bool filter_by_fb_error,
-                        const int grid_width,
+                        const bool filter_by_fb_error, const int grid_width,
                         const int grid_height) const {
     const int kMaxPoints = 100;
     SCHECK(grid_width * grid_height <= kMaxPoints,
-          "Too many points for Median flow!");
+           "Too many points for Median flow!");
 
     const BoundingBox valid_box = bounding_box.Intersect(
         BoundingBox(0, 0, image_size_.width - 1, image_size_.height - 1));
@@ -138,16 +137,16 @@ class FlowCache {
     int curr_offset = 0;
     for (int i = 0; i < grid_width; ++i) {
       for (int j = 0; j < grid_height; ++j) {
-        const float x_in = valid_box.left_ +
-            (valid_box.GetWidth() * i) / (grid_width - 1);
+        const float x_in =
+            valid_box.left_ + (valid_box.GetWidth() * i) / (grid_width - 1);
 
-        const float y_in = valid_box.top_ +
-            (valid_box.GetHeight() * j) / (grid_height - 1);
+        const float y_in =
+            valid_box.top_ + (valid_box.GetHeight() * j) / (grid_height - 1);
 
         float curr_flow_x;
         float curr_flow_y;
-        const bool success = FindNewPositionOfPoint(x_in, y_in,
-                                                    &curr_flow_x, &curr_flow_y);
+        const bool success =
+            FindNewPositionOfPoint(x_in, y_in, &curr_flow_x, &curr_flow_y);
 
         if (success) {
           x_deltas[curr_offset] = curr_flow_x;
@@ -182,18 +181,16 @@ class FlowCache {
   }
 
  private:
-  Point2f LookupGuessFromLevel(
-      const int cache_level, const float x, const float y) const {
+  Point2f LookupGuessFromLevel(const int cache_level, const float x,
+                               const float y) const {
     // LOGE("Looking up guess at %5.2f %5.2f for level %d.", x, y, cache_level);
 
     // Cutoff at the target level and use the matrix transform instead.
     if (fullframe_matrix_ != NULL && cache_level == kCacheCutoff) {
-      const float xnew = x * fullframe_matrix_[0] +
-                         y * fullframe_matrix_[1] +
-                             fullframe_matrix_[2];
-      const float ynew = x * fullframe_matrix_[3] +
-                         y * fullframe_matrix_[4] +
-                             fullframe_matrix_[5];
+      const float xnew = x * fullframe_matrix_[0] + y * fullframe_matrix_[1] +
+                         fullframe_matrix_[2];
+      const float ynew = x * fullframe_matrix_[3] + y * fullframe_matrix_[4] +
+                         fullframe_matrix_[5];
 
       return Point2f(xnew - x, ynew - y);
     }
@@ -211,8 +208,9 @@ class FlowCache {
       (*has_cache_[cache_level])[index_y][index_x] = true;
 
       // Get the lower cache level's best guess, if it exists.
-      displacement = cache_level >= kNumCacheLevels - 1 ?
-          Point2f(0, 0) : LookupGuessFromLevel(cache_level + 1, x, y);
+      displacement = cache_level >= kNumCacheLevels - 1
+                         ? Point2f(0, 0)
+                         : LookupGuessFromLevel(cache_level + 1, x, y);
       // LOGI("Best guess at cache level %d is %5.2f, %5.2f.", cache_level,
       //      best_guess.x, best_guess.y);
 
@@ -229,8 +227,8 @@ class FlowCache {
 
       // TODO(andrewharp): Turn on FB error filtering.
       const bool success = optical_flow_.FindFlowAtPointSingleLevel(
-          pyramid_level, center_x, center_y, false,
-          &displacement.x, &displacement.y);
+          pyramid_level, center_x, center_y, false, &displacement.x,
+          &displacement.y);
 
       if (!success) {
         LOGV("Computation of cached value failed for level %d!", cache_level);
@@ -269,7 +267,7 @@ class FlowCache {
     // and so on.
     int block_dim = kNumCacheLevels;
     for (int curr_level = kNumCacheLevels - 1; curr_level > cache_level;
-        --curr_level) {
+         --curr_level) {
       block_dim *= kCacheBranchFactor;
     }
     return block_dim;

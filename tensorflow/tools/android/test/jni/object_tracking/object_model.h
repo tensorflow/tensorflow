@@ -67,14 +67,12 @@ class ObjectModelBase {
 
   virtual float GetMaxCorrelation(const Image<float>& patch_image) const = 0;
 
-  virtual MatchScore GetMatchScore(
-      const BoundingBox& position, const ImageData& image_data) const = 0;
+  virtual MatchScore GetMatchScore(const BoundingBox& position,
+                                   const ImageData& image_data) const = 0;
 
   virtual void Draw(float* const depth) const = 0;
 
-  inline const std::string& GetName() const {
-    return name_;
-  }
+  inline const std::string& GetName() const { return name_; }
 
  protected:
   const std::string name_;

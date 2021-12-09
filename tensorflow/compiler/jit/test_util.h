@@ -64,5 +64,4 @@ struct GraphOptimizationPassWrapper {
 
 }  // namespace tensorflow
 
-
 #endif  // TENSORFLOW_COMPILER_JIT_TEST_UTIL_H_

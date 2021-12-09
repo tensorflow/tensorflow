@@ -53,11 +53,11 @@ class MathUtil {
 //
 // There's a bunch of 'recipes' to compute a integer ceil (or floor) on the web,
 // and most of them are incorrect.
-template<typename IntegralType, bool ceil>
+template <typename IntegralType, bool ceil>
 IntegralType MathUtil::CeilOrFloorOfRatio(IntegralType numerator,
                                           IntegralType denominator) {
   static_assert(std::is_integral<IntegralType>::value,
-                 "CeilOfRatio_is_only_defined_for_integral_types");
+                "CeilOfRatio_is_only_defined_for_integral_types");
   assert(denominator != 0);
   // Dividing the smallest signed integer by -1 is not supported: it would
   // SIGFPE
@@ -78,15 +78,17 @@ IntegralType MathUtil::CeilOrFloorOfRatio(IntegralType numerator,
     // Using a bool and then a static_cast to IntegralType is not strictly
     // necessary, but it makes the code clear, and anyway the compiler should
     // get rid of it.
-    const bool needs_adjustment = (rounded_toward_zero >= 0) &&
+    const bool needs_adjustment =
+        (rounded_toward_zero >= 0) &&
         ((denominator > 0 && numerator > intermediate_product) ||
-            (denominator < 0 && numerator < intermediate_product));
+         (denominator < 0 && numerator < intermediate_product));
     const IntegralType adjustment = static_cast<IntegralType>(needs_adjustment);
     const IntegralType ceil_of_ratio = rounded_toward_zero + adjustment;
     return ceil_of_ratio;
   } else {
     // Floor case: symmetrical to the previous one
-    const bool needs_adjustment = (rounded_toward_zero <= 0) &&
+    const bool needs_adjustment =
+        (rounded_toward_zero <= 0) &&
         ((denominator > 0 && numerator < intermediate_product) ||
          (denominator < 0 && numerator > intermediate_product));
     const IntegralType adjustment = static_cast<IntegralType>(needs_adjustment);

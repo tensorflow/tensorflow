@@ -24,9 +24,9 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Location.h"    // from @llvm-project
+#include "mlir/IR/Operation.h"   // from @llvm-project
+#include "mlir/IR/Types.h"       // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -51,8 +51,8 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef);
 
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
 // name should be unique to the graph it is being inserted into.
-StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
-    mlir::Operation* inst, llvm::StringRef name);
+StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(mlir::Operation* inst,
+                                                       llvm::StringRef name);
 
 // Converts MLIR attributes with values to their tensorflow equivalent.
 // "name" and "device" attributes are ignored by default. Use attrs_to_ignore to

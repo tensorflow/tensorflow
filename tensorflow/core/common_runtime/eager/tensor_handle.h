@@ -40,9 +40,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/tensor.h"
-
 #include "tensorflow/core/lib/core/stringpiece.h"
-
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 

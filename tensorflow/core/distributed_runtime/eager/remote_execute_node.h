@@ -124,7 +124,7 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
  private:
   EagerContext* eager_context_;  // Not owned, and must outlive this node.
   std::unique_ptr<EnqueueRequest> request_;
-  Device* device_;             // Not owned
+  Device* device_;  // Not owned
   uint64 context_view_id_;
   bool needs_remote_inputs_;
   EagerClient* eager_client_;  // Not owned, and must outlive this node.

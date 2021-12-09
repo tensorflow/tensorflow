@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"      // from @llvm-project
 
 namespace mlir {
 namespace TF {

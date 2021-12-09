@@ -32,7 +32,7 @@ extern const char* const kXlaMustCompileAttr;  // "_XlaMustCompile"
 extern const char* const kXlaCompileAttr;  // "_XlaCompile"
 
 // Implies auto-clustering within the given scope.
-extern const char* const kXlaScopeAttr;    // "_XlaScope"
+extern const char* const kXlaScopeAttr;          // "_XlaScope"
 extern const char* const kXlaInternalScopeAttr;  // "_XlaInternalScope"
 
 // The id of the compiled cluster.

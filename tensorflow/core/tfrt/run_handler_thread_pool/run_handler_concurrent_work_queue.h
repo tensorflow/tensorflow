@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
-#include "tfrt/support/thread_environment.h"  // from @tf_runtime
+#include "tfrt/support/thread_environment.h"      // from @tf_runtime
 #include "third_party/concurrent_work_queue/lib/blocking_work_queue.h"
 #include "third_party/concurrent_work_queue/lib/non_blocking_work_queue.h"
 

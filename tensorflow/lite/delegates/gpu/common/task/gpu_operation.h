@@ -42,7 +42,7 @@ class ClOperation;
 namespace metal {
 class ComputeTask;
 struct ComputeTaskDescriptor;
-}
+}  // namespace metal
 namespace gl {
 class GlOperation;
 }

@@ -205,8 +205,8 @@ inline EdgeSet::const_iterator EdgeSet::const_iterator::operator++(
 
 // gcc's set and multiset always use const_iterator since it will otherwise
 // allow modification of keys.
-inline const EdgeSet::const_iterator::value_type* EdgeSet::const_iterator::
-operator->() const {
+inline const EdgeSet::const_iterator::value_type*
+EdgeSet::const_iterator::operator->() const {
   CheckNoMutations();
   if (array_iter_ != nullptr) {
     return reinterpret_cast<const value_type*>(array_iter_);

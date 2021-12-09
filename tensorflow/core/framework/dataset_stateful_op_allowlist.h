@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_ALLOWLIST_H_
 
 #include <unordered_set>
+
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {

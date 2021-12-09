@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_GRAPPLER_MODEL_ANALYZER_H_
 
 #include <iostream>
+
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 

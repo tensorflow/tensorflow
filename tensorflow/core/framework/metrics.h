@@ -274,7 +274,6 @@ class ScopedCounter final {
 // passes.
 monitoring::Counter<2>* GetGraphOptimizationCounter();
 
-
 // Updates metrics for time to distribute variables to all TPU hosts.
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
 

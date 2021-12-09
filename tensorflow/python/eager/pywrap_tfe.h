@@ -430,8 +430,7 @@ struct EagerContextThreadLocalData {
 // This function assumes that the Python GIL is held (and does not perform its
 // own locking).
 void MakeEagerContextThreadLocalData(PyObject* py_eager_context,
-                                     PyObject* is_eager,
-                                     PyObject* device_spec);
+                                     PyObject* is_eager, PyObject* device_spec);
 
 // Returns the thread-local instance of EagerContextThreadLocalData that is
 // associated with the given Python Context object.  If an instance has not

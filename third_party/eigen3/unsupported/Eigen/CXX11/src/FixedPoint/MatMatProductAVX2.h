@@ -156,10 +156,12 @@ struct gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2, QInt16, ColMajor,
 
 template <typename Index, typename DataMapper, int Pack1, int Pack2,
           bool Conjugate, bool PanelMode>
-EIGEN_DONT_INLINE void gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2,
-                                     QInt16, ColMajor, Conjugate, PanelMode>::
-operator()(QInt16* blockA, const DataMapper& lhs, Index depth, Index rows,
-           Index stride, Index offset) {
+EIGEN_DONT_INLINE void
+gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2, QInt16, ColMajor,
+              Conjugate, PanelMode>::operator()(QInt16* blockA,
+                                                const DataMapper& lhs,
+                                                Index depth, Index rows,
+                                                Index stride, Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
 
@@ -241,10 +243,11 @@ struct gemm_pack_rhs<QInt16, Index, DataMapper, nr, ColMajor, Conjugate,
 
 template <typename Index, typename DataMapper, int nr, bool Conjugate,
           bool PanelMode>
-EIGEN_DONT_INLINE void gemm_pack_rhs<QInt16, Index, DataMapper, nr, ColMajor,
-                                     Conjugate, PanelMode>::
-operator()(QInt16* blockB, const DataMapper& rhs, Index depth, Index cols,
-           Index stride, Index offset) {
+EIGEN_DONT_INLINE void
+gemm_pack_rhs<QInt16, Index, DataMapper, nr, ColMajor, Conjugate,
+              PanelMode>::operator()(QInt16* blockB, const DataMapper& rhs,
+                                     Index depth, Index cols, Index stride,
+                                     Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
 
@@ -330,11 +333,14 @@ struct gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr, ConjugateLhs,
 
 template <typename Index, typename DataMapper, int mr, int nr,
           bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE void gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr,
-                                   ConjugateLhs, ConjugateRhs>::
-operator()(const DataMapper& res, const QInt16* blockA, const QInt16* blockB,
-           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
-           Index strideB, Index offsetA, Index offsetB) {
+EIGEN_DONT_INLINE void
+gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr, ConjugateLhs,
+            ConjugateRhs>::operator()(const DataMapper& res,
+                                      const QInt16* blockA,
+                                      const QInt16* blockB, Index rows,
+                                      Index depth, Index cols, QInt32 alpha,
+                                      Index strideA, Index strideB,
+                                      Index offsetA, Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   eigen_assert(alpha.value == 1);
@@ -695,10 +701,11 @@ struct gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
 // Alternate implementations for any input sizes
 template <typename Index, typename DataMapper, int Pack1, int Pack2,
           bool Conjugate, bool PanelMode>
-EIGEN_DONT_INLINE void gemm_pack_lhs_any<QInt8, Index, DataMapper, Pack1, Pack2,
-                                         ColMajor, Conjugate, PanelMode>::
-operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows,
-           Index stride, Index offset) {
+EIGEN_DONT_INLINE void
+gemm_pack_lhs_any<QInt8, Index, DataMapper, Pack1, Pack2, ColMajor, Conjugate,
+                  PanelMode>::operator()(QInt8* blockA, const DataMapper& lhs,
+                                         Index depth, Index rows, Index stride,
+                                         Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
 
@@ -1161,10 +1168,11 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows,
 
 template <typename Index, typename DataMapper, int nr, bool Conjugate,
           bool PanelMode>
-EIGEN_DONT_INLINE void gemm_pack_rhs_any<QUInt8, Index, DataMapper, nr,
-                                         ColMajor, Conjugate, PanelMode>::
-operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols,
-           Index stride, Index offset) {
+EIGEN_DONT_INLINE void
+gemm_pack_rhs_any<QUInt8, Index, DataMapper, nr, ColMajor, Conjugate,
+                  PanelMode>::operator()(QUInt8* blockB, const DataMapper& rhs,
+                                         Index depth, Index cols, Index stride,
+                                         Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
 
@@ -1483,11 +1491,14 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols,
 
 template <typename Index, typename DataMapper, int mr, int nr,
           bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE void gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr,
-                                       ConjugateLhs, ConjugateRhs>::
-operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
-           Index strideB, Index offsetA, Index offsetB) {
+EIGEN_DONT_INLINE void
+gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+                ConjugateRhs>::operator()(const DataMapper& res,
+                                          const QInt8* blockA,
+                                          const QUInt8* blockB, Index rows,
+                                          Index depth, Index cols, QInt32 alpha,
+                                          Index strideA, Index strideB,
+                                          Index offsetA, Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   eigen_assert(alpha.value == 1);
@@ -1798,10 +1809,12 @@ struct gemm_pack_lhs<QInt8, Index, DataMapper, Pack1, Pack2, QInt8, ColMajor,
 
 template <typename Index, typename DataMapper, int Pack1, int Pack2,
           bool Conjugate, bool PanelMode>
-EIGEN_DONT_INLINE void gemm_pack_lhs<QInt8, Index, DataMapper, Pack1, Pack2,
-                                     QInt8, ColMajor, Conjugate, PanelMode>::
-operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows,
-           Index stride, Index offset) {
+EIGEN_DONT_INLINE void
+gemm_pack_lhs<QInt8, Index, DataMapper, Pack1, Pack2, QInt8, ColMajor,
+              Conjugate, PanelMode>::operator()(QInt8* blockA,
+                                                const DataMapper& lhs,
+                                                Index depth, Index rows,
+                                                Index stride, Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
 
@@ -1810,7 +1823,8 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows,
   // Use alternate function for weird sizes
   if (rows % 32 != 0 || depth % 32 != 0) {
     gemm_pack_lhs_any<QInt8, Index, DataMapper, Pack1, Pack2, ColMajor,
-                      Conjugate, PanelMode> lhs_pack;
+                      Conjugate, PanelMode>
+        lhs_pack;
     return lhs_pack(blockA, lhs, depth, rows, stride, offset);
   }
 
@@ -1908,10 +1922,11 @@ struct gemm_pack_rhs<QUInt8, Index, DataMapper, nr, ColMajor, Conjugate,
 
 template <typename Index, typename DataMapper, int nr, bool Conjugate,
           bool PanelMode>
-EIGEN_DONT_INLINE void gemm_pack_rhs<QUInt8, Index, DataMapper, nr, ColMajor,
-                                     Conjugate, PanelMode>::
-operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols,
-           Index stride, Index offset) {
+EIGEN_DONT_INLINE void
+gemm_pack_rhs<QUInt8, Index, DataMapper, nr, ColMajor, Conjugate,
+              PanelMode>::operator()(QUInt8* blockB, const DataMapper& rhs,
+                                     Index depth, Index cols, Index stride,
+                                     Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
 
@@ -1920,7 +1935,8 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols,
   // Use alternate function for weird sizes
   if (cols % 32 != 0 || depth % 32 != 0) {
     gemm_pack_rhs_any<QUInt8, Index, DataMapper, nr, ColMajor, Conjugate,
-                      PanelMode> rhs_pack;
+                      PanelMode>
+        rhs_pack;
     return rhs_pack(blockB, rhs, depth, cols, stride, offset);
   }
 
@@ -2018,11 +2034,14 @@ struct gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
 
 template <typename Index, typename DataMapper, int mr, int nr,
           bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr,
-                                   ConjugateLhs, ConjugateRhs>::
-operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
-           Index strideB, Index offsetA, Index offsetB) {
+EIGEN_DONT_INLINE void
+gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+            ConjugateRhs>::operator()(const DataMapper& res,
+                                      const QInt8* blockA, const QUInt8* blockB,
+                                      Index rows, Index depth, Index cols,
+                                      QInt32 alpha, Index strideA,
+                                      Index strideB, Index offsetA,
+                                      Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   eigen_assert(alpha.value == 1);
@@ -2039,7 +2058,8 @@ operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
   // Use alternate function for weird sizes
   if (rows % 32 != 0 || cols % 32 != 0 || depth % 32 != 0) {
     gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
-                    ConjugateRhs> gebp;
+                    ConjugateRhs>
+        gebp;
     return gebp(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB,
                 offsetA, offsetB);
   }

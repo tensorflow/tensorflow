@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 #include <vector>
+
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/env.h"

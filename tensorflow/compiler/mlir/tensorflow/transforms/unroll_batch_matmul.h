@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_UNROLL_BATCH_MATMUL_H_
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Location.h"          // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"      // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"     // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 

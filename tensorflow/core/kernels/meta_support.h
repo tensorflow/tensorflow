@@ -21,7 +21,6 @@ limitations under the License.
 #include "meta/quantized_mul_kernels.h"
 #include "meta/streams.h"
 #include "meta/transform_kernels.h"
-
 #include "tensorflow/core/framework/numeric_types.h"
 
 namespace tensorflow {

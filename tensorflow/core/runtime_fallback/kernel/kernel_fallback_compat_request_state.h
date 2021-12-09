@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/model_metadata.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
-#include "tfrt/support/pointer_util.h"  // from @tf_runtime
+#include "tfrt/support/pointer_util.h"      // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

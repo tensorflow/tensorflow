@@ -16,9 +16,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_COMMON_H_
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"               // from @llvm-project
+#include "mlir/IR/Builders.h"                 // from @llvm-project
+#include "mlir/IR/OpImplementation.h"         // from @llvm-project
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 
 namespace tfrt {

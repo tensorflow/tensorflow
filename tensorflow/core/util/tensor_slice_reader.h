@@ -20,8 +20,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_READER_H_
 
 #include <unordered_map>
-
 #include <vector>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"

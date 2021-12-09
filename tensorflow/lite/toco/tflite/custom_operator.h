@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_CUSTOM_OPERATOR_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_CUSTOM_OPERATOR_H_
 
-#include "flatbuffers/flexbuffers.h"
 #include "absl/memory/memory.h"
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 
 namespace toco {

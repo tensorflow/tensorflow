@@ -23,8 +23,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/kernels/ctc/ctc_loss_util.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
 namespace custom {

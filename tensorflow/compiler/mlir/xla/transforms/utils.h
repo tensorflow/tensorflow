@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_UTILS_H_
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"           // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"       // from @llvm-project
+#include "mlir/IR/Location.h"           // from @llvm-project
+#include "mlir/IR/Types.h"              // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace mlir {

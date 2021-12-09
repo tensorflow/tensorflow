@@ -67,7 +67,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
 }  // namespace data
 }  // namespace tensorflow
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
 namespace tensorflow {
 namespace data {
 

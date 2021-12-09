@@ -48,17 +48,17 @@ struct MatchScore {
     return stream;
   }
 };
-inline bool operator< (const MatchScore& cC1, const MatchScore& cC2) {
-    return cC1.value < cC2.value;
+inline bool operator<(const MatchScore& cC1, const MatchScore& cC2) {
+  return cC1.value < cC2.value;
 }
-inline bool operator> (const MatchScore& cC1, const MatchScore& cC2) {
-    return cC1.value > cC2.value;
+inline bool operator>(const MatchScore& cC1, const MatchScore& cC2) {
+  return cC1.value > cC2.value;
 }
-inline bool operator>= (const MatchScore& cC1, const MatchScore& cC2) {
-    return cC1.value >= cC2.value;
+inline bool operator>=(const MatchScore& cC1, const MatchScore& cC2) {
+  return cC1.value >= cC2.value;
 }
-inline bool operator<= (const MatchScore& cC1, const MatchScore& cC2) {
-    return cC1.value <= cC2.value;
+inline bool operator<=(const MatchScore& cC1, const MatchScore& cC2) {
+  return cC1.value <= cC2.value;
 }
 
 // Fixed seed used for all random number generators.
@@ -174,7 +174,6 @@ static const int kMinNumConnectedForFastKeypoint = 8;
 // Compare to kFlowIntegrationWindowSize.
 static const int kHarrisWindowSize = 2;
 
-
 // DETECTOR PARAMETERS
 
 // Before relocalizing, make sure the new proposed position is better than
@@ -216,7 +215,6 @@ static const float kPositionOverlapThreshold = 0.6f;
 // comes back into a detectable position, it's likely to be found.
 static const int kMaxNumDetectionFailures = 4;
 
-
 // Minimum square size to scan with sliding window.
 static const float kScanMinSquareSize = 16.0f;
 
@@ -228,7 +226,6 @@ static const float kScanScaleFactor = sqrtf(2.0f);
 
 // Step size for sliding window.
 static const int kScanStepSize = 10;
-
 
 // How tightly to pack the descriptor boxes for confirmed exemplars.
 static const float kLockedScaleFactor = 1 / sqrtf(2.0f);
@@ -244,7 +241,6 @@ static const float kLastKnownPositionScaleFactor = 1.0f / sqrtf(2.0f);
 // examples for detection to be valid.
 static const float kMinCorrelationForNewExample = 0.75f;
 static const float kMaxCorrelationForNewExample = 0.99f;
-
 
 // The number of safe tries an exemplar has after being created before
 // missed detections count against it.
@@ -267,16 +263,13 @@ struct KeypointDetectorConfig {
   bool detect_skin;
 
   explicit KeypointDetectorConfig(const Size& image_size)
-      : image_size(image_size),
-        detect_skin(false) {}
+      : image_size(image_size), detect_skin(false) {}
 };
-
 
 struct OpticalFlowConfig {
   const Size image_size;
 
-  explicit OpticalFlowConfig(const Size& image_size)
-      : image_size(image_size) {}
+  explicit OpticalFlowConfig(const Size& image_size) : image_size(image_size) {}
 };
 
 struct TrackerConfig {

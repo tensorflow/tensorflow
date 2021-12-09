@@ -26,9 +26,9 @@ namespace tensorflow {
 // Converts the given saved_model(either v1 or v2) to a TF Lite FlatBuffer
 // string according to the given model flags, toco flags and tags. Returns error
 // status if it fails to convert the input.
-Status ConvertSavedModelToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    string* result);
+Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
+                                           const toco::TocoFlags& toco_flags,
+                                           string* result);
 
 }  // namespace tensorflow
 

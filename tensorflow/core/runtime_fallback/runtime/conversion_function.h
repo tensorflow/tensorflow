@@ -27,7 +27,7 @@ class TensorConversionFnRegistry;
 class CpuDevice;
 class ExecutionContext;
 class DenseHostTensor;
-}
+}  // namespace tfrt
 
 namespace tensorflow {
 namespace tfd {
@@ -40,7 +40,7 @@ ConvertRuntimeFallbackTensorToDenseHostTensor(
 
 // Register conversion functions for TFRuntimeFallbackTensors.
 void RegisterTFRuntimeFallbackTensorToHostConversionFn(
-    tfrt::TensorConversionFnRegistry* registry);
+    tfrt::TensorConversionFnRegistry *registry);
 
 }  // namespace tfd
 }  // namespace tensorflow

@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_FAKE_H_
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_FAKE_H_
 
+#include <curl/curl.h>
+
 #include <algorithm>
 #include <fstream>
 #include <string>
 #include <vector>
 
-#include <curl/curl.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/errors.h"

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
-#include "google/protobuf/any.pb.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"

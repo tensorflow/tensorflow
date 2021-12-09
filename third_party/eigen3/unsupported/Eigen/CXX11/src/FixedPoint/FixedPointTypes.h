@@ -43,7 +43,7 @@ struct scalar_product_traits<QInt32, double> {
   };
   typedef QInt32 ReturnType;
 };
-}
+}  // namespace internal
 
 // Wrap the 8bit int into a QInt8 struct instead of using a typedef to prevent
 // the compiler from silently type cast the mantissa into a bigger or a smaller

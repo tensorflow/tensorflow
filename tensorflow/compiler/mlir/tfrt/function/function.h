@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/platform/status.h"
-#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
+#include "tfrt/bef/bef_buffer.h"              // from @tf_runtime
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 
 namespace tfrt {

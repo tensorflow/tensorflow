@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_CONV2D_MKL_H_
 
 #include <iostream>
+
 #include "tensorflow/core/platform/types.h"
 
 extern "C" {
