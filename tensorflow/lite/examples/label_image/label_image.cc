@@ -394,6 +394,9 @@ void RunInference(Settings* settings,
     const int index = result.second;
     LOG(INFO) << confidence << ": " << index << " " << labels[index];
   }
+
+  // Destory the interpreter earlier than delegates objects.
+  interpreter.reset();
 }
 
 void display_usage(const DelegateProviders& delegate_providers) {
