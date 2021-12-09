@@ -16,24 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <functional>
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
 class AlgebraicSimplifierOptions {
  public:
-  AlgebraicSimplifierOptions() {}
   // Platform dependent callback to determine if a reshape `from_shape` to
   // `to_shape` is a bitcast.
   using ReshapeIsBitcastCallback =
       std::function<bool(const Shape& from_shape, const Shape& to_shape)>;
+  // Platform dependent callback to determine if a set of reverse dimensions is
+  // lowerable
+  using ConvIsLowerableCallback = std::function<bool(HloInstruction* window)>;
+
   explicit AlgebraicSimplifierOptions(
-      ReshapeIsBitcastCallback reshape_is_bitcast_callback)
-      : reshape_is_bitcast_callback_(std::move(reshape_is_bitcast_callback)) {}
+      ReshapeIsBitcastCallback reshape_is_bitcast_callback = {},
+      ConvIsLowerableCallback conv_is_lowerable_callback = {})
+      : reshape_is_bitcast_callback_(std::move(reshape_is_bitcast_callback)),
+        conv_is_lowerable_callback_(std::move(conv_is_lowerable_callback)) {}
 
   // Use the platform specific callback if set. It is not sensible to return
   // true here if the options are not layout sensitive.
@@ -45,6 +53,14 @@ class AlgebraicSimplifierOptions {
       return ShapeUtil::ReshapeIsBitcast(from_shape, to_shape);
     }
     return reshape_is_bitcast_callback_(from_shape, to_shape);
+  }
+
+  // Use the platform specific callback if set. Otherwise, return true.
+  bool ConvIsLowerable(HloInstruction* reverse_dims) const {
+    if (!conv_is_lowerable_callback_) {
+      return true;
+    }
+    return conv_is_lowerable_callback_(reverse_dims);
   }
 
   // If is_layout_sensitive is true, then the simplifier preserves layout during
@@ -176,6 +192,7 @@ class AlgebraicSimplifierOptions {
     Metadata() {}
   };
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
+  ConvIsLowerableCallback conv_is_lowerable_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
   bool enable_dot_to_multiply_rewrite_{true};

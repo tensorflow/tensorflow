@@ -1625,6 +1625,7 @@ cc_library(
         ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
+        ":gpu_conv_rewriter",
         ":gpu_copy_insertion",
         ":gpu_device_info",
         ":gpu_executable",

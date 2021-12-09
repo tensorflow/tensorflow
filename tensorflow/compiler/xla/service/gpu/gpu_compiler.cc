@@ -85,6 +85,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
@@ -241,6 +242,12 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   // Each dynamic dimension size is represented as a S32.
   int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
+}
+
+bool ConvIsLowerable(HloInstruction* conv) {
+  return conv_matchers::CanImplementAsGpuForwardConv(conv) ||
+         std::get<0>(conv_matchers::MatchBackwardFilter(conv)) ||
+         std::get<0>(conv_matchers::MatchBackwardInput(conv));
 }
 
 }  // end anonymous namespace
@@ -406,7 +413,7 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
 
-      AlgebraicSimplifierOptions options;
+      AlgebraicSimplifierOptions options({}, ConvIsLowerable);
       // When transposes appear in a fusion node, we can easily adjust the
       // multi-dimensional index to create the one needed for the operand.
       // This is not as easy with bitcasts, because we don't have the
@@ -416,7 +423,6 @@ Status GpuCompiler::OptimizeHloModule(
       // bitcast(bitcast) with one bitcast. This leads to having to
       // linearize and then delinearize the index.
       options.set_replace_transpose_with_bitcast(false);
-      options.set_enable_conv_operand_swap(false);
       pipeline.AddPass<AlgebraicSimplifier>(options);
       pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
