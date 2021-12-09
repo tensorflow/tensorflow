@@ -19,6 +19,10 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
+# Selects a version of Xcode.
+export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
+sudo xcode-select -s "${DEVELOPER_DIR}"
+
 # Set up py310 via pyenv and check it worked
 export PYENV_VERSION=3.10.0
 setup_python_from_pyenv_macos "${PYENV_VERSION}"
