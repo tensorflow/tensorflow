@@ -321,5 +321,21 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToComplex) {
   )");
 }
 
+XLA_TEST_F(ElementalIrEmitterExecutionTest, CompareBF16) {
+  constexpr char hlo_text[] = R"(
+  HloModule compareBF16
+  ENTRY main {
+    p0 = bf16[4] parameter(0)
+    p1 = bf16[4] parameter(1)
+    ROOT cmp = pred[4] compare(p0, p1), direction=LT
+})";
+
+  Literal lhs = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
+  Literal rhs = LiteralUtil::CreateR1<float>({4, 3, 2, 1});
+  lhs = LiteralUtil::ConvertF32ToBF16(lhs);
+  rhs = LiteralUtil::ConvertF32ToBF16(rhs);
+  RunTest(hlo_text, {&lhs, &rhs});
+}
+
 }  // namespace
 }  // namespace xla

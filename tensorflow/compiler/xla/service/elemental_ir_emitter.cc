@@ -885,6 +885,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
     // unordered comparison.  This makes x != y equivalent to !(x == y), and
     // matches C++'s semantics.
     case HloOpcode::kCompare: {
+      PrimitiveType operand_type = op->operand(0)->shape().element_type();
+      if (operand_type == BF16) {
+        lhs_value = EmitBF16ToF32(lhs_value, b_);
+        rhs_value = EmitBF16ToF32(rhs_value, b_);
+      }
       switch (op->comparison_direction()) {
         case ComparisonDirection::kEq:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
