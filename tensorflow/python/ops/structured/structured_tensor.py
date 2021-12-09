@@ -17,7 +17,7 @@
 
 import logging
 import re
-from typing import Callable, Dict, List, Sequence, Tuple, Union
+from typing import Callable, Dict, List, Sequence, Optional, Tuple, Union
 
 import numpy as np
 
@@ -134,7 +134,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     self._fields = fields
     self._shape = shape
     self._nrows = nrows
-    self._row_partitions = row_partitions
+    self._ragged_shape = _dynamic_ragged_shape_init(fields, shape, nrows,
+                                                    row_partitions)
 
   @classmethod
   def from_fields(cls,
@@ -485,7 +486,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       msg = '`StructuredTensor.with_updates` failed'
       if error_prefix:
         msg = '{} for field {}'.format(msg, error_prefix)
-      raise ValueError('{}: {}'.format(msg, e))
+      raise ValueError(msg) from e
 
   def _promote_helper(self, source_path, new_parent_path):
     """Creates a promoted field without adding it to the structure.
@@ -560,7 +561,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
   @property
   def rank(self):
     """The rank of this StructuredTensor.  Guaranteed not to be `None`."""
-    return self._shape.rank
+    return self._ragged_shape.rank
 
   @property
   def shape(self):
@@ -630,7 +631,9 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       (or `0` if `self.rank < 2`)
 
     """
-    return self._row_partitions
+    if self.rank < 2:
+      return ()
+    return self._ragged_shape._as_row_partitions()  # pylint:disable=protected-access
 
   def nrows(self):
     """The number of rows in this StructuredTensor (if rank>0).
@@ -1301,8 +1304,9 @@ def _convert_to_structured_field_value(value):
   else:
     try:
       return ops.convert_to_tensor(value)
-    except (ValueError, TypeError):
-      raise TypeError('Unexpected type for value in `fields`: %r' % value)
+    except (ValueError, TypeError) as e:
+      raise TypeError('Unexpected type for value in `fields`: %r' %
+                      value) from e
 
 
 def _find_shape_dtype(fields, nrows, row_partitions):
@@ -1727,13 +1731,46 @@ def _merge_dims_generic(source, outer, inner):
     return ragged_tensor.merge_dims(source, outer, inner)
 
 
+def _dynamic_ragged_shape_from_tensor(
+    field, dtype=None) -> dynamic_ragged_shape.DynamicRaggedShape:
+  """Extension of from_tensor to support StructuredTensor."""
+  if isinstance(field, StructuredTensor):
+    return field._ragged_shape  # pylint: disable=protected-access
+  return dynamic_ragged_shape.DynamicRaggedShape.from_tensor(field, dtype)
+
+
+def _merge_with_optional(
+    a: Optional[dynamic_ragged_shape.DynamicRaggedShape],
+    b: Optional[dynamic_ragged_shape.DynamicRaggedShape]
+    ) -> Optional[dynamic_ragged_shape.DynamicRaggedShape]:
+  if a is None:
+    return b
+  if b is None:
+    return a
+  return a._merge_with(b)  # pylint: disable=protected-access
+
+
+def _shape_from_fields(
+    fields, rank: int,
+    dtype: dtypes.DType) -> Optional[dynamic_ragged_shape.DynamicRaggedShape]:
+  field_shape = None
+  for field in fields.values():
+    next_field_shape = _dynamic_ragged_shape_from_tensor(
+        field, dtype=dtype)[:rank]
+    field_shape = _merge_with_optional(field_shape, next_field_shape)
+
+  return field_shape
+
+
 # pylint:disable=protected-access
 def _dynamic_ragged_shape_init(fields, shape, nrows, row_partitions):
   """Produce a DynamicRaggedShape for StructuredTensor."""
   assert isinstance(fields, dict), fields
   assert isinstance(shape, tensor_shape.TensorShape), shape
-  assert nrows is None or isinstance(nrows, ops.Tensor), nrows
-  assert isinstance(row_partitions, tuple), row_partitions
+  assert nrows is None or isinstance(nrows, ops.Tensor) or isinstance(
+      nrows, int), nrows
+  assert row_partitions is None or isinstance(row_partitions,
+                                              tuple), row_partitions
 
   rank = shape.rank
   if rank is None:
@@ -1741,18 +1778,50 @@ def _dynamic_ragged_shape_init(fields, shape, nrows, row_partitions):
 
   # TODO(martinz): figure out whether to validate.
   dtype = _find_shape_dtype(fields, nrows, row_partitions)
+  if shape.is_fully_defined():
+    return dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
+        shape.as_list(), dtype=dtype)
+
   if rank == 0:
     return dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
         array_ops.zeros((0,), dtype=dtype))
 
+  result = _shape_from_fields(fields, rank, dtype)
   if rank == 1:
-    alt_value = shape[0]
-    if isinstance(alt_value, tensor_shape.Dimension):
-      alt_value = alt_value.value
+    alt_value = tensor_shape.dimension_value(shape[0])
     if alt_value is not None:
       nrows = alt_value
-    return dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
-        [nrows], dtype=dtype)
+    if nrows is not None:
+      result = _merge_with_optional(
+          result,
+          dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
+              [nrows], dtype=dtype))
+    if result is None:
+      raise ValueError('Must specify nrows, a fully specified shape,' +
+                       ' or have fields if rank = 1')
 
-  return dynamic_ragged_shape.DynamicRaggedShape.from_row_partitions(
-      row_partitions, dtype=dtype)
+    return result
+
+  if row_partitions:
+    result = _merge_with_optional(
+        result, dynamic_ragged_shape.DynamicRaggedShape.from_row_partitions(
+            row_partitions, dtype=dtype))
+
+  if result is None:
+    raise ValueError('Must specify row_partitions, a fully specified shape, ' +
+                     'or have fields if rank > 1')
+
+  ragged_spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+      shape, result.num_row_partitions, dtype)
+  result = result._merge_with_spec(ragged_spec)
+  return result
+
+
+def _dynamic_ragged_shape_spec_from_spec(
+    spec: Union[dynamic_ragged_shape.DynamicRaggedShape.Spec,
+                ragged_tensor.RaggedTensorSpec, StructuredTensor.Spec,
+                tensor_spec.TensorSpec]):
+  if isinstance(spec, StructuredTensor.Spec):
+    return spec._ragged_shape
+  else:
+    return dynamic_ragged_shape.DynamicRaggedShape.Spec.from_spec(spec)
