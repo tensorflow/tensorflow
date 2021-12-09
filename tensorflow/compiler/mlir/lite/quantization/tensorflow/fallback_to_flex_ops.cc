@@ -28,7 +28,15 @@ namespace TF {
 namespace {
 
 // The name prefix of Flex ops.
-constexpr char kFlexOpNamePrefix[] = "Flex";
+constexpr absl::string_view kFlexOpNamePrefix = "Flex";
+// Don't fallback to Flex op if this attribute is set. This attribute is
+// transient and is only used inside this pass. First, the pass looks for
+// predefined patterns and set this attribute to ops in the patterns. Then,
+// when parsing the function, if find ops with this attribute, the pass
+// remove the attribute and skip further processing on those ops.
+constexpr char kNoFallbackAttr[] = "no_fallback";
+// TF Quantization modes. These constants are defined as char arrays so they
+// can parsed by the pass option.
 constexpr char kDefaultMode[] = "DEFAULT";
 constexpr char kLegacyIntegerMode[] = "LEGACY_INTEGER";
 
@@ -264,6 +272,25 @@ bool FallbackToFlexOps::ConvertToFlexOp(Operation *op) {
   return true;
 }
 
+// Sets the "no_fallback" attribute.
+Value SetNoFallbackAttr(PatternRewriter &rewriter, Value val) {
+  val.getDefiningOp()->setAttr(kNoFallbackAttr, rewriter.getUnitAttr());
+  return val;
+}
+
+// Returns true if the attr is a float attribute and be equal to value.
+static bool FloatValueEquals(const Attribute &attr, double value) {
+  auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  if (fp_attr == nullptr) return false;
+
+  if (fp_attr.isSplat()) {
+    return fp_attr.getSplatValue<APFloat>().isExactlyValue(value);
+  }
+  return llvm::all_of(fp_attr.getValues<APFloat>(), [value](const APFloat &f) {
+    return f.isExactlyValue(value);
+  });
+}
+
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/fallback_to_flex_patterns.inc"
 
 void FallbackToFlexOps::runOnFunction() {
@@ -283,6 +310,10 @@ void FallbackToFlexOps::runOnFunction() {
   func.walk([&](Operation *op) {
     if (op->getDialect() != tf_dialect) return;
     if (IsAllowListedOp(op)) return;
+    if (op->hasAttr(kNoFallbackAttr)) {
+      op->removeAttr(kNoFallbackAttr);
+      return;
+    }
     if (!ConvertToFlexOp(op)) signalPassFailure();
   });
 }
