@@ -212,6 +212,9 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
   options.allow_small_function_optimizations =
       allow_small_function_optimizations_;
 
+  options.allow_control_flow_sync_execution =
+      allow_control_flow_sync_execution_;
+
   // In Eager mode we always inline all functions into the top-level
   // function body graph, to get a single executable graph, that could be
   // optimized across function boundaries (e.g. prune unused inputs and

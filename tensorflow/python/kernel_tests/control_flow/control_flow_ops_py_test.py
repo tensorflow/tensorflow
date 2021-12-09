@@ -158,6 +158,7 @@ def tf_function_in_tf2(f):
   return f
 
 
+@test_util.with_eager_op_as_function
 @test_util.with_control_flow_v2
 class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
