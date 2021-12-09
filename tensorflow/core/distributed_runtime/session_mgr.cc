@@ -202,8 +202,8 @@ Status SessionMgr::CreateSession(
     // coordination service instance.
     coordination_service_ =
         CoordinationServiceInterface::EnableCoordinationService(
-            coordination_service_config.service_type(), worker_env_, server_def,
-            std::move(client_cache));
+            coordination_service_config.service_type(), worker_env_->env,
+            server_def, std::move(client_cache));
 
     std::unique_ptr<CoordinationClientCache> agent_cache;
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&agent_cache));

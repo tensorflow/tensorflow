@@ -33,7 +33,6 @@ cc_library(
     hdrs = ["coordination_service.h"],
     deps = [
         ":coordination_client",
-        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
 )
@@ -48,12 +47,9 @@ tf_cuda_library(
         ":coordination_client",
         ":coordination_service",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:device_mgr",
-        "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
