@@ -142,7 +142,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
     }
   }
   ConnectRequest request;
-  request.set_protocol_version(kDistributedRuntimeProtocolVersion);
+  request.set_protocol_version(DistributedRuntimeProtocolVersion());
   request.set_timeout_milliseconds(
       absl::ToInt64Milliseconds(options_.rpc_timeout) / 2);
   request.set_node_id(options_.node_id);

@@ -83,7 +83,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
     ::grpc::ServerContext* context, const ConnectRequest* request,
     ConnectResponse* response) {
   VLOG(10) << "Connect " << request->DebugString();
-  if (request->protocol_version() != kDistributedRuntimeProtocolVersion) {
+  if (request->protocol_version() != DistributedRuntimeProtocolVersion()) {
     return ToGrpcStatus(xla::InvalidArgument("Invalid protocol version %d",
                                              request->protocol_version()));
   }

@@ -1978,7 +1978,7 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
       }
     }
 
-    std::vector<int64_t> dim_map(kNumMappedDims);
+    std::vector<int64_t> dim_map(NumMappedDims());
     dim_map[DimMapper(SpaceToBatchDimMap::kBatch)] = new_batch_dim;
     dim_map[DimMapper(SpaceToBatchDimMap::kFeature)] = new_feature_dim;
     dim_map[DimMapper(SpaceToBatchDimMap::kSpace0)] = new_space_dim;
@@ -2722,7 +2722,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   old_to_new_instrs_[convolution] = new_conv;
   VLOG(1) << "Space-to-batched convolution " << new_conv->ToString();
 
-  std::vector<int64_t> dim_map(kNumMappedDims);
+  std::vector<int64_t> dim_map(NumMappedDims());
   dim_map[DimMapper(SpaceToBatchDimMap::kBatch)] =
       original_conv_dims.output_batch_dimension();
   dim_map[DimMapper(SpaceToBatchDimMap::kFeature)] =
@@ -3439,7 +3439,7 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   old_to_new_instrs_[convolution] = new_conv;
   VLOG(1) << "Space-to-featured convolution " << new_conv->ToString();
 
-  std::vector<int64_t> dim_map(kNumMappedDims);
+  std::vector<int64_t> dim_map(NumMappedDims());
   dim_map[DimMapper(SpaceToBatchDimMap::kBatch)] =
       original_conv_dims.output_batch_dimension();
   dim_map[DimMapper(SpaceToBatchDimMap::kFeature)] =
@@ -3822,7 +3822,7 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
                          old_output_split_spatial_dims));
   old_to_new_instrs_[original_conv] = new_conv;
 
-  std::vector<int64_t> dim_map(kNumMappedDims);
+  std::vector<int64_t> dim_map(NumMappedDims());
   dim_map[DimMapper(SpaceToBatchDimMap::kBatch)] =
       dim_numbers.output_batch_dimension();
   dim_map[DimMapper(SpaceToBatchDimMap::kFeature)] =

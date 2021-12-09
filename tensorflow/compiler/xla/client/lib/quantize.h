@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_QUANTIZE_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_QUANTIZE_H_
 
+#include <algorithm>
 #include <limits>
 #include <numeric>
 #include <vector>
@@ -28,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/bfloat16.h"
 
 namespace xla {
-
-constexpr int64_t kBitsOfByte = 8;
 
 // Represents the range used for quantization
 struct QuantizedRange {
@@ -53,7 +52,7 @@ inline std::vector<uint32> PackToUint32(absl::Span<const T> input) {
   const int64_t output_size = CeilOfRatio(input_size, kElementsPerPack);
 
   std::vector<uint32> output_vec;
-  constexpr int64_t kShiftBits = sizeof(T) / sizeof(uint8) * kBitsOfByte;
+  constexpr int64_t kShiftBits = sizeof(T) / sizeof(uint8) * CHAR_BIT;
 
   for (int64_t i = 0; i < output_size; i++) {
     uint32 result = 0;
@@ -110,14 +109,14 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
         xla::ConstantR0<uint32>(builder, unpack_size - 1) - iota_r1;
 
     const int bytes_of_type = sizeof(T) / sizeof(uint8);
-    std::vector<uint32> shift_vec(unpack_size, kBitsOfByte * bytes_of_type);
+    std::vector<uint32> shift_vec(unpack_size, CHAR_BIT * bytes_of_type);
     XlaOp shift_bits =
         shift_bytes * xla::ConstantR1<uint32>(builder, shift_vec);
 
     // Make bit_mask for different data type T.
     uint32 bit_mask = 0x00000000;
     for (int i = 0; i < bytes_of_type; i++) {
-      bit_mask <<= kBitsOfByte;
+      bit_mask <<= CHAR_BIT;
       bit_mask |= 0x000000ff;
     }
 

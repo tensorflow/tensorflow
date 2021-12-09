@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -83,7 +85,7 @@ PjRtTpuClient::PjRtTpuClient(
     LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index)
-    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices),
+    : PjRtStreamExecutorClient(TpuName(), client, std::move(devices),
                                process_index,
                                /*allocator=*/nullptr,
                                /*host_memory_allocator=*/nullptr,

@@ -35,14 +35,14 @@ namespace gpu {
 // GemmRewriter pass has finished.
 bool IsMatrixMultiplication(const HloInstruction& dot);
 
-constexpr int64_t kWarpSize = 32;
+inline constexpr int64_t WarpSize() { return 32; }
 
 // Need at least 1024 threads/block for reasonable tree reduction
 // performance (assuming all data fits).
-constexpr int64_t kMinThreadsXRowReduction = 1024;
+inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 
 // When doing batched row reduction, how big the batch dimension could be.
-static constexpr int64_t kBatchedReductionRaceFreeBound = 8;
+inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -124,7 +124,7 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 // Emits code to shuffle data between threads of a warp. This has the same
 // semantics as the PTX "shfl.sync.down" instruction but works for values that
 // aren't 32 bits in size. The last operand of the emitted "shfl" is
-// `kWarpSize - 1`.
+// `WarpSize() - 1`.
 //
 // This function emits a "full-warp" shuffle, which all threads of a warp
 // participate in.  *Do not use this function from a divergent context:* You

@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 #include <string.h>
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -561,7 +562,7 @@ namespace {
 
 // Align buffers to 16-byte boundaries.
 int64_t memory_alignment(LogicalBuffer::Color) {
-  return cpu_function_runtime::kMinAlign;
+  return cpu_function_runtime::MinAlign();
 }
 
 llvm::TargetOptions CompilerTargetOptions(
