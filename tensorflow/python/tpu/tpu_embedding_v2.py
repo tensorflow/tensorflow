@@ -1767,7 +1767,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
       outputs.append(embedding_ops.embedding_lookup_v2(table, inp))
 
     elif isinstance(inp, sparse_tensor.SparseTensor):
-      if feature.max_sequence_length > 0:
+      if not feature.output_shape and feature.max_sequence_length > 0:
         batch_size = math_ops.cast(array_ops.shape(inp)[0], dtype=dtypes.int64)
         sparse_shape = array_ops.stack(
             [batch_size, feature.max_sequence_length], axis=0)
@@ -1804,18 +1804,50 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
                   combiner=feature.table.combiner))
 
     elif isinstance(inp, ragged_tensor.RaggedTensor):
-      if feature.max_sequence_length > 0:
-        batch_size = inp.shape[0]
-        dense_output_shape = [
-            batch_size, feature.max_sequence_length, feature.table.dim]
-        ragged_lookup = embedding_ops.embedding_lookup_v2(table, inp)
-        # Unlike scatter_nd, RaggedTensor.to_tensor truncates to the given
-        # shape.
-        outputs.append(ragged_lookup.to_tensor(shape=dense_output_shape))
+      if inp.shape.rank != 2:
+        raise ValueError(
+            "Only rank 2 ragged tensor is supported, but got rank {}".format(
+                inp.shape.rank))
+      batch_size = inp.shape[0]
+      if feature.output_shape:
+        output_batch_size = math_ops.reduce_prod(feature.output_shape)
+        # If the output batch size matches the data batch size, treat it as
+        # normal ragged input.
+        if output_batch_size == batch_size:
+          ragged_output = _ragged_embedding_lookup_with_reduce(
+              table, inp, weight, feature.table.combiner)
+          ragged_output = array_ops.reshape(
+              ragged_output, shape=feature.output_shape + [feature.table.dim])
+        # If the data batch size is a factor of the output batch size, the
+        # divide result will be the sequence length. Ignore the weights and
+        # combiner.
+        elif output_batch_size > batch_size and output_batch_size % batch_size == 0:
+          ragged_output = embedding_ops.embedding_lookup_v2(table, inp)
+          # Pad or truncate in the sequence dimension
+          ragged_output = ragged_output.to_tensor(shape=[
+              batch_size, output_batch_size // batch_size, feature.table.dim
+          ])
+          # Reshape to desire output shape.
+          ragged_output = array_ops.reshape(
+              ragged_output, feature.output_shape + [feature.table.dim])
+        else:
+          raise ValueError(
+              "Output shape set in the FeatureConfig should be the factor of"
+              "the input data batch size. But instead got output shape {}, "
+              "input data batch size {}".format(feature.output_shape,
+                                                batch_size))
       else:
-        outputs.append(_ragged_embedding_lookup_with_reduce(
-            table, inp, weight, feature.table.combiner))
-
+        if feature.max_sequence_length > 0:
+          output_shape = [
+              batch_size, feature.max_sequence_length, feature.table.dim]
+          ragged_lookup = embedding_ops.embedding_lookup_v2(table, inp)
+          # Unlike scatter_nd, RaggedTensor.to_tensor truncates to the given
+          # shape.
+          ragged_output = ragged_lookup.to_tensor(shape=output_shape)
+        else:
+          ragged_output = _ragged_embedding_lookup_with_reduce(
+              table, inp, weight, feature.table.combiner)
+      outputs.append(ragged_output)
     else:
       raise ValueError("Input {} is type {}. Tensor, SparseTensor or "
                        "RaggedTensor expected.".format(path, type(inp)))
