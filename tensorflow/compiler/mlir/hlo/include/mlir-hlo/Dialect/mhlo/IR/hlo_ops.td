@@ -1950,6 +1950,7 @@ def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
