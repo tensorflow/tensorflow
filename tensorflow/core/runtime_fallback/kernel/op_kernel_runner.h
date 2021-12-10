@@ -46,6 +46,13 @@ class OpKernelRunner {
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime);
 
+  static StatusOr<OpKernelRunner> Create(
+      absl::string_view op_name, int num_args,
+      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const tensorflow::ProcessFunctionLibraryRuntime&
+          process_function_library_runtime,
+      tensorflow::Device* device);
+
   OpKernelRunner() = default;
 
   explicit operator bool() const { return op_kernel_ != nullptr; }

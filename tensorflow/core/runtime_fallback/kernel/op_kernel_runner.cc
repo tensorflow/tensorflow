@@ -84,6 +84,27 @@ StatusOr<OpKernelRunner> OpKernelRunner::Create(
     const tensorflow::DeviceMgr& device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime) {
+  tensorflow::Device* device = nullptr;
+  Status s = device_manager.LookupDevice(device_name, &device);
+
+  // Fall back to host device if it fails to find the specified device.
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to find device " << device_name
+               << " when creating OpKernel: " << op_name << ". Error: " << s;
+    LOG(ERROR) << "Fallback to host device instead";
+    device = device_manager.HostCPU();
+  }
+
+  return Create(op_name, num_args, attr_builder,
+                process_function_library_runtime, device);
+}
+
+StatusOr<OpKernelRunner> OpKernelRunner::Create(
+    absl::string_view op_name, int num_args,
+    const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+    const tensorflow::ProcessFunctionLibraryRuntime&
+        process_function_library_runtime,
+    tensorflow::Device* device) {
   const OpDef* op_def = nullptr;
   TF_RETURN_IF_ERROR(tensorflow::OpRegistry::Global()->LookUpOpDef(
       std::string(op_name), &op_def));
@@ -97,22 +118,7 @@ StatusOr<OpKernelRunner> OpKernelRunner::Create(
   VLOG(1) << "KernelFallbackExecuteCompat created NodeDef: "
           << node_def.DebugString();
 
-  tensorflow::Device* device = nullptr;
   tensorflow::FunctionLibraryRuntime* function_library_runtime = nullptr;
-
-  // TODO(b/176451036): For device names that are not in tensorflow format, we
-  // handle it specially. This is a workaround as the compiler lowering does not
-  // use tensorflow format in some cases. Ideally, we should always use device
-  // name in tensorflow format in fallback code.
-  Status s = device_manager.LookupDevice(device_name, &device);
-
-  // Fall back to host device if it fails to find the specified device.
-  if (!s.ok()) {
-    LOG(ERROR) << "Failed to find device " << device_name
-               << " when creating OpKernel: " << op_name << ". Error: " << s;
-    LOG(ERROR) << "Fallback to host device instead";
-    device = device_manager.HostCPU();
-  }
 
   function_library_runtime =
       process_function_library_runtime.GetFLR(device->name());
