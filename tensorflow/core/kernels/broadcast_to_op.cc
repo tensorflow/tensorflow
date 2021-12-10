@@ -22,13 +22,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/broadcast_to_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/bcast.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -130,16 +130,17 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_KERNEL);
 TF_CALL_int64(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-// A special GPU kernel for int32.
+#endif
+
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("BroadcastTo")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("shape")
                             .HostMemory("output"),
                         BroadcastToOp<CPUDevice, int32>);
-#endif
 
 }  // namespace tensorflow
