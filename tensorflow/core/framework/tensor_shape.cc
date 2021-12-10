@@ -522,7 +522,8 @@ template <class Shape>
 Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
   if (!kIsPartial) {
     if (TF_PREDICT_FALSE(size < 0)) {
-      return errors::Internal("Expected a non-negative size, got ", size);
+      return errors::InvalidArgument("Expected a non-negative size, got ",
+                                     size);
     }
   }
 
@@ -594,13 +595,14 @@ void TensorShapeBase<Shape>::set_dim(int d, int64_t size) {
 template <class Shape>
 Status TensorShapeBase<Shape>::SetDimWithStatus(int d, int64_t size) {
   if (TF_PREDICT_FALSE(d < 0)) {
-    return errors::Internal("Index must be non-negative, got ", d);
+    return errors::InvalidArgument("Index must be non-negative, got ", d);
   }
   if (TF_PREDICT_FALSE(d >= dims())) {
-    return errors::Internal("Index must be less than ", dims(), ", got ", d);
+    return errors::InvalidArgument("Index must be less than ", dims(), ", got ",
+                                   d);
   }
   if (TF_PREDICT_FALSE(!kIsPartial && size < 0)) {
-    return errors::Internal("Expected a non-negative size, got ", size);
+    return errors::InvalidArgument("Expected a non-negative size, got ", size);
   }
 
   if (tag() == REP16 && size < kMaxRep16) {
