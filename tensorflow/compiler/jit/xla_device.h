@@ -166,6 +166,11 @@ class XlaDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override TF_LOCKS_EXCLUDED(mu_);
 
+  Status MakeTensorFromProto(XlaDeviceContext* device_context,
+                             const TensorProto& tensor_proto,
+                             const AllocatorAttributes alloc_attrs,
+                             Tensor* tensor);
+
   const Metadata& metadata() { return xla_metadata_; }
 
   // Ensures the DeviceContext associated with this XlaDevice is created and
@@ -211,11 +216,6 @@ class XlaDevice : public LocalDevice {
   // shape_representation_fns.
   StatusOr<std::vector<XlaDeviceContext*>> GetDeviceContextLocked()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  Status MakeTensorFromProto(XlaDeviceContext* device_context,
-                             const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor);
 
   // Handles error when RefreshStatus sees !status.ok().
   Status HandleDeviceError();
