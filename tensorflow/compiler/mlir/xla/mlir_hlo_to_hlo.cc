@@ -455,7 +455,7 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
 static xla::OpMetadata CreateOpMetadataFromLocation(
     mlir::Operation* op, mlir::MlirToHloConversionOptions options) {
   xla::OpMetadata metadata;
-  const mlir::Location& loc = op->getLoc();
+  mlir::Location loc = op->getLoc();
   if (loc.isa<mlir::UnknownLoc>()) return metadata;
 
   std::string name = mlir::GetNameFromLoc(loc);
@@ -467,7 +467,12 @@ static xla::OpMetadata CreateOpMetadataFromLocation(
   mlir::LegalizeNodeName(op_type);
   metadata.set_op_type(op_type);
 
-  if (auto file_line_col_loc = op->getLoc().dyn_cast<mlir::FileLineColLoc>()) {
+  if (auto name_loc = op->getLoc().dyn_cast<mlir::NameLoc>()) {
+    loc = name_loc.getChildLoc();
+    if (loc.isa<mlir::UnknownLoc>()) return metadata;
+  }
+
+  if (auto file_line_col_loc = loc.dyn_cast<mlir::FileLineColLoc>()) {
     metadata.set_source_file(file_line_col_loc.getFilename().str());
     metadata.set_source_line(file_line_col_loc.getLine());
   }
