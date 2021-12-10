@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/runtime_fallback/kernel/op_kernel_runner.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
-namespace tfd {
+namespace tfrt_stub {
 namespace {
 
 Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
@@ -167,5 +167,5 @@ void OpKernelRunner::RunAsync(OpKernelContext* context,
   async->ComputeAsync(context, std::move(done_callback));
 }
 
-}  // namespace tfd
+}  // namespace tfrt_stub
 }  // namespace tensorflow

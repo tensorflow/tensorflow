@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/model_metadata.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
@@ -32,8 +33,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfd {
-
-class OpKernelRunnerTable;
 
 // FallbackResourceArray holds the tensors that are computed only once during
 // initialization and read-only afterwards.
@@ -72,7 +71,8 @@ class KernelFallbackCompatRequestState {
       tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       core::RefCountPtr<Rendezvous> rendezvous,
-      OpKernelRunnerTable* runner_table, FallbackResourceArray* resource_array,
+      tfrt_stub::OpKernelRunnerTable* runner_table,
+      FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
       const absl::optional<tfrt::ModelMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
@@ -81,7 +81,8 @@ class KernelFallbackCompatRequestState {
   KernelFallbackCompatRequestState(
       std::function<void(std::function<void()>)>* runner,
       const tensorflow::DeviceMgr* device_manager, int64_t step_id,
-      OpKernelRunnerTable* runner_table, FallbackResourceArray* resource_array,
+      tfrt_stub::OpKernelRunnerTable* runner_table,
+      FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
       const absl::optional<tfrt::ModelMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
@@ -105,7 +106,7 @@ class KernelFallbackCompatRequestState {
     return collective_executor_;
   }
 
-  OpKernelRunnerTable* runner_table() const { return runner_table_; }
+  tfrt_stub::OpKernelRunnerTable* runner_table() const { return runner_table_; }
 
   FallbackResourceArray* resource_array() const { return resource_array_; }
 
@@ -140,7 +141,7 @@ class KernelFallbackCompatRequestState {
 
   // `runner_table` holds the prepopulated tensorflow::OpKernel instances for
   // kernel fallback compat mode.
-  OpKernelRunnerTable* runner_table_ = nullptr;
+  tfrt_stub::OpKernelRunnerTable* runner_table_ = nullptr;
 
   // Resource array is used for keeping static values in the runtime. It is
   // accessed through tfrt_fallback_async.set_resource and

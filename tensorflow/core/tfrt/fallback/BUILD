@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -42,4 +43,31 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
+)
+
+cc_library(
+    name = "op_kernel_runner",
+    srcs = ["op_kernel_runner.cc"],
+    hdrs = ["op_kernel_runner.h"],
+    visibility = [
+        "//tensorflow/core/runtime_fallback:internal",
+        "//tensorflow/core/tfrt/eager:__pkg__",
+    ],
+    deps = [
+        "@com_google_absl//absl/container:inlined_vector",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/common_runtime:device_mgr",
+            "//tensorflow/core/common_runtime:function",
+            "//tensorflow/core:framework",
+            "//tensorflow/core/framework:node_def_proto_cc",
+            "//tensorflow/core/framework:op_def_proto_cc",
+            "//tensorflow/core/framework:tensor",
+            "//tensorflow/core/platform:errors",
+            "//tensorflow/core/platform:status",
+        ],
+    }),
 )

@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
-#include "tensorflow/core/runtime_fallback/kernel/op_kernel_runner.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tfrt/core_runtime/dispatch_utils.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_invocation.h"  // from @tf_runtime
@@ -63,6 +63,7 @@ class KernelFallbackOpHandler : public tfrt::OpHandler {
 
 namespace {
 
+using ::tensorflow::tfrt_stub::OpKernelRunner;
 using tfrt::AsyncValue;
 using tfrt::AsyncValueRef;
 using tfrt::Chain;

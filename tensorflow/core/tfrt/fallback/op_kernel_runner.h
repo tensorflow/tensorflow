@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_OP_KERNEL_RUNNER_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_OP_KERNEL_RUNNER_H_
+#ifndef TENSORFLOW_CORE_TFRT_FALLBACK_OP_KERNEL_RUNNER_H_
+#define TENSORFLOW_CORE_TFRT_FALLBACK_OP_KERNEL_RUNNER_H_
 
 #include <assert.h>
 #include <stddef.h>
@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
-namespace tfd {
+namespace tfrt_stub {
 
 class OpKernelRunner {
  public:
@@ -172,7 +172,7 @@ class OpKernelRunnerTable {
   std::vector<absl::optional<OpKernelRunner>> runners_;
 };
 
-}  // namespace tfd
+}  // namespace tfrt_stub
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_OP_KERNEL_RUNNER_H_
+#endif  // TENSORFLOW_CORE_TFRT_FALLBACK_OP_KERNEL_RUNNER_H_
