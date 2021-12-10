@@ -27,7 +27,6 @@ cc_library(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/core/framework:graph_proto_cc",
-        "//tensorflow/core/tfrt/utils:statusor",
     ],
 )
 
