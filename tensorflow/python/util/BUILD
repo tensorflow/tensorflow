@@ -523,7 +523,6 @@ tf_py_test(
     srcs = ["nest_test.py"],
     main = "nest_test.py",
     python_version = "PY3",
-    tags = ["no_oss_py310"],  # b/207151276
     deps = [":nest_test_main_lib"],
 )
 
