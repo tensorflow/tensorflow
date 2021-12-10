@@ -539,6 +539,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func @embedding_head_extraction(%arg0: tensor<!tf_type.string>) {
     // CHECK:      "tf_device.launch"()
     // CHECK-NEXT:   "tf.EnqueueTPUEmbeddingRaggedTensorBatch"
+    // CHECK-NEXT:   "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"
     // CHECK-NEXT:   tf_device.return
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
 
@@ -548,6 +549,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     "tf_device.cluster"() ( {
       "tf.UnknownOp"() : () -> ()
       "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {_xla_outside_compilation = "cluster1", table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
+      "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"(%arg0) {_xla_outside_compilation = "cluster1", table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return

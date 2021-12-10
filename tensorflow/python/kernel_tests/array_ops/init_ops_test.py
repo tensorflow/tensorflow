@@ -15,7 +15,6 @@
 """Tests for tensorflow.ops.ops."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -202,7 +201,7 @@ class ConstantInitializersTest(test.TestCase):
 
       actual = array_ops.reshape(x, [-1]).eval()
       self.assertGreater(len(actual), len(expected))
-      for i in xrange(len(actual)):
+      for i in range(len(actual)):
         a = actual[i]
         e = expected[i] if i < len(expected) else expected[-1]
         self.assertEqual(a, e)
@@ -549,7 +548,7 @@ class RangeTest(test.TestCase):
   def testLargeStarts(self):
     # Test case for GitHub issue 46899.
     with self.session():
-      with self.assertRaises(errors_impl.InternalError):
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         v = math_ops.range(start=-1e+38, limit=1)
         self.evaluate(v)
 

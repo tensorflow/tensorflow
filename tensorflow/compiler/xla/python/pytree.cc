@@ -159,7 +159,7 @@ void PyTreeDef::FlattenIntoImpl(
         py::list keys =
             py::reinterpret_steal<py::list>(PyDict_Keys(dict.ptr()));
         if (PyList_Sort(keys.ptr())) {
-          throw std::runtime_error("Dictionary key sort failed.");
+          throw py::error_already_set();
         }
         for (py::handle key : keys) {
           recurse(dict[key]);

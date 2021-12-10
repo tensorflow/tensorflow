@@ -186,6 +186,10 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           {'op': image_ops_impl.adjust_brightness,
            'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
            'delta': 0.2},
+          {'op': image_ops_impl.adjust_gamma,
+           'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'gamma': 2,
+           'gain': 1.2},
           {'op': image_ops_impl.stateless_random_brightness,
            'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
            'max_delta': 0.2,
@@ -466,6 +470,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         math_ops.scalar_mul,
         math_ops.scalar_mul_v2,
         image_ops_impl.adjust_brightness,
+        image_ops_impl.adjust_gamma,
         image_ops_impl.stateless_random_brightness,
         image_ops_impl.random_brightness,
         image_ops_impl.convert_image_dtype,
@@ -514,6 +519,40 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
     result = x + y
     self.assertAllEqual(result, expected)
+
+  @parameterized.parameters([
+      dict(
+          x=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]],
+                                              row_splits_dtype=dtypes.int64),
+          y=[1],
+          expected=[[2, 3, 4], [5, 6]],
+          expected_row_splits_dtype=dtypes.int64),
+      dict(
+          x=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]],
+                                              row_splits_dtype=dtypes.int32),
+          y=[1],
+          expected=[[2, 3, 4], [5, 6]],
+          expected_row_splits_dtype=dtypes.int32),
+      dict(
+          x=[1],
+          y=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]],
+                                              row_splits_dtype=dtypes.int64),
+          expected=[[2, 3, 4], [5, 6]],
+          expected_row_splits_dtype=dtypes.int64),
+      dict(
+          x=[1],
+          y=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]],
+                                              row_splits_dtype=dtypes.int32),
+          expected=[[2, 3, 4], [5, 6]],
+          expected_row_splits_dtype=dtypes.int32),
+  ])
+  def testElementwiseOpBroadcastTensorAndRaggedTensor(
+      self, x, y, expected, expected_row_splits_dtype):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
+    y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
+    result = x + y
+    self.assertAllEqual(result, expected)
+    self.assertEqual(result.row_splits.dtype, expected_row_splits_dtype)
 
   def testElementwiseOpShapeMismatch(self):
     x = ragged_factory_ops.constant([[1, 2, 3], [4, 5]])

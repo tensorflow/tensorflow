@@ -17,7 +17,10 @@ cc_library(
     hdrs = [
         "import.h",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ],
     deps = [
         ":convert_attributes",
         ":convert_tensor",

@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utils for make_zip tests."""
-import collections
 import functools
 import itertools
 import operator
@@ -79,6 +78,7 @@ TF_TYPE_INFO = {
     tf.int32: (np.int32, "INT32"),
     tf.uint32: (np.uint32, "UINT32"),
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
+    tf.int8: (np.int8, "INT8"),
     tf.int16: (np.int16, "QUANTIZED_INT16"),
     tf.int64: (np.int64, "INT64"),
     tf.bool: (np.bool_, "BOOL"),
@@ -86,13 +86,13 @@ TF_TYPE_INFO = {
 }
 
 
-class ExtraTocoOptions(object):
-  """Additional toco options besides input, output, shape."""
+class ExtraConvertOptions(object):
+  """Additional options for conversion, besides input, output, shape."""
 
   def __init__(self):
     # Whether to ignore control dependency nodes.
     self.drop_control_dependency = False
-    # Allow custom ops in the toco conversion.
+    # Allow custom ops in the conversion.
     self.allow_custom_ops = False
     # Rnn states that are used to support rnn / lstm cells.
     self.rnn_states = None
@@ -102,8 +102,6 @@ class ExtraTocoOptions(object):
     self.inference_input_type = None
     # The inference output type passed to TFLiteConvert.
     self.inference_output_type = None
-    # Converts from GraphDef instead of SavedModel.
-    self.convert_from_graphdef = False
 
 
 def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
@@ -118,7 +116,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     real = (max_value - min_value) * np.random.random_sample(shape) + min_value
     imag = (max_value - min_value) * np.random.random_sample(shape) + min_value
     value = real + imag * 1j
-  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int64, tf.int16):
+  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)
@@ -203,6 +201,36 @@ def write_examples(fp, examples):
       write_tensor(fp, name, value)
 
 
+class TextFormatWriter(object):
+  """Utility class for writing ProtoBuf like messages."""
+
+  def __init__(self, fp, name=None, parent=None):
+    self.fp = fp
+    self.indent = parent.indent if parent else 0
+    self.name = name
+
+  def __enter__(self):
+    if self.name:
+      self.write(self.name + " {")
+      self.indent += 2
+    return self
+
+  def __exit__(self, *exc_info):
+    if self.name:
+      self.indent -= 2
+      self.write("}")
+    return True
+
+  def write(self, data):
+    self.fp.write(" " * self.indent + data + "\n")
+
+  def write_field(self, key, val):
+    self.write(key + ": \"" + val + "\"")
+
+  def sub_message(self, name):
+    return TextFormatWriter(self.fp, name, self)
+
+
 def write_test_cases(fp, model_name, examples):
   """Given a dictionary of `examples`, write a text format representation.
 
@@ -213,25 +241,47 @@ def write_test_cases(fp, model_name, examples):
     fp: File-like object to write to.
     model_name: Filename where the model was written to, relative to filename.
     examples: Example dictionary consisting of keys "inputs" and "outputs"
+
+  Raises:
+    RuntimeError: Example dictionary does not have input / output names.
   """
 
-  fp.write("load_model: %s\n" % os.path.basename(model_name))
+  writer = TextFormatWriter(fp)
+  writer.write_field("load_model", os.path.basename(model_name))
   for example in examples:
-    fp.write("reshape {\n")
-    for _, value in example["inputs"].items():
-      if value is not None:
-        fp.write("  input: \"" + ",".join(map(str, value.shape)) + "\"\n")
-    fp.write("}\n")
+    inputs = []
+    for name in example["inputs"].keys():
+      if name:
+        inputs.append(name)
+    outputs = []
+    for name in example["outputs"].keys():
+      if name:
+        outputs.append(name)
+    if not (inputs and outputs):
+      raise RuntimeError("Empty input / output names.")
 
-    fp.write("invoke {\n")
-    for _, value in example["inputs"].items():
-      if value is not None:
-        fp.write("  input: \"" + format_result(value) + "\"\n")
-    for _, value in example["outputs"].items():
-      fp.write("  output: \"" + format_result(value) + "\"\n")
-      fp.write("  output_shape: \"" +
-               ",".join([str(dim) for dim in value.shape]) + "\"\n")
-    fp.write("}\n")
+    # Reshape message
+    with writer.sub_message("reshape") as reshape:
+      for name, value in example["inputs"].items():
+        with reshape.sub_message("input") as input_msg:
+          input_msg.write_field("key", name)
+          input_msg.write_field("value", ",".join(map(str, value.shape)))
+
+    # Invoke message
+    with writer.sub_message("invoke") as invoke:
+      for name, value in example["inputs"].items():
+        with invoke.sub_message("input") as input_msg:
+          input_msg.write_field("key", name)
+          input_msg.write_field("value", format_result(value))
+      # Expectations
+      for name, value in example["outputs"].items():
+        with invoke.sub_message("output") as output_msg:
+          output_msg.write_field("key", name)
+          output_msg.write_field("value", format_result(value))
+        with invoke.sub_message("output_shape") as output_shape:
+          output_shape.write_field("key", name)
+          output_shape.write_field("value",
+                                   ",".join([str(dim) for dim in value.shape]))
 
 
 def get_input_shapes_map(input_tensors):
@@ -294,7 +344,7 @@ def make_zip_of_tests(options,
                       test_parameters,
                       make_graph,
                       make_test_inputs,
-                      extra_toco_options=ExtraTocoOptions(),
+                      extra_convert_options=ExtraConvertOptions(),
                       use_frozen_graph=False,
                       expected_tf_failures=0):
   """Helper to make a zip file of a bunch of TensorFlow models.
@@ -302,8 +352,8 @@ def make_zip_of_tests(options,
   This does a cartesian product of the dictionary of test_parameters and
   calls make_graph() for each item in the cartesian product set.
   If the graph is built successfully, then make_test_inputs() is called to
-  build expected input/output value pairs. The model is then converted to tflite
-  with toco, and the examples are serialized with the tflite model into a zip
+  build expected input/output value pairs. The model is then converted to
+  tflite, and the examples are serialized with the tflite model into a zip
   file (2 files per item in the cartesian product set).
 
   Args:
@@ -314,8 +364,8 @@ def make_zip_of_tests(options,
       `[input1, input2, ...], [output1, output2, ...]`
     make_test_inputs: function taking `curr_params`, `session`, `input_tensors`,
       `output_tensors` and returns tuple `(input_values, output_values)`.
-    extra_toco_options: Additional toco options.
-    use_frozen_graph: Whether or not freeze graph before toco converter.
+    extra_convert_options: Additional convert options.
+    use_frozen_graph: Whether or not freeze graph before convertion.
     expected_tf_failures: Number of times tensorflow is expected to fail in
       executing the input graphs. In some cases it is OK for TensorFlow to fail
       because the one or more combination of parameters is invalid.
@@ -349,7 +399,7 @@ def make_zip_of_tests(options,
     archive = zipfile.PyZipFile(zip_path, "w")
   zip_manifest = []
   convert_report = []
-  toco_errors = 0
+  converter_errors = 0
 
   processed_labels = set()
 
@@ -360,12 +410,14 @@ def make_zip_of_tests(options,
     for parameters in test_parameters:
       if True in parameters.get("fully_quantize", []):
         parameters.update({"fully_quantize": [True, False], "tf_ptq": [True]})
+        # TODO(b/199054047): Support 16x8 quantization in TF Quantization.
+        parameters.update({"quant_16x8": [False]})
         parameter_count += functools.reduce(
             operator.mul, [len(values) for values in parameters.values()])
 
   if options.make_edgetpu_tests:
-    extra_toco_options.inference_input_type = tf.uint8
-    extra_toco_options.inference_output_type = tf.uint8
+    extra_convert_options.inference_input_type = tf.uint8
+    extra_convert_options.inference_output_type = tf.uint8
     # Only count parameters when fully_quantize is True.
     parameter_count = 0
     for parameters in test_parameters:
@@ -464,17 +516,20 @@ def make_zip_of_tests(options,
         Returns:
           (tflite_model_binary, report) where tflite_model_binary is the
           serialized flatbuffer as a string and report is a dictionary with
-          keys `toco_log` (log of toco conversion), `tf_log` (log of tf
-          conversion), `toco` (a string of success status of the conversion),
-          `tf` (a string success status of the conversion).
+          keys `tflite_converter_log` (log of conversion), `tf_log` (log of tf
+          conversion), `converter` (a string of success status of the
+          conversion), `tf` (a string success status of the conversion).
         """
 
         np.random.seed(RANDOM_SEED)
-        report = {"converter": report_lib.NOTRUN, "tf": report_lib.FAILED}
+        report = {
+            "tflite_converter": report_lib.NOTRUN,
+            "tf": report_lib.FAILED
+        }
 
         # Build graph
         report["tf_log"] = ""
-        report["converter_log"] = ""
+        report["tflite_converter_log"] = ""
         tf.reset_default_graph()
 
         with tf.Graph().as_default():
@@ -502,16 +557,8 @@ def make_zip_of_tests(options,
                   ValueError):
             report["tf_log"] += traceback.format_exc()
             return None, report
-          report["converter"] = report_lib.FAILED
+          report["tflite_converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
-
-          # Sorts the lists to make the order of input/output the same as order
-          # of the signature names.
-          # TODO(b/192473002): Remove sorting after TFLiteDriver can run with
-          # signatures.
-          inputs = sorted(inputs, key=lambda x: _normalize_input_name(x.name))
-          outputs = sorted(
-              outputs, key=lambda x: _normalize_output_name(x.name))
 
           # Builds a saved model with the default signature key.
           input_names, tensor_info_inputs = _get_tensor_info(
@@ -546,19 +593,19 @@ def make_zip_of_tests(options,
               outputs) if use_frozen_graph else sess.graph_def
 
         if "split_tflite_lstm_inputs" in param_dict_real:
-          extra_toco_options.split_tflite_lstm_inputs = param_dict_real[
+          extra_convert_options.split_tflite_lstm_inputs = param_dict_real[
               "split_tflite_lstm_inputs"]
-        tflite_model_binary, toco_log = options.tflite_convert_function(
+        tflite_model_binary, converter_log = options.tflite_convert_function(
             options,
             saved_model_dir,
             input_tensors,
             output_tensors,
-            extra_toco_options=extra_toco_options,
+            extra_convert_options=extra_convert_options,
             test_params=param_dict_real)
-        report["converter"] = (
+        report["tflite_converter"] = (
             report_lib.SUCCESS
             if tflite_model_binary is not None else report_lib.FAILED)
-        report["converter_log"] = toco_log
+        report["tflite_converter_log"] = converter_log
 
         if options.save_graphdefs:
           zipinfo = zipfile.ZipInfo(zip_path_label + ".pbtxt")
@@ -573,12 +620,6 @@ def make_zip_of_tests(options,
           zipinfo = zipfile.ZipInfo(zip_path_label + ".bin")
           archive.writestr(zipinfo, tflite_model_binary, zipfile.ZIP_DEFLATED)
 
-          # TODO(b/192473002): Remove sorting after TFLiteDriver can run with
-          # signatures.
-          baseline_input_map = collections.OrderedDict(
-              sorted(baseline_input_map.items()))
-          baseline_output_map = collections.OrderedDict(
-              sorted(baseline_output_map.items()))
           example = {
               "inputs": baseline_input_map,
               "outputs": baseline_output_map
@@ -605,7 +646,7 @@ def make_zip_of_tests(options,
 
       _, report = build_example(label, param_dict, zip_path_label)
 
-      if report["converter"] == report_lib.FAILED:
+      if report["tflite_converter"] == report_lib.FAILED:
         ignore_error = False
         if not options.known_bugs_are_errors:
           for pattern, bug_number in options.known_bugs.items():
@@ -613,9 +654,9 @@ def make_zip_of_tests(options,
               print("Ignored converter error due to bug %s" % bug_number)
               ignore_error = True
         if not ignore_error:
-          toco_errors += 1
+          converter_errors += 1
           print("-----------------\nconverter error!\n%s\n-----------------\n" %
-                report["converter_log"])
+                report["tflite_converter_log"])
 
       convert_report.append((param_dict, report))
 
@@ -640,14 +681,14 @@ def make_zip_of_tests(options,
   total_conversions = len(convert_report)
   tf_success = sum(
       1 for x in convert_report if x[1]["tf"] == report_lib.SUCCESS)
-  toco_success = sum(
-      1 for x in convert_report if x[1]["converter"] == report_lib.SUCCESS)
+  converter_success = sum(1 for x in convert_report
+                          if x[1]["tflite_converter"] == report_lib.SUCCESS)
   percent = 0
   if tf_success > 0:
-    percent = float(toco_success) / float(tf_success) * 100.
+    percent = float(converter_success) / float(tf_success) * 100.
   tf.logging.info(("Archive %s Considered %d graphs, %d TF evaluated graphs "
-                   " and %d TOCO converted graphs (%.1f%%"), zip_path,
-                  total_conversions, tf_success, toco_success, percent)
+                   " and %d converted graphs (%.1f%%"), zip_path,
+                  total_conversions, tf_success, converter_success, percent)
 
   tf_failures = parameter_count - tf_success
 
@@ -662,6 +703,6 @@ def make_zip_of_tests(options,
                         "but that happened %d times") %
                        (expected_tf_failures, zip_path, tf_failures))
 
-  if not options.ignore_converter_errors and toco_errors > 0:
-    raise RuntimeError("Found %d errors while generating toco models" %
-                       toco_errors)
+  if not options.ignore_converter_errors and converter_errors > 0:
+    raise RuntimeError("Found %d errors while generating models" %
+                       converter_errors)

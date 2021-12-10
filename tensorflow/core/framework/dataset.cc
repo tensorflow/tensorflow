@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -27,7 +28,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
@@ -580,10 +583,6 @@ void DatasetBase::Initialize(const Metadata& metadata) {
   if (!s.ok()) {
     LOG(ERROR) << s;
   }
-  s = ComputeCardinality();
-  if (!s.ok()) {
-    LOG(ERROR) << s;
-  }
   metadata_ = metadata;
   if (metadata_.name() == "") {
     static std::atomic<int64_t> id_counter(0);
@@ -621,20 +620,18 @@ Status DatasetBase::ComputeNumSources() {
   return Status::OK();
 }
 
-Status DatasetBase::ComputeCardinality() {
-  cardinality_ = this->CardinalityInternal();
-  return Status::OK();
-}
-
 Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
-  if (cardinality_ == kInfiniteCardinality ||
-      cardinality_ == kUnknownCardinality) {
+  CardinalityOptions options;
+  options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
+  int64 cardinality = Cardinality(options);
+  if (cardinality == kInfiniteCardinality ||
+      cardinality == kUnknownCardinality) {
     return tensorflow::errors::FailedPrecondition(
         "Dataset of type ", this->DebugString(), "has cardinality ",
-        cardinality_, "which does not support random access.");
+        cardinality, "which does not support random access.");
   }
-  if (index < 0 || index >= cardinality_) {
-    return errors::OutOfRange("Index out of range [0, ", cardinality_,
+  if (index < 0 || index >= cardinality) {
+    return errors::OutOfRange("Index out of range [0, ", cardinality,
                               "):", index);
   }
   return Status::OK();
@@ -644,6 +641,17 @@ Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
                         std::vector<Tensor>* out_tensors) const {
   return errors::Unimplemented(
       "Random access is not implemented for this dataset.");
+}
+
+StatusOr<DatasetBase*> DatasetBase::Finalize(
+    OpKernelContext* ctx,
+    std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+        make_finalized_dataset) {
+  mutex_lock l(mu_);
+  if (!finalized_dataset_) {
+    TF_ASSIGN_OR_RETURN(finalized_dataset_, make_finalized_dataset());
+  }
+  return finalized_dataset_.get();
 }
 
 Status DatasetBase::MergeOptionsFromInputs() {
@@ -715,6 +723,22 @@ Status DatasetBase::MakeSplitProviders(
         "), and no custom implementation of `MakeSplitProvider` is defined.");
   }
   return inputs[0]->MakeSplitProviders(split_providers);
+}
+
+int64_t DatasetBase::Cardinality() const {
+  mutex_lock l(cardinality_mu_);
+  if (cardinality_ == kUnknownCardinality) {
+    cardinality_ = CardinalityInternal();
+  }
+  return cardinality_;
+}
+
+int64_t DatasetBase::Cardinality(CardinalityOptions options) const {
+  mutex_lock l(cardinality_mu_);
+  if (cardinality_ == kUnknownCardinality) {
+    cardinality_ = CardinalityInternal(options);
+  }
+  return cardinality_;
 }
 
 Status DatasetBase::InputDatasets(

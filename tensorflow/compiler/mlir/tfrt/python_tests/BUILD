@@ -19,8 +19,36 @@ py_strict_test(
 )
 
 py_strict_test(
+    name = "tf_acos_test",
+    srcs = ["tf_acos_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
     name = "tf_binary_bcast_test",
     srcs = ["tf_binary_bcast_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "no_pip",  # TODO(b/201803253): TFRT pybindings not in OSS.
+        "nomsan",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "tf_broadcast_to_test",
+    srcs = ["tf_broadcast_to_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",
@@ -34,8 +62,8 @@ py_strict_test(
 )
 
 py_strict_test(
-    name = "tf_broadcast_to_test",
-    srcs = ["tf_broadcast_to_test.py"],
+    name = "tf_cast_test",
+    srcs = ["tf_cast_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",
@@ -238,18 +266,17 @@ py_strict_test(
 )
 
 py_strict_test(
-    name = "tf_compile_test",
-    srcs = ["tf_compile_test.py"],
-    data = glob(
-        ["regression_tests/*"],
-        exclude = ["regression_tests/*.disabled.mlir"],
-    ),
+    name = "tf_softmax_test",
+    srcs = ["tf_softmax_test.py"],
     python_version = "PY3",
-    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/platform",
+        "//third_party/py/numpy",
     ],
 )
 

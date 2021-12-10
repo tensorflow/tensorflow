@@ -14,10 +14,19 @@
 # ==============================================================================
 """Asset-type Trackable object."""
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.training.tracking import base
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
+
+# TODO(b/205183809): Remove once nested_structure_coder no longer adds
+# dependency cycles.
+saved_model_utils = lazy_loader.LazyLoader(
+    "saved_model_utils", globals(),
+    "tensorflow.python.saved_model.utils_impl")
 
 
 @tf_export("saved_model.Asset")
@@ -72,6 +81,21 @@ class Asset(base.Trackable):
   def asset_path(self):
     """Fetch the current asset path."""
     return self._path
+
+  @classmethod
+  def _deserialize_from_proto(cls, object_proto, export_dir, asset_file_def,
+                              **unused_kwargs):
+    proto = object_proto.asset
+    filename = file_io.join(
+        saved_model_utils.get_assets_dir(export_dir),
+        asset_file_def[proto.asset_file_def_index].filename)
+    asset = cls(filename)
+    if not context.executing_eagerly():
+      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset.asset_path)
+    return asset
+
+  def _add_trackable_child(self, name, value):
+    setattr(self, name, value)
 
 
 ops.register_tensor_conversion_function(

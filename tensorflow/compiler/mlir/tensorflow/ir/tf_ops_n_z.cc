@@ -64,8 +64,13 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_arith_ops_folder.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_canonicalization_helper.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_device_helper.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_layout_helper.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_tensor_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -78,7 +83,15 @@ namespace mlir {
 namespace TF {
 
 namespace {
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
+// Returns the equivalent Value skipping through identity nodes.
+Value LookThroughIdentity(Value result) {
+  while (isa_and_nonnull<IdentityOp, IdentityNOp>(result.getDefiningOp())) {
+    auto op_result = result.cast<OpResult>();
+    result = op_result.getOwner()->getOperand(op_result.getResultNumber());
+  }
+  return result;
+}
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
 
@@ -136,7 +149,7 @@ static LogicalResult Verify(OneHotOp op) {
   if (matchPattern(op.depth(), m_Constant(&depth_attr))) {
     if (depth_attr.getType().getRank() != 0)
       return op.emitOpError() << "requires depth to be a scalar";
-    int64_t depth = depth_attr.getValue<APInt>({}).getSExtValue();
+    int64_t depth = depth_attr.getValues<APInt>()[0].getSExtValue();
     if (depth < 0) {
       return op.emitOpError() << "depth must be non-negative, got: " << depth;
     }
@@ -627,9 +640,9 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
          delta_tensor.getType().getRank() == 0);
   Type elem_type = getType().cast<ShapedType>().getElementType();
   if (elem_type.isSignlessInteger() || elem_type.isUnsignedInteger()) {
-    auto start_attr = start_tensor.getValue<IntegerAttr>({});
-    auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
-    auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
+    auto start_attr = start_tensor.getValues<IntegerAttr>()[0];
+    auto limit_attr = limit_tensor.getValues<IntegerAttr>()[0];
+    auto delta_attr = delta_tensor.getValues<IntegerAttr>()[0];
     int num_elements;
     if (elem_type.isUnsignedInteger()) {
       uint64_t start = start_attr.getUInt();
@@ -648,9 +661,9 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
     return BuildConstRangeTensor(elem_type, num_elements, start_attr,
                                  delta_attr);
   } else if (elem_type.isa<FloatType>()) {
-    auto start_attr = start_tensor.getValue<FloatAttr>({});
-    auto limit_attr = limit_tensor.getValue<FloatAttr>({});
-    auto delta_attr = delta_tensor.getValue<FloatAttr>({});
+    auto start_attr = start_tensor.getValues<FloatAttr>()[0];
+    auto limit_attr = limit_tensor.getValues<FloatAttr>()[0];
+    auto delta_attr = delta_tensor.getValues<FloatAttr>()[0];
     const int num_elements = GetLengthOfRange(start_attr.getValueAsDouble(),
                                               limit_attr.getValueAsDouble(),
                                               delta_attr.getValueAsDouble());
@@ -1233,9 +1246,10 @@ static LogicalResult Verify(SliceOp op) {
     for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
       int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
-      int64_t slice_size = constant_slice_sizes
-                               ? slice_sizes.getValue<APInt>(dim).getSExtValue()
-                               : 0;
+      int64_t slice_size =
+          constant_slice_sizes
+              ? slice_sizes.getValues<APInt>()[dim].getSExtValue()
+              : 0;
       int64_t output_size = output_ty ? output_ty.getShape()[dim] : -1;
 
       if (slice_size == -1 && input_size != -1) {
@@ -1261,7 +1275,7 @@ static LogicalResult Verify(SliceOp op) {
     if (matchPattern(op.size(), m_Constant(&slice_sizes))) {
       auto input_shape = input_ty.getShape();
       for (int64_t i = 0; i < input_ty.getRank(); ++i) {
-        int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+        int64_t slice_size = slice_sizes.getValues<APInt>()[i].getSExtValue();
         int64_t input_size = input_shape[i];
         if (slice_size != -1 && input_size != -1 && slice_size > input_size) {
           return op.emitOpError() << "requires size[i] <= Di, even if begin[i] "
@@ -1384,9 +1398,9 @@ static LogicalResult Verify(SpaceToBatchNDOp op) {
   if (matchPattern(op.paddings(), m_Constant(&paddings_attr))) {
     for (uint64_t i = 0; i < block_rank; ++i) {
       const int64_t pad_start =
-          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValues<APInt>()[{i, 0}].getSExtValue();
       const int64_t pad_end =
-          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValues<APInt>()[{i, 1}].getSExtValue();
       if (pad_start < 0 || pad_end < 0) {
         return op.emitOpError()
                << "requires all values of paddings to be >= 0; "
@@ -1401,11 +1415,11 @@ static LogicalResult Verify(SpaceToBatchNDOp op) {
     for (uint64_t i = 0; i < block_rank; ++i) {
       const int64_t input_len = input_type.getShape()[1 + i];
       const int64_t pad_start =
-          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValues<APInt>()[{i, 0}].getSExtValue();
       const int64_t pad_end =
-          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValues<APInt>()[{i, 1}].getSExtValue();
       const int64_t block_len =
-          block_shape_attr.getValue({i}).cast<IntegerAttr>().getInt();
+          block_shape_attr.getValues<APInt>()[i].getSExtValue();
       if ((input_len + pad_start + pad_end) % block_len != 0) {
         return op.emitOpError()
                << "requires block_shape[i] divides "
@@ -1619,8 +1633,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
 
 void SumOp::build(OpBuilder &builder, OperationState &result, Value input,
                   Value reduction_indices, BoolAttr keep_dims) {
-  Type out_ty =
-      InferReductionOpType(input, reduction_indices, keep_dims, &builder);
+  Type out_ty = InferReductionOpType(input, reduction_indices, keep_dims);
   build(builder, result, out_ty, input, reduction_indices, keep_dims);
 }
 
@@ -2010,9 +2023,9 @@ OpFoldResult StridedSliceOp::fold(ArrayRef<Attribute> operands) {
   if (!tensor_ty) return {};
 
   int64_t rank = tensor_ty.getRank();
-  int64_t begin_int = begin_attr.getValue<APInt>(0).getSExtValue();
-  int64_t end_int = end_attr.getValue<APInt>(0).getSExtValue();
-  int64_t strides_int = strides_attr.getValue<APInt>(0).getSExtValue();
+  int64_t begin_int = begin_attr.getValues<APInt>()[0].getSExtValue();
+  int64_t end_int = end_attr.getValues<APInt>()[0].getSExtValue();
+  int64_t strides_int = strides_attr.getValues<APInt>()[0].getSExtValue();
 
   // Canonicalize `begin` and `end` in case of negative index.
   if (begin_int < 0) begin_int += rank;
@@ -2158,12 +2171,7 @@ SummaryWriterOp::GetResourceHandleValueAndIdList(
 void TPUExecuteOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(args().size() + 2);
-
-  // There may be some TPU Embedding ops in the computation, so this effect is
-  // added conservatively.
-  effects.emplace_back(MemoryEffects::Write::get(),
-                       ResourceEffects::TPUEmbedding::get());
+  effects.reserve(args().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUCompileExecute::get());
 
@@ -2226,12 +2234,7 @@ static LogicalResult Verify(TPUExecuteAndUpdateVariablesOp op) {
 void TPUExecuteAndUpdateVariablesOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(device_var_reads_indices().size() + 2);
-
-  // There may be some TPU Embedding ops in the computation, so this effect is
-  // added conservatively.
-  effects.emplace_back(MemoryEffects::Write::get(),
-                       ResourceEffects::TPUEmbedding::get());
+  effects.reserve(device_var_reads_indices().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUCompileExecute::get());
   auto resource_handles = llvm::make_filter_range(args(), [](Value value) {
@@ -2370,7 +2373,7 @@ static LogicalResult Verify(TileOp op) {
       for (int32_t i = 0, e = input_type.getRank(); i < e; ++i) {
         const int64_t input_dim = input_type.getDimSize(i);
         const int64_t output_dim = output_type.getDimSize(i);
-        const int64_t m = multiples_attr.getValue<APInt>(i).getSExtValue();
+        const int64_t m = multiples_attr.getValues<APInt>()[i].getSExtValue();
 
         if (m < 0) {
           return op.emitOpError()
@@ -3288,7 +3291,7 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
 
     DenseIntElementsAttr dim_index_attr;
     if (matchPattern(op.dim_index(), m_Constant(&dim_index_attr))) {
-      int64_t dim_index = dim_index_attr.getValue<APInt>({}).getSExtValue();
+      int64_t dim_index = dim_index_attr.getValues<APInt>()[0].getSExtValue();
 
       int64_t rank = operand_ty.getRank();
       if (dim_index < 0 || dim_index >= rank) {
@@ -3305,6 +3308,160 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
   }
 
   inferredReturnTypes.push_back(result_ty);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// XlaVariadicReduceOp
+//===----------------------------------------------------------------------===//
+//
+
+static LogicalResult Verify(XlaVariadicReduceOp op) {
+  // We rely on V2 for the majority of the checks.
+  const auto &input_ty = op.input().getType();
+  if (input_ty.empty()) return op.emitOpError() << "No input";
+  const auto &dtype = input_ty[0].cast<TensorType>().getElementType();
+  for (const auto &ty : input_ty) {
+    if (ty.cast<TensorType>().getElementType() != dtype)
+      return op.emitOpError()
+             << "This version is limited to operands of the same dtype";
+  }
+  return success();
+}
+
+class XlaVariadicReduceToV2 : public OpRewritePattern<TF::XlaVariadicReduceOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaVariadicReduceOp op,
+                                PatternRewriter &rewriter) const override {
+    mlir::TF::XlaVariadicReduceV2Op xla_variadic_reduce_v2_op =
+        rewriter.create<::mlir::TF::XlaVariadicReduceV2Op>(
+            op.getLoc(), op.getResults().getTypes(), op.input(),
+            op.init_value(), op.dimensions_to_reduce(), op.reducer());
+
+    rewriter.replaceOp(op, xla_variadic_reduce_v2_op.getResults());
+    return ::mlir::success();
+  };
+};
+
+void XlaVariadicReduceOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<XlaVariadicReduceToV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaVariadicReduceV2Op
+//===----------------------------------------------------------------------===//
+//
+
+static LogicalResult Verify(XlaVariadicReduceV2Op op) {
+  const auto &inputs_ty = op.inputs().getType();
+  int n_inputs = inputs_ty.size();
+  if (n_inputs < 1) return op.emitOpError() << "No inputs";
+
+  const auto &init_values_ty = op.init_values().getType();
+  int n_init_values = init_values_ty.size();
+  if (n_init_values != n_inputs)
+    return op.emitOpError() << "Number of inputs (" << n_inputs
+                            << ") is different than number of init_values ("
+                            << n_init_values << ")";
+
+  if (inputs_ty[0].cast<ShapedType>().hasStaticShape()) {
+    for (int i = 0; i < n_inputs; ++i) {
+      if (inputs_ty[i].cast<ShapedType>().getShape() !=
+          inputs_ty[0].cast<ShapedType>().getShape())
+        return op.emitOpError() << "inputs[" << i << "] has shape ["
+                                << inputs_ty[i].cast<ShapedType>().getShape()
+                                << "] different than the shape of inputs[0]: "
+                                << inputs_ty[0].cast<ShapedType>().getShape();
+      if (init_values_ty[i].cast<ShapedType>().getRank() != 0)
+        return op.emitOpError()
+               << "init_values[" << i << "] must be a scalar but got ["
+               << init_values_ty[i].cast<ShapedType>().getShape() << "]";
+    }
+
+    if (op.dimensions_to_reduce().size() >
+        inputs_ty[0].cast<ShapedType>().getRank())
+      return op.emitOpError()
+             << "Invalid dimensions_to_reduce argument to XlaReduce";
+  }
+
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  auto function = dyn_cast_or_null<mlir::FuncOp>(
+      SymbolTable::lookupSymbolIn(module, op.reducer()));
+  if (!function) return op.emitOpError() << "No reducer";
+  if (!function.body().hasOneBlock())
+    return op.emitOpError() << "reducer has more than one block";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// XlaVariadicSortOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(XlaVariadicSortOp op) {
+  const auto &inputs_ty = op.inputs().getType();
+  int n_inputs = inputs_ty.size();
+  auto input_ty_0 = inputs_ty[0].cast<ShapedType>();
+  if (input_ty_0.hasStaticShape()) {
+    for (int i = 0; i < n_inputs; ++i) {
+      auto input_ty_i = inputs_ty[i].cast<ShapedType>();
+      if (input_ty_i.hasStaticShape() &&
+          input_ty_i.getShape() != input_ty_0.getShape()) {
+        return op.emitOpError()
+               << "input[" << i << "] has shape [" << input_ty_i.getShape()
+               << "] different than the shape of input[0]: "
+               << input_ty_0.getShape();
+      }
+    }
+  }
+
+  ElementsAttr dimension;
+  if (matchPattern(op.dimension(), m_Constant(&dimension))) {
+    if (dimension.getType().getRank() != 0 ||
+        dimension.getType().getNumElements() != 1)
+      return op.emitOpError() << "dimension must be a scalar";
+  }
+
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  auto function = dyn_cast_or_null<mlir::FuncOp>(
+      SymbolTable::lookupSymbolIn(module, op.comparator()));
+  if (!function) return op.emitOpError() << "No comparator";
+  if (!function.body().hasOneBlock())
+    return op.emitOpError() << "comparator has more than one block";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SetStaticDimensionBoundsOp
+//===----------------------------------------------------------------------===//
+//
+
+static LogicalResult Verify(SetStaticDimensionBoundsOp op) {
+  mlir::ShapedType input_type = op.input().getType().cast<mlir::ShapedType>();
+  mlir::ShapedType static_shape_type =
+      op.static_shape().getType().cast<mlir::ShapedType>();
+  int input_type_rank = input_type.hasRank() ? input_type.getRank() : -1;
+  if (input_type_rank > 2) {
+    return op.emitOpError() << "was used with an input tensor with rank > 2, "
+                               "only tensors of rank 1,2 are supported";
+  }
+
+  if (!static_shape_type.hasRank() || static_shape_type.getRank() != 1) {
+    return op.emitOpError(
+        "static shape must be a ranked tensor of rank 1 (vector)");
+  }
+  if (input_type_rank != -1 && static_shape_type.hasStaticShape()) {
+    if (static_shape_type.getShape()[0] != input_type_rank) {
+      return op.emitOpError(
+          "static shape must have num_elements == rank of input "
+          "tensor");
+    }
+  }
+
   return success();
 }
 

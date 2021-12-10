@@ -49,6 +49,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -1207,7 +1208,63 @@ def disable_eager_op_as_function(unused_msg):
     func._disable_eager_op_as_function = True
     return func
 
+  # Once the environment flag is flipped and `run_eager_op_as_function_enabled`
+  # is True by default, the `with_eager_op_as_function` wrapper will not add a
+  # separate test for eager_op_as_function execution. In that case the test with
+  # the original name needs to be disabled.
+  if context.run_eager_op_as_function_enabled():
+    return _disable_test(execute_func=False)
+
   return wrapper
+
+
+def set_xla_env_flag(func=None, flag=""):
+  """Decorator for setting XLA_FLAGS prior to running a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will allow users to set any xla flags
+  exposed via the XLA_FLAGS environment variable, execute the test, then reset
+  the XLA_FLAGS to the state it was in prior to this test.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @set_xla_env_flag(flag='--xla_gpu_enable_fast_min_max=false')
+    def testFoo(self):
+      ...
+
+  Args:
+    func: The function to be wrapped.
+    flag: The xla flag to be set in the XLA_FLAGS env variable.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+      original_xla_flags = os.environ.get("XLA_FLAGS")
+      new_xla_flags = flag
+      if original_xla_flags:
+        new_xla_flags = new_xla_flags + " " + original_xla_flags
+      os.environ["XLA_FLAGS"] = new_xla_flags
+      try:
+        return f(*args, **kwargs)
+      finally:
+        if original_xla_flags is None:
+          del os.environ["XLA_FLAGS"]
+        else:
+          os.environ["XLA_FLAGS"] = original_xla_flags
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
 
 
 def build_as_function_and_v1_graph(func=None):
@@ -3356,23 +3413,33 @@ class TensorFlowTestCase(googletest.TestCase):
         exception_type, r"Incompatible shapes|Dimensions must be equal|"
         r"required broadcastable shapes")
 
-  def assertShapeEqual(self, np_array, tf_tensor, msg=None):
-    """Asserts that a Numpy ndarray and a TensorFlow tensor have the same shape.
+  def assertShapeEqual(self, input_a, input_b, msg=None):
+    """Asserts that two Numpy or TensorFlow objects have the same shape.
+
+    For Tensors, this compares statically known shapes at compile time, not
+    dynamic shapes at runtime.
 
     Args:
-      np_array: A Numpy ndarray or Numpy scalar.
-      tf_tensor: A Tensor.
+      input_a: A Numpy ndarray, Numpy scalar, or a Tensor.
+      input_b: A Numpy ndarray, Numpy scalar, or a Tensor.
       msg: Optional message to report on failure.
 
     Raises:
       TypeError: If the arguments have the wrong type.
     """
-    if not isinstance(np_array, (np.ndarray, np.generic)):
-      raise TypeError("np_array must be a Numpy ndarray or Numpy scalar")
-    if not isinstance(tf_tensor, ops.Tensor):
-      raise TypeError("tf_tensor must be a Tensor")
-    self.assertAllEqual(
-        np_array.shape, tf_tensor.get_shape().as_list(), msg=msg)
+    if not isinstance(input_a, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_a must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_a)}")
+    if not isinstance(input_b, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_b must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_b)}")
+    shape_a = input_a.get_shape().as_list() if isinstance(
+        input_a, ops.Tensor) else input_a.shape
+    shape_b = input_b.get_shape().as_list() if isinstance(
+        input_b, ops.Tensor) else input_b.shape
+    self.assertAllEqual(shape_a, shape_b, msg=msg)
 
   def assertDeviceEqual(self, device1, device2, msg=None):
     """Asserts that the two given devices are the same.
@@ -3460,16 +3527,15 @@ class TensorFlowTestCase(googletest.TestCase):
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
   # Fix Python 3+ compatibility issues
-  if not six.PY2:
-    # pylint: disable=invalid-name
+  # pylint: disable=invalid-name
 
-    # Silence a deprecation warning
-    assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
+  # Silence a deprecation warning
+  assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
 
-    # assertItemsEqual is assertCountEqual as of 3.2.
-    assertItemsEqual = googletest.TestCase.assertCountEqual
+  # assertItemsEqual is assertCountEqual as of 3.2.
+  assertItemsEqual = googletest.TestCase.assertCountEqual
 
-    # pylint: enable=invalid-name
+  # pylint: enable=invalid-name
 
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):
@@ -3773,3 +3839,20 @@ def run_functions_eagerly(run_eagerly):
     yield
   finally:
     def_function.run_functions_eagerly(initial_state)
+
+
+class TestDelta(object):
+  """A utility class to track increments to test counters."""
+
+  def __init__(self, name, label):
+    self.name = name
+    self.label = label
+    self.Reset()
+
+  def Reset(self):
+    self.last_value = _test_metrics_util.test_counter_value(
+        self.name, self.label)
+
+  def Get(self):
+    value = _test_metrics_util.test_counter_value(self.name, self.label)
+    return value - self.last_value

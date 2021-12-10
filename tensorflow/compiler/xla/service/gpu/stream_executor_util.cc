@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -490,6 +492,12 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       return se::dnn::ToDataType<float>::value;
     case F64:
       return se::dnn::ToDataType<double>::value;
+    case S8:
+      return se::dnn::ToDataType<int8>::value;
+    case S32:
+      return se::dnn::ToDataType<int32>::value;
+    case BF16:
+      return se::dnn::ToDataType<Eigen::bfloat16>::value;
     default:
       break;
   }

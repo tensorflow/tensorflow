@@ -1,4 +1,5 @@
 // RUN: tf-opt %s -tfl-raise-custom-ops -tfl-prepare-tf -tfl-test-raise-tf-targets="tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" | FileCheck --dump-input=always %s
+// RUN: tf-opt %s -tfl-raise-custom-ops -tfl-prepare-tf=tfl-use-fake-quant-num-bits=true -tfl-test-raise-tf-targets="tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" | FileCheck --check-prefix LOBIT --dump-input=always %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
@@ -258,5 +259,52 @@ func @perChannelFakeQuantWithDepthwiseConv2DWithReshape(%arg: tensor<1x160x160x4
 // CHECK: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]])
 // CHECK: %[[CONV:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[DEQUANTIZE]], %[[CONSTANT]])
 // CHECK: return %[[CONV]]
+}
+
+// LOBIT-LABEL: fakeQuant3BitPerChannelForActivation
+func @fakeQuant3BitPerChannelForActivation(%arg0: tensor<8x4xf32>) -> (tensor<8x4xf32>) {
+  %arg1 = arith.constant dense<[0.0, -1.0, -7.0, -6.0]> : tensor<4xf32>
+  %arg2 = arith.constant dense<[7.0, 6.0, 7.0, 8.0]> : tensor<4xf32>
+  %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<8x4xf32>
+  return %0 : tensor<8x4xf32>
+
+// LOBIT:  %[[fq:.*]] = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %cst, %cst_0)
+// LOBIT:  %[[q:.*]] = "tfl.quantize"(%[[fq]]) {qtype = tensor<8x4x!quant.uniform<u8<0:7>:f32:1, {1.000000e+00,1.000000e+00:1,2.000000e+00:4,2.000000e+00:3}>>}
+// LOBIT:  %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// LOBIT:  return %[[dq]]
+}
+
+// LOBIT-LABEL: fakeQuant3BitForActivation
+func @fakeQuant3BitForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
+^bb0(%arg0: tensor<8xf32>):
+  %arg1 = arith.constant dense<-6.0> : tensor<f32>
+  %arg2 = arith.constant dense<8.0> : tensor<f32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
+  return %0 : tensor<8xf32>
+
+// LOBIT:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_0)
+// LOBIT:  %1 = "tfl.quantize"(%0) {qtype = tensor<8x!quant.uniform<u8<0:7>:f32, 2.000000e+00:3>>}
+// LOBIT:  %2 = "tfl.dequantize"(%1)
+// LOBIT:  return %2
+}
+
+// LOBIT-LABEL: fakeQuant4BitWithConv2DPerChannel
+func @fakeQuant4BitWithConv2DPerChannel(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x4xf32>) {
+^bb0(%arg: tensor<256x32x32x3xf32>) :
+  %in = arith.constant dense<0.0> : tensor<3x3x3x4xf32>
+  %min = arith.constant dense<[0.0, -1.0, -6.0, -14.0]> : tensor<4xf32>
+  %max = arith.constant dense<[14.0, 13.0, 8.0, 0.0]> : tensor<4xf32>
+  %mini = "tf.Identity"(%min) : (tensor<4xf32>) -> tensor<4xf32>
+  %maxi = "tf.Identity"(%max) : (tensor<4xf32>) -> tensor<4xf32>
+  %fq = "tf.FakeQuantWithMinMaxVarsPerChannel"(%in, %mini, %maxi) {num_bits = 4, narrow_range = true} : (tensor<3x3x3x4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<3x3x3x4xf32>
+  %rst = "tf.Conv2D"(%arg, %fq) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x4xf32>) -> tensor<256x8x7x4xf32>
+  return %rst : tensor<256x8x7x4xf32>
+
+// LOBIT-DAG: %[[CONSTANT:.*]] = arith.constant dense<0.000000e+00> : tensor<4xf32>
+// LOBIT-DAG: %[[CONSTANT0:.*]] = arith.constant dense<0.000000e+00> : tensor<4x3x3x3xf32>
+// LOBIT: %[[QUANTIZE:.*]] = "tfl.quantize"(%[[CONSTANT0]]) {qtype = tensor<4x3x3x3x!quant.uniform<u8<1:15>:f32:0, {1.000000e+00:1,1.000000e+00:2,1.000000e+00:7,1.000000e+00:15}>>}
+// LOBIT: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]])
+// LOBIT: %[[CONV:.*]] = "tfl.conv_2d"(%arg0, %[[DEQUANTIZE]], %[[CONSTANT]])
+// LOBIT: return %[[CONV]]
 }
 }

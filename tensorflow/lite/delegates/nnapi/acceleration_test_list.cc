@@ -95,6 +95,12 @@ ArgMinMaxOpTest/ArgMinMaxOpTest/Get.+ArgOutput64/[46],29
 # basic_rnn_test
 RnnOpTest/BlackBoxTest
 
+# batch_matmul_test
+# broadcasting is not supported
+-BatchMatMulOpTest/BatchMatMulOpTest/.+Broadcast.+
+BatchMatMulOpTest/BatchMatMulOpTest/.+,1000006
+QuantizedBatchMatMulOpTest/QuantizedBatchMatMulOpTest/SimpleTestQuantizedInt8/.+,1000006
+
 # batch_to_space_nd_test
 BatchToSpaceNDOpTest/SimpleConstTest.*
 BatchToSpaceNDOpTest/BatchOneConstTest.*
@@ -275,12 +281,28 @@ Parameterized/LstmOpTest.+/7,29
 MaxMinOpTest/.+nt8Test,29
 MaximumOpTest/.+,29
 
+# mirror_pad_test
+MirrorPadTest/.+,1000007
+
 # mul_test
 FloatMulOpTest/.+
 
 # neg_test
 -NegOpModel/.+Int64
 NegOpModel/.+,29
+
+# pack_test
+# int32 and uint8 are supported since NNAPI FL6
+PackOpTest/Int32.+,1000006
+PackOpTestInt/1/.+,1000006
+# PACK along last axis is supported since NNAPI FL6
+PackOpTest/FloatThreeInputsDifferentAxis,1000006
+PackOpTest/FloatThreeInputsNegativeAxis,1000006
+PackOpTestInt/0/ThreeInputsDifferentAxis,1000006
+PackOpTestInt/0/ThreeInputsNegativeAxis,1000006
+# f32 and int8 are supported since NNAPI 1.3 by decomposition
+PackOpTest/Float.+,30
+PackOpTestInt/0/.+,30
 
 # pad_test
 -PadOpTest/TooManyDimensions
@@ -349,9 +371,13 @@ ConstFloat(Sum|Prod|Max|Min)OpTest/ScalarAxis,29
 # reshape_test
 # Acceleration would be only for the test with shape being a constant tensor or
 # as hardcoded options.
-VariedShapeSpec/ReshapeOpTest/InvalidShape/[01]
-VariedShapeSpec/ReshapeOpTest/RegularShapes/[01]
-VariedShapeSpec/ReshapeOpTest/WithStretchDimension/[01]
+ReshapeOpTest/[01]/InvalidShape
+ReshapeOpTest/[01]/RegularShapes
+ReshapeOpTest/[01]/WithStretchDimension
+# int32 is supported since NNAPI FL6
+ReshapeOpTest/3/InvalidShape,1000006
+ReshapeOpTest/3/RegularShapes,1000006
+ReshapeOpTest/3/WithStretchDimension,1000006
 
 # resize_bilinear_test
 // align_corners & half_pixel_centers are not implemented in NNAPI before API 30
@@ -367,6 +393,11 @@ ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*/0,30
 -ResizeNearestNeighborOpTest.+Int16/.+
 // Only models with constant size tensor are accelerated
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest/.+/0,29
+
+# reverse_test
+-ReverseOpTest/Int64.+
+-ReverseOpTest/Int16.+
+ReverseOpTest/.+,1000007
 
 # select_test
 -SelectOpTest/SelectBool

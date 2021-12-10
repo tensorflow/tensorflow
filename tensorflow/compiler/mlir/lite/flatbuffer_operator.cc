@@ -126,6 +126,12 @@ static int ConvertI32AttrForOptionWriter(
   return i;
 }
 
+// I64Attr already returns a int64_t as required by flatbuffer builders.
+static int64_t ConvertI64AttrForOptionWriter(
+    int64_t i, flatbuffers::FlatBufferBuilder* builder) {
+  return i;
+}
+
 static int ConvertPositiveI32AttrForOptionWriter(
     int i, flatbuffers::FlatBufferBuilder* builder) {
   return ConvertI32AttrForOptionWriter(i, builder);
@@ -164,6 +170,13 @@ static float ConvertF32AttrForOptionWriter(
 static bool ConvertBoolAttrForOptionWriter(
     bool b, flatbuffers::FlatBufferBuilder* builder) {
   return b;
+}
+
+// Overloading of ConvertBoolAttrForOptionWriter which takes Optional<bool> as
+// an input. If value is not specified, false is set for the attribute.
+static bool ConvertBoolAttrForOptionWriter(
+    mlir::Optional<bool> b, flatbuffers::FlatBufferBuilder* builder) {
+  return b.hasValue() ? b.getValue() : false;
 }
 
 static flatbuffers::Offset<flatbuffers::String> ConvertStrAttrForOptionWriter(
@@ -214,6 +227,10 @@ static mlir::Attribute BuildF32Attr(float value, mlir::Builder builder) {
 
 static mlir::Attribute BuildI32Attr(int32_t value, mlir::Builder builder) {
   return builder.getI32IntegerAttr(value);
+}
+
+static mlir::Attribute BuildI64Attr(int64_t value, mlir::Builder builder) {
+  return builder.getI64IntegerAttr(value);
 }
 
 static mlir::Attribute BuildI64ArrayAttr(std::vector<int32_t> value,

@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
@@ -282,6 +283,28 @@ class SparseSliceOpTest(test.TestCase):
             [sp_input.values], [(nnz_in,)], sp_output.values, (nnz_out,))
         self.assertLess(err, 1e-3)
 
+  def testNegativeSize(self):
+    with self.session(use_gpu=False):
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_slice(
+            indices=[[0, 0]],
+            values=[0],
+            shape=[1, 1],
+            start=[10, 10],
+            size=[-100, 100])
+        self.evaluate(res)
+
+  def testLargeSize(self):
+    with self.session(use_gpu=False):
+      with self.assertRaises(errors.InvalidArgumentError):
+
+        res = sparse_ops.gen_sparse_ops.sparse_slice(
+            indices=[[0, 0]],
+            values=[0],
+            shape=[1, 1],
+            start=[2**62, -1],
+            size=[2**62, 2**62])
+        self.evaluate(res)
 
 if __name__ == '__main__':
   test.main()

@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 
 #define DEBUG_TYPE "xla-prepare-for-export"
@@ -54,7 +54,7 @@ void PrepareForExportPass::runOnFunction() {
     if (attr.getNumElements() < 32) return;
     ShapedType return_type = op->getResultTypes().front().cast<ShapedType>();
     ImplicitLocOpBuilder b(op->getLoc(), op);
-    auto cst = b.create<::mlir::mhlo::ConstOp>(attr.getSplatValue());
+    auto cst = b.create<::mlir::mhlo::ConstOp>(attr.getSplatValue<Attribute>());
     auto broadcast = b.create<::mlir::mhlo::BroadcastInDimOp>(
         return_type, cst, b.getI64TensorAttr({}));
     op->replaceAllUsesWith(broadcast);

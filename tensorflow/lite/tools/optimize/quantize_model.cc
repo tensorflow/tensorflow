@@ -179,6 +179,34 @@ bool IsRealValueOp(const std::unordered_set<string>& real_value_op_set,
   return real_value_op_set.find(operator_name) != real_value_op_set.end();
 }
 
+// Utility function to determine if tensor is constant and only has one use.
+bool IsConstantWithOneUse(const ModelT* model, const SubGraphT* subgraph,
+                          const int tensor_id) {
+  if (!subgraph || (tensor_id >= subgraph->tensors.size())) {
+    return false;
+  }
+  const auto& tensor = subgraph->tensors[tensor_id];
+  if (!tensor || !model || (tensor->buffer < 0) ||
+      (tensor->buffer >= model->buffers.size()) ||
+      (!model->buffers[tensor->buffer]) ||
+      (model->buffers[tensor->buffer]->data.empty())) {
+    return false;
+  }
+  int uses = 0;
+  for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
+    const auto& op = subgraph->operators[op_idx];
+    if (!op) {
+      continue;
+    }
+    const std::vector<int32_t>& inputs = op->inputs;
+    if ((std::find(inputs.begin(), inputs.end(), tensor_id) != inputs.end()) &&
+        (++uses > 1)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Creates a set that contains all quantizable ops that happen to take a
 // non-float type in the source graph.
 std::unordered_set<string> PopulateRealValueOpSet(
@@ -559,6 +587,82 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
   return kTfLiteOk;
 }
 
+// Requantize a constant quantized tensor.
+template <typename TensorDataType>
+TfLiteStatus RequantizeConstant(
+    const std::vector<uint8_t>& buffer_data, const TensorT* tensor,
+    const std::unique_ptr<QuantizationParametersT>& new_quantization,
+    std::vector<uint8_t>& new_buffer_data) {
+  if (new_buffer_data.size() != buffer_data.size()) {
+    new_buffer_data.resize(buffer_data.size());
+  }
+  const auto& quantization = tensor->quantization;
+  const std::vector<float>& scales = quantization->scale;
+  if (scales.empty()) {
+    // No existing quantization, assumes that new quantization parameters
+    // are correct.
+    new_buffer_data.assign(buffer_data.begin(), buffer_data.end());
+    return kTfLiteOk;
+  }
+  const std::vector<int64_t>& zero_points = quantization->zero_point;
+  const int num_elements = buffer_data.size() / sizeof(TensorDataType);
+  std::vector<float> float_values(num_elements);
+  const TensorDataType* buffer_values =
+      reinterpret_cast<const TensorDataType*>(buffer_data.data());
+  // This logic is for per-channel quantization, but works for per-tensor.
+  const int kPerChannelMaxDim = 4;
+  const std::vector<int32_t>& tensor_shape = tensor->shape;
+  RuntimeShape unextended_tensor_dims(tensor_shape.size(), tensor_shape.data());
+  RuntimeShape tensor_dims =
+      RuntimeShape::ExtendedShape(kPerChannelMaxDim, unextended_tensor_dims);
+  const int channel_dim_index = quantization->quantized_dimension +
+                                kPerChannelMaxDim -
+                                unextended_tensor_dims.DimensionsCount();
+  int indices[kPerChannelMaxDim];
+  for (indices[0] = 0; indices[0] < tensor_dims.Dims(0); indices[0]++) {
+    for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
+      for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
+        for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
+          const float scale = scales.size() > 1
+                                  ? scales[indices[channel_dim_index]]
+                                  : scales[0];
+          const int64_t zp = zero_points.size() > 1
+                                 ? zero_points[indices[channel_dim_index]]
+                                 : zero_points[0];
+          const int index = Offset(tensor_dims, indices);
+          float_values[index] = scale * (buffer_values[index] - zp);
+        }
+      }
+    }
+  }
+
+  // Only have to deal with per-tensor for new parameters.
+  if (tensor->type == TensorType_INT16) {
+    std::vector<int16_t> requant_int16 = utils::SymmetricQuantizeFloatsToInt16(
+        float_values.data(), float_values.size(), new_quantization->scale[0]);
+    uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(requant_int16.data());
+    new_buffer_data.assign(uint8_buffer, uint8_buffer + buffer_data.size());
+    return kTfLiteOk;
+  } else if (tensor->type == TensorType_INT8) {
+    const int32_t q_min = std::numeric_limits<int8_t>::min();
+    const int32_t q_max = std::numeric_limits<int8_t>::max();
+    const float scaling_factor = new_quantization->scale[0];
+    const int32_t zp = new_quantization->zero_point[0];
+    const auto& rescale = [&scaling_factor, &zp, &q_min,
+                           &q_max](float f) -> uint8_t {
+      const float scaling_factor_inv =
+          (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
+      int32_t q_i32 = TfLiteRound(f * scaling_factor_inv) + zp;
+      int8_t q = std::min(std::max(q_i32, q_min), q_max);
+      return *(reinterpret_cast<uint8_t*>(&q));
+    };
+    std::transform(float_values.begin(), float_values.end(),
+                   new_buffer_data.begin(), rescale);
+    return kTfLiteOk;
+  }
+  return kTfLiteError;
+}
+
 // Apply constraints to ops if they have any.
 // We have made the restriction that for int8 quantized concat, minimum, and
 // maximum, the inputs and outputs must have the same scale and zero point.
@@ -613,6 +717,30 @@ TfLiteStatus ApplyConstraints(
             input_tensor->quantization->zero_point[0] == output_zp) {
           // This input does not need to be requantized.
           continue;
+        }
+
+        if (IsConstantWithOneUse(model, subgraph, op->inputs[input_idx])) {
+          auto quantization = absl::make_unique<QuantizationParametersT>();
+          quantization->scale.push_back(output_scale);
+          quantization->zero_point.push_back(output_zp);
+          const std::vector<uint8_t>& buffer_data =
+              model->buffers[input_tensor->buffer]->data;
+          std::vector<uint8_t> new_buffer_data;
+          TfLiteStatus requant_status = kTfLiteError;
+          if (input_tensor->type == TensorType_INT8) {
+            requant_status = RequantizeConstant<int8_t>(
+                buffer_data, input_tensor, quantization, new_buffer_data);
+          } else if (input_tensor->type == TensorType_INT16) {
+            requant_status = RequantizeConstant<int16_t>(
+                buffer_data, input_tensor, quantization, new_buffer_data);
+          }
+          if (requant_status == kTfLiteOk) {
+            model->buffers[input_tensor->buffer]->data = new_buffer_data;
+            input_tensor->quantization = std::move(quantization);
+            continue;
+          } else {
+            quantization.release();
+          }
         }
 
         std::unique_ptr<TensorT> additional_tensor;

@@ -21,6 +21,8 @@ include "mlir/IR/OpBase.td"
 def HLO_Dialect : Dialect {
   let name = "mhlo";
   let cppNamespace = "::mlir::mhlo";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"
@@ -111,6 +113,18 @@ def HLO_LayoutAttr : Attr<
   let convertFromStorage = IndexElementsAttr.convertFromStorage;
 }
 
+// An array of layout (1D tensor) attributes.
+def HLO_ArrayOfLayoutAttr : TypedArrayAttrBase<HLO_LayoutAttr,
+    "Array of layout (1D tensor of index type) attributes">;
+
+// An array of FlatSymbolRef attributes that can be used as a default valued
+// attribute.
+def HLO_FlatSymbolRefArrayAttr :
+  TypedArrayAttrBase<FlatSymbolRefAttr, "flat symbol ref array attribute"> {
+  let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
+}
+
+
 //===----------------------------------------------------------------------===//
 // Common convolution attributes
 //===----------------------------------------------------------------------===//
@@ -148,9 +162,6 @@ def ConvolutionAttributes {
     I64Attr:$batch_group_count,
     HLO_PrecisionConfigAttr:$precision_config
   );
-}
-
-class BASE_HLO_ConvOp {
 }
 
 //===----------------------------------------------------------------------===//

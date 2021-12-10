@@ -840,10 +840,15 @@ class CheckpointLoadStatus(_LoadStatus):
         object_identity.ObjectIdentitySet(
             self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
+      num_unused_python_objects = len(list(unused_python_objects))
+      # Display max number of 10 variables in error message.
+      num_variables_to_show = min(10, num_unused_python_objects)
       raise AssertionError(
-          "Some Python objects were not bound to checkpointed values, likely "
-          f"due to changes in the Python program: "
-          f"{list(unused_python_objects)}")
+          f"Found {num_unused_python_objects} Python objects that were "
+          "not bound to checkpointed values, likely due to changes in the "
+          f"Python program. Showing {num_variables_to_show} of "
+          f"{num_unused_python_objects} unmatched objects: "
+          f"{list(unused_python_objects)[:num_variables_to_show]}")
     return self
 
   def assert_nontrivial_match(self):
@@ -1247,11 +1252,13 @@ class TrackableSaver(object):
       feed_dict[file_prefix_tensor] = file_prefix
     else:
       with ops.device("/cpu:0"):
-        file_prefix_tensor = constant_op.constant(
+        file_prefix_tensor = ops.convert_to_tensor(
             file_prefix, dtype=dtypes.string)
       object_graph_tensor = None
 
-    file_io.recursive_create_dir(os.path.dirname(file_prefix))
+    if not tensor_util.is_tensor(file_prefix):
+      file_io.recursive_create_dir(os.path.dirname(file_prefix))
+
     save_path, new_feed_additions = self._save_cached_when_graph_building(
         file_prefix_tensor, object_graph_tensor, options)
     if new_feed_additions:

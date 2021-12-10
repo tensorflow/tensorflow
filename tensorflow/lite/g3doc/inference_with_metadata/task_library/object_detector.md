@@ -69,8 +69,10 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.2.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
 
@@ -82,8 +84,14 @@ anymore.
 
 ```java
 // Initialization
-ObjectDetectorOptions options = ObjectDetectorOptions.builder().setMaxResults(1).build();
-ObjectDetector objectDetector = ObjectDetector.createFromFileAndOptions(context, modelFile, options);
+ObjectDetectorOptions options =
+    ObjectDetectorOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setMaxResults(1)
+        .build();
+ObjectDetector objectDetector =
+    ObjectDetector.createFromFileAndOptions(
+        context, modelFile, options);
 
 // Run inference
 List<Detection> results = objectDetector.detect(image);

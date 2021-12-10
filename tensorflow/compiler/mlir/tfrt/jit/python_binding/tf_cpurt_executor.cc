@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
-#include "mlir/Transforms/Bufferize.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
@@ -72,7 +72,8 @@ TfCpurtExecutor::TfCpurtExecutor()
 TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
                                                  const std::string& entrypoint,
                                                  Specialization specialization,
-                                                 bool vectorize) {
+                                                 bool vectorize,
+                                                 bool legalize_i1_tensors) {
   CompilationOptions opts;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
@@ -85,10 +86,11 @@ TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
   opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
     tensorflow::TfCpuRtPipelineOptions opts;
     opts.vectorize = vectorize;
+    opts.legalize_i1_tensors = legalize_i1_tensors;
     tensorflow::CreateTfCpuRtPipeline(pm, opts);
   };
   opts.specialization = specialization;
-  opts.type_converter = mlir::BufferizeTypeConverter();
+  opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
 
   // Instantiate new JitExecutable from the MLIR source.
   llvm::Expected<JitExecutable> jit_executable =
@@ -112,7 +114,7 @@ static const char* ToPythonStructFormat(DType dtype_kind) {
     case DType::Unsupported:
       throw std::runtime_error("Unsupported dtype.");
     case DType::UI8:
-      throw std::runtime_error("Unimplemented.");
+      return "B";
     case DType::UI16:
       return "H";
     case DType::UI32:
@@ -122,7 +124,7 @@ static const char* ToPythonStructFormat(DType dtype_kind) {
     case DType::I1:
       return "?";
     case DType::I8:
-      throw std::runtime_error("Unimplemented.");
+      return "b";
     case DType::I16:
       return "h";
     case DType::I32:
@@ -152,6 +154,8 @@ static const char* ToPythonStructFormat(DType dtype_kind) {
 static DType FromPythonStructFormat(char dtype) {
   // Reference: https://docs.python.org/3/library/struct.html
   switch (dtype) {
+    case 'B':
+      return DType::UI8;
     case 'H':
       return DType::UI16;
     case 'I':
@@ -160,6 +164,8 @@ static DType FromPythonStructFormat(char dtype) {
       return DType::UI64;
     case '?':
       return DType::I1;
+    case 'b':
+      return DType::I8;
     case 'h':
       return DType::I16;
     case 'i':
@@ -304,10 +310,8 @@ std::vector<py::array> TfCpurtExecutor::Execute(
         StrCat("Failed to get Executable: ", executable->GetError()));
 
   // Prepare storage for returned values.
-  size_t num_results = (*executable)->signature().num_results();
-  std::vector<RCReference<AsyncValue>> result_storage;
-  result_storage.reserve(num_results);
-  for (int i = 0; i < num_results; ++i) result_storage.emplace_back();
+  unsigned num_results = (*executable)->num_results();
+  std::vector<RCReference<AsyncValue>> result_storage(num_results);
 
   RemainingResults results(result_storage);
 
@@ -357,7 +361,7 @@ PYBIND11_MODULE(_tf_cpurt_executor, m) {
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
                tensorflow::TfCpurtExecutor::Specialization::kEnabled,
-           py::arg("vectorize") = false)
+           py::arg("vectorize") = false, py::arg("legalize_i1_tensors") = false)
       .def("execute", &tensorflow::TfCpurtExecutor::Execute)
       .def("built_with", &tensorflow::TfCpurtExecutor::BuiltWith,
            py::arg("cpu_feature"));

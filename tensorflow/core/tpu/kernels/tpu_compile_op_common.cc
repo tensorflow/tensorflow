@@ -135,6 +135,8 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
     proto.set_status_code(compile_status.code());
     proto.set_status_error_message(compile_status.error_message());
     status_payload = proto.SerializeAsString();
+    metrics::UpdateTpuErrorCounter("TpuCompileOp",
+                                   error_name(compile_status.code()));
   }
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
                                 TpuCompileInterface::kTpuCompileErrorPayloadKey,
@@ -179,8 +181,6 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
   tpu_program_group->LogProgramMemorySummary();
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
-
-  TF_RETURN_IF_ERROR(tpu_program_group->LogCompilationStats(key, duration));
 
   return compile_status;
 }

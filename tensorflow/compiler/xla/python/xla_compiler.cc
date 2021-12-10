@@ -201,6 +201,18 @@ void DefRepeatedProperty(py::class_<T>& cls, const char* name,
 
 void BuildXlaCompilerSubmodule(py::module& m) {
   // Shapes
+  py::class_<Layout> layout_class(m, "Layout");
+  layout_class
+      .def("minor_to_major",
+           [](Layout layout) { return SpanToTuple(layout.minor_to_major()); })
+      .def("__eq__", [](const Layout& layout,
+                        const Layout& other) { return layout == other; })
+      .def("__ne__", [](const Layout& layout,
+                        const Layout& other) { return layout != other; })
+      .def("__hash__",
+           [](const Layout& layout) { return absl::Hash<Layout>()(layout); })
+      .def("to_string", &Layout::ToString);
+
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
       .def(py::init([](const string& s) {
@@ -271,6 +283,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            [](const Shape& shape) -> py::tuple {
              return SpanToTuple(shape.dimensions());
            })
+      .def("layout",
+           [](const Shape& shape) -> Layout { return shape.layout(); })
       .def("xla_element_type", &Shape::element_type)
       .def("element_type",
            [](const Shape& shape) {
@@ -689,7 +703,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("replicate_on_last_tile_dim",
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
-      .def("__repr__", &xla::OpSharding::DebugString);
+      .def("__repr__", &xla::OpSharding::DebugString)
+      .def("SerializeToString", [](const OpSharding& sharding) {
+        return py::bytes(sharding.SerializeAsString());
+      });
   DefRepeatedProperty(op_sharding, "tile_assignment_dimensions",
                       &xla::OpSharding::mutable_tile_assignment_dimensions);
   DefRepeatedProperty(op_sharding, "tile_assignment_devices",
@@ -718,5 +735,5 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .value("IFFT", FftType::IFFT)
       .value("RFFT", FftType::RFFT)
       .value("IRFFT", FftType::IRFFT);
-}
+}  // NOLINT(readability/fn_size)
 }  // namespace xla

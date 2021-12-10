@@ -24,7 +24,6 @@ import time
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -170,9 +169,9 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       images = np.expand_dims(images, axis=0)
     out_shape = images.shape[0:3] + (1,)
     out = np.zeros(shape=out_shape, dtype=np.uint8)
-    for batch in xrange(images.shape[0]):
-      for y in xrange(images.shape[1]):
-        for x in xrange(images.shape[2]):
+    for batch in range(images.shape[0]):
+      for y in range(images.shape[1]):
+        for x in range(images.shape[2]):
           red = images[batch, y, x, 0]
           green = images[batch, y, x, 1]
           blue = images[batch, y, x, 2]
@@ -463,7 +462,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     x_v = x_np.reshape([-1, 3])
     y_v = np.ndarray(x_v.shape, dtype=x_v.dtype)
     channel_count = x_v.shape[0]
-    for i in xrange(channel_count):
+    for i in range(channel_count):
       r = x_v[i][0]
       g = x_v[i][1]
       b = x_v[i][2]
@@ -554,7 +553,7 @@ class FlipImageBenchmark(test.Benchmark):
             dtype=dtypes.float32)
         run_op = image_ops.flip_left_right(inputs)
         self.evaluate(variables.global_variables_initializer())
-        for i in xrange(warmup_rounds + benchmark_rounds):
+        for i in range(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
           self.evaluate(run_op)
@@ -584,7 +583,7 @@ class FlipImageBenchmark(test.Benchmark):
             dtype=dtypes.float32)
         run_op = image_ops.random_flip_left_right(inputs)
         self.evaluate(variables.global_variables_initializer())
-        for i in xrange(warmup_rounds + benchmark_rounds):
+        for i in range(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
           self.evaluate(run_op)
@@ -614,7 +613,7 @@ class FlipImageBenchmark(test.Benchmark):
             dtype=dtypes.float32)
         run_op = image_ops.random_flip_left_right(inputs)
         self.evaluate(variables.global_variables_initializer())
-        for i in xrange(warmup_rounds + benchmark_rounds):
+        for i in range(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
           self.evaluate(run_op)
@@ -676,7 +675,7 @@ class AdjustHueBenchmark(test.Benchmark):
       outputs = image_ops.adjust_hue(inputs, delta)
       run_op = control_flow_ops.group(outputs)
       self.evaluate(variables.global_variables_initializer())
-      for i in xrange(warmup_rounds + benchmark_rounds):
+      for i in range(warmup_rounds + benchmark_rounds):
         if i == warmup_rounds:
           start = time.time()
         self.evaluate(run_op)
@@ -719,10 +718,10 @@ class AdjustSaturationBenchmark(test.Benchmark):
       outputs = image_ops.adjust_saturation(inputs, delta)
       run_op = control_flow_ops.group(outputs)
       self.evaluate(variables.global_variables_initializer())
-      for _ in xrange(warmup_rounds):
+      for _ in range(warmup_rounds):
         self.evaluate(run_op)
       start = time.time()
-      for _ in xrange(benchmark_rounds):
+      for _ in range(benchmark_rounds):
         self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
@@ -755,7 +754,7 @@ class ResizeBilinearBenchmark(test.Benchmark):
         name="img")
 
     deps = []
-    for _ in xrange(num_ops):
+    for _ in range(num_ops):
       with ops.control_dependencies(deps):
         resize_op = image_ops.resize_bilinear(
             img, [299, 299], align_corners=False)
@@ -803,7 +802,7 @@ class ResizeBicubicBenchmark(test.Benchmark):
         name="img")
 
     deps = []
-    for _ in xrange(num_ops):
+    for _ in range(num_ops):
       with ops.control_dependencies(deps):
         resize_op = image_ops.resize_bicubic(
             img, [299, 299], align_corners=False)
@@ -861,7 +860,7 @@ class ResizeAreaBenchmark(test.Benchmark):
         name="img")
 
     deps = []
-    for _ in xrange(num_ops):
+    for _ in range(num_ops):
       with ops.control_dependencies(deps):
         resize_op = image_ops.resize_area(img, [299, 299], align_corners=False)
         deps = [resize_op]
@@ -949,7 +948,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     x_v = x_np.reshape([-1, 3])
     y_v = np.ndarray(x_v.shape, dtype=x_v.dtype)
     channel_count = x_v.shape[0]
-    for i in xrange(channel_count):
+    for i in range(channel_count):
       r = x_v[i][0]
       g = x_v[i][1]
       b = x_v[i][2]
@@ -1454,7 +1453,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
     with self.cached_session():
       rotated = image
-      for _ in xrange(4):
+      for _ in range(4):
         rotated = image_ops.rot90(rotated)
       self.assertAllEqual(image, self.evaluate(rotated))
 
@@ -1462,14 +1461,14 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
     with self.cached_session():
       rotated = image
-      for _ in xrange(4):
+      for _ in range(4):
         rotated = image_ops.rot90(rotated)
       self.assertAllEqual(image, self.evaluate(rotated))
 
   def testRot90NumpyEquivalence(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
     with self.cached_session():
-      for k in xrange(4):
+      for k in range(4):
         y_np = np.rot90(image, k=k)
         self.assertAllEqual(
             y_np, self.evaluate(image_ops.rot90(image, k)))
@@ -1477,7 +1476,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
   def testRot90NumpyEquivalenceWithBatch(self):
     image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
     with self.cached_session():
-      for k in xrange(4):
+      for k in range(4):
         y_np = np.rot90(image, k=k, axes=(1, 2))
         self.assertAllEqual(
             y_np, self.evaluate(image_ops.rot90(image, k)))
@@ -2295,7 +2294,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
       # TODO(b/200850176): test fails with XLA.
       return
     with self.session():
-      with self.assertRaises(errors_impl.InternalError):
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         v = image_ops.pad_to_bounding_box(
             image=np.ones((1, 1, 1)),
             target_height=5191549470,
@@ -2339,7 +2338,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
           area_range=area_range)
       y = array_ops.strided_slice(image_tf, begin, begin + size)
 
-      for _ in xrange(num_iter):
+      for _ in range(num_iter):
         y_tf = self.evaluate(y)
         crop_height = y_tf.shape[0]
         crop_width = y_tf.shape[1]
@@ -2360,7 +2359,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
           area_range=area_range)
       y = array_ops.strided_slice(image_tf, begin, begin + size)
 
-      for _ in xrange(num_iter):
+      for _ in range(num_iter):
         y_tf = self.evaluate(y)
         crop_height = y_tf.shape[0]
         crop_width = y_tf.shape[1]
@@ -3232,7 +3231,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testLargeDim(self):
     with self.session():
-      with self.assertRaises(errors.InternalError):
+      with self.assertRaises(errors.InvalidArgumentError):
         x = np.ones((5, 1, 1, 2))
         v = image_ops.resize_images_v2(x, [1610637938, 1610637938],
                                        image_ops.ResizeMethod.BILINEAR)
@@ -6107,7 +6106,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testImageCropAndResizeWithInvalidInput(self):
     with self.session():
-      with self.assertRaises((errors.InternalError, ValueError)):
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
         op = image_ops_impl.crop_and_resize_v2(
             image=np.ones((1, 1, 1, 1)),
             boxes=np.ones((11, 4)),

@@ -15,17 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/cost_util.h"
 
+#include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
 
 namespace {
 
-// Gets the type of CostMeasurement from env.
-const char* GetCostMeasurementType() {
-  static const char* type = std::getenv("TF_COST_MEASUREMENT_TYPE");
-  return type;
+// Gets the types of CostMeasurement from env.
+std::vector<std::string> GetCostMeasurementTypes() {
+  const char* types = std::getenv("TF_COST_MEASUREMENT_TYPE");
+  if (types == nullptr) return {};
+  return str_util::Split(types, " ,");
 }
 
 // Gets the type of RequestCostAccessor from env.
@@ -36,11 +39,19 @@ const char* GetRequestCostAccessorType() {
 
 }  // namespace
 
-std::unique_ptr<CostMeasurement> CreateCostMeasurement() {
-  const char* cost_measurement_type = GetCostMeasurementType();
-  return cost_measurement_type ? CostMeasurementRegistry::CreateByNameOrNull(
-                                     cost_measurement_type)
-                               : nullptr;
+std::vector<std::unique_ptr<CostMeasurement>> CreateCostMeasurements() {
+  static const std::vector<std::string>& types =
+      *new std::vector<std::string>(GetCostMeasurementTypes());
+
+  std::vector<std::unique_ptr<CostMeasurement>> measurements;
+  for (const auto& type : types) {
+    std::unique_ptr<CostMeasurement> measurement =
+        CostMeasurementRegistry::CreateByNameOrNull(type);
+    if (measurement != nullptr) {
+      measurements.push_back(std::move(measurement));
+    }
+  }
+  return measurements;
 }
 
 std::unique_ptr<RequestCostAccessor> CreateRequestCostAccessor() {

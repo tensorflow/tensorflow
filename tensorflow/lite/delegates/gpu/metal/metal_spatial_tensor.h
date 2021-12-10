@@ -61,7 +61,7 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   int Slices() const override { return DivideRoundUp(shape_.c, 4); }
   int Batch() const override { return shape_.b; }
 
-  TensorDescriptor GetDescriptor() const { return descriptor_; }
+  TensorDescriptor GetDescriptor() const override { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 
@@ -90,6 +90,11 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   id<MTLBuffer> GetBufferHandle() const;
 
  private:
+  friend absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
+                                                      const TensorDescriptor& descriptor,
+                                                      int row_bytes_alignment,
+                                                      MetalSpatialTensor* result);
+
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
 
@@ -108,6 +113,8 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   bool texture_mem_owner_;
   BHWDC shape_;
   TensorDescriptor descriptor_;
+  // for use with TEXTURE_2D and when texture created from buffer.
+  int aligned_texture_width_;
 };
 
 absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
@@ -125,6 +132,16 @@ absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
 absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
                                       const TensorDescriptor& descriptor,
                                       MetalSpatialTensor* result);
+
+absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int row_bytes_alignment, MetalSpatialTensor* result);
+
+absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int row_bytes_alignment, MetalSpatialTensor* result);
+
+TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info);
 
 template <DataType T>
 absl::Status MetalSpatialTensor::WriteData(id<MTLDevice> device,

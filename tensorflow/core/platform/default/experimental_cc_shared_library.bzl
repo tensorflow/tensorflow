@@ -9,7 +9,7 @@ rely on this. It requires bazel >1.2  and passing the flag
 
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(
-    "//third_party/bazel_rules/rules_cc/examples:experimental_cc_shared_library.bzl",
+    "@rules_cc//examples:experimental_cc_shared_library.bzl",
     "CcSharedLibraryInfo",
     "CcSharedLibraryPermissionsInfo",
 )
@@ -369,27 +369,6 @@ def _cc_shared_library_impl(ctx):
     for user_link_flag in ctx.attr.user_link_flags:
         user_link_flags.append(ctx.expand_location(user_link_flag, targets = ctx.attr.additional_linker_inputs))
 
-    linking_outputs = cc_common.link(
-        actions = ctx.actions,
-        feature_configuration = feature_configuration,
-        cc_toolchain = cc_toolchain,
-        linking_contexts = [linking_context],
-        user_link_flags = user_link_flags,
-        additional_inputs = ctx.files.additional_linker_inputs,
-        name = ctx.label.name,
-        output_type = "dynamic_library",
-    )
-
-    runfiles = ctx.runfiles(
-        files = [linking_outputs.library_to_link.resolved_symlink_dynamic_library],
-        collect_data = True,
-    )
-    for dep in ctx.attr.dynamic_deps:
-        runfiles = runfiles.merge(dep[DefaultInfo].data_runfiles)
-
-    for export in ctx.attr.roots:
-        exports[str(export.label)] = True
-
     debug_files = []
     if ctx.attr._experimental_debug[BuildSettingInfo].value:
         exports_debug_file = ctx.actions.declare_file(ctx.label.name + "_exports.txt")
@@ -401,13 +380,60 @@ def _cc_shared_library_impl(ctx):
         debug_files.append(exports_debug_file)
         debug_files.append(link_once_static_libs_debug_file)
 
+    linking_outputs = cc_common.link(
+        actions = ctx.actions,
+        feature_configuration = feature_configuration,
+        cc_toolchain = cc_toolchain,
+        linking_contexts = [linking_context],
+        user_link_flags = user_link_flags,
+        additional_inputs = ctx.files.additional_linker_inputs + debug_files,
+        name = ctx.label.name,
+        output_type = "dynamic_library",
+    )
+
+    # TODO(rostam): This will go away once Tensorflow is using Bazel head
+    # ---------- BEGIN ----------
+    output_files = []
+    if ctx.attr.shared_lib_name:
+        actual_file = linking_outputs.library_to_link.resolved_symlink_dynamic_library
+        if actual_file == None:
+            actual_file = linking_outputs.library_to_link.dynamic_library
+        output_file = ctx.actions.declare_file(ctx.attr.shared_lib_name)
+        ctx.actions.run_shell(
+            outputs = [output_file],
+            inputs = [actual_file],
+            command = "cp %s %s" % (actual_file.path, output_file.path),
+            mnemonic = "TemporaryHackCopyingDynamicLibrary",
+        )
+        output_files = [output_file]
+
+    # ---------- END ----------
+
+    runfiles_shared = [linking_outputs.library_to_link.resolved_symlink_dynamic_library] + output_files
+    if linking_outputs.library_to_link.dynamic_library != None:
+        runfiles_shared.append(linking_outputs.library_to_link.dynamic_library)
+    runfiles = ctx.runfiles(
+        files = runfiles_shared,
+        collect_data = True,
+    )
+    for dep in ctx.attr.dynamic_deps:
+        runfiles = runfiles.merge(dep[DefaultInfo].data_runfiles)
+
+    for export in ctx.attr.roots:
+        exports[str(export.label)] = True
+
     if not ctx.attr._incompatible_link_once[BuildSettingInfo].value:
         link_once_static_libs = []
 
     return [
         DefaultInfo(
-            files = depset([linking_outputs.library_to_link.resolved_symlink_dynamic_library] + debug_files),
+            files = depset(
+                [linking_outputs.library_to_link.resolved_symlink_dynamic_library] + debug_files + output_files,
+            ),
             runfiles = runfiles,
+        ),
+        OutputGroupInfo(
+            custom_name_shared_library = depset(output_files),
         ),
         CcSharedLibraryInfo(
             dynamic_deps = merged_cc_shared_library_info,
@@ -472,6 +498,7 @@ cc_shared_library = rule(
     implementation = _cc_shared_library_impl,
     attrs = {
         "additional_linker_inputs": attr.label_list(allow_files = True),
+        "shared_lib_name": attr.string(),
         "dynamic_deps": attr.label_list(providers = [CcSharedLibraryInfo]),
         "exports_filter": attr.string_list(),
         "permissions": attr.label_list(providers = [CcSharedLibraryPermissionsInfo]),

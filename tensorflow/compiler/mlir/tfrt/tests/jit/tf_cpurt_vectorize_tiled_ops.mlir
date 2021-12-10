@@ -1,4 +1,5 @@
-// RUN: tf-tfrt-opt %s --tf-cpurt-vectorize-tiled-ops | FileCheck %s
+// RUN: tf-tfrt-opt %s --tf-cpurt-vectorize-tiled-ops --split-input-file |\
+// RUN: FileCheck %s
 
 #map0 = affine_map<(d0) -> (d0)>
 func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
@@ -24,7 +25,7 @@ func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
         %0 = arith.addf %a, %b : f32
         linalg.yield %0 : f32
     } -> tensor<2xf32>
-    %update = tensor.insert_slice %sum_sub into %C_[%i] [%c2] [1]
+    %update = tensor.insert_slice %sum_sub into %C_[%i] [2] [1]
       : tensor<2xf32> into tensor<8xf32>
     linalg.yield %update : tensor<8xf32>
   }
@@ -54,7 +55,9 @@ func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
 // CHECK-NEXT: %{{.*}} = vector.transfer_write %[[SUM]], %[[SUB_C]][%[[C0]]]
 // CHECK-SAME:   {in_bounds = [true]} : vector<2xf32>, tensor<2xf32>
 
-func @tiled_reduction(%in: tensor<80x60xf32>) -> tensor<80xf32> {
+// -----
+
+func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
   %c0 = arith.constant 0 : index
   %c4 = arith.constant 4 : index
   %c60 = arith.constant 60 : index
@@ -102,7 +105,7 @@ func @tiled_reduction(%in: tensor<80x60xf32>) -> tensor<80xf32> {
   return %sum : tensor<80xf32>
 }
 
-// CHECK-LABEL: func @tiled_reduction
+// CHECK-LABEL: func @tiled_reduction_2d
 
 // CHECK: linalg.tiled_loop
 // CHECK-SAME: ins (%{{arg[0-9]}} = %{{arg[0-9]}}: tensor<80x60xf32>,
@@ -111,3 +114,57 @@ func @tiled_reduction(%in: tensor<80x60xf32>) -> tensor<80xf32> {
 // CHECK: %[[BCAST:.*]] = vector.broadcast %[[CST]] : f32 to vector<4xf32>
 // CHECK-NOT: vector.transfer_write %[[BCAST]]
 // CHECK: addf %{{.*}}, %[[BCAST]] : vector<4xf32>
+
+// -----
+
+#map0 = affine_map<(d0, d1) -> (d0, d1)>
+#map1 = affine_map<(d0, d1) -> (d1)>
+#map2 = affine_map<(d0) -> (d0)>
+#map3 = affine_map<(d0) -> ()>
+func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %c16 = arith.constant 16 : index
+  %c0 = arith.constant 0 : index
+  %c8 = arith.constant 8 : index
+  %0 = linalg.init_tensor [] : tensor<f32>
+  %1 = linalg.fill(%cst, %0) : f32, tensor<f32> -> tensor<f32>
+  %2 = linalg.init_tensor [8] : tensor<8xf32>
+  %3 = linalg.fill(%cst, %2) : f32, tensor<8xf32> -> tensor<8xf32>
+  %4 = linalg.tiled_loop (%arg1) = (%c0) to (%c16) step (%c8)
+      ins (%arg2 = %arg0: tensor<16xf32>)
+      outs (%arg3 = %3: tensor<8xf32>)
+      iterators["reduction"] {
+    %6 = tensor.extract_slice %arg2[%arg1] [8] [1]
+      : tensor<16xf32> to tensor<8xf32>
+    %7 = linalg.tensor_expand_shape %6 [[0, 1]]
+      : tensor<8xf32> into tensor<1x8xf32>
+    %8 = linalg.generic {indexing_maps = [#map0, #map1],
+                         iterator_types = ["reduction", "parallel"]}
+                         ins(%7 : tensor<1x8xf32>)
+                         outs(%arg3 : tensor<8xf32>) {
+    ^bb0(%arg4: f32, %arg5: f32):
+      %9 = arith.addf %arg4, %arg5 : f32
+      linalg.yield %9 : f32
+    } -> tensor<8xf32>
+    linalg.yield %8 : tensor<8xf32>
+  }
+  %5 = linalg.generic {indexing_maps = [#map2, #map3],
+                       iterator_types = ["reduction"]}
+                       ins(%4 : tensor<8xf32>)
+                       outs(%1 : tensor<f32>) {
+  ^bb0(%arg1: f32, %arg2: f32):
+    %6 = arith.addf %arg1, %arg2 : f32
+    linalg.yield %6 : f32
+  } -> tensor<f32>
+  return %5 : tensor<f32>
+}
+// CHECK-LABEL: func @reduction_1d
+
+// CHECK: linalg.tiled_loop
+// CHECK-SAME: ins (%[[IN:arg[0-9]]] = %{{arg[0-9]}}: tensor<16xf32>)
+
+// CHECK: %[[SLICE:.*]] = tensor.extract_slice %[[IN]]
+// CHECK: %[[VECTOR:.*]] = vector.transfer_read %[[SLICE]]
+// CHECK: vector.shape_cast %[[VECTOR]] : vector<8xf32> to vector<1x8xf32>
+// CHECK-NOT: linalg.tensor_expand_shape
+// CHECK: linalg.generic

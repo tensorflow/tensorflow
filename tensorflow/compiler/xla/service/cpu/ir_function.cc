@@ -192,9 +192,11 @@ void IrFunction::Initialize(const string& function_name,
 llvm::Value* IrFunction::GetDynamicLoopBound(const int64_t offset) {
   CHECK_GT(num_dynamic_loop_bounds_, 0);
   CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
-  string name = absl::StrCat("dynamic_loop_bound_", offset);
-  return b_->CreateLoad(b_->CreateGEP(CHECK_NOTNULL(dynamic_loop_bounds_arg_),
-                                      b_->getInt64(offset), name));
+  llvm::Type* type =
+      dynamic_loop_bounds_arg_->getType()->getPointerElementType();
+  auto gep = b_->CreateGEP(type, CHECK_NOTNULL(dynamic_loop_bounds_arg_),
+                           b_->getInt64(offset));
+  return b_->CreateLoad(type, gep, "dynamic_loop_bound_" + llvm::Twine(offset));
 }
 
 llvm::Value* EncodeArrayFunctionArguments(
@@ -214,7 +216,7 @@ llvm::Value* EncodeArrayFunctionArguments(
           arguments[i], b->getInt8PtrTy(),
           absl::StrCat(name, "_parameter_", i, "_address_as_i8ptr"));
       llvm::Value* slot_in_param_addresses =
-          b->CreateInBoundsGEP(arguments_buffer, {b->getInt64(i)});
+          b->CreateInBoundsGEP(int8ptr_ty, arguments_buffer, b->getInt64(i));
       b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
     }
   }

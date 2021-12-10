@@ -38,9 +38,6 @@ namespace mhlo {
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 
-/// Lowers MHLO control flow ops to the SCF dialect.
-std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
-
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
@@ -108,9 +105,6 @@ namespace lmhlo {
 // Lowers from LHLO dialect to Affine dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass();
 
-// Lowers from LHLO dialect to Linalg dialect.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass();
-
 // Lowers from LHLO dialect to GPU dialect.
 std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
 
@@ -130,7 +124,7 @@ std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
 // Legalizes tensor load ops that are inserted during mhlo to lmhlo conversion.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToTensorOpPass();
 
 // fuse lmhlo ops to kLoop/kInput fusion patterns
 std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
@@ -147,19 +141,6 @@ createLhloLegalizeRootsToParallelLoopsPass();
 std::unique_ptr<FunctionPass> createInputInlineFusionPass();
 
 }  // namespace lmhlo
-
-namespace disc_ral {
-
-std::unique_ptr<OperationPass<ModuleOp>> createRalInjectExecutionContextPass(
-    const std::string& entry_func_name = "main");
-
-// Lower some specific ops to library calls (modeled by `disc_ral.launch` op).
-std::unique_ptr<mlir::FunctionPass> createRalLowerToLibraryCallPass();
-
-// Lower disc to llvm dialect
-std::unique_ptr<OperationPass<ModuleOp>> createRalToLLVMPass();
-
-}  // namespace disc_ral
 
 }  // namespace mlir
 

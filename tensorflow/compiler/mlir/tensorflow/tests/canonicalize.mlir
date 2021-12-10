@@ -1978,3 +1978,14 @@ func @testComplexDivNoNanOpWithNonConstantY(%arg0: tensor<2xcomplex<f32>>, %arg1
   %res3 = "tf.MulNoNan"(%arg0, %noncon3) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   return %res1, %res2, %res3 : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
 }
+
+// CHECK-LABEL: testXlaVariadicReduceToV2
+func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1", outputs = "_retval0"}} {
+  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum_reducer} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {_XlaHasReferenceVars = false, device = "/job:localhost/replica:0/task:0/device:XLA_CPU:0", dimensions_to_reduce = [], reducer = @sum_reducer} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+func private @sum_reducer(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> attributes {tf._disable_call_shape_inference = true} {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}

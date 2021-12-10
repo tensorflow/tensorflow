@@ -46,7 +46,6 @@ licenses(["notice"])
 
 exports_files([
     "LICENSE",
-    "ACKNOWLEDGMENTS",
     # The leakr files are used by //third_party/cloud_tpu and
     # //third_party/tensorboard/google:copybara_config_test.
     "leakr_badwords.dic",
@@ -684,6 +683,7 @@ selects.config_setting_group(
         ":emscripten",
         ":ios",
     ],
+    visibility = if_google(["//visibility:public"]),
 )
 
 # This flag disables all google production dependencies, intended for
@@ -720,6 +720,7 @@ config_setting(
 selects.config_setting_group(
     name = "lite_protos",
     match_any = [":lite_protos_legacy"],
+    visibility = if_google(["//visibility:public"]),
 )
 
 selects.config_setting_group(
@@ -728,6 +729,7 @@ selects.config_setting_group(
         ":lite_protos",
         ":mobile",
     ],
+    visibility = if_google(["//visibility:public"]),
 )
 
 selects.config_setting_group(
@@ -736,6 +738,7 @@ selects.config_setting_group(
         ":full_protos",
         ":mobile",
     ],
+    visibility = if_google(["//visibility:public"]),
 )
 
 # copybara:uncomment_begin(google-only)
@@ -823,6 +826,7 @@ bzl_library(
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
+        "//tensorflow/core/platform/default:experimental_cc_shared_library_bzl",  # copybara:comment(oss only)
         "//third_party/llvm_openmp:openmp_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
@@ -1058,6 +1062,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/data:standalone",
     ],
 )
 

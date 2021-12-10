@@ -449,6 +449,26 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
       return failure();
     }
 
+    auto input_tensor_type = input_type.dyn_cast<TensorType>();
+    auto output_tensor_type = output_type.dyn_cast<TensorType>();
+    if (!input_tensor_type || !output_tensor_type) {
+      return failure();
+    }
+
+    // Canonicalize two tfr.cast pairs with different element type to
+    // two tfr.casts with the same element type followed by a tf.Cast.
+    if ((input_tensor_type.getElementType() !=
+         output_tensor_type.getElementType()) &&
+        !isQuantizedType(input_type) && !isQuantizedType(output_type)) {
+      auto new_tfr_cast = rewriter.create<TFR::CastOp>(
+          cast_op.getLoc(),
+          output_tensor_type.clone(input_tensor_type.getElementType()),
+          cast_op.arg());
+      rewriter.replaceOpWithNewOp<TF::CastOp>(cast_op, output_type,
+                                              new_tfr_cast);
+      return success();
+    }
+
     // If the two types are the same, the back-to-back tfr.cast ops can be
     // removed.
     if (input_type == output_type || output_type.isa<UnrankedTensorType>()) {
@@ -459,14 +479,15 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
     // If the rank of the input tensor isn't ranked, we replace the pair
     // with tf.EnsureShape op so it can be removed after shape inference or
     // confirmed at runtime.
-    if (input_type.isa<UnrankedTensorType>() && output_type.isa<ShapedType>()) {
+    if (input_type.isa<UnrankedTensorType>()) {
       auto shape = output_type.cast<ShapedType>().getShape();
       auto shape_attr = TF::ShapeAttr::get(rewriter.getContext(), shape);
       rewriter.replaceOpWithNewOp<TF::EnsureShapeOp>(cast_op, output_type,
                                                      input, shape_attr);
+      return success();
     }
 
-    return success();
+    return failure();
   }
 };
 
@@ -702,7 +723,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
       return failure();
     }
     const double out_scale =
-        out_scale_op.value().cast<FloatAttr>().getValueAsDouble();
+        out_scale_op.getValue().cast<FloatAttr>().getValueAsDouble();
 
     auto in_scales_op =
         scale_factor_op.in_scales().getDefiningOp<BuildListOp>();
@@ -722,7 +743,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
         in_scale_attr.size() != 1) {
       return failure();
     }
-    const float in_scale = in_scale_attr.getValue<float>(0);
+    const float in_scale = in_scale_attr.getValues<float>()[0];
     auto filter_scale_op = in_scales_op.getOperand(1).getDefiningOp<CastOp>();
     if (!filter_scale_op) {
       return failure();

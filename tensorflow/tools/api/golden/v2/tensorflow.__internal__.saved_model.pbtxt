@@ -5,10 +5,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "StructureCoder"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "load"
     mtype: "<type \'module\'>"
   }

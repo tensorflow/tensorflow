@@ -27,8 +27,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/finalization_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -69,6 +71,7 @@ namespace {
 
 const char kAnonymousIterator[] = "AnonymousIterator";
 const char kAnonymousIteratorV2[] = "AnonymousIteratorV2";
+const char kAnonymousIteratorV3[] = "AnonymousIteratorV3";
 const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
@@ -153,8 +156,8 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
                                    out_tensors, end_of_sequence);
   if (collect_metrics_) {
     const uint64 end_time_us = ctx->env()->NowMicros();
-    metrics::RecordTFDataGetNextDuration(safe_sub(end_time_us, start_time_us));
-    metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
+    AddLatencySample(safe_sub(end_time_us, start_time_us));
+    IncrementThroughput(GetTotalBytes(*out_tensors));
     mutex_lock l(mu_);
     metrics::RecordTFDataIteratorLifetime(
         safe_sub(end_time_us, get_next_end_time_us_));
@@ -260,8 +263,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   std::unique_ptr<IteratorBase> iterator;
   if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
     DatasetBase* finalized_dataset;
-    TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
-    core::ScopedUnref unref(finalized_dataset);
+    TF_ASSIGN_OR_RETURN(finalized_dataset, GetFinalizedDataset(ctx, dataset));
     TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
         IteratorContext(std::move(params)),
         /*parent=*/nullptr, "Iterator", &iterator));
@@ -576,7 +578,8 @@ AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
           // Only enable this for V2 (via Python's iter protocol),
           // AnonymousIteratorV1 requires IteratorToStringHandle, which is
           // undefined on Refcounting ResourceHandle.
-          context->def().op() == kAnonymousIteratorV2,
+          context->def().op() == kAnonymousIteratorV2 ||
+              context->def().op() == kAnonymousIteratorV3,
           // V1 does not return a deleter.
           /* return_deleter */
           context->def().op() == kAnonymousIteratorV2),
@@ -1142,6 +1145,12 @@ REGISTER_KERNEL_BUILDER(
     AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIteratorV2").Device(DEVICE_GPU).Priority(1),
+    AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIteratorV3").Device(DEVICE_CPU).Priority(2),
+    AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIteratorV3").Device(DEVICE_GPU).Priority(1),
     AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);

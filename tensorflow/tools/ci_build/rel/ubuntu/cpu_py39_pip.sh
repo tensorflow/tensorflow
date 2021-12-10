@@ -27,9 +27,6 @@ export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.9'
 export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
 
-# TODO(rameshsampath) - Move installation of wheel to VM after nightly runs successfully
-${TF_PYTHON_VERSION} -m pip install wheel
-
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 

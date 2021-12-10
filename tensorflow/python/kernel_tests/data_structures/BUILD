@@ -29,6 +29,23 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "conditional_accumulator_test",
+    size = "small",
+    srcs = ["conditional_accumulator_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_test(
     name = "dynamic_partition_op_test",
     size = "medium",

@@ -507,6 +507,10 @@ class CheckpointPosition(object):
     return self._checkpoint.object_graph_proto.nodes[self._proto_id]
 
   @property
+  def proto_id(self):
+    return self._proto_id
+
+  @property
   def restore_uid(self):
     return self._checkpoint.restore_uid
 
@@ -558,8 +562,9 @@ class CheckpointPosition(object):
     if slot_variable is None:
       # The optimizer returns None if the restore should not be done (yet).
       return
-    slot_variable_position.checkpoint.object_by_proto_id[
-        slot_variable_id] = slot_variable
+    self.checkpoint.all_python_objects.add(slot_variable)
+    self.checkpoint.matched_proto_ids.add(slot_variable_position.proto_id)
+    self.checkpoint.object_by_proto_id[slot_variable_id] = slot_variable
     # pylint: disable=protected-access
     slot_variable._maybe_initialize_trackable()
     slot_variable._self_update_uid = self.checkpoint.restore_uid
@@ -1078,24 +1083,8 @@ class Trackable(object):
 
       _queue_children_for_restoration(current_position, visit_queue)
 
-    # Restore slot variables first.
-    #
-    # Order matters because tensor_saveables from above may contain "saveables"
-    # with side effects that expect the restored slot variable values.
-    #
-    # It is faster to restore slot variables separately because the file reader
-    # (BundleReader) assumes that variables are stored on disk in alphabetical
-    # order. However, slot variables are stored in their own groups after other
-    # variables, and while each group is alphabetically sorted, merging them
-    # into 1 read would cause lots of back and forth seeking, e.g.
-    #   variable/1 @ offset 0,
-    #   variable/1/slot/1 @ offset 100,
-    #   variable/1/slot/2 @ offset 200,
-    #   variable/2 @ offset 1,
-    #   variable/2/slot/1 @ offset 101, ...
-    restore_ops.extend(
-        current_position.checkpoint.restore_saveables(
-            current_position.checkpoint.slot_restoration_tensor_saveables, []))
+    tensor_saveables.update(
+        current_position.checkpoint.slot_restoration_tensor_saveables)
     current_position.checkpoint.slot_restoration_tensor_saveables.clear()
 
     restore_ops.extend(
@@ -1383,11 +1372,22 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
     child_position = CheckpointPosition(
         checkpoint=checkpoint, proto_id=child.node_id)
     local_object = trackable._lookup_dependency(child.local_name)
+    child_proto = child_position.object_proto
     if local_object is None:
       # We don't yet have a dependency registered with this name. Save it
       # in case we do.
-      trackable._deferred_dependencies.setdefault(child.local_name,
-                                                  []).append(child_position)
+      if child_proto.HasField("has_checkpoint_values"):
+        has_value = child_proto.has_checkpoint_values.value
+      else:
+        # If the field is not set, do a simple check to see if the dependency
+        # has children and/or checkpointed values.
+        has_value = bool(child_proto.children or
+                         child_proto.attributes or
+                         child_proto.slot_variables or
+                         child_proto.HasField("registered_saver"))
+      if has_value:
+        trackable._deferred_dependencies.setdefault(child.local_name,
+                                                    []).append(child_position)
     else:
       if child_position.bind_object(trackable=local_object):
         # This object's correspondence is new, so dependencies need to be

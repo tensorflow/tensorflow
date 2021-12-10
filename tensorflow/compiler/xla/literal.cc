@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <type_traits>
 #include <vector>
@@ -985,6 +986,12 @@ Literal LiteralBase::Clone() const {
   return result;
 }
 
+std::unique_ptr<Literal> LiteralBase::CloneToUnique() const {
+  auto result = std::make_unique<Literal>(shape());
+  TF_CHECK_OK(result->CopyFrom(*this));
+  return result;
+}
+
 string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
                                 const ShapeIndex& shape_index) const {
   const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
@@ -1097,7 +1104,7 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
   }
 }
 
-size_t LiteralBase::Hash() const {
+size_t LiteralBase::Hash(int64_t byte_limit) const {
   using tensorflow::Hash64;
   using tensorflow::Hash64Combine;
 
@@ -1112,7 +1119,7 @@ size_t LiteralBase::Hash() const {
         CHECK(LayoutUtil::IsDense(subshape.layout()));
         hash_value = Hash64Combine(
             hash_value, Hash64(static_cast<const char*>(untyped_data(index)),
-                               size_bytes(index)));
+                               std::min(byte_limit, size_bytes(index))));
       });
 
   return hash_value;

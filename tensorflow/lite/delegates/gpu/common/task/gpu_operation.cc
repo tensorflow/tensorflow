@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -98,6 +101,8 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       elementwise_(operation.elementwise_),
       linkable_(operation.linkable_),
       check_src_channels_size_(operation.check_src_channels_size_),
+      flops_(operation.flops_),
+      const_args_size_(operation.const_args_size_),
       definition_(std::move(operation.definition_)),
       src_(std::move(operation.src_)),
       dst_(std::move(operation.dst_)),
@@ -120,6 +125,8 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     elementwise_ = operation.elementwise_;
     linkable_ = operation.linkable_;
     check_src_channels_size_ = operation.check_src_channels_size_;
+    flops_ = operation.flops_;
+    const_args_size_ = operation.const_args_size_;
     definition_ = std::move(operation.definition_);
     src_ = std::move(operation.src_);
     dst_ = std::move(operation.dst_);
@@ -183,7 +190,7 @@ void GPUOperation::AddDstTensor(const std::string& tensor_name,
   args_.AddObjectRef(tensor_name, AccessType::WRITE, std::move(desc_new));
 }
 
-void GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
+absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
   if (elementwise_) {
     auto src_desc =
         absl::make_unique<TensorDescriptor>(definition_.src_tensors[0]);
@@ -203,6 +210,17 @@ void GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
 
     elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
     code_ = GetElementWiseCode(definition_, check_src_channels_size_);
+  }
+  RETURN_IF_ERROR(args_.Compile(
+      gpu_info, {{dst_tensors_names_[0], elementwise_code_}}, &code_));
+  CalculateConstArgsSize();
+  return absl::OkStatus();
+}
+
+void GPUOperation::CalculateConstArgsSize() {
+  const_args_size_ = 0;
+  for (const auto& obj : args_.GetObjects()) {
+    const_args_size_ += obj.second->GetSizeInBytes();
   }
 }
 

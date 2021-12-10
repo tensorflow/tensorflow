@@ -33,7 +33,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tfd {
 
-class OpKernelRunnerCache;
 class OpKernelRunnerTable;
 
 // FallbackResourceArray holds the tensors that are computed only once during
@@ -68,6 +67,7 @@ class KernelFallbackCompatRequestState {
  public:
   // NOTE: This is the constructor for training.
   KernelFallbackCompatRequestState(
+      std::function<void(std::function<void()>)>* runner,
       const tensorflow::DeviceMgr* device_manager, int64_t step_id,
       tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
@@ -79,6 +79,7 @@ class KernelFallbackCompatRequestState {
 
   // NOTE: This is the constructor for inference.
   KernelFallbackCompatRequestState(
+      std::function<void(std::function<void()>)>* runner,
       const tensorflow::DeviceMgr* device_manager, int64_t step_id,
       OpKernelRunnerTable* runner_table, FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
@@ -108,9 +109,7 @@ class KernelFallbackCompatRequestState {
 
   FallbackResourceArray* resource_array() const { return resource_array_; }
 
-  std::function<void(std::function<void()>)>* runner() const {
-    return default_runner_;
-  }
+  std::function<void(std::function<void()>)>* runner() const { return runner_; }
 
   CancellationManager* cancellation_manager() const {
     return default_cancellation_manager_;
@@ -129,7 +128,7 @@ class KernelFallbackCompatRequestState {
 
  private:
   // Below are resources needed by current tensorflow.
-  std::function<void(std::function<void()>)>* default_runner_ = nullptr;
+  std::function<void(std::function<void()>)>* runner_ = nullptr;
   ::tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container_;
   std::unique_ptr<tensorflow::Device> custom_device_;
   std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle_;
@@ -148,12 +147,12 @@ class KernelFallbackCompatRequestState {
   // tfrt_fallback_async.get_resource kernels.
   FallbackResourceArray* resource_array_ = nullptr;
 
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool_;
+  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool_ = nullptr;
 
   // Model metadata used for monitoring and tracing purpose.
   SessionMetadata session_metadata_;
 
-  const tensorflow::ProcessFunctionLibraryRuntime* pflr_;
+  const tensorflow::ProcessFunctionLibraryRuntime* pflr_ = nullptr;
 
   bool log_device_placement_ = false;
 };

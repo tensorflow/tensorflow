@@ -28,6 +28,12 @@ Status ComputeOutputTensorShapes(
     const TPUEmbeddingConfiguration& config,
     std::vector<tensorflow::TensorShapeProto>* shapes);
 
+// Computes the shape of the output tensors based on the number of input
+// features.
+Status ComputeOutputTensorShapesFromFeature(
+    const TPUEmbeddingConfiguration& config,
+    std::vector<tensorflow::TensorShapeProto>* shapes);
+
 }  // namespace tpu
 }  // namespace tensorflow
 

@@ -28,7 +28,7 @@ func @fusion(%arg0: memref<4096xf32>) {
     // CHECK-SAME: threads in (%[[tx]], %[[ty]], %[[tz]])
     // CHECK-SAME: args(%arg0 : memref<4096xf32>)
     "lmhlo.fusion"() ( {
-      %tensor = memref.tensor_load %arg0 : memref<4096xf32>
+      %tensor = bufferization.to_tensor %arg0 : memref<4096xf32>
       %result = mhlo.add %tensor, %tensor : tensor<4096xf32>
       memref.tensor_store %result, %arg0 : memref<4096xf32>
       "lmhlo.terminator"() : () -> ()
@@ -77,9 +77,9 @@ func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
     // CHECK-SAME: threads in (%[[tx]], %[[ty]], %[[tz]])
     // CHECK-SAME: args(%arg0 : memref<8x128xf32>, %arg1 : memref<8xf32>)
     "lmhlo.fusion"() ({
-      %clamp = memref.tensor_load %zero : memref<f32>
-      %bias = memref.tensor_load %ones : memref<8xf32>
-      %tensor = memref.tensor_load %arg0 : memref<8x128xf32>
+      %clamp = bufferization.to_tensor %zero : memref<f32>
+      %bias = bufferization.to_tensor %ones : memref<8xf32>
+      %tensor = bufferization.to_tensor %arg0 : memref<8x128xf32>
       %0 = "mhlo.reduce"(%tensor, %clamp) ({
       ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
         %max = mhlo.maximum %arg2, %arg3 : tensor<f32>

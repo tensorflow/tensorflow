@@ -19,6 +19,7 @@ import timeit
 from absl.testing import parameterized
 
 from tensorflow.python import keras
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import function
@@ -43,9 +44,10 @@ except ImportError:
   attr = None
 
 if attr is not None:
+
   @attr.s
   class TestAttrsClass(object):
-    """Helps test memory leaks for attrs collection."""
+    """Helps test attrs collections."""
     a = attr.ib()
     b = attr.ib()
 
@@ -53,6 +55,11 @@ if attr is not None:
 class DummyGenericClass:
   """Helps test memory leaks for GenericType."""
   pass
+
+
+def make_function_signature_with_context(inputs):
+  return function_trace_type.make_function_signature(
+      inputs, function_trace_type.SignatureContext(), True, True)
 
 
 class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
@@ -63,14 +70,14 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     it2 = iter(dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3]))
 
     self.assertEqual(
-        function_trace_type.get_arg_spec((it1, it1), False, False, True),
-        function_trace_type.get_arg_spec((it2, it2), False, False, True))
+        make_function_signature_with_context((it1, it1)),
+        make_function_signature_with_context((it2, it2)))
     self.assertEqual(
-        function_trace_type.get_arg_spec((it1, it2), False, False, True),
-        function_trace_type.get_arg_spec((it2, it1), False, False, True))
+        make_function_signature_with_context((it1, it2)),
+        make_function_signature_with_context((it2, it1)))
     self.assertNotEqual(
-        function_trace_type.get_arg_spec((it1, it1), False, False, True),
-        function_trace_type.get_arg_spec((it1, it2), False, False, True))
+        make_function_signature_with_context((it1, it1)),
+        make_function_signature_with_context((it1, it2)))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testIteratorTypesImplementTracing(self):
@@ -86,26 +93,23 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     spec = ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32)
 
     self.assertEqual(
-        function_trace_type.get_arg_spec(composite_tensor, False, False, True),
-        function_trace_type.get_arg_spec(spec, False, False, True))
+        make_function_signature_with_context(composite_tensor),
+        make_function_signature_with_context(spec))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testVariableAliasing(self):
     v1 = resource_variable_ops.ResourceVariable([1])
     v2 = resource_variable_ops.ResourceVariable([1])
     v3 = resource_variable_ops.ResourceVariable([1])
-    all_unique = function_trace_type.get_arg_spec((v1, v2, v3), False, True,
-                                                  True)
-    all_same = function_trace_type.get_arg_spec((v1, v1, v1), False, True, True)
+    all_unique = make_function_signature_with_context((v1, v2, v3))
+    all_same = make_function_signature_with_context((v1, v1, v1))
     self.assertNotEqual(all_unique, all_same)
 
     v3 = resource_variable_ops.ResourceVariable([2])
     v4 = resource_variable_ops.ResourceVariable([2])
     v5 = resource_variable_ops.ResourceVariable([2])
-    all_unique_again = function_trace_type.get_arg_spec((v3, v4, v5), False,
-                                                        True, True)
-    all_same_again = function_trace_type.get_arg_spec((v4, v4, v4), False, True,
-                                                      True)
+    all_unique_again = make_function_signature_with_context((v3, v4, v5))
+    all_same_again = make_function_signature_with_context((v4, v4, v4))
     self.assertEqual(all_unique, all_unique_again)
     self.assertEqual(all_same, all_same_again)
 
@@ -113,13 +117,13 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   def testTensorEquality(self):
     context = function_trace_type.SignatureContext()
     tensor_a = array_ops.zeros([11, 3, 5],
-                               dtype=dtypes.int32)._tf_tracing_type(context)
+                               dtype=dtypes.int32).__tf_tracing_type__(context)
     tensor_b = array_ops.zeros([11, 4, 5],
-                               dtype=dtypes.int32)._tf_tracing_type(context)
-    tensor_c = array_ops.zeros([11, 3, 5],
-                               dtype=dtypes.float32)._tf_tracing_type(context)
+                               dtype=dtypes.int32).__tf_tracing_type__(context)
+    tensor_c = array_ops.zeros(
+        [11, 3, 5], dtype=dtypes.float32).__tf_tracing_type__(context)
     tensor_d = array_ops.ones([11, 3, 5],
-                              dtype=dtypes.int32)._tf_tracing_type(context)
+                              dtype=dtypes.int32).__tf_tracing_type__(context)
 
     self.assertNotEqual(tensor_a, tensor_b)
     self.assertNotEqual(tensor_a, tensor_c)
@@ -130,11 +134,12 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   def testTensorAndSpecEquality(self):
     context = function_trace_type.SignatureContext()
     tensor = array_ops.zeros([11, 3, 5],
-                             dtype=dtypes.int32)._tf_tracing_type(context)
-    spec = tensor_spec.TensorSpec([11, 3, 5],
-                                  dtype=dtypes.int32)._tf_tracing_type(context)
+                             dtype=dtypes.int32).__tf_tracing_type__(context)
+    spec = tensor_spec.TensorSpec(
+        [11, 3, 5], dtype=dtypes.int32).__tf_tracing_type__(context)
     spec_with_name = tensor_spec.TensorSpec(
-        [11, 3, 5], dtype=dtypes.int32, name='name')._tf_tracing_type(context)
+        [11, 3, 5], dtype=dtypes.int32,
+        name='name').__tf_tracing_type__(context)
 
     self.assertEqual(tensor, spec)
     self.assertNotEqual(tensor, spec_with_name)
@@ -143,18 +148,28 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   def testTensorShapeUnknown(self):
     context = function_trace_type.SignatureContext()
     spec_1 = tensor_spec.TensorSpec(
-        None, dtype=dtypes.int32)._tf_tracing_type(context)
+        None, dtype=dtypes.int32).__tf_tracing_type__(context)
     spec_2 = tensor_spec.TensorSpec(
-        None, dtype=dtypes.int32)._tf_tracing_type(context)
+        None, dtype=dtypes.int32).__tf_tracing_type__(context)
     self.assertEqual(spec_1, spec_2)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def testTupleEquality(self):
-    trace_a = function_trace_type.get_arg_spec((1, 2, 3, 4), False, False, True)
-    trace_b = function_trace_type.get_arg_spec((1, 2, 2, 4), False, False, True)
-    trace_c = function_trace_type.get_arg_spec((1, 2, 3), False, False, True)
-    trace_d = function_trace_type.get_arg_spec((1, 2, 3, 4), False, False, True)
+  def testAttrsCacheKeyGeneration(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+    trace_a = make_function_signature_with_context(TestAttrsClass(1, 2))
+    expected = function_trace_type.AttrsType(
+        TestAttrsClass, (function_trace_type.GenericType(1),
+                         function_trace_type.GenericType(2)))
+    self.assertEqual(trace_a, expected)
+    self.assertTrue(trace_a.is_subtype_of(trace_a))
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testTupleEquality(self):
+    trace_a = make_function_signature_with_context((1, 2, 3, 4))
+    trace_b = make_function_signature_with_context((1, 2, 2, 4))
+    trace_c = make_function_signature_with_context((1, 2, 3))
+    trace_d = make_function_signature_with_context((1, 2, 3, 4))
     self.assertNotEqual(trace_a, trace_b)
     self.assertNotEqual(trace_a, trace_c)
     self.assertNotEqual(trace_b, trace_c)
@@ -162,11 +177,10 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testListEquality(self):
-    trace_a = function_trace_type.get_arg_spec([1, 2, 3, 4], False, False, True)
-    trace_b = function_trace_type.get_arg_spec([1, 2, 2, 4], False, False, True)
-    trace_c = function_trace_type.get_arg_spec([1, 2, 3], False, False, True)
-    trace_d = function_trace_type.get_arg_spec([1, 2, 3, 4], False, False, True)
-
+    trace_a = make_function_signature_with_context([1, 2, 3, 4])
+    trace_b = make_function_signature_with_context([1, 2, 2, 4])
+    trace_c = make_function_signature_with_context([1, 2, 3])
+    trace_d = make_function_signature_with_context([1, 2, 3, 4])
     self.assertNotEqual(trace_a, trace_b)
     self.assertNotEqual(trace_a, trace_c)
     self.assertNotEqual(trace_b, trace_c)
@@ -174,11 +188,10 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testDictEquality(self):
-    trace_a = function_trace_type.get_arg_spec({1: 2, 3: 4}, False, False, True)
-    trace_b = function_trace_type.get_arg_spec({1: 2, 3: 2}, False, False, True)
-    trace_c = function_trace_type.get_arg_spec({1: 2, 3: 0}, False, False, True)
-    trace_d = function_trace_type.get_arg_spec({3: 4, 1: 2}, False, False, True)
-
+    trace_a = make_function_signature_with_context({1: 2, 3: 4})
+    trace_b = make_function_signature_with_context({1: 2, 3: 2})
+    trace_c = make_function_signature_with_context({1: 2, 3: 0})
+    trace_d = make_function_signature_with_context({3: 4, 1: 2})
     self.assertNotEqual(trace_a, trace_b)
     self.assertNotEqual(trace_a, trace_c)
     self.assertNotEqual(trace_b, trace_c)
@@ -187,8 +200,8 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testComplexStruct(self):
     struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
-    trace_a = function_trace_type.get_arg_spec(struct, False, False, True)
-    trace_b = function_trace_type.get_arg_spec(struct, False, False, True)
+    trace_a = make_function_signature_with_context(struct)
+    trace_b = make_function_signature_with_context(struct)
     self.assertEqual(trace_a, trace_b)
     self.assertTrue(trace_a.is_subtype_of(trace_b))
     self.assertTrue(trace_b.is_subtype_of(trace_a))
@@ -198,32 +211,31 @@ class CacheKeyMemoryTest(test.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testGeneric(self):
-    function_trace_type.get_arg_spec(1, False, True, True)
-    function_trace_type.get_arg_spec(DummyGenericClass(), False, True, True)
+    make_function_signature_with_context(1)
+    make_function_signature_with_context(DummyGenericClass())
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testTensor(self):
     tensor = array_ops.zeros([10])
-    function_trace_type.get_arg_spec(tensor, False, True, True)
+    make_function_signature_with_context(tensor)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testTuple(self):
-    function_trace_type.get_arg_spec((1, 2, 3), False, True, True)
+    make_function_signature_with_context((1, 2, 3))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testDict(self):
-    function_trace_type.get_arg_spec({1: 1, 2: 2, 3: 3}, False, True, True)
+    make_function_signature_with_context({1: 1, 2: 2, 3: 3})
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testList(self):
-    function_trace_type.get_arg_spec([1, 2, 3], False, True, True)
+    make_function_signature_with_context([1, 2, 3])
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testAttrs(self):
     if attr is None:
       self.skipTest('attr module is unavailable.')
-
-    function_trace_type.get_arg_spec(TestAttrsClass(1, 2), False, True, True)
+    make_function_signature_with_context(TestAttrsClass(1, 2))
 
 
 class CacheKeyGenerationBenchmark(test.Benchmark):
@@ -235,8 +247,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensors.append(array_ops.zeros(s))
 
     def encode_tensors(tensors):
-      function_trace_type.get_arg_spec(tensors, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      make_function_signature_with_context(tensors)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_tensors(tensors), number=iterations)
@@ -246,7 +257,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'tensor_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkTensorSpec(self):
@@ -256,8 +267,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensor_specs.append(tensor_spec.TensorSpec(s, dtypes.int32))
 
     def encode_tensor_specs(tensor_specs):
-      function_trace_type.get_arg_spec(tensor_specs, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      make_function_signature_with_context(tensor_specs)
 
     iterations = 100000
     t = timeit.timeit(
@@ -268,7 +278,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'tensor_spec_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkVariable(self):
@@ -279,8 +289,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     ]
 
     def encode_variables(var_list):
-      function_trace_type.get_arg_spec(var_list, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      make_function_signature_with_context(var_list)
 
     iterations = 10000
     t = timeit.timeit(lambda: encode_variables(var_list), number=iterations)
@@ -290,7 +299,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'variable_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkKerasModel(self):
@@ -300,8 +309,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     model = keras.Model(inputs=inputs, outputs=outputs)
 
     def encode_model(model):
-      function_trace_type.get_arg_spec(model, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      make_function_signature_with_context(model)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_model(model), number=iterations)
@@ -311,7 +319,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'keras_model_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkCacheKeyLookup(self):
@@ -341,15 +349,14 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'cache_key_lookup_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkNestedStruct(self):
     struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
 
     def encode_struct(struct):
-      function_trace_type.get_arg_spec(struct, False, False,
-                                       function.USE_FULL_TRACE_TYPE)
+      make_function_signature_with_context(struct)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_struct(struct), number=iterations)
@@ -359,7 +366,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'nested_struct_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkFunctionInvocation(self):
@@ -381,12 +388,40 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         iters=iterations,
         wall_time=t,
         metrics=[{
-            'name': 'function_invocation_time',
-            'value': t
+            'name': 'function_invocation_time_avg_ms',
+            'value': t / iterations * 1000
         }])
 
 
 class TraceTypeEncodingTest(test.TestCase):
+
+  def testCustomUnequableTypeSucceeds(self):
+
+    class CustomUnequable:
+
+      def __eq__(self, o):
+        raise ValueError
+
+      def __hash__(self):
+        return 0
+
+    object_a = CustomUnequable()
+    object_b = CustomUnequable()
+    trace_a_1 = make_function_signature_with_context(object_a)
+    trace_a_2 = make_function_signature_with_context(object_a)
+    trace_b = make_function_signature_with_context(object_b)
+    self.assertEqual(trace_a_1, trace_a_2)
+
+    with self.assertRaises(ValueError):
+      trace_a_1.__eq__(trace_b)
+
+    del object_a
+    self.assertNotEqual(trace_a_1, trace_a_2)
+    self.assertNotEqual(trace_a_2, trace_a_1)
+
+    del object_b
+    self.assertNotEqual(trace_a_1, trace_a_2)
+    self.assertNotEqual(trace_a_2, trace_a_1)
 
   def testCustomUnhashableTypeFailsGracefully(self):
 
@@ -399,7 +434,7 @@ class TraceTypeEncodingTest(test.TestCase):
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         r'could not be represented through the generic tracing type'):
-      function_trace_type.get_arg_spec(obj, False, True, True)
+      make_function_signature_with_context(obj)
 
   def testOrderedCollectionTypeEquality(self):
     collection = function_trace_type.OrderedCollectionType
@@ -458,29 +493,19 @@ class TraceTypeEncodingTest(test.TestCase):
     dict_type = function_trace_type.DictType
     dict_a = dict_type({
         'a': MockSubtypeOf2(1),
-        'b': MockSubtypeOf2(2),
-        'c': MockSubtypeOf2(3)
+        'b': MockSubtypeOf2(1),
+        'c': MockSubtypeOf2(1)
     })
     dict_b = dict_type({
         'a': MockSubtypeOf2(2),
         'b': MockSubtypeOf2(2),
         'c': MockSubtypeOf2(2)
     })
-    dict_c = dict_type({
-        'a': MockSubtypeOf2(2),
-        'b': MockSubtypeOf2(2),
-        'c': MockSubtypeOf2(2),
-        'd': MockSubtypeOf2(2)
-    })
+    dict_c = dict_type({'a': MockSubtypeOf2(1), 'b': MockSubtypeOf2(1)})
 
     self.assertTrue(dict_a.is_subtype_of(dict_b))
-    self.assertFalse(dict_b.is_subtype_of(dict_a))
-
-    self.assertFalse(dict_a.is_subtype_of(dict_c))
+    self.assertFalse(dict_c.is_subtype_of(dict_b))
     self.assertFalse(dict_c.is_subtype_of(dict_a))
-
-    self.assertTrue(dict_c.is_subtype_of(dict_b))
-    self.assertFalse(dict_b.is_subtype_of(dict_c))
 
   def testDictTypeSupertype(self):
 
@@ -497,25 +522,23 @@ class TraceTypeEncodingTest(test.TestCase):
 
     dict_type = function_trace_type.DictType
     dict_a = dict_type({
-        1: MockSupertypes2With3(1),
-        2: MockSupertypes2With3(2),
-        3: MockSupertypes2With3(3),
-        4: MockSupertypes2With3(4)
+        'a': MockSupertypes2With3(1),
+        'b': MockSupertypes2With3(2),
+        'c': MockSupertypes2With3(3)
     })
     dict_b = dict_type({
-        1: MockSupertypes2With3(2),
-        2: MockSupertypes2With3(2),
-        3: MockSupertypes2With3(2),
-        5: MockSupertypes2With3(5)
+        'a': MockSupertypes2With3(2),
+        'b': MockSupertypes2With3(2),
+        'c': MockSupertypes2With3(2)
     })
 
     self.assertIsNone(dict_a.most_specific_common_supertype([dict_b]))
     self.assertEqual(
         dict_b.most_specific_common_supertype([dict_a]),
         dict_type({
-            1: MockSupertypes2With3(3),
-            2: MockSupertypes2With3(3),
-            3: MockSupertypes2With3(3),
+            'a': MockSupertypes2With3(3),
+            'b': MockSupertypes2With3(3),
+            'c': MockSupertypes2With3(3)
         }))
 
   def testListTupleInequality(self):
@@ -545,4 +568,5 @@ class TraceTypeEncodingTest(test.TestCase):
 
 
 if __name__ == '__main__':
+  v2_compat.enable_v2_behavior()
   test.main()

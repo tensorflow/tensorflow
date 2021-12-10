@@ -15,6 +15,7 @@
 """Tests for the `tf.data.experimental.{save,load}` operations."""
 import os
 import shutil
+import tempfile
 
 from absl.testing import parameterized
 import numpy as np
@@ -137,6 +138,18 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = self.getNext(dataset)
     for _ in range(30):
       self.evaluate(next_element())
+
+  @combinations.generate(
+      combinations.times(test_base.v2_eager_only_combinations()))
+  def testLoadInTempFile(self):
+    with tempfile.TemporaryDirectory() as tmpdir:
+      dataset = dataset_ops.Dataset.range(42)
+      io.save(dataset, tmpdir)
+      cache_dataset = io.load(tmpdir).cache()
+      list(cache_dataset)
+    # Since the dataset is cached at this point, it should not matter
+    # that tmpdir is deleted.
+    list(cache_dataset)
 
 
 class LoadCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):

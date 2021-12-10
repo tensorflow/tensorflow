@@ -368,6 +368,7 @@ tf_py_test(
     name = "tf_stack_test",
     srcs = ["tf_stack_test.py"],
     python_version = "PY3",
+    tags = ["no_oss_py310"],  # b/207152102
     deps = [
         ":tf_export",
         ":tf_stack",

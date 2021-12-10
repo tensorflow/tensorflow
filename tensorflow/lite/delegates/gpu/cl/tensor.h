@@ -68,7 +68,7 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   int Slices() const override { return DivideRoundUp(shape_.c, 4); }
   int Batch() const override { return shape_.b; }
 
-  TensorDescriptor GetDescriptor() const { return descriptor_; }
+  TensorDescriptor GetDescriptor() const override { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 
@@ -104,6 +104,10 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
                                     CLContext* context);
 
  private:
+  friend absl::Status CreateSharedImage2DBufferTensor(
+      const CLContext& context, cl_mem memory, const BHWDC& shape,
+      const TensorDescriptor& descriptor, int width_pixel_alignment,
+      Tensor* result);
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
 
@@ -124,6 +128,8 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   bool buffer_based_ = false;
   BHWDC shape_;
   TensorDescriptor descriptor_;
+  // for use with TEXTURE_2D and when texture created from buffer.
+  int aligned_texture_width_;
 };
 
 using TensorPtr = std::shared_ptr<Tensor>;
@@ -155,13 +161,13 @@ absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
 absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
                                              cl_mem memory, const BHWC& shape,
                                              const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment,
+                                             int width_pixel_alignment,
                                              Tensor* result);
 
 absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
                                              cl_mem memory, const BHWDC& shape,
                                              const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment,
+                                             int width_pixel_alignment,
                                              Tensor* result);
 
 template <DataType T>

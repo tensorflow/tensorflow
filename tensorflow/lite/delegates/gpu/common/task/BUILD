@@ -17,6 +17,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -79,6 +80,9 @@ cc_library(
 cc_library(
     name = "gpu_tensor",
     hdrs = ["gpu_tensor.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+    ],
 )
 
 cc_library(

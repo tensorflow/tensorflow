@@ -332,6 +332,12 @@ message EdgeTpuSettings {
     HALF = 3;
   }
 
+  enum QosClass {
+    QOS_UNDEFINED = 0;
+    BEST_EFFORT = 1;
+    REALTIME = 2;
+  }
+
   // Target inference power state for running the model.
   optional EdgeTpuPowerState inference_power_state = 1;
 
@@ -349,6 +355,9 @@ message EdgeTpuSettings {
 
   // Float truncation type for EdgeTPU.
   optional FloatTruncationType float_truncation_type = 6;
+
+  // QoS class to determine chunking size for PRO onward.
+  optional QosClass qos_class = 7 [default = QOS_UNDEFINED];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.

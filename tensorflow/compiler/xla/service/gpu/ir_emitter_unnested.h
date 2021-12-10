@@ -100,7 +100,7 @@ class IrEmitterUnnested : public IrEmitter {
     // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
     llvm::Value* thread_id_y;
 
-    // Lane id: `thread_id % kWarpSize`
+    // Lane id: `thread_id % WarpSize`
     llvm::Value* lane_id;
 
     // Block id.
@@ -367,13 +367,13 @@ class IrEmitterUnnested : public IrEmitter {
   //      accum += in[i];
   //    }
   //    accum = warp_reduce(accum);
-  //    if (threadIdx.x % kWarpSize == 0) {
-  //      cache[threadIdx.x / kWarpSize] = accum;
+  //    if (threadIdx.x % WarpSize == 0) {
+  //      cache[threadIdx.x / WarpSize] = accum;
   //    }
   //    __syncthreads();
-  //    if (threadIdx.x / kWarpSize == 0) {
-  //      bool warp_exists = threadIdx.x < (blockDim.x / kWarpSize);
-  //      float block_accum = warp_exists ? cache[threadIdx.x % kWarpSize] : 0;
+  //    if (threadIdx.x / WarpSize == 0) {
+  //      bool warp_exists = threadIdx.x < (blockDim.x / WarpSize);
+  //      float block_accum = warp_exists ? cache[threadIdx.x % WarpSize] : 0;
   //      block_accum = warp_reduce(accum);
   //      if (threadIdx.x == 0) {
   //        out += block_accum;
@@ -656,6 +656,8 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(mlir::Operation* op,
                                                          mlir::Value init_value,
                                                          mlir::Value dest);
+  StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
+      mlir::lmhlo::FusionOp fusion, int output_index);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
@@ -724,6 +726,10 @@ class IrEmitterUnnested : public IrEmitter {
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
       scratch_nested_computations_;
   // End optional members for XLA HLO -> LMHLO.
+
+  // __shared__ memory uses a different address space, so we cast it to
+  // global address space before writing or reading.
+  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
 };
 
 }  // namespace gpu

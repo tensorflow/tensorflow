@@ -52,24 +52,6 @@ def LinalgTrivialCopyRemoval
   }];
 }
 
-def LinalgMatmulSpecialization
-    : FunctionPass<"tf-cpurt-linalg-matmul-specialization"> {
-  let summary = "Specialize linalg.matmul to dot, matvec or vecmat at runtime";
-  let constructor = "tensorflow::CreateLinalgMatmulSpecializationPass()";
-  let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::scf::SCFDialect"
-  ];
-
-  let description = [{
-    Specialize linalg.matmul at runtime to:
-      1. linalg.dot    for vector x vector multiplication
-      2. linalg.matvec for matrix x vector multiplication
-      3. linalg.vecmat for vector x matrix multiplication
-  }];
-}
-
 def CodegenCWise : FunctionPass<"tf-cpurt-codegen-cwise"> {
   let summary = "Tile elementwise ops on tensors";
   let constructor = "tensorflow::CreateCodegenStrategyForCWisePass()";
@@ -81,14 +63,6 @@ def CodegenCWise : FunctionPass<"tf-cpurt-codegen-cwise"> {
 def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
   let summary = "Optimize away padding in tiled loops";
   let constructor = "tensorflow::CreatePeelTiledLoopsPass()";
-  let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
-  ];
-}
-
-def CodegenMatmul : FunctionPass<"tf-cpurt-codegen-matmul"> {
-  let summary = "Tile-promote-vectorize linalg.matmul on buffers";
-  let constructor = "tensorflow::CreateCodegenStrategyForMatMulPass()";
   let dependentDialects = [
     "mlir::linalg::LinalgDialect",
   ];
@@ -126,6 +100,19 @@ def Fusion : FunctionPass<"tf-cpurt-fusion"> {
   }];
   let dependentDialects = [
     "mlir::TF::TensorFlowDialect"
+  ];
+}
+
+def CpuRtLegalizeI1Types : Pass<"tf-cpurt-legalize-i1-types", "mlir::ModuleOp"> {
+  let summary = "Legalize 'i1' tensor types";
+  let constructor = "tensorflow::CreateCpuRtLegalizeI1TypesPass()";
+  let description = [{
+    Convert 'i1' tensor types used in any operation into 'i8' tensor types.
+  }];
+  let dependentDialects = [
+    "mlir::TF::TensorFlowDialect",
+    "mlir::mhlo::MhloDialect",
+    "mlir::StandardOpsDialect",
   ];
 }
 
@@ -174,12 +161,6 @@ def Clustering : FunctionPass<"tf-cpurt-clustering"> {
   ];
 }
 
-def PadTiledOps : FunctionPass<"tf-cpurt-pad-tiled-ops"> {
-  let summary = "Pad tiled Linalg ops inside `tiled_loop`";
-  let constructor = "tensorflow::CreatePadTiledOpsPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
-}
-
 def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {
   let summary = "Vectorize tiled Linalg ops inside `tiled_loop`";
   let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
@@ -189,5 +170,28 @@ def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {
 def DetensorizeLinalg : FunctionPass<"tf-cpurt-detensorize-linalg"> {
   let summary = "Replace 0d tensor inputs to LinalgOp with extracted elements.";
   let constructor = "tensorflow::CreateDetensorizeLinalgPass()";
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+}
+
+def MathApproximation : FunctionPass<"tf-cpurt-math-approximation"> {
+  let summary = "Approximate math operations with an implementation meant to "
+                "match Eigen's results. This is a useful property to have when "
+                "comparing results from compiled TF code vs TF1 and TFRT, "
+                "which use Eigen. "
+                "TODO: evaluate the accuracy of these math approximations vs. "
+                "those in upstream MLIR, and merge these upstream if they're "
+                "more accurate.";
+  let constructor = "tensorflow::CreateMathApproximationPass()";
+  let options = [
+   ListOption<"oplist", "oplist", "std::string",
+              "List of math operations to be approximated. Use 'all' to select "
+              "all supported math operations.",
+              "llvm::cl::MiscFlags::CommaSeparated">,
+  ];
+}
+
+def SinkUnusedOutputs : FunctionPass<"tf-cpurt-sink-unused-outputs"> {
+  let summary = "Sink unused output args of `tiled_loop` into the loop body.";
+  let constructor = "tensorflow::CreateSinkUnusedOutputs()";
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }

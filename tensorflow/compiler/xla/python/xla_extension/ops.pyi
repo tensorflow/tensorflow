@@ -82,7 +82,15 @@ def ApproxTopK(
     reduction_dim: int,
     comparator: XlaComputation,
     recall_target: Optional[float],
-    aggregate_to_topk: Optional[bool]) -> XlaOp: ...
+    aggregate_to_topk: Optional[bool],
+    reduction_input_size_override: Optional[int]) -> XlaOp: ...
+def ApproxTopKReductionOutputSize(
+    input_size: int,
+    rank: int,
+    top_k: int,
+    recall_target: float,
+    aggregate_to_topk: Optional[bool] = ...,
+    input_size_override: Optional[int] = ...) -> Tuple[int, int]: ...
 def ReduceScatter(
     operand: XlaOp,
     computation: XlaComputation,
@@ -141,7 +149,7 @@ def ConvGeneralDilated(
     dimension_numbers: _ConvDimensionNumbers,
     feature_group_count: int = ...,
     batch_group_count: int = ...,
-    precision_config: PrecisionConfig_Precision = ...,
+    precision_config: Optional[PrecisionConfig_Precision] = ...,
     preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def ConvertElementType(
     operand: XlaOp,
@@ -156,7 +164,7 @@ def CustomCall(
     operands: Sequence[XlaOp],
     shape: Shape,
     opaque: bytes = ...,
-    has_side_effects: bool = ...,
+    has_side_effect: bool = ...,
     schedule: CustomCallSchedule = ...,
     api_version: CustomCallApiVersion = ...) -> XlaOp: ...
 def CustomCallWithLayout(
@@ -166,7 +174,7 @@ def CustomCallWithLayout(
     shape_with_layout: Shape,
     operand_shapes_with_layout: Sequence[Shape],
     opaque: bytes = ...,
-    has_side_effects: bool = ...,
+    has_side_effect: bool = ...,
     schedule: CustomCallSchedule = ...,
     api_version: CustomCallApiVersion = ...) -> XlaOp: ...
 def CustomCallWithAliasing(
@@ -176,7 +184,7 @@ def CustomCallWithAliasing(
     shape_with_layout: Shape,
     operand_shapes_with_layout: Sequence[Shape],
     opaque: bytes = ...,
-    has_side_effects: bool = ...,
+    has_side_effect: bool = ...,
     output_operand_aliasing: Sequence[Tuple[ShapeIndex, Tuple[int, ShapeIndex]]] = ...,
     literal: _LiteralSlice = ...,
     schedule: CustomCallSchedule = ...,
@@ -184,13 +192,13 @@ def CustomCallWithAliasing(
 def Dot(
     lhs: XlaOp,
     rhs: XlaOp,
-    precision_config: PrecisionConfig_Precision = ...,
+    precision_config: Optional[PrecisionConfig_Precision] = ...,
     preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DotGeneral(
     lhs: XlaOp,
     rhs: XlaOp,
     dimensions_numbers: _DotDimensionNumbers,
-    precision_config: PrecisionConfig_Precision = ...,
+    precision_config: Optional[PrecisionConfig_Precision] = ...,
     preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DynamicReshape(
     operand: XlaOp,

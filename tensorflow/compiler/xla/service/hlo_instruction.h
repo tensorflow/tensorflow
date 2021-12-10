@@ -1190,6 +1190,7 @@ class HloInstruction {
   // Returns the vector of operands of this instruction.
   using InstructionVector = absl::InlinedVector<HloInstruction*, 2>;
   const InstructionVector& operands() const { return operands_; }
+  InstructionVector mutable_operands() { return operands_; }
 
   // Returns the vector of unique operands, in the same order they are found
   // within the operand vector.

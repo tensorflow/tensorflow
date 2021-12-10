@@ -28,7 +28,7 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/cc/saved_model:reader",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/compiler/mlir/tfrt:import_model",
@@ -99,7 +99,7 @@ cc_library(
     srcs = ["saved_model_import_input.cc"],
     hdrs = ["saved_model_import_input.h"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",

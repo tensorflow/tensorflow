@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -287,6 +288,18 @@ class HloModuleConfig {
     return &memory_space_assignment_config_;
   }
 
+  int64_t GetAnalysisAllowance(absl::string_view pass_name) const {
+    auto it = analysis_allowance_map_.find(pass_name);
+    if (it == analysis_allowance_map_.end()) {
+      return -1;
+    }
+    return (*it).second;
+  }
+
+  void SetAnalysisAllowance(absl::string_view pass_name, int64_t allowance) {
+    analysis_allowance_map_[pass_name] = allowance;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -378,6 +391,10 @@ class HloModuleConfig {
   // sharding of operations when multiple computation would be chained and
   // merged together.
   bool allow_spmd_sharding_propagation_to_output_ = false;
+
+  // Each Hlo analysis is allowed at least a constant number of
+  // abstract cost units, before it is considered for early termination.
+  absl::flat_hash_map<absl::string_view, int64_t> analysis_allowance_map_;
 };
 
 }  // namespace xla

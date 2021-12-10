@@ -16,7 +16,6 @@
 """An XLA client in Python."""
 
 import atexit
-import collections
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
 import gzip
@@ -26,7 +25,6 @@ from typing import List, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
 
-from absl import logging
 import numpy as np
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
@@ -46,7 +44,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 41
+_version = 46
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -96,70 +94,6 @@ def make_gpu_client(distributed_client=None, node_id=0):
 
 def make_tpu_client():
   return _xla.get_tpu_client(max_inflight_computations=32)
-
-
-# Deprecated client factory API.
-
-# Backend factories, keyed by user-visible name, in increasing priority order.
-_local_backend_factories = collections.OrderedDict([
-    ('interpreter', make_interpreter_client),
-    ('cpu', make_cpu_client),
-    ('gpu', make_gpu_client),
-    ('tpu', make_tpu_client),
-])
-
-
-def register_local_backend_factory(name, factory):
-  _local_backend_factories[name] = factory
-
-
-_local_backends = None
-
-
-def _get_local_backends():
-  """Instantiates all known local backends."""
-  global _local_backends
-  if _local_backends is not None:
-    return _local_backends
-
-  _local_backends = collections.OrderedDict()
-  for name, factory in _local_backend_factories.items():
-    logging.vlog(1, "Initializing backend '%s'" % name)
-    try:
-      backend = factory()
-    except RuntimeError as err:
-      if name == 'cpu':
-        # We always expect CPU to initialize successfully.
-        raise
-      else:
-        # If the backend isn't built into the binary, or if it has no devices,
-        # we expect a RuntimeError.
-        logging.vlog(1, "Error initializing backend '%s': %s" % (name, err))
-        continue
-    _local_backends[name] = backend
-  return _local_backends
-
-
-def get_local_backend(name=None):
-  """Returns a local backend.
-
-  Args:
-    name: the backend name. If `None`, a default local backend is returned,
-      typically `gpu` if one is present, or `cpu` if not. If a string, the named
-      backend is returned or an exception raised.
-
-  Returns:
-    A LocalBackend object.
-  """
-  backends = _get_local_backends()
-  if name is not None:
-    try:
-      return backends[name]
-    except KeyError:
-      raise RuntimeError('Unknown backend %s. Available: %s' %
-                         (name, list(backends.keys())))
-
-  return list(backends.values())[-1]
 
 
 class OpMetadata:
@@ -444,7 +378,7 @@ Client = _xla.Client
 Buffer = _xla.Buffer
 DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
-OpSharding = _xla.OpSharding  # type: ignore
+OpSharding = _xla.OpSharding
 
 
 def register_custom_call_target(name, fn, platform='cpu'):

@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include "tensorflow/core/kernels/sequence_ops.h"
+
 #include <cmath>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -25,9 +27,27 @@ limitations under the License.
 
 namespace tensorflow {
 
-int32 GetValue(int32_t v) { return v; }
+using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
+
+namespace functor {
 
 template <typename T>
+struct RangeFunctor<CPUDevice, T> {
+  void operator()(OpKernelContext* context, int64_t size, T start, T delta,
+                  typename TTypes<T>::Flat output) const {
+    (void)context;
+    T val = start;
+    for (int64_t i = 0; i < size; ++i) {
+      output(i) = T(val);
+      val += delta;
+    }
+  }
+};
+
+}  // namespace functor
+
+template <typename Device, typename T>
 class RangeOp : public OpKernel {
  public:
   explicit RangeOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -82,27 +102,23 @@ class RangeOp : public OpKernel {
     OP_REQUIRES_OK(context, shape.AddDimWithStatus(size));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
+    if (size == 0) return;
     auto flat = out->flat<T>();
-    T val = start;
-    for (int64_t i = 0; i < size; ++i) {
-      flat(i) = T(val);
-      val += delta;
-    }
+    functor::RangeFunctor<Device, T>()(context, size, start, delta, flat);
   }
 };
 
-#define REGISTER_KERNEL(DEV, TYPE)                           \
+#define REGISTER_KERNEL(DEV, DEV_TYPE, TYPE)                 \
   REGISTER_KERNEL_BUILDER(Name("Range")                      \
                               .Device(DEV)                   \
                               .HostMemory("start")           \
                               .HostMemory("limit")           \
                               .HostMemory("delta")           \
-                              .HostMemory("output")          \
                               .TypeConstraint<TYPE>("Tidx"), \
-                          RangeOp<TYPE>);
+                          RangeOp<DEV_TYPE, TYPE>);
 
-#define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(DEVICE_CPU, T)
-#define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL(DEVICE_GPU, T)
+#define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(DEVICE_CPU, CPUDevice, T)
+#define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL(DEVICE_GPU, GPUDevice, T)
 
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
@@ -113,8 +129,17 @@ TF_CALL_int64(REGISTER_CPU_KERNEL);
 
 TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
-TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
+
+// Special case to execute int32 on the host with host output.
+REGISTER_KERNEL_BUILDER(Name("Range")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("start")
+                            .HostMemory("limit")
+                            .HostMemory("delta")
+                            .HostMemory("output")
+                            .TypeConstraint<int32_t>("Tidx"),
+                        RangeOp<CPUDevice, int32_t>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

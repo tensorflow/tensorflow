@@ -17,12 +17,10 @@ attributes {tf.entry_function = {inputs = "input0", outputs = "output0"}} {
 // CHECK-NEXT:     }
 // CHECK:          key: "_output_shapes"
 // CHECK-NEXT:     value {
-// CHECK-NEXT:      shape {
-// CHECK-NEXT:        dim {
-// CHECK-NEXT:          size: 10
-// CHECK-NEXT:        }
-// CHECK-NEXT:      }
-// CHECK-NEXT:   }
+// CHECK-NEXT:       list {
+// CHECK-NEXT:         shape {
+// CHECK-NEXT:           dim {
+// CHECK-NEXT:             size: 10
 // CHECK:        name: "output0"
 // CHECK-NEXT:   op: "_Retval"
 // CHECK-NEXT:   input: "input0"
@@ -76,9 +74,10 @@ func @dont_inline_tpu_partitioned_call(%arg0: tensor<2xi32> {tf._user_specified_
 // CHECK-NEXT:          attr {
 // CHECK-NEXT:            key: "_output_shapes"
 // CHECK-NEXT:            value {
-// CHECK-NEXT:              shape {
-// CHECK-NEXT:                dim {
-// CHECK-NEXT:                  size: 2
+// CHECK-NEXT:              list {
+// CHECK-NEXT:                shape {
+// CHECK-NEXT:                  dim {
+// CHECK-NEXT:                    size: 2
 // CHECK:               attr {
 // CHECK-NEXT:            key: "_user_specified_name"
 // CHECK-NEXT:            value {
@@ -89,9 +88,10 @@ func @dont_inline_tpu_partitioned_call(%arg0: tensor<2xi32> {tf._user_specified_
 // CHECK-NEXT:          attr {
 // CHECK-NEXT:            key: "_output_shapes"
 // CHECK-NEXT:            value {
-// CHECK-NEXT:              shape {
-// CHECK-NEXT:                dim {
-// CHECK-NEXT:                  size: 2
+// CHECK-NEXT:              list {
+// CHECK-NEXT:                shape {
+// CHECK-NEXT:                  dim {
+// CHECK-NEXT:                    size: 2
 // CHECK:               attr {
 // CHECK-NEXT:            key: "_user_specified_name"
 // CHECK-NEXT:            value {

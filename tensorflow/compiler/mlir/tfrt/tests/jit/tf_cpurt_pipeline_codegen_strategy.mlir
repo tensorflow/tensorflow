@@ -46,3 +46,17 @@ func @reduce_row_mean_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 // CHECK: scf.parallel
 // CHECK:      vector.broadcast %{{.*}} : f32 to vector<8xf32>
 // CHECK-NEXT: arith.divf %{{.*}}, %{{.*}} : vector<8xf32>
+
+// -----
+
+// CHECK-LABEL: @reduce_1d_dynamic
+func @reduce_1d_dynamic(%input: tensor<?xf32>) -> tensor<f32> {
+  %dim_to_reduce =  "tf.Const"() {value = dense<[0]> : tensor<1xi32>}
+     : () -> tensor<1xi32>
+  %0 = "tf.Sum"(%input, %dim_to_reduce) {keep_dims = false}
+      : (tensor<?xf32>, tensor<1xi32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+// CHECK: scf.for
+// CHECK:   vector.multi_reduction
+// CHECK: linalg.generic

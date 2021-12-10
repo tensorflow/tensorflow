@@ -126,16 +126,29 @@ An n-way switch statement, implementing the following:
     int num_branches() { return branches().size(); }
 
     // Gets function corresponding branch # `index`.
-    FuncOp branch_function(int index) {
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveBranchFunction(::mlir::SymbolTableCollection* table, int index) {
       auto flat_sym_ref = branches()[index].cast<FlatSymbolRefAttr>();
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, flat_sym_ref);
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, flat_sym_ref);
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp branch_function(int index) { return ResolveBranchFunction(nullptr, index); }
 
-    // Gets all branch functions.
-    void get_branch_functions(SmallVectorImpl<FuncOp> &functions) {
+    // Resolve all branch functions.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    void ResolveBranchFunctions(::mlir::SymbolTableCollection* table,
+        SmallVectorImpl<FuncOp> &functions) {
       functions.reserve(num_branches());
       for (int idx : llvm::seq<int>(0, num_branches()))
-        functions.push_back(branch_function(idx));
+        functions.push_back(ResolveBranchFunction(table, idx));
+    }
+    // TODO(b/204997177): Deprecate and remove.
+    void get_branch_functions(SmallVectorImpl<FuncOp> &functions) {
+      return ResolveBranchFunctions(nullptr, functions);
     }
   }];
 }
@@ -278,16 +291,32 @@ else_branch: A function that takes 'inputs' and returns a list of
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
-    // Get the then branch function.
-    FuncOp then_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
-         *this, then_branchAttr());
+    // Resolve the then branch function.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveThenFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, then_branchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+        *this, then_branchAttr());
+    }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp then_function(::mlir::SymbolTableCollection* table = nullptr) {
+      return ResolveThenFunction(table);
     }
 
-    // Get the else branch function.
-    FuncOp else_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
-         *this, else_branchAttr());
+    // Resolve the else branch function.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveElseFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, else_branchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+        *this, else_branchAttr());
+    }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp else_function(::mlir::SymbolTableCollection* table = nullptr) {
+      return ResolveElseFunction(table);
     }
   }];
 }
@@ -395,10 +424,16 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
-    // returns the callee of this operation.
-    FuncOp func() {
+    // Returns the resolved callee function of this operation.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 }
 
@@ -552,10 +587,16 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
-    // returns the callee of this operation.
-    FuncOp func() {
+    // Returns the resolved callee function of this operation.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 
   let verifier = [{ return VerifyPartitionedCall(*this); }];
@@ -616,14 +657,26 @@ body: A function that takes a list of tensors and returns another
 
   let extraClassDeclaration = [{
     // Get the condition function.
-    FuncOp cond_function() {
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveCondFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp cond_function() { return ResolveCondFunction(nullptr); }
 
     // Get the body function.
-    FuncOp body_function() {
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveBodyFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp body_function() { return ResolveBodyFunction(nullptr); }
   }];
 }
 
@@ -969,10 +1022,16 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
-    // returns the callee of this operation.
-    FuncOp func() {
+    // Returns the resolved callee function of this operation.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
+    // TODO(b/204997177): Deprecate and remove.
+    FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 
   let verifier = [{ return VerifyPartitionedCall(*this); }];
@@ -1505,12 +1564,69 @@ def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResour
   let results = (outs);
 }
 
-def TF_TPUCompileMlirAndExecuteOp : TF_Op<"TPUCompileMlirAndExecute", []> {
+def TF__InternalTestMustExecuteTrait_ : TF_Op<"_InternalTestMustExecuteTrait_", [TF_MustExecute]> {
+  let summary = "Internal op for testing only";
+
+  let arguments = (ins);
+  let results = (outs);
+}
+
+def TF_SetStaticDimensionBoundsOp : TF_Op<"SetStaticDimensionBounds", []> {
+  let summary = "Op used to indicate to the compiler and runtime the static bounds of a tensor.";
+  let description = [{
+The information passed through this op can possibly be used by the compiler and
+runtime to perform certain optimizations such as more efficient DMAs. The
+bounds passed via this op should be considered advisory only, and depending on
+the implementation, might do nothing and simply be an identity
+
+`input`: The tensor that has dynamic dimensions.
+`static_shape`: The static shape of the tensor, corresponds to the maximum bounds of each dimension.
+`output` is the input tensor with no changes done to it.
+
+Example usage:
+
+def tpu_call(args):
+  def model_fn(args):
+    # do something with dynamic tensor
+
+  @function.Defun(capture_resource_var_by_value=False)
+  def tpu_subgraph():
+      return tf.tpu.rewrite(model_fn, args)
+
+  return tf.raw_ops.TPUPartitionedCall(
+      args=tpu_subgraph.captured_inputs,
+      Tout=[o.type for o in tpu_subgraph.definition.signature.output_arg],
+      f=tpu_subgraph,
+      device_ordinal=[0])
+
+static_shape = tf.placeholder(tf.int32, shape=([3]), name='static_size')
+
+w = tf.Variable(tf.constant([[1.0], [2.0], [3.0]]), name='w')
+
+w_dyn = tf.SetDynamicDimensionBounds(w, static_size])
+tpu_call([w_dyn])
+}];
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$static_shape
+  );
+
+  let verifier = [{ return Verify(*this); }];
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+}
+
+def TF_TPUCompileMlirAndExecuteOp : TF_Op<"TPUCompileMlirAndExecute", [AttrSizedOperandSegments]> {
   let summary = "Op that compiles a computation in MLIR into a TPU program, and loads and executes it on a TPU device.";
 
   let description = [{
 For the internal use of the TPU compiler.
 
+'static_shapes' are tensors specifying the maximum dimension sizes for the tensors specified in `dynamic_operands`.
+'args' are inputs to the TPU computation.
+'operands_with_static_shape' are the indices of the operands that have a maximal static shape specified.
 'mlir_module' is a serialized MLIR module with a `main` function that contains
 target computation.
 'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
@@ -1520,11 +1636,14 @@ topology.
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    Variadic<TF_I32OrI64Tensor>:$static_shapes,
+    OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
     DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
     StrAttr:$metadata
   );
 
   let results = (outs
+    TF_Tensor:$rendezvous_key_base,
     Variadic<TF_Tensor>:$results
   );
 

@@ -71,38 +71,29 @@ if '--project_name' in sys.argv:
 # comment the versioning scheme.
 # NOTE: Please add test only packages to `TEST_PACKAGES` below.
 REQUIRED_PACKAGES = [
-    # NOTE: As numpy has releases that break semver guarantees and several other
-    # deps depend on numpy without an upper bound, we must install numpy before
-    # everything else.
-    'numpy >= 1.14.5', # keras 2.6 needs 1.19.2, h5py needs 1.14.5 for py37
-    # Install other dependencies
     'absl-py >= 0.4.0',
     'astunparse >= 1.6.0',
-    'libclang >= 9.0.1',
     'flatbuffers >= 1.12, < 3.0', # capped as jax 0.1.71 needs < 3.0
+    'gast >= 0.2.1, < 0.5.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0', # capped since 3.3.0 lacks py3.6
     'keras_preprocessing >= 1.1.1', # 1.1.0 needs tensorflow==1.7
+    'libclang >= 9.0.1',
+    'numpy >= 1.14.5', # keras 2.6 needs 1.19.2, h5py needs 1.14.5 for py37
     'opt_einsum >= 2.3.2', # sphinx pin not removed up til 3.3.0 release
     'protobuf >= 3.9.2',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wheel >= 0.32.0, < 1.0', # capped as astunparse 1.6.0-1.6.3 requires < 1.0
     'wrapt >= 1.11.0',
-    # These packages need to be pinned exactly as newer versions are
-    # incompatible with the rest of the ecosystem
-    'gast >= 0.2.1, < 0.5.0', # TODO(lpak): if this breaks, revert to 0.4.0
     # TensorFlow ecosystem packages that TF exposes API for
     # These need to be in sync with the existing TF version
     # They are updated during the release process
     # When updating these, please also update the nightly versions below
-    'tensorboard ~= 2.6',
-    'tensorflow_estimator ~= 2.7.0rc0, < 2.8',
-    # Keras release is not backward compatible with old tf release, and we have
-    # to make the version aligned between TF and Keras.
-    'keras >= 2.7.0rc0, < 2.8',
-    'tensorflow-io-gcs-filesystem >= 0.21.0',
+    'tensorboard >= 2.7, < 2.8',
+    'tensorflow_estimator >= 2.7.0, < 2.8',
+    'keras >= 2.7.0, < 2.8',
+    'tensorflow-io-gcs-filesystem >= 0.21.0; python_version<"3.10"',  # TODO(b/209682854)
 ]
 
 
@@ -114,7 +105,7 @@ REQUIRED_PACKAGES = [
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.7.0.a'
+      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.8.0.a'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.8.0.dev'
     elif 'keras' in pkg and 'keras_preprocessing' not in pkg:

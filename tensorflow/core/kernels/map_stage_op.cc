@@ -536,6 +536,11 @@ class MapStageOp : public OpKernel {
     OP_REQUIRES(ctx, key_tensor->NumElements() > 0,
                 errors::InvalidArgument("key must not be empty"));
 
+    OP_REQUIRES(ctx, key_tensor->NumElements() == 1,
+                errors::InvalidArgument(
+                    "key must be an int64 scalar, got tensor with shape: ",
+                    key_tensor->shape()));
+
     // Create copy for insertion into Staging Area
     Tensor key(*key_tensor);
 

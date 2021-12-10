@@ -143,10 +143,10 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
     if (cloned == func) continue;
     // Patch up the op attribute to point to the new function.
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symref = attr.second.dyn_cast<FlatSymbolRefAttr>();
+      auto symref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
       if (!symref) continue;
       if (symref.getValue() != func.getName()) continue;
-      op->setAttr(attr.first,
+      op->setAttr(attr.getName(),
                   FlatSymbolRefAttr::get(op->getContext(), cloned.getName()));
       break;
     }

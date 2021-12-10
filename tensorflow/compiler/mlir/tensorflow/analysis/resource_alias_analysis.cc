@@ -359,6 +359,20 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
               resource_handle_id_map, next_unique_instance_id);
       for (auto& resource_handle : resources) {
         AddValueUniqueIDMapping(resource_handle.value, resource_handle.id);
+        // Keep track of IDs of resources that are allocated by ops with
+        // `UniqueResourceAllocation` trait, this can be utilized for while-loop
+        // parallelization (every iteration creates a new unique resource).
+        if (op->hasTrait<OpTrait::TF::UniqueResourceAllocation>()) {
+          unique_resource_allocation_ids_.insert(resource_handle.id);
+        }
+      }
+    } else if (llvm::isa<TPUReplicatedInputOp>(op)) {
+      // TPUReplicateInput only has a single result but we get all results
+      // to use filter_resources and for consistency.
+      for (auto result : filter_resources(op->getResults())) {
+        for (auto operand : op->getOperands()) {
+          PropagateInputToOutput(operand, result);
+        }
       }
     } else if (llvm::isa<IdentityNOp, IdentityOp>(op)) {
       for (auto result : filter_resources(op->getResults()))

@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/lhlo_elemental_utils.h"
 
 #include "llvm/Support/Debug.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir-hlo/utils/codegen_utils.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
@@ -256,7 +256,7 @@ memref::ReinterpretCastOp createMemRef1DReinterpretCast(OpBuilder& b,
       loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 0));
   auto memref_1d_type =
       MemRefType::get({MemRefType::kDynamicSize}, memref_ty.getElementType(),
-                      memref_ty.getLayout(), memref_ty.getMemorySpace());
+                      b.getMultiDimIdentityMap(1), memref_ty.getMemorySpace());
   return b.create<memref::ReinterpretCastOp>(
       loc, memref_1d_type, memref, zero, ValueRange{size}, ValueRange{stride});
 }

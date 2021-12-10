@@ -336,6 +336,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       self._hosts = get_list_of_hosts(self._strategy)
 
     self._built = False
+    # If batch size checking for every `enqueue` is pretty slow, this flag can
+    # be disabled in subclasses. It could happen in performance critical cases.
     self._verify_batch_size_on_enqueue = True
 
   def build(self, per_replica_batch_size: Optional[int] = None):
@@ -1548,7 +1550,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
   @tf.function(input_signature=[{'feature_one': tf.TensorSpec(...),
                                  'feature_two': tf.TensorSpec(...),
                                  'feature_three': tf.TensorSpec(...)}])
-  def serve_tensors(embedding_featurese):
+  def serve_tensors(embedding_features):
     embedded_features = tf.tpu.experimental.embedding.serving_embedding_lookup(
         embedding_features, None, embedding.embedding_tables,
         feature_config)

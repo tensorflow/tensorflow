@@ -24,8 +24,8 @@ if [[ "$IS_NIGHTLY" -eq 1 ]]; then
   source tensorflow/tools/ci_build/release/common.sh
   install_bazelisk
 
-  # Pick a version of xcode
-  export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+  # Selects a version of Xcode.
+  export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
   sudo xcode-select -s "${DEVELOPER_DIR}"
 
   # Update the version string to nightly

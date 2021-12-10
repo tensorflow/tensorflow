@@ -219,7 +219,7 @@ absl::Status CreateImageBufferFromBuffer(const CLContext& context,
 
 absl::Status CreateImage2DFromBuffer(const CLContext& context, cl_mem memory,
                                      DataType data_type, int width, int height,
-                                     int channels, int row_bytes_alignment,
+                                     int channels, int width_pixel_alignment,
                                      cl_mem* result) {
   if (!context.IsFloatTexture2DSupported(channels, data_type)) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -231,12 +231,8 @@ absl::Status CreateImage2DFromBuffer(const CLContext& context, cl_mem memory,
   desc.image_width = width;
   desc.image_height = height;
   desc.image_depth = 0;
-  if (row_bytes_alignment == 0) {
-    desc.image_row_pitch = 0;
-  } else {
-    const size_t bytes_per_row = width * channels * SizeOf(data_type);
-    desc.image_row_pitch = AlignByN(bytes_per_row, row_bytes_alignment);
-  }
+  const size_t width_aligned = AlignByN(width, width_pixel_alignment);
+  desc.image_row_pitch = width_aligned * channels * SizeOf(data_type);
   desc.image_slice_pitch = 0;
   desc.num_mip_levels = 0;
   desc.num_samples = 0;
@@ -349,7 +345,8 @@ Tensor::Tensor(Tensor&& tensor)
       memory_owner_(tensor.memory_owner_),
       buffer_based_(tensor.buffer_based_),
       shape_(tensor.shape_),
-      descriptor_(tensor.descriptor_) {
+      descriptor_(tensor.descriptor_),
+      aligned_texture_width_(tensor.aligned_texture_width_) {
   tensor.memory_ = nullptr;
   tensor.image_buffer_memory_ = nullptr;
 }
@@ -363,6 +360,7 @@ Tensor& Tensor::operator=(Tensor&& tensor) {
     std::swap(buffer_based_, tensor.buffer_based_);
     std::swap(shape_, tensor.shape_);
     std::swap(descriptor_, tensor.descriptor_);
+    std::swap(aligned_texture_width_, tensor.aligned_texture_width_);
   }
   return *this;
 }
@@ -430,18 +428,26 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
     resources->buffers.push_back({"buffer", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D ||
              descriptor_.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
-    cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
-    resources->images2d.push_back({"image2d", mem});
+    if (obj_ptr->GetAccess() == AccessType::WRITE &&
+        tensor_desc->use_buffer_for_write_only_2d_texture) {
+      resources->ints.push_back(
+          {"aligned_texture_width", aligned_texture_width_});
+      resources->buffers.push_back({"buffer", memory_});
+    } else {
+      cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
+      resources->images2d.push_back({"image2d", mem});
+    }
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_ARRAY) {
     resources->image2d_arrays.push_back({"image2d_array", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
     resources->images3d.push_back({"image3d", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
-    if (obj_ptr->GetAccess() == AccessType::READ) {
+    if (obj_ptr->GetAccess() == AccessType::WRITE &&
+        tensor_desc->use_buffer_for_write_only_image_buffer) {
+      resources->buffers.push_back({"buffer", memory_});
+    } else {
       resources->image_buffers.push_back(
           {"image_buffer", image_buffer_memory_});
-    } else {
-      resources->buffers.push_back({"buffer", memory_});
     }
   }
 
@@ -613,17 +619,17 @@ absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
 absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
                                              cl_mem memory, const BHWC& shape,
                                              const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment,
+                                             int width_pixel_alignment,
                                              Tensor* result) {
   BHWDC shape5d(shape.b, shape.h, shape.w, 1, shape.c);
   return CreateSharedImage2DBufferTensor(context, memory, shape5d, descriptor,
-                                         row_bytes_alignment, result);
+                                         width_pixel_alignment, result);
 }
 
 absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
                                              cl_mem memory, const BHWDC& shape,
                                              const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment,
+                                             int width_pixel_alignment,
                                              Tensor* result) {
   const int width = shape.b * shape.w * shape.d;
   const int height =
@@ -634,10 +640,11 @@ absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
       descriptor.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
                                                                       : 4;
   cl_mem image_memory;
-  RETURN_IF_ERROR(CreateImage2DFromBuffer(context, memory, descriptor.data_type,
-                                          width, height, channels,
-                                          row_bytes_alignment, &image_memory));
+  RETURN_IF_ERROR(CreateImage2DFromBuffer(
+      context, memory, descriptor.data_type, width, height, channels,
+      width_pixel_alignment, &image_memory));
   *result = Tensor(memory, false, image_memory, shape, descriptor);
+  result->aligned_texture_width_ = AlignByN(width, width_pixel_alignment);
   return absl::OkStatus();
 }
 

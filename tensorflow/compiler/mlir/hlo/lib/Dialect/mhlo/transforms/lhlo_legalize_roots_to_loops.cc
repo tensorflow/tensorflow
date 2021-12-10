@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 #include "llvm/Support/Debug.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/fusion_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/lhlo_elemental_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
@@ -66,7 +66,7 @@ LogicalResult elemwiseLowerHelper(
         loc, &b, operand_memref, multidim_index, b.saveInsertionPoint());
     operand_values.push_back(operand_data);
   }
-  auto res = HloOpToStdScalarOp::map<LHLO_OpTy>(
+  auto res = LhloOpToStdScalarOp::map<LHLO_OpTy>(
       llvm::cast<LHLO_OpTy>(op),
       result_memref.getType().cast<MemRefType>().getElementType(),
       operand_values, &b);

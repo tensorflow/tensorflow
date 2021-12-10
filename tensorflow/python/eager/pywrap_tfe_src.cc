@@ -4298,22 +4298,14 @@ std::string GetStringPyObjectRepr(PyObject* object) {
 }
 
 bool SupportsProtocol(PyObject* object) {
-  // TODO(b/202447704): Drop _tf_tracing_type at protocol export.
-  return PyObject_HasAttrString(object, "_tf_tracing_type") ||
-         PyObject_HasAttrString(object, "__tf_tracing_type__");
+  return PyObject_HasAttrString(object, "__tf_tracing_type__");
 }
 
 tensorflow::StatusOr<PyObject*> GetProtocolTraceType(PyObject* object,
                                                      PyObject* context) {
-  // TODO(b/202447704): Drop _tf_tracing_type at protocol export.
   tensorflow::Safe_PyObjectPtr protocol(
-      PyObject_GetAttrString(object, "_tf_tracing_type"));
-
-  if (protocol == nullptr) {
-    PyErr_Clear();
-    protocol.reset(PyObject_GetAttrString(object, "__tf_tracing_type__"));
-    DCHECK(protocol != nullptr);
-  }
+      PyObject_GetAttrString(object, "__tf_tracing_type__"));
+  DCHECK(protocol != nullptr);
 
   tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", context));
   tensorflow::Safe_PyObjectPtr tracetype(
@@ -4402,19 +4394,28 @@ tensorflow::StatusOr<PyObject*> MakeAttrsType(PyObject* object,
       tensorflow::swig::GetRegisteredPyObject("AttrsType"), call_args.get());
 }
 
-tensorflow::StatusOr<PyObject*> EncodeGenericObject(PyObject* object) {
-  tensorflow::Safe_PyObjectPtr ref(PyWeakref_NewRef(object, nullptr));
+tensorflow::StatusOr<PyObject*> EncodeGenericObject(PyObject* object,
+                                                    PyObject* context) {
+  std::string type_name = "WeakrefType";
+
+  tensorflow::Safe_PyObjectPtr deletion_observer(
+      PyObject_GetAttrString(context, "deletion_observer"));
+  tensorflow::Safe_PyObjectPtr ref(
+      PyWeakref_NewRef(object, deletion_observer.get()));
+
   if (ref == nullptr) {
+    // Happens if the type can not be weakly referenceed (such as int).
+    // https://docs.python.org/3/library/weakref.html
     PyErr_Clear();
     Py_INCREF(object);
     ref = tensorflow::make_safe(object);
+    type_name = "GenericType";
   }
 
-  PyObject* generic_type =
-      tensorflow::swig::GetRegisteredPyObject("GenericType");
+  PyObject* type_class = tensorflow::swig::GetRegisteredPyObject(type_name);
 
   tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", ref.get()));
-  PyObject* tracetype = PyObject_CallObject(generic_type, call_args.get());
+  PyObject* tracetype = PyObject_CallObject(type_class, call_args.get());
   if (PyErr_Occurred()) {
     return tensorflow::errors::InvalidArgument(
         "Python object could not be represented through the generic tracing "
@@ -4449,7 +4450,7 @@ tensorflow::StatusOr<PyObject*> EncodeTraceType(PyObject* object,
     return MakeAttrsType(object, context);
   }
 
-  return EncodeGenericObject(object);
+  return EncodeGenericObject(object, context);
 }
 
 tensorflow::Status EncodeArgLegacy(PyObject* arg, EncodingContext& context) {

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -415,6 +416,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     Executor* exec = nullptr;
     FunctionLibraryRuntimeOverlay* overlay_flr = nullptr;
     string executor_type;
+    bool allow_small_function_optimizations = false;
+    bool allow_control_flow_sync_execution = false;
 
     ~Item() {
       delete this->func_graph;
@@ -821,6 +824,10 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       item->func_graph = fbody.release();
       item->instantiation_counter = 1;
       item->executor_type = ExecutorType(options, attrs);
+      item->allow_small_function_optimizations =
+          options.allow_small_function_optimizations;
+      item->allow_control_flow_sync_execution =
+          options.allow_control_flow_sync_execution;
       if (options.lib_def) {
         item->overlay_flr =
             new FunctionLibraryRuntimeOverlay(this, options.lib_def);
@@ -915,80 +922,6 @@ void PruneFunctionBody(const FunctionDef& fdef, Graph* g) {
   }
 }
 
-constexpr int kMaxNodesForSingleThreadedExecutor = 32;
-
-// Returns true if the given operation is suitable to execute via
-// SingleThreadedExecutor. This is an intentional subset of the ops which
-// technically can be run via single-threaded execution to avoid issues with
-// recursion or function invocation.
-//
-// SingleThreadedExecutor runs asynchronous kernels synchronously: this can lead
-// to deadlocks. This function attempts to exclude all async kernels in lieu of
-// kernel instantiation.
-bool IsOpSingleThreadedExecutorCompatible(const Node& n) {
-  if (n.IsFunctionCall() || n.IsPartitionedCall() || n.IsIfNode() ||
-      n.IsWhileNode() || n.IsCaseNode()) {
-    return false;
-  }
-  if (n.IsControlFlow()) {
-    return false;
-  }
-  if (n.IsSend() || n.IsHostSend() || n.IsRecv() || n.IsHostRecv()) {
-    return false;
-  }
-  if (n.IsCollective()) {
-    return false;
-  }
-  for (DataType dt : n.output_types()) {
-    if (IsRefType(dt)) {
-      return false;
-    }
-  }
-  std::string lower = str_util::Lowercase(n.op_def().name());
-  if (str_util::StrContains(lower, "pyfunc") ||
-      str_util::StrContains(lower, "queue") ||
-      str_util::StrContains(lower, "rpc")) {
-    return false;
-  }
-
-  return true;
-}
-
-// Returns true if the given Graph is safe & efficient to run via the single
-// threaded executor. The single-threaded executor has lower dispatch overhead
-// for simple functions.
-//
-// This currently specializes for the case of a single operation, as created
-// via eager execution.
-bool IsSingleThreadedExecutorCompatible(const Graph* g) {
-  // TODO(b/187729969): Temporarily disabled due to b/187306798.
-  return false;
-
-  // Not worth analyzing large graphs.
-  if (g->num_nodes() > kMaxNodesForSingleThreadedExecutor) {
-    return false;
-  }
-
-  int count = 0;
-  for (Node* n : g->nodes()) {
-    if (!IsOpSingleThreadedExecutorCompatible(*n)) {
-      return false;
-    }
-    if (n->op_def().name() == "_Arg" || n->op_def().name() == "_Retval" ||
-        n->op_def().name() == "NoOp") {
-      continue;
-    }
-
-    count += 1;
-  }
-
-  if (count == 1) {
-    return true;
-  }
-
-  return false;
-}
-
 }  // namespace
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
@@ -1018,6 +951,8 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   LocalExecutorParams params;
   params.device = device_;
   params.function_library = flr;
+  params.allow_control_flow_sync_execution =
+      (*item)->allow_control_flow_sync_execution;
   if (flr == this) {
     params.create_kernel = create_kernel_;
   } else {
@@ -1033,9 +968,17 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   params.session_metadata = session_metadata_;
   std::unique_ptr<Executor> exec;
 
-  if (executor_type.empty() && IsSingleThreadedExecutorCompatible(g.get())) {
+  // When the instantiation options request small function optimizations, all
+  // graphs which are safe for synchronous execution will set this flag to true:
+  if ((*item)->allow_small_function_optimizations && executor_type.empty()) {
     executor_type = "SINGLE_THREADED_EXECUTOR";
   }
+
+  metrics::IncrementTestCounter("flr_executor",
+                                (executor_type == "SINGLE_THREADED_EXECUTOR")
+                                    ? "single_threaded"
+                                    : "default");
+
   TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, *g, &exec));
   {
     // Guard item since it is already inserted in items_.

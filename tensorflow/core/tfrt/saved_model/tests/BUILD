@@ -30,9 +30,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -48,6 +45,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -58,9 +57,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:session",
@@ -70,6 +66,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -79,9 +77,6 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -92,6 +87,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -101,9 +98,6 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -115,6 +109,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -124,9 +120,6 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -139,6 +132,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -148,10 +143,6 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
-        "@absl_py//absl/logging",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_spec",
@@ -161,6 +152,29 @@ pytype_strict_binary(
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+    ],
+)
+
+pytype_strict_binary(
+    name = "gen_data",
+    srcs = ["gen_data.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/module",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -171,9 +185,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -182,6 +193,8 @@ pytype_strict_binary(
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/framework:test_ops",
+        "//tensorflow/python/framework:test_ops_kernels",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:save_options",
@@ -189,6 +202,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -199,9 +214,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -217,6 +229,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -226,10 +240,6 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
-        "@absl_py//absl/logging",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -241,6 +251,9 @@ pytype_strict_binary(
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -251,9 +264,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -270,6 +280,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -308,9 +320,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -328,6 +337,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -338,9 +349,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -358,6 +366,8 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -480,11 +490,22 @@ genrule(
     exec_tools = ["gen_pow_v2"],
 )
 
+genrule(
+    name = "saved_model_gen_data",
+    srcs = [],
+    outs = [
+        "data/saved_model.pb",
+    ],
+    cmd = "$(location gen_data) --saved_model_path=$(RULEDIR)/data",
+    exec_tools = ["gen_data"],
+)
+
 tf_cc_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.cc"],
     data = [
         "control_flow_v1/saved_model.pb",
+        "data/saved_model.pb",
         "dtype_coverage_v1/saved_model.pb",
         "dtype_coverage_v1/variables/variables.data-00000-of-00001",
         "dtype_coverage_v1/variables/variables.index",
@@ -522,6 +543,7 @@ tf_cc_test(
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/python/framework:test_ops_kernels",
         "@com_google_googletest//:gtest",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:tensor",

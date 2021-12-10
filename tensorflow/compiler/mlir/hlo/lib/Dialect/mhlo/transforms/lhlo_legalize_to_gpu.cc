@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -53,7 +53,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      ReduceOp reduce_op, ArrayRef<Value> args,
+      ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = reduce_op.getLoc();
     // Only support 1d reductions for now.
