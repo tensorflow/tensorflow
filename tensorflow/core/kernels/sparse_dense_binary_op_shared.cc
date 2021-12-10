@@ -99,7 +99,9 @@ class SparseDenseBinaryOpShared : public OpKernel {
 
     const auto indices_mat = indices_t->matrix<int64_t>();
     const auto shape_vec = shape_t->vec<int64_t>();
-    const auto lhs_dims = BCast::FromShape(TensorShape(shape_vec));
+    TensorShape lhs_shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(shape_vec, &lhs_shape));
+    const auto lhs_dims = BCast::FromShape(lhs_shape);
     const auto rhs_dims = BCast::FromShape(dense_t->shape());
     BCast b(lhs_dims, rhs_dims, false);  // false for keeping the same num dims.
 
