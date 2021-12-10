@@ -53,3 +53,36 @@ func @test_supported_lowering_of_tf_if_region2(%arg0: tensor<i1>, %arg1: tensor<
   // CHECK-NEXT: }
   // CHECK-NEXT: return
 }
+
+// `tf.WhileRegion` gets converted to `scf.while`.
+// CHECK-LABEL: func @test_supported_lowering_of_tf_while_region
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<*xf32>)
+func @test_supported_lowering_of_tf_while_region(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<*xf32>) -> (tensor<f32>){
+  %0:2 = "tf.WhileRegion"(%arg0, %arg2) ( {
+  ^bb0(%arg3: tensor<f32>, %arg4: tensor<*xf32>):
+    %1 = "tf.Identity"(%arg3) : (tensor<f32>) -> tensor<f32>
+    %2 = "tf.Add"(%arg1, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %3 = "tf.NotEqual"(%1, %2) : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "tf.Yield"(%3) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg3: tensor<f32>, %arg4: tensor<*xf32>):
+    %cst = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+    %1 = "tf.Sub"(%arg3, %cst) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    "tf.Yield"(%1, %arg4) : (tensor<f32>, tensor<*xf32>) -> ()
+  }) {is_stateless = false} : (tensor<f32>, tensor<*xf32>) -> (tensor<f32>, tensor<*xf32>)
+  return %0#0 : tensor<f32>
+
+  // CHECK-NEXT: %[[CST:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-NEXT: %[[RES:.*]]:2 = scf.while (%[[ARG3:.*]] = %[[ARG0]], %[[ARG4:.*]] = %[[ARG2]]) : (tensor<f32>, tensor<*xf32>) -> (tensor<f32>, tensor<*xf32>) {
+  // CHECK-NEXT:   %[[IDEN:.*]] = "tf.Identity"(%[[ARG3]]) : (tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT:   %[[ADD:.*]] = "tf.Add"(%[[ARG1]], %[[ARG3]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT:   %[[NOT_EQUAL:.*]] = "tf.NotEqual"(%[[IDEN]], %[[ADD]]) : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK-NEXT:   %[[CONDITION:.*]] = tensor.extract %[[NOT_EQUAL]][] : tensor<i1>
+  // CHECK-NEXT:   scf.condition(%[[CONDITION]]) %[[ARG3]], %[[ARG4]] : tensor<f32>, tensor<*xf32>
+  // CHECK-NEXT: } do {
+  // CHECK-NEXT: ^bb0(%[[ARG3]]: tensor<f32>, %[[ARG4]]: tensor<*xf32>):
+  // CHECK-NEXT:   %[[SUB:.*]] = "tf.Sub"(%[[ARG3]], %[[CST]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT:   scf.yield %[[SUB]], %[[ARG4]] : tensor<f32>, tensor<*xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return %[[RES]]#0 : tensor<f32>
+}
