@@ -127,6 +127,7 @@ cc_library(
         ":hlo_pass",
         ":hlo_query",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
