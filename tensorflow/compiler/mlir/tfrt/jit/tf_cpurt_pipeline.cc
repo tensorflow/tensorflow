@@ -119,6 +119,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(CreateDetensorizeLinalgPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateFuseFillIntoTiledReductionPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePeelTiledLoopsPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());

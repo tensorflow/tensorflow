@@ -47,6 +47,7 @@ cc_library(
         "tf_cpurt_copy_removal.cc",
         "tf_cpurt_detensorize_linalg.cc",
         "tf_cpurt_fission.cc",
+        "tf_cpurt_fuse_fill_into_tiled_reduction.cc",
         "tf_cpurt_fusion.cc",
         "tf_cpurt_legalize_i1_type.cc",
         "tf_cpurt_math_approximation.cc",

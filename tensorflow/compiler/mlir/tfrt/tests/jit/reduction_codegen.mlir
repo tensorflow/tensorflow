@@ -34,7 +34,6 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
 
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D:.*]]
 // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]]] : [[TY_1D:.*]]
-// CHECK:      %[[CLONE:.*]] = linalg.init_tensor [%[[DIM_0]]] : [[TY_1D:.*]]
 // CHECK:      %[[FILL:.*]] = linalg.fill(%[[C0_F32]], %[[INIT]])
 // CHECK:      %[[DIM_0_:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[LHS]], %[[C1]] : [[TY_2D]]
@@ -43,33 +42,21 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
 // CHECK-SAME:   to (%[[DIM_0_]], %[[DIM_1]]) step (%[[C4]], %[[C4]])
 // CHECK-SAME:   ins (%[[LHS_:.*]] = %[[LHS]]: [[TY_2D]],
 // CHECK-SAME:        %[[RHS_:.*]] = %[[RHS]]: [[TY_2D]])
-// CHECK-SAME:   outs (%[[OUT_:.*]] = %[[FILL]]: [[TY_1D]],
-// CHECK-SAME:         %[[CLONE_:.*]] = %[[CLONE]]: [[TY_1D]])
+// CHECK-SAME:   outs (%[[OUT_:.*]] = %[[FILL]]: [[TY_1D]])
 
 // CHECK:      %[[LHS_SUB:.*]] = tensor.extract_slice %[[LHS_]][%[[I]], %[[J]]]
 // CHECK:      %[[RHS_SUB:.*]] = tensor.extract_slice %[[RHS_]][%[[I]], %[[J]]]
 // CHECK:      %[[OUT_SUB:.*]] = tensor.extract_slice %[[OUT_]][%[[I]]]
-// CHECK:      %[[CLONE_SUB:.*]] = tensor.extract_slice %[[CLONE_]][%[[I]]]
 
-// CHECK:      %[[FILL_SUB:.*]] = linalg.fill(%[[C0_F32]], %[[CLONE_SUB]])
-
-// CHECK:      %[[SUM_OF_PROD_SUB:.*]] = linalg.generic
+// CHECK:      %[[SUM_SUB:.*]] = linalg.generic
 // CHECK-SAME:   ins(%[[LHS_SUB]], %[[RHS_SUB]] : [[TY_2D]], [[TY_2D]])
-// CHECK-SAME:   outs(%[[FILL_SUB]] : [[TY_1D]])
+// CHECK-SAME:   outs(%[[OUT_SUB]] : [[TY_1D]])
 // CHECK:          mulf
 // CHECK:          addf
 // CHECK-NEXT:     linalg.yield
 
-// CHECK:      %[[ACC:.*]] = linalg.generic
-// CHECK-SAME:   ins(%[[SUM_OF_PROD_SUB]] : [[TY_1D]])
-// CHECK-SAME:   outs(%[[OUT_SUB]] : [[TY_1D]]) {
-// CHECK-NOT:      mulf
-// CHECK:          addf
-// CHECK-NEXT:     linalg.yield
-
-// CHECK:      %[[CLONE_UPDATE:.*]] = tensor.insert_slice %[[SUM_SUB:.*]] into %[[CLONE_]]
-// CHECK:      %[[UPDATE:.*]] = tensor.insert_slice %[[ACC:.*]] into %[[OUT_]]
-// CHECK:      linalg.yield %[[UPDATE]], %[[CLONE_UPDATE]] : [[TY_1D]], [[TY_1D]]
+// CHECK:      %[[UPDATE:.*]] = tensor.insert_slice %[[SUM_SUB]] into %[[OUT_]]
+// CHECK-NEXT: linalg.yield %[[UPDATE]] : [[TY_1D]]
 
 // -----
 
@@ -94,7 +81,6 @@ func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
 }
 // CHECK-LABEL: func @reduce_row_sum_2d_static
 // CHECK: linalg.tiled_loop
-// CHECK:   tensor.insert_slice
 // CHECK:   tensor.insert_slice
 
 // -----
@@ -128,7 +114,6 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[INPUT]], %[[C0]] : [[TY_2D:.*]]
 // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]]] : [[TY_1D:.*]]
-// CHECK:      %[[CLONE:.*]] = linalg.init_tensor [%[[DIM_0]]] : [[TY_1D:.*]]
 // CHECK:      %[[FILL:.*]] = linalg.fill(%[[C0_F32]], %[[INIT]])
 // CHECK:      %[[DIM_0_:.*]] = tensor.dim %[[INPUT]], %[[C0]] : [[TY_2D]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[INPUT]], %[[C1]] : [[TY_2D]]
@@ -136,31 +121,19 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 // CHECK:      linalg.tiled_loop (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:   to (%[[DIM_0_]], %[[DIM_1]]) step (%[[C4]], %[[C4]])
 // CHECK-SAME:   ins (%[[IN_:.*]] = %[[INPUT]]: [[TY_2D]])
-// CHECK-SAME:   outs (%[[OUT_:.*]] = %[[FILL]]: [[TY_1D]],
-// CHECK-SAME:         %[[CLONE_:.*]] = %[[CLONE]]: [[TY_1D]])
+// CHECK-SAME:   outs (%[[OUT_:.*]] = %[[FILL]]: [[TY_1D]])
 
 // CHECK:      %[[IN_SUB:.*]] = tensor.extract_slice %[[IN_]][%[[I]], %[[J]]]
 // CHECK:      %[[OUT_SUB:.*]] = tensor.extract_slice %[[OUT_]][%[[J]]]
-// CHECK:      %[[CLONE_SUB:.*]] = tensor.extract_slice %[[CLONE_]][%[[J]]]
-
-// CHECK:      %[[FILL_SUB:.*]] = linalg.fill(%[[C0_F32]], %[[CLONE_SUB]])
 
 // CHECK:      %[[SUM_SUB:.*]] = linalg.generic
 // CHECK-SAME:   ins(%[[IN_SUB]] : [[TY_2D]])
-// CHECK-SAME:   outs(%[[FILL_SUB]] : [[TY_1D]])
+// CHECK-SAME:   outs(%[[OUT_SUB]] : [[TY_1D]])
 // CHECK:          addf
 // CHECK-NEXT:     linalg.yield
 
-
-// CHECK:      %[[ACC:.*]] = linalg.generic
-// CHECK-SAME:   ins(%[[SUM_SUB]] : [[TY_1D]])
-// CHECK-SAME:   outs(%[[OUT_SUB]] : [[TY_1D]]) {
-// CHECK:          addf
-// CHECK-NEXT:     linalg.yield
-
-// CHECK:      %[[CLONE_UPDATE:.*]] = tensor.insert_slice %[[SUM_SUB:.*]] into %[[CLONE_]]
 // CHECK:      %[[UPDATE:.*]] = tensor.insert_slice %[[ACC:.*]] into %[[OUT_]]
-// CHECK:      linalg.yield %[[UPDATE]], %[[CLONE_UPDATE]] : [[TY_1D]], [[TY_1D]]
+// CHECK:      linalg.yield %[[UPDATE]] : [[TY_1D]]
 
 // -----
 

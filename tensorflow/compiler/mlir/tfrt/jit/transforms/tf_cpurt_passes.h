@@ -41,6 +41,9 @@ std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass();
 // Pass to tile and fuse linalg.generic on tensors that models reduction.
 std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass();
 
+// Pass to fuse `linalg.fill` into a tiled reduction.
+std::unique_ptr<mlir::FunctionPass> CreateFuseFillIntoTiledReductionPass();
+
 // Pass to replace 'i1' tensor types with 'i8' tensor types. This pass is a
 // temporary workaround to avoid the problem of vectorizing 'i1' tensors (see
 // b/205714705).
@@ -81,6 +84,11 @@ std::unique_ptr<mlir::FunctionPass> CreateMathApproximationPass(
 
 // Returns true if the `value` type is a memref that is contiguous in memory.
 bool IsContiguousMemref(mlir::Value value);
+
+// Detects the combiner in the body of LinalgOp if any. Currently, only
+// ops with a single combiner are supported.
+mlir::FailureOr<mlir::Operation *> DetectCombiner(
+    mlir::linalg::LinalgOp linalg_op);
 
 }  // namespace tensorflow
 
