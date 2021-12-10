@@ -80,15 +80,6 @@ namespace mlir {
 namespace mlir {
 namespace mhlo {
 
-Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
-                                            Type type, Location loc) {
-  // HLO dialect constants only support ElementsAttr unlike standard dialect
-  // constant which supports all attributes.
-  if (value.isa<ElementsAttr>())
-    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
-  return nullptr;
-}
-
 template <typename T>
 static LogicalResult Verify(T op) {
   return success();
@@ -5248,19 +5239,36 @@ static ParseResult parseDims(AsmParser& parser, SmallVector<int64_t>& dims) {
   return success();
 }
 
+static ParseResult parseDimsWithMinimumElements(AsmParser& parser,
+                                                SmallVector<int64_t>& dims,
+                                                int min_elements) {
+  if (failed(parseDims(parser, dims))) return failure();
+  if (dims.size() < min_elements)
+    return parser.emitError(parser.getCurrentLocation())
+           << "expected at least " << min_elements << " element(s), found "
+           << dims.size();
+  return success();
+}
+
 /// Parse a custom attribute that resembles a struct of the form
 /// <
 ///   foo = something_parsed_by_custom_parser,
-///   bar = something_parsed_by_different_custom_parser
+///   bar = something_parsed_by_different_custom_parser,
+///   baz something_parsed_by_another_custom_parser
 /// >
+/// The optional argument `parse_equal` array can be used to denote if
+/// '=' follows the keyword (see baz in the example above) for a field. If
+/// not provided, all fields must be followed by a '='.
 static ParseResult parseStruct(
     AsmParser& parser, ArrayRef<StringRef> keywords,
-    ArrayRef<llvm::function_ref<ParseResult()>> parseFuncs) {
+    ArrayRef<llvm::function_ref<ParseResult()>> parseFuncs,
+    ArrayRef<bool> parse_equal = {}) {
   assert(keywords.size() == parseFuncs.size());
+  assert(parse_equal.empty() || parse_equal.size() == keywords.size());
   SmallVector<bool> seen(keywords.size(), false);
   while (failed(parser.parseOptionalGreater())) {
     bool foundOne = false;
-    for (auto it : llvm::enumerate(keywords)) {
+    for (const auto& it : llvm::enumerate(keywords)) {
       size_t index = it.index();
       StringRef keyword = it.value();
       if (succeeded(parser.parseOptionalKeyword(keyword))) {
@@ -5268,8 +5276,10 @@ static ParseResult parseStruct(
           return parser.emitError(parser.getCurrentLocation())
                  << "duplicated `" << keyword << "` entry";
         }
-        if (failed(parser.parseEqual()) || failed(parseFuncs[index]()))
-          return failure();
+        if (parse_equal.empty() || parse_equal[index]) {
+          if (failed(parser.parseEqual())) return failure();
+        }
+        if (failed(parseFuncs[index]())) return failure();
         if (failed(parser.parseOptionalComma())) return parser.parseGreater();
         seen[index] = true;
         foundOne = true;
@@ -5490,7 +5500,7 @@ void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
              non_spatial_dims) {
           dims[non_spatial_dim.first] = non_spatial_dim.second;
         }
-        for (auto spatial_dim : llvm::enumerate(spatial_dims)) {
+        for (const auto& spatial_dim : llvm::enumerate(spatial_dims)) {
           dims[spatial_dim.value()] = static_cast<int64_t>(spatial_dim.index());
         }
 
@@ -5773,6 +5783,137 @@ Attribute ConvDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseGreater())) return {};
   return dnums;
 }
+
+// Custom printer and parser for ArgResultAliasAttr.
+constexpr char kMustAlias[] = "must_alias";
+constexpr char kResult[] = "result_index";
+constexpr char kArgTupleIndices[] = "tuple_indices";
+
+void ArgResultAliasAttr::print(AsmPrinter& printer) const {
+  printer << "<";
+
+  // The attribute can have empty tuple indices. Only print argument tuple
+  // indices if they are non-empty.
+  if (!getArgTupleIndices().empty())
+    printer << kArgTupleIndices << " = [" << getArgTupleIndices() << "], ";
+
+  // Print the result index followed by any result tuple indices if present.
+  printer << kResult << " = [";
+  printer << getResultIndex();
+  if (!getResultTupleIndices().empty()) {
+    printer << ", " << getResultTupleIndices();
+  }
+  printer << "]";
+
+  // Print the "must_alias" keyword if this is a must alias, otherwise skip.
+  if (getIsMustAlias()) printer << ", " << kMustAlias;
+
+  printer << ">";
+}
+
+Attribute ArgResultAliasAttr::parse(AsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+  llvm::SmallVector<int64_t> arg_tuple_indices;
+  // The first element of result indices holds the aliased result index and the
+  // remaining elements are the result tuple indices.
+  llvm::SmallVector<int64_t> result_indices;
+  bool is_must_alias = false;
+
+  // This conveys to parseStruct that keyword "must_alias" (3rd field) is not
+  // followed by a "=", but other fields are.
+  llvm::SmallVector<bool, 3> parse_equal = {true, true, false};
+
+  if (failed(
+          parseStruct(parser, {kArgTupleIndices, kResult, kMustAlias},
+                      {[&]() { return parseDims(parser, arg_tuple_indices); },
+                       [&]() {
+                         // Since the first element is the index of result, at
+                         // least one element is expected.
+                         return parseDimsWithMinimumElements(
+                             parser, result_indices, /*min_elements=*/1);
+                       },
+                       [&]() {
+                         // always succeeds if the keyword "must_alias" was
+                         // parsed
+                         is_must_alias = true;
+                         return success();
+                       }},
+                      parse_equal))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing argument-result alias attribute";
+    return {};
+  }
+
+  int64_t result_index = result_indices[0];
+  auto result_tuple_indices =
+      ArrayRef<int64_t>{result_indices.begin() + 1, result_indices.end()};
+
+  return ArgResultAliasAttr::get(parser.getContext(), arg_tuple_indices,
+                                 result_index, result_tuple_indices,
+                                 is_must_alias);
+}
+
+// Returns the element type pointed to by `indices` in type `t`. If the indices
+// are invalid, returns nullptr.
+static Type GetTypeFromTupleIndices(Type type, ArrayRef<int64_t> indices) {
+  Type current = type;
+  for (auto index : indices) {
+    TupleType tuple_type = current.dyn_cast<TupleType>();
+    if (!tuple_type || index >= tuple_type.size()) return {};
+    current = tuple_type.getType(index);
+  }
+  return current;
+}
+
+static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
+                                              ArgResultAliasAttr alias_attr,
+                                              unsigned arg_index,
+                                              Operation* op) {
+  // The attribute can only be applied to function-like operations.
+  if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+    return op->emitOpError() << "attribute " << attr_name
+                             << " can only be used on function-like operations";
+
+  // Verify there are no negative indices.
+  auto tuple_indices = llvm::concat<const int64_t>(
+      alias_attr.getArgTupleIndices(), alias_attr.getResultTupleIndices());
+  if (llvm::any_of(tuple_indices, [](const int64_t val) { return val < 0; }) ||
+      alias_attr.getResultIndex() < 0)
+    return op->emitOpError()
+           << "attribute " << attr_name
+           << " expects all argument and result indices to be >= 0";
+
+  // Verify that the result index is not out of range. Since the attribute is a
+  // function argument attribute, the argument index is always correct when this
+  // verifier is called.
+  auto ftype = mlir::function_like_impl::getFunctionType(op);
+  if (alias_attr.getResultIndex() >= ftype.getNumResults())
+    return op->emitOpError() << "attribute " << attr_name
+                             << " result index is out of range, must be <"
+                             << ftype.getNumResults();
+
+  // Verify that argument and result types pointed to by the indices are valid
+  // and compatible.
+  Type arg_type = GetTypeFromTupleIndices(ftype.getInput(arg_index),
+                                          alias_attr.getArgTupleIndices());
+  if (!arg_type)
+    return op->emitOpError() << "attribute " << attr_name
+                             << " argument tuple indices are invalid";
+  Type result_type =
+      GetTypeFromTupleIndices(ftype.getResult(alias_attr.getResultIndex()),
+                              alias_attr.getResultTupleIndices());
+  if (!result_type)
+    return op->emitOpError()
+           << "attribute " << attr_name << " result tuple indices are invalid";
+
+  if (failed(mlir::verifyCompatibleShape(arg_type, result_type)) ||
+      getElementTypeOrSelf(arg_type) != getElementTypeOrSelf(result_type))
+    return op->emitOpError() << "attribute " << attr_name
+                             << " aliases do not have compatible types, "
+                             << arg_type << " vs. " << result_type;
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Shape inference
 //===----------------------------------------------------------------------===//
@@ -5787,6 +5928,42 @@ LogicalResult deriveShapeFromOperand(
   }
   reifiedReturnShapes->assign(
       {builder->create<shape::ShapeOfOp>(op->getLoc(), operand)});
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MHLO Dialect Hooks
+//===----------------------------------------------------------------------===//
+
+Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
+  // HLO dialect constants only support ElementsAttr unlike standard dialect
+  // constant which supports all attributes.
+  if (value.isa<ElementsAttr>())
+    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
+  return nullptr;
+}
+
+LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
+                                                    unsigned region_index,
+                                                    unsigned arg_index,
+                                                    NamedAttribute attr) {
+  if (auto alias_attr = attr.getValue().dyn_cast<ArgResultAliasAttr>()) {
+    if (failed(VerifyArgResultAliasAttr(attr.getName(), alias_attr, arg_index,
+                                        op)))
+      return failure();
+  }
+  return success();
+}
+
+LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
+                                                    NamedAttribute attr) {
+  if (auto alias_attr = attr.getValue().dyn_cast<ArgResultAliasAttr>()) {
+    if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+      return op->emitOpError()
+             << "attribute " << attr.getName()
+             << " can only be used on function-like operations";
+  }
   return success();
 }
 
