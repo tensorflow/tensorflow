@@ -140,10 +140,12 @@ struct ComputeOpAndFuncBufferizePass
     mhlo::populateHLOToMemrefConversionPattern(
         &converter, &remove_sign_converter, &patterns,
         /*enforce_identity_map=*/[](Operation* op) {
-          // Force identity maps for return and tiled_loop as they don't support
-          // memrefs with affine_maps.
+          // Force identity maps for several ops which don't support memrefs
+          // with affine_maps.
           return llvm::any_of(op->getUsers(), [](Operation* user) {
-            return isa<mlir::ReturnOp>(user) || isa<linalg::TiledLoopOp>(user);
+            return isa<mlir::ReturnOp, mhlo::DynamicReshapeOp,
+                       linalg::TensorCollapseShapeOp,
+                       linalg::TensorExpandShapeOp, linalg::TiledLoopOp>(user);
           });
         });
     populateFuncOpTypeConversionPattern(patterns, converter);
