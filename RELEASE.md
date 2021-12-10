@@ -32,6 +32,11 @@
         `.save()` function inside `TrtGraphConverterV2`. When `False`, the
         `.save()` function won't save any TRT engines that have been built. When
         `True` (default), the original behavior is preserved.
+    *   `TrtGraphConverterV2` provides a new API called `.summary()` which
+        outputs a summary of the inference converted by TF-TRT. It namely shows
+        each TRTEngineOp with their input(s)' and output(s)' shape and dtype.
+        A detailed version of the summary is available which prints additionally
+        all the TensorFlow OPs included in each of the TRTEngineOPs.
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
