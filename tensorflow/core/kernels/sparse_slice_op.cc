@@ -53,8 +53,10 @@ struct SparseSliceFunctor<CPUDevice, T> {
     const gtl::ArraySlice<int64_t> size(input_size.flat<int64_t>().data(),
                                         input_dims);
 
-    const sparse::SparseTensor output =
+    const StatusOr<sparse::SparseTensor> output_or =
         sparse::SparseTensor::Slice<T>(sparse_tensor, start, size);
+    OP_REQUIRES_OK(context, output_or.status());
+    auto output = output_or.ValueOrDie();
 
     context->set_output(0, output.indices());
     context->set_output(1, output.values());
