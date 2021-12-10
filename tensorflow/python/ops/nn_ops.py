@@ -1032,7 +1032,7 @@ def convolution(
      num_input_channels,
      num_output_channels],
 
-  an optional `dilation_rate` tensor of shape [N] (defaulting to [1]*N)
+  an optional `dilation_rate` tensor of shape N (defaulting to [1]*N)
   specifying the filter upsampling/input downsampling rate, and an optional list
   of N `strides` (defaulting [1]*N), this computes for each N-D spatial output
   position (x[0], ..., x[N-1]):
