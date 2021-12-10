@@ -120,8 +120,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     // Set weight format `any` for primitive as per oneDNN recommendation.
     MklDnnMatMulFwdParams matmul_params(
         src_dims, weight_dims, bias_dims, dst_dims, src_format,
-        memory::format_tag::any, memory::format_tag::nc);
-
+        (this->is_weight_const_) ? memory::format_tag::any : weight_format,
+        memory::format_tag::nc);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
 #ifdef DNNL_AARCH64_USE_ACL
