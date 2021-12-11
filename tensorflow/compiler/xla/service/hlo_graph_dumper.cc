@@ -36,6 +36,9 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -53,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace {
@@ -809,8 +813,8 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   }
   // Build the text that will be displayed inside the node.
   string node_body = node_label;
-  for (const string& s : {trivial_subcomputation, node_backend_config,
-                          extra_info, inlined_constants}) {
+  for (const string& s : {trivial_subcomputation, extra_info, inlined_constants,
+                          node_backend_config}) {
     if (!s.empty()) {
       StrAppend(&node_body, "<br/>", s);
     }
@@ -1159,8 +1163,102 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
   return StrJoin(lines, "\n");
 }
 
+static std::vector<std::pair<std::string, std::string>>
+ExtractCudnnConvBackendConfigProps(const gpu::CudnnConvBackendConfig& config) {
+  std::vector<std::pair<std::string, std::string>> props;
+  if (config.conv_result_scale() != 1) {
+    props.emplace_back("conv_result_scale", StrCat(config.conv_result_scale()));
+  }
+  if (config.side_input_scale() != 0 && config.side_input_scale() != 1) {
+    props.emplace_back("side_input_scale", StrCat(config.side_input_scale()));
+  }
+  props.emplace_back(
+      "activation_mode",
+      se::dnn::ActivationModeString(
+          static_cast<se::dnn::ActivationMode>(config.activation_mode())));
+
+  props.emplace_back("algo",
+                     se::dnn::AlgorithmDesc(config.algorithm()).ToString());
+
+  // Skip workspace size; it's already explicit in the graph in the output shape
+  // of the conv.
+  return props;
+}
+
+static std::vector<std::pair<std::string, std::string>>
+ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
+                              const HloInstruction* instr, bool show_strides) {
+  std::vector<std::pair<std::string, std::string>> props;
+  if (primitive_util::IsComplexType(instr->shape().element_type())) {
+    if (config.alpha_real() != 1 || config.alpha_imag() != 1) {
+      props.emplace_back("alpha_real", StrCat(config.alpha_real()));
+      props.emplace_back("alpha_imag", StrCat(config.alpha_real()));
+    }
+  } else {
+    if (config.alpha_real() != 1) {
+      props.emplace_back("alpha", StrCat(config.alpha_real()));
+    }
+  }
+  if (config.beta() != 0 && config.beta() != 1) {
+    props.emplace_back("beta", StrCat(config.beta()));
+  }
+  if (config.batch_size() > 1) {
+    props.emplace_back("batch_size", StrCat(config.batch_size()));
+  }
+  if (show_strides) {
+    props.emplace_back("lhs_stride", StrCat(config.lhs_stride()));
+    props.emplace_back("rhs_stride", StrCat(config.rhs_stride()));
+  }
+  props.emplace_back(
+      "", absl::StrReplaceAll(
+              DotDimensionNumbersToString(config.dot_dimension_numbers()),
+              {{", ", "<br/>"}}));
+  if (config.algorithm_case() == gpu::GemmBackendConfig::kSelectedAlgorithm) {
+    props.emplace_back("algorithm", StrCat(config.selected_algorithm()));
+  }
+  return props;
+}
+
 string HloDotDumper::GetInstructionNodeBackendConfig(
     const HloInstruction* instr) {
+  // custom-calls for convs and gemms have backend-configs with fields that are
+  // semantically significant.  Print these configs unconditionally.
+  //
+  // (We could elide the semantically-insignificant fields when
+  // !show_backend_config, but this is simpler, and it's not too noisy.)
+  std::vector<std::pair<std::string, std::string>> props;
+  if (gpu::IsCustomCallToDnnConvolution(*instr)) {
+    StatusOr<gpu::CudnnConvBackendConfig> config =
+        instr->backend_config<gpu::CudnnConvBackendConfig>();
+    if (config.ok()) {
+      props = ExtractCudnnConvBackendConfigProps(*config);
+    }
+  } else if (instr->IsCustomCall(gpu::kGemmCallTarget)) {
+    StatusOr<gpu::GemmBackendConfig> config =
+        instr->backend_config<gpu::GemmBackendConfig>();
+    if (config.ok()) {
+      // gemm strides are generally uninteresting (derived from the instruction
+      // shape), so we hide them by default.
+      props = ExtractGemmBackendConfigProps(
+          *config, instr,
+          /*show_strides=*/hlo_render_options_.show_backend_config);
+    }
+  }
+
+  if (!props.empty()) {
+    // Put a linebreak before the backend-config properties if there's more than
+    // one.  Makes it easier to see.
+    return StrCat((props.size() > 1 ? "<br/>" : ""),
+                  StrJoin(props, "<br/>",
+                          [](std::string* out,
+                             const std::pair<std::string, std::string>& kv) {
+                            if (!kv.first.empty()) {
+                              return StrAppend(out, kv.first, "=", kv.second);
+                            }
+                            StrAppend(out, kv.second);
+                          }));
+  }
+
   if (!hlo_render_options_.show_backend_config ||
       instr->raw_backend_config_string().empty()) {
     return "";

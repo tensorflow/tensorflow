@@ -2308,6 +2308,7 @@ string FrontendAttributesToString(
 string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);
+string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 string ReplicaGroupsToString(absl::Span<const ReplicaGroup> replica_groups);
