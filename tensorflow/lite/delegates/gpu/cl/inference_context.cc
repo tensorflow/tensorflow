@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -470,7 +471,8 @@ void CopyExternals(const GraphFloat32& graph, GpuModel* gpu_model) {
 
 // Serialized model will lose polymorphic properties for GpuOperations.
 // Here we will retrieve some information needed for generic execution of
-// GpuOperations. Specifically, BindArguments must be executed.
+// GpuOperations. Specifically, BindArguments and RecalculateGridSize must be
+// executed.
 absl::Status ResolvePolymorphicArgs(GpuModel* gpu_model) {
   class DummySpatialTensor : public GpuSpatialTensor {
    public:
@@ -509,6 +511,7 @@ absl::Status ResolvePolymorphicArgs(GpuModel* gpu_model) {
     }
     RETURN_IF_ERROR(
         node.gpu_operation->BindArguments(&node.gpu_operation->args_));
+    node.gpu_operation->RecalculateGridSize();
   }
   return absl::OkStatus();
 }
@@ -555,6 +558,12 @@ absl::Status InferenceContext::InitFromGraph(
   GpuModel gpu_model;
   RETURN_IF_ERROR(GraphToGpuModel(create_info, graph,
                                   env->GetDevicePtr()->GetInfo(), &gpu_model));
+
+  flatbuffers::FlatBufferBuilder builder;
+  flatbuffers::Offset<data::GpuModel> gpu_model_fb;
+  if (serialized_model) {
+    gpu_model_fb = Encode(gpu_model, &builder);
+  }
   CopyFromGpuModel(&gpu_model);
 
   CreationContext creation_context;
@@ -612,27 +621,12 @@ absl::Status InferenceContext::InitFromGraph(
   gpu_info_ = env->device().GetInfo();
 
   if (serialized_model) {
-    for (auto& node : nodes_) {
-      node.cl_operation.MoveObjectRefsFromCLToGeneric();
-    }
-    std::vector<int64_t> in_refs(gpu_model.input_ids_and_refs.size());
-    std::vector<int64_t> out_refs(gpu_model.output_ids_and_refs.size());
-    for (int i = 0; i < gpu_model.input_ids_and_refs.size(); ++i) {
-      in_refs[i] = gpu_model.input_ids_and_refs[i].second;
-    }
-    for (int i = 0; i < gpu_model.output_ids_and_refs.size(); ++i) {
-      out_refs[i] = gpu_model.output_ids_and_refs[i].second;
-    }
-    flatbuffers::FlatBufferBuilder builder;
     auto encoded_fb = Encode(*env->GetDevicePtr(), *this, *env->program_cache(),
-                             in_refs, out_refs, &builder);
+                             gpu_model_fb, &builder);
     data::FinishInferenceContextBuffer(builder, encoded_fb);
     serialized_model->resize(builder.GetSize());
     std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
                 builder.GetSize());
-    for (auto& node : nodes_) {
-      node.cl_operation.MoveObjectRefsFromGenericToCL();
-    }
   }
   ReleaseCPURepresentation();
   return absl::OkStatus();

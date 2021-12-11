@@ -94,13 +94,6 @@ class ClOperation {
   absl::Status InitFromCache(uint64_t fingerprint,
                              const ProgramCache& program_cache);
 
-  void MoveObjectRefsFromCLToGeneric() {
-    cl_args_.MoveObjectRefsOut(&operation_->args_);
-  }
-  void MoveObjectRefsFromGenericToCL() {
-    cl_args_.MoveObjectRefsIn(&operation_->args_);
-  }
-
   int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
 
   void SetWorkGroupSize(const int3& work_group_size);
