@@ -281,11 +281,12 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
       previous_batch_index = next_batch_index;
     }
     gtl::InlinedVector<int64_t, 8> std_order(dense_shape->NumElements(), 0);
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(
+                            dense_shape->vec<int64_t>(), &shape));
     sparse::SparseTensor tensor;
-    OP_REQUIRES_OK(
-        ctx, sparse::SparseTensor::Create(
-                 *indices, *values, TensorShape(dense_shape->vec<int64_t>()),
-                 std_order, &tensor));
+    OP_REQUIRES_OK(ctx, sparse::SparseTensor::Create(*indices, *values, shape,
+                                                     std_order, &tensor));
     *output = new Dataset<T>(ctx, std::move(tensor));
   }
 
