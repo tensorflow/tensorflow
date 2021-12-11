@@ -22,6 +22,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "tensorflow/core/kernels/strided_slice_op.h"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -31,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/slice_op.h"
-#include "tensorflow/core/kernels/strided_slice_op.h"
 #include "tensorflow/core/kernels/strided_slice_op_impl.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -480,15 +481,11 @@ TF_CALL_int64(REGISTER_GPU);
 TF_CALL_uint32(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 
-#undef REGISTER_GPU
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-// A special DEVICE_DEFAULT kernel for int32.
+// A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("StridedSlice")
-                            .Device(DEVICE_DEFAULT)
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("begin")
@@ -497,7 +494,7 @@ REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .HostMemory("output"),
                         StridedSliceOp<CPUDevice, int32>);
 REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
-                            .Device(DEVICE_DEFAULT)
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("shape")
                             .HostMemory("begin")
@@ -507,7 +504,7 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
                             .HostMemory("output"),
                         StridedSliceGradOp<CPUDevice, int32>);
 REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
-                            .Device(DEVICE_DEFAULT)
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("ref")
                             .HostMemory("begin")
@@ -515,7 +512,7 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
                             .HostMemory("strides"),
                         StridedSliceAssignOp<CPUDevice, int32, false>);
 REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
-                            .Device(DEVICE_DEFAULT)
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("ref")
                             .HostMemory("begin")
@@ -523,11 +520,15 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                             .HostMemory("strides"),
                         StridedSliceAssignOp<CPUDevice, int32, false>);
 REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
-                            .Device(DEVICE_DEFAULT)
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("end")
                             .HostMemory("strides"),
                         StridedSliceAssignOp<CPUDevice, int32, true>);
+#undef REGISTER_GPU
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

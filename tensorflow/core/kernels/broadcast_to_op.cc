@@ -132,17 +132,16 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_KERNEL);
 TF_CALL_int64(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#endif
-
-// A special DEVICE_DEFAULT kernel for int32.
+// A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("BroadcastTo")
-                            .Device(DEVICE_DEFAULT)
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("shape")
                             .HostMemory("output"),
                         BroadcastToOp<CPUDevice, int32>);
+#endif
 
 }  // namespace tensorflow
