@@ -98,6 +98,18 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
           right_pad=right_pad,
           pad_width=pad_width,
           preserve_short_sequences=True))
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Pad width could lead to integer overflow"):
+      self.evaluate(
+          gen_string_ops.string_n_grams(
+              data=["000.0", "000.0"],
+              data_splits=[0, 2],
+              separator="",
+              ngram_widths=[2**30, 2**30],
+              left_pad=" ",
+              right_pad=" ",
+              pad_width=-2**30,
+              preserve_short_sequences=False))
 
   def testGetSessionHandle(self):
     if context.executing_eagerly():
