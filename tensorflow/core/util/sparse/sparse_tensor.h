@@ -591,7 +591,8 @@ inline StatusOr<SparseTensor> SparseTensor::Slice(
     const int64_t input_size = output_shape.dim_size(dim);
     const int64_t start_index = start[dim];
     const int64_t slice_size = size[dim];
-    if (start_index + slice_size < input_size) {
+
+    if (start_index < input_size - slice_size) {
       // The entire selection is within input boundaries.
       TF_RETURN_IF_ERROR(output_shape.SetDimWithStatus(dim, slice_size));
     } else if (start_index < input_size) {
