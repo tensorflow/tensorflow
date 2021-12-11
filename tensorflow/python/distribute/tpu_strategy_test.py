@@ -87,6 +87,69 @@ def get_tpu_strategy(enable_packed_var=False):
 @test_util.with_eager_op_as_function
 class TPUTest(test.TestCase):
 
+  # In this case, the entire computation in foo is compiled using JIT
+  # compilation.
+  def test_single_tpu_jit_compile(self):
+    if FLAGS.tpu_use_tfrt:
+      self.skipTest(
+          "This test triggers _XlaCompile and XlaLaunch which are not "
+          "supported in tfrt yet. We should avoid using these kernels on TPU. "
+          "However, it is a workaround to support b/129842431. We need more "
+          "discussion about how to support it in the long term.")
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(1)
+
+    def get_a_plus_one():
+      return a + 1
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def foo(x):
+      b = x + get_a_plus_one()
+      b = b + get_a_plus_one()
+      return b + 1
+
+    with ops.device("/device:TPU:0"):
+      result = foo(a)
+    self.assertAllEqual(6, result)
+
+  # In this case, each of the ops in the TPU device scope are compiled and run
+  # individually.
+  def test_single_tpu_on_demand(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(1)
+
+    def get_a_plus_one():
+      return a + 1
+
+    x = 1
+    with ops.device("/device:TPU:0"):
+      b = x + get_a_plus_one()
+      b = b + get_a_plus_one()
+    result = b + 1
+
+    self.assertAllEqual(6, result)
+
+  # In this case, each of the ops in the tf.function and TPU device scope are
+  # compiled and run individually.
+  def test_single_tpu_on_demand_tf_function(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(1)
+
+    def get_a_plus_one():
+      return a + 1
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def foo(x):
+      with ops.device("/device:TPU:0"):
+        b = x + get_a_plus_one()
+        b = b + get_a_plus_one()
+      return b + 1
+
+    result = foo(a)
+    self.assertAllEqual(6, result)
+
   def test_multiple_initialize_system(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)

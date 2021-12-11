@@ -88,22 +88,12 @@ bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
   return false;
 }
 
-// Check if graph should run in layout-dependent mode or native format mode
-// based on environment variable setting. Native format mode is default. User
-// can set TF_ENABLE_MKL_NATIVE_FORMAT=0 to disable the native format mode.
+// In TF 2.8, oneDNN blocked format will not be supported.
+// TODO(intel_tf): Cleanup shall be done in future:
+//                 (1) Remove this method;
+//                 (2) Update related code wherever it is called.
 bool inline NativeFormatEnabled() {
-#ifndef ENABLE_MKL
   return true;
-#else
-  static bool native_fmt_enabled = true;
-  static absl::once_flag once;
-  absl::call_once(once, [&] {
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MKL_NATIVE_FORMAT",
-                                   /*default_value*/ true,
-                                   &native_fmt_enabled));
-  });
-  return native_fmt_enabled;
-#endif
 }
 
 // Check if the data_format attribute in the node def represents 5D tensor

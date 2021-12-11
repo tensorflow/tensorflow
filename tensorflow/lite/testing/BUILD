@@ -74,7 +74,7 @@ exports_files([
     )],
     # copybara:comment_end
     delegate = delegate,
-    shard_count = 20,
+    shard_count = 30,
     tags = tags + [
         "gen_zip_test",
         "tflite_not_portable_intentional",
@@ -302,7 +302,6 @@ tf_cc_test(
     data = [
         "//tensorflow/lite:testdata/add_quantized_int8.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
-        "//tensorflow/lite:testdata/multi_add_signature.bin",
     ],
     tags = [
         "tflite_not_portable_android",

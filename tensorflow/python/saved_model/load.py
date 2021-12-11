@@ -14,6 +14,7 @@
 # ==============================================================================
 """Import a trackable object from a SavedModel."""
 
+import collections
 import functools
 import sys
 
@@ -22,7 +23,6 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -48,6 +48,7 @@ from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import resource
 from tensorflow.python.training.tracking import trackable_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
@@ -56,12 +57,12 @@ from tensorflow.python.util.tf_export import tf_export
 
 # API label for SavedModel metrics.
 _LOAD_V2_LABEL = "load_v2"
-
 # Built-in registrations use the "oneof kind" field in the SavedObject proto,
 # instead of "registered_name" field. The "kind" field has almost the same
 # functionality as the registered_name, but only contains built-in TensorFlow
 # types (like variable, functions, assets).
-_BUILT_IN_REGISTRATIONS = {"asset": tracking.Asset}
+_BUILT_IN_REGISTRATIONS = {"asset": tracking.Asset,
+                           "resource": resource.RestoredResource}
 
 
 def _unused_handle():
@@ -149,6 +150,9 @@ class Loader(object):
             library=meta_graph.graph_def.library,
             saved_object_graph=self._proto,
             wrapper_function=_WrapperFunction))
+    # Store a set of all concrete functions that have been set up with
+    # captures.
+    self._restored_concrete_functions = set()
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
 
@@ -276,12 +280,10 @@ class Loader(object):
     """Loads all nodes and functions from the SavedModel and their edges."""
     self._load_nodes()
     self._load_edges()
-    # TODO(b/124045874): There are limitations with functions whose captures
-    # trigger other functions to be executed. For now it is only guaranteed to
-    # work if the captures of a function only trigger functions without
-    # captures.
-    self._setup_functions_captures()
 
+    # Set up concrete functions that aren't part of the object graph
+    # (e.g. gradient functions)
+    self._setup_remaining_functions()
     self._create_saveable_object_factories()
 
   def _create_saveable_object_factories(self):
@@ -327,88 +329,87 @@ class Loader(object):
       if reference.local_name == "__call__" and not callable(obj):
         setattr(type(obj), "__call__", _call_attribute)
 
-  def _setup_functions_captures(self):
-    """Setup captures and variables in restored functions."""
-    concrete_functions = sorted(self._proto.concrete_functions.items())
-    for name, proto in concrete_functions:
-      concrete_function = self._concrete_functions[name]
-      bound_inputs = [
-          self._get_tensor_from_node(node_id, name)
-          for node_id in proto.bound_inputs]
-      bound_variables = [
-          self._nodes[node_id]
-          for node_id in proto.bound_inputs
-          if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
-      ]
-      # TODO(b/205010575): This is only injecting the captured inputs into the
-      # concrete function, note that we did not modify the FuncGraph
-      # itself.
-      captured_inputs_list = []
-      concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
-      if bound_inputs:
-        for bound_input, internal_capture in zip(
-            bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
-          if distribute_utils.is_distributed_variable(bound_input):
-            concrete_function.graph.capture_distributed_variable(
-                bound_input, internal_capture)
-            captured_inputs_list.append(bound_input)
-          elif distribute_utils.is_distributed_table(bound_input):
-            closure, spec = bound_input.resource_handle_call_time_value()
-            concrete_function.graph.replace_capture_with_deferred_capture(
-                bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
-                closure,
-                spec,
-                default_value=bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
-                placeholder=internal_capture)
-            captured_inputs_list.append(
-                concrete_function.graph.deferred_external_captures[-1])
+  def _setup_remaining_functions(self):
+    concrete_function_names = sorted(self._proto.concrete_functions.keys())
+    for name in concrete_function_names:
+      if name in self._restored_concrete_functions:
+        continue
+      self._setup_function_captures(name, self._nodes)
 
-          else:
-            captured_inputs_list.append(bound_input)
-            concrete_function.graph.replace_capture(bound_input,
-                                                    internal_capture)
-            if internal_capture.dtype == dtypes.resource:
-              if resource_variable_ops.is_resource_variable(bound_input):
-                try:
-                  handle = bound_input.handle
-                except ValueError:
-                  # For mirrored variables we'll copy handle data for components
-                  # as they get captured.
-                  pass
-                else:
-                  handle_data_util.copy_handle_data(handle, internal_capture)
+  def _setup_function_captures(self, concrete_function_name, nodes):
+    """Setup captures and variables in a restored function."""
+    self._restored_concrete_functions.add(concrete_function_name)
+    concrete_function = self._concrete_functions[concrete_function_name]
+    proto = self._proto.concrete_functions[concrete_function_name]
+    bound_inputs = [
+        self._get_tensor_from_node(nodes[node_id])
+        for node_id in proto.bound_inputs]
+    bound_variables = [
+        nodes[node_id] for node_id in proto.bound_inputs
+        if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
+    ]
+    # TODO(b/205010575): This is only injecting the captured inputs into the
+    # concrete function, note that we did not modify the FuncGraph
+    # itself.
+    captured_inputs_list = []
+    concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
+    if bound_inputs:
+      for bound_input, internal_capture in zip(
+          bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
+        if distribute_utils.is_distributed_variable(bound_input):
+          concrete_function.graph.capture_distributed_variable(
+              bound_input, internal_capture)
+          captured_inputs_list.append(bound_input)
+        elif distribute_utils.is_distributed_table(bound_input):
+          closure, spec = bound_input.resource_handle_call_time_value()
+          concrete_function.graph.replace_capture_with_deferred_capture(
+              bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+              closure,
+              spec,
+              default_value=bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+              placeholder=internal_capture)
+          captured_inputs_list.append(
+              concrete_function.graph.deferred_external_captures[-1])
+
+        else:
+          captured_inputs_list.append(bound_input)
+          concrete_function.graph.replace_capture(bound_input,
+                                                  internal_capture)
+          if internal_capture.dtype == dtypes.resource:
+            if resource_variable_ops.is_resource_variable(bound_input):
+              try:
+                handle = bound_input.handle
+              except ValueError:
+                # For mirrored variables we'll copy handle data for components
+                # as they get captured.
+                pass
               else:
-                handle_data_util.copy_handle_data(bound_input, internal_capture)
-            # Setting "captures" first means "capture" won't create a new
-            # placeholder for this input.
-            concrete_function.graph.capture(bound_input)
+                handle_data_util.copy_handle_data(handle, internal_capture)
+            else:
+              handle_data_util.copy_handle_data(bound_input, internal_capture)
+          # Setting "captures" first means "capture" won't create a new
+          # placeholder for this input.
+          concrete_function.graph.capture(bound_input)
 
-      concrete_function.set_external_captures(captured_inputs_list)
+    concrete_function.set_external_captures(captured_inputs_list)
 
-  def _get_tensor_from_node(self, node_id, fn_name):
+  def _get_tensor_from_node(self, node):
     """Resolves a node id into a tensor to be captured for a function."""
-    if self._node_filters is not None and self._nodes[node_id] is None:
-      raise ValueError(
-          f"Error when processing nodes_to_load. Function '{fn_name}' requires "
-          "inputs/variables that are not loaded when nodes_to_load="
-          f"{self._node_filters}.")
-
     with ops.init_scope():
-      obj = self._nodes[node_id]
-      if distribute_utils.is_distributed_variable(obj):
-        return obj
-      elif distribute_utils.is_distributed_table(obj):
-        return obj
-      elif resource_variable_ops.is_resource_variable(obj):
-        return obj.handle
-      elif isinstance(obj, tracking.Asset):
-        return obj.asset_path
-      elif tensor_util.is_tf_type(obj):
-        return obj
-      elif isinstance(obj, tracking.CapturableResource):
+      if distribute_utils.is_distributed_variable(node):
+        return node
+      elif distribute_utils.is_distributed_table(node):
+        return node
+      elif resource_variable_ops.is_resource_variable(node):
+        return node.handle
+      elif isinstance(node, tracking.Asset):
+        return node.asset_path
+      elif tensor_util.is_tf_type(node):
+        return node
+      elif isinstance(node, tracking.CapturableResource):
         # Note: this executes restored functions in the CapturableResource.
-        return obj.resource_handle
-      raise ValueError(f"Cannot convert node {obj} to tensor.")
+        return node.resource_handle
+      raise ValueError(f"Cannot convert node {node} to tensor.")
 
   def _initialize_loaded_nodes(self):
     nodes = {}
@@ -418,6 +419,34 @@ class Loader(object):
       node_setters[node_id] = setter
     return nodes, node_setters
 
+  def _get_node_dependencies(self, proto):
+    """Returns a dictionary of all dependencies of an object.
+
+    Args:
+      proto: A SavedObject proto.
+
+    Returns:
+      Dict mapping string dependency name *or* int node id to the node id.
+      The int node id key is used for mapping function captures.
+    """
+    dependencies = {ref.local_name: ref.node_id for ref in proto.dependencies}
+    kind = proto.WhichOneof("kind")
+    if kind == "function":
+      concrete_functions = proto.function.concrete_functions
+      for fn_name in concrete_functions:
+        for bound_input in self._proto.concrete_functions[fn_name].bound_inputs:
+          dependencies[bound_input] = bound_input
+    elif kind == "bare_concrete_function":
+      fn_name = proto.bare_concrete_function.concrete_function_name
+      for bound_input in self._proto.concrete_functions[fn_name].bound_inputs:
+        dependencies[bound_input] = bound_input
+    elif kind == "resource":
+      # Make sure that the resource creator is listed as a dependency.
+      for child in proto.children:
+        if child.local_name == "_create_resource":
+          dependencies["_create_resource"] = child.node_id
+    return dependencies
+
   def _generate_ordered_node_ids(self):
     """Orders the node ids so that dependencies appear first."""
     if self._filtered_nodes is None:
@@ -425,22 +454,45 @@ class Loader(object):
     else:
       unordered_ids = list(self._filtered_nodes)
 
-    dependency_map = {}
+    # Maps node ids -> list of dependencies (ids of other nodes that must be
+    # loaded before it).
+    dependency_map = collections.defaultdict(list)
     for node_id in unordered_ids:
-      deps = dependency_map[node_id] = []
+      deps = dependency_map[node_id]
       if self._loaded_nodes.get(node_id) is not None:
         # Deps are only used if the node has not been created.
         continue
-      for reference in self._proto.nodes[node_id].dependencies:
-        dep = reference.node_id
+      proto = self._proto.nodes[node_id]
+      for dep in set(self._get_node_dependencies(proto).values()):
         deps.append(dep)
         if self._filtered_nodes is not None and dep not in self._filtered_nodes:
           raise ValueError(
               "Unable to partially load SavedModel since the specified filter "
-              "does not include all deserialization dependencies. Please "
-              "include this path in the filter: "
+              "does not include all required objects for loading (e.g. "
+              "variables used in functions or deserialization dependencies). "
+              "Please include this path in the filter: "
               f"{self._pretty_printer.node_names[dep]}")
 
+      # Add optimizer slot variable to dependency map.
+      prev_slot = None
+      for slot_variable_proto in proto.slot_variables:
+        slot_variable_node_id = slot_variable_proto.slot_variable_node_id
+        # The optimizer and original variable must be created before the slot
+        # variable, since the slot variable is generated using the Optimizer's
+        # add_slot API.
+        slot_deps = dependency_map[slot_variable_node_id]
+        slot_deps.append(node_id)
+        slot_deps.append(slot_variable_proto.original_variable_node_id)
+
+        if prev_slot is not None:
+          # Add previous slot to deps so that the optimizer slot variables are
+          # added in order. The ordering is needed because the slot name and
+          # variable are both added to ordered lists, which are exposed to the
+          # user via `Optimizer.get_slot_names()` and `Optimizer.weights`.
+          # TODO(kathywu): Maybe enforce some sort of deterministic ordering in
+          # `order_by_dependency` to avoid doing this?
+          slot_deps.append(prev_slot)
+        prev_slot = slot_variable_node_id
     try:
       return list(trackable_utils.order_by_dependency(dependency_map))
     except trackable_utils.CyclicDependencyError:
@@ -464,30 +516,23 @@ class Loader(object):
 
     # Figure out which objects are slot variables. These objects are created
     # with Optimizer.add_slot rather than _recreate_variable.
-    slot_variable_node_ids = set()
+    # Maps slot node id -> optimizer node id, SlotVariableReference proto
+    slot_variable_node_ids = {}
 
-    for _, proto in self._iter_all_nodes():
-      for slot_variable_proto in proto.slot_variables:
-        slot_variable_node_ids.add(slot_variable_proto.slot_variable_node_id)
-
-    # Re-create everything except slot variables.
     for node_id, proto in self._iter_all_nodes():
-      if node_id in slot_variable_node_ids or nodes.get(node_id) is not None:
-        # Defer recreating slot variables so we can use the public Optimizer
-        # interface.
-        continue
-      node, setter = self._recreate(proto, node_id, nodes)
-      nodes[node_id] = node
-      node_setters[node_id] = setter
-
-    # Now that we have created the variables being optimized, we have enough
-    # information to re-create slot variables for them.
-    for node_id, proto in self._iter_all_nodes():
-      if node_id not in nodes:
-        # This is a slot variable that has not been created yet.
-        continue
-      optimizer_object = nodes[node_id]
       for slot_variable_proto in proto.slot_variables:
+        slot_variable_node_id = slot_variable_proto.slot_variable_node_id
+        slot_variable_node_ids[slot_variable_node_id] = (node_id,
+                                                         slot_variable_proto)
+
+    # Re-create everything.
+    for node_id, proto in self._iter_all_nodes():
+      if nodes.get(node_id) is not None:
+        continue
+      elif node_id in slot_variable_node_ids:
+        # Use the public Optimizer interface when creating slot variables.
+        optimizer_node_id, slot_variable_proto = slot_variable_node_ids[node_id]
+        optimizer_object = nodes[optimizer_node_id]
         optimized_variable = nodes[
             slot_variable_proto.original_variable_node_id]
         slot_variable = optimizer_object.add_slot(
@@ -495,6 +540,10 @@ class Loader(object):
             slot_name=slot_variable_proto.slot_name)
         nodes[slot_variable_proto.slot_variable_node_id] = slot_variable
         node_setters[slot_variable_proto.slot_variable_node_id] = setattr
+      else:
+        node, setter = self._recreate(proto, node_id, nodes)
+        nodes[node_id] = node
+        node_setters[node_id] = setter
 
     # If root object is not loaded, add a dummy root object for checkpoint
     # compatibility.
@@ -586,36 +635,35 @@ class Loader(object):
       the trackable children.
     """
     registered_class = registration.get_registered_class(proto.registered_name)
-    if registered_class is not None:
-      user_proto = proto.serialized_user_proto
-    else:
+    if registered_class is None:
       registered_class = _BUILT_IN_REGISTRATIONS.get(proto.WhichOneof("kind"))
-      user_proto = proto
+
+    dependencies = {}
+    for key, dep_node_id in self._get_node_dependencies(proto).items():
+      dependencies[key] = nodes[dep_node_id]
+
     if registered_class:
-      dependencies = {}
-      for reference in proto.dependencies:
-        dependencies[reference.local_name] = nodes[reference.node_id]
       obj = registered_class._deserialize_from_proto(  # pylint: disable=protected-access
-          proto=user_proto,
+          proto=proto.serialized_user_proto,
+          object_proto=proto,
           dependencies=dependencies,
           export_dir=self._export_dir,
           asset_file_def=self._asset_file_def)
       return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
     else:
-      return self._recreate_default(proto, node_id)
+      return self._recreate_default(proto, node_id, dependencies)
 
-  def _recreate_default(self, proto, node_id):
+  def _recreate_default(self, proto, node_id, deps):
     """Creates a Python object from a SavedObject protocol buffer."""
     factory = {
         "user_object": (
             lambda: self._recreate_user_object(proto.user_object, node_id)),
-        "function": lambda: self._recreate_function(proto.function),
+        "function": lambda: self._recreate_function(proto.function, deps),
         "bare_concrete_function": functools.partial(
             self._recreate_bare_concrete_function,
-            proto.bare_concrete_function),
+            proto=proto.bare_concrete_function, dependencies=deps),
         "variable": lambda: self._recreate_variable(proto.variable),
         "constant": lambda: self._recreate_constant(proto.constant),
-        "resource": lambda: self._recreate_resource(proto.resource),
         "captured_tensor": functools.partial(
             self._get_tensor_from_fn, proto.captured_tensor),
     }
@@ -643,13 +691,18 @@ class Loader(object):
 
     return _UserObject(), setattr
 
-  def _recreate_function(self, proto):
-    return function_deserialization.recreate_function(
-        proto, self._concrete_functions), setattr
+  def _recreate_function(self, proto, dependencies):
+    fn = function_deserialization.recreate_function(
+        proto, self._concrete_functions)
+    for name in proto.concrete_functions:
+      self._setup_function_captures(name, dependencies)
+    return fn, setattr
 
-  def _recreate_bare_concrete_function(self, proto):
-    return function_deserialization.setup_bare_concrete_function(
-        proto, self._concrete_functions), setattr
+  def _recreate_bare_concrete_function(self, proto, dependencies):
+    fn = function_deserialization.setup_bare_concrete_function(
+        proto, self._concrete_functions)
+    self._setup_function_captures(proto.concrete_function_name, dependencies)
+    return fn, setattr
 
   def _recreate_variable(self, proto):
     name = proto.name if proto.name else None
@@ -696,52 +749,9 @@ class Loader(object):
     captured_tensor = outer_graph.get_tensor_by_name(proto.name)
     return captured_tensor, setattr
 
-  def _recreate_resource(self, proto):
-    return _RestoredResource(device=proto.device), _setattr_and_track
-
-
-# TODO(b/124205571,b/124092991): Solve destruction of resources.
-class _RestoredResource(tracking.TrackableResource):
-  """Restored SavedResource."""
-
-  def __init__(self, device=""):
-    super(_RestoredResource, self).__init__(device=device)
-
-  def _create_resource(self):
-    raise RuntimeError()
-
-  def _initialize(self):
-    raise RuntimeError()
-
-  # _list_functions_for_serialization expects Function objects, but unlike
-  # _create_resource and _initialize, _destroy_function didn't always exist in
-  # older TrackableResource implementations, so this default stub must be a
-  # Function.
-  @def_function.function
-  def _destroy_resource(self):
-    raise RuntimeError()
-
-  def _list_functions_for_serialization(self, unused_serialization_cache):
-    # Overwrite this method to avoid the implementation of
-    # base class to re-wrap the polymorphic functions into
-    # another layer of `tf.function`.
-    functions = {
-        "_create_resource": self._create_resource,
-        "_initialize": self._initialize,
-        "_destroy_resource": self._destroy_resource,
-    }
-    return functions
-
 
 def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
-
-
-def _setattr_and_track(obj, name, value):
-  """Sets new attribute and marks it as a dependency if Trackable."""
-  setattr(obj, name, value)
-  if isinstance(value, base.Trackable):
-    obj._track_trackable(value, name)  # pylint:disable=protected-access
 
 
 @tf_export("__internal__.saved_model.load_partial", v1=[])

@@ -1007,7 +1007,7 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
 }
 
 tensorflow::Status ContextInterface::BuildFunctionRequestContext(
-    tensorflow::tfd::OpKernelRunnerTable* runner_table,
+    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
     RCReference<tfrt::RequestContext>* request_context) {
   auto* step_container = GetEagerContext()->StepContainer();
   RequestContextBuilder request_context_builder(
@@ -1535,7 +1535,7 @@ tensorflow::Status OperationInterface::Initialize() {
   TF_RETURN_IF_ERROR(context_->GetFunctionCache().GetOrAddFunction(
       op_name_, device_name_, dev_set, context_->GetEagerContext(), corert,
       /*request_ctx_fn=*/
-      [this](tensorflow::tfd::OpKernelRunnerTable* runner_table,
+      [this](tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
              RCReference<RequestContext>* request_ctx) {
         return context_->BuildFunctionRequestContext(runner_table, request_ctx);
       },

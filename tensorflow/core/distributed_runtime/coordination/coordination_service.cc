@@ -18,13 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -77,8 +77,8 @@ bool is_multi_client_leader(const ServerDef& server_def) {
 class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
  public:
   CoordinationServiceStandaloneImpl(
-      std::unique_ptr<CoordinationClientCache> client_cache,
-      const WorkerEnv* env, const ServerDef& server_def);
+      std::unique_ptr<CoordinationClientCache> client_cache, Env* env,
+      const ServerDef& server_def);
   ~CoordinationServiceStandaloneImpl() override { Stop(); }
 
   void RegisterWorker(const std::string& job_name, int task_id,
@@ -150,7 +150,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   };
 
   std::unique_ptr<CoordinationClientCache> client_cache_;
-  const WorkerEnv* const env_;  // Not owned.
+  Env& env_;
   const uint64 heartbeat_timeout_ms_;
 
   mutex state_mu_;
@@ -225,10 +225,10 @@ void CoordinationServiceStandaloneImpl::TaskState::InvokeRegisteredCallback(
 }
 
 CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
-    std::unique_ptr<CoordinationClientCache> client_cache, const WorkerEnv* env,
+    std::unique_ptr<CoordinationClientCache> client_cache, Env* env,
     const ServerDef& server_def)
     : client_cache_(std::move(client_cache)),
-      env_(env),
+      env_(*env),
       heartbeat_timeout_ms_([&server_def]() -> uint64 {
         const auto& configs = server_def.default_session_config()
                                   .experimental()
@@ -259,7 +259,7 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
 
 void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
   check_staleness_thread_.reset(
-      env_->env->StartThread({}, kHealthCheckThread, [this]() {
+      env_.StartThread({}, kHealthCheckThread, [this]() {
         // Used to store the job and task info if a task becomes stale
         DeviceNameUtils::ParsedName parsed;
         while (true) {
@@ -576,7 +576,7 @@ Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
 }  // namespace
 
 std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(
-    const WorkerEnv* env, const ServerDef& server_def,
+    Env* env, const ServerDef& server_def,
     std::unique_ptr<CoordinationClientCache> cache) {
   std::unique_ptr<CoordinationServiceInterface> coord_service;
   if (is_multi_client_leader(server_def)) {

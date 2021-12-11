@@ -123,6 +123,13 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   // Upgrades the BaseRemoteRendezvous to full initialization.
   Status Initialize(WorkerSession* session) override;
 
+  void SetRemoteEagerContextDefault() override {
+    remote_eager_context_default_ = true;
+  }
+  bool IsRemoteEagerContextDefault() override {
+    return remote_eager_context_default_;
+  }
+
   // Forwards to local_, where the Tensor "val" will be buffered and
   // any waiting callback stored.
   Status Send(const ParsedKey& key, const Rendezvous::Args& args,
@@ -176,6 +183,12 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
 
  private:
   Rendezvous* local_;  // Owns a Ref on this object.
+  // Indicates whether this remote rendezvous instance is used as the default
+  // rendezvous for remote eager op-by-op execution. Errors in eager op-by-op
+  // execution should not abort the rendezvous since it is a context-wide
+  // instance and needs to be reused; instead, the errors are propagated through
+  // eager executors.
+  bool remote_eager_context_default_ = false;
 
   mutable mutex mu_;
 

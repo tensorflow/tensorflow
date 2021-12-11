@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_BENCHMARK_MLIR_FUNCTION_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_BENCHMARK_MLIR_FUNCTION_H_
 
+#include <functional>
+
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
 namespace tensorflow {
@@ -59,7 +61,7 @@ void RunEigenBenchmark(
   }                                                                 \
   BENCHMARK(BM_cpurt_##NAME)->MeasureProcessCPUTime()
 
-#define BM_CpurtVectorized(NAME, MLIR_INPUT, FN, INPUT_SPEC)         \
+#define BM_CpurtV(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
   static void BM_cpurtv_##NAME(::testing::benchmark::State& state) { \
     RunCpurtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC, true);      \
   }                                                                  \

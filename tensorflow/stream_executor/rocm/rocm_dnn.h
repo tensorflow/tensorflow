@@ -251,9 +251,9 @@ class MIOpenSupport : public dnn::DnnSupport {
       override;
 
   port::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType input_type, dnn::DataType output_type,
-      const dnn::BatchDescriptor& input_descriptor,
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor) override;

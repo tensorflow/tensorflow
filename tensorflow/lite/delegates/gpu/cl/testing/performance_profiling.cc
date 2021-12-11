@@ -30,6 +30,104 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+absl::Status RunPredefinedLayoutSample(const std::string& model_name) {
+  auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
+  GraphFloat32 graph_cl;
+  ops::builtin::BuiltinOpResolver op_resolver;
+  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, op_resolver, &graph_cl,
+                                      /*allow_quant_ops=*/true));
+
+  Environment env;
+  RETURN_IF_ERROR(CreateEnvironment(&env));
+
+  CreateGpuModelInfo create_info;
+  create_info.precision = env.IsSupported(CalculationsPrecision::F16)
+                              ? CalculationsPrecision::F16
+                              : CalculationsPrecision::F32;
+  create_info.storage_type = GetFastestStorageType(env.device().GetInfo());
+  create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+  {
+    // Example of adding predefined descriptor
+    // Assumed that graph has first input with batch = 1.
+    auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
+    create_info.predefined[graph_cl.inputs()[0]->id] =
+        TensorDescriptor{data_type, TensorStorageType::BUFFER, Layout::HWC};
+  }
+  std::cout << "Precision: " << ToString(create_info.precision) << std::endl;
+  std::cout << "Storage type: " << ToString(create_info.storage_type)
+            << std::endl;
+  InferenceContext context;
+  RETURN_IF_ERROR(
+      context.InitFromGraphWithTransforms(create_info, &graph_cl, &env));
+
+  // After initialization we can receive input tensor
+  // in_ten will have TensorStorageType::BUFFER storage type
+  Tensor* in_ten = context.GetTensor(graph_cl.inputs()[0]->id);
+  if (in_ten->GetStorageType() != TensorStorageType::BUFFER) {
+    return absl::InternalError("Failed preconditiion");
+  }
+
+  RETURN_IF_ERROR(context.AddToQueue(env.queue()));
+
+  std::cout << "Finished RunPredefinedLayoutSample." << std::endl;
+
+  return absl::OkStatus();
+}
+
+absl::Status RunExternalImmutableSample(const std::string& model_name) {
+  auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
+  GraphFloat32 graph_cl;
+  ops::builtin::BuiltinOpResolver op_resolver;
+  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, op_resolver, &graph_cl,
+                                      /*allow_quant_ops*/ true));
+
+  Environment env;
+  RETURN_IF_ERROR(CreateEnvironment(&env));
+
+  CreateGpuModelInfo create_info;
+  create_info.precision = env.IsSupported(CalculationsPrecision::F16)
+                              ? CalculationsPrecision::F16
+                              : CalculationsPrecision::F32;
+  create_info.storage_type = GetFastestStorageType(env.device().GetInfo());
+  create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+  // Example of external immutable tensors:
+  std::vector<Tensor> outputs(graph_cl.outputs().size());
+  for (int i = 0; i < graph_cl.outputs().size(); ++i) {
+    // Assumed that graph outputs have batch size = 1.
+    auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
+    RETURN_IF_ERROR(CreateTensor(
+        env.context(), graph_cl.outputs()[i]->tensor.shape,
+        TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
+                         Layout::HWC},
+        &outputs[i]));
+    create_info.external_immutable_tensors[graph_cl.outputs()[i]->id] =
+        &outputs[i];
+  }
+  std::cout << "Precision: " << ToString(create_info.precision) << std::endl;
+  std::cout << "Storage type: " << ToString(create_info.storage_type)
+            << std::endl;
+  InferenceContext context;
+  RETURN_IF_ERROR(
+      context.InitFromGraphWithTransforms(create_info, &graph_cl, &env));
+
+  RETURN_IF_ERROR(context.AddToQueue(env.queue()));
+
+  // outputs can be used here. But AddToQueue do not have cpu
+  // syncronization.
+  RETURN_IF_ERROR(env.queue()->WaitForCompletion());
+
+  const auto dst_shape = BHWC(outputs[0].Batch(), outputs[0].Height(),
+                              outputs[0].Width(), outputs[0].Channels());
+  TensorFloat32 cpu_tensor;
+  cpu_tensor.shape = dst_shape;
+  cpu_tensor.data.resize(dst_shape.DimensionsProduct());
+  RETURN_IF_ERROR(outputs[0].ReadData(env.queue(), &cpu_tensor));
+  std::cout << "First tensor data at index 0 - " << cpu_tensor.data[0]
+            << std::endl;
+
+  return absl::OkStatus();
+}
+
 absl::Status RunSerializedTest(const std::string& model_name) {
   auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
   GraphFloat32 graph_cl;
@@ -40,7 +138,7 @@ absl::Status RunSerializedTest(const std::string& model_name) {
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = env.IsSupported(CalculationsPrecision::F16)
                               ? CalculationsPrecision::F16
                               : CalculationsPrecision::F32;
@@ -138,7 +236,7 @@ absl::Status RunModelSample(const std::string& model_name) {
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = env.IsSupported(CalculationsPrecision::F16)
                               ? CalculationsPrecision::F16
                               : CalculationsPrecision::F32;
@@ -204,6 +302,24 @@ int main(int argc, char** argv) {
   bool run_serialized_test = false;
   if (run_serialized_test) {
     run_status = tflite::gpu::cl::RunSerializedTest(argv[1]);
+    if (!run_status.ok()) {
+      std::cerr << run_status.message();
+      return -1;
+    }
+  }
+
+  bool run_with_external_immutable_tensors = false;
+  if (run_with_external_immutable_tensors) {
+    run_status = tflite::gpu::cl::RunExternalImmutableSample(argv[1]);
+    if (!run_status.ok()) {
+      std::cerr << run_status.message();
+      return -1;
+    }
+  }
+
+  bool run_with_predefined_layout = false;
+  if (run_with_predefined_layout) {
+    run_status = tflite::gpu::cl::RunPredefinedLayoutSample(argv[1]);
     if (!run_status.ok()) {
       std::cerr << run_status.message();
       return -1;

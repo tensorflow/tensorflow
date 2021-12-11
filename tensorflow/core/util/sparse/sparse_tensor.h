@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/dim_comparator.h"
@@ -177,9 +178,9 @@ class SparseTensor {
   // element of the array representing one dimension. The start is the start
   // index at each dimension and the size is the size at each dimension.
   template <typename T>
-  static SparseTensor Slice(const SparseTensor& tensor,
-                            const gtl::ArraySlice<int64_t>& start,
-                            const gtl::ArraySlice<int64_t>& size);
+  static StatusOr<SparseTensor> Slice(const SparseTensor& tensor,
+                                      const gtl::ArraySlice<int64_t> start,
+                                      const gtl::ArraySlice<int64_t> size);
 
   // Picks out the dimensions according to `dim_indices`.
   std::vector<int64_t> PickDims(gtl::ArraySlice<int64_t> dim_indices) const {
@@ -577,9 +578,9 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
 }
 
 template <typename T>
-inline SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
-                                        const gtl::ArraySlice<int64_t>& start,
-                                        const gtl::ArraySlice<int64_t>& size) {
+inline StatusOr<SparseTensor> SparseTensor::Slice(
+    const SparseTensor& input_tensor, const gtl::ArraySlice<int64_t> start,
+    const gtl::ArraySlice<int64_t> size) {
   TensorShape output_shape(input_tensor.shape());
 
   const int dims = input_tensor.dims();
@@ -590,15 +591,17 @@ inline SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
     const int64_t input_size = output_shape.dim_size(dim);
     const int64_t start_index = start[dim];
     const int64_t slice_size = size[dim];
-    if (start_index + slice_size < input_size) {
+
+    if (start_index < input_size - slice_size) {
       // The entire selection is within input boundaries.
-      output_shape.set_dim(dim, slice_size);
+      TF_RETURN_IF_ERROR(output_shape.SetDimWithStatus(dim, slice_size));
     } else if (start_index < input_size) {
       // The selection starts within input boundaries, but goes beyond them.
-      output_shape.set_dim(dim, input_size - start_index);
+      TF_RETURN_IF_ERROR(
+          output_shape.SetDimWithStatus(dim, input_size - start_index));
     } else {
       // The selection is entirely out of input boundaries.
-      output_shape.set_dim(dim, 0);
+      TF_RETURN_IF_ERROR(output_shape.SetDimWithStatus(dim, 0));
     }
   }
 

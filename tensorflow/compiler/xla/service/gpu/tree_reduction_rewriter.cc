@@ -99,7 +99,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Case (1): batched dimension does not fit.
     if (reduce_batch_dimension &&
-        input_shape_dims[0] > kBatchedReductionRaceFreeBound) {
+        input_shape_dims[0] > BatchedReductionRaceFreeBound()) {
       VLOG(2) << "Splitting batched dimension reduce into a separate reduction";
       VLOG(1) << "Input: " << hlo->ToString();
       return RewriteBatchDimensionLargerThanTile(reduce, reduction_dimensions,

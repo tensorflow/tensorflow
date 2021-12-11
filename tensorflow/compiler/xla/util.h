@@ -70,8 +70,8 @@ Status WithLogBacktrace(const Status& status);
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
-static constexpr int kInlineRank = 8;
-using DimensionVector = absl::InlinedVector<int64_t, kInlineRank>;
+inline constexpr int InlineRank() { return 8; }
+using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it

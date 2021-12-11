@@ -385,23 +385,11 @@ LogicalResult ConstantLikeOp::reifyReturnTypeShapes(
       &builder, getOperation(), operands.front(), &reifiedReturnShapes);
 }
 
-struct ConstantLikeToConstant : public OpRewritePattern<ConstantLikeOp> {
-  using OpRewritePattern<ConstantLikeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ConstantLikeOp op,
-                                PatternRewriter& rewriter) const override {
-    auto op_type = op.operand().getType().cast<ShapedType>();
-    if (!op_type.hasStaticShape()) return failure();
-    auto type = RankedTensorType::get(op_type.getShape(), op.value().getType());
-    ElementsAttr attr = DenseElementsAttr::get(type, op.value());
-    rewriter.replaceOpWithNewOp<mhlo::ConstOp>(op.getOperation(), attr);
-    return success();
-  }
-};
-
-void ConstantLikeOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<ConstantLikeToConstant>(context);
+OpFoldResult ConstantLikeOp::fold(ArrayRef<Attribute> operands) {
+  auto op_type = operand().getType().cast<ShapedType>();
+  if (!op_type.hasStaticShape()) return {};
+  auto type = RankedTensorType::get(op_type.getShape(), value().getType());
+  return DenseElementsAttr::get(type, value());
 }
 
 LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
@@ -487,6 +475,15 @@ namespace chlo {
 //===----------------------------------------------------------------------===//
 // chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
+
+Operation* HloClientDialect::materializeConstant(OpBuilder& builder,
+                                                 Attribute value, Type type,
+                                                 Location loc) {
+  // Mirror MHLO dialect here.
+  if (value.isa<ElementsAttr>())
+    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
+  return nullptr;
+}
 
 void HloClientDialect::initialize() {
   addOperations<

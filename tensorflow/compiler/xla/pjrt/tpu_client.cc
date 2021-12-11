@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -83,7 +85,7 @@ PjRtTpuClient::PjRtTpuClient(
     LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index)
-    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices),
+    : PjRtStreamExecutorClient(TpuName(), client, std::move(devices),
                                process_index,
                                /*allocator=*/nullptr,
                                /*host_memory_allocator=*/nullptr,
@@ -99,7 +101,21 @@ PjRtTpuClient::PjRtTpuClient(
         return absl::StrCat(
             "libtpu version ", absl::StrJoin(version.version, "."), "\n",
             absl::string_view(version.metadata, version.metadata_size));
-      }()) {}
+      }()) {
+  // We always initialize the tpu client even if libtpu isn't linked in or
+  // initialized.
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  }
+}
+
+PjRtTpuClient::~PjRtTpuClient() {
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  }
+}
 
 StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {

@@ -310,7 +310,9 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     op = reduce_op;
   } else {
     TF_ASSIGN_OR_RETURN(
-        op, xla::HloFunctionImporter::ImportInstruction(instr, loads, &b));
+        op,
+        xla::HloFunctionImporter::ImportInstruction(
+            instr, loads, &b, xla::DynamicShapeHandlingMode::kConvertToStatic));
   }
   TF_RET_CHECK(op->getNumResults() == num_results);
   for (int i = 0; i < results.size(); i++) {

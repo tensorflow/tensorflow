@@ -1935,8 +1935,6 @@ class HloDotInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-  // Returns the dump string of the dot dimension numbers.
-  string DotDimensionNumbersToString() const;
 
   // Describes the dimension numbers used for a dot.
   DotDimensionNumbers dot_dimension_numbers_;

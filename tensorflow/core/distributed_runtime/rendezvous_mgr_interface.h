@@ -41,6 +41,12 @@ class RemoteRendezvous : public Rendezvous {
   // Fully construct the RemoteRendezvous.
   virtual Status Initialize(WorkerSession* session) = 0;
 
+  // In remote eager, set current instance as context default rendezvous which
+  // will be used for eager op-by-op execution.
+  virtual void SetRemoteEagerContextDefault() = 0;
+  // In remote eager, get if current instance is context default rendezvous.
+  virtual bool IsRemoteEagerContextDefault() = 0;
+
  protected:
   bool is_cross_process() override { return true; }
 };

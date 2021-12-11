@@ -222,6 +222,8 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
 #define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) m(float, s) m(double, d)
+#define TF_CALL_LAPACK_TYPES_NO_REAL(m) \
+  m(std::complex<float>, c) m(std::complex<double>, z)
 
 #define BLAS_SOLVER_FN(method, type_prefix) \
   wrap::rocblas##_##type_prefix##method
@@ -242,6 +244,82 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
   }
 
 TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
+
+#define POTRF_INSTANCE(Scalar, type_prefix)                                    \
+  template <>                                                                  \
+  Status GpuSolver::Potrf<Scalar>(rocblas_fill uplo, int n, Scalar* dev_A,     \
+                                  int lda, int* dev_lapack_info) {             \
+    mutex_lock lock(handle_map_mutex);                                         \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                    \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrf, type_prefix)(                  \
+        rocm_blas_handle_, uplo, n, reinterpret_cast<ROCmScalar*>(dev_A), lda, \
+        dev_lapack_info));                                                     \
+    return Status::OK();                                                       \
+  }
+
+#define GEQRF_INSTANCE(Scalar, type_prefix)                                 \
+  template <>                                                               \
+  Status GpuSolver::Geqrf(int m, int n, Scalar* dev_A, int lda,             \
+                          Scalar* dev_tau, int* dev_lapack_info) {          \
+    mutex_lock lock(handle_map_mutex);                                      \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                 \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(geqrf, type_prefix)(               \
+        rocm_blas_handle_, m, n, reinterpret_cast<ROCmScalar*>(dev_A), lda, \
+        reinterpret_cast<ROCmScalar*>(dev_tau)));                           \
+    return Status::OK();                                                    \
+  }
+
+TF_CALL_LAPACK_TYPES(GEQRF_INSTANCE);
+
+#define UMMQR_INSTANCE(Scalar, type_prefix)                                  \
+  template <>                                                                \
+  Status GpuSolver::Unmqr(rocblas_side side, rocblas_operation trans, int m, \
+                          int n, int k, const Scalar* dev_a, int lda,        \
+                          const Scalar* dev_tau, Scalar* dev_c, int ldc,     \
+                          int* dev_lapack_info) {                            \
+    mutex_lock lock(handle_map_mutex);                                       \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                  \
+    ScratchSpace<uint8> dev_a_copy = this->GetScratchSpace<uint8>(           \
+        sizeof(ROCmScalar*) * m * k, "", /*on host */ false);                \
+    if (!CopyHostToDevice(context_, dev_a_copy.mutable_data(), dev_a,        \
+                          dev_a_copy.bytes())) {                             \
+      return errors::Internal("Unmqr: Failed to copy ptrs to device");       \
+    }                                                                        \
+    ScratchSpace<uint8> dev_tau_copy = this->GetScratchSpace<uint8>(         \
+        sizeof(ROCmScalar*) * k * n, "", /*on host */ false);                \
+    if (!CopyHostToDevice(context_, dev_tau_copy.mutable_data(), dev_tau,    \
+                          dev_tau_copy.bytes())) {                           \
+      return errors::Internal("Unmqr: Failed to copy ptrs to device");       \
+    }                                                                        \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(unmqr, type_prefix)(                \
+        rocm_blas_handle_, side, trans, m, n, k,                             \
+        reinterpret_cast<ROCmScalar*>(dev_a_copy.mutable_data()), lda,       \
+        reinterpret_cast<ROCmScalar*>(dev_tau_copy.mutable_data()),          \
+        reinterpret_cast<ROCmScalar*>(dev_c), ldc));                         \
+    return Status::OK();                                                     \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_REAL(UMMQR_INSTANCE);
+
+#define UNGQR_INSTANCE(Scalar, type_prefix)                                    \
+  template <>                                                                  \
+  Status GpuSolver::Ungqr(int m, int n, int k, Scalar* dev_a, int lda,         \
+                          const Scalar* dev_tau, int* dev_lapack_info) {       \
+    mutex_lock lock(handle_map_mutex);                                         \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                    \
+    ScratchSpace<uint8> dev_tau_copy = this->GetScratchSpace<uint8>(           \
+        sizeof(ROCmScalar*) * k * n, "", /*on host */ false);                  \
+    if (!CopyHostToDevice(context_, dev_tau_copy.mutable_data(), dev_tau,      \
+                          dev_tau_copy.bytes())) {                             \
+      return errors::Internal("Ungqr: Failed to copy ptrs to device");         \
+    }                                                                          \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(ungqr, type_prefix)(                  \
+        rocm_blas_handle_, m, n, k, reinterpret_cast<ROCmScalar*>(dev_a), lda, \
+        reinterpret_cast<ROCmScalar*>(dev_tau_copy.mutable_data())));          \
+    return Status::OK();                                                       \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_REAL(UNGQR_INSTANCE);
 
 #define POTRF_INSTANCE(Scalar, type_prefix)                                    \
   template <>                                                                  \
@@ -465,7 +543,7 @@ Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
   return Status::OK();
 }
 
-#define GEAM_INSTANCE(Scalar, type_prefix)                                    \
+#define MATINVBATCHED_INSTANCE(Scalar, type_prefix)                           \
   template <>                                                                 \
   Status GpuSolver::MatInvBatched<Scalar>(                                    \
       int n, const Scalar* const host_a_dev_ptrs[], int lda,                  \
@@ -484,6 +562,41 @@ Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
         host_a_inverse_dev_ptrs, ldainv, dev_lapack_info, batch_size);        \
   }
 
+template <typename Scalar, typename SolverFnT>
+Status GeamImpl(GpuExecutor* gpu_executor, SolverFnT solver,
+                rocblas_handle rocm_blas_handle, rocblas_operation transa,
+                rocblas_operation transb, int m, int n, const Scalar* alpha,
+                /* host or device pointer */ const Scalar* A, int lda,
+                const Scalar* beta,
+                /* host or device pointer */ const Scalar* B, int ldb,
+                Scalar* C, int ldc) {
+  mutex_lock lock(handle_map_mutex);
+  using ROCmScalar = typename ROCmComplexT<Scalar>::type;
+
+  ScopedActivateExecutorContext sac{gpu_executor};
+  TF_RETURN_IF_ROCBLAS_ERROR(solver(rocm_blas_handle, transa, transb, m, n,
+                                    reinterpret_cast<const ROCmScalar*>(alpha),
+                                    reinterpret_cast<const ROCmScalar*>(A), lda,
+                                    reinterpret_cast<const ROCmScalar*>(beta),
+                                    reinterpret_cast<const ROCmScalar*>(B), ldb,
+                                    reinterpret_cast<ROCmScalar*>(C), ldc));
+  return Status::OK();
+}
+
+#define GEAM_INSTANCE(Scalar, type_prefix)                                    \
+  template <>                                                                 \
+  Status GpuSolver::Geam<Scalar>(                                             \
+      rocblas_operation transa, rocblas_operation transb, int m, int n,       \
+      const Scalar* alpha, const Scalar* A, int lda, const Scalar* beta,      \
+      const Scalar* B, int ldb, Scalar* C, int ldc) {                         \
+    GpuExecutor* gpu_executor = static_cast<GpuExecutor*>(                    \
+        context_->op_device_context()->stream()->parent()->implementation()); \
+    return GeamImpl(gpu_executor, BLAS_SOLVER_FN(geam, type_prefix),          \
+                    rocm_blas_handle_, transa, transb, m, n, alpha, A, lda,   \
+                    beta, B, ldb, C, ldc);                                    \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_COMPLEX(GEAM_INSTANCE);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_ROCM

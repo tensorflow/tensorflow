@@ -43,6 +43,8 @@ class HloClientDialect : public Dialect {
                 TypeID::get<HloClientDialect>()) {
     initialize();
   }
+  Operation* materializeConstant(OpBuilder& builder, Attribute value, Type type,
+                                 Location loc) override;
   static StringRef getDialectNamespace() { return "chlo"; }
 };
 

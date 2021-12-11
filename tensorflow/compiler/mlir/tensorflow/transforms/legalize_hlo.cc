@@ -236,6 +236,49 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
                                               permutation);
   }
 
+  // Slices the input `value` if there are negative padding values in
+  // `explicit_padding`.
+  Value SliceNegativePadding(Value value, ArrayRef<int64_t> explicit_padding,
+                             ConversionPatternRewriter &rewriter) const {
+    // If no padding is negative return the input as is.
+    if (llvm::all_of(explicit_padding, [](int64_t pad) { return pad >= 0; })) {
+      return value;
+    }
+
+    auto input_type = value.getType().cast<RankedTensorType>();
+    auto input_shape = input_type.getShape();
+
+    llvm::SmallVector<int64_t, 4> start;
+    llvm::SmallVector<int64_t, 4> size;
+    start.reserve(explicit_padding.size() / 2);
+    size.reserve(explicit_padding.size() / 2);
+    for (int i = 0, e = explicit_padding.size() / 2; i < e; ++i) {
+      int64_t pre_padding = explicit_padding[2 * i];
+      int64_t post_padding = explicit_padding[2 * i + 1];
+      int64_t pre_slice = pre_padding < 0 ? -pre_padding : 0;
+      int64_t post_slice = post_padding < 0 ? -post_padding : 0;
+      start.push_back(pre_slice);
+      size.push_back(input_shape[i] - pre_slice - post_slice);
+    }
+
+    auto start_attr = rewriter.create<ConstOp>(
+        value.getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({static_cast<int64_t>(start.size())},
+                                  rewriter.getI64Type()),
+            start));
+    auto size_attr = rewriter.create<ConstOp>(
+        value.getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({static_cast<int64_t>(size.size())},
+                                  rewriter.getI64Type()),
+            size));
+    auto output_type = RankedTensorType::get(size, input_type.getElementType());
+
+    return rewriter.create<SliceOp>(value.getLoc(), output_type, value,
+                                    start_attr, size_attr);
+  }
+
   void CreateConvOp(mhlo::ConvOp conv_op, ArrayRef<int64_t> strides,
                     StringRef padding, ArrayRef<int64_t> explicit_padding,
                     ArrayRef<int64_t> dilation, bool is_depthwise_conv,
@@ -255,6 +298,12 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
         /*default_batch_dim=*/num_spatial_dims,
         /*default_feature_dim=*/num_spatial_dims + 1,
         /*default_spatial_dim_start=*/0, num_spatial_dims, rewriter);
+
+    // Emulate negative padding with a slice and remove negative values from the
+    // padding vector.
+    Value sliced_lhs = SliceNegativePadding(lhs, explicit_padding, rewriter);
+    auto new_padding = llvm::to_vector<4>(llvm::map_range(
+        explicit_padding, [](int64_t dim) { return dim > 0 ? dim : 0; }));
 
     auto conv_output_type = conv_op.getType().cast<RankedTensorType>();
     DenseIntElementsAttr permutation;
@@ -292,19 +341,19 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
           rhs);
 
       output = rewriter.create<DepthwiseConv2dNativeOp>(
-          conv_op.getLoc(), conv_output_type, lhs, reshaped_filter,
+          conv_op.getLoc(), conv_output_type, sliced_lhs, reshaped_filter,
           rewriter.getI64ArrayAttr(strides),
           /*padding=*/rewriter.getStringAttr(padding),
-          /*explicit_paddings=*/rewriter.getI64ArrayAttr(explicit_padding),
+          /*explicit_paddings=*/rewriter.getI64ArrayAttr(new_padding),
           /*data_format=*/rewriter.getStringAttr("NHWC"),
           /*dilations=*/rewriter.getI64ArrayAttr(dilation));
     } else {
       output = rewriter.create<Conv2DOp>(
-          conv_op.getLoc(), conv_output_type, lhs, rhs,
+          conv_op.getLoc(), conv_output_type, sliced_lhs, rhs,
           rewriter.getI64ArrayAttr(strides),
           /*use_cudnn_on_gpu=*/rewriter.getBoolAttr(true),
           /*padding=*/rewriter.getStringAttr(padding),
-          /*explicit_paddings=*/rewriter.getI64ArrayAttr(explicit_padding),
+          /*explicit_paddings=*/rewriter.getI64ArrayAttr(new_padding),
           /*data_format=*/rewriter.getStringAttr("NHWC"),
           /*dilations=*/rewriter.getI64ArrayAttr(dilation));
     }
@@ -1234,9 +1283,48 @@ LogicalResult MatchBinaryReduceFunction<void>(mlir::Region &function) {
   return success();
 }
 
-// Converts an mhlo.reduce op with the specified BinaryOp as the reduction
-// operation into the specified TfOp.
-template <typename BinaryOp, typename TfOp>
+// Replace BinaryOp with a combination of TfBinaryOp and TfReduceOp if the
+// init value doesn't match the expection of TfReduceOp.
+template <typename TfReduceOp, typename TfBinOp>
+LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
+                                       ConstOp reduction_indices,
+                                       ConversionPatternRewriter &rewriter) {
+  Value reduce_result = rewriter.create<TfReduceOp>(
+      reduce_op.getLoc(), reduce_op.getType(0), input, reduction_indices,
+      /*keep_dim=*/rewriter.getBoolAttr(false));
+  rewriter.replaceOpWithNewOp<TfBinOp>(reduce_op, reduce_op.getType(0),
+                                       reduce_result,
+                                       reduce_op.init_values()[0]);
+  return success();
+}
+
+// Cannot replace BinaryOp if the init value doesn't match the expection of
+// TfReduceOp and there is no corresponding TfBinaryOp.
+template <>
+LogicalResult rewriteNonMatchInitValue<TF::MaxOp, void>(
+    mhlo::ReduceOp reduce_op, Value input, ConstOp reduction_indices,
+    ConversionPatternRewriter &rewriter) {
+  return failure();
+}
+
+template <>
+LogicalResult rewriteNonMatchInitValue<TF::MinOp, void>(
+    mhlo::ReduceOp reduce_op, Value input, ConstOp reduction_indices,
+    ConversionPatternRewriter &rewriter) {
+  return failure();
+}
+
+// Converts a mhlo.reduce op with a mlho binary operation into a tensorflow
+// reduction operation. If the initial value can be ignored, then convert it
+// into a single TfReduceOp. Otherwise, convert it into a TfReduceOp followed by
+// a TfBinaryOp.
+// For example:
+//   1) A mhlo::ReduceOp on value `x` with a mhlo::AndOp and a constant initial
+// value `true` is converted to a TF::Any on value `x`.
+//   2) A mhlo::ReduceOp on value `x` with a mhlo::AndOp with a non-constant
+// initial value `y` is converted to a TF::Any on value `x`, followed by a
+// TF::And with initial value `y`.
+template <typename BinaryOp, typename TfReduceOp, typename TfBinaryOp = void>
 class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -1248,10 +1336,6 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
 
     if (failed(MatchBinaryReduceFunction<BinaryOp>(reduce_op.body())))
       return failure();
-
-    // In `MatchReduceOpInput` function, we already match that the
-    // "mhlo::ReduceOp" only has one input, one init_value and one result.
-    if (failed(MatchInitValue(reduce_op.init_values()[0]))) return failure();
 
     auto input = reduce_op.inputs()[0];
 
@@ -1266,15 +1350,25 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
     auto reduction_indices = rewriter.create<ConstOp>(
         reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr(reduce_dims));
 
-    rewriter.replaceOpWithNewOp<TfOp>(reduce_op, reduce_op.getType(0), input,
-                                      reduction_indices,
-                                      /*keep_dim=*/rewriter.getBoolAttr(false));
-    return success();
+    // In `MatchReduceOpInput` function, we already match that the
+    // "mhlo::ReduceOp" only has one input, one init_value and one result.
+
+    // If the init value matches with the init value expected for the target
+    // TfReduceOp, then replace the BinaryOp with a TfReduceOp. Otherwise,
+    // replace the BinaryOp with a TfBinaryOp and a TfReduceOp.
+    if (succeeded(MatchInitValue(reduce_op.init_values()[0]))) {
+      rewriter.replaceOpWithNewOp<TfReduceOp>(
+          reduce_op, reduce_op.getType(0), input, reduction_indices,
+          /*keep_dim=*/rewriter.getBoolAttr(false));
+      return success();
+    }
+    return rewriteNonMatchInitValue<TfReduceOp, TfBinaryOp>(
+        reduce_op, input, reduction_indices, rewriter);
   }
 
  private:
   // Checks that the init value matches with the init value expected for the
-  // target TfOp.
+  // target TfReduceOp.
   virtual LogicalResult MatchInitValue(Value init_value) const = 0;
 
   // This function tries to match that the "mhlo::ReduceOp" only has one
@@ -1292,7 +1386,7 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
 };
 
 class ConvertReduceOpToTfSum
-    : public ConvertReduceOpToTfOp<mhlo::AddOp, TF::SumOp> {
+    : public ConvertReduceOpToTfOp<mhlo::AddOp, TF::SumOp, TF::AddOp> {
  public:
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
@@ -1350,9 +1444,10 @@ class ConvertReduceOpToTfMin
 };
 
 class ConvertReduceOpToTfAll
-    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp> {
+    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp, TF::LogicalAndOp> {
  public:
-  using ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp>::ConvertReduceOpToTfOp;
+  using ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp,
+                              TF::LogicalAndOp>::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
     DenseIntElementsAttr init_attr;
@@ -1365,9 +1460,10 @@ class ConvertReduceOpToTfAll
 };
 
 class ConvertReduceOpToTfAny
-    : public ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp> {
+    : public ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp, TF::LogicalOrOp> {
  public:
-  using ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp>::ConvertReduceOpToTfOp;
+  using ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp,
+                              TF::LogicalOrOp>::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
     DenseIntElementsAttr init_attr;

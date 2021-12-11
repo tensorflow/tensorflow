@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -139,6 +140,16 @@ Status GetAttrValue(const tensorflow::AttrSlice& attr_slice,
   return GetAttrValue<AttrValue::ValueCase::kS, ProfileStrategy,
                       Status(ProfileStrategy*, const AttrValue*)>(
       attr_slice, attr_name, value, GetAttrProfileStrategyValue);
+}
+
+bool ShouldUseExplicitPrecision(const GraphDef& gdef) {
+  if (!IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+    return false;
+  }
+  return absl::c_any_of(gdef.node(), [](const auto& node) {
+    return (absl::c_find(kExplicitQuantizationOpNames, node.op()) !=
+            kExplicitQuantizationOpNames.end());
+  });
 }
 
 StatusOr<bool> ShouldConvertFunction(const grappler::GrapplerItem& item) {
@@ -347,6 +358,10 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
   }
 }
 
+static bool ExplicitPrecisionModePolicy() {
+  return IS_TRT_VERSION_GE(8, 0, 0, 0);
+}
+
 Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
                                      const grappler::GrapplerItem& item,
                                      GraphDef* optimized_graph) {
@@ -367,10 +382,25 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   }
 
   if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {
-    VLOG(1) << "Calibration with FP32 or FP16 is not implemented. "
-            << "Falling back to use_calibration = False."
-            << "Note that the default value of use_calibration is True.";
+    LOG(WARNING) << "Calibration with FP32 or FP16 is not implemented. "
+                 << "Falling back to use_calibration = False."
+                 << "Note that the default value of use_calibration is True.";
     use_calibration_ = false;
+  }
+
+  const bool use_explicit_precision = ShouldUseExplicitPrecision(item.graph);
+  if (use_explicit_precision) {
+    LOG(INFO) << "[TF-TRT] Using explicit QDQ mode";
+    if (precision_mode_ != TrtPrecisionMode::INT8 || use_calibration_) {
+      LOG(WARNING)
+          << "Explicit precision mode with calibration or FP32/FP16 mode is "
+             "not supported."
+          << " Setting precision mode to INT8 and calibration to false.";
+      precision_mode_ = TrtPrecisionMode::INT8;
+      use_calibration_ = false;
+    }
+  } else {
+    LOG(INFO) << "[TF-TRT] not using explicit QDQ mode";
   }
 
   std::vector<string> nodes_to_preserve;
@@ -408,6 +438,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.use_implicit_batch = use_implicit_batch_;
   cp.profile_strategy = profile_strategy_;
   cp.allow_build_at_runtime = allow_build_at_runtime_;
+  cp.use_explicit_precision = use_explicit_precision;
 
   if (item.id != "tf_graph" && do_function_conversion) {
     const grappler::GrapplerFunctionItem& func_item =

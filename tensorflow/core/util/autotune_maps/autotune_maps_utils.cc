@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/autotune_maps/autotune_maps_utils.h"
 
+#include <string>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/hash.h"
@@ -29,6 +31,7 @@ namespace autotune_maps_utils {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace {
+
 using ::stream_executor::gpu::GpuDeviceHandle;
 using ::stream_executor::gpu::GpuDriver;
 
@@ -75,11 +78,7 @@ std::string DeviceIdToIdentifier(int device_id) {
   // destruct in multi-thread setting.
   static const auto& map =
       *new std::vector<string>(GetDeviceIdToIdentifierMap());
-  if (device_id >= map.size()) {
-    return "Unknown Graphics Device";
-  } else {
-    return map[device_id];
-  }
+  return device_id < map.size() ? map[device_id] : "Unknown Graphics Device";
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

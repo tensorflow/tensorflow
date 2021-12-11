@@ -136,10 +136,10 @@ class BufferInfo {
 };
 
 // Align to 64-bytes, to mimic tensorflow::Allocator::kAllocatorAlignment.
-constexpr size_t kAlign = 64;
+inline constexpr size_t Align() { return 64; }
 
 // The minimum alignment of buffers passed to XLA:CPU.
-constexpr size_t kMinAlign = 16;
+inline constexpr size_t MinAlign() { return 16; }
 
 // When declaring variables that will be passed to an XLA instance as input via
 // set_arg_data(), be it a regular input or a resource variable in the graph,
@@ -150,12 +150,12 @@ constexpr size_t kMinAlign = 16;
 //   XLA_ALIGN float arg_y;
 //   xla_instance.set_arg_data(0, arg_x.date());
 //   xla_instance.set_arg_data(0, &arg_y);
-#define XLA_ALIGN alignas(xla::cpu_function_runtime::kAlign)
+#define XLA_ALIGN alignas(xla::cpu_function_runtime::Align())
 
 // AlignedBufferBytes returns the sum of the size of each buffer in
 // `buffer_infos`, skipping constants, on-stack buffers and, if
 // allocate_entry_params is false, entry parameters.  There are `n` entries in
-// `buffer_infos`.  Each buffer is aligned to kAlign byte boundaries.
+// `buffer_infos`.  Each buffer is aligned to Align() byte boundaries.
 size_t AlignedBufferBytes(const BufferInfo* buffer_infos, size_t n,
                           bool allocate_entry_params);
 

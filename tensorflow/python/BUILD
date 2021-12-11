@@ -2489,7 +2489,6 @@ py_library(
         "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/structured",
-        "//tensorflow/python/training/experimental:loss_scaling_gradient_tape",
         "//tensorflow/python/util",
     ],
 )
@@ -3006,9 +3005,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_rocm",
-        "notsan",  # TODO(b/206640843): flaky in tsan.
     ],
     deps = [
         ":client_testlib",
@@ -4498,11 +4497,6 @@ alias(
 alias(
     name = "mixed_precision_global_state",
     actual = "//tensorflow/python/training/experimental:mixed_precision_global_state",
-)
-
-alias(
-    name = "loss_scaling_gradient_tape",
-    actual = "//tensorflow/python/training/experimental:loss_scaling_gradient_tape",
 )
 
 alias(

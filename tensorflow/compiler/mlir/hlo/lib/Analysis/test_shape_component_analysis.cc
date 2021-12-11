@@ -21,6 +21,8 @@ limitations under the License.
 
 namespace mlir {
 
+using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
+
 namespace {
 
 struct TestShapeComponentAnalysisPass
@@ -30,21 +32,27 @@ struct TestShapeComponentAnalysisPass
   }
 
   void runOnFunction() override {
+    ShapeComponentAnalysis shape_component;
     llvm::outs() << "Testing : " << getFunction().getName() << '\n';
     // Analyze anything that looks like a shape tensor.
     getFunction().walk([&](Operation* op) {
-      // Only print single results that could be shape values or their elements.
-      if (op->getResultTypes().size() != 1 ||
-          !getElementTypeOrSelf(op->getResultTypes().front()).isIntOrIndex())
-        return;
-
-      ShapeComponentAnalysis shape_component;
+      // Skip ops with more than one result.
+      if (op->getNumResults() != 1) return;
       Value result = op->getResults().front();
-      auto dims = shape_component.GetValueInfo(result);
-      result.print(llvm::outs());
-      llvm::outs() << ":\n";
-      if (dims) {
-        for (const auto& d : *dims) {
+
+      // Dump shape info if any.
+      if (auto shapeInfo = shape_component.GetShapeInfo(result)) {
+        llvm::outs() << "Shape info for " << result << ":\n";
+        for (const SymbolicExpr& d : *shapeInfo) {
+          llvm::outs().indent(2);
+          d.dump(llvm::outs());
+        }
+      }
+
+      // Dump value info if any.
+      if (auto valueInfo = shape_component.GetValueInfo(result)) {
+        llvm::outs() << "Value info for " << result << ":\n";
+        for (const SymbolicExpr& d : *valueInfo) {
           llvm::outs().indent(2);
           d.dump(llvm::outs());
         }

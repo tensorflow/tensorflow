@@ -180,6 +180,23 @@ absl::Status ClOperation::UpdateParams() {
   return absl::OkStatus();
 }
 
+absl::Status ClOperation::SetSrcTensor(int index, Tensor* tensor) {
+  operation_->SetSrc(tensor, index);
+  return cl_args_.SetObjectRef(operation_->src_tensors_names_[index], tensor);
+}
+
+absl::Status ClOperation::SetDstTensor(int index, Tensor* tensor) {
+  operation_->SetDst(tensor, index);
+  return cl_args_.SetObjectRef(operation_->dst_tensors_names_[index], tensor);
+}
+
+void ClOperation::SetWorkGroupSize(const int3& work_group_size) {
+  operation_->work_group_size_ = work_group_size;
+  operation_->work_groups_count_ = GetWorkGroupsCount(
+      operation_->grid_dimension_, operation_->grid_size_,
+      operation_->work_group_size_, operation_->work_group_launch_order_);
+}
+
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->code_ =
       GetCommonOpenCLDefines(operation_->definition_.precision) +

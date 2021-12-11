@@ -101,12 +101,9 @@ def make_space_to_batch_nd_tests(options):
       values.append(np.array(parameters["paddings"]))
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  if options.use_experimental_converter:
-    # Remove unsupported dimension cases. Currently, kernel supports 3 and 4-D
-    # inputs.
-    test_parameters = [
-        test_parameters[0], test_parameters[1], test_parameters[3]
-    ]
+  # Remove unsupported dimension cases. Currently, kernel supports 3 and 4-D
+  # inputs.
+  test_parameters = [test_parameters[0], test_parameters[1], test_parameters[3]]
 
   make_zip_of_tests(
       options,

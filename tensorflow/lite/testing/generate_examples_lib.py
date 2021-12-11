@@ -259,7 +259,6 @@ class Options(object):
     # test sets.
     # TODO(juhoha): Separate the state from the options.
     self.multi_gen_state = None
-    self.use_experimental_converter = False
     self.mlir_quantizer = False
     # The list of ops' name that should exist in the converted model.
     # This feature is currently only supported in MLIR conversion path.

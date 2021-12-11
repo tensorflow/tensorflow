@@ -16,11 +16,15 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_KERNEL_TEST_INPUT_GENERATOR_H_
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
@@ -33,15 +37,19 @@ class InputGenerator {
  public:
   InputGenerator() = default;
   TfLiteStatus LoadModel(const string& model_dir);
+  TfLiteStatus LoadModel(const string& model_dir, const string& signature);
   TfLiteStatus ReadInputsFromFile(const string& filename);
   TfLiteStatus GenerateInput(const string& distribution);
-  std::vector<string> GetInputs();
+  std::vector<std::pair<string, string>> GetInputs() { return inputs_; }
   TfLiteStatus WriteInputsToFile(const string& filename);
 
  private:
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;
-  std::vector<string> inputs_;
+  // Not owned.
+  SignatureRunner* signature_runner_ = nullptr;
+  // Mapping from input names to csv string values.
+  std::vector<std::pair<string, string>> inputs_;
 };
 
 }  // namespace testing

@@ -119,6 +119,7 @@ tf_cuda_library(
             "//tensorflow/core/platform:status",
             "//tensorflow/core/profiler/lib:traceme",
             "//tensorflow/core/kernels/batching_util:batch_resource_base",
+            "//tensorflow/core/kernels/batching_util:bounded_executor",
         ],
     }),
     alwayslink = 1,

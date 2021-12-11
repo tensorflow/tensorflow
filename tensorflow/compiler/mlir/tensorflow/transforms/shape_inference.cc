@@ -1814,6 +1814,16 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
       PropagateConstantFromCallee(call_op, func, module);
       return failure_or_converged;
     }
+  } else if (auto xla_variadic_sort_op = dyn_cast<TF::XlaVariadicSortOp>(op)) {
+    auto comparator =
+        llvm::cast<mlir::FuncOp>(mlir::SymbolTable::lookupSymbolIn(
+            module, xla_variadic_sort_op.comparator()));
+    mlir::SmallVector<mlir::Type, 2> types;
+    for (auto type : comparator.getType().getInputs()) {
+      types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
+    }
+    return PropagateShapeToFunctions(module, types, {comparator},
+                                     max_iterations);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.

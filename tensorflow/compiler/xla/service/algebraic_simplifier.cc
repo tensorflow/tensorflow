@@ -5809,6 +5809,13 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
           precision_config,
           /*preferred_element_type=*/convolution->shape().element_type()));
 
+  // If we're running on GPU we need to check that we can actually lower the
+  // conv with the given reverse_dims (either none, or rank 2 and all)
+  if (!options_.ConvIsLowerable(new_convolution)) {
+    TF_RETURN_IF_ERROR(kernel->parent()->RemoveInstruction(new_convolution));
+    return false;
+  }
+
   convolution->SetupDerivedInstruction(new_convolution);
   TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, new_convolution));
 
@@ -5883,6 +5890,10 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     return false;
   }
 
+  if (convolution->feature_group_count() != 1 ||
+      convolution->batch_group_count() != 1) {
+    return false;
+  }
   auto add_bitcast = [&](Shape shape, HloInstruction* operand) {
     std::vector<int64_t> dims(operand->shape().dimensions_size());
     std::iota(dims.begin(), dims.end(), 0);

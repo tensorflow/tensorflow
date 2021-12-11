@@ -832,3 +832,17 @@ ENTRY %main (parameter.1: f32[5]) -> (f32[5]) {
   %tuple = (f32[5]{0}) tuple(f32[5]{0} %copy.3)
   ROOT %while.19 = (f32[5]{0}) while((f32[5]{0}) %tuple), condition=%cond, body=%body
 }
+
+// -----
+
+// CHECK: func @main
+// CHECK: "mhlo.copy"
+// CHECK-SAME: (tensor<2xi32>) -> tensor<2xi32>
+HloModule CopyTest
+
+ENTRY main {
+  %parameter.1 = s32[2]{0} parameter(0)
+  %parameter.2 = s32[] parameter(1)
+  %custom-call = s32[<=2]{0} custom-call(s32[2]{0} %parameter.1, s32[] %parameter.2), custom_call_target="SliceToDynamic"
+  ROOT %copy = s32[<=2]{0} copy(s32[<=2]{0} %custom-call)
+}

@@ -1130,16 +1130,17 @@ def _pad_all_input(
             padding = [0, 0]
           paddings.append(padding)
 
-        if input_tensor.get_shape().is_fully_defined():
-          # TODO(rxsang): This is a hack to make sure padded_input has dynamic
-          # shapes, so any tf.size/tf.shape op performed on it won't be constant
-          # folded. Do we have better ways to do it?
-          padded_input = control_flow_ops.cond(
-              array_ops.constant(True),
-              lambda: array_ops.pad(input_tensor, paddings),  # pylint: disable=cell-var-from-loop
-              lambda: input_tensor)
-        else:
-          padded_input = array_ops.pad(input_tensor, paddings)
+        with ops.colocate_with(input_tensor):
+          if input_tensor.get_shape().is_fully_defined():
+            # TODO(rxsang): This is a hack to make sure padded_input has dynamic
+            # shapes, so any tf.size/tf.shape op performed on it won't be
+            # constant folded. Do we have better ways to do it?
+            padded_input = control_flow_ops.cond(
+                array_ops.constant(True),
+                lambda: array_ops.pad(input_tensor, paddings),  # pylint: disable=cell-var-from-loop
+                lambda: input_tensor)
+          else:
+            padded_input = array_ops.pad(input_tensor, paddings)
 
         # Append _POST_DEVICE_REWRITE_ATTR attributes to all padded inputs.
         padded_input.op._set_attr(  # pylint: disable=protected-access

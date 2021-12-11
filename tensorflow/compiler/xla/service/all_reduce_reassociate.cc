@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -91,8 +92,9 @@ StatusOr<bool> AllReduceReassociate::Run(HloModule *module) {
       // so manually these instructions.
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
-
+      if (ar0 != ar1) {
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
+      }
       changed = true;
     }
   }
