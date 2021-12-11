@@ -71,7 +71,7 @@ class TracingContext():
 
 
 @runtime_checkable
-class SupportsTracingType(Protocol):
+class SupportsTracingProtocol(Protocol):
   """The Trace Control Protocol for functions.
 
   Classes that implement this protocol can expect the TensorFlow function
