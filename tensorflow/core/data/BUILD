@@ -24,8 +24,6 @@ exports_files([
     "captured_function.h",
     "dataset_utils.cc",
     "dataset_utils.h",
-    "finalization_utils.cc",
-    "finalization_utils.h",
     "name_utils.cc",
     "name_utils.h",
     "rewrite_utils.cc",
