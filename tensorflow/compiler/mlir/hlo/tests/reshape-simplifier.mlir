@@ -8,7 +8,7 @@ func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {
   %d1 = tensor.dim %arg0, %c1 : tensor<?x?xf32>
   %shape = tensor.from_elements %c1, %d0, %d1 : tensor<3xindex>
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?x?xf32>, tensor<3xindex>) -> tensor<1x?x?xf32>
-// CHECK: linalg.tensor_expand_shape %arg0 [
+// CHECK: tensor.expand_shape %arg0 [
 // CHECK-SAME: [0, 1], [2]] : tensor<?x?xf32> into tensor<1x?x?xf32>
   return %reshape : tensor<1x?x?xf32>
 }
@@ -23,7 +23,7 @@ func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
   %d1 = tensor.dim %arg0, %c1 : tensor<?x?xf32>
   %shape = tensor.from_elements %d0, %d1, %c1, %c1 : tensor<4xindex>
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?x?xf32>, tensor<4xindex>) -> tensor<?x?x1x1xf32>
-// CHECK: linalg.tensor_expand_shape %arg0 [
+// CHECK: tensor.expand_shape %arg0 [
 // CHECK-SAME: [0], [1, 2, 3]] : tensor<?x?xf32> into tensor<?x?x1x1xf32>
   return %reshape : tensor<?x?x1x1xf32>
 }
@@ -172,7 +172,7 @@ func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x4x?x64x?x8x1x1xf32>
 func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
     -> tensor<?x?x8xf32> {
-  // CHECK: %[[RESULT:.*]] = linalg.tensor_collapse_shape %[[ARG]] {{\[}}[0, 1, 2], [3, 4], [5, 6, 7]{{\]}}
+  // CHECK: %[[RESULT:.*]] = tensor.collapse_shape %[[ARG]] {{\[}}[0, 1, 2], [3, 4], [5, 6, 7]{{\]}}
   // CHECK: return %[[RESULT]]
   %c2 = arith.constant 2 : index
   %c4 = arith.constant 4 : index
@@ -241,7 +241,7 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
   %19 = shape.assuming %18 -> (tensor<?x512xf32>) {
     // CHECK-NOT: compute_reshape_shape
     %20 = mhlo.compute_reshape_shape %17, %15 : index, tensor<2xi32> -> tensor<2xi32>
-    // CHECK: linalg.tensor_collapse_shape
+    // CHECK: tensor.collapse_shape
     %21 = "mhlo.dynamic_reshape"(%6, %20) : (tensor<?x?x64x8xf32>, tensor<2xi32>) -> tensor<?x512xf32>
     // CHECK-NOT: assuming_yield
     shape.assuming_yield %21 : tensor<?x512xf32>

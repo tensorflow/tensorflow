@@ -114,8 +114,8 @@ struct ComputeOpAndFuncBufferizePass
     : public ComputeOpAndFuncBufferizePassBase<ComputeOpAndFuncBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
-                    memref::MemRefDialect>();
+    registry.insert<linalg::LinalgDialect, bufferization::BufferizationDialect,
+                    lmhlo::LmhloDialect, memref::MemRefDialect>();
   }
 
   void runOnOperation() override {
@@ -144,8 +144,8 @@ struct ComputeOpAndFuncBufferizePass
           // with affine_maps.
           return llvm::any_of(op->getUsers(), [](Operation* user) {
             return isa<mlir::ReturnOp, mhlo::DynamicReshapeOp,
-                       linalg::TensorCollapseShapeOp,
-                       linalg::TensorExpandShapeOp, linalg::TiledLoopOp>(user);
+                       tensor::CollapseShapeOp, tensor::ExpandShapeOp,
+                       linalg::TiledLoopOp>(user);
           });
         });
     populateFuncOpTypeConversionPattern(patterns, converter);
@@ -252,11 +252,11 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     target.addLegalOp<FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<
-        tensor::GenerateOp, tensor::ExtractOp, tensor::FromElementsOp,
-        tensor::CastOp, tensor::DimOp, chlo::MinimumBroadcastShapesOp,
-        bufferization::ToTensorOp, bufferization::ToMemrefOp,
-        linalg::TensorExpandShapeOp, linalg::TensorCollapseShapeOp>();
+    target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
+                        tensor::FromElementsOp, tensor::CastOp, tensor::DimOp,
+                        chlo::MinimumBroadcastShapesOp,
+                        bufferization::ToTensorOp, bufferization::ToMemrefOp,
+                        tensor::ExpandShapeOp, tensor::CollapseShapeOp>();
     bufferization::BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&

@@ -59,9 +59,11 @@ using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
 using mlir::linalg::PaddingValueComputationFunction;
 using mlir::linalg::PadTensorOp;
-using mlir::linalg::TensorExpandShapeOp;
 using mlir::linalg::TiledLoopOp;
 using mlir::linalg::YieldOp;
+using mlir::tensor::ExpandShapeOp;
+using mlir::tensor::ExtractSliceOp;
+using mlir::tensor::InsertSliceOp;
 
 // Tiles a GenericOp that models a 2D row or column reduction.
 struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
@@ -248,7 +250,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
           neutral_value, false, nested_loc, b);
 
       // Reshape input tile to tensor<1xVECTOR_SIZExELEM_TYPE>.
-      Value expand_shape = b.create<TensorExpandShapeOp>(
+      Value expand_shape = b.create<ExpandShapeOp>(
           nested_loc, RankedTensorType::get({1, vector_size}, element_type),
           pad, indices);
       reshaped_tiled_inputs.push_back(expand_shape);
