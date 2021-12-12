@@ -52,8 +52,12 @@ class Boundary {
     }
     return res;
   }
-  bool operator==(const Boundary& that) {
+  bool operator==(const Boundary& that) const {
     return ContainersEqual(operands_, that.operands_);
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const Boundary& boundary) {
+    return H::combine(std::move(h), boundary.operands_);
   }
 
  private:
