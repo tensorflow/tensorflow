@@ -70,9 +70,11 @@ tfrt_cc_library(
     hdrs = ["jit/opdefs/tf_cpurt_ops.h"],
     deps = [
         ":tf_cpurt_ops_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:StandardOps",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:compiler_tfrt_op_interfaces",
         "@tf_runtime//:compiler_tfrt_traits",
