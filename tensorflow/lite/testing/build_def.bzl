@@ -332,6 +332,10 @@ def merged_test_models():
                 # Merged test rules are only for running on the real device environment.
                 if "notap" not in tags:
                     tags.append("notap")
+
+                # Only execute merged tests on real device.
+                if "no_oss" not in tags:
+                    tags.append("no_oss")
                 args = common_test_args_for_generated_models(conversion_mode, False)
                 n = number_of_merged_zip_file(conversion_mode, delegate)
                 for i in range(n):
