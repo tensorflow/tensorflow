@@ -1,5 +1,5 @@
-// RUN: tf-tfrt-opt -tf-cpurt-codegen-reduction %s --split-input-file |\
-// RUN: FileCheck %s
+// RUN: tf-tfrt-opt -tf-cpurt-codegen-reduction="reduction-2d-tile-sizes=4,4" \
+// RUN: %s -split-input-file | FileCheck %s
 
 func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
                         %rhs: tensor<?x?xf32>) -> tensor<?xf32> {

@@ -40,6 +40,9 @@ std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass();
 
 // Pass to tile and fuse linalg.generic on tensors that models reduction.
 std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass();
+std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass(
+    int64_t reduction_1d_tile_size,
+    llvm::ArrayRef<int64_t> reduction_2d_tile_sizes);
 
 // Pass to fuse `linalg.fill` into a tiled reduction.
 std::unique_ptr<mlir::FunctionPass> CreateFuseFillIntoTiledReductionPass();
@@ -58,6 +61,8 @@ std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass();
 
 // Pass to tile elementwise ops on tensors.
 std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForCWisePass();
+std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForCWisePass(
+    int64_t cwise_tile_size);
 
 // Pass to split _Fused Tensorflow kernels into primitives.
 std::unique_ptr<mlir::FunctionPass> CreateFissionPass();

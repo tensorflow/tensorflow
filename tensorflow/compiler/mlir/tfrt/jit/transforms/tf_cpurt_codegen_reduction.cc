@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
@@ -303,6 +304,12 @@ bool isCanonicalizedReduction(Operation *op) {
 
 struct CodegenReductionPass
     : public CodegenReductionBase<CodegenReductionPass> {
+  CodegenReductionPass() = default;
+  CodegenReductionPass(int64_t reduction_1d_tile,
+                       llvm::ArrayRef<int64_t> reduction_2d_tiles) {
+    reduction_1d_tile_size = reduction_1d_tile;
+    reduction_2d_tile_sizes = reduction_2d_tiles;
+  }
   void runOnFunction() override {
     auto func = getFunction();
     auto context = func.getContext();
@@ -314,11 +321,15 @@ struct CodegenReductionPass
                       });
     auto patterns =
         mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
-    patterns.insert<OneDimReductionTilingPattern>(8, filter,
-                                                  patterns.getContext());
+    patterns.insert<OneDimReductionTilingPattern>(
+        reduction_1d_tile_size, filter, patterns.getContext());
+
+    assert(reduction_2d_tile_sizes.size() == 2 &&
+           "Tiling sizes for 2D reductions should have two elements");
     patterns.insert<RowOrColumnReductionTilingPattern>(
-        LinalgTilingOptions{}.setTileSizes({4, 4}).setLoopType(
-            LinalgTilingLoopType::TiledLoops),
+        LinalgTilingOptions{}
+            .setTileSizes(reduction_2d_tile_sizes)
+            .setLoopType(LinalgTilingLoopType::TiledLoops),
         filter, patterns.getContext());
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 
@@ -333,6 +344,13 @@ struct CodegenReductionPass
 
 std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass() {
   return std::make_unique<CodegenReductionPass>();
+}
+
+std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass(
+    int64_t reduction_1d_tile_size,
+    llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
+  return std::make_unique<CodegenReductionPass>(reduction_1d_tile_size,
+                                                reduction_2d_tile_sizes);
 }
 
 }  // namespace tensorflow

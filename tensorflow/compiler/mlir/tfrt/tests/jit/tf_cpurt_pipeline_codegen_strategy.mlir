@@ -1,5 +1,5 @@
-// RUN: tf-tfrt-opt -split-input-file -tf-cpurt-pipeline=vectorize %s |\
-// RUN: FileCheck %s
+// RUN: tf-tfrt-opt -tf-cpurt-pipeline="vectorize reduction-2d-tile-sizes=4,4" \
+// RUN: %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: @reduce_row_sum_2d_dynamic
 func @reduce_row_sum_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32> {
