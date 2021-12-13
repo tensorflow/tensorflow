@@ -19,6 +19,12 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
+# Debug info
+otool -l
+echo ${MAC_OS_X_VERSION_MIN_REQUIRED}
+echo ${MAC_OS_X_VERSION_MAX_ALLOWED}
+echo ${MACOSX_DEPLOYMENT_TARGET}
+
 # Selects a version of Xcode.
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
 export MACOSX_DEPLOYMENT_TARGET=11.0
