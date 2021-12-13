@@ -20,7 +20,6 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
 # Debug info
-otool -l
 echo ${MAC_OS_X_VERSION_MIN_REQUIRED}
 echo ${MAC_OS_X_VERSION_MAX_ALLOWED}
 echo ${MACOSX_DEPLOYMENT_TARGET}
