@@ -2224,8 +2224,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   CachedFunctionHandles cached_function_handles(flr);
   const bool use_spmd = (UseSpmdForXlaPartitioning(replicate_node) ||
                          replicate_inputs_outputs_by_default_for_xla_spmd_) &&
-                        allow_parameter_replication_for_spmd &&
-                        num_cores_per_replica > 1;
+                        allow_parameter_replication_for_spmd;
 
   // Offset _TPUReplicate non per replica argument indices by
   // (num_replicas - 1) * num_per_replica_args as _TPUReplicate nodes are
@@ -2293,8 +2292,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
           (params_info.IsVariableArg(i) || params_info.IsBroadcastArg(i) ||
            ((params_info.IsPerReplicaArg(i) ||
              params_info.IsDistributedArg(i)) &&
-            arg_types[i] != DT_RESOURCE) ||
-           params_info.IsConstantArg(i))) {
+            arg_types[i] != DT_RESOURCE))) {
         // Use replication for host variables or non-variable per-replica
         // inputs.
         node_and_sharding = NodeAndSharding(/*node=*/nullptr,
@@ -2319,11 +2317,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       *node_and_sharding->sharding.add_metadata() =
           CreateOpMetadataFromNode(*replicate_node);
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::MAXIMAL) {
-      if (use_spmd) {
-        node_and_sharding->sharding = xla::sharding_builder::Replicate();
-      } else {
-        assigned_core = node_and_sharding->sharding.tile_assignment_devices(0);
-      }
+      assigned_core = node_and_sharding->sharding.tile_assignment_devices(0);
     } else if (node_and_sharding->sharding.type() !=
                    xla::OpSharding::REPLICATED &&
                node_and_sharding->sharding.type() != xla::OpSharding::OTHER) {
@@ -2413,14 +2407,9 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       }
 
       if (node_and_sharding->sharding.type() == xla::OpSharding::MAXIMAL) {
-        if (use_spmd) {
-          node_and_sharding->sharding = xla::sharding_builder::Replicate();
-        } else {
-          assigned_core =
-              node_and_sharding->sharding.tile_assignment_devices(0);
-          TF_RETURN_IF_ERROR(
-              ValidateCoreNumber(*assigned_core, num_cores_per_replica));
-        }
+        assigned_core = node_and_sharding->sharding.tile_assignment_devices(0);
+        TF_RETURN_IF_ERROR(
+            ValidateCoreNumber(*assigned_core, num_cores_per_replica));
       } else if (node_and_sharding->sharding.type() !=
                      xla::OpSharding::REPLICATED &&
                  node_and_sharding->sharding.type() != xla::OpSharding::OTHER) {
@@ -2446,7 +2435,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       *node_and_sharding->sharding.add_metadata() =
           CreateOpMetadataFromNode(*replicate_node);
     }
-    if (assigned_core.has_value() && !use_spmd) {
+    if (assigned_core.has_value()) {
       retvals[i]->set_assigned_device_name(CoreDeviceLabel(*assigned_core));
       retvals_device_selector.ReportDeviceAssigned(*assigned_core, i);
       VLOG(3) << "Assigning return value " << i << " ("
@@ -2467,9 +2456,8 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
                      node_and_sharding->sharding.tile_assignment_devices(), ",")
               << " " << FormatNodeAndShardingMsg(node_and_sharding);
     } else {
-      if (use_spmd) {
-        node_and_sharding->sharding = xla::sharding_builder::Replicate();
-      }
+      DCHECK_EQ(node_and_sharding->sharding.type(),
+                xla::OpSharding::REPLICATED);
       for (int64_t core = 0; core < num_cores_per_replica; ++core) {
         retvals_device_selector.ReportDeviceAssigned(core, i);
       }
@@ -2489,9 +2477,14 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
        absl::c_any_of(*retval_sharding, [](const xla::OpSharding& s) {
          return s.type() == xla::OpSharding::MAXIMAL;
        }))) {
-    return tensorflow::errors::InvalidArgument(
-        "XLA SPMD only supports cases where all inputs/outputs "
-        "exist on every partition (sharded or replicated).");
+    LOG(WARNING) << "XLA SPMD only supports cases where all inputs/outputs "
+                    "exist on every partition (sharded or replicated). Fall "
+                    "back to MPMD.";
+    return AssignArgsAndRetvalsToCores(
+        num_cores_per_replica, params_info, arg_types, arg_shapes, retval_types,
+        retval_shapes, graph, replicate_node, flr,
+        /*allow_parameter_replication_for_spmd=*/false, arg_sharding,
+        arg_fast_mem, retval_sharding, arg_names);
   }
   return Status::OK();
 }
@@ -2651,7 +2644,14 @@ Status DistributedTPURewritePass::BuildCompileNode(
   proto.set_enable_automatic_model_parallelism(
       enable_cross_replica_sharding_mirrored_variables_);
   const bool use_spmd =
-      UseSpmdForXlaPartitioning(replicate_node) && allow_xla_spmd_partition_;
+      UseSpmdForXlaPartitioning(replicate_node) && allow_xla_spmd_partition_ &&
+      !absl::c_any_of(arg_sharding,
+                      [](const xla::OpSharding& s) {
+                        return s.type() == xla::OpSharding::MAXIMAL;
+                      }) &&
+      !absl::c_any_of(retval_sharding, [](const xla::OpSharding& s) {
+        return s.type() == xla::OpSharding::MAXIMAL;
+      });
   proto.set_use_spmd_for_xla_partitioning(use_spmd);
   const bool mpmd = (num_cores_per_replica > 1) && !use_spmd;
 
@@ -3298,7 +3298,14 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   std::vector<Node*> to_be_removed_nodes;
 
   const bool use_spmd =
-      UseSpmdForXlaPartitioning(&replicate_node) && allow_xla_spmd_partition_;
+      UseSpmdForXlaPartitioning(&replicate_node) && allow_xla_spmd_partition_ &&
+      !absl::c_any_of(arg_shardings,
+                      [](const xla::OpSharding& s) {
+                        return s.type() == xla::OpSharding::MAXIMAL;
+                      }) &&
+      !absl::c_any_of(retval_shardings, [](const xla::OpSharding& s) {
+        return s.type() == xla::OpSharding::MAXIMAL;
+      });
   const bool mpmd = (num_cores_per_replica > 1) && !use_spmd;
 
   for (const Edge* e : replicate_input_edges) {
