@@ -17,11 +17,12 @@
 
 *   `tf.lite`:
     *   Added TFLite builtin op support for the following TF ops:
-        *  `tf.raw_ops.Bucketize` op on CPU.
-        *  `tf.where` op for data types `tf.int32`/`tf.uint32`/`tf.int8`/`tf.uint8`/`tf.int64`.
-        *  `tf.random.normal` op for output data type `tf.float32` on CPU.
-        *  `tf.random.uniform` op for output data type `tf.float32` on CPU.
-        *  `tf.random.categorical` op for output data type `tf.int64` on CPU.
+        *   `tf.raw_ops.Bucketize` op on CPU.
+        *   `tf.where` op for data types
+            `tf.int32`/`tf.uint32`/`tf.int8`/`tf.uint8`/`tf.int64`.
+        *   `tf.random.normal` op for output data type `tf.float32` on CPU.
+        *   `tf.random.uniform` op for output data type `tf.float32` on CPU.
+        *   `tf.random.categorical` op for output data type `tf.int64` on CPU.
 *   `tensorflow.experimental.tensorrt`:
 
     *   `conversion_params` is now deprecated inside `TrtGraphConverterV2` in
@@ -32,6 +33,11 @@
         `.save()` function inside `TrtGraphConverterV2`. When `False`, the
         `.save()` function won't save any TRT engines that have been built. When
         `True` (default), the original behavior is preserved.
+    *   `TrtGraphConverterV2` provides a new API called `.summary()` which
+        outputs a summary of the inference converted by TF-TRT. It namely shows
+        each TRTEngineOp with their input(s)' and output(s)' shape and dtype. A
+        detailed version of the summary is available which prints additionally
+        all the TensorFlow OPs included in each of the TRTEngineOPs.
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
