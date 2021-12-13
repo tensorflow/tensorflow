@@ -1534,38 +1534,37 @@ bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
   // fusion. Allow limited cases only for now that are optimized, (i)
   // multiplicand is scalar, (ii) BatchMatmulV2 output is 4D tensor, and (iii)
   // addend is 4D tensor with second dim_size = 1.
-  if (found_op_type_match) {
-    if (!ctx->inferred_graph_properties) {
-      Status s = ctx->graph_properties.InferStatically(
-          /*assume_valid_feeds=*/true,
-          /*aggressive_shape_inference=*/false,
-          /*include_input_tensor_values=*/false,
-          /*include_output_tensor_values=*/true);
-      if (!s.ok()) return false;
-      ctx->inferred_graph_properties = true;
-    }
-    NodeDef* multiplicand_node_def =
-        ctx->graph_view.GetNode(matched_nodes_map->at("multiplicand"))->node();
-    auto multiplicand_props = ctx->graph_properties.GetOutputProperties(
-        multiplicand_node_def->name());
-    if (NumCoefficients(multiplicand_props[0].shape()) != 1) return false;
-
-    NodeDef* batch_matmul_node_def =
-        ctx->graph_view.GetNode(matched_nodes_map->at("batch_matmul"))->node();
-    if (!IsCpuCompatibleMatMul(*ctx, batch_matmul_node_def)) return false;
-
-    auto batch_matmul_props = ctx->graph_properties.GetOutputProperties(
-        batch_matmul_node_def->name());
-    if (Rank(batch_matmul_props[0].shape()) != 4) return false;
-
-    NodeDef* addend_node_def =
-        ctx->graph_view.GetNode(matched_nodes_map->at("addend"))->node();
-    auto addend_props =
-        ctx->graph_properties.GetOutputProperties(addend_node_def->name());
-    auto addend_shape = addend_props[0].shape();
-    if (!(Rank(addend_shape) == 4 && addend_shape.dim(1).size() == 1))
-      return false;
+  if (!found_op_type_match) return false;
+  if (!ctx->inferred_graph_properties) {
+    Status s = ctx->graph_properties.InferStatically(
+        /*assume_valid_feeds=*/true,
+        /*aggressive_shape_inference=*/false,
+        /*include_input_tensor_values=*/false,
+        /*include_output_tensor_values=*/true);
+    if (!s.ok()) return false;
+    ctx->inferred_graph_properties = true;
   }
+  NodeDef* multiplicand_node_def =
+      ctx->graph_view.GetNode(matched_nodes_map->at("multiplicand"))->node();
+  auto multiplicand_props =
+      ctx->graph_properties.GetOutputProperties(multiplicand_node_def->name());
+  if (NumCoefficients(multiplicand_props[0].shape()) != 1) return false;
+
+  NodeDef* batch_matmul_node_def =
+      ctx->graph_view.GetNode(matched_nodes_map->at("batch_matmul"))->node();
+  if (!IsCpuCompatibleMatMul(*ctx, batch_matmul_node_def)) return false;
+
+  auto batch_matmul_props =
+      ctx->graph_properties.GetOutputProperties(batch_matmul_node_def->name());
+  if (Rank(batch_matmul_props[0].shape()) != 4) return false;
+
+  NodeDef* addend_node_def =
+      ctx->graph_view.GetNode(matched_nodes_map->at("addend"))->node();
+  auto addend_props =
+      ctx->graph_properties.GetOutputProperties(addend_node_def->name());
+  auto addend_shape = addend_props[0].shape();
+  if (!(Rank(addend_shape) == 4 && addend_shape.dim(1).size() == 1))
+    return false;
   return found_op_type_match;
 }
 
@@ -2507,10 +2506,6 @@ Status AddFusedBatchMatMul(RemapperContext* ctx,
   return Status::OK();
 }
 
-bool IsConv2DOrMatMul(const NodeDef& node) {
-  return IsConv2D(node) || IsMatMul(node);
-}
-
 bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
 
@@ -2737,7 +2732,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       remove_node_indices.clear();
       if (FindFusedBatchMatMul(&ctx, i, &matched_nodes_map,
                                &remove_node_indices)) {
-        string name = ctx.graph_view.GetNode(i)->GetName();
         TF_RETURN_IF_ERROR(
             AddFusedBatchMatMul(&ctx, matched_nodes_map, remove_node_indices,
                                 &invalidated_nodes, &nodes_to_delete));

@@ -586,33 +586,9 @@ class MklMatMulPrimitive : public MklPrimitive {
 
   ~MklMatMulPrimitive() {}
 
-  void Execute(const Tlhs* a_data, const Trhs* b_data, Toutput* c_data,
-               std::shared_ptr<stream> stream) {
-#ifndef ENABLE_ONEDNN_OPENMP
-    context_.a_mem->set_data_handle(
-        static_cast<void*>(const_cast<Tlhs*>(a_data)), *stream);
-    context_.b_mem->set_data_handle(
-        static_cast<void*>(const_cast<Trhs*>(b_data)), *stream);
-    context_.c_mem->set_data_handle(
-        static_cast<void*>(const_cast<Toutput*>(c_data)), *stream);
-#else
-    context_.a_mem->set_data_handle(
-        static_cast<void*>(const_cast<Tlhs*>(a_data)));
-    context_.b_mem->set_data_handle(
-        static_cast<void*>(const_cast<Trhs*>(b_data)));
-    context_.c_mem->set_data_handle(
-        static_cast<void*>(const_cast<Toutput*>(c_data)));
-#endif  // !ENABLE_ONEDNN_OPENMP
-    execute_primitives(context_.matmul_primitives, stream, context_.net_args);
-
-    // After execution, set data handle back
-    context_.a_mem->set_data_handle(DummyData);
-    context_.b_mem->set_data_handle(DummyData);
-    context_.c_mem->set_data_handle(DummyData);
-  }
-
-  void Execute(const Tlhs* a_data, const Trhs* b_data, Toutput* c_data,
-               void* mul_data, void* add_data, std::shared_ptr<stream> stream) {
+  void Execute(const std::shared_ptr<stream>& stream, const Tlhs* a_data,
+               const Trhs* b_data, const Toutput* c_data,
+               void* mul_data = nullptr, void* add_data = nullptr) {
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.a_mem->set_data_handle(
         static_cast<void*>(const_cast<Tlhs*>(a_data)), *stream);
@@ -883,7 +859,7 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
   std::shared_ptr<stream> cpu_stream;
   MklDnnThreadPool eigen_tp(ctx);
   cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
-  matmul_prim->Execute(a, b, c, cpu_stream);
+  matmul_prim->Execute(cpu_stream, a, b, c);
 }
 
 }  // anonymous namespace

@@ -737,7 +737,7 @@ class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
 // changed by other optimizers before the remapper optimizer.
 TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact) { RunTest<DT_FLOAT>(); }
 
-class MklFuseBatchMatMul: public MklRemapperTest {
+class MklFusedBatchMatMul : public MklRemapperTest {
  public:
   template <typename T>
   void VerifyFused(bool adjx, bool adjy) {
@@ -828,7 +828,7 @@ class MklFuseBatchMatMul: public MklRemapperTest {
   }
 };
 
-TEST_F(MklFuseBatchMatMul, MulAndAdd) {
+TEST_F(MklFusedBatchMatMul, MulAndAdd) {
   for (const auto adjx : {false, true})
     for (const auto adjy : {false, true}) {
       this->VerifyFused<float>(adjx, adjy);

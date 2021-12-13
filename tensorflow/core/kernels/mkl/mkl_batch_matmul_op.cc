@@ -146,7 +146,7 @@ class BatchMatMulMkl : public OpKernel {
     static int counter = 1;
     params->aarch64_counter = counter++;
 #endif
-    this->ExtendMklMatMulPararms(ctx, *params);
+    this->ExtendMklMatMulParams(ctx, *params);
 
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<Tlhs, Trhs, Toutput>* matmul_prim =
@@ -170,18 +170,19 @@ class BatchMatMulMkl : public OpKernel {
         add_data = static_cast<void*>(
             const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
       }
-      matmul_prim->Execute(lhs.flat<Tlhs>().data(), rhs.flat<Trhs>().data(),
-                           out->flat<Toutput>().data(), mul_data, add_data,
-                           cpu_stream);
+      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
+                           rhs.flat<Trhs>().data(), out->flat<Toutput>().data(),
+                           mul_data, add_data);
     } else {
-      matmul_prim->Execute(lhs.flat<Tlhs>().data(), rhs.flat<Trhs>().data(),
-                           out->flat<Toutput>().data(), cpu_stream);
+      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
+                           rhs.flat<Trhs>().data(),
+                           out->flat<Toutput>().data());
     }
   }
 
  protected:
-  virtual void ExtendMklMatMulPararms(OpKernelContext* ctx,
-                                      MklMatMulParams& params) {}
+  virtual void ExtendMklMatMulParams(OpKernelContext* ctx,
+                                     MklMatMulParams& params) {}
   std::vector<string> fused_ops_;
 
  private:
@@ -221,8 +222,8 @@ class FusedBatchMatMulMkl
   virtual ~FusedBatchMatMulMkl() {}
 
  protected:
-  virtual void ExtendMklMatMulPararms(OpKernelContext* ctx,
-                                      MklMatMulParams& params) {
+  virtual void ExtendMklMatMulParams(OpKernelContext* ctx,
+                                     MklMatMulParams& params) {
     if (this->fused_ops_.size() > 0) {
       const Tensor& scale_tensor = ctx->input(2);
       OP_REQUIRES(ctx, scale_tensor.NumElements() == 1,
