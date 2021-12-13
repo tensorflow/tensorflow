@@ -36,7 +36,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 # Run bazel test command.
 "${BAZEL_WRAPPER_PATH}" \
   test \
-  --profile="${KOKORO_ARTIFACTS_DIR}/profile.json" \
+  --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
   --config=rbe_linux_cuda_nvcc_py39 \
   --config=tensorflow_testing_rbe_linux \
   --test_tag_filters="${tag_filters}" \
@@ -44,6 +44,9 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
   --test_lang_filters=cc,py \
   -- \
   ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+
+# Print build time statistics, including critical path.
+bazel analyze-profile "${KOKORO_ARTIFACTS_DIR}/profile.json.gz"
 
 # Copy log to output to be available to GitHub
 ls -la "$(bazel info output_base)/java.log"

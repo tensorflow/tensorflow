@@ -4944,7 +4944,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier({});
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
   EXPECT_TRUE(changed);
   const HloInstruction* dot;
@@ -4976,7 +4976,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDimsInBatchDotCantSimplify) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier({});
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
   EXPECT_FALSE(changed);
 }
@@ -4998,7 +4998,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfNonCanonicalBatchDotCantSimplify) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier({});
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
   EXPECT_FALSE(changed);
 }
@@ -5276,7 +5276,7 @@ TEST_F(AlgebraicSimplifierTest, BatchDotTransposeOperands) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier({});
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
   EXPECT_TRUE(changed);
   const HloInstruction* dot;
@@ -5307,7 +5307,7 @@ TEST_F(AlgebraicSimplifierTest, BatchDotTransposeBatchDims) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier({});
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
   EXPECT_TRUE(changed);
   const HloInstruction* dot;
@@ -5338,7 +5338,7 @@ TEST_F(AlgebraicSimplifierTest, BatchDotTransposeBatchDimsAndOperands) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier({});
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
   EXPECT_TRUE(changed);
   const HloInstruction* dot;

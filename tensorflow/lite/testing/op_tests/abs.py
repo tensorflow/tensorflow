@@ -30,7 +30,7 @@ def make_abs_tests(options):
       "dtype": [tf.float32],
       "dynamic_range_quantize": [False, True],
       "fully_quantize": [False],
-      "input_range": [(-10, 10)],
+      "input_range": [(-10, 10), (-10, 0)],
   }, {
       "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
                       [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
@@ -38,13 +38,12 @@ def make_abs_tests(options):
       "dynamic_range_quantize": [False],
       "fully_quantize": [True],
       "input_range": [(-10, 10)],
+  }, {
+      "input_shape": [[], [1], [2, 3], [1, 1, 1, 1],
+                      [1, 3, 4, 3], [3, 15, 14, 3],
+                      [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      "dtype": [tf.int16],
   }]
-  if options.use_experimental_converter:
-    test_parameters = test_parameters + [{
-        "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
-                        [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
-        "dtype": [tf.int16],
-    }]
 
   def build_graph(parameters):
     input_tensor = tf.compat.v1.placeholder(
@@ -55,11 +54,14 @@ def make_abs_tests(options):
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
+    min_value, max_value = (-10, 10)
+    if "input_range" in parameters:
+      min_value, max_value = parameters["input_range"]
     input_values = create_tensor_data(
         parameters["dtype"],
         parameters["input_shape"],
-        min_value=-10,
-        max_value=10)
+        min_value=min_value,
+        max_value=max_value)
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 

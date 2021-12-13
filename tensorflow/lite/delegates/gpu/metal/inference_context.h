@@ -74,14 +74,6 @@ class InferenceContext {
     TensorStorageType storage_type;
     ModelHints hints;
 
-    // Some restrictions for preallocated:
-    //   1) ValueId must be input or output id of GraphFloat32
-    //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
-    //      for example for precision F16, data_type must be FLOAT16
-    //   3) Layout must be without Batch dimension if tensor.shape.b == 1
-    //      Layout must be with Batch dimension if tensor.shape.b != 1
-    std::map<ValueId, TensorDescriptor> preallocated;
-
     // User can provide immutable external tensors for inference context.
     // Some restrictions apply:
     //   1) ValueId must be input or output id of GraphFloat32
@@ -93,7 +85,25 @@ class InferenceContext {
     // InitFromGraph will fail if gpu can not allocate tensor with requested
     // tensor descriptor
     // WARNING: This is an experimental API and subject to change.
+    // IMPORTANT: tensors ids from predefined / external_immutable_tensors /
+    // external_mutable_tensors should not intersect.
     absl::flat_hash_map<ValueId, GpuSpatialTensor*> external_immutable_tensors;
+
+    // User can provide mutable external tensors for inference context.
+    // HINT: Highly recommended to use other options if possible, this options
+    // will be with the worst performance.
+    // Some restrictions apply:
+    //   1) ValueId must be input or output id of GraphFloat32
+    //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+    //      for example for precision F16, data_type must be FLOAT16
+    //   3) Layout must be without Batch dimension if tensor.shape.b == 1
+    //      Layout must be with Batch dimension if tensor.shape.b != 1
+    // InitFromGraph will fail if gpu can not allocate tensor with requested
+    // tensor descriptor
+    // WARNING: This is an experimental API and subject to change.
+    // IMPORTANT: tensors ids from predefined / external_immutable_tensors /
+    // external_mutable_tensors should not intersect.
+    absl::flat_hash_map<ValueId, TensorDescriptor> external_mutable_tensors;
   };
 
   struct GpuModel {
@@ -119,11 +129,6 @@ class InferenceContext {
   absl::Status InitFromGraphWithTransforms(
       const CreateInferenceInfo& create_info, GraphFloat32* graph,
       id<MTLDevice> device_id);
-
-  // Updates MTLBuffer handles in MetalSpatialTensors and kernels that use this
-  // tensors.
-  void UpdatePreallocatedTensors(
-      const std::map<ValueId, id<MTLBuffer>>& preallocated);
 
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
@@ -168,6 +173,11 @@ class InferenceContext {
   // this inference context. Do not include constant tensors.
   uint64_t GetIntermediateTensorsSize() const;
 
+  // Can be used only with ids from external_mutable_tensors in create_info
+  // Must be called after initialization and before execution
+  absl::Status SetTensor(const ValueId& tensor_id,
+                         MetalSpatialTensor* tensor_ptr);
+
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
   absl::Status SetInputTensor(ValueId id, const TensorFloat32& tensor);
   absl::Status GetOutputTensor(ValueId id, TensorFloat32* result);
@@ -182,10 +192,9 @@ class InferenceContext {
   };
 
   absl::Status CompileOperations(MetalDevice* device);
+  void PrepareExternal();
 
-  absl::Status AllocateTensors(
-      MetalDevice* device,
-      const std::map<ValueId, TensorDescriptor>& preallocated);
+  absl::Status AllocateTensors(MetalDevice* device);
   absl::Status AllocateMemoryForConstTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   absl::Status AllocateMemoryForStrongShapes(MetalDevice* device);
@@ -199,13 +208,12 @@ class InferenceContext {
   absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
 
   std::vector<MetalNode> nodes_;
-  // contains indexes of compute_tasks_
-  std::vector<int> task_ids_with_preallocated_tensors_;
   std::vector<ValueId> input_ids_;
   std::vector<ValueId> output_ids_;
-  std::map<ValueId, MetalSpatialTensor> preallocated_tensors_;
 
   absl::flat_hash_map<ValueId, MetalSpatialTensor*> external_immutable_tensors_;
+  absl::flat_hash_map<ValueId, MetalSpatialTensor*> external_mutable_tensors_;
+  absl::flat_hash_map<ValueId, std::vector<int>> external_tensor_to_nodes_;
   absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
   std::map<ValueId, MetalSpatialTensor> const_tensors_;
 

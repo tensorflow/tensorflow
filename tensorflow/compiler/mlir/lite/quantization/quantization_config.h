@@ -155,6 +155,9 @@ struct QuantizationSpecs {
   // (output of previous quantized layer). When enabled, float and quantized ops
   // will run with respective float and quantized output of previous ops.
   bool whole_model_verify = false;
+
+  // Whether to use fake quant attributes to calculate quantization parameters.
+  bool use_fake_quant_num_bits = false;
 };
 
 // Parses the command line flag strings to the quantization specification for

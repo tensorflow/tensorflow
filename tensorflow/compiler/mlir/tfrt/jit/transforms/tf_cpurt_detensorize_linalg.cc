@@ -44,7 +44,7 @@ using mlir::Type;
 using mlir::TypeRange;
 using mlir::Value;
 using mlir::linalg::GenericOp;
-using mlir::linalg::TensorCollapseShapeOp;
+using mlir::tensor::CollapseShapeOp;
 using mlir::tensor::ExtractOp;
 using mlir::tensor::FromElementsOp;
 
@@ -105,7 +105,7 @@ struct ExtractFromReshapeFromElements : public OpRewritePattern<ExtractOp> {
                                 PatternRewriter& rewriter) const final {
     if (!extract.indices().empty()) return failure();
 
-    auto reshape = extract.tensor().getDefiningOp<TensorCollapseShapeOp>();
+    auto reshape = extract.tensor().getDefiningOp<CollapseShapeOp>();
     if (!reshape) return failure();
 
     auto from_elements = reshape.src().getDefiningOp<FromElementsOp>();

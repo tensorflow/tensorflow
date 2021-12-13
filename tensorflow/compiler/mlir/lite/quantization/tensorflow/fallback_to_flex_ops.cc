@@ -28,7 +28,15 @@ namespace TF {
 namespace {
 
 // The name prefix of Flex ops.
-constexpr char kFlexOpNamePrefix[] = "Flex";
+constexpr absl::string_view kFlexOpNamePrefix = "Flex";
+// Don't fallback to Flex op if this attribute is set. This attribute is
+// transient and is only used inside this pass. First, the pass looks for
+// predefined patterns and set this attribute to ops in the patterns. Then,
+// when parsing the function, if find ops with this attribute, the pass
+// remove the attribute and skip further processing on those ops.
+constexpr char kNoFallbackAttr[] = "no_fallback";
+// TF Quantization modes. These constants are defined as char arrays so they
+// can parsed by the pass option.
 constexpr char kDefaultMode[] = "DEFAULT";
 constexpr char kLegacyIntegerMode[] = "LEGACY_INTEGER";
 
@@ -124,49 +132,6 @@ inline bool IsFusibleWithBiasOp(Operation *op) {
       // clang-format on
       >(op);
 }
-
-// If the Add op can be fused as bias, converts it to BiasAdd op.
-class ConvertAddToBiasAddPattern : public OpRewritePattern<TF::AddV2Op> {
- public:
-  using OpRewritePattern<TF::AddV2Op>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::AddV2Op add_op,
-                                PatternRewriter &rewriter) const override {
-    // Fusable AddOp must have 1D constant value in the rhs since the BiasAddOp
-    // can only accept 1D bias value and only constant value can be fused.
-    DenseElementsAttr added_value;
-    if (!matchPattern(add_op.y(), m_Constant(&added_value))) return failure();
-    if (!IsFusibleWithBiasOp(add_op.x().getDefiningOp())) return failure();
-    auto y_type = add_op.y().getType().template dyn_cast<RankedTensorType>();
-    if (!y_type || y_type.getRank() != 1) return failure();
-
-    rewriter.replaceOpWithNewOp<TF::BiasAddOp>(add_op, add_op.getType(),
-                                               add_op.x(), add_op.y());
-    return success();
-  }
-};
-
-// If the Sub op can be fused as bias, converts it to BiasAdd op.
-class ConvertSubToBiasAddPattern : public OpRewritePattern<TF::SubOp> {
- public:
-  using OpRewritePattern<TF::SubOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::SubOp sub_op,
-                                PatternRewriter &rewriter) const override {
-    // Fusable AddOp must have 1D constant value in the rhs since the BiasAddOp
-    // can only accept 1D bias value and only constant value can be fused.
-    DenseElementsAttr sub_value;
-    if (!matchPattern(sub_op.y(), m_Constant(&sub_value))) return failure();
-    if (!IsFusibleWithBiasOp(sub_op.x().getDefiningOp())) return failure();
-    auto y_type = sub_op.y().getType().template dyn_cast<RankedTensorType>();
-    if (!y_type || y_type.getRank() != 1) return failure();
-
-    auto add_value = rewriter.create<TF::NegOp>(sub_op.getLoc(), sub_op.y());
-    rewriter.replaceOpWithNewOp<TF::BiasAddOp>(sub_op, sub_op.getType(),
-                                               sub_op.x(), add_value);
-    return success();
-  }
-};
 
 // Creates the custom option of the Flex ops.
 inline void CreateFlexOpCustomOptions(const std::string &op_name,
@@ -264,6 +229,31 @@ bool FallbackToFlexOps::ConvertToFlexOp(Operation *op) {
   return true;
 }
 
+// Sets the "no_fallback" attribute.
+Value SetNoFallbackAttr(PatternRewriter &rewriter, Value val) {
+  val.getDefiningOp()->setAttr(kNoFallbackAttr, rewriter.getUnitAttr());
+  return val;
+}
+
+// Returns true if the attr is a float attribute and be equal to value.
+static bool FloatValueEquals(const Attribute &attr, double value) {
+  auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  if (fp_attr == nullptr) return false;
+
+  if (fp_attr.isSplat()) {
+    return fp_attr.getSplatValue<APFloat>().isExactlyValue(value);
+  }
+  return llvm::all_of(fp_attr.getValues<APFloat>(), [value](const APFloat &f) {
+    return f.isExactlyValue(value);
+  });
+}
+
+// Returns true if the rank of the value equals to the given rank.
+bool RankEquals(Value value, int rank) {
+  auto rank_type = value.getType().template dyn_cast<RankedTensorType>();
+  return (rank_type && rank_type.getRank() == rank);
+}
+
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/fallback_to_flex_patterns.inc"
 
 void FallbackToFlexOps::runOnFunction() {
@@ -275,7 +265,6 @@ void FallbackToFlexOps::runOnFunction() {
   // Convert binary ops to BiasAdd ops if possible.
   OwningRewritePatternList patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.insert<ConvertAddToBiasAddPattern, ConvertSubToBiasAddPattern>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Convert unsupported ops to Flex ops.
@@ -283,6 +272,10 @@ void FallbackToFlexOps::runOnFunction() {
   func.walk([&](Operation *op) {
     if (op->getDialect() != tf_dialect) return;
     if (IsAllowListedOp(op)) return;
+    if (op->hasAttr(kNoFallbackAttr)) {
+      op->removeAttr(kNoFallbackAttr);
+      return;
+    }
     if (!ConvertToFlexOp(op)) signalPassFailure();
   });
 }

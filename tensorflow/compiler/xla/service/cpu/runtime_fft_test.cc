@@ -19,7 +19,7 @@ limitations under the License.
 
 TEST(FftTypeTest, MatchesProto) {
   EXPECT_EQ(::xla::FftType_ARRAYSIZE, 4);
-  EXPECT_EQ(::tensorflow::xla::kFftTypeArraySize, 4);
+  EXPECT_EQ(::tensorflow::xla::FftTypeArraySize(), 4);
   EXPECT_EQ(::xla::FftType::FFT,
             static_cast<::tensorflow::int32>(::tensorflow::xla::FftType::FFT));
   EXPECT_EQ(::xla::FftType::IFFT,

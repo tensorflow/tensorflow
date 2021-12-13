@@ -40,6 +40,8 @@ def TF_CPURT_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tf_cpurt";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 //===----------------------------------------------------------------------===//

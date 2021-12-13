@@ -42,6 +42,7 @@ load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
+load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
@@ -79,6 +80,7 @@ def _initialize_third_party():
     ruy()
     sobol_data()
     vulkan_headers()
+    tensorrt()
 
 # Toolchains & platforms required by Tensorflow to build.
 def _tf_toolchains():
@@ -133,9 +135,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "e3dcbb9278a44532ada93dad3b5fcd90d74bf18353d04dfa8868df8029bff693",
-        strip_prefix = "XNNPACK-0d6a1194ff36f59c79089336d7a3b446c3c6a39d",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/0d6a1194ff36f59c79089336d7a3b446c3c6a39d.zip"),
+        sha256 = "8ce46328c9ac5f1b8359e5c4352a2bbafc39614eae7f647d32a6d43cb110ad01",
+        strip_prefix = "XNNPACK-113092317754c7dea47bfb3cb49c4f59c3c1fa10",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/113092317754c7dea47bfb3cb49c4f59c3c1fa10.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 

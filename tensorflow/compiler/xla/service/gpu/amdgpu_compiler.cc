@@ -117,8 +117,8 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
 }
 
 AMDGPUCompiler::AMDGPUCompiler()
-    : GpuCompiler(stream_executor::rocm::kROCmPlatformId, amdgpu::kTargetTriple,
-                  amdgpu::kDataLayout) {}
+    : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
+                  amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
 
 GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   std::string gcn_arch_name =

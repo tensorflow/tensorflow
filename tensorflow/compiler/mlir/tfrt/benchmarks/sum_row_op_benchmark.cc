@@ -22,7 +22,8 @@ namespace {
 
 std::string SumRow(bool dynamic_row, bool dynamic_col, int32_t rows,
                    int32_t cols) {
-  return GetTFSumIR({rows, cols}, {dynamic_row, dynamic_col}, {1});
+  return GetReductionIR("tf.Sum", {rows, cols}, {dynamic_row, dynamic_col}, {1},
+                        "f32");
 }
 
 auto EigenSumRow() {

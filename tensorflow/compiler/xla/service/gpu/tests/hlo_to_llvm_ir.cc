@@ -82,11 +82,18 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                       xla::gpu::CompileModuleToLlvmIr(
                           hlo_module.get(), &llvm_context,
+<<<<<<< HEAD
                           /*target_triple=*/xla::gpu::nvptx::kTargetTriple,
                           /*data_layout=*/xla::gpu::nvptx::kDataLayout,
                           /*platform_name=*/platform_name, gpu_device_info,
                           cuda_compute_capability, amdgpu_arch,
                           /*pointer_size=*/8));
+=======
+                          /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
+                          /*data_layout=*/xla::gpu::nvptx::DataLayout(),
+                          /*platform_name=*/"CUDA", gpu_device_info,
+                          cuda_compute_capability, /*pointer_size=*/8));
+>>>>>>> google_upstream/master
 
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);

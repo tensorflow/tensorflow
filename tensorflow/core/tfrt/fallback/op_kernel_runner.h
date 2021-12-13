@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_OP_KERNEL_RUNNER_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_OP_KERNEL_RUNNER_H_
+#ifndef TENSORFLOW_CORE_TFRT_FALLBACK_OP_KERNEL_RUNNER_H_
+#define TENSORFLOW_CORE_TFRT_FALLBACK_OP_KERNEL_RUNNER_H_
 
 #include <assert.h>
 #include <stddef.h>
@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
-namespace tfd {
+namespace tfrt_stub {
 
 class OpKernelRunner {
  public:
@@ -45,6 +45,13 @@ class OpKernelRunner {
       const tensorflow::DeviceMgr& device_manager,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime);
+
+  static StatusOr<OpKernelRunner> Create(
+      absl::string_view op_name, int num_args,
+      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const tensorflow::ProcessFunctionLibraryRuntime&
+          process_function_library_runtime,
+      tensorflow::Device* device);
 
   OpKernelRunner() = default;
 
@@ -165,7 +172,7 @@ class OpKernelRunnerTable {
   std::vector<absl::optional<OpKernelRunner>> runners_;
 };
 
-}  // namespace tfd
+}  // namespace tfrt_stub
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_OP_KERNEL_RUNNER_H_
+#endif  // TENSORFLOW_CORE_TFRT_FALLBACK_OP_KERNEL_RUNNER_H_

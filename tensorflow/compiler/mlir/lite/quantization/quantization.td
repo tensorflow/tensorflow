@@ -203,7 +203,7 @@ class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
              !interleave([dim, index], ", "),
              ">::Impl")>;
 
-// Specify this trait if the op doesn't have quantizable output. We shouldn't
+// Specify this trait if the op does have quantizable output. Quantizers will
 // apply quantization on this op.
-def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
+def QuantizableResult : NativeOpTrait<"quant::QuantizableResult">;
 #endif // TF_Quantization

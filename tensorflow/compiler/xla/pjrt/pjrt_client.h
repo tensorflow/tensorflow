@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_PJRT_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_CLIENT_H_
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -51,15 +53,33 @@ namespace xla {
 
 using PjRtPlatformId = uint64;
 
-constexpr char kCpuName[] = "cpu";
-constexpr char kGpuName[] = "gpu";
-constexpr char kTpuName[] = "tpu";
-static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(kCpuName);
-static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(kGpuName);
-static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(kTpuName);
+inline const char* CpuName() {
+  static constexpr char kCpuName[] = "cpu";
+  return kCpuName;
+}
+inline const char* GpuName() {
+  static constexpr char kGpuName[] = "gpu";
+  return kGpuName;
+}
+inline const char* TpuName() {
+  static constexpr char kTpuName[] = "tpu";
+  return kTpuName;
+}
+inline PjRtPlatformId CpuId() {
+  static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(CpuName());
+  return kCpuId;
+}
+inline PjRtPlatformId GpuId() {
+  static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(GpuName());
+  return kGpuId;
+}
+inline PjRtPlatformId TpuId() {
+  static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(TpuName());
+  return kTpuId;
+}
 
 enum PjRtRuntimeType { kStreamExecutor, kTfrt };
-static constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
+inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
   switch (type) {
     case kStreamExecutor:
       return "stream_executor";

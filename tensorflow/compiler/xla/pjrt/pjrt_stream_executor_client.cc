@@ -64,10 +64,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -576,7 +579,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::AddToInput(
 }
 
 bool PjRtStreamExecutorBuffer::IsOnCpu() const {
-  return client()->platform_id() == kCpuId;
+  return client()->platform_id() == CpuId();
 }
 
 StatusOr<Shape> PjRtStreamExecutorBuffer::logical_on_device_shape() {
@@ -724,7 +727,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     bool can_use_zero_copy =
         host_buffer_semantics == HostBufferSemantics::kZeroCopy &&
         ((absl::bit_cast<std::uintptr_t>(data) &
-          (cpu_function_runtime::kMinAlign - 1)) == 0);
+          (cpu_function_runtime::MinAlign() - 1)) == 0);
     if (host_and_device_strides_equal &&
         (host_buffer_semantics ==
              HostBufferSemantics::kImmutableOnlyDuringCall ||
@@ -741,7 +744,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
             const_cast<void*>(static_cast<const void*>(data)), size);
       } else {
         void* staging_buffer = host_memory_allocator()->AllocateRaw(
-            cpu_function_runtime::kMinAlign, size);
+            cpu_function_runtime::MinAlign(), size);
         buffer = se::DeviceMemoryBase(staging_buffer, size);
         std::memcpy(staging_buffer, data, size);
         if (on_done_with_host_buffer) {

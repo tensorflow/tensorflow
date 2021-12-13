@@ -47,7 +47,6 @@ def make_segment_sum_tests(options):
                               parameters["data_shape"])
     return [data], sess.run(outputs, feed_dict=dict(zip(inputs, [data])))
 
-  options.use_experimental_converter = True
   make_zip_of_tests(
       options,
       test_parameters,

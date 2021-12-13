@@ -306,22 +306,12 @@ class ValidatorTest : public ::testing::Test {
 
     TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                                /*use_calibration=*/false,
-                               /*use_implicit_batch=*/true);
+                               /*use_implicit_batch=*/true,
+                               /*use_explicit_precision=*/false);
     return validator.ConvertToTensorOrWeights(node->def(), output_port,
                                               tensor_or_weights);
   }
 };
-
-TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
-  grappler::GrapplerItem item;
-  grappler::GraphProperties graph_properties(item);
-  TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                             /*use_calibration=*/false,
-                             /*use_implicit_batch=*/true);
-  for (const string& quantize_op : kQuantizationOpNames) {
-    TF_EXPECT_OK(validator.GetValidator(quantize_op).status());
-  }
-}
 
 TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   // Convert Const.
@@ -392,7 +382,8 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   TF_EXPECT_OK(graph_properties.InferStatically(true));
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                              /*use_calibration=*/false,
-                             /*use_implicit_batch=*/true);
+                             /*use_implicit_batch=*/true,
+                             /*use_explicit_precision=*/false);
 
   // Override the Add converter.
   bool start_conversion = false;
@@ -478,7 +469,8 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
        {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
     TrtNodeValidator validator(graph_properties, precision_mode,
                                /*use_calibration=*/false,
-                               /*use_implicit_batch=*/true);
+                               /*use_implicit_batch=*/true,
+                               /*use_explicit_precision=*/false);
     TF_EXPECT_OK(validator.IsTensorRTCandidate(matmul.operation.node()));
     EXPECT_THAT(
         validator.IsTensorRTCandidate(incompatible_matmul.operation.node()),
@@ -522,7 +514,8 @@ class ConverterTest : public ::testing::Test {
         std::move(Converter::Create(TrtPrecisionMode::FP32,
                                     /*use_calibration=*/false, &logger_,
                                     /*use_implicit_batch=*/true,
-                                    /*engine_name=*/"TRTEngineOp_0_0")
+                                    /*engine_name=*/"TRTEngineOp_0_0",
+                                    /*use_explicit_precision=*/false)
                       .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
@@ -1050,7 +1043,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
         /*convert_successfully=*/nullptr, /*profiles=*/nullptr,
-        "TRTEngineOp_0_0");
+        "TRTEngineOp_0_0", /*use_explicit_precision=*/false);
   }
 
  protected:
@@ -1401,9 +1394,11 @@ class OpConverterTest : public ::testing::Test {
     grappler::GraphProperties graph_properties(item);
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-    TrtNodeValidator validator(graph_properties, converter_->precision_mode(),
-                               /*use_calibration=*/false,
-                               converter_->use_implicit_batch());
+    TrtNodeValidator validator(
+        graph_properties, converter_->precision_mode(),
+        /*use_calibration=*/false,
+        /*use_implicit_batch=*/converter_->use_implicit_batch(),
+        /*use_explicit_precision=*/false);
     return validator.IsTensorRTCandidate(node);
   }
 
@@ -3101,16 +3096,15 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertAddN) {
   }
 }
 
-TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
+TEST_P(OpConverter_FP32_Test, ConvertQDQDynamicRangeMode) {
   {
     // FakeQuantWithMinMaxArgs attributes are empty, should fail.
     Reset(TrtPrecisionMode::INT8);
     NodeDef node_def =
         MakeNodeDef("my_quantize", "FakeQuantWithMinMaxArgs", {"input"});
     AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Min or max attribute not found for FakeQuantWithMinMaxArgs");
+    RunValidationAndConversion(node_def, error::NOT_FOUND,
+                               "No attr named 'min'");
   }
   {
     // FakeQuantWithMinMaxArgs ranges set via attributes, ok.

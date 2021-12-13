@@ -47,6 +47,7 @@ TENSORFLOW_API_INIT_FILES = [
     "debugging/experimental/__init__.py",
     "distribute/__init__.py",
     "distribute/cluster_resolver/__init__.py",
+    "distribute/coordinator/__init__.py",
     "distribute/experimental/__init__.py",
     "distribute/experimental/coordinator/__init__.py",
     "distribute/experimental/partitioners/__init__.py",

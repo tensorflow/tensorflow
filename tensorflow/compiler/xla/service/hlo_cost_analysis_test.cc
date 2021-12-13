@@ -135,6 +135,8 @@ class HloCostAnalysisTest : public ::testing::Test {
   XlaComputation gt_;
 };
 
+using HloCostAnalysisHloTest = HloTestBase;
+
 TEST_F(HloCostAnalysisTest, MatrixMultiply) {
   XlaBuilder builder("matrix_multiply");
   auto lhs = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5}), "lhs");
@@ -399,6 +401,38 @@ TEST_F(HloCostAnalysisTest, ConvolutionWithFeatureGroup) {
             sizeof(float) * 120 * 3 * 3);
   EXPECT_EQ(analysis.output_bytes_accessed(*root),
             sizeof(float) * 120 * 8 * 18);
+}
+
+TEST_F(HloCostAnalysisHloTest, ConvCustomCall) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = s8[128,12,24,24,4]{4,3,2,1,0} parameter(0)
+  p1 = s8[16,12,5,5,4]{4,3,2,1,0} parameter(1)
+  p2 = f32[16]{0} parameter(2)
+  conv1 = (s8[128,4,24,24,4]{4,3,2,1,0}, u8[0]{0}) custom-call(p0, p1, p2),
+              window={size=5x5 pad=2_2x2_2},
+              dim_labels=bf01_oi01->bf01,
+              custom_call_target="__cudnn$convBiasActivationForward"
+  ROOT tuple = tuple(conv1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  HloComputation* comp = module->entry_computation();
+  const HloInstruction* conv1 = comp->GetInstructionWithName("conv1");
+  EXPECT_EQ(analysis.operand_bytes_accessed(*conv1, 0),
+            sizeof(int8_t) * 128 * 12 * 24 * 24 * 4);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*conv1, 1),
+            sizeof(int8_t) * 16 * 12 * 5 * 5 * 4);
+  EXPECT_EQ(analysis.output_bytes_accessed(*conv1),
+            sizeof(int8_t) * 128 * 4 * 24 * 24 * 4);
+  EXPECT_EQ(analysis.flop_count(*conv1), 159694848);
 }
 
 TEST_F(HloCostAnalysisTest, Reduce) {

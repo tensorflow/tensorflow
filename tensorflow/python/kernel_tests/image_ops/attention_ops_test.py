@@ -301,7 +301,7 @@ class ExtractGlimpseTest(test.TestCase):
   def testGlimpseNegativeInput(self):
     img = np.arange(9).reshape([1, 3, 3, 1])
     with self.test_session():
-      with self.assertRaises((errors.InternalError, ValueError)):
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
         result = image_ops.extract_glimpse_v2(
             img,
             size=[1023, -63],

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -99,6 +102,7 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       linkable_(operation.linkable_),
       check_src_channels_size_(operation.check_src_channels_size_),
       flops_(operation.flops_),
+      const_args_size_(operation.const_args_size_),
       definition_(std::move(operation.definition_)),
       src_(std::move(operation.src_)),
       dst_(std::move(operation.dst_)),
@@ -122,6 +126,7 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     linkable_ = operation.linkable_;
     check_src_channels_size_ = operation.check_src_channels_size_;
     flops_ = operation.flops_;
+    const_args_size_ = operation.const_args_size_;
     definition_ = std::move(operation.definition_);
     src_ = std::move(operation.src_);
     dst_ = std::move(operation.dst_);
@@ -208,7 +213,15 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
   }
   RETURN_IF_ERROR(args_.Compile(
       gpu_info, {{dst_tensors_names_[0], elementwise_code_}}, &code_));
+  CalculateConstArgsSize();
   return absl::OkStatus();
+}
+
+void GPUOperation::CalculateConstArgsSize() {
+  const_args_size_ = 0;
+  for (const auto& obj : args_.GetObjects()) {
+    const_args_size_ += obj.second->GetSizeInBytes();
+  }
 }
 
 void GPUOperation::GetPossibleKernelWorkGroups(

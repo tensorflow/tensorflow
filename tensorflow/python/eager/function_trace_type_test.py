@@ -82,9 +82,9 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testIteratorTypesImplementTracing(self):
     self.assertTrue(
-        issubclass(iterator_ops.OwnedIterator, trace.SupportsTracingType))
+        issubclass(iterator_ops.OwnedIterator, trace.SupportsTracingProtocol))
     self.assertTrue(
-        issubclass(iterator_ops.IteratorSpec, trace.SupportsTracingType))
+        issubclass(iterator_ops.IteratorSpec, trace.SupportsTracingProtocol))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testCompositeAndSpec(self):

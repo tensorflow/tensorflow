@@ -26,7 +26,6 @@ from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.framework import ops
-from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu.ops import tpu_ops
@@ -848,15 +847,6 @@ class FeatureConfig(object):
   features will be looked up in the first table and the third feature will be
   looked up in the second table.
 
-  You can also specify the output shape for each feature. The output shape
-  should be the expected activation shape excluding the table dimension. For
-  dense and sparse tensor, the output shape should be the same as the input
-  shape excluding the last dimension. For ragged tensor, the output shape can
-  mismatch the input shape.
-
-  NOTE: The `max_sequence_length` will be only used when the input tensor has
-  rank 2 and the `output_shape` is not set in the feature config.
-
   When feeding features into `embedding.enqueue` they can be `tf.Tensor`s,
   `tf.SparseTensor`s or `tf.RaggedTensor`s. When the argument
   `max_sequence_length` is 0, the default, you should expect a output of
@@ -870,7 +860,6 @@ class FeatureConfig(object):
                table: TableConfig,
                max_sequence_length: int = 0,
                validate_weights_and_indices: bool = True,
-               output_shape: Optional[Union[List[int], TensorShape]] = None,
                name: Optional[Text] = None):
     """Feature configuration.
 
@@ -881,14 +870,9 @@ class FeatureConfig(object):
         the corresponding maximum sequence length. If the sequence is longer
         than this, it will be truncated. If 0, the feature is not a sequence
         feature.
-      validate_weights_and_indices: If true, uses safe_embedding_lookup during
-        serving which ensures there are no empty rows and all weights and ids
-        are positive at the expense of extra compute cost.
-      output_shape: Optional argument to config the output shape of the feature
-        activation. If provided, the feature feeding to the `embedding.enqueue`
-        has to match the shape (for ragged tensor, the input shape and output
-        shape can mismatch). If not provided, the shape can be either provided
-        to the `embedding.build` or auto detected at the runtime.
+      validate_weights_and_indices: If true, uses safe_embedding_lookup
+        during serving which ensures there are no empty rows and all weights
+        and ids are positive at the expense of extra compute cost.
       name: An optional name for the feature, useful for debugging.
 
     Returns:
@@ -911,7 +895,6 @@ class FeatureConfig(object):
     self.table = table
     self.max_sequence_length = max_sequence_length
     self.name = name
-    self.output_shape = TensorShape(output_shape)
 
     if not isinstance(
         validate_weights_and_indices, bool):

@@ -272,9 +272,11 @@ third_party/tensorrt/BUILD
 third_party/tensorrt/BUILD.tpl
 third_party/tensorrt/LICENSE
 third_party/tensorrt/build_defs.bzl.tpl
+third_party/tensorrt/plugin/BUILD
 third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl
 third_party/tensorrt/tensorrt/tensorrt_config.py.tpl
 third_party/tensorrt/tensorrt_configure.bzl
+third_party/tensorrt/workspace.bzl
 third_party/termcolor.BUILD
 third_party/tf_toolchains.BUILD
 third_party/tflite_mobilenet.BUILD

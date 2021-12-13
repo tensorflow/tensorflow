@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace {
 
 std::string Sum1D(bool dynamic, int32_t size) {
-  return GetTFSumIR({size}, {dynamic}, {0});
+  return GetReductionIR("tf.Sum", {size}, {dynamic}, {0}, "f32");
 }
 
 auto EigenSum1D() {
@@ -51,7 +51,7 @@ llvm::SmallVector<InputTensorSpec> Inputs(ssize_t dim) {
 #define BM_SUITE(NAME, DYNAMIC, SIZE)                           \
   BM(CpurtV(NAME, Sum1D(DYNAMIC, SIZE), "main", Inputs(SIZE))); \
   BM(Eigen(NAME, EigenSum1D(), Inputs(SIZE)));                  \
-  BM(Tfrt(NAME, Sum1D(kDynamicDim, SIZE), "main", Inputs(SIZE)))
+  BM(Tfrt(NAME, Sum1D(DYNAMIC, SIZE), "main", Inputs(SIZE)))
 
 #define BM_DYNAMIC(SIZE) BM_SUITE(SumDynamic_##SIZE, kDynamicDim, SIZE)
 BM_DYNAMIC(3);

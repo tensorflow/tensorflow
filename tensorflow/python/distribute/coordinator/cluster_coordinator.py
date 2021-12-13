@@ -919,7 +919,8 @@ class Cluster(object):
     return self.closure_queue.done()
 
 
-@tf_export("distribute.experimental.coordinator.ClusterCoordinator", v1=[])
+@tf_export("distribute.experimental.coordinator.ClusterCoordinator",
+           "distribute.coordinator.ClusterCoordinator", v1=[])
 class ClusterCoordinator(object):
   """An object to schedule and coordinate remote function execution.
 

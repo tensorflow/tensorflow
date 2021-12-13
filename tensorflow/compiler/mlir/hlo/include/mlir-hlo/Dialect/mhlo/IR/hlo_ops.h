@@ -57,6 +57,16 @@ class MhloDialect : public Dialect {
   Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
                                  Location loc) override;
 
+  // Registered hook to verify region arg attributes on operations.
+  LogicalResult verifyRegionArgAttribute(mlir::Operation *op,
+                                         unsigned region_index,
+                                         unsigned arg_index,
+                                         mlir::NamedAttribute attr) override;
+
+  // Registered hook to verify an attribute from this dialect on operations.
+  LogicalResult verifyOperationAttribute(mlir::Operation *op,
+                                         mlir::NamedAttribute attr) override;
+
   // Parses a type registered to this dialect.
   Type parseType(DialectAsmParser &parser) const override;
 

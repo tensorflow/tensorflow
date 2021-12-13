@@ -297,10 +297,14 @@ fi
 check_global_vars
 
 # Check if in a virtualenv and exit if yes.
-IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
-if [[ "$IN_VENV" == "1" ]]; then
-  echo "It appears that we are already in a virtualenv. Deactivating..."
-  deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
+# TODO(rameshsampath): Python 3.10 has pip conflicts when using global env, so build in virtualenv
+# Once confirmed to work, run builds for all python env in a virtualenv
+if [[ $PY_MAJOR_MINOR_VER -ne "3.10" ]]; then
+  IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
+  if [[ "$IN_VENV" == "1" ]]; then
+    echo "It appears that we are already in a virtualenv. Deactivating..."
+    deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
+  fi
 fi
 
 # Obtain the path to python binary as written by ./configure if it was run.
@@ -712,12 +716,16 @@ run_all_tests
 if [[ ${OS_TYPE} == "ubuntu" ]] && \
    ! [[ ${CONTAINER_TYPE} == "rocm" ]] ; then
   # Avoid Python3.6 abnormality by installing auditwheel here.
-  set +e
-  pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
-  pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-  sudo pip3 install auditwheel==2.0.0 || \
-    sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-  set -e
+  # TODO(rameshsampath) - Cleanup and remove the need for auditwheel install
+  # Python 3.10 requires auditwheel > 2 and its already installed in common.sh
+  if [[ $PY_MAJOR_MINOR_VER -ne "3.10" ]]; then
+    set +e
+    pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
+    pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+    sudo pip3 install auditwheel==2.0.0 || \
+      sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+    set -e
+  fi
   auditwheel --version
 
   for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do

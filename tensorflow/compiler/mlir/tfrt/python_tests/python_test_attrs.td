@@ -36,6 +36,8 @@ def PythonTestAttrsDialect : Dialect {
       return (getDialectNamespace() + ".shape_value").str();
     }
   }];
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 #endif  // PYTHON_TEST_ATTRS

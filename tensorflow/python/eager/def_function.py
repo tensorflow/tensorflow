@@ -61,6 +61,7 @@ time if it sees variables on the first call.
 """
 
 import functools
+import os
 import threading
 import types as types_lib
 import weakref
@@ -377,6 +378,10 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
 
+
+JIT_COMPILE_FUNCTIONS = (
+    os.getenv("TF_FUNCTION_JIT_COMPILE_DEFAULT", "false").lower()
+    in ("true", "1"))
 
 RUN_FUNCTIONS_EAGERLY = False
 
@@ -1656,6 +1661,9 @@ def function(func=None,
     function_lib.validate_signature(input_signature)
   if experimental_follow_type_hints is None:
     experimental_follow_type_hints = False
+
+  if jit_compile is None and JIT_COMPILE_FUNCTIONS:
+    jit_compile = True
 
   def decorated(inner_function):
     try:

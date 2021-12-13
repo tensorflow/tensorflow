@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,13 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/c/c_api_for_testing.h"
 
-#include "tensorflow/compiler/xla/service/gpu/nccl_test_utils.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 
-namespace xla {
-namespace gpu {
+extern "C" {
 
-absl::flat_hash_set<GlobalDeviceId> DevicesWithOpenNcclChannels() { return {}; }
+int32_t TfLiteInterpreterOptionsGetNumThreads(
+    TfLiteInterpreterOptions* options) {
+  return options->num_threads;
+}
 
-}  // namespace gpu
-}  // namespace xla
+}  // extern "C"

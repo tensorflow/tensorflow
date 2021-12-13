@@ -26,7 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "dnnl_threadpool.hpp"
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/threadpool.h"
 #define EIGEN_USE_THREADS

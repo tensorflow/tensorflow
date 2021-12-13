@@ -26,7 +26,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/platform/env.h"
@@ -76,22 +75,12 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
     // TODO(jpienaar): Both the graph debug info and import config should be
     // specifiable.
     GraphDebugInfo debug_info;
-    GraphImportConfig import_config;
-    import_config.graph_as_function = true;
-    import_config.prune_unused_nodes = false;
     switch (config.dialect) {
       case MlirDumpConfig::Dialect::kTFG: {
         TF_ASSIGN_OR_RETURN(module,
                             mlir::tfg::ImportGraphAndFunctionsToMlir(
                                 &context, graph, debug_info,
                                 flib_def ? *flib_def : graph.flib_def()));
-        break;
-      }
-      case MlirDumpConfig::Dialect::kTFExecutor: {
-        TF_ASSIGN_OR_RETURN(
-            module, ConvertGraphToMlir(graph, debug_info,
-                                       flib_def ? *flib_def : graph.flib_def(),
-                                       import_config, &context));
         break;
       }
     }

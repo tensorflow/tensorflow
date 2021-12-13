@@ -118,7 +118,7 @@ cc_library_with_tflite(
     name = "native_stable",
     copts = tflite_copts(),
     tflite_deps = [
-        ":native_framework_only",
+        ":native_stable_framework_only",
         "//tensorflow/lite/core/shims:builtin_ops",
         "//tensorflow/lite/core/shims:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/core/shims:framework_stable",

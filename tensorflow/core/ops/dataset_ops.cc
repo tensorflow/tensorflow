@@ -1007,7 +1007,8 @@ REGISTER_OP("OptionalFromValue")
     .Input("components: Toutput_types")
     .Output("optional: variant")
     .Attr("Toutput_types: list(type) >= 1")
-    .SetTypeConstructor(full_type::Unary(TFT_OPTIONAL, "Toutput_types"))
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_OPTIONAL,
+                                                           "Toutput_types"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<DataType> dtypes;
       TF_RETURN_IF_ERROR(c->GetAttr("Toutput_types", &dtypes));

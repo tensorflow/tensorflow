@@ -1306,7 +1306,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
 
   if (ShapeUtil::ElementIsSigned(divide->shape())) {
     int64_t b_value = c->literal().GetFirstElement<T>();
-    if (b_value > 0 && IsPowerOfTwo(static_cast<uint64_t>(b_value))) {
+    if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
       HloInstruction* zero_like_a = MakeScalarLike(a, 0);
 
@@ -1338,7 +1338,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
     }
   } else {
     uint64 b_value = c->literal().GetFirstElement<T>();
-    if (IsPowerOfTwo(b_value)) {
+    if (absl::has_single_bit(b_value)) {
       return HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, a,
           MakeScalarLike(a, tensorflow::Log2Floor64(b_value)));
@@ -3635,7 +3635,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
 
   if (ShapeUtil::ElementIsSigned(remainder->shape())) {
     int64_t b_value = c->literal().GetFirstElement<T>();
-    if (b_value > 0 && IsPowerOfTwo(static_cast<uint64_t>(b_value))) {
+    if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
       HloInstruction* zero_like_a = BroadcastZeros(
           computation, a->shape().element_type(), a->shape().dimensions());
@@ -3668,7 +3668,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
     }
   } else {
     uint64 b_value = c->literal().GetFirstElement<T>();
-    if (IsPowerOfTwo(b_value)) {
+    if (absl::has_single_bit(b_value)) {
       HloInstruction* mask_amount = computation->AddInstruction(
           simplifier->CreateConstantWithLayoutUpdated(
               LiteralUtil::CreateR0<T>(b_value - 1)));
@@ -5808,6 +5808,13 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
           /*batch_group_count=*/1, swapped_window, swapped_dnums,
           precision_config,
           /*preferred_element_type=*/convolution->shape().element_type()));
+
+  // If we're running on GPU we need to check that we can actually lower the
+  // conv with the given reverse_dims (either none, or rank 2 and all)
+  if (!options_.ConvIsLowerable(new_convolution)) {
+    TF_RETURN_IF_ERROR(kernel->parent()->RemoveInstruction(new_convolution));
+    return false;
+  }
 
   convolution->SetupDerivedInstruction(new_convolution);
   TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, new_convolution));

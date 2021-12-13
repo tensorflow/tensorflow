@@ -100,8 +100,7 @@ func @constant_like_static_shape(%arg : tensor<1x2xi64>) -> tensor<1x2xf32> {
 // CHECK-SAME: (%[[ARG:.*]]: tensor<?x?xi64>)
 func @constant_like_dynamic_shape(%arg : tensor<?x?xi64>) -> tensor<?x?xf32> {
   // CHECK: %[[CONSTANT:.*]] = mhlo.constant dense<3.200000e+00> : tensor<f32>
-  // CHECK: %[[UNCASTED_SHAPE:.*]] = shape.shape_of %[[ARG]] : tensor<?x?xi64> -> tensor<?xindex>
-  // CHECK: %[[SHAPE:.*]] = tensor.cast %[[UNCASTED_SHAPE]] : tensor<?xindex> to tensor<2xindex>
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[ARG]] : tensor<?x?xi64> -> tensor<2xindex>
   // CHECK: %[[BROADCASTED_CONSTANT:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[CONSTANT]], %[[SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<2xindex>) -> tensor<?x?xf32>
   // CHECK: return %[[BROADCASTED_CONSTANT]] : tensor<?x?xf32>
   %result = "chlo.constant_like"(%arg) { value = 3.2 : f32 }
@@ -2130,9 +2129,8 @@ func @polygamma_f16(%lhs : tensor<f16>, %rhs : tensor<f16>) -> tensor<f16> {
 // CHECK-SAME: (%[[X:.*]]: tensor<f32>)
 func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TWO:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[X]] : tensor<f32> -> tensor<?xindex>
-  // CHECK: %[[CASTED_SHAPE:.*]] = tensor.cast %[[SHAPE]] : tensor<?xindex> to tensor<0xindex>
-  // CHECK: %[[BROADCASTED_TWO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[CASTED_SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<0xindex>) -> tensor<f32>
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[X]] : tensor<f32> -> tensor<0xindex>
+  // CHECK: %[[BROADCASTED_TWO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<0xindex>) -> tensor<f32>
   // CHECK: %[[LOG_TWO:.*]] = "mhlo.log"(%[[BROADCASTED_TWO]]) : (tensor<f32>) -> tensor<f32>
   // CHECK: %[[LOG_HALF:.*]] = "mhlo.negate"(%[[LOG_TWO]]) : (tensor<f32>) -> tensor<f32>
   // CHECK: %[[X_PLUS_LOG_HALF:.*]] = mhlo.add %[[X]], %[[LOG_HALF]] : tensor<f32>
@@ -2173,9 +2171,8 @@ func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
 // CHECK-SAME: (%[[X:.*]]: tensor<2xcomplex<f32>>)
 func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
   // CHECK: %[[TWO:.*]] = mhlo.constant dense<(2.000000e+00,0.000000e+00)> : tensor<complex<f32>>
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[X]] : tensor<2xcomplex<f32>> -> tensor<?xindex>
-  // CHECK: %[[CASTED_SHAPE:.*]] = tensor.cast %[[SHAPE]] : tensor<?xindex> to tensor<1xindex>
-  // CHECK: %[[BROADCASTED_TWO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[CASTED_SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<complex<f32>>, tensor<1xindex>) -> tensor<2xcomplex<f32>>
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[X]] : tensor<2xcomplex<f32>> -> tensor<1xindex>
+  // CHECK: %[[BROADCASTED_TWO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<complex<f32>>, tensor<1xindex>) -> tensor<2xcomplex<f32>>
   // CHECK: %[[LOG_TWO:.*]] = "mhlo.log"(%[[BROADCASTED_TWO]]) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   // CHECK: %[[LOG_HALF:.*]] = "mhlo.negate"(%[[LOG_TWO]]) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   // CHECK: %[[X_PLUS_LOG_HALF:.*]] = mhlo.add %[[X]], %[[LOG_HALF]] : tensor<2xcomplex<f32>>

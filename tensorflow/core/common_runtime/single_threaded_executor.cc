@@ -28,7 +28,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ValidateOpIsSafeForSyncExecution(const Node& n) {
+Status ValidateOpIsSafeForSyncExecution(
+    const Node& n, bool allow_control_flow_sync_execution) {
   for (DataType dt : n.output_types()) {
     if (IsRefType(dt)) {
       return errors::Unimplemented(
@@ -37,7 +38,16 @@ Status ValidateOpIsSafeForSyncExecution(const Node& n) {
           DataTypeString(dt), " in outputs of node ", n.name());
     }
   }
-  if (n.IsControlFlow()) {
+  // Executing Switch nodes requires propagating deadness which is
+  // not currently supported in the SingleThreadedExecutor.
+  if (n.IsSwitch()) {
+    return errors::FailedPrecondition(
+        "Single-threaded executor does not support switch op, but saw node ",
+        n.name(),
+        ". Perhaps your graph contains old-style control flow primitives? "
+        "Try using tf.compat.v1.enable_control_flow_v2().");
+  }
+  if (n.IsControlFlow() && !allow_control_flow_sync_execution) {
     return errors::FailedPrecondition(
         "Single-threaded executor does not support low level control flow, "
         " but saw control flow node ",
@@ -92,7 +102,8 @@ class SingleThreadedExecutorImpl : public Executor {
 
     // Create the kernel and input-related structures for each node in `graph`.
     for (Node* n : ordered_nodes) {
-      TF_RETURN_IF_ERROR(ValidateOpIsSafeForSyncExecution(*n));
+      TF_RETURN_IF_ERROR(ValidateOpIsSafeForSyncExecution(
+          *n, params_.allow_control_flow_sync_execution));
       if (n->IsArg()) {
         int32_t arg_index;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &arg_index));

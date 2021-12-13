@@ -288,7 +288,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
   // Custom runner for compiling specializations that schedules compilation task
   // into the dedicated thread pool and adds tracing.
-  auto runner = [kernel, request_id](size_t num_specializations,
+  auto runner = [kernel, request_id](size_t specialization,
                                      ArrayRef<OperandConstraint> constraints,
                                      ArrayRef<MemrefDesc> operands,
                                      TaskFunction compile,
@@ -315,7 +315,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // Schedule specialization compilation task into the dedicated thread pool.
     CompilationThreadPool& thread_pool = CompilationThreadPool::Get(exec_ctx);
 
-    thread_pool.Schedule([request_id, kernel, num_specializations,
+    thread_pool.Schedule([request_id, kernel, specialization,
                           compile = std::move(compile),
                           args = std::move(args)]() mutable {
       // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
@@ -331,7 +331,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                              {{"id", request_id},
                               {"kernel_id", kernel.id()},
                               {"executable", name},
-                              {"num_specializations", num_specializations}});
+                              {"specialization", specialization}});
       });
 
       for (SpecializationArg& arg : args) {
@@ -503,7 +503,9 @@ static void ExecuteImpl(Executable& executable,
         "tf_cpurt.Execute",
         {{"id", id},
          {"executable", name},
-         {"specialized", executable.specialized() ? "true" : "false"},
+         {"specialization", !executable.specialization().hasValue()
+                                ? "default"
+                                : std::to_string(*executable.specialization())},
          {"num_worker_threads", executable.num_worker_threads()}});
   });
 

@@ -3915,8 +3915,8 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
         if (reduction_codegen_state.IsRowReduction()) {
           // Allocate __shared__
           // cache[num_partial_results][num_warps][scaling_factor].
-          CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % kWarpSize, 0);
-          int num_warps = tiling_scheme.GetNumThreadsPerBlock() / kWarpSize;
+          CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % WarpSize(), 0);
+          int num_warps = tiling_scheme.GetNumThreadsPerBlock() / WarpSize();
           return AllocateShared(tiling_scheme, element_type,
                                 {num_partial_results, num_warps},
                                 "shared_cache");
@@ -4149,7 +4149,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
 
   KernelSupportLibrary ksl(&b_);
   llvm::Value* warp_id =
-      b_.CreateUDiv(thread_id_info.thread_id_x, constant(kWarpSize));
+      b_.CreateUDiv(thread_id_info.thread_id_x, constant(WarpSize()));
 
   ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
     for (int oidx = 0; oidx < num_outputs; oidx++) {
@@ -4184,7 +4184,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
 
       llvm::Value* warp_exists = b_.CreateICmpULT(
           thread_id_info.thread_id_x,
-          constant(tiling_scheme.GetNumThreadsFor(kDimX) / kWarpSize));
+          constant(tiling_scheme.GetNumThreadsFor(kDimX) / WarpSize()));
 
       llvm::Value* selected_value =
           b_.CreateSelect(warp_exists, block_accum_addr, initial_value_addr);
@@ -4339,7 +4339,7 @@ IrEmitterUnnested::ThreadIdInfo IrEmitterUnnested::EmitThreadIdInfo(
           /*thread_id_y=*/
           b_.CreateUDiv(thread_id_logical, num_threads_x_v, "thread_id.y"),
           /*lane_id=*/
-          b_.CreateURem(thread_id_logical, constant(kWarpSize), "lane_id"),
+          b_.CreateURem(thread_id_logical, constant(WarpSize()), "lane_id"),
           /*block_id=*/block_id_logical,
           /*scaling=*/scaling};
 }
@@ -4787,11 +4787,11 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
   }
 
   constexpr int kNumRows = 4;
-  CHECK_EQ(kWarpSize % kNumRows, 0);
+  CHECK_EQ(WarpSize() % kNumRows, 0);
   TilingScheme tiling_scheme({reduced_dims_021->at(0), reduced_dims_021->at(1),
                               reduced_dims_021->at(2)},
-                             /*tile_sizes=*/{1, kWarpSize / kNumRows, 1},
-                             /*num_threads=*/{1, kNumRows, kWarpSize},
+                             /*tile_sizes=*/{1, WarpSize() / kNumRows, 1},
+                             /*num_threads=*/{1, kNumRows, WarpSize()},
                              /*indexing_order=*/kLinearIndexingX,
                              /*vector_size=*/1,
                              /*scaling_factor=*/1);
@@ -4867,7 +4867,7 @@ int64_t NumInputsWithMoreElementsThan(mlir::lmhlo::FusionOp fusion,
 bool IsUnrollingColumnReductionBeneficial(mlir::lmhlo::FusionOp fusion,
                                           const Shape& input_shape,
                                           int64_t num_kept_minor) {
-  if (num_kept_minor % (kWarpSize * 2) != 0) {
+  if (num_kept_minor % (WarpSize() * 2) != 0) {
     return false;
   }
 
@@ -5031,7 +5031,8 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
   Vector3 reduction_tiling = GetReductionTiling(
       reduction_dimensions, ir_emitter_context_->cuda_compute_capability());
 
-  int64_t num_threads_y = reduction_dimensions.is_row_reduction ? 1 : kWarpSize;
+  int64_t num_threads_y =
+      reduction_dimensions.is_row_reduction ? 1 : WarpSize();
   int64_t num_threads_x = [&] {
     if (reduction_dimensions.is_row_reduction) {
       // Use 512 as default block size (threads per block) for row reductions.
@@ -5039,15 +5040,15 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
       // register pressure when multiple outputs are computed by each thread.
       int64_t fan_out = fusion.getFusionRoots().size();
       int64_t max_block_size =
-          std::max(kMinThreadsXRowReduction,
+          std::max(MinThreadsXRowReduction(),
                    static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
       return std::min(
           max_block_size,
           RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],
                                        reduction_tiling[2]),
-                           kWarpSize));
+                           WarpSize()));
     }
-    return kWarpSize;
+    return WarpSize();
   }();
 
   se::CudaComputeCapability cc = ir_emitter_context_->cuda_compute_capability();
@@ -5155,7 +5156,7 @@ void IrEmitterUnnested::EmitIRForReduction(
 
   CHECK(!reductions.empty()) << " expect at least one reduce instructions.";
   const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
-  CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % kWarpSize, 0);
+  CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % WarpSize(), 0);
   llvm::Type* index_ty =
       GetIndexTypeForKernel(fusion,
                             tiling_scheme.GetNumThreadsPerBlockPhysical() *
