@@ -1839,7 +1839,7 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     int64_t dim_size =
         dim < shape_dim_size ? shape_dimensions[minor_to_major[dim]] : 1;
     num_of_elements *=
-        RoundUpToNearest(dim_size, tile_dimensions[tile_dim_size - dim - 1]);
+        RoundUpTo(dim_size, tile_dimensions[tile_dim_size - dim - 1]);
   }
   for (; dim < shape_dim_size; dim++) {
     int64_t dim_size = shape_dimensions[minor_to_major[dim]];

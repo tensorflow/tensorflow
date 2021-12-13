@@ -2913,7 +2913,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   // the dimension that should be sorted into tiles of size 'kTileSize'. This
   // means we first need to round 'dimension_to_sort_bound' up to be a multiple
   // of the tile size.
-  int64_t rounded_bound = RoundUpToNearest(dimension_to_sort_bound, kTileSize);
+  int64_t rounded_bound = RoundUpTo(dimension_to_sort_bound, kTileSize);
   Shape iteration_shape = keys_shape;
 
   // We iterate through the element pairs that should be compared.
@@ -5042,11 +5042,10 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
       int64_t max_block_size =
           std::max(MinThreadsXRowReduction(),
                    static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
-      return std::min(
-          max_block_size,
-          RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],
-                                       reduction_tiling[2]),
-                           WarpSize()));
+      return std::min(max_block_size,
+                      RoundUpTo(CeilOfRatio(reduction_dimensions.dimensions[2],
+                                            reduction_tiling[2]),
+                                WarpSize()));
     }
     return WarpSize();
   }();
