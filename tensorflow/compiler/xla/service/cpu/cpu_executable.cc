@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -166,7 +167,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
-  auto cleanup = MakeCleanup(
+  auto cleanup = absl::MakeCleanup(
       [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name_); });
 
   size_t profile_counters_size =

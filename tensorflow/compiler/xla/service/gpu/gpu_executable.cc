@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -183,7 +184,7 @@ Status ExecuteThunks(const std::string& module_name,
                      const BufferAllocations& buffer_allocations,
                      bool block_host_until_done) {
   XlaDebugInfoManager::Get()->OnModuleStart(module_name);
-  auto cleanup = MakeCleanup(
+  auto cleanup = absl::MakeCleanup(
       [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name); });
 
   se::Stream* main_stream = run_options->stream();
@@ -539,7 +540,7 @@ static Status ExecuteBef(const std::string& module_name,
                          const BufferAllocations& buffer_allocations,
                          size_t num_allocations, bool block_host_until_done) {
   XlaDebugInfoManager::Get()->OnModuleStart(module_name);
-  auto cleanup = MakeCleanup(
+  auto cleanup = absl::MakeCleanup(
       [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name); });
 
   se::Stream* main_stream = run_options->stream();

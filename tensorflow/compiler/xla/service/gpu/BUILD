@@ -750,6 +750,7 @@ cc_library(
         ":stream_assignment",
         ":stream_executor_util",
         ":thunk",
+        "@com_google_absl//absl/cleanup",
         "@llvm-project//mlir:IR",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
