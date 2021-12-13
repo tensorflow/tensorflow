@@ -129,7 +129,7 @@ struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
 //     : tensor<?xf32> to tensor<?xf32>
 //   %tile_pad = linalg.pad_tensor %tile
 //     : tensor<?xf32> to tensor<VECTOR_SIZExf32>
-//   %tile_reshape = linalg.tensor_expand_shape %tile_pad [[0, 1]]
+//   %tile_reshape = tensor.expand_shape %tile_pad [[0, 1]]
 //     : tensor<VECTOR_SIZExf32> into tensor<1xVECTOR_SIZExf32>
 //   %combine = linalg.generic ins(%tile_reshape : tensor<1xVECTOR_SIZExf32>)
 //     outs(%tmp_result_ : tensor<VECTOR_SIZExf32>) -> tensor<VECTOR_SIZExf32>
