@@ -77,6 +77,10 @@
   * `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
     `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is
     deprecated and will be removed in a future release.
+  * Metrics update and collection logic in default `Model.train_step()` is now
+    customizable via overriding `Model.compute_metrics()`.
+  * Losses computation logic in default `Model.train_step()` is now
+    customizable via overriding `Model.compute_loss()`.
 
 # Thanks to our Contributors
 
@@ -95,10 +99,6 @@ This release contains contributions from many people at Google, as well as:
   * The methods `Model.to_yaml()` and `keras.models.model_from_yaml` have been replaced to raise a `RuntimeError` as they can be abused to cause arbitrary code execution. It is recommended to use JSON serialization instead of YAML, or, a better alternative, serialize to H5.
   * `LinearModel` and `WideDeepModel` are moved to the `tf.compat.v1.keras.models.` namespace (`tf.compat.v1.keras.models.LinearModel` and `tf.compat.v1.keras.models.WideDeepModel`), and their `experimental` endpoints (`tf.keras.experimental.models.LinearModel` and `tf.keras.experimental.models.WideDeepModel`) are being deprecated.
   * RNG behavior change for all `tf.keras.initializers` classes. For any class constructed with a fixed seed, it will no longer generate same value when invoked multiple times. Instead, it will return different value, but a determinisitic sequence. This change will make the initialize behavior align between v1 and v2.
-  * Metrics update and collection logic in default `Model.train_step()` is now
-    customizable via overriding `Model.compute_metrics()`.
-  * Losses computation logic in default `Model.train_step()` is now
-    customizable via overriding `Model.compute_loss()`.
 
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with TF SavedModel's Signature concept.
