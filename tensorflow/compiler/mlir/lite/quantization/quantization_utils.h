@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -55,6 +56,13 @@ namespace quant {
 // added by the quantization passes. These ops can be removed erased without
 // losing accuracy.
 constexpr char kVolatileOpAttrName[] = "volatile";
+
+// Following attributes are used to mark ops that are not quantizable during
+// debug model generation process for whole-model verify mode. If these
+// attributes are attached, the upstream float/quantized ops know which ops to
+// connect to, and it also prevents these ops from being copied again.
+constexpr char kDebugModeOpFloatAttrName[] = "debug_float";
+constexpr char kDebugModeOpQuantAttrName[] = "debug_quant";
 
 constexpr double kNearZeroTolerance = 1.0e-6;
 
@@ -314,9 +322,29 @@ class QuantizationPattern : public RewritePattern {
       }
 
       // If the op is terminator, not quantizable or any ops from the mlir quant
-      // ops dialect, we shouldn't rewrite.
-      if (IsOpNotQuantizable(quantizing_op)) {
+      // ops dialect, we shouldn't rewrite. In case of whole-model verify debug
+      // mode, not-quantizable ops should be duplicated to keep parallel
+      // float/quant model execution.
+      if (quantizing_op->hasTrait<OpTrait::IsTerminator>()) {
         return failure();
+      }
+
+      if (IsOpNotQuantizable(quantizing_op)) {
+        if (!(enable_verify_ && whole_model_verify_)) {
+          return failure();
+        }
+        if (quantizing_op->hasAttr(kDebugModeOpQuantAttrName) ||
+            quantizing_op->hasAttr(kDebugModeOpFloatAttrName)) {
+          return failure();
+        }
+
+        rewriter.setInsertionPoint(quantizing_op);
+        Operation* float_op = rewriter.clone(*quantizing_op);
+        quantizing_op->setAttr(kDebugModeOpQuantAttrName,
+                               rewriter.getUnitAttr());
+        float_op->setAttr(kDebugModeOpFloatAttrName, rewriter.getUnitAttr());
+        RewireFloatModelBackbone(quantizing_op, float_op);
+        return success();
       }
 
       if (!ops_blocklist_.empty() &&
@@ -432,7 +460,7 @@ class QuantizationPattern : public RewritePattern {
       if (enable_verify_) {
         // For constant operands, the floating-point constant is duplicated in
         // case it is quantized.
-        for (int i = 0, e = quantized_op->getNumOperands(); i != e; ++i) {
+        for (int i = 0, e = quantized_op->getNumOperands(); i < e; ++i) {
           auto def = quantized_op->getOperand(i).getDefiningOp();
           if (auto q = llvm::dyn_cast_or_null<Q>(def)) {
             DenseFPElementsAttr attr;
@@ -445,7 +473,7 @@ class QuantizationPattern : public RewritePattern {
           }
         }
 
-        for (int i = 0, e = quantized_op->getNumResults(); i != e; ++i) {
+        for (int i = 0, e = quantized_op->getNumResults(); i < e; ++i) {
           if (!quantizing_op->getResult(i)
                    .getType()
                    .cast<ShapedType>()
@@ -462,22 +490,8 @@ class QuantizationPattern : public RewritePattern {
               quantized_op->getResult(i), quantizing_op->getResult(i),
               tolerance, log);
 
-          if (!whole_model_verify_) continue;
-
-          // Find the Quantize/Dequantize users of the new op results, and
-          // replace the usage. Then all the floating-point ops are connected,
-          // forming a separate float "backbone" model that the quantized model
-          // can be compared against in parallel.
-          // N.B. the return op will use this floating-point result.
-          for (auto user : quantized_op->getResult(i).getUsers()) {
-            // Skip the Requantize op, and we know it has a single user.
-            if (llvm::isa<Q>(user)) {
-              user = *user->getResult(0).getUsers().begin();
-            }
-            if (auto dequantize = llvm::dyn_cast<DQ>(user)) {
-              dequantize.getResult().replaceAllUsesWith(
-                  quantizing_op->getResult(i));
-            }
+          if (whole_model_verify_) {
+            RewireFloatModelBackbone(quantized_op, quantizing_op);
           }
         }
       }
@@ -493,12 +507,75 @@ class QuantizationPattern : public RewritePattern {
     return false;
   }
 
+  // Reconnects float ops in the whole-model verify mode. Works for both
+  // Quantizable ops and Unquantizable ops
+  void RewireFloatModelBackbone(Operation* quantized_op,
+                                Operation* float_op) const {
+    for (int i = 0, e = quantized_op->getNumResults(); i < e; ++i) {
+      if (!float_op->getResult(i)
+               .getType()
+               .cast<ShapedType>()
+               .getElementType()
+               .isF32()) {
+        continue;
+      }
+      // Find the Quantize/Dequantize users of the new op results, and replace
+      // the usage. Then all the floating-point ops are connected, forming a
+      // separate float "backbone" model that the quantized model can be
+      // compared against in parallel.
+      // N.B. the return op will use this floating-point result.
+      Value result;
+      if (IsOpNotQuantizable(float_op)) {
+        // For not quantizable ops, search for dequantize attached to the
+        // quantized op of the output.
+        if (Operation* quantize_op = dyn_cast_or_null<Q>(
+                *quantized_op->getResult(i).getUsers().begin())) {
+          result = quantize_op->getResult(0);
+        } else {
+          quantize_op->emitError()
+              << "Output[" << i
+              << "] is expected to have only one user [QUANTIZE]";
+          return;
+        }
+      } else {
+        result = quantized_op->getResult(i);
+      }
+      for (auto user : result.getUsers()) {
+        // Skip the Requantize op and set the user to the following dequantize
+        // op. This happens when the quantizer tries to match the scale conflict
+        // with Q - Q(requant) - DQ op triples. The correct float op should be
+        // the user of the last DQ op.
+        if (llvm::isa<Q>(user)) {
+          user = *user->getResult(0).getUsers().begin();
+        }
+        if (auto dequantize = llvm::dyn_cast<DQ>(user)) {
+          // Replace all uses, except not quantizable ops that are being used in
+          // the float backbone.
+          dequantize.getResult().replaceUsesWithIf(
+              float_op->getResult(i), [&](OpOperand& use) {
+                return !use.getOwner()->hasAttr(kDebugModeOpQuantAttrName);
+              });
+        }
+      }
+    }
+  }
+
   bool enable_verify_;
   float error_tolerance_;
   bool whole_model_verify_;
   bool log_if_failed_;
   const StringSet ops_blocklist_;
   const StringSet nodes_blocklist_;
+};
+
+// A pattern that removes debug attributes that are annotated to ops during
+// the debug model creation.
+class RemoveDebugAttrPattern : public RewritePattern {
+ public:
+  explicit RemoveDebugAttrPattern(MLIRContext* context)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override;
 };
 
 // Converts quantized tensor type with signed integer type to quantized tensor
@@ -546,7 +623,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
       auto zero_points = aqtype.getZeroPoints();
       llvm::SmallVector<int64_t, 4> new_zero_points(zero_points.begin(),
                                                     zero_points.end());
-      for (int i = 0, e = new_zero_points.size(); i != e; ++i) {
+      for (int i = 0, e = new_zero_points.size(); i < e; ++i) {
         new_zero_points[i] -= offset;
       }
       new_qtype = quant::UniformQuantizedPerAxisType::getChecked(
