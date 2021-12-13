@@ -290,7 +290,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/175322370): Detected Infinity or NaN in output 0 of graph op "RealDiv"
-        "no_oss_py310",  # b/209089624
         "no_windows",
     ],
     deps = [
@@ -395,7 +394,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_oss_py310",  # b/209089616
         "no_windows",
     ],
     deps = [
