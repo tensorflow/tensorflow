@@ -945,7 +945,7 @@ class FilterCacheTest : public OpsTestBase {
       test::ExpectTensorEqual<T>(expected, output);
     }
 
-    // TODO(bhavanis): For now, we rely on internal performance tests to
+    // TODO(intel-tf): For now, we rely on internal performance tests to
     // determine if filter data is being cached and reused.
     // However, we still need to add a check here to determine if this is
     // still the case by inspecting the contents of the persistent tensor.
@@ -1269,7 +1269,7 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
   }
 
   TF_EXPECT_OK(InitOp());
-  // The tensor shape of (1,3) is selected to allow the mkldnn expected
+  // The tensor shape of (1,3) is selected to allow the oneDNN expected
   // weight format to be made as OI rather than IO for BS > 1
   // A matrix is:
   // |  1 |  2 |  3 |
@@ -1383,7 +1383,7 @@ class BiasCacheTest : public OpsTestBase {
     const Tensor& output = *GetOutput(0);
     test::ExpectTensorEqual<quint8>(expected, output);
 
-    // TODO(wenxi): For now, we rely on internal performance tests to
+    // TODO(intel-tf): For now, we rely on internal performance tests to
     // determine if filter data is being cached and reused.
     // However, we still need to add a check here to determine if this is
     // still the case by inspecting the contents of the persistent tensor.

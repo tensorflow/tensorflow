@@ -241,7 +241,8 @@ class ColumnMajorMatrixVectorProductEmitter
         b_(b),
         ksl_(b_),
         vsl_(config.scalar_type(), /*vector_size=*/config.tile_rows(), b_, "") {
-    CHECK(tile_rows() > 0 && IsPowerOfTwo(static_cast<uint64_t>(tile_rows())));
+    CHECK(tile_rows() > 0 &&
+          absl::has_single_bit(static_cast<uint64_t>(tile_rows())));
     CHECK(!has_addend() || addend != nullptr);
   }
 
@@ -467,7 +468,8 @@ class RowMajorMatrixVectorProductEmitter
         b_(b),
         ksl_(b_),
         vsl_(scalar_type(), /*vector_size=*/tile_cols(), b_, "") {
-    CHECK(tile_cols() > 0 && IsPowerOfTwo(static_cast<uint64_t>(tile_cols())));
+    CHECK(tile_cols() > 0 &&
+          absl::has_single_bit(static_cast<uint64_t>(tile_cols())));
     CHECK(!has_addend() || addend != nullptr);
   }
 
@@ -706,11 +708,13 @@ class TiledSmallGemmEmitter {
         config_(config),
         b_(b),
         ksl_(b_) {
-    CHECK(max_vectorization_width() > 0 &&
-          IsPowerOfTwo(static_cast<uint64_t>(max_vectorization_width())));
+    CHECK(
+        max_vectorization_width() > 0 &&
+        absl::has_single_bit(static_cast<uint64_t>(max_vectorization_width())));
     CHECK_GT(max_vector_count(), 0);
-    CHECK(min_vectorization_width() > 0 &&
-          IsPowerOfTwo(static_cast<uint64_t>(min_vectorization_width())));
+    CHECK(
+        min_vectorization_width() > 0 &&
+        absl::has_single_bit(static_cast<uint64_t>(min_vectorization_width())));
     CHECK_GE(max_vectorization_width(), min_vectorization_width());
     CHECK_GT(tile_size_k(), 0);
   }
