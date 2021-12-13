@@ -63,7 +63,6 @@ cc_library(
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:model_metadata",
-        "//tensorflow/core/tfrt/utils:statusor",
         "//tensorflow/core/tfrt/utils:tensor_util",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
         "@com_google_absl//absl/container:flat_hash_map",

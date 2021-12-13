@@ -80,6 +80,7 @@ constexpr absl::string_view kTensorNameJoiningDelimiter = "-";
 constexpr absl::string_view kArgumentTypeJoiningDelimiter = "^";
 
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
+using ::tensorflow::StatusOr;
 
 struct InitializersAndSignatures {
   llvm::SmallVector<std::string, 4> initializers;

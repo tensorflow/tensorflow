@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/utils/model_metadata.h"
-#include "tensorflow/core/tfrt/utils/statusor.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
@@ -304,25 +303,28 @@ class SavedModelImpl final : public SavedModel {
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
-  StatusOr<mlir::OwningModuleRef> ImportSubgraph(
+  tensorflow::StatusOr<mlir::OwningModuleRef> ImportSubgraph(
       mlir::MLIRContext* context,
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
       const std::vector<std::string>& target_nodes);
 
   // Given the joined signature, loads the subgraph and returns loading result.
-  StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+  tensorflow::StatusOr<
+      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   LoadJoinedSignature(const JoinedSignature& joined_signature)
       TF_EXCLUSIVE_LOCKS_REQUIRED(loading_result_cache_mu_);
 
   // Returns the loading result given the signature names.
-  StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+  tensorflow::StatusOr<
+      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   GetOrCreateLoadingResult(absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
   // Returns the loading result given inputs, output_tensor_names, and
   // target_node_names.
-  StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+  tensorflow::StatusOr<
+      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   GetOrCreateLoadingResult(
       absl::Span<const std::string> input_tensor_names,
       absl::Span<const tensorflow::DataType> input_tensor_dtypes,

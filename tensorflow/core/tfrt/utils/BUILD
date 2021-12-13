@@ -33,13 +33,12 @@ cc_library(
         "utils.h",
     ],
     deps = [
-        ":statusor",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/tfrt/eager:virtual_device",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tpu:virtual_device",
@@ -74,13 +73,13 @@ cc_library(
         "tensor_util.h",
     ],
     deps = [
-        ":statusor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
@@ -148,17 +147,10 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "statusor",
-    hdrs = ["statusor.h"],
-    deps = ["//tensorflow/stream_executor/lib"],
-)
-
-cc_library(
     name = "tfrt_graph_execution_state",
     srcs = ["tfrt_graph_execution_state.cc"],
     hdrs = ["tfrt_graph_execution_state.h"],
     deps = [
-        ":statusor",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/core:core_cpu_base",
@@ -172,6 +164,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "@com_google_absl//absl/container:flat_hash_map",
