@@ -57,11 +57,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
 
-try:
-  import attr  # pylint:disable=g-import-not-at-top
-except ImportError:
-  attr = None
-
 
 GPU_TEST = "test_gpu" in sys.argv[0]
 
@@ -1452,82 +1447,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return f()
 
       distribution.run(replica_fn)
-
-
-@combinations.generate(
-    combinations.combine(
-        distribution=[
-            strategy_combinations.mirrored_strategy_with_two_gpus,
-            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-        ],
-        mode=["eager"]))
-class MirroredAttrNestingTest(
-    strategy_test_lib.DistributionTestBase,
-    strategy_test_lib.TwoDeviceDistributionTestBase,
-    parameterized.TestCase):
-
-  def test_attr_nesting_structure(self, distribution):
-
-    if attr is None:
-      self.skipTest("attr module is unavailable.")
-
-    @attr.s
-    class WrappedTensor(object):
-      tensor = attr.ib()
-
-    @def_function.function
-    def func_attr(x):
-      def func_attr_per_replica(x):
-        return x
-      result = distribution.run(func_attr_per_replica, (x,))
-      return result
-
-    with distribution.scope():
-      data = dataset_ops.Dataset.from_tensors(
-          constant_op.constant(0, shape=[2])
-          )
-      data = distribution.experimental_distribute_dataset(data)
-      v = next(iter(data))
-
-      x = WrappedTensor(v)
-      x = func_attr(x)
-      self.assertIsInstance(x, WrappedTensor)
-
-  def test_attr_nesting_structure_addl_var(self, distribution):
-
-    if attr is None:
-      self.skipTest("attr module is unavailable.")
-
-    @attr.s
-    class WrappedTensor(object):
-      tensor0 = attr.ib()
-      tensor1 = attr.ib()
-
-    @def_function.function
-    def func_attr(x):
-      def func_attr_per_replica(x):
-        return x
-      result = distribution.run(func_attr_per_replica, (x,))
-      return result
-
-    with distribution.scope():
-      data = dataset_ops.Dataset.from_tensors(
-          (constant_op.constant(0,
-                                shape=[2]), constant_op.constant(1, shape=[2])))
-      data = distribution.experimental_distribute_dataset(data)
-      v = next(iter(data))
-
-      x = WrappedTensor(tensor0=v[0], tensor1=v[1])
-      x = func_attr(x)
-      self.assertIsInstance(x, WrappedTensor)
-
-      # check that values are in the right places
-      self.assertEqual(self.evaluate(x.tensor0.values[0]), 0)
-      self.assertEqual(self.evaluate(x.tensor0.values[0]),
-                       self.evaluate(x.tensor0.values[1]))
-      self.assertEqual(self.evaluate(x.tensor1.values[0]), 1)
-      self.assertEqual(self.evaluate(x.tensor1.values[0]),
-                       self.evaluate(x.tensor1.values[1]))
 
 
 def _replica_id():
