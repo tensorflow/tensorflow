@@ -171,6 +171,23 @@ cc_library(
 )
 
 cc_library(
+    name = "dequantize_tester",
+    testonly = 1,
+    srcs = ["dequantize_tester.cc"],
+    hdrs = ["dequantize_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "fully_connected_tester",
     testonly = 1,
     srcs = ["fully_connected_tester.cc"],
@@ -1046,6 +1063,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_dequantize_test",
+    srcs = ["signed_dequantize_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":dequantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantize_test",
     srcs = ["signed_quantize_test.cc"],
     linkopts = select({
@@ -1341,6 +1373,21 @@ cc_test(
         ":test_main",
         ":transpose_conv_tester",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_dequantize_test",
+    srcs = ["unsigned_dequantize_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":dequantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
