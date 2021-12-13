@@ -909,8 +909,8 @@ void Decode(const data::TensorDescWithId* fb_desc, TensorDescriptor* desc,
 }
 
 flatbuffers::Offset<data::GpuNode> Encode(
-    const CLNode& node, flatbuffers::FlatBufferBuilder* builder) {
-  auto op_fb = Encode(node.cl_operation.GetGpuOperation(), builder);
+    const GpuNode& node, flatbuffers::FlatBufferBuilder* builder) {
+  auto op_fb = Encode(*node.gpu_operation, builder);
   std::vector<int32_t> in_ids(node.inputs.size());
   for (int i = 0; i < in_ids.size(); ++i) {
     in_ids[i] = node.inputs[i];
@@ -945,39 +945,42 @@ absl::Status Decode(const data::GpuNode* fb_node, GpuNode* node) {
   return absl::OkStatus();
 }
 
-flatbuffers::Offset<data::GpuModel> EncodeGpuModel(
-    const InferenceContext& inference, const std::vector<int64_t>& in_refs,
-    std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder) {
-  std::vector<int32_t> in_ids(inference.input_ids_.size());
+flatbuffers::Offset<data::GpuModel> Encode(
+    const GpuModel& gpu_model, flatbuffers::FlatBufferBuilder* builder) {
+  std::vector<int32_t> in_ids(gpu_model.input_ids_and_refs.size());
+  std::vector<int64_t> in_refs(gpu_model.input_ids_and_refs.size());
   for (int i = 0; i < in_ids.size(); ++i) {
-    in_ids[i] = inference.input_ids_[i];
-  }
-  std::vector<int32_t> out_ids(inference.output_ids_.size());
-  for (int i = 0; i < out_ids.size(); ++i) {
-    out_ids[i] = inference.output_ids_[i];
+    in_ids[i] = gpu_model.input_ids_and_refs[i].first;
+    in_refs[i] = gpu_model.input_ids_and_refs[i].second;
   }
   auto in_ids_fb = builder->CreateVector(in_ids);
-  auto out_ids_fb = builder->CreateVector(out_ids);
-
   auto in_refs_fb = builder->CreateVector(in_refs);
+
+  std::vector<int32_t> out_ids(gpu_model.output_ids_and_refs.size());
+  std::vector<int64_t> out_refs(gpu_model.output_ids_and_refs.size());
+  for (int i = 0; i < out_ids.size(); ++i) {
+    out_ids[i] = gpu_model.output_ids_and_refs[i].first;
+    out_refs[i] = gpu_model.output_ids_and_refs[i].second;
+  }
+  auto out_ids_fb = builder->CreateVector(out_ids);
   auto out_refs_fb = builder->CreateVector(out_refs);
 
   std::vector<flatbuffers::Offset<data::GpuNode>> nodes_fb;
-  for (int i = 0; i < inference.nodes_.size(); ++i) {
-    auto node_fb = Encode(inference.nodes_[i], builder);
+  for (int i = 0; i < gpu_model.nodes.size(); ++i) {
+    auto node_fb = Encode(gpu_model.nodes[i], builder);
     nodes_fb.push_back(node_fb);
   }
   auto nodes_fb_vec = builder->CreateVector(nodes_fb);
 
   std::vector<flatbuffers::Offset<data::TensorDescWithId>> tensors_fb;
-  for (const auto& tensor : inference.tensors_descs_) {
+  for (const auto& tensor : gpu_model.tensors) {
     auto tensor_fb = Encode(tensor.second, tensor.first, builder);
     tensors_fb.push_back(tensor_fb);
   }
   auto tensors_fb_vec = builder->CreateVector(tensors_fb);
 
   std::vector<flatbuffers::Offset<data::TensorDescWithId>> const_tensors_fb;
-  for (const auto& tensor : inference.const_tensors_descs_) {
+  for (const auto& tensor : gpu_model.const_tensors) {
     auto tensor_fb = Encode(tensor.second, tensor.first, builder);
     const_tensors_fb.push_back(tensor_fb);
   }
@@ -985,7 +988,7 @@ flatbuffers::Offset<data::GpuModel> EncodeGpuModel(
 
   std::vector<flatbuffers::Offset<data::PairOfValueIds>>
       variable_ids_and_refs_fb;
-  for (auto& pair : inference.variable_ids_and_refs_) {
+  for (auto& pair : gpu_model.variable_ids_and_refs) {
     data::PairOfValueIdsBuilder pair_builder(*builder);
     pair_builder.add_first(pair.first);
     pair_builder.add_second(pair.second);
@@ -1042,8 +1045,9 @@ absl::Status Decode(const data::GpuModel* fb_gpu_model, GpuModel* gpu_model) {
 
 flatbuffers::Offset<data::InferenceContext> Encode(
     const CLDevice& device, const InferenceContext& inference,
-    const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
-    std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder) {
+    const ProgramCache& program_cache,
+    flatbuffers::Offset<data::GpuModel> gpu_model_fb,
+    flatbuffers::FlatBufferBuilder* builder) {
   std::vector<flatbuffers::Offset<tflite::gpu::data::Int3>> work_groups_fb;
   for (int i = 0; i < inference.nodes_.size(); ++i) {
     auto work_group_fb =
@@ -1074,7 +1078,6 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   }
   auto binary_programs_fb_vec = builder->CreateVector(binary_programs_fb);
   auto driver_version = builder->CreateString(device.GetPlatformVersion());
-  auto gpu_model_fb = EncodeGpuModel(inference, in_refs, out_refs, builder);
 
   data::InferenceContextBuilder inf_builder(*builder);
   inf_builder.add_gpu_model(gpu_model_fb);

@@ -296,15 +296,14 @@ class SparseSliceOpTest(test.TestCase):
 
   def testLargeSize(self):
     with self.session(use_gpu=False):
-      with self.assertRaises(errors.InvalidArgumentError):
-
-        res = sparse_ops.gen_sparse_ops.sparse_slice(
-            indices=[[0, 0]],
-            values=[0],
-            shape=[1, 1],
-            start=[2**62, -1],
-            size=[2**62, 2**62])
-        self.evaluate(res)
+      # Confirm potential integer overflow due to size is handled by op.
+      res = sparse_ops.gen_sparse_ops.sparse_slice(
+          indices=[[0, 0]],
+          values=[0],
+          shape=[1, 1],
+          start=[2**62, -1],
+          size=[2**62, 2**62])
+      self.evaluate(res)
 
 if __name__ == '__main__':
   test.main()

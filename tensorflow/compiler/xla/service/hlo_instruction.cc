@@ -3990,6 +3990,27 @@ static string CustomCallApiVersionToString(
   return absl::AsciiStrToLower(CustomCallApiVersion_Name(schedule));
 }
 
+string DotDimensionNumbersToString(const DotDimensionNumbers& dnums) {
+  std::vector<string> result;
+  if (!dnums.lhs_batch_dimensions().empty()) {
+    result.push_back(StrCat("lhs_batch_dims={",
+                            StrJoin(dnums.lhs_batch_dimensions(), ","), "}"));
+  }
+  result.push_back(StrCat("lhs_contracting_dims={",
+                          StrJoin(dnums.lhs_contracting_dimensions(), ","),
+                          "}"));
+
+  if (!dnums.rhs_batch_dimensions().empty()) {
+    result.push_back(StrCat("rhs_batch_dims={",
+                            StrJoin(dnums.rhs_batch_dimensions(), ","), "}"));
+  }
+  result.push_back(StrCat("rhs_contracting_dims={",
+                          StrJoin(dnums.rhs_contracting_dimensions(), ","),
+                          "}"));
+
+  return StrJoin(result, ", ");
+}
+
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums) {
   auto len_required = [](int64_t a, int64_t b, absl::Span<const int64_t> cs) {

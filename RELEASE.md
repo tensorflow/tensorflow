@@ -74,6 +74,9 @@
       will allow user to disable and switch back to legacy behavior if they
       prefer. In future (eg tf 2.10), we expect to totally remove the legacy
       code path (stateful random Ops), and these 3 APIs will be removed as well.
+  * `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
+    `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is
+    deprecated and will be removed in a future release.
 
 # Thanks to our Contributors
 

@@ -665,6 +665,12 @@ class TPUEmbedding(tracking.AutoTrackable):
       interleaved_gradients.append(array_ops.reshape(
           array_ops.concat(per_table_gradients[table], axis=1),
           [-1, table.dim]))
+    # This is a temporary workaround to fix shape inference across functional
+    # ops. This ensures that the shape of the gradient is correctly set.
+    interleaved_gradients = [
+        array_ops.reshape(gradient, gradient.shape)
+        for gradient in interleaved_gradients
+    ]
     op = tpu_ops.send_tpu_embedding_gradients(
         inputs=interleaved_gradients,
         learning_rates=[math_ops.cast(fn(), dtype=dtypes.float32)

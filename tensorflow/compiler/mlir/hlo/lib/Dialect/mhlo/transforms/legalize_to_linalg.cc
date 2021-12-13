@@ -943,10 +943,10 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
     if (Optional<SmallVector<ReassociationIndices>> reassociation_map =
             getReassociationIndicesForReshape(operand_type, result_type)) {
       if (result_type.getRank() < operand_type.getRank()) {
-        rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
+        rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
             reshape_op, result_type, operand, *reassociation_map);
       } else {
-        rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
+        rewriter.replaceOpWithNewOp<tensor::ExpandShapeOp>(
             reshape_op, result_type, operand, *reassociation_map);
       }
       return success();
@@ -969,8 +969,8 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
           // dimensions.
           get_identity_exprs(operand_type.getRank())};
 
-      collapsed_op = rewriter.create<linalg::TensorCollapseShapeOp>(
-          loc, operand, collapsing_map);
+      collapsed_op = rewriter.create<tensor::CollapseShapeOp>(loc, operand,
+                                                              collapsing_map);
     }
     // Cast to a known static type if the input has dynamic dimensions.
     int64_t total_elems = result_type.getNumElements();
@@ -984,7 +984,7 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
           // Use result_type here because we need to expand to all result
           // dimensions.
           get_identity_exprs(result_type.getRank())};
-      rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
+      rewriter.replaceOpWithNewOp<tensor::ExpandShapeOp>(
           reshape_op, result_type, collapsed_op, expanding_map);
     }
     return success();
@@ -1861,7 +1861,7 @@ struct DepthwiseConvOpOnTensorsConversion
       SmallVector<ReassociationIndices, 4> collapsed_dim_list = {
           get_indices_vector(0, 1), get_indices_vector(1, 2),
           get_indices_vector(2, 3), get_indices_vector(3, 5)};
-      rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
+      rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
           op, result_type, conv.getResult(0), collapsed_dim_list);
     } else {
       // For cases where channel multiplier == 1
@@ -1887,7 +1887,7 @@ struct DepthwiseConvOpOnTensorsConversion
           get_indices_vector(0, 1), get_indices_vector(1, 2),
           get_indices_vector(2, 4)};
 
-      Value reshaped_filter = rewriter.create<linalg::TensorCollapseShapeOp>(
+      Value reshaped_filter = rewriter.create<tensor::CollapseShapeOp>(
           loc, filter_shape, filter, collapsed_dim_list);
 
       rewriter.replaceOpWithNewOp<linalg::DepthwiseConv2DNhwcHwcOp>(

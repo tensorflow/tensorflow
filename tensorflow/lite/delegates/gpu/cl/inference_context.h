@@ -184,14 +184,11 @@ class InferenceContext {
     kExternal
   };
 
-  friend flatbuffers::Offset<data::GpuModel> EncodeGpuModel(
-      const InferenceContext& inference, const std::vector<int64_t>& in_refs,
-      std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
-
   friend flatbuffers::Offset<data::InferenceContext> Encode(
       const CLDevice& device, const InferenceContext& inference,
-      const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
-      std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
+      const ProgramCache& program_cache,
+      flatbuffers::Offset<data::GpuModel> gpu_model_fb,
+      flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const CLContext& context, const CLDevice& device,
                              ProgramCache* program_cache,
                              const data::InferenceContext* fb_inference,

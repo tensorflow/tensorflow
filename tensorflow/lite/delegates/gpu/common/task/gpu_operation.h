@@ -146,6 +146,7 @@ class GPUOperation {
   virtual absl::Status BindArguments(ArgumentsBinder* args) {
     return absl::OkStatus();
   }
+  void RecalculateGridSize() { grid_size_ = GetGridSize(); }
 
   Arguments args_;
   std::string code_;

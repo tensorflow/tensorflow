@@ -1621,6 +1621,7 @@ distribute_py_test(
     main = "moving_averages_test.py",
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
+        "notpu",  # TODO(b/210145904)
     ],
     deps = [
         ":collective_all_reduce_strategy",

@@ -3140,7 +3140,8 @@ HloInstructionProto HloDotInstruction::ToProto() const {
 
 std::vector<string> HloDotInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> extra = {DotDimensionNumbersToString()};
+  std::vector<string> extra = {
+      DotDimensionNumbersToString(dot_dimension_numbers_)};
 
   string precision_config_string = PrecisionConfigToString(precision_config_);
   if (!precision_config_string.empty()) {
@@ -3167,28 +3168,6 @@ std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
   return absl::make_unique<HloDotInstruction>(
       shape, new_operands[0], new_operands[1], dot_dimension_numbers_,
       precision_config_);
-}
-
-string HloDotInstruction::DotDimensionNumbersToString() const {
-  std::vector<string> result;
-  const DotDimensionNumbers& dnums = dot_dimension_numbers_;
-  if (!dnums.lhs_batch_dimensions().empty()) {
-    result.push_back(StrCat("lhs_batch_dims={",
-                            StrJoin(dnums.lhs_batch_dimensions(), ","), "}"));
-  }
-  result.push_back(StrCat("lhs_contracting_dims={",
-                          StrJoin(dnums.lhs_contracting_dimensions(), ","),
-                          "}"));
-
-  if (!dnums.rhs_batch_dimensions().empty()) {
-    result.push_back(StrCat("rhs_batch_dims={",
-                            StrJoin(dnums.rhs_batch_dimensions(), ","), "}"));
-  }
-  result.push_back(StrCat("rhs_contracting_dims={",
-                          StrJoin(dnums.rhs_contracting_dimensions(), ","),
-                          "}"));
-
-  return StrJoin(result, ", ");
 }
 
 HloDomainInstruction::HloDomainInstruction(

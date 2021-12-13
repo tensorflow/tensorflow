@@ -1131,6 +1131,13 @@ cc_library(
     }),
 )
 
+cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+)
+
 cc_test(
     name = "batch_to_space_nd_test",
     srcs = ["batch_to_space_nd_test.cc"],

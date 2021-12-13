@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect | FileCheck %s
 
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.
@@ -2683,3 +2683,131 @@ module attributes {
       foo = [0]
   >} {}
 
+// -----
+
+// CHECK-LABEL: func @test_alias_attribute
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<
+// CHECK-SAME:       tuple_indices = [1, 1],
+// CHECK-SAME:       result_index = [2, 0, 1],
+// CHECK-SAME:       must_alias>
+func @test_alias_attribute (%arg0: tuple<i32, tuple<i32, tensor<3xf32>>> {mhlo.result_alias = #mhlo.result_alias<
+      tuple_indices = [1, 1],
+      result_index = [2, 0, 1],
+      must_alias>}
+    ) -> (i32, i32, tuple<tuple<i32, tensor<3xf32>>>) {
+  %0:3 = "Test.Op"() : () -> (i32, i32, tuple<tuple<i32, tensor<3xf32>>>)
+  return %0#0, %0#1, %0#2 : i32, i32, tuple<tuple<i32, tensor<3xf32>>>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_alias_dynamic_dimension
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<result_index = [2]>
+func @test_alias_dynamic_dimension (%arg0: tensor<?xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [2]>}
+    ) -> (i32, i32, tensor<2xf32>) {
+  %0:3 = "Test.Op"() : () -> (i32, i32, tensor<2xf32>)
+  return %0#0, %0#1, %0#2 : i32, i32, tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_may_alias_no_tuple
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<result_index = [2]>
+func @test_may_alias_no_tuple (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [2]>}
+    ) -> (i32, i32, tensor<2xf32>) {
+  %0:3 = "Test.Op"() : () -> (i32, i32, tensor<2xf32>)
+  return %0#0, %0#1, %0#2 : i32, i32, tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_may_alias_arg_tuple
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<tuple_indices = [2, 0], result_index = [2]>
+func @test_may_alias_arg_tuple (%arg0: tuple<i32, i32, tuple<tensor<2xf32>, i32>> {mhlo.result_alias = #mhlo.result_alias<tuple_indices = [2, 0], result_index = [2]>}
+    ) -> (i32, i32, tensor<2xf32>) {
+  %0:3 = "Test.Op"() : () -> (i32, i32, tensor<2xf32>)
+  return %0#0, %0#1, %0#2 : i32, i32, tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_may_alias_result_tuple
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<result_index = [2, 1, 2]>
+func @test_may_alias_result_tuple (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [2, 1, 2]>}
+    ) -> (i32, i32, tuple<i32, tuple<i32, i32, tensor<2xf32>>>, i32) {
+  %0:4 = "Test.Op"() : () -> (i32, i32, tuple<i32, tuple<i32, i32, tensor<2xf32>>>, i32)
+  return %0#0, %0#1, %0#2, %0#3 : i32, i32, tuple<i32, tuple<i32, i32, tensor<2xf32>>>, i32
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" can only be used on function-like operations}}
+module attributes {mhlo.result_alias = #mhlo.result_alias<result_index = [2, 3]>} {}
+
+// -----
+
+// expected-error @+2 {{expected at least 1 element(s), found 0}}
+// expected-error@+1 {{failed parsing argument-result alias attribute}}
+func @error_empty_result_index (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = []>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" expects all argument and result indices to be >= 0}}
+func @error_negative_arg_tuple_index (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<tuple_indices = [0, -1], result_index = [0]>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" expects all argument and result indices to be >= 0}}
+func @error_negative_result_index (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [-1]>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" expects all argument and result indices to be >= 0}}
+func @error_negative_result_tuple_index (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [0, -1]>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" result index is out of range, must be <1}}
+func @error_result_index_out_of_range (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [1]>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" argument tuple indices are invalid}}
+func @error_invalid_argument_tuple_indices (%arg0: tuple<i32, tensor<2xf32>> {mhlo.result_alias = #mhlo.result_alias<tuple_indices = [2], result_index = [0]>}
+    ) -> (tensor<2xf32>) {
+  %0 = "Test.Op"() : () -> (tensor<2xf32>)
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" aliases do not have compatible types, 'tensor<2xf32>' vs. 'tensor<1xf32>'}}
+func @error_incompatible_alias_shapes (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [0, 1]>}
+    ) -> (tuple<i32, tensor<1xf32>>) {
+  %0 = "Test.Op"() : () -> (tuple<i32, tensor<1xf32>>)
+  return %0 : tuple<i32, tensor<1xf32>>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" aliases do not have compatible types, 'tensor<2xf32>' vs. 'tensor<2xi32>'}}
+func @error_incompatible_alias_element_types (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [0, 1]>}
+    ) -> (tuple<i32, tensor<2xi32>>) {
+  %0 = "Test.Op"() : () -> (tuple<i32, tensor<2xi32>>)
+  return %0 : tuple<i32, tensor<2xi32>>
+}

@@ -136,7 +136,7 @@ func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
       iterators["reduction"] {
     %6 = tensor.extract_slice %arg2[%arg1] [8] [1]
       : tensor<16xf32> to tensor<8xf32>
-    %7 = linalg.tensor_expand_shape %6 [[0, 1]]
+    %7 = tensor.expand_shape %6 [[0, 1]]
       : tensor<8xf32> into tensor<1x8xf32>
     %8 = linalg.generic {indexing_maps = [#map0, #map1],
                          iterator_types = ["reduction", "parallel"]}
@@ -166,5 +166,5 @@ func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
 // CHECK: %[[SLICE:.*]] = tensor.extract_slice %[[IN]]
 // CHECK: %[[VECTOR:.*]] = vector.transfer_read %[[SLICE]]
 // CHECK: vector.shape_cast %[[VECTOR]] : vector<8xf32> to vector<1x8xf32>
-// CHECK-NOT: linalg.tensor_expand_shape
+// CHECK-NOT: tensor.expand_shape
 // CHECK: linalg.generic

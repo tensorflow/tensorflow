@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
-#include "tensorflow/core/data/finalization_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/utils.h"
@@ -263,7 +262,8 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   std::unique_ptr<IteratorBase> iterator;
   if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
     DatasetBase* finalized_dataset;
-    TF_ASSIGN_OR_RETURN(finalized_dataset, GetFinalizedDataset(ctx, dataset));
+    TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+    core::ScopedUnref unref(finalized_dataset);
     TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
         IteratorContext(std::move(params)),
         /*parent=*/nullptr, "Iterator", &iterator));

@@ -30,8 +30,8 @@ using mlir::failure;
 using mlir::success;
 using mlir::arith::ConstantIndexOp;
 using mlir::linalg::CodegenStrategy;
-using mlir::linalg::TensorExpandShapeOp;
 using mlir::linalg::TiledLoopOp;
+using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
 
 // Rewrite `vector.transfer_read(linalg.expand_shape)` as
@@ -43,7 +43,7 @@ struct TransferReadOfOneDimExpandShape
   mlir::LogicalResult matchAndRewrite(
       TransferReadOp vector_read,
       mlir::PatternRewriter &rewriter) const override {
-    auto expand = vector_read.source().getDefiningOp<TensorExpandShapeOp>();
+    auto expand = vector_read.source().getDefiningOp<ExpandShapeOp>();
     if (!expand) return failure();
 
     auto expand_src = expand.src();

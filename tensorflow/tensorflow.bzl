@@ -824,6 +824,7 @@ def tf_cc_shared_library(
             win_def_file = win_def_file,
         )
 
+        win_linker_inputs = [win_def_file] if win_def_file else []
         cc_shared_library_name = name_os_full + "_ccsharedlib"
         shared_lib_name = name_os_full + "_sharedlibname"
         cc_shared_library(
@@ -839,12 +840,15 @@ def tf_cc_shared_library(
                 clean_dep("//tensorflow:macos"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
-                clean_dep("//tensorflow:windows"): [],
+                clean_dep("//tensorflow:windows"): [
+                    "/DEF:$(location :%s)" % win_def_file,
+                    "/ignore:4070",
+                ] if win_def_file else [],
                 "//conditions:default": [
                     "-Wl,-soname," + soname,
                 ],
             }),
-            additional_linker_inputs = additional_linker_inputs,
+            additional_linker_inputs = additional_linker_inputs + win_linker_inputs,
             visibility = visibility,
         )
         native.alias(
