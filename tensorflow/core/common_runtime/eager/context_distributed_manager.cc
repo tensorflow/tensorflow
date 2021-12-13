@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 
+#include <algorithm>
+#include <numeric>
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -719,8 +724,8 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       LOG_AND_RETURN_IF_ERROR(
           worker_cache->GetCoordinationClientCache(&agent_cache));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
-          server->worker_env(), server_def, std::move(agent_cache),
-          [this](Status s) {
+          server->worker_env()->env, server->worker_env()->device_mgr,
+          server_def, std::move(agent_cache), [this](Status s) {
             context_->GetCollectiveExecutorHandle()->get()->StartAbort(s);
           }));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
