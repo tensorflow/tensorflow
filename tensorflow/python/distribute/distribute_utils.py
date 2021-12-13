@@ -81,6 +81,23 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
         for key in v0keys
     })
 
+  # Handle the case where values are defined using the python `attr` library
+  if hasattr(v0.__class__, "__attrs_attrs__"):
+    v0dict = v0.__dict__
+    for v in values[1:]:
+      assert isinstance(v, type(v0)), ("v[0]: %r  v[i]: %r" % (v0, v))
+      assert set(v.__dict__.keys()) == set(v0dict.keys()), ("v[0].keys: %s"
+                                                            "v[i].keys: %s" %
+                                                            (set(v0keys),
+                                                             set(v.keys())))
+
+    # Use attr type to wrap
+    return type(v0)(**{
+        attr.name: regroup(tuple(v.__getattribute__(attr.name) for v in values),
+                           wrap_class, always_wrap)
+        for attr in v0.__attrs_attrs__
+    })
+
   # If exactly the same object across all devices, return it unwrapped.
   same_id = True
   for v in values[1:]:

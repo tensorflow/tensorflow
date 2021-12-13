@@ -32,6 +32,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.saved_model.model_utils import mode_keys
 
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
+
 
 def _nested_value(d):
   return ("a" + d, ["b" + d, {"c": "d" + d, "e": "f" + d}, "g" + d], "h" + d)
@@ -242,6 +247,23 @@ class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
     result = distribute_utils.regroup([wrapped1, wrapped2])
     self.assertEqual(result.x.values, (0, 1))
     self.assertEqual(result.y.values, (2, 3))
+
+  def testAttr(self):
+
+    if attr is None:
+      self.skipTest("attr module is unavailable.")
+
+    @attr.s
+    class Point:
+      x = attr.ib()
+      y = attr.ib()
+
+    point1 = Point(x=0, y=2)
+    point2 = Point(x=1, y=3)
+    result = distribute_utils.regroup([point1, point2])
+    self.assertIsInstance(result, Point)
+    self._is_per_replica(result.x, (0, 1))
+    self._is_per_replica(result.y, (2, 3))
 
 if __name__ == "__main__":
   test.main()
