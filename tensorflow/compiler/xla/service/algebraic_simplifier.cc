@@ -1306,7 +1306,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
 
   if (ShapeUtil::ElementIsSigned(divide->shape())) {
     int64_t b_value = c->literal().GetFirstElement<T>();
-    if (b_value > 0 && IsPowerOfTwo(static_cast<uint64_t>(b_value))) {
+    if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
       HloInstruction* zero_like_a = MakeScalarLike(a, 0);
 
@@ -1338,7 +1338,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
     }
   } else {
     uint64 b_value = c->literal().GetFirstElement<T>();
-    if (IsPowerOfTwo(b_value)) {
+    if (absl::has_single_bit(b_value)) {
       return HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, a,
           MakeScalarLike(a, tensorflow::Log2Floor64(b_value)));
@@ -3635,7 +3635,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
 
   if (ShapeUtil::ElementIsSigned(remainder->shape())) {
     int64_t b_value = c->literal().GetFirstElement<T>();
-    if (b_value > 0 && IsPowerOfTwo(static_cast<uint64_t>(b_value))) {
+    if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
       HloInstruction* zero_like_a = BroadcastZeros(
           computation, a->shape().element_type(), a->shape().dimensions());
@@ -3668,7 +3668,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
     }
   } else {
     uint64 b_value = c->literal().GetFirstElement<T>();
-    if (IsPowerOfTwo(b_value)) {
+    if (absl::has_single_bit(b_value)) {
       HloInstruction* mask_amount = computation->AddInstruction(
           simplifier->CreateConstantWithLayoutUpdated(
               LiteralUtil::CreateR0<T>(b_value - 1)));

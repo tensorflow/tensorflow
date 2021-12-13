@@ -451,12 +451,6 @@ string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 // severity, filename, and line number.
 void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
-template <typename T>
-inline bool IsPowerOfTwo(T x) {
-  static_assert(!std::numeric_limits<T>::is_signed, "unsigned types only");
-  return x != 0 && (x & (x - 1)) == 0;
-}
-
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
 inline T LsbMask(int width) {
