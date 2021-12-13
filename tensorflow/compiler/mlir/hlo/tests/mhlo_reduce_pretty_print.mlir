@@ -1,23 +1,16 @@
 // RUN: mlir-hlo-opt %s  -mlir-print-debuginfo -mlir-print-local-scope \
-// RUN: | FileCheck %s --check-prefixes=CHECK,CHECK-ONEWAY
+// RUN: | FileCheck %s
 // RUN: mlir-hlo-opt %s  -mlir-print-debuginfo -mlir-print-local-scope \
-// RUN: | mlir-hlo-opt -mlir-print-debuginfo -mlir-print-op-generic \
-// RUN: -mlir-print-local-scope | FileCheck %s \
-// RUN: --check-prefixes=CHECK,CHECK-ROUNDTRIP
+// RUN: | mlir-hlo-opt -mlir-print-debuginfo -mlir-print-local-scope \
+// RUN: | FileCheck %s
 
 // The lit-tests below tests the printing and parsing of the "pretty-printed"
 // version of mhlo.reduce op.
 
 // The test case is eligible for pretty-printing reduce-op.
 
-// CHECK-ONEWAY-LABEL:    func @reduce_one_op_all_locs_same
-// CHECK-ROUNDTRIP-LABEL: "builtin.func"
-// CHECK-ONEWAY:           mhlo.reduce %arg{{[0-9]+}}, %arg{{[0-9]+}} applies mhlo.add across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
-// CHECK-ROUNDTRIP:        "mhlo.reduce"(%arg{{[0-9]+}}, %arg{{[0-9]+}})
-// CHECK-ROUNDTRIP-NEXT:     ^bb0(%arg[[x:[0-9]+]]: tensor<f32> loc("foo"), %arg[[y:[0-9]+]]: tensor<f32> loc("foo")):
-// CHECK-ROUNDTRIP-NEXT:       "mhlo.add"(%arg[[x]], %arg[[y]]) : (tensor<f32>, tensor<f32>) -> tensor<f32> loc("foo")
-// CHECK-ROUNDTRIP-NEXT:       "mhlo.return"(%{{[0-9]+}}) : (tensor<f32>) -> () loc("foo")
-// CHECK-ROUNDTRIP-NEXT:    {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
+// CHECK-LABEL:  func @reduce_one_op_all_locs_same
+// CHECK-NEXT:     mhlo.reduce %arg{{[0-9]+}}, %arg{{[0-9]+}} applies mhlo.add across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
 
 func @reduce_one_op_all_locs_same(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>) -> (tensor<?xf32>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ( {
@@ -32,15 +25,12 @@ func @reduce_one_op_all_locs_same(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>) -
 // The test case is not eligible for pretty-printing reduce-op. The location of
 // reduce-op is different.
 
-// CHECK-ONEWAY-LABEL:    func @reduce_one_op_all_locs_not_same_1
-// CHECK-ROUNDTRIP-LABEL: "builtin.func"
-// CHECK-ONEWAY:            mhlo.reduce %arg{{[0-9]+}}, %arg{{[0-9]+}}
-// CHECK-ROUNDTRIP:         "mhlo.reduce"(%arg{{[0-9]+}}, %arg{{[0-9]+}})
-// CHECK-NEXT:                ^bb0(%arg[[x:[0-9]+]]: tensor<f32> loc("foo"), %arg[[y:[0-9]+]]: tensor<f32> loc("foo")):
-// CHECK-ONEWAY-NEXT:           mhlo.add %arg[[x]], %arg[[y]] : tensor<f32> loc("foo")
-// CHECK-ROUNDTRIP-NEXT:        "mhlo.add"(%arg[[x]], %arg[[y]]) : (tensor<f32>, tensor<f32>) -> tensor<f32> loc("foo")
-// CHECK-NEXT:                  "mhlo.return"(%{{[0-9]+}}) : (tensor<f32>) -> () loc("foo")
-// CHECK-NEXT:              {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("not_foo")
+// CHECK-LABEL:  func @reduce_one_op_all_locs_not_same_1
+// CHECK-NEXT:     mhlo.reduce %arg{{[0-9]+}}, %arg{{[0-9]+}}
+// CHECK-NEXT:     ^bb0(%arg[[x:[0-9]+]]: tensor<f32> loc("foo"), %arg[[y:[0-9]+]]: tensor<f32> loc("foo")):
+// CHECK-NEXT:       mhlo.add %arg[[x]], %arg[[y]] : tensor<f32> loc("foo")
+// CHECK-NEXT:       "mhlo.return"(%{{[0-9]+}}) : (tensor<f32>) -> () loc("foo")
+// CHECK-NEXT:     {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("not_foo")
 
 func @reduce_one_op_all_locs_not_same_1(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>) -> (tensor<?xf32>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ( {
@@ -55,11 +45,9 @@ func @reduce_one_op_all_locs_not_same_1(%arg0: tensor<?x?xf32>, %arg1 : tensor<f
 // The test case is not eligible for pretty-printing reduce-op. The location of
 // block-arguments are different.
 
-// CHECK-ONEWAY-LABEL:    func @reduce_one_op_all_locs_not_same_2
-// CHECK-ROUNDTRIP-LABEL: "builtin.func"
-// CHECK-ONEWAY:            mhlo.reduce
-// CHECK-ROUNDTRIP:         "mhlo.reduce"
-// CHECK-NEXT:                ^bb0
+// CHECK-LABEL:  func @reduce_one_op_all_locs_not_same_2
+// CHECK-NEXT:     mhlo.reduce
+// CHECK-NEXT:     ^bb0
 
 func @reduce_one_op_all_locs_not_same_2(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>) -> (tensor<?xf32>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ( {
@@ -75,11 +63,9 @@ func @reduce_one_op_all_locs_not_same_2(%arg0: tensor<?x?xf32>, %arg1 : tensor<f
 // The test case is not eligible for pretty-printing reduce-op. More than two
 // block-arguments which are not perfectly forwarded to inner-op.
 
-// CHECK-ONEWAY-LABEL:    func @reduce_one_op_more_than_two_block_args
-// CHECK-ROUNDTRIP-LABEL: "builtin.func"
-// CHECK-ONEWAY:            mhlo.reduce
-// CHECK-ROUNDTRIP:         "mhlo.reduce"
-// CHECK-NEXT:                ^bb0
+// CHECK-LABEL:  func @reduce_one_op_more_than_two_block_args
+// CHECK-NEXT:     mhlo.reduce
+// CHECK-NEXT:     ^bb0
 
 func @reduce_one_op_more_than_two_block_args(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>) {
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ( {
@@ -94,11 +80,9 @@ func @reduce_one_op_more_than_two_block_args(%arg0: tensor<?x?xf32>, %arg1: tens
 // The test case is not eligible for pretty-printing reduce-op because of
 // non-commutative inner-op.
 
-// CHECK-ONEWAY-LABEL:    func @reduce_non_commutative_inner_op
-// CHECK-ROUNDTRIP-LABEL: "builtin.func"
-// CHECK-ONEWAY:            mhlo.reduce
-// CHECK-ROUNDTRIP:         "mhlo.reduce"
-// CHECK-NEXT:                ^bb0
+// CHECK-LABEL:  func @reduce_non_commutative_inner_op
+// CHECK-NEXT:     mhlo.reduce
+// CHECK-NEXT:     ^bb0
 
 func @reduce_non_commutative_inner_op(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> (tensor<?xf32>) {
     %0 = "mhlo.reduce"(%arg0, %arg1) ( {
@@ -113,11 +97,9 @@ func @reduce_non_commutative_inner_op(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>
 // The test case is not eligible for pretty-printing reduce-op because of
 // non-binary inner-op.
 
-// CHECK-ONEWAY-LABEL:    func @reduce_non_binary_inner_op
-// CHECK-ROUNDTRIP-LABEL: "builtin.func"
-// CHECK-ONEWAY:            mhlo.reduce
-// CHECK-ROUNDTRIP:         "mhlo.reduce"
-// CHECK-NEXT:                ^bb0
+// CHECK-LABEL:  func @reduce_non_binary_inner_op
+// CHECK-NEXT:     mhlo.reduce
+// CHECK-NEXT:     ^bb0
 
 func @reduce_non_binary_inner_op(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> (tensor<?xf32>) {
     %0 = "mhlo.reduce"(%arg0, %arg1) ( {
@@ -132,11 +114,9 @@ func @reduce_non_binary_inner_op(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> 
 // The test case is not eligible for pretty-printing reduce-op. More than one
 // inner-op.
 
-// CHECK-ONEWAY-LABEL:    func @reduce_more_than_one_inner_op
-// CHECK-ROUNDTRIP-LABEL: "builtin.func"
-// CHECK-ONEWAY:            mhlo.reduce
-// CHECK-ROUNDTRIP:         "mhlo.reduce"
-// CHECK-NEXT:                ^bb0
+// CHECK-LABEL:  func @reduce_more_than_one_inner_op
+// CHECK-NEXT:     mhlo.reduce
+// CHECK-NEXT:     ^bb0
 
 func @reduce_more_than_one_inner_op(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi32>, %arg2: tensor<f32>, %arg3: tensor<i32>) ->
   (tensor<8xf32>, tensor<8xi32>) {
@@ -154,12 +134,8 @@ func @reduce_more_than_one_inner_op(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi3
 
 // The test case is eligible for pretty-printing reduce-op with complex types.
 
-// CHECK-ONEWAY-LABEL:    func @reduce_complex_type
-// CHECK-ROUNDTRIP-LABEL: "builtin.func"
-// CHECK-ONEWAY:            mhlo.reduce %arg0, %arg1 applies mhlo.add across dimensions = [1] : (tensor<1x2xcomplex<f32>>, tensor<complex<f32>>) -> tensor<1xcomplex<f32>> loc("foo")
-// CHECK-ONEWAY-NEXT:       return
-// CHECK-ROUNDTRIP:         "mhlo.reduce"
-// CHECK-ROUNDTRIP-NEXT:      ^bb0
+// CHECK-LABEL:  func @reduce_complex_type
+// CHECK:          mhlo.reduce %arg0, %arg1 applies mhlo.add across dimensions = [1] : (tensor<1x2xcomplex<f32>>, tensor<complex<f32>>) -> tensor<1xcomplex<f32>> loc("foo")
 
 func @reduce_complex_type(%arg0: tensor<1x2xcomplex<f32>>, %arg1 : tensor<complex<f32>>) -> (tensor<1xcomplex<f32>>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ( {
@@ -177,12 +153,9 @@ func @reduce_complex_type(%arg0: tensor<1x2xcomplex<f32>>, %arg1 : tensor<comple
 // rule is based on the assumption that the pretty-prining  will happen only
 // when the above rule is obeyed.  The following tests breaks that rule.
 
-// CHECK-ONEWAY-LABEL:    func @reduce_innerop_type_not_trivially_derived
-// CHECK-ROUNDTRIP-LABEL: "builtin.func"
-// CHECK-ONEWAY:            mhlo.reduce
-// CHECK-ROUNDTRIP:         "mhlo.reduce"
-// CHECK-ONEWAY-NEXT:        ^bb0
-// CHECK-ROUNDTRIP-NEXT:     ^bb0
+// CHECK-LABEL:  func @reduce_innerop_type_not_trivially_derived
+// CHECK-NEXT:     mhlo.reduce
+// CHECK-NEXT:     ^bb0
 
 func @reduce_innerop_type_not_trivially_derived(%arg0: tensor<4x4xf32>, %arg1 : tensor<4xf32>) ->
     (tensor<4xf32>) {
@@ -196,5 +169,3 @@ func @reduce_innerop_type_not_trivially_derived(%arg0: tensor<4x4xf32>, %arg1 : 
 
   return %0: tensor<4xf32>
 }
-
-
