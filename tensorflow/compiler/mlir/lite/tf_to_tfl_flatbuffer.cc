@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
+#include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -174,6 +175,8 @@ Status ApplyDynamicRangeQuantizationFromOldQuantizer(
       kTfLiteOk) {
     return errors::InvalidArgument("Quantize weights transformation failed.");
   }
+  tflite::UpdateMinimumRuntimeVersionForModel(q_builder.GetBufferPointer());
+
   const uint8_t* q_buffer = q_builder.GetBufferPointer();
   *result =
       string(reinterpret_cast<const char*>(q_buffer), q_builder.GetSize());
