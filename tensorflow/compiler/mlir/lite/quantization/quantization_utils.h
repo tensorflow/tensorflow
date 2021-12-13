@@ -277,22 +277,22 @@ class QuantizationPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    llvm::SmallVector<Operation*, 4> quantized_ops;
+    llvm::SmallVector<Operation*, 4> quantizing_ops;
 
-    // Collect all the quantized ops as the user / def of the root op.
+    // Collect all the ops to quantize, as the user / producer of the root op.
     if (std::is_same<RootOp, DQ>::value) {
       if (op->getNumResults() != 1) {
         return failure();
       }
       auto users = op->getResult(0).getUsers();
-      quantized_ops.append(users.begin(), users.end());
+      quantizing_ops.append(users.begin(), users.end());
     } else if (std::is_same<RootOp, Q>::value) {
       if (op->getNumOperands() != 1) {
         return failure();
       }
       Value quantize_operand = op->getOperand(0);
       if (QuantizedType::getQuantizedElementType(quantize_operand.getType())) {
-        // The input of this Q op has been quantized, i.e. rescale.
+        // The input of this Q op has already been quantized, i.e. rescale.
         return failure();
       }
       DenseFPElementsAttr attr;
@@ -300,32 +300,33 @@ class QuantizationPattern : public RewritePattern {
         // Const->Q pattern will be handled seperately.
         return failure();
       }
-      if (Operation* quantized_op = quantize_operand.getDefiningOp()) {
-        quantized_ops.push_back(quantized_op);
+      if (Operation* quantizing_op = quantize_operand.getDefiningOp()) {
+        quantizing_ops.push_back(quantizing_op);
       }
     }
 
-    // Rewrite the quantized ops from floating-point to quantized version.
-    for (Operation* quantized_op : quantized_ops) {
+    // Rewrite the floating-point ops to the quantized version, by fusing
+    // preceding dequantize ops and succeding quantize ops.
+    for (Operation* quantizing_op : quantizing_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<Q, DQ>(quantized_op)) {
+      if (llvm::isa<Q, DQ>(quantizing_op)) {
         return failure();
       }
 
-      // If it is terminator or not quantizable or any ops form the mlir quant
+      // If the op is terminator, not quantizable or any ops from the mlir quant
       // ops dialect, we shouldn't rewrite.
-      if (IsOpNotQuantizable(quantized_op)) {
+      if (IsOpNotQuantizable(quantizing_op)) {
         return failure();
       }
 
       if (!ops_blocklist_.empty() &&
-          (ops_blocklist_.find(quantized_op->getName().getStringRef().str()) !=
+          (ops_blocklist_.find(quantizing_op->getName().getStringRef().str()) !=
            ops_blocklist_.end())) {
         return failure();
       }
 
       if (!nodes_blocklist_.empty()) {
-        if (auto name_loc = quantized_op->getLoc().dyn_cast<NameLoc>()) {
+        if (auto name_loc = quantizing_op->getLoc().dyn_cast<NameLoc>()) {
           std::string sloc = name_loc.getName().str();
           if (!sloc.empty() &&
               (nodes_blocklist_.find(sloc) != nodes_blocklist_.end())) {
@@ -335,16 +336,16 @@ class QuantizationPattern : public RewritePattern {
       }
 
       // An op with float inputs and outputs are expected when it's used by a
-      // NumericVerify op. Skip this op and look at next users.
-      if (enable_verify_ && usedByVerifier(quantized_op)) {
+      // NumericVerify op. Skip this op.
+      if (enable_verify_ && usedByVerifier(quantizing_op)) {
         continue;
       }
 
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
       SmallVector<Value, 4> inputs;
-      inputs.reserve(quantized_op->getNumOperands());
-      for (auto operand : quantized_op->getOperands()) {
+      inputs.reserve(quantizing_op->getNumOperands());
+      for (auto operand : quantizing_op->getOperands()) {
         Type operand_type = operand.getType();
         if (operand_type.isa<NoneType>()) {
           inputs.push_back(operand);
@@ -359,7 +360,7 @@ class QuantizationPattern : public RewritePattern {
           // DQ op in the pattern.
           inputs.push_back(operand);
         } else if (static_cast<const ConcretTy*>(this)->AllowHybridOperand(
-                       quantized_op)) {
+                       quantizing_op)) {
           inputs.push_back(operand);
         } else {
           return failure();
@@ -370,9 +371,9 @@ class QuantizationPattern : public RewritePattern {
       // the new quantized op.
       llvm::SmallDenseMap<Value, int> outputs_replaced;
       SmallVector<Type, 4> output_types;
-      output_types.reserve(quantized_op->getNumResults());
+      output_types.reserve(quantizing_op->getNumResults());
       for (const auto& enumerated_result :
-           llvm::enumerate(quantized_op->getResults())) {
+           llvm::enumerate(quantizing_op->getResults())) {
         Value result = enumerated_result.value();
         Type result_type = result.getType();
         // Add this to the test coverage once we create test ops with none type
@@ -395,7 +396,7 @@ class QuantizationPattern : public RewritePattern {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult(
-                       quantized_op)) {
+                       quantizing_op)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else {
@@ -403,25 +404,26 @@ class QuantizationPattern : public RewritePattern {
         }
       }
 
-      rewriter.setInsertionPointAfter(quantized_op);
-      OperationState new_state(quantized_op->getLoc(),
-                               quantized_op->getName().getStringRef(), inputs,
-                               output_types, quantized_op->getAttrs());
-      for (int i = 0; i < quantized_op->getNumRegions(); ++i) {
+      rewriter.setInsertionPointAfter(quantizing_op);
+      OperationState new_state(quantizing_op->getLoc(),
+                               quantizing_op->getName().getStringRef(), inputs,
+                               output_types, quantizing_op->getAttrs());
+      for (int i = 0; i < quantizing_op->getNumRegions(); ++i) {
         new_state.addRegion();
       }
-      Operation* new_op = rewriter.createOperation(new_state);
-      if (quantized_op->getNumRegions() != 0) {
+      Operation* quantized_op = rewriter.createOperation(new_state);
+      if (quantizing_op->getNumRegions() != 0) {
         for (const auto& indexed_regions :
-             llvm::enumerate(quantized_op->getRegions())) {
-          Region& target_region = new_op->getRegion(indexed_regions.index());
+             llvm::enumerate(quantizing_op->getRegions())) {
+          Region& target_region =
+              quantized_op->getRegion(indexed_regions.index());
           BlockAndValueMapping mapping;
           indexed_regions.value().cloneInto(&target_region, mapping);
         }
       }
       for (auto output : outputs_replaced) {
         output.getFirst().replaceAllUsesWith(
-            new_op->getResult(output.getSecond()));
+            quantized_op->getResult(output.getSecond()));
       }
 
       // To verify the numericals, the original floating-point ops are
@@ -430,48 +432,51 @@ class QuantizationPattern : public RewritePattern {
       if (enable_verify_) {
         // For constant operands, the floating-point constant is duplicated in
         // case it is quantized.
-        for (int i = 0, e = new_op->getNumOperands(); i != e; ++i) {
-          auto def = new_op->getOperand(i).getDefiningOp();
+        for (int i = 0, e = quantized_op->getNumOperands(); i != e; ++i) {
+          auto def = quantized_op->getOperand(i).getDefiningOp();
           if (auto q = llvm::dyn_cast_or_null<Q>(def)) {
             DenseFPElementsAttr attr;
             if (!matchPattern(q.input(), m_Constant(&attr))) {
               continue;
             }
-            auto cst =
-                rewriter.create<arith::ConstantOp>(new_op->getLoc(), attr);
-            quantized_op->setOperand(i, cst.getResult());
+            auto cst = rewriter.create<arith::ConstantOp>(
+                quantized_op->getLoc(), attr);
+            quantizing_op->setOperand(i, cst.getResult());
           }
         }
 
-        for (int i = 0, e = new_op->getNumResults(); i != e; ++i) {
-          if (!quantized_op->getResult(i)
+        for (int i = 0, e = quantized_op->getNumResults(); i != e; ++i) {
+          if (!quantizing_op->getResult(i)
                    .getType()
                    .cast<ShapedType>()
                    .getElementType()
                    .isa<FloatType>()) {
             continue;
           }
-          rewriter.setInsertionPointAfter(new_op);
+          rewriter.setInsertionPointAfter(quantized_op);
           FloatAttr tolerance = rewriter.getF32FloatAttr(error_tolerance_);
           BoolAttr log = rewriter.getBoolAttr(log_if_failed_);
           // Verify the quantized value by sending the result to the verifier.
           rewriter.create<VERIFIER>(
-              quantized_op->getLoc(), new_op->getResult(i).getType(),
-              new_op->getResult(i), quantized_op->getResult(i), tolerance, log);
+              quantizing_op->getLoc(), quantized_op->getResult(i).getType(),
+              quantized_op->getResult(i), quantizing_op->getResult(i),
+              tolerance, log);
 
           if (!whole_model_verify_) continue;
 
-          // Find the Dequantize/Dequantize users of the new op results, and
-          // replace the usage. Then all the floating-point ops are connected.
+          // Find the Quantize/Dequantize users of the new op results, and
+          // replace the usage. Then all the floating-point ops are connected,
+          // forming a separate float "backbone" model that the quantized model
+          // can be compared against in parallel.
           // N.B. the return op will use this floating-point result.
-          for (auto user : new_op->getResult(i).getUsers()) {
+          for (auto user : quantized_op->getResult(i).getUsers()) {
             // Skip the Requantize op, and we know it has a single user.
             if (llvm::isa<Q>(user)) {
               user = *user->getResult(0).getUsers().begin();
             }
             if (auto dequantize = llvm::dyn_cast<DQ>(user)) {
               dequantize.getResult().replaceAllUsesWith(
-                  quantized_op->getResult(i));
+                  quantizing_op->getResult(i));
             }
           }
         }
