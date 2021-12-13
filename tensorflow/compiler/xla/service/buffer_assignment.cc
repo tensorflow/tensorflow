@@ -638,7 +638,8 @@ void BufferAssignment::CombineTempAllocations() {
       // The offset of each buffer in the combined allocation is computed from
       // the base offset of the allocation.
       int64_t alignment = color_alignment_(color);
-      const int64_t base = RoundUpTo(combined_allocation->size(), alignment);
+      const int64_t base =
+          RoundUpToNearest(combined_allocation->size(), alignment);
       combined_allocation->set_size(base + temp_allocation.size());
       for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
         const HloValue* value = buffer_offset_size.first;
