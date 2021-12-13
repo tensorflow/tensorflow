@@ -21,7 +21,8 @@ install_bazelisk
 
 # Selects a version of Xcode.
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
-export MACOSX_DEPLOYMENT_TARGET=11.0
+# TODO(rameshsampath): Update MACOS Development Target
+export MACOSX_DEPLOYMENT_TARGET=10.12
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up and install MacOS pip dependencies.
