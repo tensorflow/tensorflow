@@ -1167,6 +1167,19 @@ cc_library(
 )
 
 cc_library(
+    name = "broadcast_propagation",
+    srcs = ["lib/Dialect/mhlo/transforms/broadcast_propagation.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":hlo",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "rank_specialization",
     srcs = ["lib/Dialect/mhlo/transforms/rank_specialization.cc"],
     hdrs = [
@@ -1718,6 +1731,7 @@ cc_library(
         ":DiscRalPassIncGen",
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
+        ":broadcast_propagation",
         ":buffer_reuse",
         ":chlo_legalize_to_hlo",
         ":copy_removal",

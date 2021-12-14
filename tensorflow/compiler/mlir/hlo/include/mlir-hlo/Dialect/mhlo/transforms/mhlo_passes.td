@@ -158,6 +158,15 @@ def TestInferShapedTypeMethodsPass : FunctionPass<"mhlo-test-infer-shaped-type-m
   let constructor = "createTestInferShapedTypeMethodsPass()";
 }
 
+def BroadcastPropagationPass : FunctionPass<"mhlo-broadcast-propagation"> {
+  let summary = "Move dynamic broadcasts up over element-wise operations and "
+    "broadcast the operands rather than the result. This will eventually allow "
+    "for larger fusions.";
+  let constructor = "createBroadcastPropagationPass()";
+}
+
+// TODO(frgossen): Limit this pass to merging of assuming regions and factor out
+// broadcast propagation into its own pass.
 def MergeAssumingOpsPass : FunctionPass<"mhlo-merge-assuming-ops"> {
   let summary = "Move dynamic broadcasts up over element-wise operations and "
     "broadcast the operands rather than the result. This will eventually allow "
