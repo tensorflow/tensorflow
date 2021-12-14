@@ -204,76 +204,73 @@ inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
 // Returns true if a convert from from_type to to_type loses no precision.
 inline bool CastPreservesValues(PrimitiveType from_type,
                                 PrimitiveType to_type) {
+  // * -> *
   if (from_type == to_type) {
     return true;
   }
-  switch (to_type) {
-    case C128:
-      if (from_type == F64 || from_type == C64) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case F64:
-      if (from_type == S32 || from_type == U32 || from_type == F32) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case C64:
-      if (from_type == F32) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case F32:
-      if (from_type == F16 || from_type == BF16 || from_type == S16 ||
-          from_type == U16) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case F16:
-    case BF16:
-      return from_type == U8 || from_type == S8 || from_type == PRED;
-    case S64:
-      if (from_type == S32 || from_type == U32) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case S32:
-      if (from_type == S16 || from_type == U16) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case S16:
-      if (from_type == S8 || from_type == U8) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case S8:
-      if (from_type == PRED) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case PRED:
-      return false;
-    case U64:
-      if (from_type == U32) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case U32:
-      if (from_type == U16) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case U16:
-      if (from_type == U8) {
-        return true;
-      }
-      ABSL_FALLTHROUGH_INTENDED;
-    case U8:
-      return from_type == PRED;
-    default:
-      return false;
+  // PRED -> *
+  if (from_type == PRED) {
+    return true;
   }
+  // ~PRED -> PRED is not safe because it drops almost all numbers.
+  if (to_type == PRED) {
+    return false;
+  }
+  // * -> C is safe if the components of * and C can be safely converted.
+  if (primitive_util::IsComplexType(to_type)) {
+    auto from_component_type =
+        primitive_util::IsComplexType(from_type)
+            ? primitive_util::ComplexComponentType(from_type)
+            : from_type;
+    auto to_component_type = primitive_util::ComplexComponentType(to_type);
+    return CastPreservesValues(from_component_type, to_component_type);
+  }
+  // ~C -> C is not safe because it drops imaginary components.
+  if (primitive_util::IsComplexType(from_type)) {
+    return false;
+  }
+  // F -> F is safe if the exponent and significand are preserved.
+  if (primitive_util::IsFloatingPointType(from_type) &&
+      primitive_util::IsFloatingPointType(to_type)) {
+    return primitive_util::SignificandWidth(from_type) <=
+               primitive_util::SignificandWidth(to_type) &&
+           primitive_util::ExponentWidth(from_type) <=
+               primitive_util::ExponentWidth(to_type) &&
+           primitive_util::OverflowExponent(from_type) <=
+               primitive_util::OverflowExponent(to_type);
+  }
+  // F -> I is not safe because it drops fractional numbers.
+  if (!primitive_util::IsIntegralType(from_type)) {
+    return false;
+  }
+  // An n-bit unsigned integer takes on values from [0, 2^n - 1].
+  // An n-bit signed integer takes on values from [-2^(n-1), 2^(n-1) - 1].
+  // from_bits/to_bits considers the number of non-sign bits.
+  const int from_bits = primitive_util::IsSignedIntegralType(from_type)
+                            ? primitive_util::BitWidth(from_type) - 1
+                            : primitive_util::BitWidth(from_type);
+  const int to_bits = primitive_util::IsSignedIntegralType(to_type)
+                          ? primitive_util::BitWidth(to_type) - 1
+                          : primitive_util::BitWidth(to_type);
+  // I -> F is safe if the integer can be represented exactly.
+  if (primitive_util::IsFloatingPointType(to_type)) {
+    // In both cases, we need to handle an exponent of n-1.
+    // However, the significand needed to represent signed two's complement
+    // numbers is smaller by one bit because it will only have a non-zero
+    // trailing significand field when the exponent is smaller than n-1.
+    return from_bits <= primitive_util::SignificandWidth(to_type) &&
+           primitive_util::BitWidth(from_type) - 1 <
+               primitive_util::OverflowExponent(to_type);
+  }
+  // S -> U is not safe because it drops negative numbers.
+  if (primitive_util::IsSignedIntegralType(from_type) &&
+      primitive_util::IsUnsignedIntegralType(to_type)) {
+    return false;
+  }
+  // I -> I is safe if the integer can be represented exactly; we've already
+  // ensured that signed to unsigned conversions won't happen here.
+  CHECK(primitive_util::IsIntegralType(to_type));
+  return from_bits <= to_bits;
 }
 
 // Returns the native type (eg, float) corresponding to the given template
