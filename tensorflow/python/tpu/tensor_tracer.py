@@ -393,7 +393,15 @@ class TensorTracer(object):
   @staticmethod
   def is_enabled():
     """Returns True if TensorTracer is enabled."""
-    return tensor_tracer_flags.TTParameters().is_enabled()
+    try:
+      return tensor_tracer_flags.TTParameters().is_enabled()
+    except (ValueError, RuntimeError) as e:
+      logging.warning(
+          'Tensor Tracer V1 flags processing error encountered in is_enabled '
+          'check. %s', e)
+      # TODO(b/210212559): Find a more robust fix.
+      # Should only produce exception if Tensor Tracer is enabled.
+      return True
 
   @staticmethod
   def check_device_type(device_type):
