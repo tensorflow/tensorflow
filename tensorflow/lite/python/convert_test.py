@@ -40,8 +40,8 @@ class ConvertTest(test_util.TensorFlowTestCase):
       sess = session.Session()
 
     # Try running on valid graph
-    tflite_model = convert.toco_convert(sess.graph_def, [in_tensor],
-                                        [out_tensor])
+    tflite_model = convert.convert_graphdef(
+        sess.graph_def, input_tensors=[in_tensor], output_tensors=[out_tensor])
     self.assertTrue(tflite_model)
 
   def testQuantization(self):
@@ -52,8 +52,10 @@ class ConvertTest(test_util.TensorFlowTestCase):
           in_tensor + in_tensor, min=0., max=1.)
       sess = session.Session()
 
-    tflite_model = convert.toco_convert(
-        sess.graph_def, [in_tensor], [out_tensor],
+    tflite_model = convert.convert_graphdef(
+        sess.graph_def,
+        input_tensors=[in_tensor],
+        output_tensors=[out_tensor],
         inference_type=dtypes.uint8,
         quantized_input_stats=[(0., 1.)])
     self.assertTrue(tflite_model)
@@ -65,11 +67,13 @@ class ConvertTest(test_util.TensorFlowTestCase):
       _ = in_tensor + in_tensor
       sess = session.Session()
 
-    tflite_model = convert.toco_convert_graph_def(
-        sess.graph_def, [("input", [1, 16, 16, 3])], ["add"],
-        enable_mlir_converter=False,
+    tflite_model = convert.convert_graphdef_with_arrays(
+        sess.graph_def,
+        input_arrays_with_shape=[("input", [1, 16, 16, 3])],
+        output_arrays=["add"],
         control_output_arrays=None,
-        inference_type=dtypes.float32)
+        inference_type=dtypes.float32,
+        enable_mlir_converter=False)
     self.assertTrue(tflite_model)
 
     # Check values from converted model.
@@ -100,16 +104,16 @@ class ConvertTest(test_util.TensorFlowTestCase):
           in_tensor_1 + in_tensor_2, min=0., max=1., name="output")
       sess = session.Session()
 
-    input_arrays_map = [("inputA", [1, 16, 16, 3]), ("inputB", [1, 16, 16, 3])]
-    output_arrays = ["output"]
-    tflite_model = convert.toco_convert_graph_def(
+    tflite_model = convert.convert_graphdef_with_arrays(
         sess.graph_def,
-        input_arrays_map,
-        output_arrays,
-        enable_mlir_converter=False,
+        input_arrays_with_shape=[("inputA", [1, 16, 16, 3]),
+                                 ("inputB", [1, 16, 16, 3])],
+        output_arrays=["output"],
         control_output_arrays=None,
         inference_type=dtypes.uint8,
-        quantized_input_stats=[(0., 1.), (0., 1.)])
+        quantized_input_stats=[(0., 1.), (0., 1.)],
+        enable_mlir_converter=False,
+    )
     self.assertTrue(tflite_model)
 
     # Check values from converted model.
@@ -147,16 +151,15 @@ class ConvertTest(test_util.TensorFlowTestCase):
           in_tensor_1 + in_tensor_2, min=0., max=1., name="output")
       sess = session.Session()
 
-    input_arrays_map = [("inputA", [1, 16, 16, 3]), ("inputB", [1, 16, 16, 3])]
-    output_arrays = ["output"]
     with self.assertRaises(ValueError) as error:
-      convert.toco_convert_graph_def(
+      convert.convert_graphdef_with_arrays(
           sess.graph_def,
-          input_arrays_map,
-          output_arrays,
-          enable_mlir_converter=False,
+          input_arrays_with_shape=[("inputA", [1, 16, 16, 3]),
+                                   ("inputB", [1, 16, 16, 3])],
+          output_arrays=["output"],
           control_output_arrays=None,
-          inference_type=dtypes.uint8)
+          inference_type=dtypes.uint8,
+          enable_mlir_converter=False)
     self.assertEqual(
         "The `quantized_input_stats` flag must be defined when either "
         "`inference_type` flag or `inference_input_type` flag is set to "

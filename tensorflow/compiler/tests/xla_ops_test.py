@@ -20,6 +20,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.eager import def_function
@@ -386,7 +387,10 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.arange(12, dtype=np.int32).astype(dtype).reshape([3, 4]),),
           expected=np.array([0, 45, 120, 231], dtype=dtype))
 
-  def testVariadicReduceKahanSum(self):
+  IS_XLA_VARIADIC_REDUCE_V2 = [True, False]
+
+  @parameterized.parameters(IS_XLA_VARIADIC_REDUCE_V2)
+  def testVariadicReduceKahanSum(self, is_v2):
     for dtype in set(self.numeric_types).intersection(
         set([np.float32, np.complex64])):
 
@@ -406,56 +410,72 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           reducer = kahan_sum_reducer.get_concrete_function(
               (arg, arg), (arg, arg))
 
-          return xla.variadic_reduce((x, array_ops.zeros_like(x)),
-                                     init_values=(arg, arg),
-                                     dimensions_to_reduce=dims,
-                                     reducer=reducer)[output_idx]
+          if is_v2:
+            return xla.variadic_reduce((x, array_ops.zeros_like(x)),
+                                       init_values=(arg, arg),
+                                       dimensions_to_reduce=dims,
+                                       reducer=reducer)[output_idx]
+          else:
+            return gen_xla_ops.xla_variadic_reduce((x, array_ops.zeros_like(x)),
+                                                   init_value=(arg, arg),
+                                                   dimensions_to_reduce=dims,
+                                                   reducer=reducer)[output_idx]
+
         return fn
 
       xs = np.array([1e5, np.pi, -1e5, np.exp(1.)])
       xs = np.array([xs, xs[::-1] / 3, xs / 7], dtype)
       self._assertOpOutputMatchesExpected(
-          kahan_sum_reduction(dims=[], output_idx=0),
-          args=(xs,), expected=xs)
+          kahan_sum_reduction(dims=[], output_idx=0), args=(xs,), expected=xs)
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[], output_idx=1),
-          args=(xs,), expected=np.zeros_like(xs))
+          args=(xs,),
+          expected=np.zeros_like(xs))
       shuffle_indices = np.argsort(np.random.randn(xs.shape[0]))
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[0], output_idx=0),
           args=(xs[shuffle_indices],),
-          expected=np.array([np.exp(1) / 3 + 1e5 * 8 / 7,
-                             np.pi * 8 / 7 - 1e5 / 3,
-                             -1e5 * 8 / 7 + np.pi / 3,
-                             np.exp(1) * 8 / 7 + 1e5 / 3], dtype=dtype))
+          expected=np.array([
+              np.exp(1) / 3 + 1e5 * 8 / 7, np.pi * 8 / 7 - 1e5 / 3,
+              -1e5 * 8 / 7 + np.pi / 3,
+              np.exp(1) * 8 / 7 + 1e5 / 3
+          ],
+                            dtype=dtype))
       error_term_equality = functools.partial(self.assertAllClose, atol=.005)
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[0], output_idx=1),
-          args=(xs[shuffle_indices],), expected=np.zeros_like(xs[0]),
+          args=(xs[shuffle_indices],),
+          expected=np.zeros_like(xs[0]),
           equality_fn=error_term_equality)
       shuffle_indices = np.argsort(np.random.randn(xs.shape[1]))
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[1], output_idx=0),
           args=(xs[:, shuffle_indices],),
-          expected=np.array([np.pi + np.exp(1.),
-                             (np.pi + np.exp(1.)) / 3,
-                             (np.pi + np.exp(1.)) / 7], dtype=dtype))
+          expected=np.array([
+              np.pi + np.exp(1.), (np.pi + np.exp(1.)) / 3,
+              (np.pi + np.exp(1.)) / 7
+          ],
+                            dtype=dtype))
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[1], output_idx=1),
-          args=(xs[:, shuffle_indices],), expected=np.zeros_like(xs[:, 0]),
+          args=(xs[:, shuffle_indices],),
+          expected=np.zeros_like(xs[:, 0]),
           equality_fn=error_term_equality)
       # Now, shuffle both dims.
       xs = xs[np.argsort(np.random.randn(xs.shape[0]))]
       xs = xs[:, np.argsort(np.random.randn(xs.shape[1]))]
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[0, 1], output_idx=0),
-          args=(xs,), expected=dtype((np.pi + np.exp(1.)) * 31 / 21))
+          args=(xs,),
+          expected=dtype((np.pi + np.exp(1.)) * 31 / 21))
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[0, 1], output_idx=1),
-          args=(xs,), expected=dtype(0),
+          args=(xs,),
+          expected=dtype(0),
           equality_fn=error_term_equality)
 
-  def testVariadicReduceV2SingleOp(self):
+  @parameterized.parameters(IS_XLA_VARIADIC_REDUCE_V2)
+  def testVariadicReduceSingleOp(self, is_v2):
 
     @def_function.function
     def reducer_add(op_element, acc_val):
@@ -468,9 +488,19 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
       reducer_func = reducer_add.get_concrete_function(arg_spec, arg_spec)
 
       def reduce(values, *, dimensions_to_reduce):
-        return xla.variadic_reduce((values,), (init_val,),  # pylint: disable=cell-var-from-loop
-                                   dimensions_to_reduce=dimensions_to_reduce,
-                                   reducer=reducer_func)[0]  # pylint: disable=cell-var-from-loop
+        if is_v2:
+          return xla.variadic_reduce(
+              (values,),
+              (init_val,),  # pylint: disable=cell-var-from-loop
+              dimensions_to_reduce=dimensions_to_reduce,
+              reducer=reducer_func)[0]  # pylint: disable=cell-var-from-loop
+        else:
+          return gen_xla_ops.xla_variadic_reduce(
+              (values,),
+              (init_val,),  # pylint: disable=cell-var-from-loop
+              dimensions_to_reduce=dimensions_to_reduce,
+              reducer=reducer_func)[0]  # pylint: disable=cell-var-from-loop
+
       # Reduce dimension 0
       self._assertOpOutputMatchesExpected(
           functools.partial(reduce, dimensions_to_reduce=(0,)),
@@ -508,9 +538,14 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                                                        arg_spec_1, arg_spec_2)  # pylint: disable=cell-var-from-loop
 
       def reduce(*values, dimensions_to_reduce):
-        return xla.variadic_reduce(values, (init_val_1, init_val_2,),  # pylint: disable=cell-var-from-loop
-                                   dimensions_to_reduce=dimensions_to_reduce,
-                                   reducer=reducer_func)  # pylint: disable=cell-var-from-loop
+        return xla.variadic_reduce(
+            values,
+            (
+                init_val_1,  # pylint: disable=cell-var-from-loop
+                init_val_2,  # pylint: disable=cell-var-from-loop
+            ),
+            dimensions_to_reduce=dimensions_to_reduce,
+            reducer=reducer_func)  # pylint: disable=cell-var-from-loop
 
       # Reduce dimension 0
       self._assertOpOutputMatchesExpected(

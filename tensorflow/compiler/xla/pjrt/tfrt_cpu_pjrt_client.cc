@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/compiler/xla/primitive_util.h"
 
@@ -462,7 +466,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
       has_default_layout &&
       host_buffer_semantics == HostBufferSemantics::kZeroCopy &&
       ((absl::bit_cast<std::uintptr_t>(data) &
-        (cpu_function_runtime::kMinAlign - 1)) == 0);
+        (cpu_function_runtime::MinAlign() - 1)) == 0);
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
   absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events;
   std::function<void()> on_delete_callback;

@@ -30,7 +30,8 @@ __xla_cpu_runtime_EigenSingleThreadedConv3DF32(
     int64_t padding_x_after, int64_t padding_y_before, int64_t padding_y_after,
     int64_t padding_z_before, int64_t padding_z_after, int64_t lhs_x_dilation,
     int64_t lhs_y_dilation, int64_t lhs_z_dilation, int64_t rhs_x_dilation,
-    int64_t rhs_y_dilation, int64_t rhs_z_dilation) {
+    int64_t rhs_y_dilation, int64_t rhs_z_dilation,
+    int64_t feature_group_count) {
   tensorflow::xla::EigenConv3DImpl(
       Eigen::DefaultDevice(), out, lhs, rhs, input_batch, input_x, input_y,
       input_z, input_channels, kernel_x, kernel_y, kernel_z, kernel_channels,
@@ -38,7 +39,7 @@ __xla_cpu_runtime_EigenSingleThreadedConv3DF32(
       z_stride, padding_x_before, padding_x_after, padding_y_before,
       padding_y_after, padding_z_before, padding_z_after, lhs_x_dilation,
       lhs_y_dilation, lhs_z_dilation, rhs_x_dilation, rhs_y_dilation,
-      rhs_z_dilation);
+      rhs_z_dilation, feature_group_count);
 }
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
@@ -52,7 +53,8 @@ __xla_cpu_runtime_EigenSingleThreadedConv3DF16(
     int64_t padding_x_after, int64_t padding_y_before, int64_t padding_y_after,
     int64_t padding_z_before, int64_t padding_z_after, int64_t lhs_x_dilation,
     int64_t lhs_y_dilation, int64_t lhs_z_dilation, int64_t rhs_x_dilation,
-    int64_t rhs_y_dilation, int64_t rhs_z_dilation) {
+    int64_t rhs_y_dilation, int64_t rhs_z_dilation,
+    int64_t feature_group_count) {
   tensorflow::xla::EigenConv3DImpl(
       Eigen::DefaultDevice(), out, lhs, rhs, input_batch, input_x, input_y,
       input_z, input_channels, kernel_x, kernel_y, kernel_z, kernel_channels,
@@ -60,5 +62,5 @@ __xla_cpu_runtime_EigenSingleThreadedConv3DF16(
       z_stride, padding_x_before, padding_x_after, padding_y_before,
       padding_y_after, padding_z_before, padding_z_after, lhs_x_dilation,
       lhs_y_dilation, lhs_z_dilation, rhs_x_dilation, rhs_y_dilation,
-      rhs_z_dilation);
+      rhs_z_dilation, feature_group_count);
 }

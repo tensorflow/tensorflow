@@ -171,14 +171,14 @@ Status LaunchAutotunedConv(const AutotuneEntry<se::dnn::ConvOp>& autotune_entry,
     se::dnn::ConvOp::Config config{kind,       element_type, element_type,
                                    input_desc, filter_desc,  output_desc,
                                    conv_desc};
-    TF_ASSIGN_OR_RETURN(auto* primary, runners.primary->GetOrCreateRunner(
-                                           config, stream->parent()));
+    TF_ASSIGN_OR_RETURN(auto* primary,
+                        runners.primary->GetOrCreateRunner(config, stream));
 
     const se::dnn::ConvRunner* no_scratch_fallback = nullptr;
     if (runners.no_scratch_fallback) {
-      TF_ASSIGN_OR_RETURN(no_scratch_fallback,
-                          runners.no_scratch_fallback->GetOrCreateRunner(
-                              config, stream->parent()));
+      TF_ASSIGN_OR_RETURN(
+          no_scratch_fallback,
+          runners.no_scratch_fallback->GetOrCreateRunner(config, stream));
     }
 
     TF_ASSIGN_OR_RETURN(auto runner_and_scratch,

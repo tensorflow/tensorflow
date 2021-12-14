@@ -891,6 +891,35 @@ LogicalResult Verify(GatherOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BroadcastToOp
+//===----------------------------------------------------------------------===//
+
+// Canonicalizes BroadcastToOp to ReshapeOp if the input and output has the same
+// number of elements.
+struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
+  using OpRewritePattern<BroadcastToOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(BroadcastToOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input_type = op.input().getType().cast<ShapedType>();
+    auto output_type = op.getType().cast<ShapedType>();
+    if (!input_type.hasStaticShape() || !output_type.hasStaticShape() ||
+        input_type.getNumElements() != output_type.getNumElements()) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.input(),
+                                           op.shape());
+    return success();
+  }
+};
+
+void BroadcastToOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertBroadcastToReshape>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 

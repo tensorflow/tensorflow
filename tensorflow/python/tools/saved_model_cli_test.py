@@ -870,6 +870,35 @@ Defined Functions:
         '{}_makefile.inc'.format(output_prefix))
     self.assertIn('-D_GLIBCXX_USE_CXX11_ABI=', makefile_contents)
 
+  def testFreezeModel(self):
+    if not test.is_built_with_xla():
+      self.skipTest('Skipping test because XLA is not compiled in.')
+
+    variables_to_feed = 'all'
+    func = 'func2'
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = self.AOTCompileDummyModel()
+    func = getattr(dummy_model, func)
+    with self.cached_session():
+      self.evaluate(dummy_model.var.initializer)
+      self.evaluate(dummy_model.write_var.initializer)
+      save.save(dummy_model, saved_model_dir, signatures={'func': func})
+
+    self.parser = saved_model_cli.create_parser()
+    output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
+    args = [  # Use the default seving signature_key.
+        'freeze_model', '--dir', saved_model_dir, '--tag_set', 'serve',
+        '--signature_def_key', 'func', '--output_prefix', output_prefix,
+        '--variables_to_feed', variables_to_feed
+    ]
+    args = self.parser.parse_args(args)
+    with test.mock.patch.object(logging, 'warn'):
+      saved_model_cli.freeze_model(args)
+    self.assertTrue(
+        file_io.file_exists(os.path.join(output_prefix, 'frozen_graph.pb')))
+    self.assertTrue(
+        file_io.file_exists(os.path.join(output_prefix, 'config.pbtxt')))
+
 
 if __name__ == '__main__':
   test.main()

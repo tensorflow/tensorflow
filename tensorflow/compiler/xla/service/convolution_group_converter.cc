@@ -56,6 +56,7 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation,
+                  std::function<bool(HloInstruction*)> should_expand,
                   std::function<bool(HloInstruction*)> is_cost_viable,
                   bool convert_batch_groups_only, bool filter_expansion);
 
@@ -67,11 +68,13 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
  private:
   explicit ConvolutionVisitor(
       HloComputation* computation,
+      std::function<bool(HloInstruction*)> should_expand,
       std::function<bool(HloInstruction*)> is_cost_viable,
       bool convert_batch_groups_only, bool filter_expansion)
       : computation_(computation),
         filter_expansion_(filter_expansion),
         convert_batch_groups_only_(convert_batch_groups_only),
+        should_expand_(should_expand),
         is_cost_viable_(is_cost_viable) {}
 
   // Current HloComputation instance the ConvolutionVisitor is traversing.
@@ -86,15 +89,16 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
   // Decides whether to convert batch groups or feature groups.
   bool convert_batch_groups_only_;
 
-  // std::function<std::vector<LloValue*>(int64, int64)> chunk_fetcher
+  std::function<bool(HloInstruction*)> should_expand_;
   std::function<bool(HloInstruction*)> is_cost_viable_;
 };
 
 bool ConvolutionVisitor::Run(
     HloComputation* computation,
+    std::function<bool(HloInstruction*)> should_expand,
     std::function<bool(HloInstruction*)> is_cost_viable,
     bool convert_batch_groups_only, bool filter_expansion) {
-  ConvolutionVisitor visitor(computation, is_cost_viable,
+  ConvolutionVisitor visitor(computation, should_expand, is_cost_viable,
                              convert_batch_groups_only, filter_expansion);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
@@ -204,7 +208,8 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
   auto filter = convolution->mutable_operand(1);
   int64_t batch_group_count = convolution->batch_group_count();
 
-  if (batch_group_count == 1) {
+  if (batch_group_count == 1 ||
+      (should_expand_ && !should_expand_(convolution))) {
     return Status::OK();
   }
 
@@ -424,7 +429,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   };
 
   int64_t group_count = convolution->feature_group_count();
-  if (group_count == 1) {
+  if (group_count == 1 || (should_expand_ && !should_expand_(convolution))) {
     return Status::OK();
   }
 
@@ -675,7 +680,7 @@ StatusOr<bool> ConvolutionGroupConverter::Run(HloModule* module) {
       2, "ConvolutionGroupConverter::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (ConvolutionVisitor::Run(comp, is_cost_viable_,
+    if (ConvolutionVisitor::Run(comp, should_expand_, is_cost_viable_,
                                 convert_batch_groups_only_,
                                 filter_expansion_)) {
       changed = true;

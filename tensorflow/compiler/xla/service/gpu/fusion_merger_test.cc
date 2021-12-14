@@ -317,7 +317,7 @@ TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
 
 // Check that we limit the number of operands to fusions we create.
 TEST_F(FusionMergerTest, AvoidsLargeFusion) {
-  constexpr int64_t kNumParams = kMaxOperandsAndOutputsPerFusion + 1;
+  constexpr int64_t kNumParams = MaxOperandsAndOutputsPerFusion() + 1;
 
   // Compute
   //   p0 + p1 + p2 + ... + pn,
@@ -353,7 +353,7 @@ TEST_F(FusionMergerTest, AvoidsLargeFusion) {
   };
   auto fusion = b.AddInstruction(
       make_fusion(absl::MakeSpan(entry_params)
-                      .subspan(0, kMaxOperandsAndOutputsPerFusion)));
+                      .subspan(0, MaxOperandsAndOutputsPerFusion())));
   b.AddInstruction(make_fusion({entry_params.back(), fusion}));
   module->AddEntryComputation(b.Build());
   EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());

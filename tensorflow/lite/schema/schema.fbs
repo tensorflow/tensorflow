@@ -383,8 +383,9 @@ enum BuiltinOperator : int32 {
   BUCKETIZE = 147,
   RANDOM_UNIFORM = 148,
   MULTINOMIAL = 149,
-  AVERAGE_POOL_3D = 150,
-  MAX_POOL_3D = 151,
+  GELU = 150,
+  AVERAGE_POOL_3D = 151,
+  MAX_POOL_3D = 152,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -505,6 +506,7 @@ union BuiltinOptions {
   AssignVariableOptions,
   RandomOptions,
   BucketizeOptions,
+  GeluOptions,
   Pool3DOptions,
 }
 
@@ -1098,6 +1100,10 @@ table RandomOptions {
 
 table BucketizeOptions {
   boundaries: [float];  // The bucket boundaries.
+}
+
+table GeluOptions {
+  approximate: bool;
 }
 
 table Pool3DOptions {

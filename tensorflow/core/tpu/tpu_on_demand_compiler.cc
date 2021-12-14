@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <memory>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -55,7 +56,7 @@ class TpuCompiler : public Compiler {
       stream_executor::StreamExecutor* executor,
       const CompileOptions& options) override {
     XLA_HloModule hlo_module;
-    auto cleanup = xla::MakeCleanup([&hlo_module]() {
+    auto cleanup = absl::MakeCleanup([&hlo_module]() {
       stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
       ApiConverter::Free(&hlo_module.module_config);
     });
@@ -83,7 +84,7 @@ class TpuCompiler : public Compiler {
       stream_executor::StreamExecutor* executor,
       const CompileOptions& options) override {
     XLA_HloModule hlo_module;
-    auto cleanup = xla::MakeCleanup([&hlo_module]() {
+    auto cleanup = absl::MakeCleanup([&hlo_module]() {
       stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
       ApiConverter::Free(&hlo_module.module_config);
     });
@@ -118,7 +119,7 @@ class TpuCompiler : public Compiler {
         new XLA_HloModuleConfig[module_group->size()];
     int module_group_size = module_group->size();
     auto cleanup_config =
-        xla::MakeCleanup([&se_module_group, module_group_size]() {
+        absl::MakeCleanup([&se_module_group, module_group_size]() {
           for (auto i = 0; i < module_group_size; ++i) {
             ApiConverter::Free(&se_module_group.module_config[i]);
           }
@@ -166,7 +167,7 @@ class TpuCompiler : public Compiler {
       XLA_HloModule c_module =
           ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executables[i]);
       auto cleanup_c_module =
-          xla::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
+          absl::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
       TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                           ApiConverter::FromC(c_module));
       std::shared_ptr<HloModule> module_shared(module.release());

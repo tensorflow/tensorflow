@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/FileUtilities.h"
-#include "mlir/Transforms/Bufferize.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/platform/logging.h"
@@ -77,7 +77,7 @@ JitExecutable& CreateJitExecutable(
       tensorflow::CreateTfCpuRtPipeline(pm, tf_cpurt_opts);
     };
   }
-  opts.type_converter = mlir::BufferizeTypeConverter();
+  opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
 
   // Cache all jit executables, otherwise different benchmark runs will produce
   // different .so files and the same compiled function will have different

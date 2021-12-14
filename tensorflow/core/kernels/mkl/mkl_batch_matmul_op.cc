@@ -18,16 +18,14 @@ limitations under the License.
 // This file uses oneDNN library for acceleration of Batch Matrix-Matrix
 // Multiplication (MatMul) operations. We currently register this kernel only
 // for oneDNN supported data types (float, bfloat16). The maximum number of
-// dimensions (rank) for output tensor is 12 in oneDNN. If output tensor rank
-// exceeds 12, we exit with reporting an error message.
+// dimensions (rank) for output tensor is DNNL_MAX_NDIMS = 12 in oneDNN.
+// If output tensor rank exceeds 12, we exit with reporting an error message.
 
 #define EIGEN_USE_THREADS
 
 #if defined(INTEL_MKL)
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -37,10 +35,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/kernels/mkl/mkl_batch_matmul_helper.h"
 #include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -118,9 +114,9 @@ class BatchMatMulMkl : public OpKernel {
 
     out_shape.AddDim(lhs_rows);
     out_shape.AddDim(rhs_cols);
-    // The maximum number of dimensions for a tensor in DNNL is 12.
+    // The maximum number of DNNL tensor dimensions is DNNL_MAX_NDIMS = 12.
     OP_REQUIRES(
-        ctx, out_shape.dims() <= 12,
+        ctx, out_shape.dims() <= DNNL_MAX_NDIMS,
         errors::InvalidArgument(
             "Rank of output tensor must be <= 12, but is ", out_shape.dims(),
             ". Current implementation supports upto rank 12 tensors."));

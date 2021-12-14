@@ -231,8 +231,7 @@ XlaOp CombineShapePair(absl::Span<const XlaOp> pair,
       original_shape.dimensions(shape_pair.split_dim);
   std::vector<int64_t> reshape_dims(original_shape.dimensions().begin(),
                                     original_shape.dimensions().end());
-  reshape_dims[shape_pair.split_dim] =
-      RoundUpToNearest<int64_t>(pre_split_size, 2);
+  reshape_dims[shape_pair.split_dim] = RoundUpTo<int64_t>(pre_split_size, 2);
   result = Reshape(result, reshape_dims);
   if (reshape_dims[shape_pair.split_dim] != pre_split_size) {
     result = Slice(result, std::vector<int64_t>(original_shape.rank(), 0),

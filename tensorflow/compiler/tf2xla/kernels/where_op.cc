@@ -78,12 +78,6 @@ class WhereOp : public XlaOpKernel {
     xla::XlaOp length = xla::ReduceAll(
         compared_int, xla::Zero(ctx->builder(), xla::S32),
         xla::CreateScalarAddComputation(xla::S32, ctx->builder()));
-    StatusOr<xla::XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
-        &ctx->value_inference(), result, length, 0);
-    if (rebounded_result.ok()) {
-      ctx->SetOutput(0, *rebounded_result);
-      return;
-    }
     // TODO(b/207187072): Remove special handling once dynamic reshape can also
     // be handled.
     xla::XlaOp bounded_result = xla::SetDimensionSize(result, length, 0);
@@ -91,7 +85,7 @@ class WhereOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Where").Device(DEVICE_TPU_XLA_JIT), WhereOp);
+REGISTER_XLA_OP(Name("Where"), WhereOp);
 
 }  // namespace
 }  // namespace tensorflow

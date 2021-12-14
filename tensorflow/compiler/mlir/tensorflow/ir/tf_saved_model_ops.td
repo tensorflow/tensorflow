@@ -83,6 +83,8 @@ def TfSavedModel_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tf_saved_model";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 

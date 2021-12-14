@@ -967,12 +967,13 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       bool multi_threaded =
           hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
       bool use_mkl_dnn =
-          hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
+          hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn() &&
+          convolution->feature_group_count() == 1;
 
       auto valid_num_dims = [](absl::Span<const int64_t> xs) {
         return xs.size() >= 2 && xs.size() <= 3;
       };
-      TF_RET_CHECK(valid_num_dims(input_dims));
+      TF_RET_CHECK(valid_num_dims(input_dims)) << input_dims.size();
       TF_RET_CHECK(valid_num_dims(kernel_dims));
       TF_RET_CHECK(valid_num_dims(output_dims));
       TF_RET_CHECK(valid_num_dims(strides));
@@ -1041,13 +1042,13 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       for (int64_t d : window_dilation) {
         args.push_back(b_.getInt64(d));
       }
+      args.push_back(b_.getInt64(convolution->feature_group_count()));
       EmitCallToFunc(fn_name, args, b_.getVoidTy(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
 
       return Status::OK();
     }
   }
-
   // This is a completely un-optimized version of convolution just to
   // have an early version that works. E.g. the input index and
   // padding calculation is not hoisted out of the inner loop.
@@ -2208,7 +2209,7 @@ Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
   for (int64_t i = 1; i < hlo->operand_count(); ++i) {
     const int64_t dim_index = i - 1;
     llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(i));
-    llvm::LoadInst* dyn_dim_size = b_.CreateLoad(source_buffer, "dyn_dim_size");
+    llvm::LoadInst* dyn_dim_size = Load(source_buffer, "dyn_dim_size");
 
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
         b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
@@ -2275,6 +2276,7 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
         b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
     llvm::Value* dyn_dim_size = b_.CreateLoad(
+        b_.getInt32Ty(),
         b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()),
         "dyn_dim_size");
     b_.CreateStore(dyn_dim_size,
@@ -2925,7 +2927,8 @@ void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
                                                      llvm::Value* cycle_start) {
   auto* cycle_diff = b->CreateSub(cycle_end, cycle_start);
   llvm::LoadInst* old_cycle_count =
-      b->CreateLoad(prof_counter, "old_cycle_count");
+      b->CreateLoad(prof_counter->getType()->getPointerElementType(),
+                    prof_counter, "old_cycle_count");
   auto* new_cycle_count =
       b->CreateAdd(cycle_diff, old_cycle_count, "new_cycle_count");
   b->CreateStore(new_cycle_count, prof_counter);

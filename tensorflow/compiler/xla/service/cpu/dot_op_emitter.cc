@@ -654,7 +654,7 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   llvm::Value* lhs_element = lhs_array_.EmitReadArrayElement(lhs_index, b_);
   llvm::Value* rhs_element = rhs_array_.EmitReadArrayElement(rhs_index, b_);
 
-  llvm::Value* accum = b_->CreateLoad(accum_address);
+  llvm::Value* accum = b_->CreateLoad(accum_type, accum_address);
   llvm::Value* updated_accum;
   if (ShapeUtil::ElementIsComplex(lhs_shape)) {
     auto real = [&](llvm::Value* x) { return b_->CreateExtractValue(x, {0}); };
@@ -686,7 +686,7 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   // - Store into output array.
   SetToFirstInsertPoint(reduction_loop->GetExitBasicBlock(), b_);
 
-  llvm::Value* result = b_->CreateLoad(accum_address);
+  llvm::Value* result = b_->CreateLoad(accum_type, accum_address);
 
   // Create index into target address. The target index is the concatenation of
   // the rhs and lhs indexes with the reduction dimensions removed. The terms

@@ -354,3 +354,143 @@ func @no_control_output(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
   // CHECK: return
   return
 }
+
+// Tests loop with resource that is unique per iteration.
+//
+// In cases where a resource-allocating op creates a new unique resource per
+// loop iteration (ops with `TF_UniqueResourceAllocation` trait, in this case:
+// `tf.StackV2`), make sure that we don't create data dependencies between
+// different iterations for such resources. This is in line with the behavior
+// for the same loop unrolled. In this particular case, no data chain and token
+// should be created.
+
+func @unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
+  tf_executor.graph {
+    %while:3 = tf_executor.island wraps "tf.While"(%arg0, %arg1) {body = @unique_resource_chain_while_body, cond = @unique_resource_chain_while_cond, is_stateless = false} : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
+    tf_executor.fetch
+  }
+  return
+}
+// CHECK-LABEL:   func @unique_resource_chain
+// CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
+// CHECK:           tf_executor.graph
+// CHECK:             %[[WHILE:.*]]:2, %[[WHILE_CONTROL:.*]] = tf_executor.island wraps "tf.While"(%[[ARG_0]], %[[ARG_1]]) {body = @unique_resource_chain_while_body, cond = @unique_resource_chain_while_cond, is_stateless = false} : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
+// CHECK:             tf_executor.fetch
+// CHECK:           }
+// CHECK:           return
+
+func @unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32>) {
+  %graph:2 = tf_executor.graph {
+    %const:2 = tf_executor.island wraps "tf.Const"() { value = dense<1000> : tensor<i32> } : () -> tensor<i32>
+    %stack_handle:2 = tf_executor.island wraps "tf.StackV2"(%const#0) {elem_type = f32} : (tensor<i32>) -> !tf_res
+    %stack_push:2 = tf_executor.island wraps "tf.StackPushV2"(%stack_handle#0, %arg1) : (!tf_res, tensor<f32>) -> tensor<f32>
+    %add:2 = tf_executor.island wraps "tf.Add"(%arg1, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %stack_push2:2 = tf_executor.island(%stack_push#1) wraps "tf.StackPushV2"(%stack_handle#0, %add#0) : (!tf_res, tensor<f32>) -> tensor<f32>
+    %one:2 = tf_executor.island wraps "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+    %add2:2 = tf_executor.island wraps "tf.Add"(%arg0, %one#0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    tf_executor.fetch %add2#0, %arg1, %stack_push2#1 : tensor<i32>, tensor<f32>, !tf_executor.control
+  }
+  return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
+}
+// CHECK-LABEL:   func @unique_resource_chain_while_body
+// CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
+// CHECK:           %[[GRAPH:.*]]:2 = tf_executor.graph {
+// CHECK:             %[[THOUSAND:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"() {value = dense<1000> : tensor<i32>} : () -> tensor<i32>
+// CHECK:             %[[STACK_HANDLE:.*]], %{{.*}} = tf_executor.island wraps "tf.StackV2"(%[[THOUSAND]]) {elem_type = f32} : (tensor<i32>) -> tensor<!tf_type.resource<tensor<f32>>>
+// CHECK:             %{{.*}}, %[[STACK_PUSH_CONTROL:.*]] = tf_executor.island wraps "tf.StackPushV2"(%[[STACK_HANDLE]], %[[ARG_1]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
+// CHECK:             %[[ADD:.*]], %{{.*}} = tf_executor.island wraps "tf.Add"(%[[ARG_1]], %[[ARG_1]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+// CHECK:             %{{.*}}, %{{.*}} = tf_executor.island(%[[STACK_PUSH_CONTROL]]) wraps "tf.StackPushV2"(%[[STACK_HANDLE]], %[[ADD]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
+// CHECK:             %[[ONE:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:             %[[COUNTER:.*]], %{{.*}} = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ONE]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:             tf_executor.fetch %[[COUNTER]], %[[ARG_1]] : tensor<i32>, tensor<f32>
+// CHECK:           }
+// CHECK:           return %[[GRAPH]]#0, %[[GRAPH]]#1 : tensor<i32>, tensor<f32>
+
+func @unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i1>) {
+  %graph = tf_executor.graph {
+    %const:2 = tf_executor.island wraps "tf.Const"() { value = dense<1000> : tensor<i32> } : () -> tensor<i32>
+    %less:2 = tf_executor.island wraps "tf.Less"(%const#0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    tf_executor.fetch %less#0 : tensor<i1>
+  }
+  return %graph : tensor<i1>
+}
+// CHECK-LABEL:   func @unique_resource_chain_while_cond
+// CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
+// CHECK:           %[[GRAPH:.*]] = tf_executor.graph
+// CHECK:             %[[CONST:.*]], %[[CONST_CONTROL:.*]] = tf_executor.island wraps "tf.Const"() {value = dense<1000> : tensor<i32>} : () -> tensor<i32>
+// CHECK:             %[[LESS:.*]], %[[LESS_CONTROL:.*]] = tf_executor.island wraps "tf.Less"(%[[CONST]], %[[ARG_0]]) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:             tf_executor.fetch %[[LESS]] : tensor<i1>
+// CHECK:           }
+// CHECK:           return %[[GRAPH]] : tensor<i1>
+
+// Tests loop with two resource types, one of them being unique per iteration.
+//
+// Similar to above test but with one additional resource that is not unique per
+// iteration (created by `tf.VarHandleOp`).
+
+func @mixed_unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
+  tf_executor.graph {
+    %while:3 = tf_executor.island wraps "tf.While"(%arg0, %arg1) {body = @mixed_unique_resource_chain_while_body, cond = @mixed_unique_resource_chain_while_cond, is_stateless = false} : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
+    tf_executor.fetch
+  }
+  return
+}
+// CHECK-LABEL:   func @mixed_unique_resource_chain
+// CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
+// CHECK:           tf_executor.graph
+// CHECK:             %[[CHAIN_TOKEN:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:             %[[WHILE:.*]]:3, %[[WHILE_CONTROL:.*]] = tf_executor.island wraps "tf.While"(%[[ARG_0]], %[[ARG_1]], %[[CHAIN_TOKEN]]) {body = @mixed_unique_resource_chain_while_body, cond = @mixed_unique_resource_chain_while_cond, is_stateless = false} : (tensor<i32>, tensor<f32>, tensor<i32>) -> (tensor<i32>, tensor<f32>, tensor<i32>)
+// CHECK:             tf_executor.fetch
+// CHECK:           }
+// CHECK:           return
+
+func @mixed_unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32>) {
+  %graph:2 = tf_executor.graph {
+    %const:2 = tf_executor.island wraps "tf.Const"() { value = dense<1000> : tensor<i32> } : () -> tensor<i32>
+    %stack_handle:2 = tf_executor.island wraps "tf.StackV2"(%const#0) {elem_type = f32} : (tensor<i32>) -> !tf_res
+    %stack_push:2 = tf_executor.island wraps "tf.StackPushV2"(%stack_handle#0, %arg1) : (!tf_res, tensor<f32>) -> tensor<f32>
+    %add:2 = tf_executor.island wraps "tf.Add"(%arg1, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %stack_push2:2 = tf_executor.island(%stack_push#1) wraps "tf.StackPushV2"(%stack_handle#0, %add#0) : (!tf_res, tensor<f32>) -> tensor<f32>
+    %one:2 = tf_executor.island wraps "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+    %add2:2 = tf_executor.island wraps "tf.Add"(%arg0, %one#0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %var_handle:2 = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+    %assign = tf_executor.island wraps "tf.AssignVariableOp"(%var_handle, %arg1) : (!tf_res, tensor<f32>) -> ()
+    tf_executor.fetch %add2#0, %arg1, %stack_push2#1, %assign : tensor<i32>, tensor<f32>, !tf_executor.control, !tf_executor.control
+  }
+  return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
+}
+// CHECK-LABEL:   func @mixed_unique_resource_chain_while_body
+// CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_TOKEN:.*]]: tensor<i32>
+// CHECK:           %[[GRAPH:.*]]:3 = tf_executor.graph
+// CHECK:             %{{.*}}, %[[CHAIN_SRC:.*]] = tf_executor.island wraps "tf.Identity"(%[[CHAIN_TOKEN]]) : (tensor<i32>) -> tensor<i32>
+// CHECK:             %[[THOUSAND:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"() {value = dense<1000> : tensor<i32>} : () -> tensor<i32>
+// CHECK:             %[[STACK_HANDLE:.*]], %{{.*}} = tf_executor.island wraps "tf.StackV2"(%[[THOUSAND]]) {elem_type = f32} : (tensor<i32>) -> tensor<!tf_type.resource<tensor<f32>>>
+// CHECK:             %{{.*}}, %[[STACK_PUSH_CONTROL:.*]] = tf_executor.island wraps "tf.StackPushV2"(%[[STACK_HANDLE]], %[[ARG_1]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
+// CHECK:             %[[ADD:.*]], %{{.*}} = tf_executor.island wraps "tf.Add"(%[[ARG_1]], %[[ARG_1]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+// CHECK:             %{{.*}}, %{{.*}} = tf_executor.island(%[[STACK_PUSH_CONTROL]]) wraps "tf.StackPushV2"(%[[STACK_HANDLE]], %[[ADD]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
+// CHECK:             %[[ONE:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:             %[[COUNTER:.*]], %{{.*}} = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ONE]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:             %[[VAR_HANDLE:.*]], %{{.*}} = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<!tf_type.resource<tensor<f32>>>
+// CHECK:             %[[ASSIGN_CONTROL:.*]] = tf_executor.island(%[[CHAIN_SRC]]) wraps "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[ARG_1]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+// CHECK:             %[[CHAIN_SINK:.*]], %{{.*}} = tf_executor.island(%[[ASSIGN_CONTROL]]) wraps "tf.Identity"(%[[CHAIN_TOKEN]]) : (tensor<i32>) -> tensor<i32>
+// CHECK:             tf_executor.fetch %[[COUNTER]], %[[ARG_1]], %[[CHAIN_SINK]] : tensor<i32>, tensor<f32>, tensor<i32>
+// CHECK:           }
+// CHECK:           return %[[GRAPH]]#0, %[[GRAPH]]#1, %[[GRAPH]]#2 : tensor<i32>, tensor<f32>, tensor<i32>
+
+func @mixed_unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i1>) {
+  %graph = tf_executor.graph {
+    %const:2 = tf_executor.island wraps "tf.Const"() { value = dense<1000> : tensor<i32> } : () -> tensor<i32>
+    %less:2 = tf_executor.island wraps "tf.Less"(%const#0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    tf_executor.fetch %less#0 : tensor<i1>
+  }
+  return %graph : tensor<i1>
+}
+// CHECK-LABEL:   func @mixed_unique_resource_chain_while_cond
+// CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_TOKEN:.*]]: tensor<i32>
+// CHECK:           %[[GRAPH:.*]] = tf_executor.graph
+// CHECK:             %[[CONST:.*]], %[[CONST_CONTROL:.*]] = tf_executor.island wraps "tf.Const"() {value = dense<1000> : tensor<i32>} : () -> tensor<i32>
+// CHECK:             %[[LESS:.*]], %[[LESS_CONTROL:.*]] = tf_executor.island wraps "tf.Less"(%[[CONST]], %[[ARG_0]]) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:             tf_executor.fetch %[[LESS]] : tensor<i1>
+// CHECK:           }
+// CHECK:           return %[[GRAPH]] : tensor<i1>
+

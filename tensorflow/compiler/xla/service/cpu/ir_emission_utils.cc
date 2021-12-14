@@ -84,7 +84,7 @@ bool PotentiallyImplementedAsEigenConvolution(
       convolution.convolution_dimension_numbers();
   // Only 1D through 3D convolutions are supported at the moment.
   const int64_t num_spatial_dims = dnums.output_spatial_dimensions_size();
-  if (num_spatial_dims > 3) {
+  if (num_spatial_dims < 1 || num_spatial_dims > 3) {
     return false;
   }
 

@@ -19,8 +19,10 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
-# Pick a version of xcode
-export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+# Selects a version of Xcode.
+export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
+# TODO(rameshsampath): Update MACOS Development Target
+export MACOSX_DEPLOYMENT_TARGET=10.12
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up and install MacOS pip dependencies.

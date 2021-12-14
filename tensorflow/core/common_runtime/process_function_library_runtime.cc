@@ -685,7 +685,9 @@ ProcessFunctionLibraryRuntime::AsyncAttributes::Summarize(const Graph* graph) {
     if (node->IsRecv() || node->IsHostRecv()) {
       has_recv_op = true;
     }
-    if (!ValidateOpIsSafeForSyncExecution(*node).ok()) {
+    if (!ValidateOpIsSafeForSyncExecution(*node,
+                                          allow_control_flow_sync_execution())
+             .ok()) {
       has_unsafe_op = true;
     }
   }
@@ -894,6 +896,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.composite_devices = &composite_devices;
   optimization_options.default_function_device = default_device;
   optimization_options.function_def = fdef;
+  optimization_options.shape_inference_on_tfe_dialect_import =
+      options.shape_inference_on_tfe_dialect_import;
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
   if (should_run_optimization_passes) {
@@ -1034,7 +1038,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     for (const auto& pair : subgraphs) {
       ComponentFunctionData* comp_data = &data->glue_[pair.first];
       const Graph* subgraph = pair.second.get();
-      comp_data->async_attributes = AsyncAttributes(subgraph);
+      comp_data->async_attributes =
+          AsyncAttributes(subgraph, options.allow_control_flow_sync_execution);
       if (comp_data->async_attributes.summary() ==
           AsyncAttributes::kAsyncRequired) {
         data->enable_sync_execution = false;
@@ -1055,10 +1060,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
           dev_set->FindDeviceByName(target)->device_type();
       Graph* subgraph = pair.second.get();
 
+      bool ints_on_device =
+          (device_type == "TPU" || device_type == "XLA_CPU" ||
+           device_type == "XLA_GPU" || options.int_args_and_retvals_on_device);
       status->Update(UpdateArgAndRetvalMetadata(
-          subgraph, device_type, &comp_data->arg_indices,
-          &comp_data->ret_indices, &comp_data->arg_alloc_attrs,
-          &comp_data->ret_alloc_attrs));
+          subgraph, &comp_data->arg_indices, &comp_data->ret_indices,
+          &comp_data->arg_alloc_attrs, &comp_data->ret_alloc_attrs,
+          ints_on_device));
       if (!status->ok()) {
         counter.DecrementCount();
         return;
@@ -1082,6 +1090,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       opts.create_kernels_eagerly = options.create_kernels_eagerly;
       opts.state_handle = options.state_handle;
       opts.allow_small_function_optimizations = data->enable_sync_execution;
+      opts.allow_control_flow_sync_execution =
+          options.allow_control_flow_sync_execution;
       auto attrs = AttrSlice(&shard.attr());
       VLOG(1) << "Start instantiating component function " << unique_name
               << " on device " << target;
@@ -1300,6 +1310,7 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
             run_status.error_message());
+        if (opts.rendezvous != nullptr) opts.rendezvous->StartAbort(run_status);
         return errors::CreateWithUpdatedMessage(run_status, function_and_msg);
       } else {
         VLOG(2) << "Component function execution succeeded.";

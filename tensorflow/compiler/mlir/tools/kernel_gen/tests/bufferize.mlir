@@ -71,7 +71,7 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[ASSUMING_RESULT]] : memref<?xf32>
   %assuming_result = shape.assuming %witness -> (tensor<?xf32>) {
-    %result = memref.tensor_load %arg : memref<?xf32>
+    %result = bufferization.to_tensor %arg : memref<?xf32>
     shape.assuming_yield %result : tensor<?xf32>
   }
   return %assuming_result : tensor<?xf32>
@@ -249,7 +249,7 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
 // CHECK-SAME: (%[[T:.*]]: memref<1x2x2xf32>)
 func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
   // CHECK: memref.collapse_shape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
-  %result = linalg.tensor_collapse_shape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
+  %result = tensor.collapse_shape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
   return %result : tensor<4xf32>
 }
 

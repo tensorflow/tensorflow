@@ -48,9 +48,11 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_path=model_path, experimental_use_mlir=True)
     mlir = mock_stdout.getvalue()
     self.assertIn(
-        'func @main(%arg0: tensor<1x8x8x3xf32>) -> '
-        'tensor<1x8x8x3xf32> attributes '
-        '{tf.entry_function = {inputs = "input", outputs = "output"}}', mlir)
+        'func @main(%arg0: tensor<1x8x8x3xf32> '
+        '{tf_saved_model.index_path = ["a"]}) -> '
+        '(tensor<1x8x8x3xf32> {tf_saved_model.index_path = ["x"]}) attributes '
+        '{tf.entry_function = {inputs = "input", outputs = "output"}, '
+        'tf_saved_model.exported_names = ["serving_default"]}', mlir)
     self.assertIn(
         '%0 = tfl.add %arg0, %arg0 {fused_activation_function = "NONE"} : '
         'tensor<1x8x8x3xf32>', mlir)

@@ -54,3 +54,15 @@ func @main(%arg0: !mhlo.token) -> !mhlo.token {
 // CHECK: after-all
 // NOLNN-SAME: metadata={op_name="name(with)[]"}
 // LNN-SAME: metadata={op_name="name.with..."}
+
+// -----
+
+// CHECK-LABEL: %main
+func @main(%arg0: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc("name(anothername)"("file_name":2:8))
+  return %0 : !mhlo.token
+}
+
+// CHECK: after-all
+// NOLNN-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2}
+// LNN-SAME: metadata={op_name="name.anothername." source_file="file_name" source_line=2}

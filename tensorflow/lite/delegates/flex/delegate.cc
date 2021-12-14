@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -71,6 +72,13 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
     context->ReportError(context, "Failed to initialize TensorFlow context: %s",
                          status.error_message().c_str());
     return kTfLiteError;
+  }
+
+  // Initializes the cancellation manager.
+  if (!cancellation_manager_) {
+    cancellation_manager_ =
+        absl::make_unique<tensorflow::CancellationManager>();
+    delegate_data_.SetCancellationManager(cancellation_manager_.get());
   }
 
   return kTfLiteOk;
@@ -162,6 +170,17 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 
   memcpy(output->data.raw, t_data.data(), t_data.size());
   return kTfLiteOk;
+}
+
+void FlexDelegate::Cancel() { cancellation_manager_->StartCancel(); }
+
+bool FlexDelegate::HasCancelled(void* data) {
+  if (data == nullptr) {
+    return false;
+  }
+
+  auto* flex_delegate = static_cast<FlexDelegate*>(data);
+  return flex_delegate->cancellation_manager_->IsCancelled();
 }
 
 }  // namespace tflite

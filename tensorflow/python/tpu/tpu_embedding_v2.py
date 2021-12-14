@@ -336,6 +336,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       self._hosts = get_list_of_hosts(self._strategy)
 
     self._built = False
+    # If batch size checking for every `enqueue` is pretty slow, this flag can
+    # be disabled in subclasses. It could happen in performance critical cases.
     self._verify_batch_size_on_enqueue = True
 
   def build(self, per_replica_batch_size: Optional[int] = None):
@@ -663,6 +665,12 @@ class TPUEmbedding(tracking.AutoTrackable):
       interleaved_gradients.append(array_ops.reshape(
           array_ops.concat(per_table_gradients[table], axis=1),
           [-1, table.dim]))
+    # This is a temporary workaround to fix shape inference across functional
+    # ops. This ensures that the shape of the gradient is correctly set.
+    interleaved_gradients = [
+        array_ops.reshape(gradient, gradient.shape)
+        for gradient in interleaved_gradients
+    ]
     op = tpu_ops.send_tpu_embedding_gradients(
         inputs=interleaved_gradients,
         learning_rates=[math_ops.cast(fn(), dtype=dtypes.float32)

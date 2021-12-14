@@ -257,12 +257,16 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
 
   // Determine the unique architecture for the current GPU, if any.
   SmallVector<std::string, 1> architectures;
+#if defined(GOOGLE_CUDA)
   stream_executor::CudaComputeCapability cc =
       ctx->op_device_context()->stream()->GetCudaComputeCapability();
-#if defined(GOOGLE_CUDA)
   architectures.push_back(absl::StrCat("sm_", cc.major, cc.minor));
 #elif defined(TENSORFLOW_USE_ROCM)
-  architectures.push_back(absl::StrCat("gfx", cc.major, cc.minor));
+  architectures.push_back(ctx->op_device_context()
+                              ->stream()
+                              ->parent()
+                              ->GetDeviceDescription()
+                              .rocm_amdgpu_gcn_arch_name());
 #endif
 
   // Construct `SmallVector`s from arguments.

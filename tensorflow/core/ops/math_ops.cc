@@ -1699,6 +1699,11 @@ REGISTER_OP("Bincount")
         return Status::OK();
       }
 
+      if (size_tensor->dims() != 0) {
+        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                       size_tensor->dims());
+      }
+
       // Return `[size]` shape if size is known.
       int32_t size_val = size_tensor->scalar<int32>()();
       if (size_val < 0) {
@@ -1729,6 +1734,10 @@ REGISTER_OP("DenseBincount")
         // Return unknown shape if size is not known.
         c->set_output(0, c->UnknownShape());
         return Status::OK();
+      }
+      if (size_tensor->dims() != 0) {
+        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                       size_tensor->dims());
       }
 
       int64_t size_val;
@@ -1770,6 +1779,10 @@ REGISTER_OP("SparseBincount")
         // Return unknown shape if size is not known.
         c->set_output(0, c->UnknownShape());
         return Status::OK();
+      }
+      if (size_tensor->dims() != 0) {
+        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                       size_tensor->dims());
       }
 
       int64_t size_val;

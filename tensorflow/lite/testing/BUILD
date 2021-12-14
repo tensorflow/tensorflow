@@ -11,7 +11,6 @@ load(
     "gen_zip_test",
     "gen_zipped_test_file",
     "generated_test_models_all",
-    "merged_test_models",
 )
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -74,7 +73,7 @@ exports_files([
     )],
     # copybara:comment_end
     delegate = delegate,
-    shard_count = 20,
+    shard_count = 30,
     tags = tags + [
         "gen_zip_test",
         "tflite_not_portable_intentional",
@@ -101,7 +100,8 @@ exports_files([
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, delegate, test_name, tags, args in generated_test_models_all() + merged_test_models()]
+    # TODO(b/210390360): Enable merged_test_models()
+) for conversion_mode, delegate, test_name, tags, args in generated_test_models_all()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -302,7 +302,6 @@ tf_cc_test(
     data = [
         "//tensorflow/lite:testdata/add_quantized_int8.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
-        "//tensorflow/lite:testdata/multi_add_signature.bin",
     ],
     tags = [
         "tflite_not_portable_android",

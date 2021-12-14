@@ -1,5 +1,4 @@
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -66,6 +65,7 @@ cc_library(
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToGPURuntimeTransforms",
@@ -183,7 +183,6 @@ cc_library(
     name = "tf_jit_cache",
     srcs = ["tf_jit_cache.cc"],
     hdrs = ["tf_jit_cache.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -200,7 +199,6 @@ cc_library(
         if_gpu_is_configured([
             "tf_gpu_runtime_wrappers.h",
         ]),
-    compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "-DTENSORFLOW_USE_ROCM=1",
     ]),

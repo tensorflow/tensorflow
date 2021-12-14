@@ -391,6 +391,9 @@ struct RandomOptionsT;
 struct BucketizeOptions;
 struct BucketizeOptionsT;
 
+struct GeluOptions;
+struct GeluOptionsT;
+
 struct Pool3DOptions;
 struct Pool3DOptionsT;
 
@@ -867,13 +870,14 @@ enum BuiltinOperator {
   BuiltinOperator_BUCKETIZE = 147,
   BuiltinOperator_RANDOM_UNIFORM = 148,
   BuiltinOperator_MULTINOMIAL = 149,
-  BuiltinOperator_AVERAGE_POOL_3D = 150,
-  BuiltinOperator_MAX_POOL_3D = 151,
+  BuiltinOperator_GELU = 150,
+  BuiltinOperator_AVERAGE_POOL_3D = 151,
+  BuiltinOperator_MAX_POOL_3D = 152,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
   BuiltinOperator_MAX = BuiltinOperator_MAX_POOL_3D
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[152] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[153] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1025,6 +1029,7 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[152] {
     BuiltinOperator_BUCKETIZE,
     BuiltinOperator_RANDOM_UNIFORM,
     BuiltinOperator_MULTINOMIAL,
+    BuiltinOperator_GELU,
     BuiltinOperator_AVERAGE_POOL_3D,
     BuiltinOperator_MAX_POOL_3D
   };
@@ -1032,7 +1037,7 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[152] {
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[153] = {
+  static const char * const names[154] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1183,6 +1188,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "BUCKETIZE",
     "RANDOM_UNIFORM",
     "MULTINOMIAL",
+    "GELU",
     "AVERAGE_POOL_3D",
     "MAX_POOL_3D",
     nullptr
@@ -1313,12 +1319,13 @@ enum BuiltinOptions {
   BuiltinOptions_AssignVariableOptions = 113,
   BuiltinOptions_RandomOptions = 114,
   BuiltinOptions_BucketizeOptions = 115,
-  BuiltinOptions_Pool3DOptions = 116,
+  BuiltinOptions_GeluOptions = 116,
+  BuiltinOptions_Pool3DOptions = 117,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
   BuiltinOptions_MAX = BuiltinOptions_Pool3DOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[117] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[118] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1436,13 +1443,14 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[117] {
     BuiltinOptions_AssignVariableOptions,
     BuiltinOptions_RandomOptions,
     BuiltinOptions_BucketizeOptions,
+    BuiltinOptions_GeluOptions,
     BuiltinOptions_Pool3DOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[118] = {
+  static const char * const names[119] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1559,6 +1567,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "AssignVariableOptions",
     "RandomOptions",
     "BucketizeOptions",
+    "GeluOptions",
     "Pool3DOptions",
     nullptr
   };
@@ -2033,6 +2042,10 @@ template<> struct BuiltinOptionsTraits<tflite::RandomOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::BucketizeOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_BucketizeOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::GeluOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_GeluOptions;
 };
 
 template<> struct BuiltinOptionsTraits<tflite::Pool3DOptions> {
@@ -2990,6 +3003,14 @@ struct BuiltinOptionsUnion {
   const tflite::BucketizeOptionsT *AsBucketizeOptions() const {
     return type == BuiltinOptions_BucketizeOptions ?
       reinterpret_cast<const tflite::BucketizeOptionsT *>(value) : nullptr;
+  }
+  tflite::GeluOptionsT *AsGeluOptions() {
+    return type == BuiltinOptions_GeluOptions ?
+      reinterpret_cast<tflite::GeluOptionsT *>(value) : nullptr;
+  }
+  const tflite::GeluOptionsT *AsGeluOptions() const {
+    return type == BuiltinOptions_GeluOptions ?
+      reinterpret_cast<const tflite::GeluOptionsT *>(value) : nullptr;
   }
   tflite::Pool3DOptionsT *AsPool3DOptions() {
     return type == BuiltinOptions_Pool3DOptions ?
@@ -10544,6 +10565,60 @@ inline flatbuffers::Offset<BucketizeOptions> CreateBucketizeOptionsDirect(
 
 flatbuffers::Offset<BucketizeOptions> CreateBucketizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const BucketizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct GeluOptionsT : public flatbuffers::NativeTable {
+  typedef GeluOptions TableType;
+  bool approximate;
+  GeluOptionsT()
+      : approximate(false) {
+  }
+};
+
+struct GeluOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef GeluOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_APPROXIMATE = 4
+  };
+  bool approximate() const {
+    return GetField<uint8_t>(VT_APPROXIMATE, 0) != 0;
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_APPROXIMATE) &&
+           verifier.EndTable();
+  }
+  GeluOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(GeluOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<GeluOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const GeluOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct GeluOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_approximate(bool approximate) {
+    fbb_.AddElement<uint8_t>(GeluOptions::VT_APPROXIMATE, static_cast<uint8_t>(approximate), 0);
+  }
+  explicit GeluOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  GeluOptionsBuilder &operator=(const GeluOptionsBuilder &);
+  flatbuffers::Offset<GeluOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<GeluOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<GeluOptions> CreateGeluOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    bool approximate = false) {
+  GeluOptionsBuilder builder_(_fbb);
+  builder_.add_approximate(approximate);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<GeluOptions> CreateGeluOptions(flatbuffers::FlatBufferBuilder &_fbb, const GeluOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct Pool3DOptionsT : public flatbuffers::NativeTable {
   typedef Pool3DOptions TableType;
   tflite::Padding padding = tflite::Padding_SAME;
@@ -10641,7 +10716,7 @@ struct Pool3DOptionsBuilder {
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  Pool2DOptionsBuilder &operator=(const Pool2DOptionsBuilder &);
+  Pool3DOptionsBuilder &operator=(const Pool3DOptionsBuilder &);
   flatbuffers::Offset<Pool3DOptions> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = flatbuffers::Offset<Pool3DOptions>(end);
@@ -11168,6 +11243,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::BucketizeOptions *builtin_options_as_BucketizeOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_BucketizeOptions ? static_cast<const tflite::BucketizeOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::GeluOptions *builtin_options_as_GeluOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_GeluOptions ? static_cast<const tflite::GeluOptions *>(builtin_options()) : nullptr;
+  }
   const tflite::Pool3DOptions *builtin_options_as_Pool3DOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_Pool3DOptions ? static_cast<const tflite::Pool3DOptions *>(builtin_options()) : nullptr;
   }
@@ -11665,6 +11743,10 @@ template<> inline const tflite::RandomOptions *Operator::builtin_options_as<tfli
 
 template<> inline const tflite::BucketizeOptions *Operator::builtin_options_as<tflite::BucketizeOptions>() const {
   return builtin_options_as_BucketizeOptions();
+}
+
+template<> inline const tflite::GeluOptions *Operator::builtin_options_as<tflite::GeluOptions>() const {
+  return builtin_options_as_GeluOptions();
 }
 
 template<> inline const tflite::Pool3DOptions *Operator::builtin_options_as<tflite::Pool3DOptions>() const {
@@ -15731,6 +15813,32 @@ inline flatbuffers::Offset<BucketizeOptions> CreateBucketizeOptions(flatbuffers:
       _boundaries);
 }
 
+inline GeluOptionsT *GeluOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new GeluOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void GeluOptions::UnPackTo(GeluOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = approximate(); _o->approximate = _e; }
+}
+
+inline flatbuffers::Offset<GeluOptions> GeluOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const GeluOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateGeluOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<GeluOptions> CreateGeluOptions(flatbuffers::FlatBufferBuilder &_fbb, const GeluOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const GeluOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _approximate = _o->approximate;
+  return tflite::CreateGeluOptions(
+      _fbb,
+      _approximate);
+}
+
 inline Pool3DOptionsT *Pool3DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<Pool3DOptionsT>(new Pool3DOptionsT());
   UnPackTo(_o.get(), _resolver);
@@ -16713,6 +16821,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::BucketizeOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_GeluOptions: {
+      auto ptr = reinterpret_cast<const tflite::GeluOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     case BuiltinOptions_Pool3DOptions: {
       auto ptr = reinterpret_cast<const tflite::Pool3DOptions *>(obj);
       return verifier.VerifyTable(ptr);
@@ -17195,6 +17307,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::BucketizeOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_GeluOptions: {
+      auto ptr = reinterpret_cast<const tflite::GeluOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     case BuiltinOptions_Pool3DOptions: {
       auto ptr = reinterpret_cast<const tflite::Pool3DOptions *>(obj);
       return ptr->UnPack(resolver);
@@ -17665,6 +17781,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::BucketizeOptionsT *>(value);
       return CreateBucketizeOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_GeluOptions: {
+      auto ptr = reinterpret_cast<const tflite::GeluOptionsT *>(value);
+      return CreateGeluOptions(_fbb, ptr, _rehasher).Union();
+    }
     case BuiltinOptions_Pool3DOptions: {
       auto ptr = reinterpret_cast<const tflite::Pool3DOptionsT *>(value);
       return CreatePool3DOptions(_fbb, ptr, _rehasher).Union();
@@ -18133,6 +18253,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_BucketizeOptions: {
       value = new tflite::BucketizeOptionsT(*reinterpret_cast<tflite::BucketizeOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_GeluOptions: {
+      value = new tflite::GeluOptionsT(*reinterpret_cast<tflite::GeluOptionsT *>(u.value));
       break;
     }
     case BuiltinOptions_Pool3DOptions: {
@@ -18718,6 +18842,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_BucketizeOptions: {
       auto ptr = reinterpret_cast<tflite::BucketizeOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_GeluOptions: {
+      auto ptr = reinterpret_cast<tflite::GeluOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -930,7 +930,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     if (offset < chunk.offset) {
       use_free_chunk_if_smaller(offset, chunk.offset - offset);
     }
-    offset = std::max(offset, RoundUpToNearest(chunk.chunk_end(), alignment_));
+    offset = std::max(offset, RoundUpTo(chunk.chunk_end(), alignment_));
   }
   use_free_chunk_if_smaller(offset, result_.heap_size - offset);
   // When preferred offset is provided and the preferred offset is larger than

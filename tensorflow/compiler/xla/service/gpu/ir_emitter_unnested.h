@@ -100,7 +100,7 @@ class IrEmitterUnnested : public IrEmitter {
     // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
     llvm::Value* thread_id_y;
 
-    // Lane id: `thread_id % kWarpSize`
+    // Lane id: `thread_id % WarpSize`
     llvm::Value* lane_id;
 
     // Block id.
@@ -367,13 +367,13 @@ class IrEmitterUnnested : public IrEmitter {
   //      accum += in[i];
   //    }
   //    accum = warp_reduce(accum);
-  //    if (threadIdx.x % kWarpSize == 0) {
-  //      cache[threadIdx.x / kWarpSize] = accum;
+  //    if (threadIdx.x % WarpSize == 0) {
+  //      cache[threadIdx.x / WarpSize] = accum;
   //    }
   //    __syncthreads();
-  //    if (threadIdx.x / kWarpSize == 0) {
-  //      bool warp_exists = threadIdx.x < (blockDim.x / kWarpSize);
-  //      float block_accum = warp_exists ? cache[threadIdx.x % kWarpSize] : 0;
+  //    if (threadIdx.x / WarpSize == 0) {
+  //      bool warp_exists = threadIdx.x < (blockDim.x / WarpSize);
+  //      float block_accum = warp_exists ? cache[threadIdx.x % WarpSize] : 0;
   //      block_accum = warp_reduce(accum);
   //      if (threadIdx.x == 0) {
   //        out += block_accum;

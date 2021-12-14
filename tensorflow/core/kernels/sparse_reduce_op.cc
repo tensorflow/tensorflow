@@ -18,8 +18,10 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
@@ -172,10 +174,13 @@ class SparseReduceOp : public OpKernel {
     // making deep copies here.  Remove this if/when we change Reorder()'s
     // semantics.
     const auto shape_vec = shape_t->vec<int64_t>();
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(shape_vec, &shape));
+
     SparseTensor sp;
     OP_REQUIRES_OK(ctx, SparseTensor::Create(
         tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
-                    TensorShape(shape_vec), &sp));
+                    shape, &sp));
     ReduceDetails reduction = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
 
@@ -275,10 +280,13 @@ class SparseReduceSparseOp : public OpKernel {
 
     OP_REQUIRES_OK(ctx, ValidateInputs(shape_t, reduction_axes_t));
 
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(shape_t->vec<int64_t>(),
+                                                      &shape));
     SparseTensor sp;
     OP_REQUIRES_OK(ctx, SparseTensor::Create(tensor::DeepCopy(*indices_t),
                                          tensor::DeepCopy(*values_t),
-                    TensorShape(shape_t->vec<int64_t>()), &sp));
+                    shape, &sp));
     ReduceDetails reduction = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
 

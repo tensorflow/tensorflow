@@ -703,7 +703,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("replicate_on_last_tile_dim",
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
-      .def("__repr__", &xla::OpSharding::DebugString);
+      .def("__repr__", &xla::OpSharding::DebugString)
+      .def("SerializeToString", [](const OpSharding& sharding) {
+        return py::bytes(sharding.SerializeAsString());
+      });
   DefRepeatedProperty(op_sharding, "tile_assignment_dimensions",
                       &xla::OpSharding::mutable_tile_assignment_dimensions);
   DefRepeatedProperty(op_sharding, "tile_assignment_devices",

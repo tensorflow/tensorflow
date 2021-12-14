@@ -68,6 +68,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   GPUResources GetGPUResources(const GpuInfo& gpu_info) const override;
 
   void Release() override { data.clear(); }
+  uint64_t GetSizeInBytes() const override { return data.size(); };
 
   bool HasAxis(Axis axis) const;
   void SetAddressMode(AddressMode mode);

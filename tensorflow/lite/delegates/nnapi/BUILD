@@ -28,6 +28,7 @@ cc_library(
     hdrs = [
         "nnapi_delegate.h",
         "nnapi_delegate_kernel.h",
+        "nnapi_delegate_plugin.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -56,6 +57,7 @@ cc_library(
     hdrs = [
         "nnapi_delegate.h",
         "nnapi_delegate_kernel.h",
+        "nnapi_delegate_plugin.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -86,6 +88,7 @@ cc_library(
     hdrs = [
         "nnapi_delegate.h",
         "nnapi_delegate_kernel.h",
+        "nnapi_delegate_plugin.h",
     ],
     copts = ["-DNNAPI_VERBOSE_VALIDATION"],
     deps = [
@@ -165,6 +168,7 @@ cc_test(
         ":nnapi_delegate_mock_test",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:deprecated_backends",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",

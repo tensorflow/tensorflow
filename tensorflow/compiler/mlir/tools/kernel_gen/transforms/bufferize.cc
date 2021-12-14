@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file implements logic for translating mixed IR to buffer form.
 
-#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -434,9 +434,9 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
 
 }  // namespace
 
-void populateExtraBufferizePatterns(MLIRContext *context,
-                                    BufferizeTypeConverter *converter,
-                                    RewritePatternSet *patterns) {
+void populateExtraBufferizePatterns(
+    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
+    RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
       BufferizeAndConvertMinimumBroadcastShapesOp,

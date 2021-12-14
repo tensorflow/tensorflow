@@ -202,11 +202,9 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
 
-  string device_type = "CPU";
-
   Status status = UpdateArgAndRetvalMetadata(
-      graph.get(), device_type, &arg_indices, &ret_indices, &arg_alloc_attrs,
-      &ret_alloc_attrs);
+      graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs, /*ints_on_device=*/false);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   CheckArgIndices({{3, -1}}, arg_indices);
@@ -219,6 +217,42 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   CheckIndex(*nodes["x"], 0);
   ASSERT_EQ(1, nodes.count("retval1"));
   CheckIndex(*nodes["retval1"], 0);
+}
+
+TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsNotOnDevice) {
+  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  SubGraph(graph.get(), DT_INT32, {3}, {5});
+
+  std::vector<FunctionArgIndex> arg_indices;
+  std::vector<int> ret_indices;
+  std::vector<AllocatorAttributes> arg_alloc_attrs;
+  std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+  Status status = UpdateArgAndRetvalMetadata(
+      graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs, /*ints_on_device=*/false);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  CheckAlloc({true}, arg_alloc_attrs);
+  CheckAlloc({true}, ret_alloc_attrs);
+}
+
+TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsOnDevice) {
+  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  SubGraph(graph.get(), DT_INT32, {3}, {5});
+
+  std::vector<FunctionArgIndex> arg_indices;
+  std::vector<int> ret_indices;
+  std::vector<AllocatorAttributes> arg_alloc_attrs;
+  std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+  Status status = UpdateArgAndRetvalMetadata(
+      graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs, /*ints_on_device=*/true);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  CheckAlloc({false}, arg_alloc_attrs);
+  CheckAlloc({false}, ret_alloc_attrs);
 }
 
 TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
@@ -241,11 +275,9 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
 
-  string device_type = "CPU";
-
   Status status = UpdateArgAndRetvalMetadata(
-      graph.get(), device_type, &arg_indices, &ret_indices, &arg_alloc_attrs,
-      &ret_alloc_attrs);
+      graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs, /*ints_on_device=*/false);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   CheckArgIndices({{1, 0}, {3, 1}, {5, 2}, {7, 2}, {9, 0}}, arg_indices);

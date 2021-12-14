@@ -69,6 +69,15 @@ class PreluTester {
 
   inline bool INT8Weights() const { return int8_weights_; }
 
+  inline PreluTester& INT8ChannelWiseWeights() {
+    int8_channel_wise_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8ChannelWiseWeights() const {
+    return int8_channel_wise_weights_;
+  }
+
   inline PreluTester& SparseWeights() {
     sparse_weights_ = true;
     return *this;
@@ -87,6 +96,7 @@ class PreluTester {
   std::vector<int32_t> slope_shape_;
   bool fp16_weights_ = false;
   bool int8_weights_ = false;
+  bool int8_channel_wise_weights_ = false;
   bool sparse_weights_ = false;
 };
 

@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt %s -split-input-file -tf-cpurt-symbolic-shape-optimization \
+// RUN: tf-tfrt-opt %s -split-input-file -symbolic-shape-optimization \
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: @optimize_1dx1d_constraint

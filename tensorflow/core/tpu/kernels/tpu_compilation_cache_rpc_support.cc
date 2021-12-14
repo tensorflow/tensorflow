@@ -46,7 +46,7 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
   } else {
     TpuSerializedProto serialized_response_proto =
         stream_executor::tpu::SerializeProto(*response);
-    auto cleanup = xla::MakeCleanup([&serialized_response_proto]() {
+    auto cleanup = absl::MakeCleanup([&serialized_response_proto]() {
       stream_executor::tpu::SerializedProto_Free(serialized_response_proto);
     });
     // When we lookup from remote cache, we fetch a TPU program for a specific
@@ -92,7 +92,7 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   }
 
   TpuExecutableSerializedProto executable;
-  auto cleanup_executable = xla::MakeCleanup([&executable]() {
+  auto cleanup_executable = absl::MakeCleanup([&executable]() {
     if (executable.size > 0) {
       stream_executor::tpu::SerializedProto_Free(executable);
     }
@@ -117,7 +117,7 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   header.set_may_modify_variables(may_modify_variables);
 
   CompilerMetadataSerializedProto compiler_metadata;
-  auto cleanup_compiler_metadata = xla::MakeCleanup([&compiler_metadata]() {
+  auto cleanup_compiler_metadata = absl::MakeCleanup([&compiler_metadata]() {
     if (compiler_metadata.size > 0) {
       stream_executor::tpu::SerializedProto_Free(compiler_metadata);
     }

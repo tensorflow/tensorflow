@@ -515,6 +515,10 @@ typedef struct {
 } TfLiteBucketizeParams;
 
 typedef struct {
+  bool approximate;
+} TfLiteGeluParams;
+
+typedef struct {
   TfLitePadding padding;
   int stride_depth;
   int stride_width;

@@ -271,7 +271,7 @@ StatusOr<std::uintptr_t> PyBuffer::UnsafeBufferPointer() const {
 
 StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
   // TODO(zhangqiaorjc): Differentiate between NVidia and other GPUs.
-  if (buffer_->client()->platform_id() != kGpuId) {
+  if (buffer_->client()->platform_id() != GpuId()) {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
   }

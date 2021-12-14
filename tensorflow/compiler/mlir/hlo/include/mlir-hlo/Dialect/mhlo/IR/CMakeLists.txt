@@ -37,18 +37,4 @@ mlir_tablegen(hlo_ops_base_attrs.h.inc -gen-attrdef-decls)
 mlir_tablegen(hlo_ops_base_attrs.cc.inc -gen-attrdef-defs)
 add_public_tablegen_target(MLIRhlo_opsIncGen)
 
-function(add_mlir_hlo_dialect_separate_files dialect)
-  set(LLVM_TARGET_DEFINITIONS ${dialect}.td)
-  mlir_tablegen(${dialect}.h.inc -gen-op-decls)
-  mlir_tablegen(${dialect}.cc.inc -gen-op-defs)
-  set(LLVM_TARGET_DEFINITIONS ${dialect}_structs.td)
-  mlir_tablegen(${dialect}_structs.h.inc -gen-struct-attr-decls)
-  mlir_tablegen(${dialect}_structs.cc.inc -gen-struct-attr-defs)
-  add_public_tablegen_target(MLIR${dialect}IncGen)
-  add_dependencies(mlir-headers MLIR${dialect}IncGen)
-endfunction()
-
-add_mlir_hlo_dialect_separate_files(lhlo_ops)
-
 add_mlir_interface(infer_shape_equality_op_interface)
-add_mlir_interface(lhlo_structured_interface)

@@ -1235,9 +1235,8 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
                          : HloSharding::Tile(temp_target_tile);
   auto padded_shape = hlo_->shape();
   padded_shape.set_dimensions(
-      target_dim,
-      RoundUpToNearest(padded_shape.dimensions(target_dim),
-                       temp_target.tile_assignment().dim(target_dim)));
+      target_dim, RoundUpTo(padded_shape.dimensions(target_dim),
+                            temp_target.tile_assignment().dim(target_dim)));
   auto padded_hlo = PadToShape(hlo_, padded_shape, state_.b);
 
   // The order of ids in the group must follow the temp_target sharding.

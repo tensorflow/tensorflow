@@ -41,6 +41,11 @@ class HloComputation;
 class HloInstruction;
 class Shape;
 
+// HLO bounded dynamic shapes can be converted to either MLIR dynamic shapes
+// (which lose the bound information) or casted to static shape using the
+// bounds.
+enum class DynamicShapeHandlingMode { kDynamic, kConvertToStatic };
+
 // Helper class for importing HloComputations.
 class HloFunctionImporter {
  public:
@@ -66,7 +71,8 @@ class HloFunctionImporter {
   static StatusOr<mlir::Operation*> ImportInstruction(
       const xla::HloInstruction* instr,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
-      mlir::OpBuilder* builder);
+      mlir::OpBuilder* builder,
+      DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
                                llvm::StringRef attr_name);
@@ -117,11 +123,14 @@ class HloFunctionImporter {
   StatusOr<mlir::Operation*> ImportInstructionWithLayout(
       const xla::HloInstruction* instruction,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
-      mlir::OpBuilder* func_builder);
+      mlir::OpBuilder* func_builder,
+      DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
+
   StatusOr<mlir::Operation*> ImportInstructionImpl(
       const HloInstruction* instruction,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
-      mlir::OpBuilder* func_builder);
+      mlir::OpBuilder* func_builder,
+      DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
 
   // Gets the MLIR operand values from an HLO Instruction.
   StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(

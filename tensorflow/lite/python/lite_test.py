@@ -609,6 +609,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Resize tensor and invoke.
     interpreter.resize_tensor_input(0, [1, 16, 16, 3], strict=True)
     interpreter.allocate_tensors()
+
+    test_input = np.full([1, 16, 16, 3], 1.0, dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
     interpreter.invoke()
 
     input_details = interpreter.get_input_details()

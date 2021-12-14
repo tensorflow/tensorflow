@@ -26,10 +26,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
-#include "tensorflow/core/tfrt/utils/statusor.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

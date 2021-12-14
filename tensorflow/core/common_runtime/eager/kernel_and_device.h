@@ -276,6 +276,9 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       Device* host_cpu_device, const string& name,
       const bool outputs_on_op_device,
       const bool allow_small_function_optimizations,
+      const bool allow_control_flow_sync_execution,
+      const bool shape_inference_on_tfe_dialect_import,
+      const bool int_args_and_retvals_on_device,
       std::function<Rendezvous*(const int64_t)> rendezvous_creator,
       std::function<int64_t()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
@@ -284,6 +287,10 @@ class KernelAndDeviceFunc : public KernelAndDevice {
         handle_(kInvalidHandle),
         outputs_on_op_device_(outputs_on_op_device),
         allow_small_function_optimizations_(allow_small_function_optimizations),
+        allow_control_flow_sync_execution_(allow_control_flow_sync_execution),
+        shape_inference_on_tfe_dialect_import_(
+            shape_inference_on_tfe_dialect_import),
+        int_args_and_retvals_on_device_(int_args_and_retvals_on_device),
         input_devices_(std::move(input_devices)),
         composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
@@ -354,6 +361,15 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   // set of small functions.  (For example, running kernels synchronously can
   // be faster under some conditions.)
   const bool allow_small_function_optimizations_;
+
+  // If True, allows control nodes to run on the single threaded executor.
+  const bool allow_control_flow_sync_execution_;
+
+  // TODO(b/176491312): Remove this if shape inference on import flag is
+  // removed. If True, allows mlir roundtrip to run shape inference on import.
+  const bool shape_inference_on_tfe_dialect_import_;
+
+  const bool int_args_and_retvals_on_device_;
 
   // CPU devices are null. Resource handles' devices are actual backing
   // devices.

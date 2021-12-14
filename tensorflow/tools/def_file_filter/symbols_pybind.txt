@@ -414,7 +414,7 @@ tensorflow::metrics::TrainingTimeSaved
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
-tensorflow::ResetMlirCommonFlags
+tensorflow::ResetJitCompilerFlags
 
 [//tensorflow/core/platform:tensor_float_32_utils] # tensor_float_32
 tensorflow::enable_tensor_float_32_execution

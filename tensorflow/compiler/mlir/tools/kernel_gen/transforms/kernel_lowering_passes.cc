@@ -92,7 +92,8 @@ class GpuKernelToROCDLPass
     populateMathToLLVMConversionPatterns(converter, patterns);
     populateMemRefToLLVMConversionPatterns(converter, patterns);
     populateStdToLLVMConversionPatterns(converter, patterns);
-    populateGpuToROCDLConversionPatterns(converter, patterns);
+    populateGpuToROCDLConversionPatterns(converter, patterns,
+                                         gpu::amd::Runtime::Unknown);
     populateComplexToLLVMConversionPatterns(converter, patterns);
     ConversionTarget target(getContext());
     configureGpuToROCDLConversionLegality(target);

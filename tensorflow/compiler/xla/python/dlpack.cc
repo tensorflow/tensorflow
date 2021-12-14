@@ -209,9 +209,9 @@ StatusOr<std::vector<int64_t>> StridesToLayout(
 }
 
 StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
-  if (device.client()->platform_id() == kCpuId) {
+  if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
-  } else if (device.client()->platform_id() == kGpuId) {
+  } else if (device.client()->platform_id() == GpuId()) {
     return kDLGPU;
   }
   return InvalidArgument("Device %s cannot be used as a DLPack device.",
@@ -234,14 +234,14 @@ StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient* cpu_client,
         return InvalidArgument(
             "DLPack tensor is on CPU, but no CPU backend was provided.");
       }
-      TF_RET_CHECK(cpu_client->platform_id() == kCpuId);
+      TF_RET_CHECK(cpu_client->platform_id() == CpuId());
       return cpu_client->LookupAddressableDevice(context.device_id);
     case kDLGPU:
       if (gpu_client == nullptr) {
         return InvalidArgument(
             "DLPack tensor is on GPU, but no GPU backend was provided.");
       }
-      TF_RET_CHECK(gpu_client->platform_id() == kGpuId);
+      TF_RET_CHECK(gpu_client->platform_id() == GpuId());
       return gpu_client->LookupAddressableDevice(context.device_id);
     default:
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
@@ -327,11 +327,11 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     std::shared_ptr<PyClient> gpu_client) {
   // Backward compatibility: if only one client is passed, it may be from any
   // platform. Drop this support after dropping support for jax <= 0.2.14.
-  if (cpu_client && cpu_client->pjrt_client()->platform_id() == kGpuId) {
+  if (cpu_client && cpu_client->pjrt_client()->platform_id() == GpuId()) {
     gpu_client = std::move(cpu_client);
     cpu_client = nullptr;
   }
-  if (cpu_client && cpu_client->pjrt_client()->platform_id() != kCpuId) {
+  if (cpu_client && cpu_client->pjrt_client()->platform_id() != CpuId()) {
     return InvalidArgument("DLPack does not support platform %s",
                            cpu_client->pjrt_client()->platform_name());
   }
