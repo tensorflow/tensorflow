@@ -721,6 +721,10 @@ if [[ ${OS_TYPE} == "macos" ]] ; then
     NEW_WHL_PATH=${WHL_PATH/macosx_10_15/macosx_10_14}
     mv ${WHL_PATH} ${NEW_WHL_PATH}
   done
+
+  # Also change global WHL_PATH. Ignore above shadow and everywhere else
+  NEW_WHL_PATH=${WHL_PATH/macosx_10_15/macosx_10_14}
+  WHL_PATH=${NEW_WHL_PATH}
 fi
 
 # Run tests (if any is specified).
