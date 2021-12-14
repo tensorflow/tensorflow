@@ -565,12 +565,12 @@ def gen_zipped_test_file(name, file, flags = ""):
     """
     native.genrule(
         name = file + ".files",
-        cmd = (("$(locations :generate_examples) " +
+        cmd = (("$(location //tensorflow/lite/testing:generate_examples) " +
                 " --zip_to_output {0} {1} $(@D)").format(file, flags)),
         outs = [file],
         # `exec_tools` is required for PY3 compatibility in place of `tools`.
         exec_tools = [
-            ":generate_examples",
+            "//tensorflow/lite/testing:generate_examples",
         ],
     )
 
