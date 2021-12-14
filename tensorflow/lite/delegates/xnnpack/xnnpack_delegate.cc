@@ -541,30 +541,38 @@ class Subgraph {
       return nullptr;
     }
 
-    return new Subgraph(runtime_ptr, std::move(externals));
+    return new Subgraph(runtime_ptr, externals);
   }
 
   TfLiteStatus Prepare(TfLiteContext* context) { return kTfLiteOk; }
 
   TfLiteStatus Invoke(TfLiteContext* context) {
-    if (first_run_) {
-      std::vector<xnn_external_value> external_values;
-      for (int t : externals_) {
-        xnn_external_value value = {0};
-        value.id = static_cast<uint32_t>(t);
-        const TfLiteTensor& tensor = context->tensors[t];
-        if (tensor.data.raw == nullptr) {
-          if (tensor.bytes == 0) {
-            value.data = &dummy_data_;
-          } else {
-            TF_LITE_KERNEL_LOG(
-                context, "unexpected null data pointer in external tensor %d",
-                t);
-            return kTfLiteError;
-          }
-        } else {
-          value.data = tensor.data.raw;
+    bool any_pointers_changed = false;
+    for (std::pair<int, void*> io_info : externals_) {
+      const TfLiteTensor& tensor = context->tensors[io_info.first];
+      void* data_pointer = &dummy_data_;
+      if (tensor.data.raw != nullptr) {
+        data_pointer = tensor.data.raw;
+      } else {
+        if (tensor.bytes != 0) {
+          TF_LITE_KERNEL_LOG(
+              context, "unexpected null data pointer in external tensor %d",
+              io_info.first);
+          return kTfLiteError;
         }
+      }
+      if (data_pointer != io_info.second) {
+        any_pointers_changed = true;
+        externals_[io_info.first] = data_pointer;
+      }
+    }
+
+    if (any_pointers_changed) {
+      std::vector<xnn_external_value> external_values;
+      for (std::pair<int, void*> io_info : externals_) {
+        xnn_external_value value = {0};
+        value.id = static_cast<uint32_t>(io_info.first);
+        value.data = io_info.second;
         external_values.push_back(value);
       }
 
@@ -574,8 +582,6 @@ class Subgraph {
         TF_LITE_KERNEL_LOG(context, "failed to setup XNNPACK runtime");
         return kTfLiteError;
       }
-
-      first_run_ = false;
     }
 
     const xnn_status status = xnn_invoke_runtime(runtime_.get());
@@ -3845,20 +3851,23 @@ class Subgraph {
   }
 
  private:
-  Subgraph(xnn_runtime_t runtime, std::unordered_set<int>&& externals)
-      : runtime_(runtime, &xnn_delete_runtime), externals_(externals) {}
+  Subgraph(xnn_runtime_t runtime, const std::unordered_set<int>& externals)
+      : runtime_(runtime, &xnn_delete_runtime) {
+    for (int t : externals) {
+      externals_[t] = nullptr;
+    }
+  }
 
   // XNNPACK Runtime (subgraph + workspace) with smart-pointer for lifetime
   // management.
   std::unique_ptr<xnn_runtime, decltype(&xnn_delete_runtime)> runtime_{
       nullptr, &xnn_delete_runtime};
-  // TFLite Tensor IDs == XNNPACK Value IDs of input/output tensors for the
-  // delegated subgraph.
-  std::unordered_set<int> externals_;
+  // Mapping from TFLite Tensor IDs (same as XNNPACK Value IDs) for
+  // input/output tensors in the delegated subgraph to their data locations.
+  std::unordered_map<int, void*> externals_;
   // Memory location to use for 0-size extenal tensors, as TFLite init their
   // data pointer to nullptr, and XNNPACK requires valid data pointers.
   char dummy_data_{0};
-  bool first_run_{true};
 };
 
 TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
