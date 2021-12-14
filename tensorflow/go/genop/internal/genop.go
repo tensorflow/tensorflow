@@ -42,6 +42,7 @@ import (
 	"io/ioutil"
 	"path"
 	"reflect"
+	"sort"
 	"strings"
 	"text/template"
 	"unsafe"
@@ -85,6 +86,10 @@ func registeredOps() (*odpb.OpList, *apiDefMap, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// Sort ops by name
+	sort.Slice(list.Op, func(i, j int) bool {
+		return list.Op[i].Name < list.Op[j].Name
+	})
 	apimap, err := newAPIDefMap(list)
 	return list, apimap, err
 }
@@ -212,7 +217,7 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 		"Identifier":        identifier,
 		"IsListArg":         isListArg,
 		"IsListAttr":        isListAttr,
-		"StripLeadingColon": stripLeadingColon,
+		"MarshalProtoMessage": marshalProtoMessage,
 	}).Parse(`
 {{if .OptionalAttrs -}}
 {{/* Type for specifying all optional attributes. */ -}}
@@ -225,7 +230,7 @@ type {{.Op.Name}}Attr func(optionalAttr)
 //
 // value: {{MakeComment .Description}}
 {{- end}}
-// If not specified, defaults to {{StripLeadingColon .DefaultValue}}
+// If not specified, defaults to {{MarshalProtoMessage .DefaultValue}}
 {{- if .HasMinimum}}
 //
 // {{if .IsListAttr }}REQUIRES: len(value) >= {{.Minimum}}{{else}}REQUIRES: value >= {{.Minimum}}{{end}}
@@ -566,21 +571,29 @@ func isListAttr(attrdef *odpb.OpDef_AttrDef) bool {
 	return list
 }
 
-// stripLeadingColon removes the prefix of the string up to the first colon.
-//
-// This is useful when 's' corresponds to a "oneof" protocol buffer message.
-// For example, consider the protocol buffer message:
-//   oneof value { bool b = 1;  int64 i = 2; }
-// proto.CompactTextString) will print "b:true", or "i:7" etc. This function
-// strips out the leading "b:" or "i:".
-func stripLeadingColon(m proto.Message) string {
-	o := prototext.MarshalOptions{Multiline: false}
-	x := o.Format(m)
-	y := strings.SplitN(x, ":", 2)
-	if len(y) < 2 {
-		return x
-	}
-	return y[1]
+func marshalProtoMessage(m proto.Message) string {
+        // Marshal proto message to string.
+        o := prototext.MarshalOptions{Multiline: false}
+        x := o.Format(m)
+
+        // Remove superfluous whitespace, if present.
+        //
+        // Go protobuf output is purposefully unstable, randomly adding
+        // whitespace.  See github.com/golang/protobuf/issues/1121
+        x = strings.ReplaceAll(x, "  ", " ")
+
+        // Remove the prefix of the string up to the first colon.
+        //
+        // This is useful when 's' corresponds to a "oneof" protocol buffer
+        // message. For example, consider the protocol buffer message:
+        //   oneof value { bool b = 1;  int64 i = 2; }
+        // proto.CompactTextString) will print "b:true", or "i:7" etc. The
+        // following strips out the leading "b:" or "i:".
+        y := strings.SplitN(x, ":", 2)
+        if len(y) < 2 {
+                return x
+        }
+        return y[1]
 }
 
 func parseTFType(tfType string) (list bool, typ string) {
