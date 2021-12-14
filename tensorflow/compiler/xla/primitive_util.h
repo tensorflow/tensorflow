@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PRIMITIVE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_PRIMITIVE_UTIL_H_
 
+#include <string>
 #include <type_traits>
 
 #include "absl/strings/string_view.h"
@@ -170,17 +171,23 @@ inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
   // Returns a tuple where the elements are lexicographically ordered in terms
   // of importance.
   auto type_properties = [](PrimitiveType type) {
+    auto component_type =
+        IsComplexType(type) ? ComplexComponentType(type) : type;
     return std::make_tuple(
+        // Prefer complex types over non-complex types.
+        IsComplexType(type),
         // Prefer floating point types with more range over other
         // floating-point types or non-floating point types.
-        IsFloatingPointType(type) ? OverflowExponent(type) : -1,
+        IsFloatingPointType(component_type) ? OverflowExponent(component_type)
+                                            : -1,
         // Prefer floating point types with more precision over less precise
         // types.
-        IsFloatingPointType(type) ? SignificandWidth(type) : -1,
+        IsFloatingPointType(component_type) ? SignificandWidth(component_type)
+                                            : -1,
         // Prefer wider types over narrower types.
-        BitWidth(type),
+        BitWidth(component_type),
         // Prefer signed integer types over unsigned integer types.
-        IsSignedIntegralType(type));
+        IsSignedIntegralType(component_type));
   };
   auto a_properties = type_properties(a);
   auto b_properties = type_properties(b);
@@ -194,7 +201,7 @@ inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
   return a;
 }
 
-// Returns true if a convert from from_type to to_type looses no precision.
+// Returns true if a convert from from_type to to_type loses no precision.
 inline bool CastPreservesValues(PrimitiveType from_type,
                                 PrimitiveType to_type) {
   if (from_type == to_type) {
@@ -202,7 +209,7 @@ inline bool CastPreservesValues(PrimitiveType from_type,
   }
   switch (to_type) {
     case C128:
-      if (from_type == F64) {
+      if (from_type == F64 || from_type == C64) {
         return true;
       }
       ABSL_FALLTHROUGH_INTENDED;
