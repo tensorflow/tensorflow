@@ -2925,6 +2925,45 @@ func @reduce_window_sum_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
 
 // -----
 
+// CHECK: #[[MAP0:.+]] = affine_map<(d0, d1) -> ()>
+// CHECK: #[[MAP1:.+]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK: #[[MAP2:.+]] = affine_map<(d0, d1, d2) -> (d0 * 2, d1 + d2 * 2)>
+// CHECK: #[[MAP3:.+]] = affine_map<(d0, d1, d2) -> (d2)>
+// CHECK: #[[MAP4:.+]] = affine_map<(d0, d1, d2) -> (d0, d1)>
+
+// CHECK-LABEL: func @reduce_window_generic
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+
+// CHECK: %[[INIT:.+]] = linalg.init_tensor [4, 7] : tensor<4x7xf32>
+// CHECK: %[[FILL:.+]] = linalg.generic {indexing_maps = [#[[MAP0]], #[[MAP1]]], iterator_types = ["parallel", "parallel"]} ins(%arg1 : tensor<f32>) outs(%[[INIT]] : tensor<4x7xf32>)
+// CHECK: ^bb0(%arg2: f32, %arg3: f32):
+// CHECK:   linalg.yield %arg2 : f32
+
+// CHECK: %cst = arith.constant 0.000000e+00 : f32
+// CHECK: %[[PAD:.+]] = linalg.pad_tensor %arg0 low[0, 1] high[3, 2]
+// CHECK: ^bb0(%arg2: index, %arg3: index):
+// CHECK:   linalg.yield %cst : f32
+
+// CHECK: %[[WINDOW:.+]] = linalg.init_tensor [2] : tensor<2xf32>
+// CHECK: %[[REDUCE:.+]] = linalg.generic {indexing_maps = [#[[MAP2]], #[[MAP3]], #[[MAP4]]], iterator_types = ["parallel", "parallel", "reduction"]} ins(%[[PAD]], %[[WINDOW]] : tensor<7x9xf32>, tensor<2xf32>) outs(%[[FILL]] : tensor<4x7xf32>) {
+// CHECK: ^bb0(%arg2: f32, %arg3: f32, %arg4: f32):
+// CHECK:   %[[ADD:.+]] = arith.addf %arg2, %arg4 : f32
+// CHECK:   linalg.yield %[[ADD]]
+
+// CHECK: return %[[REDUCE]]
+
+func @reduce_window_generic(%arg0: tensor<4x6xf32>, %arg1: tensor<f32>) -> tensor<4x7xf32> {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<[[0, 3], [1, 2]]> : tensor<2x2xi64>, window_dilations = dense<[1, 2]> : tensor<2xi64>, window_dimensions = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (tensor<4x6xf32>, tensor<f32>) -> tensor<4x7xf32>
+  return %0 : tensor<4x7xf32>
+}
+
+// -----
+
 func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x8x8xi32> {
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
