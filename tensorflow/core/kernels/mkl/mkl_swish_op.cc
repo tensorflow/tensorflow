@@ -20,13 +20,13 @@ namespace tensorflow {
 template <typename Device, typename T>
 class MklSwishOp
     : public MklEltwiseFwdActivationOpBase<Device, T,
-                                           mkldnn::algorithm::eltwise_swish> {
+                                           dnnl::algorithm::eltwise_swish> {
  public:
   ~MklSwishOp() {}
 
   explicit MklSwishOp(OpKernelConstruction* context)
       : MklEltwiseFwdActivationOpBase<Device, T,
-                                      mkldnn::algorithm::eltwise_swish>(
+                                      dnnl::algorithm::eltwise_swish>(
             context, 1.0f, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -24,13 +24,13 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-using mkldnn::algorithm;
-using mkldnn::eltwise_forward;
-using mkldnn::memory;
-using mkldnn::prop_kind;
-using mkldnn::stream;
+using dnnl::algorithm;
+using dnnl::eltwise_forward;
+using dnnl::memory;
+using dnnl::prop_kind;
+using dnnl::stream;
 
-using EltwiseFwdPd = mkldnn::eltwise_forward::primitive_desc;
+using EltwiseFwdPd = dnnl::eltwise_forward::primitive_desc;
 
 namespace tensorflow {
 
@@ -78,8 +78,8 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     std::vector<primitive> net;
     net.push_back(eltwise_forward(*context_.fwd_pd));
     std::vector<MemoryArgsMap> net_args;
-    net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
-                        {MKLDNN_ARG_DST, *context_.dst_mem}});
+    net_args.push_back({{DNNL_ARG_SRC, *context_.src_mem},
+                        {DNNL_ARG_DST, *context_.dst_mem}});
     // execute eltwise_fwd primitve
     ExecutePrimitive(net, &net_args, GetEngine(), op_context);
 
@@ -93,12 +93,12 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
  private:
   // Primitive reuse context for eltwise Fwd ops: Relu, Elu, Tanh
   struct EltwiseFwdContext {
-    // MKLDNN memory
+    // oneDNN memory
     std::shared_ptr<memory> src_mem;
     std::shared_ptr<memory> dst_mem;
 
     // desc & primitive desc
-    std::shared_ptr<mkldnn::eltwise_forward::desc> fwd_desc;
+    std::shared_ptr<dnnl::eltwise_forward::desc> fwd_desc;
     std::shared_ptr<EltwiseFwdPd> fwd_pd;
 
     // memory desc
@@ -109,9 +109,9 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     std::shared_ptr<memory::desc> src_mpd;
 
     // Eltwise primitive
-    std::shared_ptr<mkldnn::primitive> eltwise_fwd;
+    std::shared_ptr<dnnl::primitive> eltwise_fwd;
 
-    std::vector<mkldnn::primitive> fwd_primitives;
+    std::vector<dnnl::primitive> fwd_primitives;
 
     std::vector<std::unordered_map<int, memory>> fwd_primitives_args;
 
@@ -147,8 +147,8 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     // Create eltwise primitive and add it to net
     context_.eltwise_fwd.reset(new eltwise_forward(*context_.fwd_pd));
     context_.fwd_primitives_args.push_back(
-        {{MKLDNN_ARG_SRC, *context_.src_mem},
-         {MKLDNN_ARG_DST, *context_.dst_mem}});
+        {{DNNL_ARG_SRC, *context_.src_mem},
+         {DNNL_ARG_DST, *context_.dst_mem}});
     context_.fwd_primitives.push_back(*context_.eltwise_fwd);
   }
 
@@ -263,7 +263,7 @@ class MklEltwiseFwdActivationOpBase : public OpKernel {
       T* dst_data = dst_tensor->flat<T>().data();
       // execute eltwise
       eltwise_fwd->Execute(src_data, dst_data, context);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
                          string(e.message) + ", in file " + string(__FILE__) +
                          ":" + std::to_string(__LINE__);
