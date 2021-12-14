@@ -39,7 +39,7 @@ func @tensor.from_elements(%a : f32) -> f32 {
 // CHECK-LABEL: @tensor.generate
 // CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> index
 func @tensor.generate(%arg : tensor<*xf32>) -> index {
-  // CHECK: %[[SIZE:.*]] = rank %[[ARG]] : memref<*xf32>
+  // CHECK: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
   // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) : memref<?xindex>
   // ALLOCA: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -49,7 +49,7 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
   // CHECK:   scf.yield
   // CHECK: }
-  %size = rank %arg : tensor<*xf32>
+  %size = tensor.rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {
   ^bb0(%i : index):
     %elem = tensor.dim %arg, %i : tensor<*xf32>

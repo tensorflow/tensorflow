@@ -69,7 +69,7 @@ class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
     if (all_same_elems)
       value = rewriter.create<arith::ConstantOp>(
           loc, elements_attr.getSplatValue<mlir::Attribute>());
-    for (auto en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
+    for (auto &en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
       if (!all_same_elems)
         value = rewriter.create<arith::ConstantOp>(loc, en.value());
       Value index = rewriter.create<arith::ConstantIndexOp>(loc, en.index());
@@ -421,13 +421,14 @@ struct BufferizeJITExecuteOp
   }
 };
 
-class BufferizeRankOp : public OpConversionPattern<RankOp> {
+class BufferizeRankOp : public OpConversionPattern<tensor::RankOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      RankOp op, OpAdaptor adaptor,
+      tensor::RankOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<RankOp>(op, adaptor.getMemrefOrTensor());
+    rewriter.replaceOpWithNewOp<memref::RankOp>(op, op.getType(),
+                                                adaptor.tensor());
     return success();
   }
 };

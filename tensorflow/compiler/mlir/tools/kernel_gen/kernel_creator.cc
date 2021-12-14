@@ -75,6 +75,7 @@ namespace kernel_gen {
 namespace {
 
 using mlir::Value;
+using mlir::memref::RankOp;
 using mlir::scf::ParallelOp;
 
 constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
@@ -98,10 +99,10 @@ bool IsSmallAlloc(Value alloc) {
     if (type.getRank() <= kMaxRankOfAllocatedMemRef) {
       for (Value alloc_arg : alloc.getDefiningOp()->getOperands()) {
         if (auto select = alloc_arg.getDefiningOp<mlir::SelectOp>()) {
-          if (!select.getTrueValue().getDefiningOp<mlir::RankOp>() ||
-              !select.getFalseValue().getDefiningOp<mlir::RankOp>())
+          if (!select.getTrueValue().getDefiningOp<RankOp>() ||
+              !select.getFalseValue().getDefiningOp<RankOp>())
             return false;
-        } else if (!alloc_arg.getDefiningOp<mlir::RankOp>()) {
+        } else if (!alloc_arg.getDefiningOp<RankOp>()) {
           return false;
         }
       }
