@@ -71,6 +71,21 @@
       layer which applies the hashing trick to the concatenation of crossed
       scalar inputs. This provides a stateless way to try adding feature crosses
       of integer or string data to a model.
+    * Removed `keras.layers.experimental.preprocessing.CategoryCrossing`. Users
+      should migrate to the `HashedCrossing` layer or use
+      `tf.sparse.cross`/`tf.ragged.cross` directly.
+    * Added additional `standardize` and `split` modes to `TextVectorization`.
+        * `standardize="lower"` will lowercase inputs.
+        * `standardize="string_punctuation"` will remove all puncuation.
+        * `split="character"` will split on every unicode character.
+    * Added an `output_mode` argument to the `Discretization` and `Hashing`
+      layers with the same semantics as other preprocessing layers. All
+      categorical preprocessing layers now support `output_mode`.
+    * All preprocessing layer output will follow the compute dtype of a
+      `tf.keras.mixed_precision.Policy`, unless constructed with
+      `output_mode="int"` in which case output will be `tf.int64`.
+      The output type of any preprocessing layer can be controlled individually
+      by passing a `dtype` argument to the layer.
   * `tf.random.Generator` for keras initializers and all RNG code.
     * Added 3 new APIs for enable/disable/check the usage of
       `tf.random.Generator` in keras backend, which will be the new backend for
