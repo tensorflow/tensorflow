@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_PASSES_H
 
 #include <memory>
+#include <unordered_set>
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
@@ -24,11 +25,11 @@ namespace mlir {
 namespace tosa {
 
 void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
-void populateLegalizeTFLPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
+void populateLegalizeTFLPatterns(MLIRContext* ctx, RewritePatternSet& patterns, std::unordered_set<std::string> legalization_disable = {});
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass();
 std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass();
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass();
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass(std::unordered_set<std::string> legalization_disable = {});
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFTFLPass();
 std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass();
 std::unique_ptr<OperationPass<FuncOp>> createStripQuantTypesPass();

@@ -23,7 +23,7 @@ def TosaLegalizeTFPass : FunctionPass<"tosa-legalize-tf"> {
 
 def TosaLegalizeTFLPass : FunctionPass<"tosa-legalize-tfl"> {
   let summary = "Legalize from TensorFlow Lite to TOSA";
-  let constructor = "createLegalizeTFLPass()";
+  let constructor = "createLegalizeTFLPass({})";
   let dependentDialects = ["TosaDialect"];
 }
 
