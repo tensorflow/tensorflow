@@ -16,8 +16,8 @@ limitations under the License.
 // This file implements logic for lowering bufferization.to_tensor ops that are
 // inserted during `mhlo-legalize-to-lmhlo`.
 
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"

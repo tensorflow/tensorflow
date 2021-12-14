@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/fusion_utils.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/fusion_utils.h"
 #include "mlir-hlo/utils/cycle_detector.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"      // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project

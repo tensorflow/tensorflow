@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSDETAIL_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSDETAIL_H_
 
 #include "mlir/Pass/Pass.h"
 
@@ -26,12 +26,13 @@ namespace memref {
 class MemRefDialect;
 }
 
-namespace mhlo {
-class MhloDialect;
-#define GEN_PASS_CLASSES
-#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+namespace lmhlo {
 
-}  // end namespace mhlo
+#define GEN_PASS_CLASSES
+#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+
+}  // end namespace lmhlo
+
 }  // end namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSDETAIL_H_

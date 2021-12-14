@@ -17,7 +17,7 @@ limitations under the License.
 // contents of lmhlo.fusion_op after its body is fully lowered.
 //
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {

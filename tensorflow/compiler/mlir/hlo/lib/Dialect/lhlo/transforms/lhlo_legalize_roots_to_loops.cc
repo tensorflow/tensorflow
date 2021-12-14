@@ -16,9 +16,9 @@ limitations under the License.
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 #include "llvm/Support/Debug.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/fusion_utils.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/lhlo_elemental_utils.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/fusion_utils.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/lhlo_elemental_utils.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir-hlo/utils/codegen_utils.h"
 #include "mlir-hlo/utils/placement_utils.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
@@ -40,7 +40,7 @@ namespace mlir {
 namespace lmhlo {
 
 #define GEN_PASS_CLASSES
-#include "mlir-hlo/Dialect/mhlo/transforms/lmhlo_passes.h.inc"
+#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
 
 namespace {
 
