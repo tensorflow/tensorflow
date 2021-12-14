@@ -199,11 +199,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "model_metadata",
-    hdrs = ["model_metadata.h"],
-)
-
-cc_library(
     name = "fallback_tensor",
     srcs = ["fallback_tensor.cc"],
     hdrs = ["fallback_tensor.h"],

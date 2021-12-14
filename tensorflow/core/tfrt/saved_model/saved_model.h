@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/core/tfrt/utils/model_metadata.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
@@ -139,7 +138,7 @@ class SavedModel {
     const tensorflow::tfrt_stub::Runtime* runtime = nullptr;
 
     // Model metadata used for monitoring and tracing.
-    ModelMetadata model_metadata;
+    tensorflow::SessionMetadata model_metadata;
 
     tensorflow::TfrtCompileOptions compile_options;
   };

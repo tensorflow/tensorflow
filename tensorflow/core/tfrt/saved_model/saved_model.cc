@@ -80,6 +80,7 @@ constexpr absl::string_view kTensorNameJoiningDelimiter = "-";
 constexpr absl::string_view kArgumentTypeJoiningDelimiter = "^";
 
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
+using ::tensorflow::SessionMetadata;
 using ::tensorflow::StatusOr;
 
 struct InitializersAndSignatures {
@@ -131,7 +132,7 @@ struct RequestInfo {
 
 StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
     const SavedModel::RunOptions& run_options,
-    const ModelMetadata& model_metadata, tfrt::HostContext* host,
+    const SessionMetadata& model_metadata, tfrt::HostContext* host,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     ResourceContext* resource_context,
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
@@ -257,7 +258,7 @@ StatusOr<SignatureMap> GetFunctionSignaturesFromTFSavedModelMLIR(
 
 tensorflow::Status RunInitializers(
     const InitializersAndSignatures& initializers_and_signatures,
-    const ModelMetadata& model_metadata, tfrt::BEFFile* bef_file,
+    const SessionMetadata& model_metadata, tfrt::BEFFile* bef_file,
     const tensorflow::tfrt_stub::Runtime& runtime,
     tfrt::ResourceContext* resource_context,
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
@@ -1223,8 +1224,8 @@ tensorflow::Status SavedModelImpl::RunInternal(
             {{"_r", 1},
              {"id", request_id},
              {"signature", signature_name},
-             {"model_id", StrCat(options_.model_metadata.name,
-                                 options_.model_metadata.version)}});
+             {"model_id", StrCat(options_.model_metadata.name(),
+                                 options_.model_metadata.version())}});
       },
       tensorflow::profiler::ContextType::kTfrtExecutor,
       request_info->tfrt_request_context->id());

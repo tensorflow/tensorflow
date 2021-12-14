@@ -119,7 +119,7 @@ Status SetUpKernelFallbackCompatRequestContext(
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata,
+    const absl::optional<SessionMetadata>& model_metadata,
     std::function<void(std::function<void()>)>* runner) {
   DCHECK(builder);
   DCHECK(device_manager);
@@ -145,7 +145,7 @@ Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder, OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata) {
+    const absl::optional<SessionMetadata>& model_metadata) {
   auto* resource_array =
       builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
           kFallbackResourceArray);
