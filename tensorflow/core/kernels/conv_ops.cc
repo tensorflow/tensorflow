@@ -594,7 +594,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                              &transformed_input));
 
       functor::PadInput<GPUDevice, T, int, 4>()(
-          ctx->eigen_device<GPUDevice>(), To32Bit(input_param.tensor<T, 4>()),
+          ctx->eigen_device<GPUDevice>(), To32Bit(input.tensor<T, 4>()),
           {{0, 0}}, {{rows_odd, cols_odd}},
           To32Bit(transformed_input.tensor<T, 4>()), data_format);
 
