@@ -709,6 +709,16 @@ if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq
   ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${NEW_PROJECT_NAME} || die "build_pip_package FAILED"
 fi
 
+# On MacOS we not have to rename the wheel because it is generated with the
+# wrong tag.
+if [[ ${OS_TYPE} == "macos" ]] ; then
+  for WHL_PATH in $(ls ${PIP_WHL_DIR}/*macosx_10_15_x86_64.whl); do
+    # change 10_15 to 10_14
+    NEW_WHL_PATH=${WHL_PATH/macosx_10_15/macosx_10_14}
+    mv ${WHL_PATH} ${NEW_WHL_PATH}
+  done
+fi
+
 # Run tests (if any is specified).
 run_all_tests
 
