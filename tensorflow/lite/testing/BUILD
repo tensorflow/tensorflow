@@ -29,6 +29,7 @@ package(
 )
 
 exports_files([
+    "build_def.bzl",
     "generated_examples_zip_test.cc",
     "tflite_diff_example_test.cc",
     "init_tensorflow.h",
