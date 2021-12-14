@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -67,8 +68,9 @@ Status SparseTensorFromContext(OpKernelContext* ctx, const int32 base_index,
                                bool validate_indices,
                                sparse::SparseTensor* tensor) {
   // Assume row-major order.
-  const TensorShape shape =
-      TensorShape(ctx->input(base_index + 2).vec<int64>());
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(
+      ctx->input(base_index + 2).vec<int64>(), &shape));
   CheckRankAtLeast2(ctx, shape);
   std::vector<int64> order(shape.dims());
   std::iota(order.begin(), order.end(), 0);
