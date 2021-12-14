@@ -129,16 +129,17 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
-  if (!compile_status
+  if (!compile_status.ok() &&
+      !compile_status
            .GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
            .has_value()) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
     proto.set_status_error_message(compile_status.error_message());
     status_payload = proto.SerializeAsString();
-    metrics::UpdateTpuErrorCounter("TpuCompileOp",
-                                   error_name(compile_status.code()));
   }
+  metrics::UpdateTpuErrorCounter("TpuCompileOp",
+                                 error_name(compile_status.code()));
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
                                 TpuCompileInterface::kTpuCompileErrorPayloadKey,
                                 status_payload, compile_status);
