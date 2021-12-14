@@ -675,7 +675,7 @@ tf_cc_binary(
     deps = [
         ":tf_cpurt_kernels_alwayslink",
         "@tf_runtime//:dtype",
-        "@tf_runtime//:simple_tracing_sink_alwayslink",
+        "@tf_runtime//:simple_tracing_sink",
         "@tf_runtime//tools:bef_executor_expensive_kernels",
         "@tf_runtime//tools:bef_executor_jit_kernels",
         "@tf_runtime//tools:bef_executor_lib",
