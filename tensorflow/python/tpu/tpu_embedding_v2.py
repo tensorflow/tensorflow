@@ -1520,8 +1520,8 @@ def _ragged_embedding_lookup_with_reduce(
   if combiner == "mean":
     ragged_result = ragged_result / math_ops.reduce_sum(weights, axis=1)
   elif combiner == "sqrtn":
-    ragged_result = ragged_result, math_ops.sqrt(math_ops.reduce_sum(
-        weights*weights, axis=1))
+    ragged_result = ragged_result / math_ops.sqrt(
+        math_ops.reduce_sum(weights * weights, axis=1))
   return ragged_result
 
 
