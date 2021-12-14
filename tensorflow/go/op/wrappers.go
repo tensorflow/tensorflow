@@ -404,6 +404,39 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 	return op.Output(0), op.Output(1)
 }
 
+// Apply a sparse update to a tensor taking the element-wise maximum.
+//
+// Returns a new tensor copied from `tensor` whose values are element-wise maximum between
+// tensor and updates according to the indices.
+//
+// >>> tensor = [0, 0, 0, 0, 0, 0, 0, 0]
+// >>> indices = [[1], [4], [5]]
+// >>> updates = [1, -1, 1]
+// >>> tf.tensor_scatter_nd_max(tensor, indices, updates).numpy()
+// array([0, 1, 0, 0, 0, 1, 0, 0], dtype=int32)
+//
+// Refer to `tf.tensor_scatter_nd_update` for more details.
+//
+// Arguments:
+//	tensor: Tensor to update.
+//	indices: Index tensor.
+//	updates: Updates to scatter into output.
+//
+// Returns A new tensor copied from tensor whose values are element-wise maximum between tensor and updates according to the indices.
+func TensorScatterMax(scope *Scope, tensor tf.Output, indices tf.Output, updates tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorScatterMax",
+		Input: []tf.Input{
+			tensor, indices, updates,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Subtracts sparse `updates` from an existing tensor according to `indices`.
 //
 // This operation creates a new tensor by subtracting sparse `updates` from the
