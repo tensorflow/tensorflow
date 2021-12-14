@@ -51,7 +51,8 @@ StatusOr<tfrt::gpu::Program> ConvertXlaGpuToGpuProgram(
       /*optimize_xla_hlo=*/true));
 
   // LMHLO -> TFRT Dialect (gpu kernels)
-  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(*module));
+  TF_RETURN_IF_ERROR(
+      tensorflow::ConvertLmhloToTfrtGpuWithBinary(*module, entry_name, {}));
 
   // TFRT Dialect -> BEF
   std::string bef;
