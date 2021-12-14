@@ -549,21 +549,66 @@ LogicalResult ApplyPatternsWithShapeResolution(
     return failure();
   }
 
+  IRRewriter rewriter(func.getContext());
+
   // Check that constant attributes types and op types match up. If the lowering
   // needs to change a type (e.g. fp16 -> fp32) its possible the return type
   // could be incorrect.
-  //
-  // This should be investigate for whether it is still necessary due to quant
-  // type stripping changing.
-  func.walk([&](tosa::ConstOp op) {
-    auto ety = op.value().getType().getElementType();
-    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
-    op.getResult().setType(new_ty);
-  });
+  // In the case of quantization it checks the const result type and the attribute values
+  // type and makes sure that if one of them is quantized the quantization information
+  // is preserved and that it is propagated to where it is missing.
+  func.walk([&](tosa::ConstOp const_op) {
+    mlir::DenseElementsAttr value = const_op.value().cast<DenseElementsAttr>();
 
+    auto op_value_element_type  = value.getType().getElementType();
+    auto op_result_element_type = const_op.getResult().getType().cast<ShapedType>().getElementType();
+
+    bool value_quantized  = op_value_element_type.isa<quant::QuantizedType>();
+    bool result_quantized = op_result_element_type.isa<quant::QuantizedType>();
+
+    // value_quantized result_quantized
+    //      0                1          <- Inherit the result type into the attribute, but do not change
+    //                                  <- the attribute type but rather make sure that the bitwidth/signedness is the same
+    //      0                0          <- Inherit the attribute type to the result
+    //      1                0          <- Inherit the attribute type to the result
+    //      1                1          <- Do Nothing as both quantized (Probably not possible)
+    if (!value_quantized && result_quantized) {
+      mlir::Type return_type = const_op.getResult().getType();
+      bool isSigned = return_type.isSignedInteger();
+      bool bitwidth = return_type.getIntOrFloatBitWidth();
+      bool isFloat  = return_type.isInteger(bitwidth);
+      mlir::DenseElementsAttr new_value;
+      if (isFloat)
+      {
+        SmallVector<APFloat> values = {};
+        for (auto v: value.getValues<APFloat>())
+           values.push_back(v);
+        mlir::Type new_storage_type = (bitwidth == 32) ? rewriter.getF32Type():rewriter.getF16Type();
+        mlir::ShapedType new_return_type = mlir::RankedTensorType::get(return_type.cast<ShapedType>().getShape(), new_storage_type);
+        new_value = mlir::DenseElementsAttr::get(new_return_type, values);
+      }
+      else
+      {
+        SmallVector<APInt> values = {};
+        for (auto v: value.getValues<APInt>())
+           values.push_back(v);
+        mlir::Type new_storage_type = rewriter.getIntegerType(bitwidth, isSigned);
+        mlir::ShapedType new_return_type = mlir::RankedTensorType::get(return_type.cast<ShapedType>().getShape(), new_storage_type);
+        new_value = mlir::DenseElementsAttr::get(new_return_type, values);
+      }
+      rewriter.setInsertionPoint(const_op);
+      rewriter.replaceOpWithNewOp<tosa::ConstOp>(const_op, return_type, new_value);
+    }
+    else if (!value_quantized or !result_quantized) {
+      // In the default case we always inheret the type of the attribute in the op return type
+      mlir::ShapedType new_return_type = const_op.getResult().getType().cast<ShapedType>().clone(op_value_element_type);
+      rewriter.setInsertionPoint(const_op);
+      rewriter.replaceOpWithNewOp<tosa::ConstOp>(const_op, new_return_type, value);
+    }
+  });
+  
   // Insert UnrealizedConversionCasts to guarantee ReturnOp agrees with
   // the FuncOp type.
-  IRRewriter rewriter(func.getContext());
   func.walk([&](ReturnOp op) {
     FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
     if (parent != func) return;
