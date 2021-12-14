@@ -125,6 +125,11 @@ struct MhloToScalarOp<mhlo::OrOp> {
   using UOp = ::mlir::arith::OrIOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::PopulationCountOp> {
+  using IOp = ::mlir::math::CtPopOp;
+  using UOp = ::mlir::math::CtPopOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::RemOp> {
   using FOp = ::mlir::arith::RemFOp;
   using IOp = ::mlir::arith::RemSIOp;

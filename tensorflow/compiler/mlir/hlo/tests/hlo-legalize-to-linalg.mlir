@@ -103,6 +103,16 @@ func @integer_remainder(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: func @population_count_integer
+func @population_count_integer(%lhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: math.ctpop
+  %0 = "mhlo.popcnt"(%lhs) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_rsqrt
 func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %tensor_result = "mhlo.rsqrt"(%operand)
