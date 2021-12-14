@@ -1563,23 +1563,24 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
     Location loc = op.getLoc();
 
     int num_inputs = static_cast<int>(adaptor.inputs().size());
-    auto src_type = adaptor.inputs()[0].getType().cast<ShapedType>();
-    int src_rank = src_type.getRank();
-    if (!src_rank) {
+    if (llvm::any_of(adaptor.inputs(), [](Value v) {
+          return !v.getType().cast<ShapedType>().getRank();
+        })) {
       return rewriter.notifyMatchFailure(op, "expects known-rank args");
     }
+    auto src_rank = adaptor.inputs()[0].getType().cast<ShapedType>().getRank();
 
     SmallVector<int64_t, 4> reduction_dims = Extract1DVector(op.dimensions());
 
     SmallVector<Value> inputs, outputs;
     SmallVector<AffineMap, 3> indexing_maps;
-    for (int i = 0; i < num_inputs; ++i) {
-      Value src = adaptor.inputs()[i];
-      if (src.getType() != src_type) return failure();
-
+    for (auto values :
+         llvm::zip(adaptor.inputs(), adaptor.init_values(), op.getResults())) {
       // Check if init_value is constant. If so, inline the value into the
       // region.
-      Value init_value = adaptor.init_values()[i];
+      Value input = std::get<0>(values);
+      Value init_value = std::get<1>(values);
+      Value result = std::get<2>(values);
       Attribute init_const_val = GetInitValueAsConst(init_value);
       if (init_const_val) {
         init_value = rewriter.create<arith::ConstantOp>(
@@ -1588,10 +1589,10 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
         init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
       }
 
-      inputs.push_back(src);
-      auto result_type = op.getResult(i).getType().cast<ShapedType>();
+      inputs.push_back(input);
+      auto result_type = result.getType().cast<ShapedType>();
       SmallVector<Value, 8> dyn_shape = GetReduceOpInitTensorDynSizes(
-          rewriter, loc, src, result_type, reduction_dims);
+          rewriter, loc, input, result_type, reduction_dims);
       auto init_tensor = GetInitTensor(rewriter, loc, result_type, dyn_shape);
       Value filled_tensor =
           rewriter.create<linalg::FillOp>(loc, init_value, init_tensor)
@@ -1631,8 +1632,13 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
     Region& region = linalg_op.region();
     rewriter.inlineRegionBefore(op.body(), region, region.end());
     TypeConverter::SignatureConversion signature_converter(num_inputs * 2);
-    for (int i = 0; i < num_inputs * 2; ++i)
-      signature_converter.addInputs(i, src_type.getElementType());
+
+    // map input and init values's types
+    for (const auto& it : llvm::enumerate(op.getOperation()->getOperands())) {
+      signature_converter.addInputs(
+          it.index(), it.value().getType().cast<ShapedType>().getElementType());
+    }
+
     rewriter.applySignatureConversion(&region, signature_converter);
     rewriter.replaceOp(op, linalg_op.getResults());
     return success();
