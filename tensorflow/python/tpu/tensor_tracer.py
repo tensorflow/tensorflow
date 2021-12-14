@@ -14,6 +14,7 @@
 # ========================================================================
 """A utility to trace tensor values on TPU."""
 
+import hashlib
 import operator
 
 import os
@@ -104,6 +105,18 @@ _TT_HOSTCALL_KEY = 'tensor_tracer_host_call'
 _TT_EVENT_FILE_SUFFIX = '.tensor_tracer'
 
 _TT_SUMMARY_MAX_QUEUE = 10
+
+
+def _graph_summary_tag(graph):
+  """Generates and returns a summary tag name for the given graph."""
+
+  if graph is None:
+    raise RuntimeError('graph is None')
+  # The chance of collision with md5 is effectively 0.
+  hash_id = hashlib.md5()
+  hash_id.update(repr(graph).encode('utf-8'))
+  # hexdigest() returns a string.
+  return hash_id.hexdigest()
 
 
 def set_parameters(tensor_tracer_params=None):
@@ -1283,12 +1296,14 @@ class TensorTracer(object):
     self._temp_cache_var[graph] = [
         init_value for _ in range(num_traced_tensors)]
 
-  def _determine_trace_and_create_report(self, graph, ops_in_exec_path):
+  def _determine_trace_and_create_report(self, graph, ops_in_exec_path,
+                                         graph_summary_tag):
     """Work needs to be done prior to TPU or CPU tracing.
 
     Args:
       graph: tf.graph
       ops_in_exec_path: Set of operations in the execution path.
+      graph_summary_tag: the summary tag name for the given graph.
     Returns:
       An instance of tensor_tracer_report.TensorTraceOrder, containing list of
       tensors to be traced with their topological order information.
@@ -1327,10 +1342,12 @@ class TensorTracer(object):
             self._parameters.trace_dir, self._report_proto.fingerprint)
         logging.info('TensorTracer updating trace_dir to %s',
                      self._parameters.trace_dir)
-      self._report_proto_path = tensor_tracer_report.report_proto_path(
-          self._parameters.trace_dir)
+      self._report_proto_path = report_handler.report_proto_path(
+          self._parameters.trace_dir, graph_summary_tag)
+
       if self._parameters.report_file_path != _SKIP_REPORT_FILE:
-        report_handler.write_report_proto(self._report_proto, self._parameters)
+        report_handler.write_report_proto(self._report_proto_path,
+                                          self._report_proto, self._parameters)
     else:
       report_handler.create_report(self._tt_config, self._parameters,
                                    tensor_trace_order, tensor_trace_points)
@@ -1668,13 +1685,14 @@ class TensorTracer(object):
     return array_ops.expand_dims(transposed_signatures, axis=0)
 
   def _prepare_host_call_fn(self, processed_t_fetches,
-                            op_fetches, graph):
+                            op_fetches, graph, graph_summary_tag):
     """Creates a host call function that will write the cache as tb summary.
 
     Args:
       processed_t_fetches: List of tensor provided to session.run.
       op_fetches: List of operations provided to session.run.
       graph: TensorFlow graph.
+      graph_summary_tag: the summary_tag name for the given graph.
     Raises:
       ValueError if trace_dir is not set.
     """
@@ -1742,7 +1760,7 @@ class TensorTracer(object):
               value = self.aggregate_global_cache(value)
           with ops.control_dependencies([summary_writer.init()]):
             summary_write_ops.append(summary.write(
-                _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
+                graph_summary_tag + '/' + key, value, metadata=summary_metadata,
                 step=step_value))
       return control_flow_ops.group(summary_write_ops)
 
@@ -1836,9 +1854,11 @@ class TensorTracer(object):
     # if fetches=None, then ops_in_exec_path = set(operations)
     exec_op_set = self._filter_execution_path_operations(graph.get_operations(),
                                                          all_fetches)
+    graph_summary_tag = _graph_summary_tag(graph)
+
     # Write report file, and determine the traced tensors.
     tensor_trace_order = self._determine_trace_and_create_report(
-        graph, exec_op_set)
+        graph, exec_op_set, graph_summary_tag)
 
     tensor_fetch_set = set(processed_t_fetches)
     tracing_ops = []
@@ -1954,7 +1974,8 @@ class TensorTracer(object):
         graph_cache_var[_TT_SUMMARY_TAG] = array_ops.stack(
             self._temp_cache_var[graph], axis=0, name='stack_all_op_signatures')
       if self._create_host_call():
-        self._prepare_host_call_fn(processed_t_fetches, op_fetches, graph)
+        self._prepare_host_call_fn(processed_t_fetches, op_fetches, graph,
+                                   graph_summary_tag)
         if not on_tpu:
           write_cache, caches_to_write = self._host_call_fn[_TT_HOSTCALL_KEY]
           cache_write_op = write_cache(**caches_to_write)
