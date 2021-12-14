@@ -349,9 +349,8 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     }
   }
 
-  std::cout << "Found " << peak_logical_buffers.size()
-            << " logical buffers alive at point of peak heap usage."
-            << std::endl;
+  VLOG(1) << "Found " << peak_logical_buffers.size()
+          << " logical buffers alive at point of peak heap usage.";
 
   VLOG(1) << "Peak logical buffers: ["
           << absl::StrJoin(peak_logical_buffers, ",") << "]";
