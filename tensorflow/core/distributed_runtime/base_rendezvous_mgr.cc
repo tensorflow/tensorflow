@@ -132,6 +132,10 @@ BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
       session_(nullptr) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
+  {
+    mutex_lock l(calls_mu_);
+    calls_.clear();
+  }
   local_->Unref();
 }
 
