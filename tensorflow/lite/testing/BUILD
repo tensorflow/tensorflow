@@ -101,7 +101,6 @@ exports_files([
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
-    # TODO(b/210390360): Enable merged_test_models()
 ) for conversion_mode, delegate, test_name, tags, args in generated_test_models_all()]
 
 test_suite(
