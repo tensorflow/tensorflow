@@ -205,9 +205,17 @@ def get_cluster_def(num_workers, num_ps):
   }
 
 
+# Due to b/195615322, FixedShardsPartitioner will wrongly partition
+# RNG state, so we use MinSizePartitioner as the default. Maximum RNG
+# state size is int64[3] which is 8 * 3 bytes, so we set
+# min_shard_bytes to 8 * 3 + 1.
+DEFAULT_PARTITIONER = sharded_variable.MinSizePartitioner(
+    min_shard_bytes=8 * 3 + 1, max_shards=2)
+
+
 def _get_ps_strategy_creator(
     num_workers, num_ps, required_gpus=0,
-    variable_partitioner=sharded_variable.FixedShardsPartitioner(2)):
+    variable_partitioner=DEFAULT_PARTITIONER):
 
   def _create_ps_strategy(resolver, variable_partitioner):
     return parameter_server_strategy_v2.ParameterServerStrategyV2(
@@ -447,7 +455,7 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
 
 def parameter_server_strategy_fn(
     name, num_workers, num_ps, required_gpus=0,
-    variable_partitioner=sharded_variable.FixedShardsPartitioner(2)):
+    variable_partitioner=DEFAULT_PARTITIONER):
   return combinations.NamedDistribution(
       name,
       _get_ps_strategy_creator(

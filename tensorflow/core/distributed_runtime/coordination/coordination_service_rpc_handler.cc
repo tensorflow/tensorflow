@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_rpc_handler.h"
 
-#include "tensorflow/core/common_runtime/device_mgr.h"
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"

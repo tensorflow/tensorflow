@@ -156,7 +156,7 @@ void PreventUnloadBuilderResources() {
   static TrtUniquePtrType<nvinfer1::IBuilder> hold_builder = nullptr;
   absl::call_once(
       once,
-      [](std::unique_ptr<nvinfer1::IBuilder>& builder) {
+      [](TrtUniquePtrType<nvinfer1::IBuilder>& builder) {
         if (!builder) {
           builder.reset(nvinfer1::createInferBuilder(*Logger::GetLogger()));
         }
@@ -306,22 +306,12 @@ class ValidatorTest : public ::testing::Test {
 
     TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                                /*use_calibration=*/false,
-                               /*use_implicit_batch=*/true);
+                               /*use_implicit_batch=*/true,
+                               /*use_explicit_precision=*/false);
     return validator.ConvertToTensorOrWeights(node->def(), output_port,
                                               tensor_or_weights);
   }
 };
-
-TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
-  grappler::GrapplerItem item;
-  grappler::GraphProperties graph_properties(item);
-  TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                             /*use_calibration=*/false,
-                             /*use_implicit_batch=*/true);
-  for (const string& quantize_op : kQuantizationOpNames) {
-    TF_EXPECT_OK(validator.GetValidator(quantize_op).status());
-  }
-}
 
 TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   // Convert Const.
@@ -392,7 +382,8 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   TF_EXPECT_OK(graph_properties.InferStatically(true));
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                              /*use_calibration=*/false,
-                             /*use_implicit_batch=*/true);
+                             /*use_implicit_batch=*/true,
+                             /*use_explicit_precision=*/false);
 
   // Override the Add converter.
   bool start_conversion = false;
@@ -478,7 +469,8 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
        {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
     TrtNodeValidator validator(graph_properties, precision_mode,
                                /*use_calibration=*/false,
-                               /*use_implicit_batch=*/true);
+                               /*use_implicit_batch=*/true,
+                               /*use_explicit_precision=*/false);
     TF_EXPECT_OK(validator.IsTensorRTCandidate(matmul.operation.node()));
     EXPECT_THAT(
         validator.IsTensorRTCandidate(incompatible_matmul.operation.node()),
@@ -522,7 +514,8 @@ class ConverterTest : public ::testing::Test {
         std::move(Converter::Create(TrtPrecisionMode::FP32,
                                     /*use_calibration=*/false, &logger_,
                                     /*use_implicit_batch=*/true,
-                                    /*engine_name=*/"TRTEngineOp_0_0")
+                                    /*engine_name=*/"TRTEngineOp_0_0",
+                                    /*use_explicit_precision=*/false)
                       .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
@@ -1050,7 +1043,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
         /*convert_successfully=*/nullptr, /*profiles=*/nullptr,
-        "TRTEngineOp_0_0");
+        "TRTEngineOp_0_0", /*use_explicit_precision=*/false);
   }
 
  protected:
@@ -1401,9 +1394,11 @@ class OpConverterTest : public ::testing::Test {
     grappler::GraphProperties graph_properties(item);
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-    TrtNodeValidator validator(graph_properties, converter_->precision_mode(),
-                               /*use_calibration=*/false,
-                               converter_->use_implicit_batch());
+    TrtNodeValidator validator(
+        graph_properties, converter_->precision_mode(),
+        /*use_calibration=*/false,
+        /*use_implicit_batch=*/converter_->use_implicit_batch(),
+        /*use_explicit_precision=*/false);
     return validator.IsTensorRTCandidate(node);
   }
 
@@ -1763,6 +1758,8 @@ class OpConverter_FP32_FP16_Test : public ParameterizedOpConverterTestBase {};
 // Base class for tests that need to be tested for FP32, FP16, and INT32
 class OpConverter_FP32_FP16_INT32_Test
     : public ParameterizedOpConverterTestBase {};
+// Base class for tests that need to be tested for INT32
+class OpConverter_INT32_Test : public ParameterizedOpConverterTestBase {};
 
 // Instantiate parameter combinations to OpConverter_<DT_X...>_Test
 INSTANTIATE_TEST_CASE_P(
@@ -1781,6 +1778,12 @@ INSTANTIATE_TEST_CASE_P(
     OpConvTestInstantiation, OpConverter_FP32_FP16_INT32_Test,
     ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_FLOAT, DT_HALF, DT_INT32),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverter_INT32_Test,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_INT32),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
 template <typename T>
@@ -3093,16 +3096,15 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertAddN) {
   }
 }
 
-TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
+TEST_P(OpConverter_FP32_Test, ConvertQDQDynamicRangeMode) {
   {
     // FakeQuantWithMinMaxArgs attributes are empty, should fail.
     Reset(TrtPrecisionMode::INT8);
     NodeDef node_def =
         MakeNodeDef("my_quantize", "FakeQuantWithMinMaxArgs", {"input"});
     AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Min or max attribute not found for FakeQuantWithMinMaxArgs");
+    RunValidationAndConversion(node_def, error::NOT_FOUND,
+                               "No attr named 'min'");
   }
   {
     // FakeQuantWithMinMaxArgs ranges set via attributes, ok.
@@ -3241,7 +3243,208 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
                   ArrayFloatNear(expected_outputs, 0));
 }
 
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+#if IS_TRT_VERSION_GE(8, 2, 1, 6) || defined(TF_TRT_USE_EFFICIENT_NMS_PLUGIN)
+
+TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
+  // Get the NodeDef for CombinedNMS.
+  auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
+                            bool pad_per_class = false) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto boxes_tensor = ops::Placeholder(s.WithOpName("boxes"), tf_type);
+    auto scores_tensor = ops::Placeholder(s.WithOpName("scores"), tf_type);
+    auto max_output_size_per_class =
+        ops::Placeholder(s.WithOpName("max_output_size_per_class"), DT_INT32);
+    auto max_total_size =
+        ops::Placeholder(s.WithOpName("max_total_size"), DT_INT32);
+    auto iou_threshold =
+        ops::Placeholder(s.WithOpName("iou_threshold"), tf_type);
+    auto score_threshold =
+        ops::Placeholder(s.WithOpName("score_threshold"), tf_type);
+    auto nms_attrs = ops::CombinedNonMaxSuppression::Attrs()
+                         .PadPerClass(pad_per_class)
+                         .ClipBoxes(clip_boxes);
+
+    auto nms_op = ops::CombinedNonMaxSuppression(
+        s.WithOpName("my_nms"), boxes_tensor, scores_tensor,
+        max_output_size_per_class, max_total_size, iou_threshold,
+        score_threshold, nms_attrs);
+    return nms_op.operation.node()->def();
+  };
+
+  struct TestParams {
+    const std::string description;
+    const std::vector<int32> boxes_tensor_dims;
+    const std::vector<int32> scores_tensor_dims;
+    const std::vector<float> boxes_values;
+    const std::vector<float> scores_values;
+    const int32 max_output_size_per_class;
+    const int32 max_total_size;
+    const float iou_threshold;
+    const float score_threshold;
+    bool pad_per_class;
+    bool clip_boxes;
+    const std::vector<std::vector<int32>> expected_output_dims;
+    const std::vector<float> exp_boxes;
+    const std::vector<float> exp_scores;
+    const std::vector<float> exp_classes;
+    const std::vector<float> exp_num_detections;
+    Status conversion_status;
+    Status runtime_status;
+  };
+
+  Status conv_status =
+      trt_mode_ == TrtTestMode::kImplicitBatch
+          ? errors::Unimplemented(
+                "Implict batch mode not supported with CombinedNMS")
+          : Status::OK();
+
+  std::vector<TestParams> params = {
+      TestParams{"Test 1: clip boxes",
+                 {1, 1, 3, 4},  // boxes dims
+                 {1, 1, 3},     // scores dims
+                                // boxes values:
+                 {0, 0, 0.3, 1.4, 0, 0, 0.3, 1.4, 0, 0, 0.3, 1.4},
+                 {0.4, 0.7, 0.3},  // scores values
+                 3,                // max_output_size_per_class
+                 2,                // max_total_size
+                 0.1,              // IOU threshold
+                 0,                // score_threshold
+                 false,            // pad_per_class
+                 true,             // clip_boxes
+                 {{1, 2, 4},       // expected_nmsed_boxes_dims
+                  {1, 2},          // expected_nmsed_scores_dims
+                  {1, 2},          // expected_nmsed_classes_dims
+                  {1}},            // expected_valid_detections_dims
+                                   // exp_boxes_values:
+                 {0, 0, 0.3, 1.0, 0, 0, 0.3, 1.0},
+                 {0.7, 0.4},  // exp_scores
+                 {1, 0},      // exp_classes
+                 {2},         // exp_num_detections
+                 conv_status},
+      TestParams{
+          "Test 2: iou threshold",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 1},     // scores dims
+                         // boxes values:
+          {0, 0, 5, 10, 0, 1, 5, 11, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 4, 3, 2, 1},  // scores values
+          4,                // max_output_size_per_class
+          4,                // max_total_size
+          0.7,              // IOU threshold
+          0,                // score threshold
+          false,            // pad_per_class
+          false,            // clip_boxes
+          {{1, 4, 4},       // expected nmsed_boxes_dims
+           {1, 4},          // expected nmsed_scores_dims
+           {1, 4},          // expected_nmsed_classes_dims
+           {1}},            // expected_valid_detections_dims
+                            // exp_boxes_values:
+          {0, 0, 5, 10, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 3, 2, 1},  // exp_scores
+          {0, 0, 0, 0},  // exp_classes
+          {4},           // exp_num_detections
+          conv_status},
+      TestParams{
+          "Test 3: score threshold",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 1},     // scores dims
+                         // boxes values:
+          {0, 0, 5, 10, 0, 1, 5, 11, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 4, 3, 2, 1},  // scores values
+          4,                // max_output_size_per_class
+          4,                // max_total_size
+          0.1,              // IOU threshold
+          2,                // score threshold
+          false,            // pad_per_class
+          false,            // clip_boxes
+          {{1, 4, 4},       // expected nmsed_boxes_dims
+           {1, 4},          // expected nmsed_scores_dims
+           {1, 4},          // expected_nmsed_classes_dims
+           {1}},            // expected_valid_detections_dims
+                            // exp_boxes_values:
+          {0, 0, 5, 10, 8, 0, 12, 4, 0, 0, 0, 0, 0, 0, 0, 0},
+          {5, 3, 0, 0},  // exp_scores
+          {0, 0, 0, 0},  // exp_classes
+          {2},           // exp_num_detections
+          conv_status},
+      TestParams{
+          "Test 4: per class size and pad",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 2},     // scores dims
+                         // boxes values:
+          {0, 0, 5, 10, 0, 1, 5, 11, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          // scores values:
+          {5, 0, 0, 4, 3, 0, 2, 0, 1, 0},
+          1,           // max_output_size_per_class
+          4,           // max_total_size
+          0.1,         // IOU threshold
+          0,           // score threshold
+          true,        // pad_per_class
+          false,       // clip_boxes
+          {{1, 2, 4},  // expected nmsed_boxes_dims
+           {1, 2},     // expected nmsed_scores_dims
+           {1, 2},     // expected_nmsed_classes_dims
+           {1}},       // expected_valid_detections_dims
+                       // exp_boxes_values:
+          {0, 0, 5, 10, 0, 1, 5, 11},
+          {5, 4},  // exp_scores
+          {0, 1},  // exp_classes
+          {2},     // exp_num_detections
+          conv_status},
+      TestParams{
+          "Test 5: different box coordinate order",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 2},     // scores dims
+                         // boxes values:
+          {5, 10, 0, 0, 5, 11, 0, 1, 12, 4, 8, 0, 10, 6, 6, 2, 11, 12, 8, 9},
+          // scores values:
+          {5, 0, 0, 4, 3, 0, 2, 0, 1, 0},
+          1,           // max_output_size_per_class
+          4,           // max_total_size
+          0.1,         // IOU threshold
+          0,           // score threshold
+          true,        // pad_per_class
+          false,       // clip_boxes
+          {{1, 2, 4},  // expected nmsed_boxes_dims
+           {1, 2},     // expected nmsed_scores_dims
+           {1, 2},     // expected_nmsed_classes_dims
+           {1}},       // expected_valid_detections_dims
+                       // exp_boxes_values:
+          {5, 10, 0, 0, 5, 11, 0, 1},
+          {5, 4},  // exp_scores
+          {0, 1},  // exp_classes
+          {2},     // exp_num_detections
+          conv_status},
+  };
+
+  for (auto p : params) {
+    Reset();
+    SCOPED_TRACE(p.description);
+    AddTestTensor("boxes", p.boxes_tensor_dims, p.boxes_values);
+    AddTestTensor("scores", p.scores_tensor_dims, p.scores_values);
+    AddTestWeights<int32>("max_output_size_per_class", {1},
+                          {p.max_output_size_per_class});
+    AddTestWeights<int32>("max_total_size", {1}, {p.max_total_size});
+    AddTestWeights<float>("iou_threshold", {1}, {p.iou_threshold}, tf_type_);
+    AddTestWeights<float>("score_threshold", {1}, {p.score_threshold},
+                          tf_type_);
+
+    auto node_def = get_nms_nodedef(tf_type_, p.clip_boxes, p.pad_per_class);
+
+    TestOpConverterMultiOut("my_nms", node_def, p.expected_output_dims,
+                            p.conversion_status, p.runtime_status,
+                            {
+                                ElementsAreArray(p.exp_boxes),
+                                ElementsAreArray(p.exp_scores),
+                                ElementsAreArray(p.exp_classes),
+                                ElementsAreArray(p.exp_num_detections),
+                            },
+                            {tf_type_, tf_type_, tf_type_, DT_INT32});
+  }
+}
+
+#elif IS_TRT_VERSION_GE(7, 1, 3, 0)
+
 TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
   // Get the NodeDef for CombinedNMS.
   auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
@@ -3444,6 +3647,7 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
                             {tf_type_, tf_type_, tf_type_, DT_INT32});
   }
 }
+
 #endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 template <typename T>
@@ -5715,6 +5919,180 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertTopK) {
                             Status::OK(), Status::OK(),
                             {ElementsAre(6, 5, 7, 1), ElementsAre(4, 2, 1, 2)},
                             {tf_type_, DT_INT32});
+  }
+}
+
+struct DataFormatVecPermuteTestParams {
+  string dst_format;
+  string src_format;
+  std::vector<int> x_shape;
+  std::vector<int> x;
+  bool x_is_tensor;
+  std::vector<int> expected_output;
+  Status conversion_status;
+};
+
+NodeDef GetDataFormatVecPermuteNodeDef(string dst_format, string src_format,
+                                       std::vector<int>& x_shape) {
+  Scope s = Scope::NewRootScope();
+  PartialTensorShape tensor_shape;
+  auto x = ops::Placeholder(s.WithOpName("x"), DT_INT32);
+  const auto attrs = ops::DataFormatVecPermute::Attrs()
+                         .DstFormat(dst_format)
+                         .SrcFormat(src_format);
+  auto dfvp = ops::DataFormatVecPermute(s.WithOpName("my_dfvp"), x, attrs);
+  return dfvp.operation.node()->def();
+}
+
+TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
+  Status implicit_error = Status{
+      error::UNIMPLEMENTED, "Implicit batch mode not supported, at my_dfvp"};
+
+  std::vector<DataFormatVecPermuteTestParams> test_params = {
+      // 1D case with tensor.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4},
+          /*x=*/{1, 2, 3, 4},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{1, 4, 2, 3},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // 1D case with weights.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4},
+          /*x=*/{1, 2, 3, 4},
+          /*x_is_tensor=*/false,
+          /*expected_output=*/{1, 4, 2, 3},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // 2D case with tensor.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{1, 2, 7, 8, 3, 4, 5, 6},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // 2D case with weights.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/false,
+          /*expected_output=*/{1, 2, 7, 8, 3, 4, 5, 6},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Format of size 5.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCDHW",
+          /*src_format=*/"NDHWC",
+          /*x_shape=*/{5, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{1, 2, 9, 10, 3, 4, 5, 6, 7, 8},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Input of size 2: treat the elements as spatial dimensions.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCWH",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{2, 2},
+          /*x=*/{1, 2, 3, 4},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{3, 4, 1, 2},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Input of size 3: treat the elements as spatial dimensions.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHWD",
+          /*src_format=*/"NDHWC",
+          /*x_shape=*/{3},
+          /*x=*/{1, 2, 3},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{2, 3, 1},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Invalid rank, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{2, 2, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "Input must be a vector or matrix, but got rank 3, at "
+                       "my_dfvp"}},
+      // Invalid size for 1D input, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{3},
+          /*x=*/{1, 2, 3},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "1D input must be of size 2 or 4, but got size 3, at "
+                       "my_dfvp"}},
+      // Invalid first dim for 2D input, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCDHW",
+          /*src_format=*/"NDHWC",
+          /*x_shape=*/{4, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "First dimension of 2D input must be of size 3 or 5, "
+                       "but got shape (4, 2), at my_dfvp"}},
+      // Invalid second dim for 2D input, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4, 3},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "Second dimension of 2D input must be of size 2, but "
+                       "got shape (4, 3), at my_dfvp"}},
+  };
+
+  for (auto p : test_params) {
+    Reset();
+    const NodeDef node_def =
+        GetDataFormatVecPermuteNodeDef(p.dst_format, p.src_format, p.x_shape);
+
+    if (p.x_is_tensor) {
+      AddTestTensor("x", p.x_shape, DT_INT32, p.x, p.x_shape);
+    } else {
+      AddTestWeights("x", p.x_shape, p.x, DT_INT32);
+    }
+
+    TestOpConverter("my_dfvp", node_def, p.x_shape, p.conversion_status,
+                    Status::OK(), ElementsAreArray(p.expected_output));
   }
 }
 

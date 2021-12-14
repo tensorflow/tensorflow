@@ -135,6 +135,7 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
+    features = if_google(["-parse_headers"]),
     licenses = ["notice"],
 )
 

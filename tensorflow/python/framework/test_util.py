@@ -49,6 +49,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -3412,23 +3413,33 @@ class TensorFlowTestCase(googletest.TestCase):
         exception_type, r"Incompatible shapes|Dimensions must be equal|"
         r"required broadcastable shapes")
 
-  def assertShapeEqual(self, np_array, tf_tensor, msg=None):
-    """Asserts that a Numpy ndarray and a TensorFlow tensor have the same shape.
+  def assertShapeEqual(self, input_a, input_b, msg=None):
+    """Asserts that two Numpy or TensorFlow objects have the same shape.
+
+    For Tensors, this compares statically known shapes at compile time, not
+    dynamic shapes at runtime.
 
     Args:
-      np_array: A Numpy ndarray or Numpy scalar.
-      tf_tensor: A Tensor.
+      input_a: A Numpy ndarray, Numpy scalar, or a Tensor.
+      input_b: A Numpy ndarray, Numpy scalar, or a Tensor.
       msg: Optional message to report on failure.
 
     Raises:
       TypeError: If the arguments have the wrong type.
     """
-    if not isinstance(np_array, (np.ndarray, np.generic)):
-      raise TypeError("np_array must be a Numpy ndarray or Numpy scalar")
-    if not isinstance(tf_tensor, ops.Tensor):
-      raise TypeError("tf_tensor must be a Tensor")
-    self.assertAllEqual(
-        np_array.shape, tf_tensor.get_shape().as_list(), msg=msg)
+    if not isinstance(input_a, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_a must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_a)}")
+    if not isinstance(input_b, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_b must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_b)}")
+    shape_a = input_a.get_shape().as_list() if isinstance(
+        input_a, ops.Tensor) else input_a.shape
+    shape_b = input_b.get_shape().as_list() if isinstance(
+        input_b, ops.Tensor) else input_b.shape
+    self.assertAllEqual(shape_a, shape_b, msg=msg)
 
   def assertDeviceEqual(self, device1, device2, msg=None):
     """Asserts that the two given devices are the same.
@@ -3828,3 +3839,20 @@ def run_functions_eagerly(run_eagerly):
     yield
   finally:
     def_function.run_functions_eagerly(initial_state)
+
+
+class TestDelta(object):
+  """A utility class to track increments to test counters."""
+
+  def __init__(self, name, label):
+    self.name = name
+    self.label = label
+    self.Reset()
+
+  def Reset(self):
+    self.last_value = _test_metrics_util.test_counter_value(
+        self.name, self.label)
+
+  def Get(self):
+    value = _test_metrics_util.test_counter_value(self.name, self.label)
+    return value - self.last_value

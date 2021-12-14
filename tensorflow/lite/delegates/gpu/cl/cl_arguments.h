@@ -35,19 +35,9 @@ class CLArguments : public ArgumentsBinder {
   CLArguments() = default;
 
   absl::Status Init(const GpuInfo& gpu_info,
-                    const std::map<std::string, std::string>& linkables,
                     CLContext* context, Arguments* args, std::string* code);
   absl::Status Init(const GpuInfo& gpu_info, Arguments* args,
                     CLContext* context);
-
-  // Temporary, will be resolved later
-  void MoveObjectRefsIn(Arguments* args) {
-    object_refs_ = std::move(args->object_refs_);
-  }
-  void MoveObjectRefsOut(Arguments* args) {
-    args->object_refs_ = std::move(object_refs_);
-  }
-  void CopyScalarValues(Arguments* args) const;
 
   // Move only
   CLArguments(CLArguments&& args) = default;

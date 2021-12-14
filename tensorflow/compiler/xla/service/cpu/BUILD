@@ -1,7 +1,7 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -53,11 +53,13 @@ filegroup(
         "runtime_key_value_sort.cc",
         "runtime_pow.cc",
         "runtime_single_threaded_conv2d.cc",
+        "runtime_single_threaded_conv3d.cc",
         "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul.cc",
         "runtime_topk.cc",
         # Multi-threaded support.
         "runtime_conv2d.cc",
+        "runtime_conv3d.cc",
         "runtime_fft.cc",
         "runtime_matmul.cc",
         "runtime_fork_join.cc",
@@ -70,17 +72,19 @@ filegroup(
     srcs = [
         # Single-threaded support.
         "runtime_custom_call_status.h",
-        "runtime_conv2d_impl.h",
+        "runtime_conv_impl.h",
         "runtime_fft_impl.h",
         "runtime_fp16.h",
         "runtime_key_value_sort.h",
         "runtime_pow.h",
         "runtime_single_threaded_conv2d.h",
+        "runtime_single_threaded_conv3d.h",
         "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
         "runtime_topk.h",
         # Multi-threaded support.
         "runtime_conv2d.h",
+        "runtime_conv3d.h",
         "runtime_fft.h",
         "runtime_fork_join.h",
         "runtime_lightweight_check.h",
@@ -297,6 +301,7 @@ cc_library(
         ":runtime_pow",
         ":runtime_conv2d",
         ":runtime_conv2d_mkl",
+        ":runtime_conv3d",
         ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_key_value_sort",
@@ -304,6 +309,7 @@ cc_library(
         ":runtime_matmul",
         ":runtime_matmul_mkl",
         ":runtime_single_threaded_conv2d",
+        ":runtime_single_threaded_conv3d",
         ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
         "@com_google_absl//absl/memory",
@@ -681,9 +687,30 @@ cc_library(
     name = "runtime_conv2d",
     srcs = [
         "runtime_conv2d.cc",
-        "runtime_conv2d_impl.h",
+        "runtime_conv_impl.h",
     ],
     hdrs = ["runtime_conv2d.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_lightweight_check",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "runtime_conv3d",
+    srcs = [
+        "runtime_conv3d.cc",
+        "runtime_conv_impl.h",
+    ],
+    hdrs = ["runtime_conv3d.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -782,10 +809,29 @@ cc_library(
 cc_library(
     name = "runtime_single_threaded_conv2d",
     srcs = [
-        "runtime_conv2d_impl.h",
+        "runtime_conv_impl.h",
         "runtime_single_threaded_conv2d.cc",
     ],
     hdrs = ["runtime_single_threaded_conv2d.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_lightweight_check",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "runtime_single_threaded_conv3d",
+    srcs = [
+        "runtime_conv_impl.h",
+        "runtime_single_threaded_conv3d.cc",
+    ],
+    hdrs = ["runtime_single_threaded_conv3d.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -820,6 +866,7 @@ cc_library(
     name = "runtime_single_threaded_matmul",
     srcs = ["runtime_single_threaded_matmul.cc"],
     hdrs = ["runtime_single_threaded_matmul.h"],
+    compatible_with = get_compatible_with_cloud(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -1137,6 +1184,7 @@ cc_library(
     name = "cpu_options",
     srcs = ["cpu_options.cc"],
     hdrs = ["cpu_options.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:lib",

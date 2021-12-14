@@ -56,6 +56,15 @@ cc_library(
 )
 
 cc_library(
+    name = "flops_util",
+    srcs = ["flops_util.cc"],
+    hdrs = ["flops_util.h"],
+    deps = [
+        ":shape",
+    ],
+)
+
+cc_library(
     name = "memory_management",
     srcs = [
         "memory_management.cc",
@@ -325,7 +334,10 @@ cc_test(
 cc_library(
     name = "status",
     hdrs = ["status.h"],
-    deps = ["@com_google_absl//absl/status"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/google:status_macros",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(

@@ -1580,6 +1580,20 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
           dims = constant_op.constant([3, 0], dtype=dtype)
           self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
 
+  def testUnravelIndexIntegerOverflow(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"Input dims product is causing integer overflow"):
+          indices = constant_op.constant(-0x100000, dtype=dtype)
+          if dtype == dtypes.int32:
+            value = 0x10000000
+          else:
+            value = 0x7FFFFFFFFFFFFFFF
+          dims = constant_op.constant([value, value], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
 
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
 
@@ -1703,6 +1717,21 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
             range_given=True)
       output_grad = gradient_checker_v2.compute_gradient(f, [input_tensor])
       self.assertAllClose(output_grad[0], np.zeros([1, 4, 4]))
+
+  def testOutOfBoundAxis(self):
+    input_tensor = constant_op.constant([1., 1.])
+    input_min = [0]
+    input_max = [1]
+    q_input, _, _ = array_ops.quantize(input_tensor, 0, 1, dtypes.qint32)
+    error = (errors.InvalidArgumentError, ValueError)
+    with self.assertRaisesRegex(error,
+                                r".*Axis must be less than input dimension.*"):
+      self.evaluate(
+          gen_array_ops.dequantize(
+              input=q_input,
+              min_range=input_min,
+              max_range=input_max,
+              axis=2**31 - 1))
 
 
 @test_util.run_all_in_graph_and_eager_modes

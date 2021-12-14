@@ -307,6 +307,7 @@ cc_library(
     name = "cpu_device",
     srcs = ["cpu_device.cc"],
     hdrs = ["cpu_device.h"],
+    compatible_with = [],
     visibility = [":friends"],
     deps = [
         ":pjrt_stream_executor_client",
@@ -384,6 +385,7 @@ cc_library(
     name = "mlir_to_hlo",
     srcs = ["mlir_to_hlo.cc"],
     hdrs = ["mlir_to_hlo.h"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
@@ -419,6 +421,7 @@ cc_library(
     name = "tfrt_cpu_pjrt_client",
     srcs = ["tfrt_cpu_pjrt_client.cc"],
     hdrs = ["tfrt_cpu_pjrt_client.h"],
+    compatible_with = [],
     deps = [
         ":mlir_to_hlo",
         ":pjrt_client",

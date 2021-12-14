@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -44,10 +45,10 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
@@ -171,9 +172,10 @@ namespace {
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<arith::ArithmeticDialect, StandardOpsDialect,
-                    memref::MemRefDialect, mhlo::MhloDialect,
-                    lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
+    registry
+        .insert<arith::ArithmeticDialect, bufferization::BufferizationDialect,
+                StandardOpsDialect, memref::MemRefDialect, mhlo::MhloDialect,
+                lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   }
 
  public:
@@ -283,7 +285,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
 
   llvm::SmallVector<mlir::Value, 4> loads;
   for (Value arg : arguments) {
-    auto load = b.create<mlir::memref::TensorLoadOp>(loc, arg);
+    auto load = b.create<mlir::bufferization::ToTensorOp>(loc, arg);
     Shape shape = xla::TypeToShape(arg.getType());
     TF_RET_CHECK(shape.IsArray());
     if (shape.layout() !=
@@ -308,7 +310,9 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     op = reduce_op;
   } else {
     TF_ASSIGN_OR_RETURN(
-        op, xla::HloFunctionImporter::ImportInstruction(instr, loads, &b));
+        op,
+        xla::HloFunctionImporter::ImportInstruction(
+            instr, loads, &b, xla::DynamicShapeHandlingMode::kConvertToStatic));
   }
   TF_RET_CHECK(op->getNumResults() == num_results);
   for (int i = 0; i < results.size(); i++) {
@@ -505,7 +509,7 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
   }
   TF_ASSIGN_OR_RETURN(Value memref,
                       GetOrCreateArrayView(root, shape, *shape_index));
-  auto load = b->create<memref::TensorLoadOp>(loc, memref);
+  auto load = b->create<bufferization::ToTensorOp>(loc, memref);
   if (shape.layout() !=
       xla::LayoutUtil::MakeDescendingLayout(shape.dimensions().size())) {
     llvm::SmallVector<int64_t, 4> minor_to_major(
@@ -528,8 +532,8 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
 // will be converted to
 //     lmhlo.fusion() {  // no explicit operands
 //       // capturing outside buffers
-//       %p0 = tensor_load(%arg0) : memref<...> -> tensor<...>
-//       %p1 = tensor_load(%arg1) : memref<...> -> tensor<...>
+//       %p0 = bufferization.to_tensor(%arg0) : memref<...> -> tensor<...>
+//       %p1 = bufferization.to_tensor(%arg1) : memref<...> -> tensor<...>
 //       ...
 //       tensor_store ..., %ret // store a tensor to a memref
 //     }
@@ -1109,7 +1113,7 @@ Status SetupCommonCollectiveOpAttributes(OpT op, const HloInstruction* instr,
   auto* collective = xla::Cast<xla::HloCollectiveInstruction>(instr);
   auto replica_groups_attr = xla::HloFunctionImporter::ConvertReplicaGroups(
       collective->replica_groups(), &builder);
-  op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
+  op->setAttr(replica_groups_attr.getName(), replica_groups_attr.getValue());
   op.constrain_layoutAttr(builder.getBoolAttr(collective->constrain_layout()));
   SetupChannelIdAttribute(op, collective, builder);
   return Status::OK();
@@ -1231,8 +1235,8 @@ LhloDialectEmitter::EmitCollectivePermuteOp(const HloInstruction* instr) {
   mlir::NamedAttribute source_target_pairs_attr =
       xla::HloFunctionImporter::ConvertSourceTargetPairs(
           permute->source_target_pairs(), &builder_);
-  permute_op->setAttr(source_target_pairs_attr.first,
-                      source_target_pairs_attr.second);
+  permute_op->setAttr(source_target_pairs_attr.getName(),
+                      source_target_pairs_attr.getValue());
   return permute_op;
 }
 
@@ -1684,7 +1688,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
-      ->loadDialect<arith::ArithmeticDialect, StandardOpsDialect,
+      ->loadDialect<arith::ArithmeticDialect,
+                    bufferization::BufferizationDialect, StandardOpsDialect,
                     memref::MemRefDialect, mhlo::MhloDialect,
                     lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
 

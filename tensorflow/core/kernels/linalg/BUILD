@@ -259,7 +259,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "qr_op",
     prefix = "qr_op",
-    deps = LINALG_DEPS + if_cuda([
+    deps = LINALG_DEPS + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cwise_op",
         ":matrix_band_part_op",
     ]),

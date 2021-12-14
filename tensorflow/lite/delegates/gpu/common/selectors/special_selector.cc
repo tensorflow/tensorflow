@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/flops_util.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -108,6 +112,10 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, gpu_info, dw_attr,
                                                   conv_attr, relu_attr_ptr);
   *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+  (*gpu_op)->flops_ = GetDepthwiseConvolutionFlops(dw_outputs[0]->tensor.shape,
+                                                   dw_attr.weights.shape) +
+                      GetConvolutionFlops(conv_outputs[0]->tensor.shape,
+                                          conv_attr.weights.shape);
   std::string fused_nodes = std::to_string(dw_node->id);
   if (relu_node) {
     fused_nodes += " " + std::to_string(relu_node->id);

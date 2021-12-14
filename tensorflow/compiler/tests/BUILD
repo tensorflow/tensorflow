@@ -2080,6 +2080,26 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "repeat_op_test",
+    size = "medium",
+    srcs = ["repeat_op_test.py"],
+    enable_mlir_bridge = True,
+    shard_count = 5,
+    tags = [
+        "no_oss",
+        "no_pip",
+        "notap",  # TODO(b/208452143): Fix the test.
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
     name = "ensure_shape_op_test",
     size = "medium",
     srcs = ["ensure_shape_op_test.py"],
@@ -2101,16 +2121,13 @@ tf_xla_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
     enable_mlir_bridge = False,
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",

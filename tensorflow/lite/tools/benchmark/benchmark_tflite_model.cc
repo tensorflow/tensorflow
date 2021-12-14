@@ -369,7 +369,7 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
   tools::ProvidedDelegateList delegate_providers(&params_);
-  delegate_providers.AppendCmdlineFlags(&flags);
+  delegate_providers.AppendCmdlineFlags(flags);
 
   return flags;
 }

@@ -352,7 +352,8 @@ Status XlaSingleOpToHlo(XlaCompiler* compiler,
       *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
       options.device_type.type_string(), compile_options.use_tuple_arg,
       /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
-      options.shape_representation_fn, compilation_result);
+      options.shape_determination_fns.shape_representation_fn,
+      compilation_result);
 
   if (mlir_result.ok() || mlir_enabled) {
     return mlir_result;

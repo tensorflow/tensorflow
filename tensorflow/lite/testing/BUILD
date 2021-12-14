@@ -74,7 +74,7 @@ exports_files([
     )],
     # copybara:comment_end
     delegate = delegate,
-    shard_count = 20,
+    shard_count = 30,
     tags = tags + [
         "gen_zip_test",
         "tflite_not_portable_intentional",
@@ -260,6 +260,8 @@ cc_library(
         ":split",
         ":test_runner",
         "@com_google_absl//absl/strings",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
@@ -376,6 +378,7 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite:string_util",
     ] + select({

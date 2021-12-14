@@ -21,7 +21,7 @@
 #include <functional>
 #include <string>
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"

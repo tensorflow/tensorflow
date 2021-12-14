@@ -5408,6 +5408,99 @@ inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
   }
 }
 
+// Single-rounding MultiplyByQuantizedMultiplier
+#if TFLITE_SINGLE_ROUNDING
+inline void Quantize(const int32_t* multiplier, const int32_t* shift,
+                     int32_t channel_size, int32_t total_size,
+                     int32_t output_zp, int32_t output_min, int32_t output_max,
+                     int32_t* scratch, int8_t* output) {
+  ruy::profiler::ScopeLabel label("Quantize/int8");
+
+  // Here we're trying to quantize the raw accumulators:
+  //        output_channels
+  //       data data data data data
+  // rows  data data data data data
+  //       data data data data data
+  //          ....
+  //
+  // In order to minimize the reload of the multipliers & shifts, once we load
+  // the multipliers & shifts, we load & quantize the raw accumulators for every
+  // row.
+#ifdef USE_NEON
+  const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
+  const int32x4_t output_activation_min_vec = vdupq_n_s32(output_min);
+  const int32x4_t output_activation_max_vec = vdupq_n_s32(output_max);
+  const int32x4_t minus_ones = vdupq_n_s32(-1);
+#endif
+
+  TFLITE_DCHECK_EQ(total_size % channel_size, 0);
+  const int32_t rows = total_size / channel_size;
+
+  int c = 0;
+
+#ifdef USE_NEON
+  for (; c <= channel_size - 8; c += 8) {
+    int32x4_t out_shift_1 = vld1q_s32(shift + c);
+    int32x4_t out_shift_2 = vld1q_s32(shift + c + 4);
+
+    int32x4_t right_shift_1 = vminq_s32(out_shift_1, minus_ones);
+    int32x4_t right_shift_2 = vminq_s32(out_shift_2, minus_ones);
+
+    int32x4_t left_shift_1 = vsubq_s32(out_shift_1, right_shift_1);
+    int32x4_t left_shift_2 = vsubq_s32(out_shift_2, right_shift_2);
+
+    int32x4_t out_mul_1 = vld1q_s32(multiplier + c);
+    int32x4_t out_mul_2 = vld1q_s32(multiplier + c + 4);
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32x4_t acc_1 = vld1q_s32(scratch + loc);
+      int32x4_t acc_2 = vld1q_s32(scratch + loc + 4);
+
+      // Saturating Doubling High Mul.
+      acc_1 = vshlq_s32(acc_1, left_shift_1);
+      acc_1 = vqdmulhq_s32(acc_1, out_mul_1);
+      acc_2 = vshlq_s32(acc_2, left_shift_2);
+      acc_2 = vqdmulhq_s32(acc_2, out_mul_2);
+
+      // Rounding Dividing By POT.
+      acc_1 = vrshlq_s32(acc_1, right_shift_1);
+      acc_2 = vrshlq_s32(acc_2, right_shift_2);
+
+      // Add the output offset.
+      acc_1 = vaddq_s32(acc_1, output_offset_vec);
+      acc_2 = vaddq_s32(acc_2, output_offset_vec);
+
+      // Apply the activation function.
+      acc_1 = vmaxq_s32(acc_1, output_activation_min_vec);
+      acc_1 = vminq_s32(acc_1, output_activation_max_vec);
+      acc_2 = vmaxq_s32(acc_2, output_activation_min_vec);
+      acc_2 = vminq_s32(acc_2, output_activation_max_vec);
+
+      // Saturating cast to int8 and store to destination.
+      const int16x4_t acc_s16_1 = vqmovn_s32(acc_1);
+      const int16x4_t acc_s16_2 = vqmovn_s32(acc_2);
+      const int16x8_t res_s16 = vcombine_s16(acc_s16_1, acc_s16_2);
+      const int8x8_t res_s8 = vqmovn_s16(res_s16);
+      vst1_s8(output + loc, res_s8);
+    }
+  }
+
+#endif  // USE_NEON
+  // Handle leftover values, one by one. This is very slow.
+  for (; c < channel_size; c++) {
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32 acc = scratch[loc];
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
+      acc += output_zp;
+      acc = std::max(acc, output_min);
+      acc = std::min(acc, output_max);
+      output[loc] = static_cast<int8>(acc);
+    }
+  }
+}
+// Double-rounding MultiplyByQuantizedMultiplier
+#else
 inline void Quantize(const int32_t* multiplier, const int32_t* shift,
                      int32_t channel_size, int32_t total_size,
                      int32_t output_zp, int32_t output_min, int32_t output_max,
@@ -5498,6 +5591,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
     }
   }
 }
+#endif  // TFLITE_SINGLE_ROUNDING
 
 // TransposeConvV2 expect the weights in HWOI order.
 inline void TransposeConvV2(

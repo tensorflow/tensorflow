@@ -1781,5 +1781,41 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
+XLA_TEST_F(ConvolutionHloTest, TestFusedConv2D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,5,5,1] parameter(0)
+  %p1 = f32[3,3,1,32] parameter(1)
+  %conv = f32[8,5,5,32] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,5,5,32] broadcast(%bias), dimensions={3}
+  %add = f32[8,5,5,32] add(%conv, %broadcasted_bias)
+  %zero = f32[] constant(0)
+  %zeros = f32[8,5,5,32] broadcast(%zero), dimensions={}
+  ROOT relu = f32[8,5,5,32] maximum(%zeros, %add)
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestFusedConv3D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,4,5,5,1] parameter(0)
+  %p1 = f32[3,3,3,1,32] parameter(1)
+  %conv = f32[8,4,5,5,32] convolution(p0, p1), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,4,5,5,32] broadcast(%bias), dimensions={4}
+  %add = f32[8,4,5,5,32] add(%conv, %broadcasted_bias)
+  %zero = f32[] constant(0)
+  %zeros = f32[8,4,5,5,32] broadcast(%zero), dimensions={}
+  ROOT relu = f32[8,4,5,5,32] maximum(%zeros, %add)
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
 }  // namespace
 }  // namespace xla

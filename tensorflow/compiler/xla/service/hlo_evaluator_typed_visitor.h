@@ -1432,7 +1432,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // result_index_locations[i] contains one or two pointers to the locations
     // in lhs_index or rhs_index where the i'th result index should go.
-    absl::InlinedVector<std::pair<int64_t*, int64_t*>, kInlineRank>
+    absl::InlinedVector<std::pair<int64_t*, int64_t*>, InlineRank()>
         result_index_locations;
     result_index_locations.reserve(
         (lhs_rank - dnums.lhs_contracting_dimensions_size()) +
@@ -1460,9 +1460,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       }
     }
 
-    absl::InlinedVector<int64_t, kInlineRank> accumulate_index_sizes;
+    absl::InlinedVector<int64_t, InlineRank()> accumulate_index_sizes;
     accumulate_index_sizes.reserve(dnums.lhs_contracting_dimensions_size());
-    absl::InlinedVector<std::pair<int64_t*, int64_t*>, kInlineRank>
+    absl::InlinedVector<std::pair<int64_t*, int64_t*>, InlineRank()>
         accumulate_index_locations;
     accumulate_index_locations.reserve(dnums.lhs_contracting_dimensions_size());
     for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
@@ -1487,7 +1487,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           }
 
           // Accumulates resulting product along the contracted dimension.
-          absl::InlinedVector<int64_t, kInlineRank> accumulate_index(
+          absl::InlinedVector<int64_t, InlineRank()> accumulate_index(
               accumulate_index_sizes.size(), 0);
           for (int64_t k = 0; k < total_contraction_size; k++) {
             for (int64_t i = 0; i < accumulate_index_sizes.size(); ++i) {

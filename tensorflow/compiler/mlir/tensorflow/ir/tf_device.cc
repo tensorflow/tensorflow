@@ -282,8 +282,8 @@ ParseResult SetReplicateOpOperands(
     llvm::ArrayRef<OpAsmParser::OperandType> packed_inputs,
     llvm::ArrayRef<Type> region_arg_types, int32_t* n) {
   for (const auto& attr : state->attributes)
-    if (attr.first.strref() == "n")
-      if (auto n_attr = attr.second.dyn_cast<IntegerAttr>())
+    if (attr.getName().strref() == "n")
+      if (auto n_attr = attr.getValue().dyn_cast<IntegerAttr>())
         *n = n_attr.getInt();
 
   if (*n < 2)
@@ -428,7 +428,7 @@ LogicalResult Verify(ReplicateOp op) {
   // Check number of devices, if set, matches `n`.
   if (op.devices().hasValue()) {
     for (auto device_attr : op.devices().getValue().getValue()) {
-      auto device_list = device_attr.second.dyn_cast_or_null<ArrayAttr>();
+      auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)
         return op.emitError()
                << "expects 'devices' to be a map alias and device name list.";

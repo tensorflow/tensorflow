@@ -55,7 +55,8 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
     if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
 
     auto tiled_linalg_op = tileLinalgOp(rewriter, linalg_op, options);
-    if (failed(tiled_linalg_op)) return failure();
+    if (failed(tiled_linalg_op) || tiled_linalg_op.getValue().loops.empty())
+      return failure();
 
     TiledLoopOp tiled_loop =
         mlir::dyn_cast<TiledLoopOp>(*tiled_linalg_op.getValue().loops.front());
@@ -97,7 +98,8 @@ struct CodegenForCWisePass : public CodegenCWiseBase<CodegenForCWisePass> {
           auto num_loops = llvm::cast<LinalgOp>(op).getNumLoops();
           SmallVector<Value> tiles(num_loops,
                                    b.create<ConstantIndexOp>(op->getLoc(), 1));
-          tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), 8);
+          if (!tiles.empty())
+            tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), 8);
           return tiles;
         });
     tiling_options.setLoopType(mlir::linalg::LinalgTilingLoopType::TiledLoops);

@@ -1,6 +1,15 @@
 # python/framework package
 
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "if_xla_available", "py_test", "tf_cc_shared_object", "tf_cc_test", "tf_gen_op_wrapper_py")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_not_windows",
+    "if_oss",
+    "if_xla_available",
+    "py_test",
+    "tf_cc_shared_object",
+    "tf_cc_test",
+    "tf_gen_op_wrapper_py",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
@@ -277,7 +286,7 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
@@ -905,7 +914,7 @@ py_library(
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
         "//tensorflow/python/util",
         "@six_archive//:six",
     ],
@@ -1288,6 +1297,7 @@ py_library(
         "//tensorflow_estimator/python/estimator:__subpackages__",
     ],
     deps = [
+        ":_test_metrics_util",
         ":errors",
         ":for_generated_wrappers",
         ":gpu_util",
@@ -1406,7 +1416,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":_python_memory_checker_helper",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
@@ -1467,6 +1477,7 @@ tf_py_test(
     srcs = ["error_interpolation_test.py"],
     main = "error_interpolation_test.py",
     python_version = "PY3",
+    tags = ["no_oss_py310"],  # b/209088097
     deps = [
         ":constant_op",
         ":error_interpolation",
@@ -1581,7 +1592,7 @@ filegroup(
     srcs = [
         "testdata/metrics_export_meta_graph.pb",
     ],
-    visibility = ["//visibility:public"],
+    visibility = if_oss(["//visibility:public"]),
 )
 
 tf_py_test(
@@ -1910,6 +1921,7 @@ tf_py_test(
         ":test_lib",
         ":test_ops",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform_test",
@@ -1936,7 +1948,6 @@ tf_py_test(
         "no_windows",
         "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
-        "notap",  # TODO(b/206443120): Re-enable after flakiness resolved
         "notsan",  # TODO(b/149948895): Re-enable.
     ],
     deps = [
@@ -2115,6 +2126,17 @@ py_test(
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_test_metrics_util",
+    srcs = ["test_metrics_util.cc"],
+    module_name = "_test_metrics_util",
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

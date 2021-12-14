@@ -15,12 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LhloLegalizeToLinalgPass : FunctionPass<"lhlo-legalize-to-linalg"> {
-  let summary = "Legalize from LHLO dialect to Linalg dialect.";
-  let constructor = "createLegalizeLhloToLinalgPass()";
-}
-
-
 def LhloFuseLinalgPass : FunctionPass<"lhlo-fuse-linalg"> {
   let summary = "Greedily fuse linalg ops obtained after LHLO lowering.";
   let constructor = "createLhloFuseLinalgPass()";
@@ -32,7 +26,6 @@ def LhloFuseLinalgPass : FunctionPass<"lhlo-fuse-linalg"> {
            "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
   ];
 }
-
 
 def LhloLegalizeToAffinePass : FunctionPass<"lhlo-legalize-to-affine"> {
   let summary = "Legalize from LHLO dialect to affine dialect.";
@@ -51,9 +44,9 @@ def LhloLegalizeToParallelLoopsPass : FunctionPass<"lhlo-legalize-to-parallel-lo
   let constructor = "createLegalizeLhloToParallelLoopsPass()";
 }
 
-def LegalizeTensorLoadOpPass : FunctionPass<"lhlo-legalize-tensor-load-op"> {
-  let summary = "Legalize tensor load ops that are inserted during mhlo to lmhlo conversion.";
-  let constructor = "createLegalizeTensorLoadOpPass()";
+def LegalizeToTensorOpPass : FunctionPass<"lhlo-legalize-to-tensor-op"> {
+  let summary = "Legalize bufferization.to_tensor ops inserted during mhlo to lmhlo conversion.";
+  let constructor = "createLegalizeToTensorOpPass()";
 }
 
 def LhloFusionPass : FunctionPass<"lhlo-fusion"> {

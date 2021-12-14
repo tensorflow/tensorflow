@@ -486,10 +486,7 @@ tf_cc_test_mkl(
     srcs = ["mkl_matmul_op_benchmark.cc"],
     linkstatic = 1,
     deps = [
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
-        "@mkl_dnn_v1//:mkl_dnn",
-    ],
+    ] + MKL_TEST_DEPS,
 )

@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 46.
+// Next ID to use: 48.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -282,4 +282,12 @@ message TocoFlags {
   // When the output model is used for TF Quantization, this flag indicates the
   // mode of TF Quantization. Ex: DEFAULT, LEGACY_INTEGER,...
   optional string tf_quantization_mode = 45;
+
+  // Disable inferring tensor range for quantization.
+  // Note: This is an experimental feature
+  optional bool disable_infer_tensor_range = 46 [default = false];
+
+  // Enable using num bits set in fake quant attributes for quantization.
+  // Note: This is an experimental feature
+  optional bool use_fake_quant_num_bits = 47 [default = false];
 }

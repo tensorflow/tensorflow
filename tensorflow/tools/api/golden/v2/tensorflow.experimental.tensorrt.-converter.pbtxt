@@ -16,6 +16,6 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'output_saved_model_dir\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'output_saved_model_dir\', \'save_gpu_specific_engines\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
 }

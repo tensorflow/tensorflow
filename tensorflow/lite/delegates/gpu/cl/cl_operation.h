@@ -68,10 +68,21 @@ class ClOperation {
   // should be called after changes of inputs/outputs.
   absl::Status UpdateParams();
 
+  absl::Status SetSrcTensor(int index, Tensor* tensor);
+  absl::Status SetDstTensor(int index, Tensor* tensor);
+
   absl::Status AddToQueue(CLCommandQueue* queue) {
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     return queue->Dispatch(kernel_, operation_->work_groups_count_,
                            operation_->work_group_size_);
+  }
+
+  // for better profiling
+  absl::Status AddToQueueNTimes(ProfilingCommandQueue* queue, int n,
+                                int flush_period = 0) {
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
+    return queue->DispatchNTimes(kernel_, operation_->work_groups_count_,
+                                 operation_->work_group_size_, n, flush_period);
   }
 
   absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
@@ -83,13 +94,9 @@ class ClOperation {
   absl::Status InitFromCache(uint64_t fingerprint,
                              const ProgramCache& program_cache);
 
-  void MoveObjectRefsFromCLToGeneric() {
-    cl_args_.MoveObjectRefsOut(&operation_->args_);
-  }
-  void MoveObjectRefsFromGenericToCL() {
-    cl_args_.MoveObjectRefsIn(&operation_->args_);
-  }
-  void SyncScalarValues() { cl_args_.CopyScalarValues(&operation_->args_); }
+  int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
+
+  void SetWorkGroupSize(const int3& work_group_size);
 
  private:
   std::unique_ptr<GPUOperation> operation_;

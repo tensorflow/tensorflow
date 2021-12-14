@@ -217,6 +217,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(5)
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.batch(1)
     if existing_prefetch:
       dataset = dataset.prefetch(1)
     if autotune and set_env and not existing_prefetch:
@@ -228,7 +229,8 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.autotune.enabled = autotune
     dataset = dataset.with_options(options)
 
-    self.assertDatasetProduces(dataset, expected_output=list(range(1, 6)))
+    self.assertDatasetProduces(dataset, expected_output=[np.array([x]) for x in
+                                                         range(1, 6)])
 
     if set_env:
       del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]

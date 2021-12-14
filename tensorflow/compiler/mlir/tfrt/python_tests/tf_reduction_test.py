@@ -24,6 +24,40 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 class TfReductionTest(test.TestCase):
 
+  def test_1d_sum_dynamic(self):
+    mlir_function = """
+        func @test(%input: tensor<?xf32>) -> tensor<f32> {
+          %dim_to_reduce =  "tf.Const"() {value = dense<[0]> : tensor<1xi32>}
+             : () -> tensor<1xi32>
+          %0 = "tf.Sum"(%input, %dim_to_reduce) {keep_dims = false}
+              : (tensor<?xf32>, tensor<1xi32>) -> tensor<f32>
+          return %0 : tensor<f32>
+      }"""
+
+    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
+
+    arg0 = np.random.uniform(1.0, 5.0, size=(10)).astype(np.float32)
+
+    [res] = cpurt.execute(compiled, [arg0])
+    np.testing.assert_allclose(res, np.sum(arg0, axis=0), atol=0.01)
+
+  def test_1d_max_static(self):
+    mlir_function = """
+        func @test(%input: tensor<10xf32>) -> tensor<f32> {
+          %dim_to_reduce =  "tf.Const"() {value = dense<[0]> : tensor<1xi32>}
+             : () -> tensor<1xi32>
+          %0 = "tf.Max"(%input, %dim_to_reduce) {keep_dims = false}
+              : (tensor<10xf32>, tensor<1xi32>) -> tensor<f32>
+          return %0 : tensor<f32>
+      }"""
+
+    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
+
+    arg0 = np.random.uniform(1.0, 1.0, size=(10)).astype(np.float32)
+
+    [res] = cpurt.execute(compiled, [arg0])
+    np.testing.assert_allclose(res, np.max(arg0, axis=0), atol=0.01)
+
   def test_2d_row_max(self):
     mlir_function = """
         func @test(%input: tensor<?x?xf32>) -> tensor<?xf32> {

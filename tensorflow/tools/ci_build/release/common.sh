@@ -17,7 +17,7 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=3.7.2
+LATEST_BAZEL_VERSION=4.2.1
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
@@ -166,7 +166,7 @@ function install_ubuntu_pip_deps {
   # when upgrading auditwheel modify upload_wheel_cpu_ubuntu and upload_wheel_gpu_ubuntu
   # to match the filename generated.
   ${PIP_CMD} install --upgrade pip wheel auditwheel~=3.3.1
-  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/${REQUIREMENTS_FNAME}
   ${PIP_CMD} list
 }
 
@@ -175,6 +175,7 @@ function setup_venv_ubuntu () {
   # First argument needs to be the python executable.
   ${1} -m venv ~/.venv/tf
   source ~/.venv/tf/bin/activate
+  REQUIREMENTS_FNAME="requirements_ubuntu.txt"
   install_ubuntu_pip_deps
 }
 
@@ -182,6 +183,16 @@ function remove_venv_ubuntu () {
   # Deactivate virtual environment and clean up
   deactivate
   rm -rf ~/.venv/tf
+}
+
+function install_ubuntu_pip_deps_novenv () {
+  # Install on default python Env (No Virtual Env for pip packages)
+  PIP_CMD="${1} -m pip"
+  REQUIREMENTS_FNAME="requirements_ubuntu.txt"
+  ${PIP_CMD} install --user --upgrade setuptools pip wheel pyparsing auditwheel~=3.3.1
+  ${PIP_CMD} install --user -r tensorflow/tools/ci_build/release/${REQUIREMENTS_FNAME}
+  ${PIP_CMD} list
+
 }
 
 function upload_wheel_cpu_ubuntu() {
@@ -293,11 +304,11 @@ function setup_python_from_pyenv_macos {
     PY_VERSION=$1
   fi
 
-  git clone --branch 1.2.27 https://github.com/pyenv/pyenv.git
+  git clone --branch v2.2.2 https://github.com/pyenv/pyenv.git
 
   PYENV_ROOT="$(pwd)/pyenv"
   export PYENV_ROOT
-  export PATH="$PYENV_ROOT/bin:$PATH"
+  export PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
 
   eval "$(pyenv init -)"
 
@@ -407,12 +418,13 @@ function test_xml_summary_exit {
   exit "${RETVAL}"
 }
 
+# Note: The Docker-based Ubuntu TF-nightly jobs do not use this list. They use
+# https://github.com/tensorflow/build/blob/master/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
+# instead. See go/tf-devinfra/docker.
 # CPU size
-MAC_CPU_MAX_WHL_SIZE=210M
-LINUX_CPU_MAX_WHL_SIZE=175M
+MAC_CPU_MAX_WHL_SIZE=225M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
-LINUX_GPU_MAX_WHL_SIZE=475M
 WIN_GPU_MAX_WHL_SIZE=345M
 
 function test_tf_whl_size() {
@@ -429,26 +441,13 @@ function test_tf_whl_size() {
 within pypi's CDN distribution limit, we must not exceed that threshold."
       return 1
     fi
-    # Check Linux CPU whl size.
-    if [[ "$WHL_PATH" == *"-manylinux"* ]] && [[ $(find $WHL_PATH -type f -size +${LINUX_CPU_MAX_WHL_SIZE}) ]]; then
-        echo "Linux CPU whl size has exceeded ${LINUX_CPU_MAX_WHL_SIZE}. To keep
-within pypi's CDN distribution limit, we must not exceed that threshold."
-      return 1
-    fi
     # Check Windows CPU whl size.
     if [[ "$WHL_PATH" == *"-win"* ]] && [[ $(find $WHL_PATH -type f -size +${WIN_CPU_MAX_WHL_SIZE}) ]]; then
         echo "Windows CPU whl size has exceeded ${WIN_CPU_MAX_WHL_SIZE}. To keep
 within pypi's CDN distribution limit, we must not exceed that threshold."
       return 1
     fi
-  # Check GPU whl size
   elif [[ "$WHL_PATH" == *"_gpu"* ]]; then
-    # Check Linux GPU whl size.
-    if [[ "$WHL_PATH" == *"-manylinux"* ]] && [[ $(find $WHL_PATH -type f -size +${LINUX_GPU_MAX_WHL_SIZE}) ]]; then
-        echo "Linux GPU whl size has exceeded ${LINUX_GPU_MAX_WHL_SIZE}. To keep
-within pypi's CDN distribution limit, we must not exceed that threshold."
-      return 1
-    fi
     # Check Windows GPU whl size.
     if [[ "$WHL_PATH" == *"-win"* ]] && [[ $(find $WHL_PATH -type f -size +${WIN_GPU_MAX_WHL_SIZE}) ]]; then
         echo "Windows GPU whl size has exceeded ${WIN_GPU_MAX_WHL_SIZE}. To keep

@@ -40,6 +40,16 @@ class GpuConvRewriter : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 };
 
+namespace conv_matchers {
+
+bool CanImplementAsGpuForwardConv(HloInstruction* conv);
+std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
+MatchBackwardFilter(HloInstruction* conv);
+std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
+MatchBackwardInput(HloInstruction* conv);
+
+}  // namespace conv_matchers
+
 }  // namespace gpu
 }  // namespace xla
 

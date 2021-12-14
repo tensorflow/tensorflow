@@ -356,8 +356,8 @@ Status ConvertAttributes(
     bool remove_ref_type, AttrValueMap* values) {
   AttrValueMap func_call_attrs;
   for (const mlir::NamedAttribute& named_attr : attrs) {
-    auto name_strref = named_attr.first.str();
-    auto attr = named_attr.second;
+    auto name_strref = named_attr.getName().str();
+    auto attr = named_attr.getValue();
     absl::string_view name(name_strref.data(), name_strref.size());
     if (name == "name" || name == "device" || attrs_to_ignore.contains(name)) {
       // The name, device spec of a TF op or function are not stored as

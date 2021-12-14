@@ -40,8 +40,18 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
-  llvm::LoadInst* AlignedLoad(Args&&... args) {
-    return mixin_builder()->CreateAlignedLoad(std::forward<Args>(args)...);
+  llvm::LoadInst* AlignedLoad(llvm::Type* type, Args&&... args) {
+    return mixin_builder()->CreateAlignedLoad(type,
+                                              std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  llvm::LoadInst* AlignedLoad(llvm::Value* value, Args&&... args) {
+    // LLVM has deprecated CreateAlignedLoad without a type argument. Provide it
+    // for convenience.
+    return mixin_builder()->CreateAlignedLoad(
+        value->getType()->getPointerElementType(), value,
+        std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -117,7 +127,8 @@ class IrBuilderMixin {
 
   llvm::Value* GEP(llvm::Value* ptr, llvm::ArrayRef<llvm::Value*> idx_list,
                    const llvm::Twine& name = "") {
-    return mixin_builder()->CreateGEP(ptr, idx_list, name);
+    return mixin_builder()->CreateGEP(ptr->getType()->getPointerElementType(),
+                                      ptr, idx_list, name);
   }
 
   template <class... Args>
@@ -143,7 +154,8 @@ class IrBuilderMixin {
   llvm::Value* InBoundsGEP(llvm::Value* ptr,
                            llvm::ArrayRef<llvm::Value*> idx_list,
                            const llvm::Twine& name = "") {
-    return mixin_builder()->CreateInBoundsGEP(ptr, idx_list, name);
+    return mixin_builder()->CreateInBoundsGEP(
+        ptr->getType()->getPointerElementType(), ptr, idx_list, name);
   }
 
   llvm::Value* ExtractValue(llvm::Value* agg, llvm::ArrayRef<unsigned> idxs,
@@ -163,8 +175,17 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
-  llvm::LoadInst* Load(Args&&... args) {
-    return mixin_builder()->CreateLoad(std::forward<Args>(args)...);
+  llvm::LoadInst* Load(llvm::Type* type, Args&&... args) {
+    return mixin_builder()->CreateLoad(type, std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  llvm::LoadInst* Load(llvm::Value* value, Args&&... args) {
+    // LLVM has deprecated CreateLoad without a type argument. Provide it for
+    // convenience.
+    return mixin_builder()->CreateLoad(
+        value->getType()->getPointerElementType(), value,
+        std::forward<Args>(args)...);
   }
 
   template <class... Args>

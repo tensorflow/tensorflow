@@ -8,6 +8,8 @@ glob_lit_tests(
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),
     tags_override = {
+        # tensorflow/compiler/mlir/tfrt:compatilibility_analysis is
+        # intenionally not linked into tf-mlir-translate in OSS.
         "compatibility_analysis.mlir": ["no_oss"],
     },
     test_file_exts = ["mlir"],

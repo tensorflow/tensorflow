@@ -198,7 +198,8 @@ MetalSpatialTensor::MetalSpatialTensor(MetalSpatialTensor&& tensor)
       memory_owner_(tensor.memory_owner_),
       texture_mem_owner_(tensor.texture_mem_owner_),
       shape_(tensor.shape_),
-      descriptor_(tensor.descriptor_) {
+      descriptor_(tensor.descriptor_),
+      aligned_texture_width_(tensor.aligned_texture_width_) {
   tensor.memory_ = nullptr;
 }
 
@@ -211,6 +212,7 @@ MetalSpatialTensor& MetalSpatialTensor::operator=(MetalSpatialTensor&& tensor) {
     std::swap(texture_mem_owner_, tensor.texture_mem_owner_);
     std::swap(shape_, tensor.shape_);
     std::swap(descriptor_, tensor.descriptor_);
+    std::swap(aligned_texture_width_, tensor.aligned_texture_width_);
   }
   return *this;
 }
@@ -274,16 +276,24 @@ absl::Status MetalSpatialTensor::GetGPUResources(
   if (descriptor_.storage_type == TensorStorageType::BUFFER) {
     resources->buffers.push_back({"buffer", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D) {
-    resources->images2d.push_back({"image2d", texture_mem_});
+    if (obj_ptr->GetAccess() == AccessType::WRITE &&
+        tensor_desc->use_buffer_for_write_only_2d_texture) {
+      resources->ints.push_back(
+          {"aligned_texture_width", aligned_texture_width_});
+      resources->buffers.push_back({"buffer", memory_});
+    } else {
+      resources->images2d.push_back({"image2d", texture_mem_});
+    }
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
     resources->images3d.push_back({"image3d", texture_mem_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_ARRAY) {
     resources->image2d_arrays.push_back({"image2d_array", texture_mem_});
   } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
-    if (obj_ptr->GetAccess() == AccessType::READ) {
-      resources->image_buffers.push_back({"image_buffer", texture_mem_});
-    } else {
+    if (obj_ptr->GetAccess() == AccessType::WRITE &&
+        tensor_desc->use_buffer_for_write_only_image_buffer) {
       resources->buffers.push_back({"buffer", memory_});
+    } else {
+      resources->image_buffers.push_back({"image_buffer", texture_mem_});
     }
   }
 
@@ -497,16 +507,23 @@ absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer,
       DataTypeToRGBAPixelFormat(descriptor.data_type, false);
   texture_desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
   texture_desc.storageMode = buffer.storageMode;
-  const size_t bytes_per_row = width * channels * SizeOf(descriptor.data_type);
-  id<MTLTexture> texture_buffer = [buffer
-      newTextureWithDescriptor:texture_desc
-                        offset:0
-                   bytesPerRow:AlignByN(bytes_per_row, row_bytes_alignment)];
+  const size_t pixel_size = channels * SizeOf(descriptor.data_type);
+  const size_t bytes_per_row = width * pixel_size;
+  const size_t bytes_per_row_aligned =
+      AlignByN(bytes_per_row, row_bytes_alignment);
+  id<MTLTexture> texture_buffer =
+      [buffer newTextureWithDescriptor:texture_desc
+                                offset:0
+                           bytesPerRow:bytes_per_row_aligned];
   if (!texture_buffer) {
-    return absl::UnknownError("Failed to allocate id<MTLTexture>");
+    return absl::UnknownError("Failed to allocate id<MTLTexture>.");
+  }
+  if (bytes_per_row_aligned % pixel_size != 0) {
+    return absl::UnknownError("Alignment mismatch.");
   }
   *result = MetalSpatialTensor(buffer, texture_buffer, false, true, shape,
                                descriptor);
+  result->aligned_texture_width_ = bytes_per_row_aligned / pixel_size;
   return absl::OkStatus();
 }
 

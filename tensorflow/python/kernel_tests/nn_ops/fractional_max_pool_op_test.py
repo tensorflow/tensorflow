@@ -20,6 +20,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -318,6 +319,24 @@ class FractionalMaxPoolTest(test.TestCase):
         nn_ops.fractional_max_pool(rand_mat, [1, 1.5, 1.5, 1])
       nn_ops.fractional_max_pool(
           rand_mat, [1, 1.5, 1.5, 1], seed=1, seed2=1, deterministic=True)
+
+  def testPoolingRatio(self):
+    with self.cached_session() as _:
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"Pooling ratio is higher than input dimension size for dimension 1.*"
+      ):
+        result = nn_ops.gen_nn_ops.fractional_max_pool(
+            value=constant_op.constant(
+                value=[[[[1, 4, 2, 3]]]], dtype=dtypes.int64),
+            pooling_ratio=[1.0, 1.44, 1.73, 1.0],
+            pseudo_random=False,
+            overlapping=False,
+            deterministic=False,
+            seed=0,
+            seed2=0,
+            name=None)
+        self.evaluate(result)
 
 
 class FractionalMaxPoolGradTest(test.TestCase):

@@ -1027,6 +1027,22 @@ mlir::ArrayAttr GetPrecisionConfigAttr(StringAttr attr, Builder *builder) {
 }
 
 //===----------------------------------------------------------------------===//
+// XlaVariadicReduceV2 op utilities.
+//===----------------------------------------------------------------------===//
+
+static void BuildBodyWithCall(PatternRewriter &rewriter, const Location &loc,
+                              mlir::SymbolRefAttr func,
+                              mlir::FunctionType func_ty, Region *body) {
+  OpBuilder::InsertionGuard guard(rewriter);
+
+  Block *block = rewriter.createBlock(body);
+  block->addArguments(func_ty.getInputs());
+  mlir::CallOp call_op = rewriter.create<mlir::CallOp>(
+      loc, func, func_ty.getResults(), block->getArguments());
+  rewriter.create<mhlo::ReturnOp>(loc, call_op.getResults());
+}
+
+//===----------------------------------------------------------------------===//
 // Op converters.
 //===----------------------------------------------------------------------===//
 
@@ -3052,7 +3068,7 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
         b.create<shape::AssumingOp>(ArrayRef<Type>{result_type}, assumption);
 
     OpBuilder::InsertionGuard guard(b);
-    b.createBlock(&assuming_op.doRegion());
+    b.createBlock(&assuming_op.getDoRegion());
 
     // Broadcast the cond if necessary.
     Value cond = op.condition();
@@ -3242,7 +3258,7 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
       lhs_type.getShape().drop_back(2), rhs_type.getShape().drop_back(2),
       result_batch_shape_compile_time_extents);
   auto result_batch_shape = rewriter->create<shape::BroadcastOp>(
-      loc, shape_type, lhs_splitted.head(), rhs_splitted.head(),
+      loc, shape_type, lhs_splitted.getHead(), rhs_splitted.getHead(),
       /*error=*/nullptr);
   // Lambda which handles the broadcasting of one side to the common
   // leading-batch dimensions.
@@ -3263,8 +3279,8 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
     *out_side = rewriter->create<TF::BroadcastToOp>(loc, result_type, side,
                                                     shape_tensor);
   };
-  broadcast_one_side(lhs, lhs_type, lhs_splitted.tail(), out_lhs);
-  broadcast_one_side(rhs, rhs_type, rhs_splitted.tail(), out_rhs);
+  broadcast_one_side(lhs, lhs_type, lhs_splitted.getTail(), out_lhs);
+  broadcast_one_side(rhs, rhs_type, rhs_splitted.getTail(), out_rhs);
 }
 
 class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
@@ -6036,15 +6052,12 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
     // using a string.
     if (!op._XlaSharding().hasValue()) return failure();
 
+    NamedAttribute call_target_name = rewriter.getNamedAttr(
+        "call_target_name", rewriter.getStringAttr("Sharding"));
+
     auto custom_call = rewriter.create<mhlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.input(),
-        /*call_target_name=*/rewriter.getStringAttr("Sharding"),
-        /*has_side_effect=*/rewriter.getBoolAttr(false),
-        /*backend_config=*/rewriter.getStringAttr(""),
-        /*api_version=*/
-        mhlo::CustomCallApiVersionAttr::get(
-            rewriter.getContext(),
-            mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL));
+        ArrayRef<NamedAttribute>{call_target_name});
     custom_call->setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult(0));
 
@@ -6338,7 +6351,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
                                       &rewriter);
 
     auto reduce = rewriter.create<ReduceWindowOp>(
-        op.getLoc(), input_type, input, init,
+        op.getLoc(), input.getType(), input, init,
         GetI64ElementsAttr(rewriter.getI64ArrayAttr(window_dims)),
         GetI64ElementsAttr(rewriter.getI64ArrayAttr(window_strides)),
         /*base_dilations=*/DenseIntElementsAttr(),
@@ -6357,7 +6370,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
       low_padding[axis] = 1;
       high_padding[axis] = -1;
       result = rewriter.create<PadOp>(
-          op.getLoc(), op.getType(), result, init,
+          op.getLoc(), result.getType(), result, init,
           GetI64ElementsAttr(low_padding, &rewriter),
           GetI64ElementsAttr(high_padding, &rewriter),
           GetI64ElementsAttr(interior_padding, &rewriter));
@@ -7036,6 +7049,62 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
     return success();
   }
 };
+
+// Converts a TF.XlaVariadicReduceV2 op to an mhlo.Reduce op.
+class ConvertXlaVariadicReduceV2Op
+    : public OpRewritePattern<TF::XlaVariadicReduceV2Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaVariadicReduceV2Op op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    SmallVector<Value> inputs(op.inputs());
+    SmallVector<Value> init_values(op.init_values());
+    auto dims_to_reduce_attr = GetI64ElementsAttr(op.dimensions_to_reduce());
+    // Create the mhlo.reduce op.
+    auto reduce_op = rewriter.create<mhlo::ReduceOp>(loc, inputs, init_values,
+                                                     dims_to_reduce_attr);
+    mlir::SymbolRefAttr func = op.reducer();
+    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+        op->getParentOfType<mlir::ModuleOp>(), func));
+    auto func_ty = func_op.getType();
+    // Insert a call to the reducer in the region of the mhlo op.
+    BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_op.body());
+
+    rewriter.replaceOp(op, reduce_op.getResults());
+
+    return success();
+  }
+};
+
+// Convert tf.XlaVariadicSort to mhlo.Sort
+class ConvertXlaVariadicSortOp
+    : public OpRewritePattern<TF::XlaVariadicSortOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaVariadicSortOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    ElementsAttr dimension;
+    matchPattern(op.dimension(), m_Constant(&dimension));
+    // Create the mhlo.sort op.
+    auto sort_op = rewriter.create<mhlo::SortOp>(
+        loc, op.inputs(), dimension.getValues<IntegerAttr>()[0].getInt(),
+        op.is_stable());
+    mlir::SymbolRefAttr func = op.comparator();
+    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+        op->getParentOfType<mlir::ModuleOp>(), func));
+    auto func_ty = func_op.getType();
+    // Insert a call to the reducer in the region of the mhlo op.
+    BuildBodyWithCall(rewriter, loc, func, func_ty, &sort_op.comparator());
+
+    rewriter.replaceOp(op, sort_op.getResults());
+    return success();
+  }
+};
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
@@ -7122,6 +7191,8 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaReduceScatterOp,
     ConvertXlaSortOp,
+    ConvertXlaVariadicReduceV2Op,
+    ConvertXlaVariadicSortOp,
     ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,

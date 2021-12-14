@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <set>
 #include <unordered_map>
 #include <utility>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -77,15 +79,6 @@ namespace mlir {
 
 namespace mlir {
 namespace mhlo {
-
-Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
-                                            Type type, Location loc) {
-  // HLO dialect constants only support ElementsAttr unlike standard dialect
-  // constant which supports all attributes.
-  if (value.isa<ElementsAttr>())
-    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
-  return nullptr;
-}
 
 template <typename T>
 static LogicalResult Verify(T op) {
@@ -246,6 +239,101 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
   assert(type && "unsupported attribute type for building mhlo.constant");
   result.types.push_back(type);
   result.addAttribute("value", value);
+}
+
+//===----------------------------------------------------------------------===//
+// CustomCallOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(CustomCallOp op) {
+  // If both operand and result layout attributes are not specified then nothing
+  // to verify.
+  if (!op.operand_layouts().hasValue() && !op.result_layouts().hasValue())
+    return success();
+
+  // Layout constraints for either both operands & results or none should be
+  // specified.
+  if (op.operand_layouts().hasValue() != op.result_layouts().hasValue())
+    return op.emitOpError() << "Layout attributes should be specified for "
+                               "either both operands and results or none.";
+
+  // Helper function to verify types and the corresponding layouts.
+  auto verify_types_and_layouts =
+      [&op](TypeRange types, mlir::ArrayAttr layouts,
+            const std::string& value_name) -> LogicalResult {
+    if (types.size() != layouts.size())
+      return op.emitOpError()
+             << "Number of " << value_name << "s must match the number of "
+             << value_name << " layouts, " << types.size()
+             << " != " << layouts.size();
+
+    for (const auto& indexed_type_and_layout :
+         llvm::enumerate(llvm::zip(types, layouts))) {
+      // Get index for more descriptive error message.
+      auto index = indexed_type_and_layout.index();
+
+      auto type = std::get<0>(indexed_type_and_layout.value());
+      auto layout = std::get<1>(indexed_type_and_layout.value())
+                        .cast<DenseIntElementsAttr>();
+
+      if (type.isa<TupleType>())
+        return op.emitOpError() << "Tuple types are not fully supported with "
+                                   "layout constraints yet";
+      auto tensor_type = type.dyn_cast<TensorType>();
+
+      // For non-tensor types such as !mhlo.token, the layout should be empty.
+      if (!tensor_type) {
+        if (layout.empty()) continue;
+        return op.emitOpError()
+               << "Only tensor types can have non-empty layout: " << value_name
+               << " #" << index << " of type " << type << " has layout "
+               << layout;
+      }
+
+      // For unranked tensors, we cannot verify the compatibility with layout
+      // any further.
+      if (!tensor_type.hasRank()) continue;
+
+      // Layout must be a permutation of [0, N) where N is the rank of the
+      // tensor type.
+      std::vector<int64_t> range(tensor_type.getRank());
+      std::iota(range.begin(), range.end(), 0);
+      if (tensor_type.getRank() != layout.size() ||
+          !std::is_permutation(range.begin(), range.end(), layout.begin()))
+        return op.emitOpError()
+               << "incorrect layout " << layout << " for type " << type
+               << ", layout must be a permutation of [0, "
+               << tensor_type.getRank() << ")";
+    }
+    return success();
+  };
+
+  // At this point both `operand_layouts` and `result_layouts` are defined.
+  ArrayAttr operand_layouts = op.operand_layouts().getValue();
+  ArrayAttr result_layouts = op.result_layouts().getValue();
+
+  // Full support for layouts for arbitrary nesting of tuples is not
+  // supported yet.
+  //
+  // If result does not have any tuples, then i-th element of `result_layouts`
+  // specifies the layout constraints on i-th result.
+  //
+  // For the common case of a single tuple result packing non-tuple values, the
+  // i-th element of `result_layouts` specifies layout for i-th element of the
+  // result tuple.
+  TypeRange result_types;
+  if (op->getNumResults() == 1 && op->getResult(0).getType().isa<TupleType>())
+    result_types = op->getResult(0).getType().cast<TupleType>().getTypes();
+  else
+    result_types = op->getResultTypes();
+
+  // Verify that operands and operand layouts match.
+  if (failed(verify_types_and_layouts(op->getOperandTypes(), operand_layouts,
+                                      "operand")))
+    return failure();
+
+  // Verify that results and result layouts match.
+  return verify_types_and_layouts(result_types, result_layouts, "result");
 }
 
 //===----------------------------------------------------------------------===//
@@ -2691,6 +2779,200 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
   return failure();
 }
 
+// Checks the following eligibility criteria for compact printing of
+// mhlo.reduce:
+// E1. The reduce-op wraps a single inner-op in the associated region.
+// E2. The single operation is a commutative binary-op from mhlo dialect, zero
+//     region, producing single result such that the operands and result all
+//     have the same type.
+// E3. The reduce-op consist of at least one input-operand; The operand-types of
+//     inner-op should be derived trivially from the element-type of reduce-op's
+//     first input-operand.
+// E4. The  arguments of the region's only basic block are forwarded perfectly
+//     to inner-op's operands.
+// E5. The reduce-op, inner-op, blocks arguments, and the return-op all have the
+//     same location.
+// E6. The single operation result is perfectly forwarded to the reduce op
+//     return.
+static bool isEligibleForCompactPrint(ReduceOp op) {
+  // Check E1.
+  auto& block = op.body().front();
+  if (!hasSingleElement(block.without_terminator())) return false;
+
+  Operation& innerOp = *block.begin();
+
+  // Check E2.
+  if (!innerOp.getDialect() ||
+      !innerOp.getDialect()->getNamespace().equals("mhlo"))
+    return false;
+
+  if (innerOp.getNumOperands() != 2 ||
+      !innerOp.hasTrait<mlir::OpTrait::OneResult>() ||
+      !innerOp.hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
+      !innerOp.hasTrait<mlir::OpTrait::IsCommutative>() ||
+      !innerOp.hasTrait<mlir::OpTrait::ZeroRegion>())
+    return false;
+
+  // Check E3.
+  if (op.inputs().empty()) return false;
+
+  auto elemType = op.inputs()[0].getType().cast<TensorType>().getElementType();
+  auto expectedInnerOpType = RankedTensorType::get(/*shape=*/{}, elemType);
+  if (innerOp.getOperands()[0].getType() != expectedInnerOpType) return false;
+
+  // Check E4.
+  if (!llvm::equal(block.getArguments(), innerOp.getOperands())) return false;
+
+  // Check E5.
+  auto retOp = dyn_cast<ReturnOp>(block.getTerminator());
+  if (!retOp) return false;
+
+  auto blockArgLoc = block.getArgument(0).getLoc();
+  if (blockArgLoc != block.getArgument(1).getLoc()) return false;
+
+  if (innerOp.getLoc() != op.getLoc() || retOp.getLoc() != op.getLoc() ||
+      blockArgLoc != op.getLoc())
+    return false;
+
+  // Check E6.
+  return llvm::equal(innerOp.getResults(), retOp.getOperands());
+}
+
+void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
+  if (op.getNumOperands()) {
+    p << ' ';
+    p.printOperands(op.getOperands());
+  }
+
+  // If the reduce-op is eligible for compact printing, we emit the one-liner:
+  //  mhlo.reduce applies <inner-op> across dimensions = [...] : <func-type>
+  // Note: We are not printing the function type of reduction operation. We
+  // have some simplifying assumptions (refer to IsEligibleForCompactPrint::E3)
+  // to derive the type from that of reduce-op.
+  if (isEligibleForCompactPrint(op)) {
+    Operation& innerOp = op.body().front().front();
+    p << " applies ";
+    printEscapedString(innerOp.getName().getStringRef(), p.getStream());
+
+    p << " across dimensions = [";
+    llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
+    p << "]";
+  } else {
+    p << " (";
+    p.printRegion(op.getRegion());
+    p << ")";
+    p.printOptionalAttrDict(op->getAttrs());
+  }
+
+  p << " : ";
+  p.printFunctionalType(op);
+}
+
+ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  Location currLocation = parser.getEncodedSourceLoc(loc);
+
+  // Parse the operands of reduce-op.
+  SmallVector<OpAsmParser::OperandType, 2> operands;
+  if (parser.parseOperandList(operands)) return failure();
+
+  // Check if we are parsing the pretty-printed version of reduce-op:
+  //  mhlo.reduce applies <inner-op> across dimensions = [...] : <func-type>
+  // Else fallback to parsing the generic (or "non pretty-printed") version of
+  // reduce-op.
+  if (!succeeded(parser.parseOptionalKeyword("applies")))
+    return parser.parseGenericOperationAfterOpName(
+        result, llvm::makeArrayRef(operands));
+
+  // Parse the inner-op name and check if the contract on inner-op
+  // mentioned in "isEligibleForCompactPrint::E2" for pretty-priting is met.
+  FailureOr<OperationName> innerOpNameInfo = parser.parseCustomOperationName();
+  if (failed(innerOpNameInfo)) return failure();
+
+  StringRef innerOpName = innerOpNameInfo->getStringRef();
+  Dialect* innerOpDialect = innerOpNameInfo->getDialect();
+  if (!innerOpDialect || !innerOpDialect->getNamespace().equals("mhlo") ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::NOperands<2>::Impl>() ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::OneResult>() ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::IsCommutative>() ||
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::ZeroRegion>()) {
+    parser.emitError(loc,
+                     "expected the inner-op to be a commutative binary-op from "
+                     "mhlo dialect, zero region, producing single result such "
+                     "that the operands and result all have the same type");
+    return failure();
+  }
+
+  // Parse the inner-op dimensions, reduce-op's function-type and
+  // optional location.
+  SmallVector<int64_t> dimensions;
+  auto parseDim = [&]() -> ParseResult {
+    if (parser.parseInteger(dimensions.emplace_back())) return failure();
+    return success();
+  };
+
+  Optional<Location> explicitLoc;
+  FunctionType reduceOpFntype;
+  if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
+      parser.parseEqual() ||
+      parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseDim) ||
+      parser.parseColon() || parser.parseType(reduceOpFntype) ||
+      parser.parseOptionalLocationSpecifier(explicitLoc))
+    return failure();
+
+  if (!reduceOpFntype || reduceOpFntype.getInputs().empty()) {
+    if (!reduceOpFntype)
+      return parser.emitError(loc, "expected function type");
+    else
+      return parser.emitError(loc,
+                              "input types missing in reduce-op function type");
+  }
+
+  // If location of reduce-op is explicitly provided, then use it; Else use
+  // the parser's current location.
+  Location reduceOpLoc = explicitLoc.getValueOr(currLocation);
+
+  // Derive the SSA-values for reduce-op's operands.
+  if (parser.resolveOperands(operands, reduceOpFntype.getInputs(), loc,
+                             result.operands))
+    return failure();
+
+  // Derive the type of inner-op from that of reduce-op's input operand.
+  auto innerOpType = RankedTensorType::get(
+      /*shape=*/{}, getElementTypeOrSelf(reduceOpFntype.getInput(0)));
+
+  // Add a region for reduce-op.
+  Region& region = *result.addRegion();
+
+  // Create a basic-block inside reduce-op's region.
+  Block& block = region.emplaceBlock();
+  auto lhs = block.addArgument(innerOpType, reduceOpLoc);
+  auto rhs = block.addArgument(innerOpType, reduceOpLoc);
+
+  // Create and insert an "inner-op" operation in the block.
+  OpBuilder builder(parser.getBuilder().getContext());
+  builder.setInsertionPointToStart(&block);
+
+  OperationState innerOpState(reduceOpLoc, innerOpName);
+  innerOpState.operands.push_back(lhs);
+  innerOpState.operands.push_back(rhs);
+  innerOpState.addTypes(innerOpType);
+
+  Operation* innerOp = builder.createOperation(innerOpState);
+
+  // Insert a return statement in the block returning the inner-op's result.
+  builder.create<ReturnOp>(innerOp->getLoc(), innerOp->getResults());
+
+  // Populate the reduce-op operation-state with result-type, location, and
+  // dimension attribute.
+  result.addTypes(reduceOpFntype.getResults());
+  result.location = innerOp->getLoc();
+  result.addAttribute("dimensions", GetI64ElementsAttr(dimensions, &builder));
+
+  return success();
+}
+
 // Return true if type1 and type2 are tensors and have the same
 // element-type, else return false. With float element-types, ignore comparing
 // floating-point precision if ignoreFpPrecision is True.
@@ -4640,7 +4922,10 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
   if (!result_ty.hasStaticShape()) return {};
 
   auto direction = comparison_direction();
-  if (lhs() == rhs() && !getElementTypeOrSelf(lhs()).isa<FloatType>()) {
+  auto lhs_ty = getElementTypeOrSelf(lhs());
+  if (lhs() == rhs() && !lhs_ty.isa<FloatType>() &&
+      (!lhs_ty.isa<ComplexType>() ||
+       !lhs_ty.cast<ComplexType>().getElementType().isa<FloatType>())) {
     if (direction == "LE" || direction == "EQ" || direction == "GE") {
       return DenseIntElementsAttr::get(result_ty, {true});
     }
@@ -4954,19 +5239,36 @@ static ParseResult parseDims(AsmParser& parser, SmallVector<int64_t>& dims) {
   return success();
 }
 
+static ParseResult parseDimsWithMinimumElements(AsmParser& parser,
+                                                SmallVector<int64_t>& dims,
+                                                int min_elements) {
+  if (failed(parseDims(parser, dims))) return failure();
+  if (dims.size() < min_elements)
+    return parser.emitError(parser.getCurrentLocation())
+           << "expected at least " << min_elements << " element(s), found "
+           << dims.size();
+  return success();
+}
+
 /// Parse a custom attribute that resembles a struct of the form
 /// <
 ///   foo = something_parsed_by_custom_parser,
-///   bar = something_parsed_by_different_custom_parser
+///   bar = something_parsed_by_different_custom_parser,
+///   baz something_parsed_by_another_custom_parser
 /// >
+/// The optional argument `parse_equal` array can be used to denote if
+/// '=' follows the keyword (see baz in the example above) for a field. If
+/// not provided, all fields must be followed by a '='.
 static ParseResult parseStruct(
     AsmParser& parser, ArrayRef<StringRef> keywords,
-    ArrayRef<llvm::function_ref<ParseResult()>> parseFuncs) {
+    ArrayRef<llvm::function_ref<ParseResult()>> parseFuncs,
+    ArrayRef<bool> parse_equal = {}) {
   assert(keywords.size() == parseFuncs.size());
+  assert(parse_equal.empty() || parse_equal.size() == keywords.size());
   SmallVector<bool> seen(keywords.size(), false);
   while (failed(parser.parseOptionalGreater())) {
     bool foundOne = false;
-    for (auto it : llvm::enumerate(keywords)) {
+    for (const auto& it : llvm::enumerate(keywords)) {
       size_t index = it.index();
       StringRef keyword = it.value();
       if (succeeded(parser.parseOptionalKeyword(keyword))) {
@@ -4974,8 +5276,10 @@ static ParseResult parseStruct(
           return parser.emitError(parser.getCurrentLocation())
                  << "duplicated `" << keyword << "` entry";
         }
-        if (failed(parser.parseEqual()) || failed(parseFuncs[index]()))
-          return failure();
+        if (parse_equal.empty() || parse_equal[index]) {
+          if (failed(parser.parseEqual())) return failure();
+        }
+        if (failed(parseFuncs[index]())) return failure();
         if (failed(parser.parseOptionalComma())) return parser.parseGreater();
         seen[index] = true;
         foundOne = true;
@@ -5176,18 +5480,27 @@ char NonSpatialDimToString(NonSpatialDim dim) {
 void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
   // TODO(b/202040055): we should check the attribute invariant and print the
   // "raw" form if they are violated, otherwise we'll crash here.
+  constexpr int64_t kUnknownDim = std::numeric_limits<int64_t>::min();
   auto print_dim =
-      [&p](ArrayRef<int64_t> spatial_dims,
-           ArrayRef<std::pair<int64_t, NonSpatialDim>> non_spatial_dims) {
-        llvm::SmallVector<int64_t> dims(non_spatial_dims.size() +
-                                        spatial_dims.size());
+      [&](ArrayRef<int64_t> spatial_dims,
+          ArrayRef<std::pair<int64_t, NonSpatialDim>> non_spatial_dims) {
+        int64_t num_dims = 0;
+        if (!spatial_dims.empty()) {
+          num_dims =
+              *std::max_element(spatial_dims.begin(), spatial_dims.end()) + 1;
+        }
+        for (const auto& dim : non_spatial_dims) {
+          num_dims = std::max(num_dims, dim.first + 1);
+        }
+
+        llvm::SmallVector<int64_t> dims(num_dims, kUnknownDim);
         // Fill each element of dims with a (< 0) NonSpatialDim enum or a (>=0)
         // spatial dimension index.
         for (const std::pair<int64_t, NonSpatialDim>& non_spatial_dim :
              non_spatial_dims) {
           dims[non_spatial_dim.first] = non_spatial_dim.second;
         }
-        for (auto spatial_dim : llvm::enumerate(spatial_dims)) {
+        for (const auto& spatial_dim : llvm::enumerate(spatial_dims)) {
           dims[spatial_dim.value()] = static_cast<int64_t>(spatial_dim.index());
         }
 
@@ -5195,7 +5508,9 @@ void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
         // surrounded by square brackets, e.g., [b, 0, 1, 2, f]
         p << '[';
         llvm::interleaveComma(dims, p, [&](int64_t dim) {
-          if (dim >= 0) {
+          if (dim == kUnknownDim) {
+            p << "?";
+          } else if (dim >= 0) {
             p << dim;
           } else {
             p << NonSpatialDimToString(static_cast<NonSpatialDim>(dim));
@@ -5327,8 +5642,13 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
           return parser.emitError(dim_location)
                  << "Duplicate entries for spatial dimension " << spatial_dim;
         max_parsed_spatial_dim = std::max(spatial_dim, max_parsed_spatial_dim);
+      } else if (!parser.parseOptionalQuestion()) {
+        // Do nothing other than increment `index` at the bottom of the loop;
+        // '?' means "unknown dimension", and it's not represented in the
+        // return value of this function.
       } else {
-        // We did not parse an integer. We expect a keyword token.
+        // We did not parse an integer or question mark. We expect a keyword
+        // token.
         StringRef keyword;
         if (parser.parseKeyword(&keyword)) {
           return failure();
@@ -5463,6 +5783,137 @@ Attribute ConvDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseGreater())) return {};
   return dnums;
 }
+
+// Custom printer and parser for ArgResultAliasAttr.
+constexpr char kMustAlias[] = "must_alias";
+constexpr char kResult[] = "result_index";
+constexpr char kArgTupleIndices[] = "tuple_indices";
+
+void ArgResultAliasAttr::print(AsmPrinter& printer) const {
+  printer << "<";
+
+  // The attribute can have empty tuple indices. Only print argument tuple
+  // indices if they are non-empty.
+  if (!getArgTupleIndices().empty())
+    printer << kArgTupleIndices << " = [" << getArgTupleIndices() << "], ";
+
+  // Print the result index followed by any result tuple indices if present.
+  printer << kResult << " = [";
+  printer << getResultIndex();
+  if (!getResultTupleIndices().empty()) {
+    printer << ", " << getResultTupleIndices();
+  }
+  printer << "]";
+
+  // Print the "must_alias" keyword if this is a must alias, otherwise skip.
+  if (getIsMustAlias()) printer << ", " << kMustAlias;
+
+  printer << ">";
+}
+
+Attribute ArgResultAliasAttr::parse(AsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+  llvm::SmallVector<int64_t> arg_tuple_indices;
+  // The first element of result indices holds the aliased result index and the
+  // remaining elements are the result tuple indices.
+  llvm::SmallVector<int64_t> result_indices;
+  bool is_must_alias = false;
+
+  // This conveys to parseStruct that keyword "must_alias" (3rd field) is not
+  // followed by a "=", but other fields are.
+  llvm::SmallVector<bool, 3> parse_equal = {true, true, false};
+
+  if (failed(
+          parseStruct(parser, {kArgTupleIndices, kResult, kMustAlias},
+                      {[&]() { return parseDims(parser, arg_tuple_indices); },
+                       [&]() {
+                         // Since the first element is the index of result, at
+                         // least one element is expected.
+                         return parseDimsWithMinimumElements(
+                             parser, result_indices, /*min_elements=*/1);
+                       },
+                       [&]() {
+                         // always succeeds if the keyword "must_alias" was
+                         // parsed
+                         is_must_alias = true;
+                         return success();
+                       }},
+                      parse_equal))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing argument-result alias attribute";
+    return {};
+  }
+
+  int64_t result_index = result_indices[0];
+  auto result_tuple_indices =
+      ArrayRef<int64_t>{result_indices.begin() + 1, result_indices.end()};
+
+  return ArgResultAliasAttr::get(parser.getContext(), arg_tuple_indices,
+                                 result_index, result_tuple_indices,
+                                 is_must_alias);
+}
+
+// Returns the element type pointed to by `indices` in type `t`. If the indices
+// are invalid, returns nullptr.
+static Type GetTypeFromTupleIndices(Type type, ArrayRef<int64_t> indices) {
+  Type current = type;
+  for (auto index : indices) {
+    TupleType tuple_type = current.dyn_cast<TupleType>();
+    if (!tuple_type || index >= tuple_type.size()) return {};
+    current = tuple_type.getType(index);
+  }
+  return current;
+}
+
+static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
+                                              ArgResultAliasAttr alias_attr,
+                                              unsigned arg_index,
+                                              Operation* op) {
+  // The attribute can only be applied to function-like operations.
+  if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+    return op->emitOpError() << "attribute " << attr_name
+                             << " can only be used on function-like operations";
+
+  // Verify there are no negative indices.
+  auto tuple_indices = llvm::concat<const int64_t>(
+      alias_attr.getArgTupleIndices(), alias_attr.getResultTupleIndices());
+  if (llvm::any_of(tuple_indices, [](const int64_t val) { return val < 0; }) ||
+      alias_attr.getResultIndex() < 0)
+    return op->emitOpError()
+           << "attribute " << attr_name
+           << " expects all argument and result indices to be >= 0";
+
+  // Verify that the result index is not out of range. Since the attribute is a
+  // function argument attribute, the argument index is always correct when this
+  // verifier is called.
+  auto ftype = mlir::function_like_impl::getFunctionType(op);
+  if (alias_attr.getResultIndex() >= ftype.getNumResults())
+    return op->emitOpError() << "attribute " << attr_name
+                             << " result index is out of range, must be <"
+                             << ftype.getNumResults();
+
+  // Verify that argument and result types pointed to by the indices are valid
+  // and compatible.
+  Type arg_type = GetTypeFromTupleIndices(ftype.getInput(arg_index),
+                                          alias_attr.getArgTupleIndices());
+  if (!arg_type)
+    return op->emitOpError() << "attribute " << attr_name
+                             << " argument tuple indices are invalid";
+  Type result_type =
+      GetTypeFromTupleIndices(ftype.getResult(alias_attr.getResultIndex()),
+                              alias_attr.getResultTupleIndices());
+  if (!result_type)
+    return op->emitOpError()
+           << "attribute " << attr_name << " result tuple indices are invalid";
+
+  if (failed(mlir::verifyCompatibleShape(arg_type, result_type)) ||
+      getElementTypeOrSelf(arg_type) != getElementTypeOrSelf(result_type))
+    return op->emitOpError() << "attribute " << attr_name
+                             << " aliases do not have compatible types, "
+                             << arg_type << " vs. " << result_type;
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Shape inference
 //===----------------------------------------------------------------------===//
@@ -5477,6 +5928,42 @@ LogicalResult deriveShapeFromOperand(
   }
   reifiedReturnShapes->assign(
       {builder->create<shape::ShapeOfOp>(op->getLoc(), operand)});
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MHLO Dialect Hooks
+//===----------------------------------------------------------------------===//
+
+Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
+  // HLO dialect constants only support ElementsAttr unlike standard dialect
+  // constant which supports all attributes.
+  if (value.isa<ElementsAttr>())
+    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
+  return nullptr;
+}
+
+LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
+                                                    unsigned region_index,
+                                                    unsigned arg_index,
+                                                    NamedAttribute attr) {
+  if (auto alias_attr = attr.getValue().dyn_cast<ArgResultAliasAttr>()) {
+    if (failed(VerifyArgResultAliasAttr(attr.getName(), alias_attr, arg_index,
+                                        op)))
+      return failure();
+  }
+  return success();
+}
+
+LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
+                                                    NamedAttribute attr) {
+  if (auto alias_attr = attr.getValue().dyn_cast<ArgResultAliasAttr>()) {
+    if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+      return op->emitOpError()
+             << "attribute " << attr.getName()
+             << " can only be used on function-like operations";
+  }
   return success();
 }
 

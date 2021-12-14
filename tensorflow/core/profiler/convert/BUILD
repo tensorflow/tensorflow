@@ -772,3 +772,28 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "hlo_proto_to_memory_visualization_utils",
+    srcs = ["hlo_proto_to_memory_visualization_utils.cc"],
+    hdrs = ["hlo_proto_to_memory_visualization_utils.h"],
+    copts = tf_profiler_copts(),
+    visibility = ["//tensorflow/core/profiler/protobuf:memory_viewer_friends"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)

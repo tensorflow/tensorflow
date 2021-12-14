@@ -402,6 +402,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
@@ -518,6 +519,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
@@ -599,6 +601,7 @@ cc_library(
     hdrs = ["attribute_importer.h"],
     deps = [
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -711,6 +714,28 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+    ],
+)
+
+tf_cc_binary(
+    name = "xla-opt-gpu",
+    testonly = True,
+    srcs = ["xla_opt_main.cc"],
+    deps = [
+        ":adjust_layout",  # buildcleaner: keep
+        ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
+        ":tf_xla_passes",  # buildcleaner: keep
+        ":xla_legalize_tf",  # buildcleaner: keep
+        ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
+        ":xla_passes",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllPassesAndDialects",

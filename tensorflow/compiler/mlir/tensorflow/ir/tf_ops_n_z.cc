@@ -2171,12 +2171,7 @@ SummaryWriterOp::GetResourceHandleValueAndIdList(
 void TPUExecuteOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(args().size() + 2);
-
-  // There may be some TPU Embedding ops in the computation, so this effect is
-  // added conservatively.
-  effects.emplace_back(MemoryEffects::Write::get(),
-                       ResourceEffects::TPUEmbedding::get());
+  effects.reserve(args().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUCompileExecute::get());
 
@@ -2239,12 +2234,7 @@ static LogicalResult Verify(TPUExecuteAndUpdateVariablesOp op) {
 void TPUExecuteAndUpdateVariablesOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(device_var_reads_indices().size() + 2);
-
-  // There may be some TPU Embedding ops in the computation, so this effect is
-  // added conservatively.
-  effects.emplace_back(MemoryEffects::Write::get(),
-                       ResourceEffects::TPUEmbedding::get());
+  effects.reserve(device_var_reads_indices().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUCompileExecute::get());
   auto resource_handles = llvm::make_filter_range(args(), [](Value value) {
@@ -3318,6 +3308,160 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
   }
 
   inferredReturnTypes.push_back(result_ty);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// XlaVariadicReduceOp
+//===----------------------------------------------------------------------===//
+//
+
+static LogicalResult Verify(XlaVariadicReduceOp op) {
+  // We rely on V2 for the majority of the checks.
+  const auto &input_ty = op.input().getType();
+  if (input_ty.empty()) return op.emitOpError() << "No input";
+  const auto &dtype = input_ty[0].cast<TensorType>().getElementType();
+  for (const auto &ty : input_ty) {
+    if (ty.cast<TensorType>().getElementType() != dtype)
+      return op.emitOpError()
+             << "This version is limited to operands of the same dtype";
+  }
+  return success();
+}
+
+class XlaVariadicReduceToV2 : public OpRewritePattern<TF::XlaVariadicReduceOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaVariadicReduceOp op,
+                                PatternRewriter &rewriter) const override {
+    mlir::TF::XlaVariadicReduceV2Op xla_variadic_reduce_v2_op =
+        rewriter.create<::mlir::TF::XlaVariadicReduceV2Op>(
+            op.getLoc(), op.getResults().getTypes(), op.input(),
+            op.init_value(), op.dimensions_to_reduce(), op.reducer());
+
+    rewriter.replaceOp(op, xla_variadic_reduce_v2_op.getResults());
+    return ::mlir::success();
+  };
+};
+
+void XlaVariadicReduceOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<XlaVariadicReduceToV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaVariadicReduceV2Op
+//===----------------------------------------------------------------------===//
+//
+
+static LogicalResult Verify(XlaVariadicReduceV2Op op) {
+  const auto &inputs_ty = op.inputs().getType();
+  int n_inputs = inputs_ty.size();
+  if (n_inputs < 1) return op.emitOpError() << "No inputs";
+
+  const auto &init_values_ty = op.init_values().getType();
+  int n_init_values = init_values_ty.size();
+  if (n_init_values != n_inputs)
+    return op.emitOpError() << "Number of inputs (" << n_inputs
+                            << ") is different than number of init_values ("
+                            << n_init_values << ")";
+
+  if (inputs_ty[0].cast<ShapedType>().hasStaticShape()) {
+    for (int i = 0; i < n_inputs; ++i) {
+      if (inputs_ty[i].cast<ShapedType>().getShape() !=
+          inputs_ty[0].cast<ShapedType>().getShape())
+        return op.emitOpError() << "inputs[" << i << "] has shape ["
+                                << inputs_ty[i].cast<ShapedType>().getShape()
+                                << "] different than the shape of inputs[0]: "
+                                << inputs_ty[0].cast<ShapedType>().getShape();
+      if (init_values_ty[i].cast<ShapedType>().getRank() != 0)
+        return op.emitOpError()
+               << "init_values[" << i << "] must be a scalar but got ["
+               << init_values_ty[i].cast<ShapedType>().getShape() << "]";
+    }
+
+    if (op.dimensions_to_reduce().size() >
+        inputs_ty[0].cast<ShapedType>().getRank())
+      return op.emitOpError()
+             << "Invalid dimensions_to_reduce argument to XlaReduce";
+  }
+
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  auto function = dyn_cast_or_null<mlir::FuncOp>(
+      SymbolTable::lookupSymbolIn(module, op.reducer()));
+  if (!function) return op.emitOpError() << "No reducer";
+  if (!function.body().hasOneBlock())
+    return op.emitOpError() << "reducer has more than one block";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// XlaVariadicSortOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(XlaVariadicSortOp op) {
+  const auto &inputs_ty = op.inputs().getType();
+  int n_inputs = inputs_ty.size();
+  auto input_ty_0 = inputs_ty[0].cast<ShapedType>();
+  if (input_ty_0.hasStaticShape()) {
+    for (int i = 0; i < n_inputs; ++i) {
+      auto input_ty_i = inputs_ty[i].cast<ShapedType>();
+      if (input_ty_i.hasStaticShape() &&
+          input_ty_i.getShape() != input_ty_0.getShape()) {
+        return op.emitOpError()
+               << "input[" << i << "] has shape [" << input_ty_i.getShape()
+               << "] different than the shape of input[0]: "
+               << input_ty_0.getShape();
+      }
+    }
+  }
+
+  ElementsAttr dimension;
+  if (matchPattern(op.dimension(), m_Constant(&dimension))) {
+    if (dimension.getType().getRank() != 0 ||
+        dimension.getType().getNumElements() != 1)
+      return op.emitOpError() << "dimension must be a scalar";
+  }
+
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  auto function = dyn_cast_or_null<mlir::FuncOp>(
+      SymbolTable::lookupSymbolIn(module, op.comparator()));
+  if (!function) return op.emitOpError() << "No comparator";
+  if (!function.body().hasOneBlock())
+    return op.emitOpError() << "comparator has more than one block";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SetStaticDimensionBoundsOp
+//===----------------------------------------------------------------------===//
+//
+
+static LogicalResult Verify(SetStaticDimensionBoundsOp op) {
+  mlir::ShapedType input_type = op.input().getType().cast<mlir::ShapedType>();
+  mlir::ShapedType static_shape_type =
+      op.static_shape().getType().cast<mlir::ShapedType>();
+  int input_type_rank = input_type.hasRank() ? input_type.getRank() : -1;
+  if (input_type_rank > 2) {
+    return op.emitOpError() << "was used with an input tensor with rank > 2, "
+                               "only tensors of rank 1,2 are supported";
+  }
+
+  if (!static_shape_type.hasRank() || static_shape_type.getRank() != 1) {
+    return op.emitOpError(
+        "static shape must be a ranked tensor of rank 1 (vector)");
+  }
+  if (input_type_rank != -1 && static_shape_type.hasStaticShape()) {
+    if (static_shape_type.getShape()[0] != input_type_rank) {
+      return op.emitOpError(
+          "static shape must have num_elements == rank of input "
+          "tensor");
+    }
+  }
+
   return success();
 }
 

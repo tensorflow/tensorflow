@@ -127,12 +127,14 @@ cc_library(
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":common",
         ":flags",
         ":jit_compilation_passes",
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
         "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -152,6 +154,7 @@ cc_library(
     srcs = ["xla_gpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":common",
         ":flags",
         ":jit_compilation_passes",
         ":xla_device",
@@ -160,6 +163,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -183,8 +187,10 @@ cc_library(
     deps = [
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
@@ -241,6 +247,7 @@ XLA_DEVICE_DEPS = [
     "@com_google_absl//absl/synchronization",
     "@com_google_absl//absl/types:optional",
     "//tensorflow/compiler/jit/ops:xla_ops",
+    "//tensorflow/compiler/tf2xla:layout_util",
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:tf2xla_util",
     "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -349,6 +356,7 @@ cc_library(
     hdrs = ["flags.h"],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:dump_graph",
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -366,6 +374,7 @@ cc_library(
     hdrs = ["flags.h"],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:dump_graph",
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -470,6 +479,22 @@ tf_cc_test(
     name = "xla_compilation_cache_test",
     srcs = [
         "xla_compilation_cache_test.cc",
+    ],
+    deps = [
+        ":flags",
+        ":xla_compilation_cache",
+        ":xla_cpu_jit",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_compilation_cache_disable_test",
+    srcs = [
+        "xla_compilation_cache_disable_test.cc",
     ],
     deps = [
         ":flags",

@@ -23,6 +23,8 @@ include "mlir/IR/OpBase.td"
 def RAL_Dialect : Dialect {
   let name = "disc_ral";
   let cppNamespace = "::mlir::disc_ral";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 class RAL_Op<string mnemonic, list<OpTrait> traits> :

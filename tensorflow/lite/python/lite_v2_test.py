@@ -17,6 +17,7 @@
 
 import ctypes
 import functools
+import itertools
 import os
 import sys
 
@@ -51,6 +52,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import map_ops
+from tensorflow.python.ops import rnn
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
@@ -133,6 +135,29 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     expected_value = root.f(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     self.assertEqual(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
+  def testModelWithoutInputs(self):
+
+    def _get_random_number_gen():
+      root = tracking.AutoTrackable()
+
+      @tf.function(input_signature=[])
+      def func():
+        return tf.random.uniform(shape=[1], dtype=tf.float32)
+
+      root.f = func
+      to_save = root.f.get_concrete_function()
+      return (root, to_save)
+
+    # Model with no input
+    root, concrete_func = _get_random_number_gen()
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
 
   @test_util.run_v2_only
   def testMultiFunctionModel(self):
@@ -2386,6 +2411,66 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     # quantization.
     self.assertEqual(np.int8, quantized_weight['dtype'])
 
+  @parameterized.named_parameters([
+      ('{}BitWeightOnly={}LowBit={}'.format(num_bits, weight_only, low_bit),
+       num_bits, weight_only, low_bit) for num_bits, weight_only, low_bit
+      in itertools.product((2, 4, 6), (True, False), (True, False))])
+  @test_util.run_v2_only
+  def testQATLowBitKerasModel(self, num_bits, weight_only, low_bit):
+    bit_max = (1 << (num_bits - 1)) - 1
+    bit_min = -bit_max
+    tf_input_shape = (5, 5, 3)
+    tflite_input_shape = (1,) + tf_input_shape
+    model, input_name, output_name = (self._createV2QATLowBitKerasModel(
+        tf_input_shape, weight_only, num_bits, bit_min, bit_max))
+    input_data = np.linspace(
+        0, 6, np.prod(tflite_input_shape)).reshape(tflite_input_shape)
+    tf_result = model(input_data)
+
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    if low_bit:
+      converter._experimental_low_bit_qat = True
+    tflite_model = converter.convert()
+    result = self._evaluateTFLiteModelUsingSignatureDef(
+        tflite_model, 'serving_default',
+        {input_name: input_data.astype(np.float32)})[output_name]
+    self.assertAllClose(
+        [np.linalg.norm(result - tf_result.numpy().astype(np.float32))], [0.0])
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    num_8bit_activations = 0
+    num_8bit_weights = 0
+    kernel_name = ('model/conv_wrapper/Conv2D;model/conv_wrapper/'
+                   'FakeQuantWithMinMaxVarsPerChannel')
+
+    for detail in interpreter.get_tensor_details():
+      if (detail['dtype'] == np.int8 and detail['name'] and
+          detail['name'] == kernel_name):
+        num_8bit_weights += 1
+        weights = interpreter.get_tensor(detail['index'])
+        if low_bit:
+          self.assertFalse((bit_min > weights).any() or
+                           (weights > bit_max).any())
+        else:
+          self.assertTrue((bit_min > weights).any() or
+                          (weights > bit_max).any())
+        self.assertIn('scales', detail['quantization_parameters'])
+        if low_bit and detail['quantization_parameters']['scales']:
+          self.assertAllClose(
+              detail['quantization_parameters']['scales'], [1.0])
+      elif detail['dtype'] == np.int8 and detail['name']:
+        self.assertFalse(weight_only)
+        self.assertIn('scales', detail['quantization_parameters'])
+        if detail['quantization_parameters']['scales']:
+          self.assertAllClose(
+              detail['quantization_parameters']['scales'], [6/255])
+        num_8bit_activations += 1
+
+    self.assertEqual(num_8bit_weights, 0 if weight_only and not low_bit else 1)
+    # 3 activations with full integer: conv_input, conv_output, reshape_output
+    self.assertEqual(num_8bit_activations, 0 if weight_only else 3)
+
 
 class FromJaxModelTest(lite_v2_test_util.ModelTest):
 
@@ -2634,14 +2719,13 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     input_data = tf.constant(
         np.array(np.random.random_sample((3, 10)), dtype=np.float32))
 
-    cell = tf.compat.v1.nn.rnn_cell.LSTMCell(10)
+    cell = tf.keras.layers.LSTMCell(10)
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[3, 10], dtype=tf.float32)])
     def model(x):
       seq = tf.split(x, 3, 0)
-      return tf.compat.v1.nn.static_rnn(
-          cell, seq, dtype=tf.float32, sequence_length=[1])
+      return rnn.static_rnn(cell, seq, dtype=tf.float32, sequence_length=[1])
 
     concrete_func = model.get_concrete_function()
 
@@ -2690,12 +2774,13 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     input_data = tf.constant(
         np.array(np.random.random_sample((3, 10, 10)), dtype=np.float32))
 
-    cell = tf.compat.v1.nn.rnn_cell.LSTMCell(10)
+    cell = tf.keras.layers.LSTMCell(10)
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[3, 10, 10], dtype=tf.float32)])
     def model(x):
-      return tf.compat.v1.nn.dynamic_rnn(cell, x, dtype=tf.float32)
+      rnn_layer = tf.keras.layers.RNN([cell], return_sequences=True)
+      return rnn_layer(x)
 
     concrete_func = model.get_concrete_function()
 
@@ -2706,10 +2791,10 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)
-    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    lite_outputs = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertLen(lite_outputs, 1)
+    actual_value = lite_outputs[0]
     for expected, actual in zip(expected_value, actual_value):
-      if not isinstance(expected, ops.EagerTensor):
-        expected = expected.c
       self.assertAllClose(expected, actual)
 
   @parameterized.named_parameters(

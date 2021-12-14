@@ -1006,7 +1006,8 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
 
-  // TODO(hinsu): Implement custom printer and parser.
+  let printer = [{ return ::mlir::mhlo::printReduceOp(*this, p); }];
+  let parser = [{ return ::mlir::mhlo::parseReduceOp(parser, result); }];
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -1490,6 +1491,27 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     `call_target_name` should be short as it may be used in labels.
     `backend_config` can encode arbitrarily large amounts of information.
 
+    `has_side_effect` must be true if the custom call has side-effects.
+    `api_version` specifies the version of the API used by the custom call
+    function.
+
+    A custom call may apply functions within the scope of the parent module.
+    They can be referenced using `called_computations` attribute.
+
+    A custom call can also have layout constraints on operands and results which
+    can be specified as optional `operand_layouts` and `result_layouts`
+    attributes. The layout attribute is an array of rank-1 index tensors and the
+    i-th layout attribute specifies the layout for i-th operand/result.
+
+    The `operand_layouts` & `result_layouts` attributes can be specified under
+    the following constraints:
+    1) Either both `operand_layouts` and `result_layouts` are specified or none.
+    2) None of the operands are of tuple type.
+    3) None of the results are of tuple type except the common case of single
+       tuple result packing non-tuple values is allowed. In this case the i-th
+       `result_layouts` attribute specifies the layout of i-th element in the
+       result tuple.
+
     See https://www.tensorflow.org/xla/operation_semantics#customcall.
   }];
   let arguments = (ins
@@ -1501,7 +1523,10 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     // the status-returning API.
     DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
                       "CustomCallApiVersion::API_VERSION_ORIGINAL">:
-                      $api_version
+                      $api_version,
+    DefaultValuedAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
+    OptionalAttr<HLO_ArrayOfLayoutAttr>:$operand_layouts,
+    OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts
   );
   let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
   let hasCustomHLOConverter = 1;
@@ -2300,7 +2325,7 @@ def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather",
   }];
 }
 
-def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp {
+def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]> {
   let summary = "Dynamic Convolution operator";
   let description = [{
     The dynamic shape version of ConvOp. Computes a convolution with dynamic padding.

@@ -14,12 +14,10 @@
 # ==============================================================================
 """Tests for tf.data service ops."""
 import time
-from unittest import mock
 
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import service_config_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
@@ -38,7 +36,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -78,58 +75,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = self.make_distributed_range_dataset(
         num_elements, cluster, compression=compression)
     self.assertDatasetProduces(ds, list(range(num_elements)))
-
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(compression=[None, "AUTO"])))
-  def testFromDatasetIdOmitsCompression(self, compression):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-    with mock.patch.object(compat, "forward_compatible", return_value=True):
-      dataset_id = data_service_ops.register_dataset(
-          cluster.dispatcher.target, dataset=dataset, compression=compression)
-      dataset = data_service_ops.from_dataset_id(
-          processing_mode=ShardingPolicy.OFF,
-          service=cluster.dispatcher.target,
-          dataset_id=dataset_id,
-          element_spec=dataset.element_spec)
-      self.assertDatasetProduces(dataset, list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-
-  # Eager-only as querying `element_spec` is only supported in the eager mode.
-  @combinations.generate(
-      combinations.times(test_base.eager_only_combinations(),
-                         combinations.combine(compression=[None, "AUTO"])))
-  def testFromDatasetIdOmitsElementSpecAndCompression(self, compression):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-    with mock.patch.object(compat, "forward_compatible", return_value=True):
-      dataset_id = data_service_ops.register_dataset(
-          cluster.dispatcher.target, dataset=dataset, compression=compression)
-      dataset = data_service_ops.from_dataset_id(
-          processing_mode=ShardingPolicy.OFF,
-          service=cluster.dispatcher.target,
-          dataset_id=dataset_id)
-      self.assertDatasetProduces(dataset, list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations()))
-  def testCompressionMismatch(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-    with mock.patch.object(compat, "forward_compatible", return_value=False):
-      dataset_id = data_service_ops._register_dataset(
-          cluster.dispatcher.target, dataset=dataset, compression=None)
-      # `compression` is "AUTO" by default.
-      dataset = data_service_ops._from_dataset_id(
-          processing_mode=ShardingPolicy.OFF,
-          service=cluster.dispatcher.target,
-          dataset_id=dataset_id,
-          element_spec=dataset.element_spec)
-      with self.assertRaisesRegex(errors.InvalidArgumentError, "Type mismatch"):
-        self.getDatasetOutput(dataset)
 
   @combinations.generate(test_base.default_test_combinations())
   def testDistributeInvalidCompression(self):
@@ -908,61 +853,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, list(range(10, 13)), requires_initialization=True)
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testElementSpecGraphMode(self):
-    cluster = data_service_test_base.TestCluster(
-        num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
-    num_elements = 10
-    ds = dataset_ops.Dataset.range(num_elements)
-    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
-                                                   ds)
-    with self.assertRaisesRegex(
-        ValueError, "In graph mode `element_spec` must be provided manually."):
-      ds = data_service_ops.from_dataset_id("parallel_epochs",
-                                            cluster.dispatcher_address(),
-                                            dataset_id)
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testFromDatasetIdDoesntRequireElementSpec(self):
-    cluster = data_service_test_base.TestCluster(
-        num_workers=1,
-        work_dir=NO_WORK_DIR,
-        fault_tolerant_mode=False,
-        data_transfer_protocol="grpc")
-    num_elements = 10
-    ds = dataset_ops.Dataset.range(num_elements)
-
-    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
-                                                   ds)
-    ds = data_service_ops.from_dataset_id("parallel_epochs",
-                                          cluster.dispatcher_address(),
-                                          dataset_id)
-    self.assertDatasetProduces(ds, list(range(num_elements)))
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testElementSpecMixedMode(self):
-    cluster = data_service_test_base.TestCluster(
-        num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
-    num_elements = 10
-    ds = dataset_ops.Dataset.range(num_elements)
-
-    @def_function.function
-    def get_dataset_id():
-      return data_service_ops.register_dataset(cluster.dispatcher_address(), ds)
-
-    dataset_id = get_dataset_id()
-    dataset_id_val = tensor_util.constant_value(dataset_id)
-
-    with self.assertRaisesRegex(
-        ValueError, "Failed to fetch element spec for dataset id " +
-        str(dataset_id_val) + " from tf.data service. If the "
-        "dataset was registered in graph mode or inside a "
-        "tf.function, the `element_spec` must be specified as "
-        "an argument to `from_dataset_id`."):
-      ds = data_service_ops.from_dataset_id("parallel_epochs",
-                                            cluster.dispatcher_address(),
-                                            dataset_id)
-
   @combinations.generate(test_base.default_test_combinations())
   def testNoShardingPolicy(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
@@ -970,12 +860,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     dataset = self.make_distributed_dataset(
         dataset, cluster=cluster, processing_mode=ShardingPolicy.OFF)
     self.assertDatasetProduces(dataset, list(range(20)))
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testCardinality(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    dataset = self.make_distributed_range_dataset(10, cluster)
-    self.assertEqual(self.evaluate(dataset.cardinality()), dataset_ops.UNKNOWN)
 
 
 if __name__ == "__main__":

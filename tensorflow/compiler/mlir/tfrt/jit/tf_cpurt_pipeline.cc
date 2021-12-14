@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
+#include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
@@ -114,17 +115,15 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(CreateFusionPass());
 
-  // Perform tiling-padding-vectorization if vectorization is enabled.
+  // Perform tiling-peeling-vectorization if vectorization is enabled.
   if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(CreateDetensorizeLinalgPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateFuseFillIntoTiledReductionPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePeelTiledLoopsPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
     pm.addPass(mlir::createCanonicalizerPass());
-
-    // TODO(b/205537489): Re-enable tiling after the padding function is fixed.
-    // pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
     pm.addNestedPass<mlir::FuncOp>(CreateSinkUnusedOutputs());
     pm.addNestedPass<mlir::FuncOp>(CreateVectorizeTiledOpsPass());
   }
@@ -153,21 +152,14 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Deallocate all temporary buffers.
-  pm.addNestedPass<mlir::FuncOp>(mlir::createBufferDeallocationPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::bufferization::createBufferDeallocationPass());
 
   // Do trivial buffer forwarding across linalg.generic operations.
   pm.addNestedPass<mlir::FuncOp>(CreateLinalgTrivialBufferForwardingPass());
 
   // Remove trivial copy operations.
   pm.addNestedPass<mlir::FuncOp>(CreateLinalgTrivialCopyRemovalPass());
-
-  // Specilize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat, and
-  // immediately canonicalize to clean up not taken branches.
-  pm.addNestedPass<mlir::FuncOp>(CreateLinalgMatmulSpecializationPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-
-  // Tile and vectorize linalg operation using Linalg Codegen Strategy.
-  pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForMatMulPass());
 
   if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(

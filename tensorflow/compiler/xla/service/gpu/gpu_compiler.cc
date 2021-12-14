@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
@@ -84,6 +85,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
@@ -240,6 +242,12 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   // Each dynamic dimension size is represented as a S32.
   int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
+}
+
+bool ConvIsLowerable(HloInstruction* conv) {
+  return conv_matchers::CanImplementAsGpuForwardConv(conv) ||
+         std::get<0>(conv_matchers::MatchBackwardFilter(conv)) ||
+         std::get<0>(conv_matchers::MatchBackwardInput(conv));
 }
 
 }  // end anonymous namespace
@@ -405,7 +413,7 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
 
-      AlgebraicSimplifierOptions options;
+      AlgebraicSimplifierOptions options({}, ConvIsLowerable);
       // When transposes appear in a fusion node, we can easily adjust the
       // multi-dimensional index to create the one needed for the operand.
       // This is not as easy with bitcasts, because we don't have the
@@ -415,7 +423,6 @@ Status GpuCompiler::OptimizeHloModule(
       // bitcast(bitcast) with one bitcast. This leads to having to
       // linearize and then delinearize the index.
       options.set_replace_transpose_with_bitcast(false);
-      options.set_enable_conv_operand_swap(false);
       pipeline.AddPass<AlgebraicSimplifier>(options);
       pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
@@ -760,10 +767,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
   TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(mlir_module));
 
   if (DumpingEnabledForHloModule(*hlo_module)) {
-    std::string tfrt_mlir;
-    llvm::raw_string_ostream tfrt_mlir_ostream(tfrt_mlir);
-    mlir_module.print(tfrt_mlir_ostream);
-    DumpToFileInDirOrStdout(*hlo_module, "", "tfrt_mlir", tfrt_mlir);
+    DumpToFileInDirOrStdout(*hlo_module, "tfrt_gpu", mlir_module);
   }
 
   // TFRT Dialect -> BEF
@@ -774,7 +778,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
   }
 
   if (DumpingEnabledForHloModule(*hlo_module)) {
-    DumpToFileInDirOrStdout(*hlo_module, "", "tfrt_bef", bef);
+    DumpToFileInDirOrStdout(*hlo_module, "", "bef", bef);
   }
 
   auto ptr = static_cast<uint8_t*>(
@@ -856,8 +860,9 @@ static Status CompileModuleToLlvmIrImpl(
 
   results->module_name = mlir::GetNameFromLoc(mlir_module->getLoc());
 
-  llvm_ir::DumpIrIfEnabled(mlir_module.get(), hlo_module->unique_id(),
-                           hlo_module->config().debug_options());
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    DumpToFileInDirOrStdout(*hlo_module, "lmhlo", mlir_module.get());
+  }
 
   auto entry_function = mlir::cast<mlir::FuncOp>(
       mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
@@ -1292,11 +1297,11 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
 
   for (int i = 0; i < func.getNumArguments(); i++) {
     for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
-      TF_RET_CHECK(attr.first == "lmhlo.params" ||
-                   attr.first == "lmhlo.param_shape_index" ||
-                   attr.first == "lmhlo.constant_name" ||
-                   attr.first == "lmhlo.must_alias" ||
-                   attr.first == "lmhlo.output_index");
+      TF_RET_CHECK(attr.getName() == "lmhlo.params" ||
+                   attr.getName() == "lmhlo.param_shape_index" ||
+                   attr.getName() == "lmhlo.constant_name" ||
+                   attr.getName() == "lmhlo.must_alias" ||
+                   attr.getName() == "lmhlo.output_index");
     }
   }
 

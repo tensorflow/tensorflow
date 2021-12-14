@@ -83,7 +83,11 @@ TensorDescriptor::TensorDescriptor(TensorDescriptor&& desc)
       storage_type(desc.storage_type),
       layout(desc.layout),
       shape(desc.shape),
-      data(std::move(desc.data)) {}
+      data(std::move(desc.data)),
+      use_buffer_for_write_only_2d_texture(
+          desc.use_buffer_for_write_only_2d_texture),
+      use_buffer_for_write_only_image_buffer(
+          desc.use_buffer_for_write_only_image_buffer) {}
 TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
   if (this != &desc) {
     std::swap(data_type, desc.data_type);
@@ -91,6 +95,10 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
     std::swap(layout, desc.layout);
     std::swap(shape, desc.shape);
     data = std::move(desc.data);
+    std::swap(use_buffer_for_write_only_2d_texture,
+              desc.use_buffer_for_write_only_2d_texture);
+    std::swap(use_buffer_for_write_only_image_buffer,
+              desc.use_buffer_for_write_only_image_buffer);
     GPUObjectDescriptor::operator=(std::move(desc));
   }
   return *this;
@@ -131,11 +139,21 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
     resources.buffers.push_back({"buffer", desc});
   } else if (storage_type == TensorStorageType::SINGLE_TEXTURE_2D ||
              storage_type == TensorStorageType::TEXTURE_2D) {
-    GPUImage2DDescriptor desc;
-    desc.data_type = data_type;
-    desc.normalized = false;
-    desc.access_type = access_type_;
-    resources.images2d.push_back({"image2d", desc});
+    if (access_type_ == AccessType::WRITE &&
+        use_buffer_for_write_only_2d_texture) {
+      resources.ints.push_back("aligned_texture_width");
+      GPUBufferDescriptor desc;
+      desc.data_type = data_type;
+      desc.access_type = access_type_;
+      desc.element_size = 4;
+      resources.buffers.push_back({"buffer", desc});
+    } else {
+      GPUImage2DDescriptor desc;
+      desc.data_type = data_type;
+      desc.normalized = false;
+      desc.access_type = access_type_;
+      resources.images2d.push_back({"image2d", desc});
+    }
   } else if (storage_type == TensorStorageType::TEXTURE_ARRAY) {
     GPUImage2DArrayDescriptor desc;
     desc.data_type = data_type;
@@ -147,17 +165,18 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
     desc.access_type = access_type_;
     resources.images3d.push_back({"image3d", desc});
   } else if (storage_type == TensorStorageType::IMAGE_BUFFER) {
-    if (access_type_ == AccessType::READ) {
-      GPUImageBufferDescriptor desc;
-      desc.data_type = data_type;
-      desc.access_type = access_type_;
-      resources.image_buffers.push_back({"image_buffer", desc});
-    } else {
+    if (access_type_ == AccessType::WRITE &&
+        use_buffer_for_write_only_image_buffer) {
       GPUBufferDescriptor desc;
       desc.data_type = data_type;
       desc.access_type = access_type_;
       desc.element_size = 4;
       resources.buffers.push_back({"buffer", desc});
+    } else {
+      GPUImageBufferDescriptor desc;
+      desc.data_type = data_type;
+      desc.access_type = access_type_;
+      resources.image_buffers.push_back({"image_buffer", desc});
     }
   }
   return resources;
@@ -449,7 +468,22 @@ std::string TensorDescriptor::Write(
   switch (storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      if (gpu_info.IsGlsl()) {
+      if (gpu_info.IsApiOpenCl()) {
+        if (use_buffer_for_write_only_image_buffer) {
+          return absl::StrCat("buffer[", coords[0], "] = ", var_name);
+        } else {
+          return absl::Substitute("$0(image_buffer, $1, $2)",
+                                  GetWriteImageFromDataType(data_type),
+                                  coords[0], var_name);
+        }
+      } else if (gpu_info.IsApiMetal()) {
+        if (use_buffer_for_write_only_image_buffer) {
+          return absl::StrCat("buffer[", coords[0], "] = ", var_name);
+        } else {
+          return absl::Substitute("image_buffer.write($0, uint($1))", var_name,
+                                  coords[0]);
+        }
+      } else if (gpu_info.IsGlsl()) {
         if (data_type == DataType::FLOAT16) {
           return absl::StrCat("buffer[", coords[0], "] = uvec2(packHalf2x16(",
                               var_name, ".xy), packHalf2x16(", var_name,
@@ -457,17 +491,30 @@ std::string TensorDescriptor::Write(
         } else {
           return absl::StrCat("buffer[", coords[0], "] = ", var_name);
         }
+      } else {
+        return absl::StrCat("buffer[", coords[0], "] = ", var_name);
       }
-      return absl::StrCat("buffer[", coords[0], "] = ", var_name);
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_2D:
       if (gpu_info.IsApiOpenCl()) {
-        return absl::Substitute("$0(image2d, (int2)($1, $2), $3)",
-                                GetWriteImageFromDataType(data_type), coords[0],
-                                coords[1], var_name);
+        if (use_buffer_for_write_only_2d_texture) {
+          return absl::Substitute(
+              "buffer[($2) * aligned_texture_width + ($1)] = $0", var_name,
+              coords[0], coords[1]);
+        } else {
+          return absl::Substitute("$0(image2d, (int2)($1, $2), $3)",
+                                  GetWriteImageFromDataType(data_type),
+                                  coords[0], coords[1], var_name);
+        }
       } else if (gpu_info.IsApiMetal()) {
-        return absl::Substitute("image2d.write($0, ushort2($1, $2))", var_name,
-                                coords[0], coords[1]);
+        if (use_buffer_for_write_only_2d_texture) {
+          return absl::Substitute(
+              "buffer[($2) * aligned_texture_width + ($1)] = $0", var_name,
+              coords[0], coords[1]);
+        } else {
+          return absl::Substitute("image2d.write($0, ushort2($1, $2))",
+                                  var_name, coords[0], coords[1]);
+        }
       } else if (gpu_info.IsGlsl()) {
         return absl::Substitute("imageStore(image2d, ivec2($0, $1), $2)",
                                 coords[0], coords[1], var_name);

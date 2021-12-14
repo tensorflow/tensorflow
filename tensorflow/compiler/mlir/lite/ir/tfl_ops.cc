@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -887,6 +888,35 @@ LogicalResult Verify(GatherOp op) {
     }
   }
   return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// BroadcastToOp
+//===----------------------------------------------------------------------===//
+
+// Canonicalizes BroadcastToOp to ReshapeOp if the input and output has the same
+// number of elements.
+struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
+  using OpRewritePattern<BroadcastToOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(BroadcastToOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input_type = op.input().getType().cast<ShapedType>();
+    auto output_type = op.getType().cast<ShapedType>();
+    if (!input_type.hasStaticShape() || !output_type.hasStaticShape() ||
+        input_type.getNumElements() != output_type.getNumElements()) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.input(),
+                                           op.shape());
+    return success();
+  }
+};
+
+void BroadcastToOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertBroadcastToReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2466,12 +2496,10 @@ LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
   }
 
   // Default to non-time_major.
-  bool time_majored = attr.getNamed("time_major").hasValue()
-                          ? attr.getNamed("time_major")
-                                .getValue()
-                                .second.cast<BoolAttr>()
-                                .getValue()
-                          : false;
+  Optional<mlir::NamedAttribute> time_major_attr = attr.getNamed("time_major");
+  bool time_majored =
+      time_major_attr ? time_major_attr->getValue().cast<BoolAttr>().getValue()
+                      : false;
 
   int batch =
       time_majored ? input_type.getDimSize(1) : input_type.getDimSize(0);

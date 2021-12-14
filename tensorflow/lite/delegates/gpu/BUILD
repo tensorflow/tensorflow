@@ -91,6 +91,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/metal:buffer_convert",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,

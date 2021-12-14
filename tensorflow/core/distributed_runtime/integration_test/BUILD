@@ -29,6 +29,7 @@ tf_cuda_cc_test(
     srcs = ["c_api_coordination_test.cc"],
     tags = [
         "no_cuda_asan",  # TODO(b/193450885)
+        "no_windows",  # TODO(b/207281588)
     ],
     deps = [
         ":coordination_test_opkernel_registration",
@@ -55,6 +56,9 @@ tf_cuda_cc_test(
     name = "c_api_session_coordination_test",
     size = "small",
     srcs = ["c_api_session_coordination_test.cc"],
+    tags = [
+        "no_windows",  # TODO(b/207281588)
+    ],
     deps = [
         ":coordination_test_opkernel_registration",
         "//tensorflow/c:c_api",
@@ -77,6 +81,9 @@ tf_cuda_cc_test(
     name = "c_api_multi_client_test",
     size = "small",
     srcs = ["c_api_multi_client_test.cc"],
+    tags = [
+        "no_windows",  # TODO(b/207281588)
+    ],
     deps = [
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:c_test_util",
@@ -104,6 +111,9 @@ tf_cc_test(
     name = "c_api_multi_client_function_test",
     size = "small",
     srcs = ["c_api_multi_client_function_test.cc"],
+    tags = [
+        "no_oss",  # test uses TFRT
+    ],
     deps = [
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:c_test_util",

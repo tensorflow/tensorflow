@@ -28,7 +28,7 @@ namespace xla {
 namespace gpu {
 
 se::dnn::BatchDescriptor GetBiasDescriptor(const GpuConvConfig& config) {
-  se::dnn::BatchDescriptor result;
+  se::dnn::BatchDescriptor result(config.output_descriptor.ndims());
   result.set_count(1)
       .set_height(1)
       .set_width(1)
@@ -46,6 +46,9 @@ se::dnn::BatchDescriptor GetBiasDescriptor(const GpuConvConfig& config) {
             return layout;
         }
       }());
+  if (result.ndims() == 3) {
+    result.set_spatial_dim(se::dnn::DimIndex::Z, 1);
+  }
   return result;
 }
 
@@ -135,7 +138,7 @@ Status RunGpuConvUnfused(GpuConvParams params, se::Stream* stream,
                                  params.config.output_descriptor,
                                  params.config.conv_desc};
   TF_ASSIGN_OR_RETURN(auto* runner,
-                      lazy_runner->GetOrCreateRunner(config, stream->parent()));
+                      lazy_runner->GetOrCreateRunner(config, stream));
 
   return (*runner)(stream, input_buf, filter_buf, output_buf, scratch_memory,
                    options.profile_result);
@@ -196,7 +199,7 @@ Status RunGpuConvForwardActivation(GpuConvParams params, se::Stream* stream,
                                       params.config.conv_desc,
                                       params.config.fusion->mode};
   TF_ASSIGN_OR_RETURN(auto* runner,
-                      lazy_runner->GetOrCreateRunner(config, stream->parent()));
+                      lazy_runner->GetOrCreateRunner(config, stream));
 
   return (*runner)(stream, input_buf, filter_buf, side_input,
                    params.fusion->bias_buf, output_buf, scratch_memory,
@@ -507,7 +510,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
 
 StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& config,
-    absl::Span<se::DeviceMemoryBase> operand_buffers,
+    absl::Span<const se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer) {
   GpuConvParams params;
   params.config = config;
@@ -544,7 +547,7 @@ StatusOr<GpuConvParams> GetGpuConvParams(
 }
 
 Status RunGpuConv(const gpu::GpuConvConfig& config,
-                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  absl::Span<const se::DeviceMemoryBase> operand_buffers,
                   se::DeviceMemoryBase result_buffer,
                   se::DeviceMemoryBase scratch_memory, se::Stream* stream,
                   RunConvOptions options) {

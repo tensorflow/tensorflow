@@ -110,34 +110,47 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     else:
       saveables_cache = None
     super(_AugmentedGraphView, self).__init__(root, saveables_cache)
-    # Dependencies that are added via `add_object`. Object -> (name -> dep)
-    self._extra_dependencies = object_identity.ObjectIdentityDictionary()
-    # Functions returned by `_list_functions_for_serialization`.
-    self._function_cache = object_identity.ObjectIdentityDictionary()
+
+    # Cache the results of `list_children` to ensure that the `Trackable`
+    # children are gathered exactly once.
+    self._children_cache = object_identity.ObjectIdentityDictionary()
 
     # Cache shared between objects in the same object graph. This is passed to
     # each trackable object's `_list_extra_dependencies_for_serialization` and
     # `_list_functions_for_serialization` function.
     self._serialization_cache = object_identity.ObjectIdentityDictionary()
 
-  def add_object(self, parent_node, name_in_parent, subgraph_root):
-    """Attach an object to `parent_node`, overriding any existing dependency."""
-    self._extra_dependencies.setdefault(parent_node,
-                                        {})[name_in_parent] = subgraph_root
+  def set_signature(self, signature_map):
+    """Attach signature to the root object."""
+    self.list_children(self.root)
+    # Overrides existing dependency.
+    name = signature_serialization.SIGNATURE_ATTRIBUTE_NAME
+    self._children_cache[self.root][name] = signature_map
 
   def list_children(self, obj):
     """Overrides parent method to include extra children."""
+    if obj not in self._children_cache:
+      self._cache_children(obj)
+    for name, child in self._children_cache[obj].items():
+      yield base.TrackableReference(name, child)
+
+  def _cache_children(self, obj):
+    # Retrieve functions attached to the object.
+    functions = obj._list_functions_for_serialization(  # pylint: disable=protected-access
+        self._serialization_cache)
+
+    # Trace concrete functions to force side-effects:
+    #   1. populate the cache for functions that have an input_signature
+    #      and have not been called
+    #   2. force side effects of creation of concrete functions, e.g. create
+    #      variables on first run.
+    for fn in functions.values():
+      if isinstance(fn, def_function.Function):
+        fn._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+
     # Retrieve children that are only included when exporting SavedModel.
     extra_dependencies = obj._list_extra_dependencies_for_serialization(  # pylint: disable=protected-access
         self._serialization_cache)
-    extra_dependencies.update(self._extra_dependencies.get(obj, {}))
-
-    # Retrieve and cache all functions attached to the object.
-    functions = self._function_cache.get(obj, None)
-    if functions is None:
-      functions = obj._list_functions_for_serialization(  # pylint: disable=protected-access
-          self._serialization_cache)
-      self._function_cache[obj] = functions
 
     children = {}
     for name, child in super(_AugmentedGraphView, self).list_children(obj):
@@ -147,41 +160,32 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
         # TODO(kathywu): remove once `_list_functions_for_serialization` has
         # been fully deprecated.
         continue
-      if name in extra_dependencies:
+
+      if (name in extra_dependencies and
+          name != signature_serialization.SIGNATURE_ATTRIBUTE_NAME):
         # Extra dependencies (except for `.signatures`, which is always added
         # when saving) should not have naming conflicts with dependencies
         # defined by the user.
-        if name != signature_serialization.SIGNATURE_ATTRIBUTE_NAME:
-          obj_identifier = obj._object_identifier  # pylint: disable=protected-access
-          raise ValueError(
-              f"Error when exporting object {obj} with identifier "
-              f"'{obj_identifier}'. The object has an attribute named "
-              f"'{name}', which is reserved. List of all reserved attributes: "
-              f"{list(extra_dependencies.keys())}")
-        children[name] = extra_dependencies[name]
-      else:
-        children[name] = child
+        obj_identifier = obj._object_identifier  # pylint: disable=protected-access
+        raise ValueError(
+            f"Error when exporting object {obj} with identifier "
+            f"'{obj_identifier}'. The object has an attribute named "
+            f"'{name}', which is reserved. List of all reserved attributes: "
+            f"{list(extra_dependencies.keys())}")
 
-    for name, child in extra_dependencies.items():
-      if name in children:
-        continue
-      children[name] = child
-
-    for name, fn in functions.items():
-      if (obj is self.root and
-          name == signature_serialization.SIGNATURE_ATTRIBUTE_NAME):
-        # Special case the signatures attribute, since it should not be returned
-        # as a child.
-        continue
-      if name in children and fn is not children[name]:
+      if name in functions and child is not functions[name]:
         raise ValueError(
             "Can't save object because it has multiple children with the same "
             f"name. Object: {obj}, attribute name: {name}, child 1: "
-            f"{children[name]}, child 2: {fn}")
-      children[name] = fn
+            f"{child}, child 2: {functions[name]}")
 
-    for name, child in children.items():
-      yield base.TrackableReference(name, child)
+      children[name] = child
+
+    children.update(extra_dependencies)
+    children.update(functions)
+
+    self._children_cache[obj] = children
+    return children
 
   def list_dependencies(self, obj):
     """Yields `Trackables` that must be loaded before `obj`.
@@ -239,9 +243,6 @@ class _SaveableView(object):
     self._options = options
     # Maps functions -> wrapped functions that capture variables
     self._wrapped_functions = wrapped_functions or {}
-    # Run through the nodes in the object graph first for side effects of
-    # creating variables.
-    self._trace_all_concrete_functions()
 
     (self._trackable_objects, self.node_paths, self.node_ids,
      self._slot_variables, self.object_names) = (
@@ -351,19 +352,6 @@ class _SaveableView(object):
       if concrete_function.name not in self._seen_function_names:
         self.concrete_functions.append(concrete_function)
         self._seen_function_names.add(concrete_function.name)
-
-  def _trace_all_concrete_functions(self):
-    """Trace concrete functions to force side-effects.
-
-    Lists the concrete functions in order to:
-      - populate the cache for functions that have an input_signature
-        and have not been called
-      - force side effects of creation of concrete functions, e.g. create
-        variables on first run.
-    """
-    for obj in self.checkpoint_view.list_objects():
-      if isinstance(obj, def_function.Function):
-        obj._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
 
   @property
   def root(self):
@@ -1543,10 +1531,7 @@ def _build_meta_graph_impl(obj,
       signature_serialization.canonicalize_signatures(signatures))
   signature_serialization.validate_saveable_view(checkpoint_graph_view)
   signature_map = signature_serialization.create_signature_map(signatures)
-  checkpoint_graph_view.add_object(
-      parent_node=checkpoint_graph_view.root,
-      name_in_parent=signature_serialization.SIGNATURE_ATTRIBUTE_NAME,
-      subgraph_root=signature_map)
+  checkpoint_graph_view.set_signature(signature_map)
 
   # Use _SaveableView to provide a frozen listing of properties and functions.
   saveable_view = _SaveableView(checkpoint_graph_view, options,

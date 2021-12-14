@@ -181,9 +181,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """
 
     input_mask = [[False] + [True] * (len(shape) - 1) for shape in input_shapes]
-    output_mask = [
-        [False] + [True] * (len(shape) - 1) for shape in output_shapes
-    ]
+    output_mask = [[False] + [True] * (len(shape) - 1) if shape else []
+                   for shape in output_shapes]
 
     return self.BuildParamsWithMask(graph_fn, dtype, input_shapes,
                                     output_shapes, input_mask, output_mask, [],

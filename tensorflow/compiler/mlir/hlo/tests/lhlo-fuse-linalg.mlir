@@ -389,9 +389,9 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
     %13 = math.abs %arg3 : f32
     linalg.yield %13 : f32
   }
-  %2 = memref.tensor_load %1 : memref<32xf32>
+  %2 = bufferization.to_tensor %1 : memref<32xf32>
   %3 = tensor.cast %2 : tensor<32xf32> to tensor<?xf32>
-  %4 = memref.buffer_cast %3 : memref<?xf32>
+  %4 = bufferization.to_memref %3 : memref<?xf32>
   return %4 : memref<?xf32>
 }
 
@@ -402,9 +402,9 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
 //       CHECK:        math.abs
-//       CHECK:  memref.tensor_load
+//       CHECK:  bufferization.to_tensor
 //       CHECK:  tensor.cast
-//       CHECK:  memref.buffer_cast
+//       CHECK:  bufferization.to_memref
 
 // TILED-LABEL: func @tensor_ops
 //   TILED-DAG:  %[[C2:.*]] = arith.constant 2
@@ -413,9 +413,9 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //   TILED-NOT:  scf.for
 //       TILED:      linalg.generic
 //       TILED:        math.abs
-//       TILED:  memref.tensor_load
+//       TILED:  bufferization.to_tensor
 //       TILED:  tensor.cast
-//       TILED:  memref.buffer_cast
+//       TILED:  bufferization.to_memref
 
 
 // PLOOP-LABEL: func @tensor_ops
@@ -424,6 +424,6 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //   PLOOP-NOT:  scf.parallel
 //       PLOOP:      linalg.generic
 //       PLOOP:        math.abs
-//       PLOOP:  memref.tensor_load
+//       PLOOP:  bufferization.to_tensor
 //       PLOOP:  tensor.cast
-//       PLOOP:  memref.buffer_cast
+//       PLOOP:  bufferization.to_memref

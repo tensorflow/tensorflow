@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -81,7 +83,7 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<PjRtDevice>> devices,
                       TpuDevice::GetTpuDevices(system_info));
 
-  return std::make_shared<PyTpuClient>(kTpuPlatform, std::move(client),
+  return std::make_shared<PyTpuClient>(TpuPlatform(), std::move(client),
                                        std::move(devices),
                                        system_info.host_id());
 }

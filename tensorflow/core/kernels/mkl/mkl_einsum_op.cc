@@ -15,6 +15,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 #define EIGEN_DONT_PARALLELIZE
+
 #include "mkl_batch_matmul_helper.h"
 #include "tensorflow/core/kernels/linalg/einsum_op_impl.h"
 
@@ -31,7 +32,7 @@ struct MklEinsumHelper {
   // Contracts the inputs along the last axis. (or the second last if the
   // corresponding value of swap_free_and_contract is true). The batch
   // dimensions are broadcast to the output shape.
-  // TODO(anudhyan): BatchMatMul might devolve into a component-wise
+  // TODO(intel-tf): BatchMatMul might devolve into a component-wise
   // multiplication when the matrix shape is [1,1]; in this case BatchMatMul
   // functor would be very inefficient. The functor should detect if this is the
   // case and perform componentwise multiplication functor instead.
@@ -90,8 +91,9 @@ struct MklEinsumHelper {
 
     out_shape.AddDim(lhs_rows);
     out_shape.AddDim(rhs_cols);
-    // The maximum number of dimensions for a tensor in DNNL is 12.
-    if (!(out_shape.dims() <= 12))
+    // The maximum number of dimensions for a tensor in DNNL is
+    // DNNL_MAX_NDIMS = 12.
+    if (!(out_shape.dims() <= DNNL_MAX_NDIMS))
       return errors::InvalidArgument(
           "Rank of output tensor must be <= 12, ", "but is ", out_shape.dims(),
           ". Current implementation supports upto ", "rank 12 tensors.");
@@ -213,7 +215,7 @@ class MklEinsum : public OpKernel {
                                     &contraction_output));
     // Inflate the output if necessary. (E.g. for the equation 'i->iii' which
     // may arise while computing gradient of a regular Einsum).
-    // TODO(anudhyan): It's possible that Eigen's contract and inflate can be
+    // TODO(intel-tf): It's possible that Eigen's contract and inflate can be
     // chained here to avoid materializing an intermediate.
     Tensor output_inflated;
     OP_REQUIRES_OK(

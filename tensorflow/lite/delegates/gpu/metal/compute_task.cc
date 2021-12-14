@@ -67,6 +67,7 @@ ComputeTask::ComputeTask(ComputeTask&& task)
       program_(task.program_),
       metal_args_(std::move(task.metal_args_)),
       use_arguments_buffer_(task.use_arguments_buffer_),
+      need_icb_support_(task.need_icb_support_),
       arguments_encoder_(task.arguments_encoder_),
       arg_buffer_(task.arg_buffer_) {
   task.program_ = nullptr;
@@ -81,6 +82,7 @@ ComputeTask& ComputeTask::operator=(ComputeTask&& task) {
     std::swap(program_, task.program_);
     metal_args_ = std::move(task.metal_args_);
     std::swap(use_arguments_buffer_, task.use_arguments_buffer_);
+    std::swap(need_icb_support_, task.need_icb_support_);
     std::swap(arguments_encoder_, task.arguments_encoder_);
     std::swap(arg_buffer_, task.arg_buffer_);
   }
@@ -116,10 +118,7 @@ absl::Status ComputeTask::AddTask(ComputeTask* task) {
 }
 
 absl::Status ComputeTask::Compile(MetalDevice* device) {
-  operation_->AssembleCode(device->GetInfo());
-  const std::map<std::string, std::string> linkables = {
-      {operation_->dst_tensors_names_[0], operation_->elementwise_code_}};
-  RETURN_IF_ERROR(metal_args_.Init(linkables, use_arguments_buffer_, device,
+  RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
                                    &operation_->args_, &operation_->code_));
 
   operation_->args_.ReleaseCPURepresentation();
@@ -240,6 +239,14 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
       MTLComputePipelineDescriptor* pipeline_desc =
           [[MTLComputePipelineDescriptor alloc] init];
       pipeline_desc.computeFunction = function;
+      if (need_icb_support_) {
+        if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
+          pipeline_desc.supportIndirectCommandBuffers = TRUE;
+        } else {
+          return absl::InternalError(
+              "Indirect compute command buffer available since ios 13");
+        }
+      }
       NSError* error = nil;
       program_ = [device->device()
           newComputePipelineStateWithDescriptor:pipeline_desc
@@ -294,6 +301,22 @@ absl::Status ComputeTask::UpdateParams() {
       operation_->work_group_size_, operation_->work_group_launch_order_);
   Update();
   return absl::OkStatus();
+}
+
+API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+void ComputeTask::EncodeToICB(id<MTLIndirectComputeCommand> icb_command) {
+  MTLSize groupsCount, groupsSize;
+  groupsCount.width = operation_->work_groups_count_.x;
+  groupsCount.height = operation_->work_groups_count_.y;
+  groupsCount.depth = operation_->work_groups_count_.z;
+  groupsSize.width = operation_->work_group_size_.x;
+  groupsSize.height = operation_->work_group_size_.y;
+  groupsSize.depth = operation_->work_group_size_.z;
+  [icb_command setComputePipelineState:program_];
+  [icb_command setKernelBuffer:arg_buffer_ offset:0 atIndex:0];
+  [icb_command concurrentDispatchThreadgroups:groupsCount
+                        threadsPerThreadgroup:groupsSize];
+  [icb_command setBarrier];
 }
 
 API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))

@@ -105,18 +105,21 @@ AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
 }
 
 MaliGpu GetMaliGpuVersion(const std::string& gpu_description) {
-  const std::map<std::string, MaliGpu> kMapping = {
+  // Order must be preserved
+  const std::vector<std::pair<std::string, MaliGpu>> kMapping = {
       {"t604", MaliGpu::kT604}, {"t622", MaliGpu::kT622},
       {"t624", MaliGpu::kT624}, {"t628", MaliGpu::kT628},
       {"t658", MaliGpu::kT658}, {"t678", MaliGpu::kT678},
       {"t720", MaliGpu::kT720}, {"t760", MaliGpu::kT760},
       {"t820", MaliGpu::kT820}, {"t830", MaliGpu::kT830},
       {"t860", MaliGpu::kT860}, {"t880", MaliGpu::kT880},
-      {"g31", MaliGpu::kG31},   {"g51", MaliGpu::kG51},
-      {"g71", MaliGpu::kG71},   {"g52", MaliGpu::kG52},
+      {"g310", MaliGpu::kG310}, {"g31", MaliGpu::kG31},
+      {"g510", MaliGpu::kG510}, {"g51", MaliGpu::kG51},
+      {"g52", MaliGpu::kG52},   {"g57", MaliGpu::kG57},
+      {"g610", MaliGpu::kG610}, {"g68", MaliGpu::kG68},
+      {"g710", MaliGpu::kG710}, {"g71", MaliGpu::kG71},
       {"g72", MaliGpu::kG72},   {"g76", MaliGpu::kG76},
-      {"g57", MaliGpu::kG57},   {"g77", MaliGpu::kG77},
-      {"g68", MaliGpu::kG68},   {"g78", MaliGpu::kG78},
+      {"g77", MaliGpu::kG77},   {"g78", MaliGpu::kG78},
   };
   for (const auto& v : kMapping) {
     if (gpu_description.find(v.first) != std::string::npos) {
@@ -443,7 +446,14 @@ bool MaliInfo::IsValhallGen2() const {
   return gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
 }
 
-bool MaliInfo::IsValhall() const { return IsValhallGen1() || IsValhallGen2(); }
+bool MaliInfo::IsValhallGen3() const {
+  return gpu_version == MaliGpu::kG310 || gpu_version == MaliGpu::kG510 ||
+         gpu_version == MaliGpu::kG610 || gpu_version == MaliGpu::kG710;
+}
+
+bool MaliInfo::IsValhall() const {
+  return IsValhallGen1() || IsValhallGen2() || IsValhallGen3();
+}
 
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info) {

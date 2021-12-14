@@ -15,6 +15,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdio>
 #include <functional>
+#include <limits>
 #include <queue>
 #include <string>
 #include <vector>

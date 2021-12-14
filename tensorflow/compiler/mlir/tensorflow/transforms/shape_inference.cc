@@ -761,6 +761,10 @@ class ShapeInference {
   // mutations have identical static shape.
   bool InferShapeForTensorListInitOps(Operation* op);
 
+  // Infers the shape of VarHandleOp based on the uses of the VarHandleOp to
+  // update the subtypes of the resource type.
+  bool InferShapeForVarHandleOp(VarHandleOp op);
+
   bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti);
 
   // Returns all the callers of a function.
@@ -1173,6 +1177,51 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
   return changed;
 }
 
+bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
+  DCOMMENT_OP(op, "Inferring shape for VarHandleOp");
+
+  Value resource = op.resource();
+  if (!CanBeRefined(resource.getType())) return false;
+
+  // Make sure there are only use cases from the `AssignVariableOp` and
+  // `ReadVariableOp`. For other cases, we can skip to be conservative.
+  for (auto& use : make_early_inc_range(resource.getUses())) {
+    Operation* def = use.getOwner();
+    if (!llvm::isa<AssignVariableOp>(def) && !llvm::isa<ReadVariableOp>(def)) {
+      return false;
+    }
+  }
+
+  bool changed = false;
+
+  // Look for any `AssignVariableOp` and `ReadVariableOp` that uses the value of
+  // this op.
+  for (auto& use : make_early_inc_range(resource.getUses())) {
+    Operation* def = use.getOwner();
+    Value value;
+    if (AssignVariableOp assign_op = dyn_cast<AssignVariableOp>(def)) {
+      value = assign_op.value();
+    } else if (ReadVariableOp read_op = dyn_cast<ReadVariableOp>(def)) {
+      value = read_op.value();
+    } else {
+      llvm_unreachable("unexpected operator type");
+    }
+
+    TensorType resource_subtype = value.getType().cast<TensorType>();
+    ResourceType resource_type =
+        ResourceType::get({resource_subtype}, op.getContext());
+    UnrankedTensorType new_resource_type =
+        UnrankedTensorType::get(resource_type);
+
+    Type refined_type = TypeMeet(resource.getType(), new_resource_type);
+    if (refined_type == resource.getType()) continue;
+    resource.setType(refined_type);
+    changed = true;
+  }
+
+  return changed;
+}
+
 bool ShapeInference::RefineWithInferTypeOpInterface(
     InferTypeOpInterface infer_ti) {
   Operation* op = infer_ti.getOperation();
@@ -1473,6 +1522,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // the InferenceContext below to get more precise shapes.
   if (IsTensorListInitOp(op) && InferShapeForTensorListInitOps(op)) return true;
 
+  if (auto var_handle_op = dyn_cast<VarHandleOp>(op)) {
+    return InferShapeForVarHandleOp(var_handle_op);
+  }
+
   // Return operand as a constant attribute.
   auto operand_as_constant_fn = [&](Value operand) {
     ValuePort vp(operand);
@@ -1761,6 +1814,16 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
       PropagateConstantFromCallee(call_op, func, module);
       return failure_or_converged;
     }
+  } else if (auto xla_variadic_sort_op = dyn_cast<TF::XlaVariadicSortOp>(op)) {
+    auto comparator =
+        llvm::cast<mlir::FuncOp>(mlir::SymbolTable::lookupSymbolIn(
+            module, xla_variadic_sort_op.comparator()));
+    mlir::SmallVector<mlir::Type, 2> types;
+    for (auto type : comparator.getType().getInputs()) {
+      types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
+    }
+    return PropagateShapeToFunctions(module, types, {comparator},
+                                     max_iterations);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.
@@ -1810,7 +1873,7 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
   }
 
   // Attempt to constant fold the operation.
-  auto* abstract_op = op->getAbstractOperation();
+  auto abstract_op = op->getRegisteredInfo();
   LogicalResult folded = failure();
   if (abstract_op) {
     folded = abstract_op->foldHook(op, constant_operands, fold_results);

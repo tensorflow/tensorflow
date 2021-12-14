@@ -813,6 +813,14 @@ class ShapeUtil {
   // dimensions of `shape`.
   static Status ByteStrides(const Shape& shape, absl::Span<int64_t> strides);
 
+  // Returns the array size in bytes (layout/tiling required), all paddings are
+  // included.
+  static int64_t ArraySize(const Shape& shape);
+
+  // Returns the size of array data in bytes, ignoring the trailing padding
+  // due to the tiling requirement.
+  static int64_t ArrayDataSize(const Shape& shape);
+
  private:
   // Fills *shape. Returns true on success.
   // REQUIRES: *shape is empty.

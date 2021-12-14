@@ -120,7 +120,7 @@ class GPUOperation {
       TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
-  void AssembleCode(const GpuInfo& gpu_info);
+  absl::Status AssembleCode(const GpuInfo& gpu_info);
 
   virtual absl::Status PostCompileCheck(const GpuInfo& gpu_info,
                                         const KernelInfo& kernel_info) {
@@ -143,6 +143,11 @@ class GPUOperation {
   // for linking
   void AddUniquePostfix(const std::string& unique_postfix);
 
+  virtual absl::Status BindArguments(ArgumentsBinder* args) {
+    return absl::OkStatus();
+  }
+  void RecalculateGridSize() { grid_size_ = GetGridSize(); }
+
   Arguments args_;
   std::string code_;
   int3 work_group_size_ = int3(8, 4, 1);
@@ -156,6 +161,14 @@ class GPUOperation {
   // applicable only with elementwise_ = true;
   bool check_src_channels_size_ = false;
 
+  // for profiling
+  uint64_t flops_ = 0;
+  // size in bytes of constant gpu_objects inside args_
+  uint64_t const_args_size_ = 0;
+
+  // Must be called before const generic objects in args_ released.
+  void CalculateConstArgsSize();
+
  protected:
   friend class cl::ClOperation;
   friend class gl::GlOperation;
@@ -167,9 +180,6 @@ class GPUOperation {
   friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,
                              GPUOperation* op);
 
-  virtual absl::Status BindArguments(ArgumentsBinder* args) {
-    return absl::OkStatus();
-  }
   virtual int3 GetGridSize() const;
 
   // Defines operation calculation precision and format of src/dst tensors.
