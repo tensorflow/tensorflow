@@ -158,11 +158,11 @@ def TestInferShapedTypeMethodsPass : FunctionPass<"mhlo-test-infer-shaped-type-m
   let constructor = "createTestInferShapedTypeMethodsPass()";
 }
 
-def BroadcastPropagationPass : FunctionPass<"mhlo-broadcast-propagation"> {
+def MergeAssumingOpsPass : FunctionPass<"mhlo-merge-assuming-ops"> {
   let summary = "Move dynamic broadcasts up over element-wise operations and "
     "broadcast the operands rather than the result. This will eventually allow "
     "for larger fusions.";
-  let constructor = "createBroadcastPropagationPass()";
+  let constructor = "createMergeAssumingOpsPass()";
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {

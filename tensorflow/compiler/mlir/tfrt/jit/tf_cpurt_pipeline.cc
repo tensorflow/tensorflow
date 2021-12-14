@@ -125,7 +125,7 @@ void CreateTfCpuRtPipeline(OpPassManager& pm,
       CreateSymbolicShapeOptimizationPass(/*constraints_only=*/true));
 
   // Move up broadcasting operations to allow for more fusion opportunities.
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 

@@ -77,7 +77,7 @@ createLegalizeTrigonometricToApproximationPass();
 // Move dynamic broadcasts up over element-wise operations and broadcast the
 // operands rather than the result. This will eventually allow for larger
 // fusions.
-std::unique_ptr<FunctionPass> createBroadcastPropagationPass();
+std::unique_ptr<FunctionPass> createMergeAssumingOpsPass();
 
 /// Rank specialization passes:
 ///   - Find compatible operations and group them together in one rank

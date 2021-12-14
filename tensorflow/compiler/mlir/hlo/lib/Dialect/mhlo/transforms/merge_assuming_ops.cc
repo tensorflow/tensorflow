@@ -441,8 +441,8 @@ struct EarlyBroadcastInDimOpPattern
   }
 };
 
-struct BroadcastPropagationPass
-    : public BroadcastPropagationPassBase<BroadcastPropagationPass> {
+struct MergeAssumingOpsPass
+    : public MergeAssumingOpsPassBase<MergeAssumingOpsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }
@@ -450,7 +450,7 @@ struct BroadcastPropagationPass
   void runOnFunction() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    mhlo::PopulateBroadcastsPropagationPatterns(ctx, &patterns);
+    mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
     if (failed(applyPatternsAndFoldGreedily(getFunction(), std::move(patterns),
@@ -462,8 +462,8 @@ struct BroadcastPropagationPass
 
 }  // namespace
 
-void PopulateBroadcastsPropagationPatterns(MLIRContext *context,
-                                           OwningRewritePatternList *patterns) {
+void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
+                                      OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
       EliminateDuplicateCstrBroadcastableOps,
@@ -489,8 +489,8 @@ void PopulateBroadcastsPropagationPatterns(MLIRContext *context,
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<FunctionPass> createBroadcastPropagationPass() {
-  return std::make_unique<BroadcastPropagationPass>();
+std::unique_ptr<FunctionPass> createMergeAssumingOpsPass() {
+  return std::make_unique<MergeAssumingOpsPass>();
 }
 
 }  // namespace mhlo

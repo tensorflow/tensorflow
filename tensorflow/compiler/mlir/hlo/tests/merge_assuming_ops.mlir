@@ -1,4 +1,6 @@
-// RUN: mlir-hlo-opt --split-input-file --allow-unregistered-dialect --mhlo-broadcast-propagation --canonicalize --cse %s | FileCheck %s
+// RUN: mlir-hlo-opt --split-input-file --allow-unregistered-dialect \
+// RUN:   --mhlo-merge-assuming-ops --canonicalize --cse %s | \
+// RUN: FileCheck %s
 
 // Shape computations shall be reified.
 // CHECK-LABEL: @shape_of_unary

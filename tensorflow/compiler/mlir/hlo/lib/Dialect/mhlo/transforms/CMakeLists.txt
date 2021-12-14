@@ -52,7 +52,6 @@ add_mlir_library(ChloPasses
 )
 
 add_mlir_library(MhloPasses
-  broadcast_propagation.cc
   expand_hlo_tuples.cc
   legalize_einsum_to_dot_general.cc
   legalize_gather_to_torch_index_select.cc
@@ -62,6 +61,7 @@ add_mlir_library(MhloPasses
   lower_general_dot.cc
   materialize_broadcasts.cc
   materialize_broadcasts_pass.cc
+  merge_assuming_ops.cc
   mhlo_canonicalize_reduction.cc
   mhlo_fusion.cc
   mhlo_mark_shape_calc.cc

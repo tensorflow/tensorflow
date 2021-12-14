@@ -359,7 +359,7 @@ struct SymbolicShapeOptimizationPass
     // for constraints and broadcasts optimizations. These patterns are only
     // applicable if we do not lower mhlo broadcasts to linalg.generic.
     if (optimize_only_constraints)
-      mlir::mhlo::PopulateBroadcastsPropagationPatterns(ctx, &patterns);
+      mlir::mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns);
 
     // Rewrite broadcasts based on the symbolic shapes if enabled.
     if (!optimize_only_constraints)

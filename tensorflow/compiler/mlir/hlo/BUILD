@@ -1144,8 +1144,8 @@ cc_library(
 )
 
 cc_library(
-    name = "broadcast_propagation",
-    srcs = ["lib/Dialect/mhlo/transforms/broadcast_propagation.cc"],
+    name = "merge_assuming_ops",
+    srcs = ["lib/Dialect/mhlo/transforms/merge_assuming_ops.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
@@ -1718,7 +1718,6 @@ cc_library(
         ":DiscRalPassIncGen",
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
-        ":broadcast_propagation",
         ":buffer_reuse",
         ":chlo_legalize_to_hlo",
         ":copy_removal",
@@ -1741,6 +1740,7 @@ cc_library(
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
+        ":merge_assuming_ops",
         ":mhlo_canonicalize_reduction",
         ":mhlo_flatten_tuple",
         ":mhlo_fusion",
