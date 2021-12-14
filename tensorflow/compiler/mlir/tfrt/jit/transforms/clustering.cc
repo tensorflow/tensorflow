@@ -826,6 +826,9 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
     (void)inserted;
   }
 
+  // TODO(b/202247905): Large clusters can lead to a very long compilation time.
+  if (ops.size() > 10) return failure();
+
   // TODO(ezhulenev): This is a temporary workaround to disable forming clusters
   // with known compilation problems.
   for (Operation* op : ops) {
