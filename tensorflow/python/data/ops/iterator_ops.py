@@ -652,7 +652,7 @@ class IteratorBase(collections_abc.Iterator, trackable.Trackable,
 
   @abc.abstractmethod
   def get_next_as_optional(self):
-    """Returns the next element warpped in `tf.experimental.Optional`.
+    """Returns the next element wrapped in `tf.experimental.Optional`.
 
     If the iterator has reached the end of the sequence, the returned
     `tf.experimental.Optional` will have no value.
