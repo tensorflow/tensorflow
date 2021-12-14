@@ -34,26 +34,21 @@ func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
 // CHECK-LABEL: func @tiled_add
 
 // CHECK-DAG:  %[[CST:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
 
-// CHECK: linalg.tiled_loop
+// CHECK: linalg.tiled_loop (%[[IV0:arg[0-9]]])
 // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{arg[0-9]}}: tensor<8xf32>,
 // CHECK-SAME:      %[[B:arg[0-9]]] = %{{arg[0-9]}}: tensor<8xf32>
 // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: tensor<8xf32>)
 
-// CHECK-NEXT: %[[SUB_A:.*]] = tensor.extract_slice %[[A]]
-// CHECK-NEXT: %[[SUB_B:.*]] = tensor.extract_slice %[[B]]
-// CHECK-NEXT: %[[SUB_C:.*]] = tensor.extract_slice %[[C]]
-
-// CHECK-NEXT: %[[LHS:.*]] = vector.transfer_read %1[%[[C0]]], %[[CST]]
-// CHECK-SAME:   {in_bounds = [true]} : tensor<2xf32>, vector<2xf32>
-// CHECK-NEXT: %[[RHS:.*]] = vector.transfer_read %2[%[[C0]]], %[[CST]]
-// CHECK-SAME:   {in_bounds = [true]} : tensor<2xf32>, vector<2xf32>
+// CHECK-NEXT: %[[LHS:.*]] = vector.transfer_read %[[A]][%[[IV0]]], %[[CST]]
+// CHECK-SAME:   {in_bounds = [true]} : tensor<8xf32>, vector<2xf32>
+// CHECK-NEXT: %[[RHS:.*]] = vector.transfer_read %[[B]][%[[IV0]]], %[[CST]]
+// CHECK-SAME:   {in_bounds = [true]} : tensor<8xf32>, vector<2xf32>
 
 // CHECK-NEXT: %[[SUM:.*]] = arith.addf %[[LHS]], %[[RHS]] : vector<2xf32>
 
-// CHECK-NEXT: %{{.*}} = vector.transfer_write %[[SUM]], %[[SUB_C]][%[[C0]]]
-// CHECK-SAME:   {in_bounds = [true]} : vector<2xf32>, tensor<2xf32>
+// CHECK-NEXT: %{{.*}} = vector.transfer_write %[[SUM]], %[[C]][%[[IV0]]]
+// CHECK-SAME:   {in_bounds = [true]} : vector<2xf32>, tensor<8xf32>
 
 // -----
 

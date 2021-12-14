@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt %s --tf-cpurt-vectorize-tiled-ops --split-input-file |\
+// RUN: tf-tfrt-opt %s --vectorize-tiled-ops --split-input-file |\
 // RUN: FileCheck %s
 
 #map0 = affine_map<(d0) -> (d0)>
