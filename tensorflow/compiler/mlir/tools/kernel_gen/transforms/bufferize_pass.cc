@@ -143,7 +143,7 @@ struct ComputeOpAndFuncBufferizePass
           // Force identity maps for several ops which don't support memrefs
           // with affine_maps.
           return llvm::any_of(op->getUsers(), [](Operation* user) {
-            return isa<mlir::ReturnOp, mhlo::DynamicReshapeOp,
+            return isa<mlir::ReturnOp, mhlo::DynamicReshapeOp, tensor::CastOp,
                        tensor::CollapseShapeOp, tensor::ExpandShapeOp,
                        linalg::TiledLoopOp>(user);
           });
