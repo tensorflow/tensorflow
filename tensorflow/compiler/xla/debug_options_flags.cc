@@ -69,7 +69,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_fast_min_max(true);
 
   opts.set_xla_gpu_enable_cudnn_frontend(true);
-  opts.set_xla_gpu_enable_fast_min_max(true);
+
+  // Despite the name, fast min/max on GPUs does not seem to be any faster, and
+  // adds very counter-intuitive "NaN-swallowing" behavior.
+  opts.set_xla_gpu_enable_fast_min_max(false);
   opts.set_xla_gpu_strict_conv_algorithm_picker(true);
 
   opts.set_xla_allow_excess_precision(true);
