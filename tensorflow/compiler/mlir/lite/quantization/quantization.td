@@ -143,7 +143,7 @@ def DynamicRangeQuantizedOpInterface : OpInterface<
     %q_w = "tfl.pseudo_qconst"() {
          qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
     %w = "tfl.dequantize"(%q_w) :
-         (tensor<tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32>) ->
+         (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) ->
          tensor<64x3x3x3xf32>
     %conv = "tfl.conv_2d"(%input_act, %w, %bias)
 
