@@ -335,6 +335,8 @@ bazel build \
 
 test_pip_virtualenv() {
   # Get args
+  WHL_PATH=$1
+  shift
   VENV_DIR_NAME=$1
   shift
   TEST_TYPE_FLAG=$1
@@ -558,6 +560,8 @@ run_test_with_bazel() {
 }
 
 run_all_tests() {
+  WHL_PATH=$1
+
   if [[ -z "${PIP_TESTS}" ]]; then
     echo "No test was specified to run. Skipping all tests."
     return 0
@@ -569,13 +573,13 @@ run_all_tests() {
     # Run tests.
     case "${TEST}" in
     "test_pip_virtualenv_clean")
-      test_pip_virtualenv venv_clean --clean
+      test_pip_virtualenv ${WHL_PATH} venv_clean --clean
       ;;
     "test_pip_virtualenv_non_clean")
-      test_pip_virtualenv venv
+      test_pip_virtualenv ${WHL_PATH} venv
       ;;
     "test_pip_virtualenv_oss_serial")
-      test_pip_virtualenv venv_oss --oss_serial
+      test_pip_virtualenv ${WHL_PATH} venv_oss --oss_serial
       ;;
     *)
       die "No matching test ${TEST} was found. Stopping test."
@@ -720,7 +724,7 @@ if [[ ${OS_TYPE} == "macos" ]] ; then
 fi
 
 # Run tests (if any is specified).
-run_all_tests
+run_all_tests ${WHL_PATH}
 
 
 if [[ ${OS_TYPE} == "ubuntu" ]] && \
