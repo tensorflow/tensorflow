@@ -187,10 +187,6 @@ build:macos --apple_platform_type=macos
 # gRPC on MacOS requires this #define
 build:macos --copt=-DGRPC_BAZEL_BUILD
 
-# Build compatible wheels
-# https://smallhacks.wordpress.com/2018/11/11/how-to-support-old-osx-version-with-a-recent-xcode/
-build:macos --copt=-mmacosx-version-min=10.14
-
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
 
