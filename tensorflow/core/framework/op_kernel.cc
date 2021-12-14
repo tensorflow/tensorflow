@@ -1177,8 +1177,8 @@ static string Key(StringPiece op_type, const DeviceType& device_type,
 // during lookup as normal kernels.
 void SetupOrDisableJit(KernelRegistry* registry) {
   std::unordered_multimap<string, KernelRegistration> jit_kernels;
-  bool remove_jit_kernels =
-      absl::StrContains(getenv(kDisableJitKernelsEnvVar), "1");
+  bool remove_jit_kernels = absl::StrContains(
+      absl::NullSafeStringView(getenv(kDisableJitKernelsEnvVar)), "1");
 
   mutex_lock l(registry->mu);
   std::unordered_multimap<string, KernelRegistration>& all_kernels =

@@ -76,7 +76,7 @@ struct ReshapeToExpandShape final
     if (output_shape->back().isConstant(1)) std::prev(it)->append(*it);
     reassociations.erase(it, reassociations.end());
 
-    rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
+    rewriter.replaceOpWithNewOp<tensor::ExpandShapeOp>(
         op, op.getResult().getType(), op.operand(), reassociations);
     return success();
   }
@@ -305,8 +305,8 @@ struct TurnDynamicReshapeIntoCollapseShape final
     if (i < argShapeInfo->size()) return failure();
 
     // Replace reshape op with its equivalent collapse shape op.
-    rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
-        op, op.operand(), reassociation_map);
+    rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(op, op.operand(),
+                                                         reassociation_map);
     return success();
   }
 };

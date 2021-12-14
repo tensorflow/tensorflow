@@ -581,7 +581,7 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
     pybind11::function callable, XlaBuilder& builder,
     absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
     absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
-  if (pjrt_client_->platform_id() != kCpuId) {
+  if (pjrt_client_->platform_id() != CpuId()) {
     return Unimplemented("EmitPythonCallback is only implemented on CPU");
   }
 

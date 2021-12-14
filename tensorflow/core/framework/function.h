@@ -769,6 +769,12 @@ class FunctionLibraryRuntime {
     // be faster under some conditions.
     bool allow_small_function_optimizations = false;
 
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If True, allow graphs containing control flow nodes to be run on the
+    // single threaded executor.
+    bool allow_control_flow_sync_execution = false;
+
     // Force int32 _Arg and _Retvals nodes to be left on device instead of
     // pinning to host.
     //

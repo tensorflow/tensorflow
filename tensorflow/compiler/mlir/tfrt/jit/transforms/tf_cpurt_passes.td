@@ -83,6 +83,18 @@ def CodegenReduction : FunctionPass<"tf-cpurt-codegen-reduction"> {
   }];
 }
 
+def FuseFillIntoTiledReduction
+    : FunctionPass<"tf-cpurt-fuse-fill-into-tiled-reduction"> {
+  let summary = "Fuse `linalg.fill` into `linalg.tiled_loop` with a reduction.";
+  let constructor = "tensorflow::CreateFuseFillIntoTiledReductionPass()";
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+
+  let description = [{
+    Fuses `linalg.fill` producers of output tensor arguments into
+    `linalg.tiled_loop`.
+  }];
+}
+
 def Fission : FunctionPass<"tf-cpurt-fission"> {
   let summary = "Split _Fused Tensorflow kernels into primitives";
   let constructor = "tensorflow::CreateFissionPass()";
@@ -159,12 +171,6 @@ def Clustering : FunctionPass<"tf-cpurt-clustering"> {
                "all operations included in the given clustering tier.",
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
-}
-
-def PadTiledOps : FunctionPass<"tf-cpurt-pad-tiled-ops"> {
-  let summary = "Pad tiled Linalg ops inside `tiled_loop`";
-  let constructor = "tensorflow::CreatePadTiledOpsPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
 def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {

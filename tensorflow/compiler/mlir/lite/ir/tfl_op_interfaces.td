@@ -35,6 +35,8 @@ def TFL_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::TFL";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 // Attributes used for encoding sparse tensors.

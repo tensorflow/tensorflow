@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <type_traits>
 #include <vector>
@@ -982,6 +983,12 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
 Literal LiteralBase::Clone() const {
   Literal result(shape());
   TF_CHECK_OK(result.CopyFrom(*this));
+  return result;
+}
+
+std::unique_ptr<Literal> LiteralBase::CloneToUnique() const {
+  auto result = std::make_unique<Literal>(shape());
+  TF_CHECK_OK(result->CopyFrom(*this));
   return result;
 }
 

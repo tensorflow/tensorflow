@@ -1029,6 +1029,7 @@ mlir::ArrayAttr GetPrecisionConfigAttr(StringAttr attr, Builder *builder) {
 //===----------------------------------------------------------------------===//
 // XlaVariadicReduceV2 op utilities.
 //===----------------------------------------------------------------------===//
+
 static void BuildBodyWithCall(PatternRewriter &rewriter, const Location &loc,
                               mlir::SymbolRefAttr func,
                               mlir::FunctionType func_ty, Region *body) {
@@ -1036,10 +1037,8 @@ static void BuildBodyWithCall(PatternRewriter &rewriter, const Location &loc,
 
   Block *block = rewriter.createBlock(body);
   block->addArguments(func_ty.getInputs());
-  mlir::SmallVector<mlir::NamedAttribute, 4> attrs;
-  attrs.emplace_back(rewriter.getIdentifier("callee"), func);
   mlir::CallOp call_op = rewriter.create<mlir::CallOp>(
-      loc, func_ty.getResults(), block->getArguments(), attrs);
+      loc, func, func_ty.getResults(), block->getArguments());
   rewriter.create<mhlo::ReturnOp>(loc, call_op.getResults());
 }
 
@@ -7080,6 +7079,32 @@ class ConvertXlaVariadicReduceV2Op
   }
 };
 
+// Convert tf.XlaVariadicSort to mhlo.Sort
+class ConvertXlaVariadicSortOp
+    : public OpRewritePattern<TF::XlaVariadicSortOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaVariadicSortOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    ElementsAttr dimension;
+    matchPattern(op.dimension(), m_Constant(&dimension));
+    // Create the mhlo.sort op.
+    auto sort_op = rewriter.create<mhlo::SortOp>(
+        loc, op.inputs(), dimension.getValues<IntegerAttr>()[0].getInt(),
+        op.is_stable());
+    mlir::SymbolRefAttr func = op.comparator();
+    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+        op->getParentOfType<mlir::ModuleOp>(), func));
+    auto func_ty = func_op.getType();
+    // Insert a call to the reducer in the region of the mhlo op.
+    BuildBodyWithCall(rewriter, loc, func, func_ty, &sort_op.comparator());
+
+    rewriter.replaceOp(op, sort_op.getResults());
+    return success();
+  }
+};
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
@@ -7167,6 +7192,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaReduceScatterOp,
     ConvertXlaSortOp,
     ConvertXlaVariadicReduceV2Op,
+    ConvertXlaVariadicSortOp,
     ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,

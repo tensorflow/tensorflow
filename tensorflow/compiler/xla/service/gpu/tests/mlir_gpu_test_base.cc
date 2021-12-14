@@ -45,11 +45,11 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
   llvm::LLVMContext llvm_context;
   auto llvm_module = absl::make_unique<llvm::Module>("", llvm_context);
 #if TENSORFLOW_USE_ROCM
-  llvm_module->setTargetTriple(amdgpu::kTargetTriple);
-  llvm_module->setDataLayout(amdgpu::kDataLayout);
+  llvm_module->setTargetTriple(amdgpu::TargetTriple());
+  llvm_module->setDataLayout(amdgpu::DataLayout());
 #else
-  llvm_module->setTargetTriple(nvptx::kTargetTriple);
-  llvm_module->setDataLayout(nvptx::kDataLayout);
+  llvm_module->setTargetTriple(nvptx::TargetTriple());
+  llvm_module->setDataLayout(nvptx::DataLayout());
 #endif
 
   se::StreamExecutor* stream_exec = stream->parent();

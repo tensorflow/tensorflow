@@ -765,7 +765,7 @@ Status EagerContextDistributedManager::EnableCoordinationService(
   TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
   coordination_service_ =
       CoordinationServiceInterface::EnableCoordinationService(
-          service_type, worker_env, server_def, std::move(client_cache));
+          service_type, worker_env->env, server_def, std::move(client_cache));
   return Status::OK();
 }
 

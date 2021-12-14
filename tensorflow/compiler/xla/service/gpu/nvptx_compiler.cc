@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <fstream>
+#include <string>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "llvm/IRReader/IRReader.h"
@@ -295,8 +297,8 @@ void WarnIfBadDriverJITVersion() {
 }
 
 NVPTXCompiler::NVPTXCompiler()
-    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::kTargetTriple,
-                  nvptx::kDataLayout) {}
+    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::TargetTriple(),
+                  nvptx::DataLayout()) {}
 
 HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
   return &CanShareBufferHint;

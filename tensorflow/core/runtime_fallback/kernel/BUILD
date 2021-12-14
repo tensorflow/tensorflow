@@ -351,12 +351,12 @@ cc_library(
     deps = [
         ":kernel_fallback_compat_request_state",
         ":kernel_fallback_tensor_conversion_alwayslink",
-        ":op_kernel_runner",
         "@llvm-project//llvm:Support",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
         "//tensorflow/core/runtime_fallback/runtime:op_logger",
         "//tensorflow/core/runtime_fallback/util:attr_util",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tensor_util",
@@ -381,33 +381,6 @@ cc_library(
 )
 
 cc_library(
-    name = "op_kernel_runner",
-    srcs = ["op_kernel_runner.cc"],
-    hdrs = ["op_kernel_runner.h"],
-    visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/eager:__pkg__",
-    ],
-    deps = [
-        "@com_google_absl//absl/container:inlined_vector",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
-        ],
-        "//conditions:default": [
-            "//tensorflow/core/common_runtime:device_mgr",
-            "//tensorflow/core/common_runtime:function",
-            "//tensorflow/core:framework",
-            "//tensorflow/core/framework:node_def_proto_cc",
-            "//tensorflow/core/framework:op_def_proto_cc",
-            "//tensorflow/core/framework:tensor",
-            "//tensorflow/core/platform:errors",
-            "//tensorflow/core/platform:status",
-        ],
-    }),
-)
-
-cc_library(
     name = "kernel_fallback_compat_request_state",
     srcs = ["kernel_fallback_compat_request_state.cc"],
     hdrs = ["kernel_fallback_compat_request_state.h"],
@@ -421,6 +394,7 @@ cc_library(
         "//third_party/tf_runtime_google:__pkg__",
     ],
     deps = [
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:model_metadata",
         "@tf_runtime//:hostcontext",

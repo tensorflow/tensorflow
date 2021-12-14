@@ -16,13 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_REDUCTION_BENCHMARK_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_REDUCTION_BENCHMARK_H_
 
+#include <string>
+
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
 namespace tensorflow {
 
-std::string GetTFSumIR(llvm::ArrayRef<int32_t> input_shape,
-                       llvm::ArrayRef<bool> dynamic_dims,
-                       llvm::ArrayRef<int32_t> dims_to_reduce);
+std::string GetReductionIR(llvm::StringRef op_name,
+                           llvm::ArrayRef<int32_t> input_shape,
+                           llvm::ArrayRef<bool> dynamic_dims,
+                           llvm::ArrayRef<int32_t> dims_to_reduce,
+                           llvm::StringRef element_type);
 
 }  // namespace tensorflow
 

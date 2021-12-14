@@ -185,6 +185,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",

@@ -313,6 +313,28 @@ inline Value MapMhloOpToStdScalarOp<mhlo::AbsOp>(Location loc,
   return nullptr;
 }
 
+template <>
+inline Value MapMhloOpToStdScalarOp<mhlo::CbrtOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Type> arg_types,
+                                                  ValueRange args,
+                                                  OpBuilder* b) {
+  mhlo::CbrtOp::Adaptor adaptor(args);
+  Type element_type = getElementTypeOrSelf(arg_types.front());
+  if (auto float_type = element_type.dyn_cast<FloatType>()) {
+    // Convert cbrt(x) to copysign(cbrt(abs(x), 1.0 / 3.0), x).
+    // This is to allow cbrt using pow while still handling negative numbers. It
+    // should match most cbrt intrinsics.
+    Value abs = b->create<mlir::math::AbsOp>(loc, adaptor.operand());
+    Value third = b->create<arith::ConstantOp>(
+        loc, b->getFloatAttr(float_type, 1.0 / 3.0));
+    Value pow = b->create<mlir::math::PowFOp>(loc, result_types[0], abs, third);
+    return b->create<mlir::math::CopySignOp>(loc, float_type, pow,
+                                             adaptor.operand());
+  }
+  return nullptr;
+}
+
 template <typename PredicateType>
 inline Optional<PredicateType> getCmpPredicate(StringRef, bool) {
   return llvm::None;

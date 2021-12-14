@@ -18,7 +18,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'per_replica_input_shapes\', \'per_replica_batch_size\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'per_replica_batch_size\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "dequeue"

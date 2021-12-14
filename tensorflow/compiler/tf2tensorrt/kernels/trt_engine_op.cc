@@ -261,6 +261,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // could be unknown. During inference time this information is not available
   // otherwise (all shapes are known (concrete) shapes when we run inference).
   std::vector<PartialTensorShape> input_partial_shapes_;
+
+  // Whether to use explicit precision (QDQ) mode.
+  bool use_explicit_precision_;
 };
 
 #define TYPECASE(dt, X, Y)                                    \
@@ -420,6 +423,17 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     allow_soft_placement_ = true;
   } else {
     OP_REQUIRES_OK(context, status);
+  }
+
+  status = context->GetAttr("use_explicit_precision", &use_explicit_precision_);
+  if (!status.ok()) {
+    use_explicit_precision_ = false;
+  }
+
+  if (use_explicit_precision_) {
+    LOG(INFO) << "TRTEngineOp using explicit QDQ";
+  } else {
+    LOG(INFO) << "TRTEngineOp not using explicit QDQ";
   }
 
   native_execution_func_handle_ = kInvalidHandle;
@@ -1015,7 +1029,7 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
       segment_graph_def_, precision_mode_, batch_size, workspace_size_,
       conversion_input_shapes, &logger, cache_resource->allocator_.get(),
       calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
-      &cache_resource->profiles_, name());
+      &cache_resource->profiles_, name(), use_explicit_precision_);
   if (!status.ok()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Engine creation for " << name() << " failed. "
@@ -1276,7 +1290,8 @@ Status TRTEngineOp::AllocateCalibrationResources(
         partial_shapes, &cache_res->GetLogger(), cache_res->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_, /*use_calibration=*/true,
         this->use_implicit_batch_, /*convert_successfully=*/nullptr,
-        /*profiles=*/nullptr, name());
+        /*profiles=*/nullptr, name(),
+        /*use_explicit_precision=*/use_explicit_precision_);
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;
       cres->calibrator_->setDone();  // Ignore further pushes

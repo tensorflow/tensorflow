@@ -127,6 +127,7 @@ cc_library(
         ":hlo_pass",
         ":hlo_query",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -1177,6 +1178,7 @@ cc_library(
 
 cc_library(
     name = "cpu_plugin",
+    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -4998,9 +5000,12 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
+        "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/stream_executor:stream_header",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

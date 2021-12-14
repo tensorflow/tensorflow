@@ -33,6 +33,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tfd {
 
+using ::tensorflow::tfrt_stub::OpKernelRunnerTable;
+
 void FallbackResourceArray::SetResource(
     int index, tensorflow::tfrt_stub::ImmutableTensor tensor) {
   if (resource_async_values_.size() <= index) {

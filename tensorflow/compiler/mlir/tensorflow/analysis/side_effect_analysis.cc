@@ -655,16 +655,16 @@ SideEffectAnalysisInfo::GetResourceIds(Operation* op) const {
 
 }  // namespace detail
 
-SideEffectAnalysis::SideEffectAnalysis(ModuleOp module) {
+SideEffectAnalysis::SideEffectAnalysis(ModuleOp module)
+    : alias_analysis_(module) {
   // Analyze entire module for alias analysis info.
-  ResourceAliasAnalysis alias_analysis(module);
   detail::OpSideEffectCollector op_side_effect_collector(module);
 
   // Analyze all functions.
   for (auto func : module.getOps<FuncOp>())
     this->info_map_.try_emplace(func, func,
                                 op_side_effect_collector,
-                                alias_analysis.GetAnalysisForFunc(func));
+                                alias_analysis_.GetAnalysisForFunc(func));
 }
 
 }  // namespace TF

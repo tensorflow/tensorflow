@@ -32,16 +32,6 @@
         `.save()` function inside `TrtGraphConverterV2`. When `False`, the
         `.save()` function won't save any TRT engines that have been built. When
         `True` (default), the original behavior is preserved.
-*   `tf.tpu.experimental.embedding`:
-    *   `tf.tpu.experimental.embedding.FeatureConfig` now takes an additional
-        argument `output_shape` which can specify the shape of the output
-        activation for the feature.
-    *   `tf.tpu.experimental.embedding.TPUEmbedding` now has the same behavior
-        as `tf.tpu.experimental.embedding.serving_embedding_lookup` which can
-        take arbitrary rank of dense and sparse tensor. For ragged tensor,
-        though the input tensor remains to be rank 2, the activations now can be
-        rank 2 or above by specifying the output shape in the feature config
-        or via the build method.
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
@@ -75,6 +65,18 @@
       layer which applies the hashing trick to the concatenation of crossed
       scalar inputs. This provides a stateless way to try adding feature crosses
       of integer or string data to a model.
+  * `tf.random.Generator` for keras initializers and all RNG code.
+    * Added 3 new APIs for enable/disable/check the usage of
+      `tf.random.Generator` in keras backend, which will be the new backend for
+      all the RNG in Keras. We plan to switch on the new code path by default in
+      tf 2.8, and the behavior change will likely to cause some breakage on user
+      side (eg if the test is checking against some golden nubmer). These 3 APIs
+      will allow user to disable and switch back to legacy behavior if they
+      prefer. In future (eg tf 2.10), we expect to totally remove the legacy
+      code path (stateful random Ops), and these 3 APIs will be removed as well.
+  * `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
+    `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is
+    deprecated and will be removed in a future release.
 
 # Thanks to our Contributors
 
@@ -95,6 +97,8 @@ This release contains contributions from many people at Google, as well as:
   * RNG behavior change for all `tf.keras.initializers` classes. For any class constructed with a fixed seed, it will no longer generate same value when invoked multiple times. Instead, it will return different value, but a determinisitic sequence. This change will make the initialize behavior align between v1 and v2.
   * Metrics update and collection logic in default `Model.train_step()` is now
     customizable via overriding `Model.compute_metrics()`.
+  * Losses computation logic in default `Model.train_step()` is now
+    customizable via overriding `Model.compute_loss()`.
 
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with TF SavedModel's Signature concept.
@@ -227,6 +231,8 @@ This release contains contributions from many people at Google, as well as:
     * Add a new API that allows custom call functions to signal errors. The old API will be deprecated in a future release. See https://www.tensorflow.org/xla/custom_call for details.
     * XLA:GPU reductions are deterministic by default (reductions within `jit_compile=True` are now deterministic).
     * XLA:GPU works with Horovod (OSS contribution by Trent Lo from NVidia)
+    * XLA:CPU and XLA:GPU can compile tf.unique and tf.where when shapes are
+      provably correct at compile time.
 *   `tf.saved_model.save`:
     *   When saving a model, not specifying a namespace whitelist for custom ops with a namespace will now default to allowing rather than rejecting them all.
 * Deterministic Op Functionality (enabled by setting the environment variable `TF_DETERMINISTIC_OPS` to `"true"` or `"1"`):

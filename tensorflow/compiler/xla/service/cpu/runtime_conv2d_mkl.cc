@@ -21,7 +21,7 @@ limitations under the License.
 #ifdef ENABLE_MKL
 #include <omp.h>
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 
 namespace {
@@ -37,15 +37,15 @@ int ToInt(int64_t input) {
   return output;
 }
 
-using mkldnn::convolution_direct;
-using mkldnn::convolution_forward;
-using mkldnn::engine;
-using mkldnn::memory;
-using mkldnn::padding_kind;
-using mkldnn::primitive;
-using mkldnn::prop_kind;
-using mkldnn::reorder;
-using mkldnn::stream;
+using dnnl::convolution_direct;
+using dnnl::convolution_forward;
+using dnnl::engine;
+using dnnl::memory;
+using dnnl::padding_kind;
+using dnnl::primitive;
+using dnnl::prop_kind;
+using dnnl::reorder;
+using dnnl::stream;
 
 template <typename EigenDevice, typename ScalarType>
 void MKLConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
@@ -145,9 +145,7 @@ void MKLConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
   if (need_output_conversion) {
     net.push_back(reorder(conv1_dst_memory, user_dst_memory));
   }
-#ifndef ENABLE_MKLDNN_V1
   stream(stream::kind::eager_nostore).submit(net).wait();
-#endif
 }
 }  // namespace
 #endif  // ENABLE_MKL

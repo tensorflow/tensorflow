@@ -138,7 +138,7 @@ Status RunGpuConvUnfused(GpuConvParams params, se::Stream* stream,
                                  params.config.output_descriptor,
                                  params.config.conv_desc};
   TF_ASSIGN_OR_RETURN(auto* runner,
-                      lazy_runner->GetOrCreateRunner(config, stream->parent()));
+                      lazy_runner->GetOrCreateRunner(config, stream));
 
   return (*runner)(stream, input_buf, filter_buf, output_buf, scratch_memory,
                    options.profile_result);
@@ -199,7 +199,7 @@ Status RunGpuConvForwardActivation(GpuConvParams params, se::Stream* stream,
                                       params.config.conv_desc,
                                       params.config.fusion->mode};
   TF_ASSIGN_OR_RETURN(auto* runner,
-                      lazy_runner->GetOrCreateRunner(config, stream->parent()));
+                      lazy_runner->GetOrCreateRunner(config, stream));
 
   return (*runner)(stream, input_buf, filter_buf, side_input,
                    params.fusion->bias_buf, output_buf, scratch_memory,

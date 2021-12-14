@@ -42,5 +42,25 @@ index ff64df694048..c9c35b01711c 100644
      "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
      "//conditions:default": native_arch_defines("X86", "x86_64-unknown-linux-gnu"),
  }) + [
+diff --git a/mlir/lib/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.cpp b/mlir/lib/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.cpp
+index 95d9939f2fa1..59ba404d7eb6 100644
+--- a/mlir/lib/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.cpp
++++ b/mlir/lib/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.cpp
+@@ -71,13 +71,13 @@ public:
+ 
+       // For GPU kernels,
+       // 1. Insert AMDGPU_KERNEL calling convention.
+-      // 2. Insert amdgpu-flat-workgroup-size(1, 256) attribute.
++      // 2. Insert amdgpu-flat-workgroup-size(1, 1024) attribute.
+       // 3. Insert amdgpu-implicitarg-num-bytes=56 (which must be set on OpenCL
+       // and HIP kernels per Clang)
+       llvm::Function *llvmFunc =
+           moduleTranslation.lookupFunction(func.getName());
+       llvmFunc->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+-      llvmFunc->addFnAttr("amdgpu-flat-work-group-size", "1, 256");
++      llvmFunc->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+       llvmFunc->addFnAttr("amdgpu-implicitarg-num-bytes", "56");
+     }
+     return success();
 -- 
 2.30.1 (Apple Git-130)

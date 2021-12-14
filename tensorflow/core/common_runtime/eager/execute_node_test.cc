@@ -39,6 +39,7 @@ class TestKernelAndDeviceFunc final : public KernelAndDeviceFunc {
             /*runner=*/nullptr, /*collective_executor=*/nullptr,
             host_cpu_device, /*name=*/"", /*outputs_on_op_device=*/false,
             /*allow_small_function_optimizations=*/false,
+            /*allow_control_flow_sync_execution=*/false,
             /*int_args_and_retvals_on_device=*/false,
             /*rendezvous_creator=*/nullptr, /*get_op_id=*/nullptr),
         test_input_devices_(std::move(input_devices)) {}

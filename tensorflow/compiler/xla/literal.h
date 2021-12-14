@@ -278,6 +278,7 @@ class LiteralBase {
 
   // Clones the underlying buffers into a new Literal.
   Literal Clone() const;
+  std::unique_ptr<Literal> CloneToUnique() const;
 
   // TODO(b/67651157): The methods below which perform computation on Literals
   // (Reshape, Slice, etc) should be moved elsewhere, and perhaps combined with

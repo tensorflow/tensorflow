@@ -117,7 +117,7 @@ static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
     return tfrt::MakeErrorAsyncValueRef("Failed cudaGetDevice.");
   }
 
-  ncclComm_t comm = xccl_ctx->clique.GetCommForDeviceOrdinal(device_ordinal);
+  ncclComm_t comm = *xccl_ctx->comm;
   auto ccl_comm = tfrt::gpu::wrapper::CclComm(comm, current->platform());
 
   xccl_ctx->ccl_handle =

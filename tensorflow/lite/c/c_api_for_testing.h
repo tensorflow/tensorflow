@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,23 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_LITE_C_C_API_FOR_TESTING_H_
+#define TENSORFLOW_LITE_C_C_API_FOR_TESTING_H_
 
-#include "tensorflow/compiler/xla/service/gpu/nccl_test_utils.h"
+#include "tensorflow/lite/c/c_api.h"
 
-#include <memory>
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
 
-#include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
+// Gets the number of CPU threads to use for the interpreter.
+TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterOptionsGetNumThreads(
+    TfLiteInterpreterOptions* options);
 
-namespace xla {
-namespace gpu {
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
-absl::flat_hash_set<GlobalDeviceId> DevicesWithOpenNcclChannels() {
-  absl::flat_hash_set<GlobalDeviceId> devices;
-  NcclCliqueCache().ForEach([&](const NcclCliqueKey& k, const NcclClique&) {
-    devices.insert(k.devices().begin(), k.devices().end());
-  });
-  return devices;
-}
-
-}  // namespace gpu
-}  // namespace xla
+#endif  // TENSORFLOW_LITE_C_C_API_FOR_TESTING_H_

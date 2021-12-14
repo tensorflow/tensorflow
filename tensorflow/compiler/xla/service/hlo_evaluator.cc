@@ -941,7 +941,8 @@ class FftTransform {
       // to simultaneously hold input and output in Fft1D() above.
       int64_t buffer_size = 0;
       for (auto len : fft_lengths_) {
-        int64_t size = IsPowerOfTwo(static_cast<uint64_t>(len)) ? len * 2 : len;
+        int64_t size =
+            absl::has_single_bit(static_cast<uint64_t>(len)) ? len * 2 : len;
         buffer_size = std::max(buffer_size, size);
       }
       std::vector<ComplexType> buffer(buffer_size);
@@ -1061,7 +1062,7 @@ class FftTransform {
                     bool contract_output, bool expand_input,
                     absl::Span<ComplexType> data,
                     absl::Span<ComplexType> buffer) {
-    CHECK(IsPowerOfTwo(static_cast<uint64_t>(length)));
+    CHECK(absl::has_single_bit(static_cast<uint64_t>(length)));
     const bool input_is_zero =
         GatherToBuffer(data, length, start, stride, expand_input, buffer);
 
@@ -1117,7 +1118,7 @@ class FftTransform {
                     bool contract_output, bool expand_input,
                     absl::Span<ComplexType> data,
                     absl::Span<ComplexType> buffer) {
-    if (IsPowerOfTwo(static_cast<uint64_t>(length))) {
+    if (absl::has_single_bit(static_cast<uint64_t>(length))) {
       Fft1D(length, start, stride, inverse, contract_output, expand_input, data,
             buffer);
     } else {

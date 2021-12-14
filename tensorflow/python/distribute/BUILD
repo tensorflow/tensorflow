@@ -1540,7 +1540,6 @@ distribute_py_test(
     main = "distribute_utils_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_oss_py310",  # b/209158747
     ],
     deps = [
         ":combinations",
@@ -1623,6 +1622,7 @@ distribute_py_test(
     main = "moving_averages_test.py",
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
+        "notpu",  # TODO(b/210145904)
     ],
     deps = [
         ":collective_all_reduce_strategy",

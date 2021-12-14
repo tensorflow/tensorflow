@@ -60,6 +60,7 @@ struct TensorLinearDescriptor : public GPUObjectDescriptor {
                                    std::string* result) const;
 
   void Release() override;
+  uint64_t GetSizeInBytes() const override { return data.size(); };
 };
 
 }  // namespace gpu

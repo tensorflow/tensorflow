@@ -170,8 +170,8 @@ XlaCompiler::Options GenerateCompilerOptions(
       (platform_info.platform_id() == se::host::kHostPlatformId);
   options.device_allocator = GetAllocator(device, stream, platform_info);
   if (platform_info.xla_device_metadata()) {
-    options.shape_representation_fn =
-        platform_info.xla_device_metadata()->default_shape_representation_fn();
+    options.shape_determination_fns =
+        platform_info.xla_device_metadata()->default_shape_determination_fns();
   }
   // If reference variables are not present in the graph, we can safely alias
   // passthrough parameters without performing a copy.

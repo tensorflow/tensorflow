@@ -1,6 +1,15 @@
 # python/framework package
 
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "if_xla_available", "py_test", "tf_cc_shared_object", "tf_cc_test", "tf_gen_op_wrapper_py")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_not_windows",
+    "if_oss",
+    "if_xla_available",
+    "py_test",
+    "tf_cc_shared_object",
+    "tf_cc_test",
+    "tf_gen_op_wrapper_py",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
@@ -1583,7 +1592,7 @@ filegroup(
     srcs = [
         "testdata/metrics_export_meta_graph.pb",
     ],
-    visibility = ["//visibility:public"],
+    visibility = if_oss(["//visibility:public"]),
 )
 
 tf_py_test(

@@ -155,6 +155,12 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
   // First copy all the shape value candidates into actual_shape_values_ vector.
   for (int i = 0; i < ctx->num_inputs(); i++) {
     if (is_shape_tensor_[i]) {
+      if (ctx->input_dtype(i) != DT_INT32) {
+        // In case the is_shape_tensor mask was initialized with the input
+        // shapes only (without knowledge of dtype) then we apply correction.
+        is_shape_tensor_[i] = false;
+        continue;
+      }
       // We have to copy the shape values to the host, because TRT's
       // ExecutionContext::setInputShapeBinding expects a host pointer.
       n_shape_val++;
@@ -400,6 +406,10 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
 // definition or the engine would give concrete answers.
 void TrtShapeOptimizationProfile::SetShapeTensorMask(
     const std::vector<PartialTensorShape>& input_partial_shapes) {
+  if (is_shape_tensor_.size() == input_partial_shapes.size()) {
+    // Already initialized, e.g. by TRTEngineOp::ComputeAsync().
+    return;
+  }
   is_shape_tensor_.resize(input_partial_shapes.size(), false);
   for (int i = 0; i < input_partial_shapes.size(); i++) {
     is_shape_tensor_[i] = IsTrtShapeTensorCompatible(input_partial_shapes[i]);

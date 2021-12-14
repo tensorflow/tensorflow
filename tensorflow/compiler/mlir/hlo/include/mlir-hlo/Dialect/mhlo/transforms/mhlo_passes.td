@@ -46,11 +46,6 @@ def LegalizeControlFlowPass : FunctionPass<"mhlo-legalize-control-flow"> {
   let constructor = "createLegalizeControlFlowPass()";
 }
 
-def LegalizeControlFlowToScfPass : FunctionPass<"mhlo-control-flow-to-scf"> {
-  let summary = "Legalize from MHLO control flow to SCF control flow.";
-  let constructor = "createControlFlowToScfPass()";
-}
-
 def LegalizeEinsumToDotGeneralPass : FunctionPass<"mhlo-legalize-einsum-to-dot-general"> {
   let summary = "Legalizes einsum ops to dot_general ops.";
   let constructor = "createLegalizeEinsumToDotGeneralPass()";

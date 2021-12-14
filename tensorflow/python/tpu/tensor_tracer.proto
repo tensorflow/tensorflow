@@ -33,6 +33,9 @@ message TensorTracerReport {
   // operations in the graph have the same value.
   int32 last_common_frame_no = 6;
 
+  // List of names of output tensors of the function being traced.
+  repeated string outputs = 7;
+
   message TensorTracerConfig {
     // Tensor tracer version, e.g. hostcall, outside compilation.
     string version = 1;

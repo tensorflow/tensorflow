@@ -305,6 +305,11 @@ def _get_tensorrt_rewriter_config(conversion_params,
   # beneficial to TF-TRT and are not supported by TF-TRT.
   rewriter_config_with_trt.remapping = False
 
+  # Prevent folding of Const->QDQ chains.
+  rewriter_config_with_trt.experimental_disable_folding_quantization_emulation = (
+      trt_utils.is_linked_tensorrt_version_greater_equal(8, 0, 0) or
+      trt_utils.is_loaded_tensorrt_version_greater_equal(8, 0, 0))
+
   if not disable_non_trt_optimizers:
     # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
     # need to run constant folding again.

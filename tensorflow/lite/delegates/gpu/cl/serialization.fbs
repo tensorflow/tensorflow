@@ -33,22 +33,26 @@ table GpuNode {
   name:string;
 }
 
+table GpuModel {
+  nodes:[GpuNode];
+  tensors:[TensorDescWithId];
+  const_tensors:[TensorDescWithId];
+  input_ids:[int32];
+  output_ids:[int32];
+  input_refs:[int64];
+  output_refs:[int64];
+  variable_ids_and_refs:[PairOfValueIds];
+}
+
 table BinaryProgram {
   fingerprint:uint64;
   binary:[ubyte];
 }
 
 table InferenceContext {
+  gpu_model:GpuModel;
   driver_version:string;
   binary_programs:[BinaryProgram];
-  nodes:[GpuNode];
-  tensors:[TensorDescWithId];
-  const_tensors:[TensorDescWithId];
-  input_ids:[int32];
-  variable_ids_and_refs:[PairOfValueIds];
-  output_ids:[int32];
-  input_refs:[int64];
-  output_refs:[int64];
   // Must be serialized after actual OpenCL objects created
   // Separated from nodes in GpuModel
   tuned_work_group_sizes_per_node:[tflite.gpu.data.Int3];

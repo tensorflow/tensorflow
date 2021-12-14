@@ -216,7 +216,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   CoreRuntime* GetCoreRuntime();
   tensorflow::Status BuildFunctionRequestContext(
-      tensorflow::tfd::OpKernelRunnerTable* runner_table,
+      tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
       RCReference<tfrt::RequestContext>* request_context);
   tensorflow::Status BuildOpRequestContext(
       RCReference<tfrt::RequestContext>* request_context);

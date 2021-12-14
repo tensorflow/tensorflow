@@ -881,7 +881,7 @@ absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
 
 namespace {
 
-REGISTER_DATASET_EXPERIMENT("enable_bufferedio_v2", 5);
+REGISTER_DATASET_EXPERIMENT("enable_bufferedio_v2", 50);
 REGISTER_DATASET_EXPERIMENT("inject_prefetch", 5);
 REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
 REGISTER_DATASET_EXPERIMENT("max_parallelism_v2", 50);

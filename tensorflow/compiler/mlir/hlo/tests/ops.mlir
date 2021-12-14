@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect | FileCheck %s
 
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.
@@ -2173,23 +2173,23 @@ func @rng_uniform_invalid(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<
 // -----
 // CHECK: func @conv2d_generic
 // CHECK: mhlo.convolution
-// CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+// CHECK-SAME: dim_numbers = [b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]
 // CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
-func @conv2d_generic(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
+func @conv2d_generic(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw
       input_batch_dimension = 0,
-      input_feature_dimension = 3,
+      input_feature_dimension = 4,
       input_spatial_dimensions = [1, 2],
-      kernel_input_feature_dimension = 2,
-      kernel_output_feature_dimension = 3,
+      kernel_input_feature_dimension = 3,
+      kernel_output_feature_dimension = 4,
       kernel_spatial_dimensions = [0, 1],
-      output_batch_dimension = 0,
-      output_feature_dimension = 3,
-      output_spatial_dimensions = [1, 2]
+      output_batch_dimension = 1,
+      output_feature_dimension = 4,
+      output_spatial_dimensions = [2, 3]
     >, feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>, precision_config = ["DEFAULT", "DEFAULT"], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} :
-       (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
-  return %0 : tensor<1x8x8x16xf32>
+       (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32>
+  return %0 : tensor<32x1x8x8x16xf32>
 }
 
 // CHECK: func @conv2d
@@ -2266,6 +2266,14 @@ func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> ten
 // CHECK: mhlo.conv = #mhlo.conv<[b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]>
 module attributes {
   mhlo.conv = #mhlo.conv<[b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+// CHECK: module
+// CHECK: mhlo.conv = #mhlo.conv<[b, 1, 0, ?, f]x[?, 0, 1, i, o]->[b, ?, 0, 1, f]>
+module attributes {
+  mhlo.conv = #mhlo.conv<[b, 1, 0, ?, f]x[?, 0, 1, i, o]->[b, ?, 0, 1, f]>
 } {}
 
 // -----
@@ -2675,3 +2683,131 @@ module attributes {
       foo = [0]
   >} {}
 
+// -----
+
+// CHECK-LABEL: func @test_alias_attribute
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<
+// CHECK-SAME:       tuple_indices = [1, 1],
+// CHECK-SAME:       result_index = [2, 0, 1],
+// CHECK-SAME:       must_alias>
+func @test_alias_attribute (%arg0: tuple<i32, tuple<i32, tensor<3xf32>>> {mhlo.result_alias = #mhlo.result_alias<
+      tuple_indices = [1, 1],
+      result_index = [2, 0, 1],
+      must_alias>}
+    ) -> (i32, i32, tuple<tuple<i32, tensor<3xf32>>>) {
+  %0:3 = "Test.Op"() : () -> (i32, i32, tuple<tuple<i32, tensor<3xf32>>>)
+  return %0#0, %0#1, %0#2 : i32, i32, tuple<tuple<i32, tensor<3xf32>>>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_alias_dynamic_dimension
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<result_index = [2]>
+func @test_alias_dynamic_dimension (%arg0: tensor<?xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [2]>}
+    ) -> (i32, i32, tensor<2xf32>) {
+  %0:3 = "Test.Op"() : () -> (i32, i32, tensor<2xf32>)
+  return %0#0, %0#1, %0#2 : i32, i32, tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_may_alias_no_tuple
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<result_index = [2]>
+func @test_may_alias_no_tuple (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [2]>}
+    ) -> (i32, i32, tensor<2xf32>) {
+  %0:3 = "Test.Op"() : () -> (i32, i32, tensor<2xf32>)
+  return %0#0, %0#1, %0#2 : i32, i32, tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_may_alias_arg_tuple
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<tuple_indices = [2, 0], result_index = [2]>
+func @test_may_alias_arg_tuple (%arg0: tuple<i32, i32, tuple<tensor<2xf32>, i32>> {mhlo.result_alias = #mhlo.result_alias<tuple_indices = [2, 0], result_index = [2]>}
+    ) -> (i32, i32, tensor<2xf32>) {
+  %0:3 = "Test.Op"() : () -> (i32, i32, tensor<2xf32>)
+  return %0#0, %0#1, %0#2 : i32, i32, tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_may_alias_result_tuple
+// CHECK-SAME:  mhlo.result_alias = #mhlo.result_alias<result_index = [2, 1, 2]>
+func @test_may_alias_result_tuple (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [2, 1, 2]>}
+    ) -> (i32, i32, tuple<i32, tuple<i32, i32, tensor<2xf32>>>, i32) {
+  %0:4 = "Test.Op"() : () -> (i32, i32, tuple<i32, tuple<i32, i32, tensor<2xf32>>>, i32)
+  return %0#0, %0#1, %0#2, %0#3 : i32, i32, tuple<i32, tuple<i32, i32, tensor<2xf32>>>, i32
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" can only be used on function-like operations}}
+module attributes {mhlo.result_alias = #mhlo.result_alias<result_index = [2, 3]>} {}
+
+// -----
+
+// expected-error @+2 {{expected at least 1 element(s), found 0}}
+// expected-error@+1 {{failed parsing argument-result alias attribute}}
+func @error_empty_result_index (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = []>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" expects all argument and result indices to be >= 0}}
+func @error_negative_arg_tuple_index (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<tuple_indices = [0, -1], result_index = [0]>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" expects all argument and result indices to be >= 0}}
+func @error_negative_result_index (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [-1]>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" expects all argument and result indices to be >= 0}}
+func @error_negative_result_tuple_index (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [0, -1]>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" result index is out of range, must be <1}}
+func @error_result_index_out_of_range (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [1]>}
+    ) -> (tensor<2xf32>) {
+  return %arg0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" argument tuple indices are invalid}}
+func @error_invalid_argument_tuple_indices (%arg0: tuple<i32, tensor<2xf32>> {mhlo.result_alias = #mhlo.result_alias<tuple_indices = [2], result_index = [0]>}
+    ) -> (tensor<2xf32>) {
+  %0 = "Test.Op"() : () -> (tensor<2xf32>)
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" aliases do not have compatible types, 'tensor<2xf32>' vs. 'tensor<1xf32>'}}
+func @error_incompatible_alias_shapes (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [0, 1]>}
+    ) -> (tuple<i32, tensor<1xf32>>) {
+  %0 = "Test.Op"() : () -> (tuple<i32, tensor<1xf32>>)
+  return %0 : tuple<i32, tensor<1xf32>>
+}
+
+// -----
+
+// expected-error@+1 {{attribute "mhlo.result_alias" aliases do not have compatible types, 'tensor<2xf32>' vs. 'tensor<2xi32>'}}
+func @error_incompatible_alias_element_types (%arg0: tensor<2xf32> {mhlo.result_alias = #mhlo.result_alias<result_index = [0, 1]>}
+    ) -> (tuple<i32, tensor<2xi32>>) {
+  %0 = "Test.Op"() : () -> (tuple<i32, tensor<2xi32>>)
+  return %0 : tuple<i32, tensor<2xi32>>
+}

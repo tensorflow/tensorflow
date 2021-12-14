@@ -68,6 +68,9 @@ class ClOperation {
   // should be called after changes of inputs/outputs.
   absl::Status UpdateParams();
 
+  absl::Status SetSrcTensor(int index, Tensor* tensor);
+  absl::Status SetDstTensor(int index, Tensor* tensor);
+
   absl::Status AddToQueue(CLCommandQueue* queue) {
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     return queue->Dispatch(kernel_, operation_->work_groups_count_,
@@ -90,13 +93,6 @@ class ClOperation {
   absl::Status RestoreDeserialized(const CreationContext& creation_context);
   absl::Status InitFromCache(uint64_t fingerprint,
                              const ProgramCache& program_cache);
-
-  void MoveObjectRefsFromCLToGeneric() {
-    cl_args_.MoveObjectRefsOut(&operation_->args_);
-  }
-  void MoveObjectRefsFromGenericToCL() {
-    cl_args_.MoveObjectRefsIn(&operation_->args_);
-  }
 
   int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
 

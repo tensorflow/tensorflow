@@ -36,7 +36,7 @@ tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test""$(maybe_skip_v1)"
 # Run bazel test command.
 "${BAZEL_WRAPPER_PATH}" \
   test \
-  --profile="${KOKORO_ARTIFACTS_DIR}/profile.json" \
+  --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
   --config=rbe_cpu_linux \
   --config=rbe_linux_py3 \
   --python_path="/usr/bin/python3.9" \
@@ -46,6 +46,9 @@ tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test""$(maybe_skip_v1)"
   --test_lang_filters=cc,py \
   -- \
   ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+
+# Print build time statistics, including critical path.
+bazel analyze-profile "${KOKORO_ARTIFACTS_DIR}/profile.json.gz"
 
 # Copy log to output to be available to GitHub
 ls -la "$(bazel info output_base)/java.log"

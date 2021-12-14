@@ -302,6 +302,7 @@ class TestDelta {
   const monitoring::CounterCell* cell_;
   int64 last_value_;
 };
+void UpdateTpuErrorCounter(const string& op, const string& error_type);
 
 }  // namespace metrics
 }  // namespace tensorflow

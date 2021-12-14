@@ -70,8 +70,8 @@ Status WithLogBacktrace(const Status& status);
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
-static constexpr int kInlineRank = 8;
-using DimensionVector = absl::InlinedVector<int64_t, kInlineRank>;
+inline constexpr int InlineRank() { return 8; }
+using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -450,12 +450,6 @@ string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
 void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
-
-template <typename T>
-inline bool IsPowerOfTwo(T x) {
-  static_assert(!std::numeric_limits<T>::is_signed, "unsigned types only");
-  return x != 0 && (x & (x - 1)) == 0;
-}
 
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>

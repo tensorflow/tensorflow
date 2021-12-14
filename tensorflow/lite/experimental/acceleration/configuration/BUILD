@@ -18,6 +18,10 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
+# copybara:comment_begin(oss-only)
+load("//tensorflow/core/platform/default:build_config.bzl", "tf_proto_library_py")
+# copybara:comment_end
+
 package(
     default_visibility = [
         "//visibility:public",
@@ -70,6 +74,13 @@ java_lite_proto_library(
     name = "configuration_java_proto_lite",
     deps = [":configuration_proto"],
 )
+
+# copybara:comment_begin(oss-only)
+tf_proto_library_py(
+    name = "configuration_proto_external",
+    srcs = ["configuration.proto"],
+)
+# copybara:comment_end
 
 # TODO(b/191428000): The automatic generation is temporarily disabled until
 # https://github.com/google/flatbuffers/pull/6486 is landed and tensorflow

@@ -40,6 +40,8 @@ def TFJSDialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tfjs";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 //===----------------------------------------------------------------------===//
