@@ -49,6 +49,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
+
 	adpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/api_def_go_proto"
 	odpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto"
 )
@@ -211,12 +212,12 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 `))
 
 	tmplOp = template.Must(template.New("op").Funcs(template.FuncMap{
-		"MakeComment":       makeComment,
-		"GoType":            goType,
-		"CamelCase":         camelCase,
-		"Identifier":        identifier,
-		"IsListArg":         isListArg,
-		"IsListAttr":        isListAttr,
+		"MakeComment":         makeComment,
+		"GoType":              goType,
+		"CamelCase":           camelCase,
+		"Identifier":          identifier,
+		"IsListArg":           isListArg,
+		"IsListAttr":          isListAttr,
 		"MarshalProtoMessage": marshalProtoMessage,
 	}).Parse(`
 {{if .OptionalAttrs -}}
@@ -572,28 +573,28 @@ func isListAttr(attrdef *odpb.OpDef_AttrDef) bool {
 }
 
 func marshalProtoMessage(m proto.Message) string {
-        // Marshal proto message to string.
-        o := prototext.MarshalOptions{Multiline: false}
-        x := o.Format(m)
+	// Marshal proto message to string.
+	o := prototext.MarshalOptions{Multiline: false}
+	x := o.Format(m)
 
-        // Remove superfluous whitespace, if present.
-        //
-        // Go protobuf output is purposefully unstable, randomly adding
-        // whitespace.  See github.com/golang/protobuf/issues/1121
-        x = strings.ReplaceAll(x, "  ", " ")
+	// Remove superfluous whitespace, if present.
+	//
+	// Go protobuf output is purposefully unstable, randomly adding
+	// whitespace.  See github.com/golang/protobuf/issues/1121
+	x = strings.ReplaceAll(x, "  ", " ")
 
-        // Remove the prefix of the string up to the first colon.
-        //
-        // This is useful when 's' corresponds to a "oneof" protocol buffer
-        // message. For example, consider the protocol buffer message:
-        //   oneof value { bool b = 1;  int64 i = 2; }
-        // proto.CompactTextString) will print "b:true", or "i:7" etc. The
-        // following strips out the leading "b:" or "i:".
-        y := strings.SplitN(x, ":", 2)
-        if len(y) < 2 {
-                return x
-        }
-        return y[1]
+	// Remove the prefix of the string up to the first colon.
+	//
+	// This is useful when 's' corresponds to a "oneof" protocol buffer
+	// message. For example, consider the protocol buffer message:
+	//   oneof value { bool b = 1;  int64 i = 2; }
+	// proto.CompactTextString) will print "b:true", or "i:7" etc. The
+	// following strips out the leading "b:" or "i:".
+	y := strings.SplitN(x, ":", 2)
+	if len(y) < 2 {
+		return x
+	}
+	return y[1]
 }
 
 func parseTFType(tfType string) (list bool, typ string) {
