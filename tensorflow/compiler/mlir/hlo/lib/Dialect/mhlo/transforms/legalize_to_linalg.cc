@@ -1399,7 +1399,7 @@ SmallVector<Value, 2> GetDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
 }
 
 template <DotOperationType op_type, typename LinalgOp>
-class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
+class DotOpConversion : public OpConversionPattern<mhlo::DotOp> {
  public:
   using OpConversionPattern<mhlo::DotOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1439,8 +1439,7 @@ SmallVector<Value, 8> GetDotGeneralOpInitTensorDynSizes(
   return dyn_shape;
 }
 
-class DotGeneralOpOnTensorsConversion
-    : public OpConversionPattern<mhlo::DotGeneralOp> {
+class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
  public:
   using OpConversionPattern<mhlo::DotGeneralOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1554,7 +1553,7 @@ class ReduceRegionReturnOpConversion
   }
 };
 
-class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
+class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
  public:
   using OpConversionPattern<mhlo::ReduceOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1646,7 +1645,7 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
 };
 
 /// Converts mhlo.pad operation to linalg.pad_tensor op.
-struct PadOpOnTensorsConversion : public OpConversionPattern<mhlo::PadOp> {
+struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
   using OpConversionPattern<mhlo::PadOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -1683,8 +1682,7 @@ struct PadOpOnTensorsConversion : public OpConversionPattern<mhlo::PadOp> {
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
 /// convolution cases. The op must have canonical dimension numbers. Depthwise
 /// convolution and pointwise convolution are not handled in the conversion.
-struct NormalConvOpOnTensorsConversion
-    : public OpConversionPattern<mhlo::ConvOp> {
+struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
   using OpConversionPattern<mhlo::ConvOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -1764,8 +1762,7 @@ struct NormalConvOpOnTensorsConversion
 /// Converts mhlo.convolution operation to
 /// linalg.depthwise_conv_2d_input_nhwc_filter_hwcf op or
 /// depthwise_conv_2d_input_nhwc_filter_hwc op.
-struct DepthwiseConvOpOnTensorsConversion
-    : public OpConversionPattern<mhlo::ConvOp> {
+struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
   using OpConversionPattern<mhlo::ConvOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -2064,7 +2061,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
   }
 };
 
-struct ReduceWindowOpOnTensorsConversion
+struct ReduceWindowOpConversion
     : public OpConversionPattern<mhlo::ReduceWindowOp> {
   using OpConversionPattern<mhlo::ReduceWindowOp>::OpConversionPattern;
 
@@ -2259,7 +2256,7 @@ struct ReduceWindowOpOnTensorsConversion
 };
 
 /// Converts xla-hlo.torch_index_select op to a linalg.generic op.
-struct TorchIndexSelectOpOnTensorsConversion
+struct TorchIndexSelectOpConversion
     : public OpConversionPattern<mhlo::TorchIndexSelectOp> {
   using OpConversionPattern<mhlo::TorchIndexSelectOp>::OpConversionPattern;
 
@@ -2360,7 +2357,7 @@ struct TorchIndexSelectOpOnTensorsConversion
 /// lowerings, special-cases of gather should be extracted in separate
 /// lowerings, and ideally encapsulated as separate ops or canonicalization
 /// patterns.
-struct GatherOnTensorsConversion : public OpConversionPattern<mhlo::GatherOp> {
+struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
   using OpConversionPattern<mhlo::GatherOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -2525,8 +2522,7 @@ struct GatherOnTensorsConversion : public OpConversionPattern<mhlo::GatherOp> {
   }
 };
 
-struct ScatterUpdateOnTensorsConversion
-    : public OpConversionPattern<mhlo::ScatterOp> {
+struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
   using OpConversionPattern<mhlo::ScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -2864,22 +2860,20 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
       TransposeConverter<mhlo::TransposeOp>,
-      DotOpOnTensorsConversion<DotOperationType::kMatrixMatrix,
-                               linalg::MatmulOp>,
-      DotOpOnTensorsConversion<DotOperationType::kMatrixVector,
-                               linalg::MatvecOp>,
-      DotOpOnTensorsConversion<DotOperationType::kVectorDot, linalg::DotOp>,
-      DotGeneralOpOnTensorsConversion,
-      NormalConvOpOnTensorsConversion,
-      DepthwiseConvOpOnTensorsConversion,
-      ReduceOnTensorsConversion,
+      DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
+      DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,
+      DotOpConversion<DotOperationType::kVectorDot, linalg::DotOp>,
+      DotGeneralOpConversion,
+      NormalConvOpConversion,
+      DepthwiseConvOpConversion,
+      ReduceConversion,
       ReduceWindowOpOnTensorsGenericConversion,
-      ReduceWindowOpOnTensorsConversion,
+      ReduceWindowOpConversion,
       RngUniformConversion,
-      ScatterUpdateOnTensorsConversion,
-      GatherOnTensorsConversion,
-      TorchIndexSelectOpOnTensorsConversion,
-      PadOpOnTensorsConversion>(type_converter, context);
+      ScatterUpdateConversion,
+      GatherConversion,
+      TorchIndexSelectOpConversion,
+      PadOpConversion>(type_converter, context);
   // clang-format on
   patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
                    ReduceRegionXLAOpConversion<mhlo::AndOp>,
