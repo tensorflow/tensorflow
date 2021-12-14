@@ -175,13 +175,6 @@ absl::Span<const T> AsSlice(const std::vector<T>& v) {
   return absl::Span<const T>(v);
 }
 
-// Converts a mutable vector pointer into a Span of the same
-// type.
-template <typename T>
-absl::Span<T> AsMutableSlice(std::vector<T>* v) {
-  return absl::Span<T>(v->data(), v->size());
-}
-
 // int64_t is not the same type as tensorflow::protobuf_int64 in open-source.
 // Wrapper function that gives an int64_t array slice view of a repeated int64
 // protobuf field.
