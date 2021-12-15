@@ -404,7 +404,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
       int64_t map_index = std::get<0>(it);
       // Clamp the indices within bounds to faithfully mirror gather semantics.
       int64_t offset =
-          Clamp(std::get<1>(it).getSExtValue(), 0l,
+          Clamp(std::get<1>(it).getSExtValue(), static_cast<int64_t>(0),
                 operand_type.getDimSize(map_index) - slice_end[map_index]);
       slice_start[map_index] += offset;
       slice_end[map_index] += offset;
