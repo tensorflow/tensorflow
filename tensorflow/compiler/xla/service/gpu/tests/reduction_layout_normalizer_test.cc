@@ -29,6 +29,8 @@ namespace gpu {
 
 namespace {
 
+// TODO(b/210165681): The tests in this file are fragile to HLO op names.
+
 class ReductionLayoutNormalizerTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
@@ -160,7 +162,7 @@ ENTRY main {
 // CHECK:  %fusion = u32[7,2,3,4]{3,2,1,0} fusion(u32[2,3,4,7]{3,2,1,0} %idxs), kind=kLoop, calls=%fused_computation
 // CHECK:  %constant0 = f32[] constant(0)
 // CHECK:  %constant1 = u32[] constant(0)
-// CHECK:  ROOT %reduce = (f32[2,3,4]{2,1,0}, u32[2,3,4]{2,1,0}) reduce(f32[7,2,3,4]{3,2,1,0} %bitcast, u32[7,2,3,4]{3,2,1,0} %fusion, f32[] %constant0, u32[] %constant1), dimensions={0}, to_apply=%argmax
+// CHECK:  ROOT %reduce0 = (f32[2,3,4]{2,1,0}, u32[2,3,4]{2,1,0}) reduce(f32[7,2,3,4]{3,2,1,0} %bitcast, u32[7,2,3,4]{3,2,1,0} %fusion, f32[] %constant0, u32[] %constant1), dimensions={0}, to_apply=%argmax
 // CHECK: }
       )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));

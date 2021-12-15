@@ -945,6 +945,11 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 
+  // Preserve the name of the old instruction.  This is safe because we're going
+  // to remove the old one anyway, and it makes it easier to trace how our conv
+  // is transformed through all our passes.
+  new_call->SetAndSanitizeName(instr->name());
+
   VLOG(2) << "Replacing convolution " << instr->ToString() << " with "
           << new_call->ToString();
 
