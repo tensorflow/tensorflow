@@ -35,8 +35,7 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
- public:
+struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -80,21 +79,8 @@ class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
   }
 };
 
-class BufferizeDimOp : public OpConversionPattern<tensor::DimOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      tensor::DimOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.source(),
-                                               adaptor.index());
-    return success();
-  }
-};
-
-class BufferizeAndConvertMinimumBroadcastShapesOp
+struct BufferizeAndConvertMinimumBroadcastShapesOp
     : public OpConversionPattern<chlo::MinimumBroadcastShapesOp> {
- public:
   using OpConversionPattern<
       chlo::MinimumBroadcastShapesOp>::OpConversionPattern;
 
@@ -421,18 +407,6 @@ struct BufferizeJITExecuteOp
   }
 };
 
-class BufferizeRankOp : public OpConversionPattern<tensor::RankOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      tensor::RankOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<memref::RankOp>(op, op.getType(),
-                                                adaptor.tensor());
-    return success();
-  }
-};
-
 }  // namespace
 
 void populateExtraBufferizePatterns(
@@ -442,9 +416,8 @@ void populateExtraBufferizePatterns(
   patterns->insert<
       BufferizeAndConvertMinimumBroadcastShapesOp,
       BufferizeConstantOp,
-      BufferizeDimOp,
-      BufferizeJITExecuteOp,
-      BufferizeRankOp>(*converter, context);
+      BufferizeJITExecuteOp
+  >(*converter, context);
   // clang-format on
 }
 
