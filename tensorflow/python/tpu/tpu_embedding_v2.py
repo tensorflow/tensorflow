@@ -498,11 +498,14 @@ class TPUEmbedding(tracking.AutoTrackable):
     """Get output shapes from the flattened input shapes list."""
     output_shapes = []
     for input_shape in input_shapes:
-      if input_shape.rank is None or input_shape.rank < 2:
+      if input_shape.rank is None or input_shape.rank < 1:
         raise ValueError(
-            "Received input tensor of shape {}. Rank must be 2 and above"
+            "Received input tensor of shape {}. Rank must be 1 and above"
             .format(input_shape))
-      output_shapes.append(input_shape[:-1])
+      if input_shape.rank == 1:
+        output_shapes.append(input_shape)
+      else:
+        output_shapes.append(input_shape[:-1])
     return output_shapes
 
   @property
@@ -1147,8 +1150,9 @@ class TPUEmbedding(tracking.AutoTrackable):
     function, the output shapes should match automatically.
 
     The auto detected the output shapes:
-      1. For dense tensor, make sure the tensor has last dimension as 1. The
-         output shape will be the input shape excluding the last dimension.
+      1. For dense tensor, if rank 2 or above, make sure the tensor has last
+         dimension as 1. The output shape will be the input shape excluding
+         the last dimension.
       2. For sparse tensor, make sure the tensor has rank 2 and above.
            a. If feature config has max_sequence_length equals 0 or output shape
               set (the max_sequence_length setting will be ignored), the
@@ -1396,8 +1400,11 @@ class TPUEmbedding(tracking.AutoTrackable):
       raise ValueError("Only rank 1 and above dense tensor is supported,"
                        " find rank {} sparse tensor for input {}".format(
                            len(shape), path))
-    if shape[-1] != 1:
-      return TensorShape(shape + [1])
+    if len(shape) > 1 and shape[-1] != 1:
+      raise ValueError(
+          "Rank 2 or above dense tensor should have last dimension as 1 "
+          "as the last dimension will always be reduced."
+          "Instead got dense tensor as shape {}".format(shape))
     return TensorShape(shape)
 
   def _get_input_shape_for_sparse_tensor(self, tensor, feature,

@@ -404,15 +404,15 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
       features = (
           constant_op.constant(
               self.feature_watched_values_high_dimensional[:dense_size],
-              shape=(self.data_batch_size, 2),
+              shape=(self.data_batch_size, 2, 1),
               dtype=dtypes.int32),
           constant_op.constant(
               self.feature_favorited_values_high_dimensional[:dense_size],
-              shape=(self.data_batch_size, 2),
+              shape=(self.data_batch_size, 2, 1),
               dtype=dtypes.int32),
           constant_op.constant(
               self.feature_friends_values_high_dimensional[:dense_size],
-              shape=(self.data_batch_size, 2),
+              shape=(self.data_batch_size, 2, 1),
               dtype=dtypes.int32))
       if include_weights:
         weights = [
