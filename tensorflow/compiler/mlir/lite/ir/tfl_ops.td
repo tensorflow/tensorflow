@@ -5366,6 +5366,7 @@ def TFL_AveragePool3DOp: TFL_Op<"average_pool_3d", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultsScale,
+    QuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Average Pool 3D operator";
 
@@ -5398,6 +5399,7 @@ def TFL_MaxPool3DOp : TFL_Op<"max_pool_3d", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultsScale,
+    QuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Max Pool 3D operator";
 
