@@ -227,6 +227,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // allocations (see below).
   llvm::DenseMap<const xla::BufferAllocation*, Value> allocations_;
 
+  llvm::DenseMap<const xla::BufferAllocation*, Value> customAllocations_;
+
   // This map provides access to MLIR buffers for each HLO instruction, keyed
   // instruction identity. A slice is contained in a BufferAllocation, and has
   // an offset and a size.

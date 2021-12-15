@@ -1448,7 +1448,38 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
   // produce the physical shape (where dimensions are ordered in major to
   // minor) first, then follow up with a MemRefReinterpretCast to cast the
   // resulting memref to the original layout.
-  Value result =
+  auto type = alloc.getType().cast<ShapedType>();
+  auto bytes = type.getSizeInBits() / 8;
+  /*size_t bytes = 0;
+  for (int i = 0; i < physical_shape.rank(); ++i){
+    bytes += ((static_shape.dimensions(i) + 1 )*4);
+  }*/
+
+  auto memrefType = MemRefType::get({bytes}, builder_.getIntegerType(8));
+  auto entry =  customAllocations_.find(slice.allocation());
+
+  std::string moduleName = computation_.name();
+  Value customAlloc;
+  bool flag = false;
+
+  // Pick the name of the module.
+  if (moduleName.find("jit_update") != std::string::npos){
+    flag = true;
+    if(entry != customAllocations_.end())
+      customAlloc = customAllocations_[slice.allocation()];
+    else{
+      customAlloc = builder_.create<memref::AllocOp>(alloc.getLoc(),memrefType);
+      customAllocations_.insert(std::make_pair(slice.allocation(),customAlloc));
+    }
+  }
+
+  Value result;
+  if(flag)
+    result =
+      builder_.create<memref::ViewOp>(loc, physical_out_type, customAlloc, byte_shift,
+                                      /*sizes=*/ValueRange{});
+  else
+    result =
       builder_.create<memref::ViewOp>(loc, physical_out_type, alloc, byte_shift,
                                       /*sizes=*/ValueRange{});
   if (result.getType() != out_type) {
