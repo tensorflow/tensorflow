@@ -1,6 +1,6 @@
 # TODO(rameshsampath): Debug Python 3.10 failures
 # Dependencies only required for Windows
-psutil==5.6.2
+psutil==5.6.6
 astor==0.7.1
 libclang==11.1.0
 colorama==0.3.9
