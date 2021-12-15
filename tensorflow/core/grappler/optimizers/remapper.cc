@@ -1096,30 +1096,14 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
 bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
                        std::map<string, int>* matched_nodes_map,
                        std::set<int>* remove_node_indices) {
+  // Gelu fusion is enabled only with oneDNN library.
+  if (!IsMKLEnabled()) return false;
+
   using utils::MatchingDirection;
   using utils::NodeStatus;
   // clang-format off
-  //                Convert Sigmoid+Mul to Swish
-  //          From Graph                          To Graph
-  //          -----------                         ---------
-  //    Conv2D  <-  Filter(const)           Conv2D  <-  Filter(const)
-  //      !                                   !
-  //      V                                   V
-  //    BiasAdd <-  bias(const)             BiasAdd <-  bias(const)
-  //      !                                   !
-  //      V                                   !
-  //  ---- ----                               !
-  //  !       !                               !
-  //  !       V                               !
-  //  !    Sigmoid                            !
-  //  !       !                               !
-  //  ---   ---                               !
-  //     !  !                                 !
-  //     !  !                                 !
-  //     V  V                                 V
-  //      Mul                             _MklSwish
-  //      !                                   !
-  //      V                                   V
+  // Convert Sigmoid+Mul to Swish
+  // Mul(x, Sigmoid(x)) --> _MklSwish(x)
 
   utils::OpTypePattern sigmoidmul_pattern{ "Mul", "mul_to_swish", NodeStatus::kReplace,
     {
