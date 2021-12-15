@@ -535,9 +535,6 @@ std::vector<BatchNormTestParam> BuildBatchNormTestParams() {
   // to physical dimension calculation is correct after relayout.
   add_testcase({1, 2, 3, 4}, 0, 100, 100);
 
-  // Zero-sized tensor.
-  add_testcase({1, 0, 100, 42}, 0, 100, 100);
-
   return params;
 }
 
@@ -757,6 +754,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
   const std::vector<int64_t>& bounds = GetParam().bounds;
+  LOG(ERROR) << "looking at bounds: " << absl::StrJoin(bounds, ", ");
   Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
   input_array.FillRandom(GetParam().random_value_var,
                          GetParam().random_value_mean);

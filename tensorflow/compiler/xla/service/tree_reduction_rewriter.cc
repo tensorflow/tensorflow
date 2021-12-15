@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/tree_reduction_rewriter.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -46,10 +47,25 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *initial_value = hlo->mutable_operand(1);
     const Shape &input_shape = reduced_op->shape();
     const Shape &reduce_shape = hlo->shape();
+
     if (!reduce_shape.IsArray()) {
+      // TODO(b/210786051): Implement tree reduction rewrite for variadic
+      // reductions on CPU as well.
+      VLOG(1) << "Skipping rewrite for variadic reduction";
       return Status::OK();
     }
-    auto reduced_dimensions = hlo->dimensions();
+
+    // All of the reduced dimensions is smaller than the window size,
+    // do not perform the rewrite.
+    if (absl::c_all_of(hlo->dimensions(), [&](int64_t reduced_dim) {
+          return input_shape.dimensions(reduced_dim) <= reduce_window_size_;
+        })) {
+      VLOG(1) << "Skipping tree reduction rewrite: all reduced dimensions are "
+                 "smaller than "
+              << reduce_window_size_;
+      return Status::OK();
+    }
+
     std::vector<int64_t> window_dimensions;
     std::vector<int64_t> window_strides;
     for (int64_t dim = 0; dim < input_shape.rank(); dim++) {
@@ -58,14 +74,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         window_strides.push_back(1);
         continue;
       }
-      // One of the reduced dimensions is smaller than the window size,
-      // do not perform the rewrite.
-      if (input_shape.dimensions(dim) < reduce_window_size_) {
-        return Status::OK();
-      }
 
-      window_dimensions.push_back(reduce_window_size_);
-      window_strides.push_back(reduce_window_size_);
+      int64_t window_size_for_dim =
+          std::min(input_shape.dimensions(dim), reduce_window_size_);
+
+      window_dimensions.push_back(window_size_for_dim);
+      window_strides.push_back(window_size_for_dim);
     }
 
     std::vector<std::pair<int64_t, int64_t>> padding =
