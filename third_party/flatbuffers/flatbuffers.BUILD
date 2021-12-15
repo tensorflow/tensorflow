@@ -19,8 +19,6 @@ config_setting(
     values = {"cpu": "x64_windows"},
 )
 
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
-
 # Public flatc library to compile flatbuffer files at runtime.
 cc_library(
     name = "flatbuffers",

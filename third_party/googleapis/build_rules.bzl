@@ -16,7 +16,6 @@
 Utilities for building grpc and proto libraries from googleapis.
 """
 
-load("@rules_cc//cc:defs.bzl", native_cc_proto_library = "cc_proto_library")
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 
 def _tf_cc_headers(ctx):
@@ -45,7 +44,7 @@ def cc_proto_library(name, deps):
       name: the name of the cc_library
       deps: a list that contains exactly one proto_library
     """
-    native_cc_proto_library(
+    native.cc_proto_library(
         name = name,
         deps = deps,
         visibility = ["//visibility:public"],
