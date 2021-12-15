@@ -38,6 +38,16 @@
         each TRTEngineOp with their input(s)' and output(s)' shape and dtype. A
         detailed version of the summary is available which prints additionally
         all the TensorFlow OPs included in each of the TRTEngineOPs.
+*   `tf.tpu.experimental.embedding`:
+    *   `tf.tpu.experimental.embedding.FeatureConfig` now takes an additional
+        argument `output_shape` which can specify the shape of the output
+        activation for the feature.
+    *   `tf.tpu.experimental.embedding.TPUEmbedding` now has the same behavior
+        as `tf.tpu.experimental.embedding.serving_embedding_lookup` which can
+        take arbitrary rank of dense and sparse tensor. For ragged tensor,
+        though the input tensor remains to be rank 2, the activations now can be
+        rank 2 or above by specifying the output shape in the feature config
+        or via the build method.
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
