@@ -4658,6 +4658,32 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   return getOperand();
 }
 
+// transpose(transpose(X)) => transpose(X)
+static LogicalResult EliminateRedundantTranspse(TransposeOp op,
+                                                PatternRewriter& rewriter) {
+  auto tranpose_operand = op.operand().getDefiningOp<TransposeOp>();
+  if (!tranpose_operand) {
+    return failure();
+  }
+  auto operand_permutation = tranpose_operand.permutation().getValues<APInt>();
+  auto new_permutation =
+      op.permutation()
+          .mapValues(op.permutation().DenseElementsAttr::getElementType(),
+                     [&operand_permutation](const APInt& index) -> APInt {
+                       return operand_permutation[index.getSExtValue()];
+                     })
+          .cast<DenseIntElementsAttr>();
+  rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getResult().getType(),
+                                           tranpose_operand.operand(),
+                                           new_permutation);
+  return success();
+}
+
+void TransposeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                              MLIRContext* /*context*/) {
+  results.insert(EliminateRedundantTranspse);
+}
+
 static LogicalResult Verify(TransposeOp op) {
   // permutation is an attribute of the op so it has static shape.
   auto permutationType = op.permutation().getType();
