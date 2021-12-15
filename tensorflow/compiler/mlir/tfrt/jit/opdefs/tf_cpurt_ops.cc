@@ -65,6 +65,15 @@ int64_t FallbackExecuteOp::cost() {
 
   int64_t cost = 0;
 
+  // Compute the max argument size, which we will assign to unranked inputs
+  // just like TFRT's cost model does.
+  int64_t max_arg_size = 1;
+  for (BlockArgument& arg : kernel_fn.getArguments()) {
+    auto type = arg.getType().cast<mlir::TensorType>();
+    if (type.hasRank())
+      max_arg_size = std::max(max_arg_size, GetRankedTensorSize(type));
+  }
+
   // Get the sum of sizes of all ranked inputs for all operations in the
   // function body. This approach approximates the cost analysis in the
   // tfrt_compiler::CostAnalysis, because initially we want to get identical
@@ -85,8 +94,11 @@ int64_t FallbackExecuteOp::cost() {
     }
 
     for (Type type : op.getOperandTypes()) {
-      if (auto tensor = type.dyn_cast<RankedTensorType>())
+      if (auto tensor = type.dyn_cast<RankedTensorType>()) {
         cost += GetRankedTensorSize(tensor);
+      } else {
+        cost += max_arg_size;
+      }
     }
   }
 

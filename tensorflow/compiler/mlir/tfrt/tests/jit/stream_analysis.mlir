@@ -90,18 +90,18 @@ func @fusion(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   tfrt.return %res : !tfrt_fallback.tf_tensor
 }
 
-// expected-remark@+1 {{stream id: 0, stream cost: 266, parent stream: -1}}
+// expected-remark@+1 {{stream id: 0, stream cost: 394, parent stream: -1}}
 func @dyn(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) +
-  //                 (0 [Const] + 129 [Mul] + 2 [Sub] + 1 [BiasAdd] + 1 [Tanh]
+  //                 (0 [Const] + 129 [Mul] + 2 [Sub] + 129 [BiasAdd] + 1 [Tanh]
   //                  + 2 [Mul] + 129 [AddV2]) (cost @dyn_m)
-  //               = 2 + (6 + 258) = 266
-  // expected-remark@+1 {{stream id: 0, stream cost: 266, parent stream: -1}}
+  //               = 2 + (5 + 387) = 394
+  // expected-remark@+1 {{stream id: 0, stream cost: 394, parent stream: -1}}
   %res = tf_cpurt.fallback.execute @dyn_m::@compute (%arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)
 
-  // expected-remark@+1 {{stream id: 0, stream cost: 266, parent stream: -1}}
+  // expected-remark@+1 {{stream id: 0, stream cost: 394, parent stream: -1}}
   tfrt.return %res : !tfrt_fallback.tf_tensor
 }
