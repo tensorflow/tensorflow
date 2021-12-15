@@ -73,14 +73,14 @@ if '--project_name' in sys.argv:
 REQUIRED_PACKAGES = [
     'absl-py >= 0.4.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 1.12, < 3.0', # capped as jax 0.1.71 needs < 3.0
-    'gast >= 0.2.1, < 0.5.0',
+    'flatbuffers >= 1.12',
+    'gast >= 0.2.1',
     'google_pasta >= 0.1.1',
-    'h5py >= 2.9.0', # capped since 3.3.0 lacks py3.6
+    'h5py >= 2.9.0',
     'keras_preprocessing >= 1.1.1', # 1.1.0 needs tensorflow==1.7
     'libclang >= 9.0.1',
-    'numpy >= 1.14.5', # keras 2.6 needs 1.19.2, h5py needs 1.14.5 for py37
-    'opt_einsum >= 2.3.2', # sphinx pin not removed up til 3.3.0 release
+    'numpy >= 1.14.5',
+    'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
@@ -124,8 +124,7 @@ if sys.byteorder == 'little':
 # Follows the same conventions as `REQUIRED_PACKAGES`
 TEST_PACKAGES = [
     'portpicker >= 1.3.1',
-    'scipy ~= 1.5.2, < 1.7', # NOTE: capped due to py3.6 and opt-einsum requires
-    # sphinx==1.2.3 but scipy 1.7.1 requires sphinx >= 2.4.0, <3.1.0
+    'scipy >= 1.5.2',
     'tblib >= 1.4.0',
     'dill >= 0.2.9',
 ]
@@ -337,6 +336,7 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
