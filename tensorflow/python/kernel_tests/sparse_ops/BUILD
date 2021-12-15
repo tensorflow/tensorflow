@@ -86,7 +86,6 @@ cuda_py_test(
     srcs = ["sparse_ops_test.py"],
     shard_count = 5,
     tags = [
-        "noasan",
         "optonly",  # b/77589990
     ],
     deps = [
