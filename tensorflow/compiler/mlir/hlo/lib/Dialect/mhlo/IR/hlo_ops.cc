@@ -2215,15 +2215,24 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
                                 PatternRewriter& rewriter) const override {
     Value input = dynamic_slice.operand();
     auto input_tensor = input.getType().dyn_cast<RankedTensorType>();
-    if (!input_tensor) return failure();
+    if (!input_tensor || !input_tensor.hasStaticShape()) return failure();
 
+    auto slice_sizes = dynamic_slice.slice_sizes().getValues<int64_t>();
     SmallVector<int64_t, 4> temp_start_indices;
-    for (Value start : dynamic_slice.start_indices()) {
+    for (const auto& index_and_slice_start :
+         llvm::enumerate(dynamic_slice.start_indices())) {
       APInt val;
+      Value start = index_and_slice_start.value();
+      int64_t index = index_and_slice_start.index();
       if (!matchPattern(start, m_ConstantInt(&val))) {
         return failure();
       }
-      temp_start_indices.push_back(*(val.getRawData()));
+      // Clamp the indices within bounds to faithfully mirror dynamic slice
+      // semantics.
+      int64_t clamped_start =
+          Clamp(val.getSExtValue(), static_cast<int64_t>(0),
+                input_tensor.getDimSize(index) - slice_sizes[index]);
+      temp_start_indices.push_back(clamped_start);
     }
 
     // At this point we've determined that the start indices are all constants;
