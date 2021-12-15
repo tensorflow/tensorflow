@@ -235,6 +235,7 @@ table GPUOperation {
   elementwise:bool;
   linkable:bool;
   check_src_channels_size:bool;
+  flops:uint64;
   definition:OperationDef;
   grid_dimension:int32;
   work_group_launch_order:Int3;

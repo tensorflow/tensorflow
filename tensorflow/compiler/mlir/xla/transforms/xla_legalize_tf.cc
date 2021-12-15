@@ -169,6 +169,8 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::XlaEinsumOp>(),
     TypeID::get<TF::XlaReplicaIdOp>(),
     TypeID::get<TF::XlaSortOp>(),
+    TypeID::get<TF::XlaVariadicReduceV2Op>(),
+    TypeID::get<TF::XlaVariadicSortOp>(),
     TypeID::get<TF::XlogyOp>(),
     TypeID::get<TF::ZetaOp>(),
 

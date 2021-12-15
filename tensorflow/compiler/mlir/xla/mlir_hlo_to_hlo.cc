@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
@@ -454,7 +455,7 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
 static xla::OpMetadata CreateOpMetadataFromLocation(
     mlir::Operation* op, mlir::MlirToHloConversionOptions options) {
   xla::OpMetadata metadata;
-  const mlir::Location& loc = op->getLoc();
+  mlir::Location loc = op->getLoc();
   if (loc.isa<mlir::UnknownLoc>()) return metadata;
 
   std::string name = mlir::GetNameFromLoc(loc);
@@ -466,7 +467,12 @@ static xla::OpMetadata CreateOpMetadataFromLocation(
   mlir::LegalizeNodeName(op_type);
   metadata.set_op_type(op_type);
 
-  if (auto file_line_col_loc = op->getLoc().dyn_cast<mlir::FileLineColLoc>()) {
+  if (auto name_loc = op->getLoc().dyn_cast<mlir::NameLoc>()) {
+    loc = name_loc.getChildLoc();
+    if (loc.isa<mlir::UnknownLoc>()) return metadata;
+  }
+
+  if (auto file_line_col_loc = loc.dyn_cast<mlir::FileLineColLoc>()) {
     metadata.set_source_file(file_line_col_loc.getFilename().str());
     metadata.set_source_line(file_line_col_loc.getLine());
   }
@@ -575,6 +581,17 @@ class ConvertToHloModule {
   LogicalResult LowerFunctionCall(
       mlir::CallOp call_op, xla::XlaBuilder* builder,
       ConvertToHloModule::ValueLoweringMap* value_lowering);
+
+  // Look up a symbol with the specified name, returning null if no such name
+  // exists.
+  FuncOp LookUpSymbol(FlatSymbolRefAttr symbol) {
+    return module_.lookupSymbol<mlir::FuncOp>(symbol);
+  }
+
+  // Get Reference to lowered XLA computation for a function.
+  xla::XlaComputation& GetLoweredComputation(FuncOp func) {
+    return lowered_computation_[func];
+  }
 
   LogicalResult Lower(
       mlir::Operation* inst, bool is_entry_function,
@@ -902,32 +919,63 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   if (op.getNumResults() != 1)
     return op.emitOpError() << "with multiple results cannot be exported";
+
+  if (op.called_computations().size() > 1)
+    return op.emitOpError()
+           << "cannot export with more than one called computations";
+
+  // Custom call can be exported either with called computation or with layout
+  // attributes. The XlaBuilder API does not allow both.
+  if (!op.called_computations().empty() && op.operand_layouts() &&
+      op.result_layouts()) {
+    return op.emitOpError() << "cannot export if both called computation and "
+                               "layouts are specified";
+  }
+
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.api_version());
   if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
-  if (!op.operand_layouts().hasValue() || !op.result_layouts().hasValue()) {
-    value_map[result] = xla::CustomCall(
-        ctx.builder, std::string(op.call_target_name()), args,
+
+  if (op.called_computations().size() == 1) {
+    mlir::FuncOp callee = ctx.converter->LookUpSymbol(
+        op.called_computations()[0].cast<FlatSymbolRefAttr>());
+    if (failed(ctx.converter->RunOnFunction(callee))) return failure();
+    xla::XlaComputation& computation =
+        ctx.converter->GetLoweredComputation(callee);
+    value_map[result] = xla::CustomCallWithComputation(
+        ctx.builder, std::string(op.call_target_name()), args, computation,
         xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-        op.has_side_effect(), /*output_operand_aliasing=*/{},
+        op.has_side_effect(),
+        /*output_operand_aliasing=*/{},
         /*literal=*/nullptr,
         /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
         /*api_version=*/*xla_api_version);
     return success();
   }
 
-  auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-      op.getOperandTypes(), op.operand_layouts().getValue());
-  xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
-      result.getType(), op.result_layouts().getValue());
-  value_map[result] = xla::CustomCallWithLayout(
+  if (op.operand_layouts() && op.result_layouts()) {
+    auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
+        op.getOperandTypes(), op.operand_layouts().getValue());
+    xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
+        result.getType(), op.result_layouts().getValue());
+    value_map[result] = xla::CustomCallWithLayout(
+        ctx.builder, std::string(op.call_target_name()), args,
+        result_shape_with_layout, operand_shapes_with_layout,
+        std::string(op.backend_config()), op.has_side_effect(),
+        /*output_operand_aliasing=*/{},
+        /*literal=*/nullptr,
+        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+        /*api_version=*/*xla_api_version);
+    return success();
+  }
+
+  value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), args,
-      result_shape_with_layout, operand_shapes_with_layout,
-      std::string(op.backend_config()), op.has_side_effect(),
-      /*output_operand_aliasing=*/{},
+      xla::TypeToShape(result.getType()), std::string(op.backend_config()),
+      op.has_side_effect(), /*output_operand_aliasing=*/{},
       /*literal=*/nullptr,
       /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
@@ -1581,10 +1629,9 @@ LogicalResult ConvertToHloModule::Lower(
     // Construct the return value for the function. If there is a single value
     // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
+    const bool has_ret_shardings =
+        !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
     if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
-      const bool has_ret_shardings =
-          !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
-
       std::vector<xla::XlaOp> returns(num_return_values);
       for (OpOperand& ret : inst->getOpOperands()) {
         unsigned index = ret.getOperandNumber();
@@ -1622,7 +1669,14 @@ LogicalResult ConvertToHloModule::Lower(
       if (failed(GetXlaOp(inst->getOperand(0), value_map, &operand, inst)))
         return failure();
 
-      *return_value = operand;
+      if (has_ret_shardings) {
+        auto tuple = Tuple(builder, {operand});
+        builder->SetSharding(*ret_shardings[0]);
+        *return_value = GetTupleElement(tuple, 0);
+        builder->ClearSharding();
+      } else {
+        *return_value = operand;
+      }
     }
 
     return success();
@@ -1694,12 +1748,22 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
       auto aliasing_output =
           f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
       if (!aliasing_output) continue;
-      if (use_tuple_args_) {
-        builder.SetUpAlias(/*output_index=*/{aliasing_output.getInt()},
-                           /*param_number=*/0, /*param_index=*/{i});
+      xla::ShapeIndex output_index;
+      if ((return_tuple_ && entry_function) || f.getNumResults() != 1) {
+        output_index = {aliasing_output.getInt()};
       } else {
-        builder.SetUpAlias(/*output_index=*/{aliasing_output.getInt()},
-                           /*param_number=*/i, /*param_index=*/{});
+        if (aliasing_output.getInt() != 0) {
+          return f.emitError(
+              "Aliasing output must be 0 if only one output exists");
+        }
+        output_index = {};
+      }
+      if (use_tuple_args_) {
+        builder.SetUpAlias(output_index, /*param_number=*/0,
+                           /*param_index=*/{i});
+      } else {
+        builder.SetUpAlias(output_index, /*param_number=*/i,
+                           /*param_index=*/{});
       }
     }
     // Do not populate this field when nothing is replicated, since empty field
@@ -1825,6 +1889,9 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     for (BlockArgument& arg : block->getArguments()) {
       auto num = arg.getArgNumber();
       xla::Shape shape = xla::TypeToShape(arg.getType());
+      if (!arg_shardings.empty() && arg_shardings[num]) {
+        builder->SetSharding(*arg_shardings[num]);
+      }
       if (entry_args_same_across_replicas.empty()) {
         lowering[arg] =
             xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
@@ -1834,6 +1901,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
             std::vector<bool>(entry_args_same_across_replicas[num],
                               xla::ShapeUtil::GetLeafCount(shape)));
       }
+      builder->ClearSharding();
     }
   }
 
@@ -1918,6 +1986,8 @@ Status ConvertMlirHloToHlo(
                                return_tuple, shape_representation_fn, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
+  StringRef module_name = module.getName() ? *module.getName() : "main";
+  hlo_module.set_name(module_name.str());
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
   return Status::OK();
 }

@@ -33,55 +33,45 @@ class TestRunner {
   TestRunner() {}
   virtual ~TestRunner() {}
 
-  // Load the given model, as a path relative to SetModelBaseDir().
+  // Loads the given model, as a path relative to SetModelBaseDir().
+  // DEPRECATED: use LoadModel with signature instead.
   virtual void LoadModel(const string& bin_file_path) = 0;
+  // Loads the given model with signature specification.
+  // Model path is relative to SetModelBaseDir().
+  virtual void LoadModel(const string& bin_file_path,
+                         const string& signature) = 0;
 
-  // Return the list of input tensors in the loaded model.
-  virtual const std::vector<int>& GetInputs() = 0;
+  // The following methods are supported by models with SignatureDef.
+  //
+  // Reshapes the tensors.
+  // Keys are the input tensor names, values are csv string of the shape.
+  virtual void ReshapeTensor(const string& name, const string& csv_values) = 0;
 
-  // Return the list of output tensors in the loaded model.
-  virtual const std::vector<int>& GetOutputs() = 0;
+  // Sets the given tensor to some initial state, usually zero.
+  virtual void ResetTensor(const std::string& name) = 0;
 
-  // Prepare for a run by resize the given tensor. The given 'id' is
-  // guaranteed to be one of the ids returned by GetInputs().
-  virtual void ReshapeTensor(int id, const string& csv_values) = 0;
+  // Reads the value of the output tensor and format it into a csv string.
+  virtual string ReadOutput(const string& name) = 0;
 
-  // Reserve memory for all tensors.
-  virtual void AllocateTensors() = 0;
+  // Runs the model with signature.
+  // Keys are the input tensor names, values are corresponding csv string.
+  virtual void Invoke(const std::vector<std::pair<string, string>>& inputs) = 0;
 
-  // Set the given tensor to some initial state, usually zero. This is
-  // used to reset persistent buffers in a model.
-  virtual void ResetTensor(int id) = 0;
-
-  // Define the contents of the given input tensor. The given 'id' is
-  // guaranteed to be one of the ids returned by GetInputs().
-  virtual void SetInput(int id, const string& values_as_string) = 0;
-
-  // Define what should be expected data for an output tensor after Invoke()
-  // runs.
-  // The given 'id' is guaranteed to be one of the ids returned by
-  // GetOutputs().
-  virtual void SetExpectation(int id, const string& values_as_string) = 0;
-
-  // Define what should be expected shape for an output tensor after Invoke()
-  // runs.
-  // The given 'id' is guaranteed to be one of the ids returned by
-  // GetOutputs().
-  virtual void SetShapeExpectation(int id, const string& values_as_string) = 0;
-
-  // Run the model.
-  virtual void Invoke() = 0;
-
-  // Verify that the contents of all outputs conform to the existing
+  // Verifies that the contents of all outputs conform to the existing
   // expectations. Return true if there are no expectations or they are all
   // satisfied.
-  virtual bool CheckResults() = 0;
+  // Keys are the input tensor names, values are corresponding csv string.
+  virtual bool CheckResults(
+      const std::vector<std::pair<string, string>>& expected_outputs,
+      const std::vector<std::pair<string, string>>& expected_output_shapes) = 0;
 
-  // Read contents of tensor into csv format.
-  // The given 'id' is guaranteed to be one of the ids returned by GetOutputs().
-  virtual string ReadOutput(int id) = 0;
+  // Returns the list of output names in the loaded model for given signature.
+  virtual std::vector<string> GetOutputNames() = 0;
 
-  // Set the base path for loading models.
+  // Reserves memory for all tensors.
+  virtual void AllocateTensors() = 0;
+
+  // Sets the base path for loading models.
   void SetModelBaseDir(const string& path) {
     model_base_dir_ = path;
     if (path[path.length() - 1] != '/') {
@@ -89,14 +79,14 @@ class TestRunner {
     }
   }
 
-  // Return the full path of a model.
+  // Returns the full path of a model.
   string GetFullPath(const string& path) { return model_base_dir_ + path; }
 
-  // Give an id to the next invocation to make error reporting more meaningful.
+  // Gives an id to the next invocation to make error reporting more meaningful.
   void SetInvocationId(const string& id) { invocation_id_ = id; }
   const string& GetInvocationId() const { return invocation_id_; }
 
-  // Invalidate the test runner, preventing it from executing any further.
+  // Invalidates the test runner, preventing it from executing any further.
   void Invalidate(const string& error_message) {
     std::cerr << error_message << std::endl;
     error_message_ = error_message;
@@ -104,7 +94,7 @@ class TestRunner {
   bool IsValid() const { return error_message_.empty(); }
   const string& GetErrorMessage() const { return error_message_; }
 
-  // Handle the overall success of this test runner. This will be true if all
+  // Handles the overall success of this test runner. This will be true if all
   // invocations were successful.
   void SetOverallSuccess(bool value) { overall_success_ = value; }
   bool GetOverallSuccess() const { return overall_success_; }

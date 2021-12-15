@@ -165,9 +165,9 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -344,6 +344,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
+        ":layout_util",
         ":host_compute_metadata_proto_cc",
         ":rearrange_function_argument",
         ":sharding_util",
@@ -590,6 +591,7 @@ cc_library(
     hdrs = [
         "layout_util.h",
     ],
+    visibility = [":friends"],
     deps = [
         ":common",
         ":xla_argument",
@@ -778,7 +780,9 @@ tf_cc_test(
     ],
     deps = [
         ":common",
+        ":layout_util",
         ":side_effect_util",
+        ":xla_argument",
         ":xla_compiler",
         ":xla_expression",
         ":xla_resource",
@@ -930,6 +934,7 @@ cc_library(
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

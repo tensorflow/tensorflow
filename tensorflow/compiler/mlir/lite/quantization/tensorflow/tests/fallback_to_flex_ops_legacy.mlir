@@ -32,8 +32,8 @@ func @conv2d_backprop_input_with_add(%arg0: tensor<4xi32>, %arg1: tensor<3x3x1x3
   return %2 : tensor<15x28x28x1xf32>
 // CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
 // CHECK: %[[CONV2DBACKPROPINPUT_0:.*]] = "tf.Conv2DBackpropInput"(%arg0, %arg1, %arg2) {dilations = [1, 1, 1, 1], padding = "SAME", strides = [1, 2, 2, 1]} : (tensor<4xi32>, tensor<3x3x1x32xf32>, tensor<15x14x14x32xf32>) -> tensor<15x28x28x1xf32>
-// CHECK: %[[ADD_0:.*]] = "tf.BiasAdd"(%[[CONV2DBACKPROPINPUT_0]], %[[CONST_0]]) {data_format = "NHWC"} : (tensor<15x28x28x1xf32>, tensor<1xf32>) -> tensor<15x28x28x1xf32>
-// CHECK: return %[[ADD_0]] : tensor<15x28x28x1xf32>
+// CHECK: %[[ADDV2_0:.*]] = "tf.AddV2"(%[[CONV2DBACKPROPINPUT_0]], %[[CONST_0]]) {no_fallback} : (tensor<15x28x28x1xf32>, tensor<1xf32>) -> tensor<15x28x28x1xf32>
+// CHECK: return %[[ADDV2_0]] : tensor<15x28x28x1xf32>
 }
 
 // CHECK-LABEL: conv2d_backprop_input_with_sub
@@ -42,10 +42,10 @@ func @conv2d_backprop_input_with_sub(%arg0: tensor<4xi32>, %arg1: tensor<3x3x1x3
   %1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
   %2 = "tf.Sub"(%0, %1): (tensor<15x28x28x1xf32>, tensor<1xf32>) -> tensor<15x28x28x1xf32>
   return %2 : tensor<15x28x28x1xf32>
-// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<-0.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
+// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
 // CHECK: %[[CONV2DBACKPROPINPUT_0:.*]] = "tf.Conv2DBackpropInput"(%arg0, %arg1, %arg2) {dilations = [1, 1, 1, 1], padding = "SAME", strides = [1, 2, 2, 1]} : (tensor<4xi32>, tensor<3x3x1x32xf32>, tensor<15x14x14x32xf32>) -> tensor<15x28x28x1xf32>
-// CHECK: %[[BIASADD_0:.*]] = "tf.BiasAdd"(%[[CONV2DBACKPROPINPUT_0]], %[[CONST_0]]) {data_format = "NHWC"} : (tensor<15x28x28x1xf32>, tensor<1xf32>) -> tensor<15x28x28x1xf32>
-// CHECK: return %[[BIASADD_0]] : tensor<15x28x28x1xf32>
+// CHECK: %[[SUB_0:.*]] = "tf.Sub"(%[[CONV2DBACKPROPINPUT_0]], %[[CONST_0]]) {no_fallback} : (tensor<15x28x28x1xf32>, tensor<1xf32>) -> tensor<15x28x28x1xf32>
+// CHECK: return %[[SUB_0]] : tensor<15x28x28x1xf32>
 }
 
 // CHECK-LABEL: depth_to_space

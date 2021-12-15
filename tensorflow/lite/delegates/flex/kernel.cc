@@ -717,9 +717,6 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
   // Constants were handled in Prepare() already.
   for (auto tensor_index : op_data_->subgraph_inputs) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
-    if (tensor->type == kTfLiteResource && tensor->delegate == nullptr) {
-      tensor->delegate = node->delegate;
-    }
     if (!IsConstantTensor(tensor)) {
       // If this tensor is part of an earlier TF subgraph we should not add it
       // to the BufferMap again, because TF already knows about it and its
@@ -738,7 +735,8 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
 
     if (op_data_->cancellation_manager != nullptr &&
         op_data_->cancellation_manager->IsCancelled()) {
-      TF_LITE_KERNEL_LOG(context, "Client requested cancel during Invoke()");
+      TF_LITE_KERNEL_LOG(context,
+                         "Client requested cancel during DelegateKernel::Eval");
       return kTfLiteError;
     }
 

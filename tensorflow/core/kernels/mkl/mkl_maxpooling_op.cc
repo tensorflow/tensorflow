@@ -17,23 +17,18 @@ limitations under the License.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 
-#include <algorithm>
-
-#include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/mkl/mkl_pooling_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_util.h"
-#include "tensorflow/core/util/padding.h"
 
-using mkldnn::algorithm;
-using mkldnn::engine;
-using mkldnn::error;
-using mkldnn::memory;
-using mkldnn::pooling_backward;
-using mkldnn::pooling_forward;
-using mkldnn::prop_kind;
+using dnnl::algorithm;
+using dnnl::engine;
+using dnnl::error;
+using dnnl::memory;
+using dnnl::pooling_backward;
+using dnnl::pooling_forward;
+using dnnl::prop_kind;
 
 namespace tensorflow {
 
@@ -45,7 +40,7 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
  public:
   explicit MklMaxPoolingOp(OpKernelConstruction* context)
       : MklPoolingForwardOpBase<T>(context) {
-    // In Max Pooling, MKL-DNN does not allow passing workspace as nullptr.
+    // In Max Pooling, oneDNN does not allow passing workspace as nullptr.
     // So we set workspace_enabled_ to true.
     this->workspace_enabled_ = true;
     this->native_format_ = native_format;
@@ -138,7 +133,7 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         pooling_prop_kind = prop_kind::forward_training;
       MklPoolingParams fwdParams(
           src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
-          padding_right, mkldnn::algorithm::pooling_max, pooling_prop_kind,
+          padding_right, dnnl::algorithm::pooling_max, pooling_prop_kind,
           static_cast<memory::format_tag>(this->data_format_mkldnn_), input_md,
           this->native_format_);
       pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
@@ -187,7 +182,7 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         // Execute pooling op.
         pooling_fwd->Execute(src_data, dst_data, ws_data, fwd_cpu_stream);
       }
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -281,7 +276,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
-      // get src mem desc
+      // Get src mem desc
       memory::desc src_md =
           orig_input_mkl_shape.IsMklTensor()
               ? orig_input_mkl_shape.GetMklLayout()
@@ -297,7 +292,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
-          strides, padding_left, padding_right, mkldnn::algorithm::pooling_max,
+          strides, padding_left, padding_right, dnnl::algorithm::pooling_max,
           prop_kind::forward_training,
           static_cast<memory::format_tag>(this->data_format_mkldnn_), src_md,
           this->native_format_);
@@ -337,7 +332,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // Execute pooling op.
       pooling_bwd->Execute(diff_dst_data, diff_src_data, ws_data,
                            bwd_cpu_stream);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status:" + std::to_string(e.status) +
                          ", message: " + string(e.message) + ". in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);

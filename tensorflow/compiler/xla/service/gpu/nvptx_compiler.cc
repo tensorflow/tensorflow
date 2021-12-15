@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <fstream>
+#include <string>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "llvm/IRReader/IRReader.h"
@@ -134,6 +136,9 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::F16,
                                             /*pad_to_multiple_of=*/8);
   }
+  // Padding a gemm operand that's a constant results in pad(constant).  Run
+  // constant-folding to simplify this into a new constant.
+  pre_pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
@@ -295,8 +300,8 @@ void WarnIfBadDriverJITVersion() {
 }
 
 NVPTXCompiler::NVPTXCompiler()
-    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::kTargetTriple,
-                  nvptx::kDataLayout) {}
+    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::TargetTriple(),
+                  nvptx::DataLayout()) {}
 
 HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
   return &CanShareBufferHint;

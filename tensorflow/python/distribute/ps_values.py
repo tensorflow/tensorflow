@@ -646,6 +646,21 @@ class DistributedTable(lookup_ops.StaticHashTable):
           spec,
           default_value=self._coordinator_instance.resource_handle)
 
+  @property
+  def is_distributed_table(self):
+    return True
+
+  def __tf_experimental_restore_capture__(
+      self, concrete_function, internal_capture):
+    closure, spec = self.resource_handle_call_time_value()
+    concrete_function.graph.replace_capture_with_deferred_capture(
+        self._coordinator_instance.resource_handle,
+        closure,
+        spec,
+        default_value=self._coordinator_instance.resource_handle,
+        placeholder=internal_capture)
+    return concrete_function.graph.deferred_external_captures[-1]
+
 
 _local_resource_restore_context = threading.local()
 
@@ -742,8 +757,8 @@ class RestoredDistributedTable(DistributedTable):
       # been created. We store them in '_restored_function' and set them to the
       # distributed tables when they're created in
       # `self._maybe_build_distributed_table.create_copy`.
-      if load_context.in_load_context or ("RestoredStaticHashtable"
-                                          in self._wrapped.__class__.__name__):
+      if load_context.in_load_context() or (
+          "RestoredStaticHashtable" in self._wrapped.__class__.__name__):
 
         if not hasattr(self, "_restored_function"):
           self._restored_function = {}

@@ -232,6 +232,10 @@ auto* test_counters =
 
 }  // namespace
 
+auto* tpu_op_error_counter = monitoring::Counter<2>::New(
+    "/tensorflow/tpu/op_error_count",
+    "Count the tpu related errors by op and error_type.", "op", "error_type");
+
 monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter =
       monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
@@ -480,6 +484,20 @@ TestDelta::TestDelta(const string& name, const string& label)
 void TestDelta::Reset() { last_value_ = cell_->value(); }
 
 int64 TestDelta::Get() { return cell_->value() - last_value_; }
+
+void UpdateTfMlirGraphOptimizationPassStateCounter(
+    const std::string& pass_state, const std::string& processing_state) {
+  static auto* metric = monitoring::Counter<2>::New(
+      "/tensorflow/core/tf_mlir_update_graph_optimization_pass_state_counter",
+      "Tracks changes in a graph's UpdateTfMlirGraphOptimizationPassState",
+      "PassState", "ProcessingState");
+
+  metric->GetCell(pass_state, processing_state)->IncrementBy(1);
+}
+
+void UpdateTpuErrorCounter(const string& op, const string& error_type) {
+  tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
+}
 
 }  // namespace metrics
 }  // namespace tensorflow

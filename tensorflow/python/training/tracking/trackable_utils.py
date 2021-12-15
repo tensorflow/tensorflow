@@ -78,7 +78,7 @@ def order_by_dependency(dependency_map):
   while to_visit:
     x = to_visit.pop(0)
     reversed_dependency_arr.append(x)
-    for dep in dependency_map[x]:
+    for dep in set(dependency_map[x]):
       edges = reverse_dependency_map[dep]
       edges.remove(x)
       if not edges:

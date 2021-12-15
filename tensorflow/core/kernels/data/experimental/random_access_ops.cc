@@ -34,7 +34,9 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   DatasetBase* finalized_dataset;
   TF_ASSIGN_OR_RETURN(finalized_dataset, GetFinalizedDataset(ctx, dataset));
 
-  int64_t cardinality = finalized_dataset->Cardinality();
+  CardinalityOptions options;
+  options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
+  int64_t cardinality = finalized_dataset->Cardinality(options);
   if (cardinality == kInfiniteCardinality ||
       cardinality == kUnknownCardinality) {
     return tensorflow::errors::FailedPrecondition(

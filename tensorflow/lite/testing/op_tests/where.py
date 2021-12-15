@@ -45,34 +45,30 @@ def make_where_tests(options):
           "use_where_v2": [False, True],
           "fully_quantize": [True],
       },
+      # High dimension broadcasting support in MLIR converter.
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape_set": [([8, 7, 6, 5, 4, 3, 2, 1], [4, 3, 2, 1]),
+                              ([8, 7, 6, 5, 4, 3, 2, 1], [None, 3, 2, 1]),
+                              ([8, 7, 6, 5, None, 3, 2, 1], [None, 3, 2, 1])],
+          "use_where_v2": [True],
+          "fully_quantize": [False],
+          "dynamic_size_value": [4, 1],
+      },
+      {
+          "input_dtype": [tf.float32],
+          "input_shape_set": [([8, 7, 6, 5, 4, 3, 2, 1], [4, 3, 2, 1])],
+          "use_where_v2": [True],
+          "fully_quantize": [True],
+          "dynamic_size_value": [4],
+      },
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape_set": [([], []), ([1], []), ([], [1])],
+          "use_where_v2": [False, True],
+          "fully_quantize": [False],
+      },
   ]
-
-  # High dimension broadcasting support in MLIR converter.
-  if options.use_experimental_converter:
-    test_parameters = test_parameters + [
-        {
-            "input_dtype": [tf.float32, tf.int32],
-            "input_shape_set": [([8, 7, 6, 5, 4, 3, 2, 1], [4, 3, 2, 1]),
-                                ([8, 7, 6, 5, 4, 3, 2, 1], [None, 3, 2, 1]),
-                                ([8, 7, 6, 5, None, 3, 2, 1], [None, 3, 2, 1])],
-            "use_where_v2": [True],
-            "fully_quantize": [False],
-            "dynamic_size_value": [4, 1],
-        },
-        {
-            "input_dtype": [tf.float32],
-            "input_shape_set": [([8, 7, 6, 5, 4, 3, 2, 1], [4, 3, 2, 1])],
-            "use_where_v2": [True],
-            "fully_quantize": [True],
-            "dynamic_size_value": [4],
-        },
-        {
-            "input_dtype": [tf.float32, tf.int32],
-            "input_shape_set": [([], []), ([1], []), ([], [1])],
-            "use_where_v2": [False, True],
-            "fully_quantize": [False],
-        },
-    ]
 
   def populate_dynamic_shape(parameters, input_shape):
     return [
@@ -108,14 +104,9 @@ def make_where_tests(options):
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-  if options.use_experimental_converter:
-    expected_tf_failures = 4
-  else:
-    expected_tf_failures = 0
-
   make_zip_of_tests(
       options,
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=expected_tf_failures)
+      expected_tf_failures=4)

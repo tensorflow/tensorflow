@@ -25,6 +25,21 @@ namespace TF {
 
 namespace {
 
+/// Move the ops of `source_block` into `destination_block`, keeping the later's
+/// block arguments' type as `block_arguments_type`.
+static void moveBlock(Block* source_block, Block* destination_block,
+                      TypeRange block_arguments_type,
+                      PatternRewriter& rewriter) {
+  // If `destination_block` isn't empty, erase its terminator to ensure that it
+  // never contains two terminator-like ops after merging.
+  if (!destination_block->empty())
+    rewriter.eraseOp(destination_block->getTerminator());
+
+  destination_block->addArguments(block_arguments_type);
+  rewriter.mergeBlocks(source_block, destination_block,
+                       destination_block->getArguments());
+}
+
 /// Convert the `tf.IfRegion` op to the `scf.if` op.
 class ConvertIfRegionOp : public OpRewritePattern<IfRegionOp> {
  public:
@@ -41,21 +56,17 @@ class ConvertIfRegionOp : public OpRewritePattern<IfRegionOp> {
                                   Region& scf_then_or_else_region,
                                   TypeRange tf_if_region_return_type,
                                   PatternRewriter& rewriter) {
-      // Clone all the ops of `tf_then_or_else_region` into
-      // `scf_then_or_else_region`.
-      rewriter.cloneRegionBefore(tf_then_or_else_region,
-                                 &scf_then_or_else_region.front());
-      rewriter.eraseBlock(&scf_then_or_else_region.back());
-
-      Block* first_block_of_scf_then_or_else_region =
-          &scf_then_or_else_region.front();
+      // Move the first block of `tf_then_or_else_region` into the first block
+      // of `scf_then_or_else_region` and do not add any arguments to the block.
+      moveBlock(&tf_then_or_else_region.front(),
+                &scf_then_or_else_region.front(), TypeRange(), rewriter);
 
       // Replace the current terminator (a `tf.Yield` op) with an `scf.yield`
       // op. The input of the `scf.yield` op is a list of results of `tf.Cast`
       // ops, each of which casts an operand of the current terminator to the
       // corresponding result type of the `tf.IfRegion` op.
       Operation* current_terminator =
-          first_block_of_scf_then_or_else_region->getTerminator();
+          scf_then_or_else_region.front().getTerminator();
       rewriter.setInsertionPoint(current_terminator);
       SmallVector<Value, 4> scf_yield_input;
       for (auto it : llvm::zip(tf_if_region_return_type,
@@ -98,11 +109,78 @@ class ConvertIfRegionOp : public OpRewritePattern<IfRegionOp> {
   }
 };
 
+/// Convert the `tf.WhileRegion` op to the `scf.while` op.
+class ConvertWhileRegionOp : public OpRewritePattern<WhileRegionOp> {
+ public:
+  using OpRewritePattern<WhileRegionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(WhileRegionOp op,
+                                PatternRewriter& rewriter) const override {
+    // Creates the `before` or `after` region of the `scf.while` op. Note that
+    // `tf_cond_or_body_region` is the `cond` or `body` region of the
+    // `tf.WhileRegion` op. `scf_before_or_after_region` is the `before` or
+    // `after` region of the new `scf.while` op. `scf_block_arguments_type` is
+    // the type of arguments that need to be in the first block of
+    // `scf_before_or_after_region`.
+    auto createScfCondOrBody =
+        [](Region& tf_cond_or_body_region, Region& scf_before_or_after_region,
+           TypeRange scf_block_arguments_type, PatternRewriter& rewriter) {
+          // Move the first block of `tf_cond_or_body_region` into the first
+          // block of `scf_before_or_after_region` and keep the later's
+          // arguments' type as `scf_block_arguments_type`.
+          moveBlock(&tf_cond_or_body_region.front(),
+                    &scf_before_or_after_region.front(),
+                    scf_block_arguments_type, rewriter);
+
+          Operation* cond_or_body_terminator =
+              scf_before_or_after_region.front().getTerminator();
+          rewriter.setInsertionPoint(cond_or_body_terminator);
+          return cond_or_body_terminator;
+        };
+
+    ValueRange opInput = op.input();
+    TypeRange scf_block_arguments_type = opInput.getType();
+
+    // Create the `scf.while` op.
+    auto scf_while_op = rewriter.create<scf::WhileOp>(
+        op.getLoc(), op.getResultTypes(), opInput);
+
+    // Create the `before` block of the `scf.while` op (with an `scf.condition`
+    // op as the terminator). Note that the arguments' type of this block is
+    // kept as `opInput`'s type. Note that the input of an `scf.condition` op is
+    // a 1-bit signless integer. But, the condition of the `tf.WhileRegion` op
+    // is a 0-D tensor of 1-bit signless integers. Thus, we use the
+    // `tensor.extract` op to compute the input of `scf.condition`.
+    rewriter.createBlock(&scf_while_op.before());
+    Operation* cond_terminator = createScfCondOrBody(
+        op.cond(), scf_while_op.before(), scf_block_arguments_type, rewriter);
+    auto scf_condition_input = rewriter.create<tensor::ExtractOp>(
+        cond_terminator->getLoc(), cond_terminator->getOperand(0));
+    rewriter.replaceOpWithNewOp<scf::ConditionOp>(
+        cond_terminator, scf_condition_input.getResult(),
+        scf_while_op.before().front().getArguments());
+
+    // Create the `after` block of the `scf.while` op (with an `scf.yield` op as
+    // the terminator). Note that the arguments' type of this block is kept as
+    // `opInput`'s type.
+    rewriter.createBlock(&scf_while_op.after());
+    Operation* body_terminator = createScfCondOrBody(
+        op.body(), scf_while_op.after(), scf_block_arguments_type, rewriter);
+    rewriter.replaceOpWithNewOp<scf::YieldOp>(body_terminator,
+                                              body_terminator->getOperands());
+
+    // Replace the `tf.WhileRegion` op with the `scf.while` op.
+    rewriter.replaceOp(op, scf_while_op.getResults());
+
+    return success();
+  }
+};
+
 }  // end anonymous namespace
 
 void populateTfControlFlowToScfPatterns(MLIRContext* context,
                                         OwningRewritePatternList* patterns) {
-  patterns->insert<ConvertIfRegionOp>(context);
+  patterns->insert<ConvertIfRegionOp, ConvertWhileRegionOp>(context);
 }
 
 struct ConvertTfControlFlowToScf

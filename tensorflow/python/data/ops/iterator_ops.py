@@ -19,6 +19,7 @@ import warnings
 
 import six
 
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
@@ -651,7 +652,7 @@ class IteratorBase(collections_abc.Iterator, trackable.Trackable,
 
   @abc.abstractmethod
   def get_next_as_optional(self):
-    """Returns the next element warpped in `tf.experimental.Optional`.
+    """Returns the next element wrapped in `tf.experimental.Optional`.
 
     If the iterator has reached the end of the sequence, the returned
     `tf.experimental.Optional` will have no value.
@@ -696,6 +697,11 @@ class IteratorType(trace.TraceType):
         other, IteratorType) and self._components == other._components
 
 
+def use_anonymous_iterator_v3():
+  return (forward_compat.forward_compatible(2022, 1, 6) or
+          context.run_eager_op_as_function_enabled())
+
+
 class OwnedIterator(IteratorBase):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
@@ -737,7 +743,10 @@ class OwnedIterator(IteratorBase):
           self._element_spec)
       self._flat_output_shapes = structure.get_flat_tensor_shapes(
           self._element_spec)
-      self._iterator_resource, self._deleter = components
+      if use_anonymous_iterator_v3():
+        self._iterator_resource, = components
+      else:
+        self._iterator_resource, self._deleter = components
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(
@@ -764,15 +773,22 @@ class OwnedIterator(IteratorBase):
     self._flat_output_shapes = structure.get_flat_tensor_shapes(
         self._element_spec)
     with ops.colocate_with(ds_variant):
-      self._iterator_resource, self._deleter = (
-          gen_dataset_ops.anonymous_iterator_v2(
-              output_types=self._flat_output_types,
-              output_shapes=self._flat_output_shapes))
-      gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
-      # Delete the resource when this object is deleted
-      self._resource_deleter = IteratorResourceDeleter(
-          handle=self._iterator_resource,
-          deleter=self._deleter)
+      if use_anonymous_iterator_v3():
+        self._iterator_resource = (
+            gen_dataset_ops.anonymous_iterator_v3(
+                output_types=self._flat_output_types,
+                output_shapes=self._flat_output_shapes))
+        gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
+      else:
+        self._iterator_resource, self._deleter = (
+            gen_dataset_ops.anonymous_iterator_v2(
+                output_types=self._flat_output_types,
+                output_shapes=self._flat_output_shapes))
+        gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
+        # Delete the resource when this object is deleted
+        self._resource_deleter = IteratorResourceDeleter(
+            handle=self._iterator_resource,
+            deleter=self._deleter)
 
   def __iter__(self):
     return self
@@ -942,13 +958,21 @@ class IteratorSpec(type_spec.TypeSpec):
 
   @property
   def _component_specs(self):
-    return (
-        tensor_spec.TensorSpec([], dtypes.resource),
-        tensor_spec.TensorSpec([], dtypes.variant),
-    )
+    if use_anonymous_iterator_v3():
+      return (
+          tensor_spec.TensorSpec([], dtypes.resource),
+      )
+    else:
+      return (
+          tensor_spec.TensorSpec([], dtypes.resource),
+          tensor_spec.TensorSpec([], dtypes.variant),
+      )
 
   def _to_components(self, value):
-    return (value._iterator_resource, value._deleter)  # pylint: disable=protected-access
+    if use_anonymous_iterator_v3():
+      return (value._iterator_resource,)  # pylint: disable=protected-access
+    else:
+      return (value._iterator_resource, value._deleter)  # pylint: disable=protected-access
 
   def _from_components(self, components):
     return OwnedIterator(

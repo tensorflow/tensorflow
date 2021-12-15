@@ -1196,9 +1196,10 @@ py_test(
 
 py_test(
     name = "ragged_shape_test",
-    size = "large",
+    size = "medium",
     srcs = ["ragged_shape_test.py"],
     python_version = "PY3",
+    shard_count = 8,
     srcs_version = "PY3",
     deps = [
         ":ragged",  # fixdeps: keep
@@ -1430,6 +1431,26 @@ py_test(
         ":ragged_tensor",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_split_op_test",
+    srcs = ["ragged_split_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_tensor",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -609,23 +609,6 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   }
 }
 
-void DumpIrIfEnabled(mlir::ModuleOp mlir_module, int unique_id,
-                     const DebugOptions& debug_options) {
-  absl::optional<absl::string_view> module_name;
-  if (llvm::Optional<llvm::StringRef> mlir_module_name =
-          mlir_module.getName()) {
-    module_name = AsStringView(*mlir_module_name);
-  }
-  if (!DumpingEnabledForHloModule(module_name.value_or("<unnamed>"),
-                                  debug_options)) {
-    return;
-  }
-
-  DumpToFileInDirOrStdout(debug_options, unique_id, module_name.value_or(""),
-                          /*file_prefix=*/"",
-                          /*file_suffix=*/"lmhlo", DumpToString(mlir_module));
-}
-
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   llvm::GlobalValue::LinkageTypes linkage,
                                   const HloModuleConfig& module_config,
@@ -708,8 +691,8 @@ llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
                                   llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
       GetOrCreateVariableForRngState(module, builder);
-  llvm::LoadInst* state_value_old =
-      builder->CreateLoad(state_ptr, "load_state");
+  llvm::LoadInst* state_value_old = builder->CreateLoad(
+      state_ptr->getType()->getPointerElementType(), state_ptr, "load_state");
   llvm::Value* state_value_new = builder->CreateAdd(
       state_value_old,
       llvm::ConstantInt::get(state_value_old->getType(), delta));

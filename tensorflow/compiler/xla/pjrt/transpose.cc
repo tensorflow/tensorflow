@@ -651,7 +651,7 @@ void TransposePlan::CoalesceDimensions(
 int64_t TransposePlan::InputNumElems() const {
   int64_t size = 1;
   for (size_t i = 0; i < a_dims_.size(); ++i) {
-    size *= RoundUpToNearest(a_dims_[i], a_tiling_[i]);
+    size *= RoundUpTo(a_dims_[i], a_tiling_[i]);
   }
   return size;
 }
@@ -659,7 +659,7 @@ int64_t TransposePlan::InputNumElems() const {
 int64_t TransposePlan::OutputNumElems() const {
   int64_t size = 1;
   for (size_t i = 0; i < a_dims_.size(); ++i) {
-    size *= RoundUpToNearest(a_dims_[permutation_[i]], b_tiling_[i]);
+    size *= RoundUpTo(a_dims_[permutation_[i]], b_tiling_[i]);
   }
   return size;
 }

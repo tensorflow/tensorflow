@@ -425,7 +425,9 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
-    tags = ["notsan"],  # TODO(b/183962087)
+    tags = [
+        "notsan",  # TODO(b/183962087)
+    ],
     deps = [
         ":context",
         ":core",
@@ -807,6 +809,9 @@ cuda_py_test(
     name = "run_eager_op_as_function_test",
     srcs = ["run_eager_op_as_function_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_windows",  # b/207695287
+    ],
     deps = [
         ":benchmarks_test_base",
         ":context",

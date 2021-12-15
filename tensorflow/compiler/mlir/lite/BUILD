@@ -26,6 +26,7 @@ package_group(
         "//third_party/iree/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/python/...",
+        "//waymo/ml/compiler/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//research/language_modeling/sentence_explorer/ondevice/...",

@@ -541,30 +541,38 @@ class Subgraph {
       return nullptr;
     }
 
-    return new Subgraph(runtime_ptr, std::move(externals));
+    return new Subgraph(runtime_ptr, externals);
   }
 
   TfLiteStatus Prepare(TfLiteContext* context) { return kTfLiteOk; }
 
   TfLiteStatus Invoke(TfLiteContext* context) {
-    if (first_run_) {
-      std::vector<xnn_external_value> external_values;
-      for (int t : externals_) {
-        xnn_external_value value = {0};
-        value.id = static_cast<uint32_t>(t);
-        const TfLiteTensor& tensor = context->tensors[t];
-        if (tensor.data.raw == nullptr) {
-          if (tensor.bytes == 0) {
-            value.data = &dummy_data_;
-          } else {
-            TF_LITE_KERNEL_LOG(
-                context, "unexpected null data pointer in external tensor %d",
-                t);
-            return kTfLiteError;
-          }
-        } else {
-          value.data = tensor.data.raw;
+    bool any_pointers_changed = false;
+    for (std::pair<int, void*> io_info : externals_) {
+      const TfLiteTensor& tensor = context->tensors[io_info.first];
+      void* data_pointer = &dummy_data_;
+      if (tensor.data.raw != nullptr) {
+        data_pointer = tensor.data.raw;
+      } else {
+        if (tensor.bytes != 0) {
+          TF_LITE_KERNEL_LOG(
+              context, "unexpected null data pointer in external tensor %d",
+              io_info.first);
+          return kTfLiteError;
         }
+      }
+      if (data_pointer != io_info.second) {
+        any_pointers_changed = true;
+        externals_[io_info.first] = data_pointer;
+      }
+    }
+
+    if (any_pointers_changed) {
+      std::vector<xnn_external_value> external_values;
+      for (std::pair<int, void*> io_info : externals_) {
+        xnn_external_value value = {0};
+        value.id = static_cast<uint32_t>(io_info.first);
+        value.data = io_info.second;
         external_values.push_back(value);
       }
 
@@ -574,8 +582,6 @@ class Subgraph {
         TF_LITE_KERNEL_LOG(context, "failed to setup XNNPACK runtime");
         return kTfLiteError;
       }
-
-      first_run_ = false;
     }
 
     const xnn_status status = xnn_invoke_runtime(runtime_.get());
@@ -1058,6 +1064,58 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckTensorQInt8OrQUInt8Type(TfLiteContext* context,
+                                                   const TfLiteTensor& tensor,
+                                                   int tensor_index,
+                                                   int node_index) {
+    switch (tensor.type) {
+#ifndef XNN_NO_QS8_OPERATORS
+      case kTfLiteInt8: {
+        const auto* quantization_params =
+            static_cast<const TfLiteAffineQuantization*>(
+                tensor.quantization.params);
+        if (tensor.quantization.type != kTfLiteAffineQuantization ||
+            quantization_params->quantized_dimension != 0 ||
+            quantization_params->scale == nullptr ||
+            quantization_params->scale->size != 1) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              context,
+              "unsupported quantization type %d in tensor #%d in node #%d",
+              tensor.quantization.type, tensor_index, node_index);
+          return kTfLiteError;
+        }
+        break;
+      }
+#endif  // !defined(XNN_NO_QS8_OPERATORS)
+#ifndef XNN_NO_QU8_OPERATORS
+      case kTfLiteUInt8: {
+        const auto* quantization_params =
+            static_cast<const TfLiteAffineQuantization*>(
+                tensor.quantization.params);
+        if (tensor.quantization.type != kTfLiteAffineQuantization ||
+            quantization_params->quantized_dimension != 0 ||
+            quantization_params->scale == nullptr ||
+            quantization_params->zero_point == nullptr ||
+            quantization_params->scale->size != 1 ||
+            quantization_params->zero_point->size != 1) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              context,
+              "unsupported quantization type %d in tensor #%d in node #%d",
+              tensor.quantization.type, tensor_index, node_index);
+          return kTfLiteError;
+        }
+        break;
+      }
+#endif  // !defined(XNN_NO_QU8_OPERATORS)
+      default:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported type %s in tensor #%d in node #%d",
+            TfLiteTypeGetName(tensor.type), tensor_index, node_index);
+        return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckTensorFloat32OrQUInt8Type(TfLiteContext* context,
                                                      const TfLiteTensor& tensor,
                                                      int tensor_index,
@@ -1470,6 +1528,9 @@ class Subgraph {
                                      node, context->tensors,
                                      depth_to_space_params, xnnpack_tensors);
       }
+      case kTfLiteBuiltinDequantize:
+        return VisitDequantizeNode(subgraph, logging_context, node_index, node,
+                                   context->tensors, xnnpack_tensors);
       case kTfLiteBuiltinDiv: {
         const TfLiteDivParams* div_params =
             static_cast<const TfLiteDivParams*>(node->builtin_data);
@@ -1552,6 +1613,9 @@ class Subgraph {
         return VisitPreluNode(subgraph, logging_context, node_index, node,
                               context->tensors, quasi_static_tensors,
                               xnnpack_tensors);
+      case kTfLiteBuiltinQuantize:
+        return VisitQuantizeNode(subgraph, logging_context, node_index, node,
+                                 context->tensors, xnnpack_tensors);
       case kTfLiteBuiltinRelu:
         return VisitReluNode(
             subgraph, logging_context, node_index, node, context->tensors, 0.0f,
@@ -2092,6 +2156,40 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus VisitDequantizeNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorQInt8OrQUInt8Type(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_convert(
+          subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate DEQUANTIZE node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus VisitDivNode(
       xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
       TfLiteNode* node, const TfLiteTensor* tensors,
@@ -2587,7 +2685,7 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input_tensor, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
                                            node->inputs->data[0]));
@@ -2625,7 +2723,7 @@ class Subgraph {
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
     const int expected_output_dims = reducer_params->keep_dims ? 4 : 2;
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor,
@@ -3149,6 +3247,39 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus VisitQuantizeNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorQInt8OrQUInt8Type(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_convert(
+          subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate QUANTIZE node #%d", node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus VisitReluNode(
       xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
       TfLiteNode* node, const TfLiteTensor* tensors, float output_min,
@@ -3266,7 +3397,7 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input_tensor, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
                                            node->inputs->data[0]));
@@ -3289,7 +3420,7 @@ class Subgraph {
         logging_context, shape_tensor, node->inputs->data[1], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 4,
                                            node->outputs->data[0]));
@@ -3720,20 +3851,23 @@ class Subgraph {
   }
 
  private:
-  Subgraph(xnn_runtime_t runtime, std::unordered_set<int>&& externals)
-      : runtime_(runtime, &xnn_delete_runtime), externals_(externals) {}
+  Subgraph(xnn_runtime_t runtime, const std::unordered_set<int>& externals)
+      : runtime_(runtime, &xnn_delete_runtime) {
+    for (int t : externals) {
+      externals_[t] = nullptr;
+    }
+  }
 
   // XNNPACK Runtime (subgraph + workspace) with smart-pointer for lifetime
   // management.
   std::unique_ptr<xnn_runtime, decltype(&xnn_delete_runtime)> runtime_{
       nullptr, &xnn_delete_runtime};
-  // TFLite Tensor IDs == XNNPACK Value IDs of input/output tensors for the
-  // delegated subgraph.
-  std::unordered_set<int> externals_;
+  // Mapping from TFLite Tensor IDs (same as XNNPACK Value IDs) for
+  // input/output tensors in the delegated subgraph to their data locations.
+  std::unordered_map<int, void*> externals_;
   // Memory location to use for 0-size extenal tensors, as TFLite init their
   // data pointer to nullptr, and XNNPACK requires valid data pointers.
   char dummy_data_{0};
-  bool first_run_{true};
 };
 
 TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
@@ -3786,7 +3920,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       if (is_supported_int8_tensor) {
         const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
             input_tensor.quantization.params);
-        if (quant_params == nullptr || quant_params->scale->size != 1) {
+        if (quant_params == nullptr) {
           is_supported_int8_tensor = false;
         }
       }
@@ -3982,14 +4116,23 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                     input_tensor.quantization.params);
             // Such conditions have been checked when preparing to unpack INT8
             // tensors.
-            TFLITE_DCHECK(quant_params != nullptr &&
-                          quant_params->scale->size == 1);
+            TFLITE_DCHECK(quant_params != nullptr);
 
-            DequantizeInt8(reinterpret_cast<const int8_t*>(packed_data),
-                           reinterpret_cast<float*>(unpacked_data),
-                           GetTensorShape(&input_tensor),
-                           input_tensor.params.zero_point,
-                           input_tensor.params.scale);
+            if (quant_params->scale->size == 1) {
+              // Per-tensor quantization
+              DequantizeInt8(reinterpret_cast<const int8_t*>(packed_data),
+                             reinterpret_cast<float*>(unpacked_data),
+                             GetTensorShape(&input_tensor),
+                             input_tensor.params.zero_point,
+                             input_tensor.params.scale);
+            } else {
+              // Per-channel quantization
+              PerChannelDequantizeInt8(
+                  reinterpret_cast<const int8_t*>(packed_data),
+                  reinterpret_cast<float*>(unpacked_data),
+                  GetTensorShape(&input_tensor), quant_params->zero_point->data,
+                  quant_params->scale->data, quant_params->quantized_dimension);
+            }
             break;
           }
           default:

@@ -46,6 +46,7 @@ namespace {
 constexpr char kReplicateSharding[] = "";
 constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kUseSpmdAttr[] = "use_spmd_for_xla_partitioning";
+constexpr char kAliasingAttr[] = "tf.aliasing_output";
 
 struct TPUShardingIdentificationPass
     : public TF::TPUShardingIdentificationPassBase<
@@ -202,6 +203,30 @@ llvm::Optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
   return llvm::None;
 }
 
+// Looks up arg->retval aliases for every argument, and builds a reverse map.
+void ExtractAliases(FuncOp func, llvm::SmallVectorImpl<int>& aliases) {
+  aliases.resize(func.getNumResults(), -1);
+  for (int i = 0; i < func.getNumArguments(); i++) {
+    if (auto v = func.getArgAttrOfType<mlir::IntegerAttr>(i, kAliasingAttr)) {
+      aliases[v.getInt()] = i;
+    }
+  }
+}
+
+// Returns XLA sharding from argument connected via tf.aliasing_output.
+llvm::Optional<StringRef> GetXlaShardingFromAlias(
+    Value value, llvm::SmallVectorImpl<int>& aliases,
+    const llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_args) {
+  int retval_index = value.cast<OpResult>().getResultNumber();
+  if (retval_index >= 0 && retval_index < aliases.size()) {
+    int arg_index = aliases[retval_index];
+    if (arg_index >= 0 && arg_index < sharding_for_args.size()) {
+      return sharding_for_args[arg_index];
+    }
+  }
+  return llvm::None;
+}
+
 // Returns XLA sharding from XlaSharding op connected to a result value.
 // XlaSharding op may be direct user of inputs but it may also be followed by an
 // Identity op and, in the case where bfloat16 type is used, Cast op may be
@@ -245,10 +270,14 @@ llvm::Optional<StringRef> GetXlaShardingFromRetval(Value value) {
 void IdentifyXlaShardingForComputationOutputs(
     StringRef logical_core_0_sharding, bool use_spmd,
     tf_device::ClusterFuncOp cluster_func, FuncOp func, Builder* builder,
+    const llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_args,
     llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_rets) {
   Block& function_block = func.front();
   Operation* terminator = function_block.getTerminator();
   sharding_for_rets.reserve(terminator->getNumOperands());
+
+  llvm::SmallVector<int, 8> aliases;  // maps return value index to arg index
+  ExtractAliases(func, aliases);
 
   // Iterate through results of `cluster_func`. For output ops, look for
   // TPUPartitionedOutput ops.
@@ -273,6 +302,12 @@ void IdentifyXlaShardingForComputationOutputs(
       // If XLA SPMD is enabled, outputs all should have replicate sharding,
       // unless another sharding is set via a TPUPartitionedOutput op.
       sharding_for_rets.push_back(kReplicateSharding);
+      continue;
+    }
+
+    if (auto from_alias =
+            GetXlaShardingFromAlias(result, aliases, sharding_for_args)) {
+      sharding_for_rets.push_back(from_alias.getValue());
       continue;
     }
 
@@ -309,9 +344,9 @@ void IdentifyXlaShardingForTPUComputation(
                                           sharding_for_args);
 
   llvm::SmallVector<llvm::StringRef, 8> sharding_for_rets;
-  IdentifyXlaShardingForComputationOutputs(logical_core_0_sharding, use_spmd,
-                                           cluster_func, func, builder,
-                                           sharding_for_rets);
+  IdentifyXlaShardingForComputationOutputs(
+      logical_core_0_sharding, use_spmd, cluster_func, func, builder,
+      sharding_for_args, sharding_for_rets);
 
   auto has_maximal_sharding = [](llvm::StringRef sharding_string) -> bool {
     xla::OpSharding sharding;
@@ -336,7 +371,8 @@ void IdentifyXlaShardingForTPUComputation(
                                             func, builder, sharding_for_args);
     IdentifyXlaShardingForComputationOutputs(logical_core_0_sharding,
                                              /*use_spmd=*/false, cluster_func,
-                                             func, builder, sharding_for_rets);
+                                             func, builder, sharding_for_args,
+                                             sharding_for_rets);
   }
 
   // Update sharding on function arguments and returns.

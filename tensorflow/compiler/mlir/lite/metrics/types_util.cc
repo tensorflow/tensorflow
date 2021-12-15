@@ -78,12 +78,13 @@ class LocationExtractor : public Location {
           // Skip the first location if it stores information for propagating
           // op_type metadata.
           if (num_locs > 0) {
-            auto name_loc = locations[0].dyn_cast<mlir::NameLoc>();
-            if (name_loc.getName().strref().endswith(":")) {
-              if (num_locs == 2) {
-                return LocationExtractor(locations[1]).Extract(error_data);
-              } else if (num_locs > 2) {
-                locations = {locations.begin() + 1, locations.end()};
+            if (auto name_loc = locations[0].dyn_cast<mlir::NameLoc>()) {
+              if (name_loc.getName().strref().endswith(":")) {
+                if (num_locs == 2) {
+                  return LocationExtractor(locations[1]).Extract(error_data);
+                } else if (num_locs > 2) {
+                  locations = {locations.begin() + 1, locations.end()};
+                }
               }
             }
           }

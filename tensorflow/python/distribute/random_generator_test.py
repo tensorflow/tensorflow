@@ -22,6 +22,7 @@ from absl.testing import parameterized
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.eager import def_function
@@ -49,18 +50,10 @@ def get_num_local_replicas(strat, values=None):
 
 
 ps_strategies = [
-    strategy_combinations.parameter_server_strategy_fn(
-        "ParameterServer3Worker2PSCPUNoShard",
-        num_workers=3, num_ps=2, variable_partitioner=None),
-    strategy_combinations.parameter_server_strategy_fn(
-        "ParameterServer1Worker2PSCPUNoShard",
-        num_workers=1, num_ps=2, variable_partitioner=None),
-    strategy_combinations.parameter_server_strategy_fn(
-        "ParameterServer3Worker2PS1GPUNoShard",
-        num_workers=3, num_ps=2, required_gpus=1, variable_partitioner=None),
-    strategy_combinations.parameter_server_strategy_fn(
-        "ParameterServer1Worker2PS1GPUNoShard",
-        num_workers=1, num_ps=2, required_gpus=1, variable_partitioner=None),
+    strategy_combinations.parameter_server_strategy_3worker_2ps_cpu,
+    strategy_combinations.parameter_server_strategy_1worker_2ps_cpu,
+    strategy_combinations.parameter_server_strategy_3worker_2ps_1gpu,
+    strategy_combinations.parameter_server_strategy_1worker_2ps_1gpu,
 ]
 all_strategies = (strategy_combinations.all_strategies +
                   strategy_combinations.multiworker_strategies +
@@ -156,7 +149,11 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
   @ds_combinations.generate(
       combinations.combine(
           strat=[
-              strategy_combinations.parameter_server_strategy_1worker_2ps_cpu
+              strategy_combinations.parameter_server_strategy_fn(
+                  "ParameterServer1Worker2PSCPUFixedShards",
+                  num_workers=1, num_ps=2,
+                  variable_partitioner=(
+                      sharded_variable.FixedShardsPartitioner(2)))
           ],
           mode=["eager"]))
   def testShardedError(self, strat):

@@ -19,7 +19,7 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
-# Pick a more recent version of xcode
+# Selects a version of Xcode.
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 

@@ -283,7 +283,6 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     else:
       # If we compress, the data service side dataset will produce scalar
       # variants.
-      compression = _decide_compression(compression, data_transfer_protocol)
       self._element_spec = (
           tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
           if compression == COMPRESSION_AUTO else element_spec)
@@ -992,6 +991,7 @@ def _from_dataset_id(processing_mode,
     else:
       element_spec = _legacy_get_element_spec()
 
+  compression = _decide_compression(compression, data_transfer_protocol)
   dataset = _DataServiceDataset(
       dataset_id=dataset_id,
       processing_mode=processing_mode,

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <string>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -117,20 +118,20 @@ struct TFLQuantizationBase
                                    NumericVerifyOp, RootOp>(ctx, quant_params) {
   }
 
-  static bool AllowHybridOperand(Operation* quantized_op) {
+  static bool AllowDynamicRangeQuantizedOperand(Operation* quantized_op) {
     // Collect the input if dynamic range quantization is on and the op supports
     // it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           quantized_op->hasTrait<OpTrait::quant::DynamicRangeQuantizableOp>();
+           dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op);
   }
 
-  static bool AllowHybridResult(Operation* quantized_op) {
+  static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op) {
     // Collect the output if dynamic range quantization is on and the op
     // supports it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           quantized_op->hasTrait<OpTrait::quant::DynamicRangeQuantizableOp>();
+           dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op);
   }
 };
 
@@ -164,17 +165,18 @@ struct TFLDynamicRangeQuantization
                             TFLDynamicRangeQuantization>(ctx, quant_params) {}
 };
 
-struct QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
+class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
+ public:
   explicit QuantizeConstPattern(MLIRContext* context, bool legacy_float_scale)
       : OpRewritePattern<QuantizeOp>(context),
-        legacy_float_scale(legacy_float_scale) {}
+        legacy_float_scale_(legacy_float_scale) {}
   LogicalResult matchAndRewrite(QuantizeOp op,
                                 PatternRewriter& rewriter) const override {
     DenseFPElementsAttr attr;
     if (matchPattern(op.input(), m_Constant(&attr))) {
       auto qtype = op.qtypeAttr();
       Attribute quantized_attr;
-      if (legacy_float_scale) {
+      if (legacy_float_scale_) {
         quantized_attr = quant::QuantizeLegacy(attr, qtype.getValue());
       } else {
         quantized_attr = quant::Quantize(attr, qtype.getValue());
@@ -188,7 +190,7 @@ struct QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
   }
 
  private:
-  bool legacy_float_scale;
+  bool legacy_float_scale_;
 };
 
 #define LIST_FLAG_OR_STRING_SET(list, set) \
@@ -254,7 +256,8 @@ void QuantizePass::runOnFunction() {
 
   // TODO(b/202451048): separate full and weight-only post-training dynamic
   // range quantization
-  if (quant_specs.weight_quantization || enable_dynamic_range_quantization) {
+  if (quant_specs.weight_quantization || enable_dynamic_range_quantization ||
+      quant_specs.use_fake_quant_num_bits) {
     patterns.insert<TFLDynamicRangeQuantization>(ctx, quant_params);
   } else {
     patterns.insert<TFLFullQuantization, TFLFullQuantizationReverse>(
@@ -267,6 +270,9 @@ void QuantizePass::runOnFunction() {
   OwningRewritePatternList patterns_2(&getContext());
   patterns_2.insert<QuantizeConstPattern>(
       ctx, quant_specs.legacy_float_scale || enable_legacy_quantize);
+  if (quant_params.numeric_verify.whole_model_verify) {
+    patterns_2.insert<quant::RemoveDebugAttrPattern>(ctx);
+  }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 }
 }  // namespace

@@ -741,7 +741,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     load_status.assert_existing_objects_matched().run_restore_ops()
 
   @test_util.run_in_graph_and_eager_modes
-  def test_write_checkpoint_from_function(self):
+  def test_write_checkpoint_path_str_from_function(self):
+
     checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
     save_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(1.))
 
@@ -768,6 +769,58 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     status.assert_consumed()
     status.run_restore_ops()
     self.assertEqual(3., self.evaluate(load_checkpoint.v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_write_checkpoint_path_tensor_from_function(self):
+    # Same as the previous test, but the path is a tensor not a python string.
+    checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
+
+    checkpoint_prefix_tensor = constant_op.constant(checkpoint_prefix)
+
+    save_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(1.))
+
+    @def_function.function
+    def _write_checkpoint(prefix):
+      save_path = save_checkpoint.write(prefix)
+      return save_path
+
+    self.evaluate([save_checkpoint.v.initializer])
+    self.evaluate(_write_checkpoint(checkpoint_prefix_tensor))
+    load_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(0.))
+    # Use read() instead of restore() which allows us to check that all
+    # existing objects were loaded.
+    status = load_checkpoint.read(checkpoint_prefix)
+    status.assert_existing_objects_matched()
+    status.assert_consumed()
+    status.run_restore_ops()
+    self.assertEqual(1., self.evaluate(load_checkpoint.v))
+    self.evaluate(save_checkpoint.v.assign(3.))
+    self.evaluate(_write_checkpoint(checkpoint_prefix_tensor))
+    self.evaluate(save_checkpoint.v.assign(0.))
+    status = load_checkpoint.read(checkpoint_prefix)
+    status.assert_existing_objects_matched()
+    status.assert_consumed()
+    status.run_restore_ops()
+    self.assertEqual(3., self.evaluate(load_checkpoint.v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_write_checkpoint_path_tensor_does_not_exist_from_function(self):
+    # Same as the previous test, but the path is a tensor not a python string.
+    checkpoint_prefix = os.path.join(
+        self.get_temp_dir(), "DOES_NOT_EXIST", "ckpt")
+
+    checkpoint_prefix_tensor = constant_op.constant(checkpoint_prefix)
+
+    save_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(1.))
+
+    @def_function.function
+    def _write_checkpoint(prefix):
+      save_path = save_checkpoint.write(prefix)
+      return save_path
+
+    self.evaluate([save_checkpoint.v.initializer])
+    with self.assertRaises(errors_impl.NotFoundError):
+      self.evaluate(_write_checkpoint(checkpoint_prefix_tensor))
 
   def test_inititialize_with_data_structures(self):
     checkpoint = trackable_utils.Checkpoint(
@@ -978,16 +1031,14 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
     load_root = trackable_utils.Checkpoint(my_template=load_template)
     status = load_root.restore(save_path)
     (inner_template_one, inner_template_two), (v1, v2, v3) = load_template()
-    outer_template_dependencies = load_root.my_template._checkpoint_dependencies
+    outer_template_dependencies = load_root.my_template._trackable_children()
     self.assertLen(outer_template_dependencies, 2)
-    self.assertEqual("i1", outer_template_dependencies[0].name)
-    self.assertIs(inner_template_one, outer_template_dependencies[0].ref)
-    self.assertEqual("i2", outer_template_dependencies[1].name)
-    self.assertIs(inner_template_two, outer_template_dependencies[1].ref)
-    self.assertLen(inner_template_one._checkpoint_dependencies, 1)
-    self.assertEqual("v", inner_template_one._checkpoint_dependencies[0].name)
-    self.assertLen(inner_template_two._checkpoint_dependencies, 1)
-    self.assertEqual("v", inner_template_two._checkpoint_dependencies[0].name)
+    self.assertDictEqual({"i1": inner_template_one, "i2": inner_template_two},
+                         outer_template_dependencies)
+    self.assertLen(inner_template_one._trackable_children(), 1)
+    self.assertIn("v", inner_template_one._trackable_children())
+    self.assertLen(inner_template_two._trackable_children(), 1)
+    self.assertIn("v", inner_template_two._trackable_children())
     status.assert_consumed().run_restore_ops()
     self.assertAllEqual([20.], self.evaluate(v1))
     self.assertAllEqual([25.], self.evaluate(v2))

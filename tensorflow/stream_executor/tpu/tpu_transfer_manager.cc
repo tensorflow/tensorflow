@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -247,7 +248,7 @@ bool TpuTransferManager::CanShapedBufferBeAccessedNow(
   auto* tpu_executor = down_cast<TpuExecutor*>(executor->implementation());
   XLA_ShapedBuffer c_device_buffer;
   ApiConverter::ToC(device_buffer, &c_device_buffer);
-  auto cleanup = xla::MakeCleanup(
+  auto cleanup = absl::MakeCleanup(
       [&c_device_buffer]() { ApiConverter::Free(&c_device_buffer); });
   return tpu::ExecutorApiFn()
       ->TpuTransferManager_CanShapedBufferBeAccessedNowFn(

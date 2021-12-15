@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -36,6 +38,10 @@ namespace mlir {
 namespace TFL {
 
 namespace {
+
+// A boolean attribute used to describe whether input activations need to be
+// asymmetrically quantized.
+constexpr char kAsymmetricQuantizeInputsAttr[] = "asymmetric_quantize_inputs";
 
 using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 
@@ -81,10 +87,10 @@ class PrepareDynamicRangeQuantizePass
 
 // If the weight is applicable to dynamic range quantization, insert Quantize
 // and Dequantize ops with either per-axis or per-tensor scale.
-class PreprocessDynamicRangeQuantizableOp
+class PrepareDynamicRangeQuantizableOp
     : public OpRewritePattern<arith::ConstantOp> {
  public:
-  explicit PreprocessDynamicRangeQuantizableOp(
+  explicit PrepareDynamicRangeQuantizableOp(
       MLIRContext* context, const QuantizationSpecs& quant_specs)
       : OpRewritePattern<arith::ConstantOp>(context),
         quant_specs_(quant_specs) {}
@@ -100,10 +106,28 @@ class PreprocessDynamicRangeQuantizableOp
     if (!(quantizeOps(op, quantizable_ops, rewriter))) {
       return failure();
     }
+
+    if (!(setAsymmetricQuantizeInputAttr(quantizable_ops, rewriter))) {
+      return failure();
+    }
     return success();
   }
 
  private:
+  // Check if any specific operand is supported for int8 quantization.
+  bool hasInt8QuantizableOperandAt(Operation* op, int operand_index) const {
+    // TODO(b/201599094): check whether weight size < 1024 condition is needed
+    // here
+    if (auto quantizable_op = dyn_cast<DynamicRangeQuantizedOpInterface>(op)) {
+      const auto& quantizable_indices =
+          quantizable_op.GetQuantizableOperandIndices();
+      return std::find(std::begin(quantizable_indices),
+                       std::end(quantizable_indices),
+                       operand_index) != std::end(quantizable_indices);
+    }
+    return false;
+  }
+
   // Mark users that are applicable for dynamic range quantization if it
   // uses float tensors which are not biases and is a DynamicRangeQuantizableOp.
   bool getQuantizableOps(arith::ConstantOp op,
@@ -115,17 +139,11 @@ class PreprocessDynamicRangeQuantizableOp
     Value value = op.getResult();
 
     // Check whether dynamic-quantization can be applied.
-    // TODO(b/201599094): check whether weight size < 1024 condition is needed
-    // here
     for (auto& use : value.getUses()) {
       Operation* user = use.getOwner();
       int operand_num = use.getOperandNumber();
 
-      auto spec = GetOpQuantSpec(user);
-      auto biases = spec->biases_params;
-
-      if (biases.find(operand_num) == biases.end() &&
-          user->hasTrait<OpTrait::quant::DynamicRangeQuantizableOp>()) {
+      if (hasInt8QuantizableOperandAt(user, operand_num)) {
         quantizable_ops.insert({user, operand_num});
       }
     }
@@ -152,8 +170,7 @@ class PreprocessDynamicRangeQuantizableOp
     Operation* quantize_op = quant_op.first;
     int quantize_operand_num = quant_op.second;
 
-    auto affine_user =
-        llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(quantize_op);
+    auto affine_user = dyn_cast<AffineQuantizedOpInterface>(quantize_op);
 
     bool op_with_narrow_range =
         affine_user &&
@@ -200,6 +217,31 @@ class PreprocessDynamicRangeQuantizableOp
     return true;
   }
 
+  // Add asymmetric input quantization attribute. MLIR dynamic quantization
+  // supports only the case that the value of the attribute equals to true. For
+  // details, see tensorflow/compiler/mlir/lite/quantization/quantization.td
+  bool setAsymmetricQuantizeInputAttr(QuantizationUnits& quantizable_ops,
+                                      PatternRewriter& rewriter) const {
+    bool changed = false;
+    for (auto& quant_op : quantizable_ops) {
+      auto dynamic_range_quantized_user =
+          dyn_cast<DynamicRangeQuantizedOpInterface>(quant_op.first);
+      if (dynamic_range_quantized_user &&
+          dynamic_range_quantized_user.RequireAsymmetricQuantizeInputsAttr()) {
+        // At runtime, this flag will be used in the kernels to decide whether
+        // input activations need to be asymmetrically quantized. Refer to the
+        // implementation for fully-connected as an example in
+        // tensorflow/lite/kernels/fully_connected.cc. The kernels will handle
+        // the asymmetric_quantize_inputs attribute in the builtin option.
+        dynamic_range_quantized_user->setAttr(
+            kAsymmetricQuantizeInputsAttr,
+            BoolAttr::get(rewriter.getContext(), true));
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
  protected:
   QuantizationSpecs quant_specs_;
 };
@@ -211,7 +253,7 @@ void PrepareDynamicRangeQuantizePass::runOnFunction() {
   ConvertTFLQuantOpsToMlirQuantOps(func);
 
   OwningRewritePatternList patterns(&getContext());
-  patterns.insert<PreprocessDynamicRangeQuantizableOp>(ctx, quant_specs_);
+  patterns.insert<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   ConvertMlirQuantOpsToTFLQuantOps(func);

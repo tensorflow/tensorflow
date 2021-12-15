@@ -3929,51 +3929,65 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       body->AddInstruction(HloInstruction::CreateGetTupleElement(
           new_input_subtuple->shape(), body_param, 2));
 
-  // Now create the moved nodes inside the loop body.
-  absl::flat_hash_map<const HloInstruction*, HloInstruction*> outside_to_inside;
-  absl::flat_hash_map<const HloInstruction*, HloInstruction*>
-      outside_to_inside_unroll;
+  // Represents a cluster that's associated to a single dynamic-update-slice op,
+  // which should be moved to inside of the windowed dot-general loop. There
+  // might be multiple clusters associated with multiple dynamic-update-slice
+  // ops which all need moving.
+  struct MotionCluster {
+    HloInstruction* dus;
+    absl::flat_hash_map<const HloInstruction*, HloInstruction*>
+        outside_to_inside;
+    std::vector<HloInstruction*> slice_offsets;
+  };
+
+  std::vector<MotionCluster> motion_clusters;
+
+  // The elementwise nodes will be created with sliced shape. The original
+  // loop output corresponds to the dynamic-update-slice's update slice.
+  {
+    HloInstruction* dus = body_root->mutable_operand(2);
+    while (dus->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      motion_clusters.emplace_back();
+      motion_clusters.back().dus = dus;
+      motion_clusters.back().outside_to_inside[original_output] =
+          dus->mutable_operand(1);
+      motion_clusters.back().slice_offsets.reserve(padded_shape.rank());
+      for (int64_t i = 0; i < padded_shape.rank(); ++i) {
+        motion_clusters.back().slice_offsets.push_back(
+            motion_clusters.back().dus->mutable_operand(i + 2));
+      }
+      dus = dus->mutable_operand(0);
+    }
+  }
+  // This is at least one cluster that needs moving.
+  CHECK_GE(motion_clusters.size(), 1);
+  MotionCluster& base_motion_cluster = motion_clusters[0];
+
   worklist.clear();
   auto add_users_if_available = [&](HloInstruction* inst) {
     for (auto* u : inst->users()) {
-      if (outside_to_inside.count(u) == 0 && to_move.count(u) > 0 &&
+      if (base_motion_cluster.outside_to_inside.count(u) == 0 &&
+          to_move.count(u) > 0 &&
           absl::c_all_of(u->operands(), [&](const HloInstruction* o) {
-            return outside_to_inside.count(o) > 0;
+            return base_motion_cluster.outside_to_inside.count(o) > 0;
           })) {
         worklist.push_back(u);
       }
     }
   };
+
   for (int64_t i = 0; i < new_operands.size(); ++i) {
-    outside_to_inside[new_operands[i]] =
+    auto* operand_gte =
         body->AddInstruction(HloInstruction::CreateGetTupleElement(
             new_operands[i]->shape(), new_loop_input, i));
-    outside_to_inside_unroll[new_operands[i]] =
-        outside_to_inside[new_operands[i]];
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      motion_cluster.outside_to_inside[new_operands[i]] = operand_gte;
+    }
     add_users_if_available(new_operands[i]);
   }
-  // The elementwise nodes will be created with sliced shape. The original
-  // loop output corresponds to the dynamic-update-slice's update slice.
-  auto* dus = body_root->mutable_operand(2);
-  CHECK_EQ(dus->opcode(), HloOpcode::kDynamicUpdateSlice);
-  outside_to_inside[original_output] = dus->mutable_operand(1);
   add_users_if_available(original_output);
-  HloInstruction* dus_unroll = nullptr;
-  if (options.unroll_windowed_einsum) {
-    dus_unroll = dus->mutable_operand(0);
-    CHECK_EQ(dus_unroll->opcode(), HloOpcode::kDynamicUpdateSlice);
-    outside_to_inside_unroll[original_output] = dus_unroll->mutable_operand(1);
-  }
-  std::vector<HloInstruction*> slice_offsets(padded_shape.rank());
-  for (int64_t i = 0; i < slice_offsets.size(); ++i) {
-    slice_offsets[i] = dus->mutable_operand(i + 2);
-  }
-  std::vector<HloInstruction*> slice_offsets_unroll(padded_shape.rank());
-  if (options.unroll_windowed_einsum) {
-    for (int64_t i = 0; i < slice_offsets_unroll.size(); ++i) {
-      slice_offsets_unroll[i] = dus_unroll->mutable_operand(i + 2);
-    }
-  }
+
+  // Now create the moved nodes inside the loop body.
   auto get_slice = [&](HloInstruction* padded,
                        absl::Span<HloInstruction* const> slice_offsets,
                        HloInstruction* dus) {
@@ -3983,97 +3997,81 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
         padded, slice_offsets, dus->operand(1)->shape().dimensions()));
   };
   // Helper functions to create nodes with small operands.
-  auto add_broadcast =
-      [&](const HloInstruction* broadcast,
-          absl::Span<HloInstruction* const> slice_offsets, HloInstruction* dus,
-          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-              outside_to_inside) {
-        Shape padded_operand_shape = broadcast->operand(0)->shape();
-        for (int64_t i = 0; i < broadcast->dimensions().size(); ++i) {
-          padded_operand_shape.set_dimensions(
-              i, padded_shape.dimensions(broadcast->dimensions(i)));
-        }
-        auto* padded_operand =
-            PadToShape(outside_to_inside[broadcast->operand(0)],
-                       padded_operand_shape, nullptr, body);
-        outside_to_inside[broadcast] = get_slice(
-            body->AddInstruction(broadcast->CloneWithNewOperands(
-                ShapeUtil::ChangeElementType(
-                    padded_shape, padded_operand_shape.element_type()),
-                {padded_operand})),
-            slice_offsets, dus);
-      };
-  auto add_iota =
-      [&](const HloInstruction* iota,
-          absl::Span<HloInstruction* const> slice_offsets, HloInstruction* dus,
-          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-              outside_to_inside) {
-        outside_to_inside[iota] =
-            get_slice(body->AddInstruction(iota->CloneWithNewOperands(
-                          ShapeUtil::ChangeElementType(
-                              padded_shape, iota->shape().element_type()),
-                          {})),
-                      slice_offsets, dus);
-      };
-  auto add_constant =
-      [&](const HloInstruction* constant,
-          absl::Span<HloInstruction* const> slice_offsets, HloInstruction* dus,
-          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-              outside_to_inside) {
-        outside_to_inside[constant] = body->AddInstruction(constant->Clone());
-        outside_to_inside[constant] = get_slice(
-            PadToShape(outside_to_inside[constant],
-                       ShapeUtil::ChangeElementType(
-                           padded_shape, constant->shape().element_type()),
-                       nullptr, body),
-            slice_offsets, dus);
-      };
-  auto add_other_inst =
-      [&](const HloInstruction* inst, HloInstruction* dus,
-          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-              outside_to_inside) {
-        std::vector<HloInstruction*> operands_inside(inst->operand_count());
-        for (int64_t i = 0; i < operands_inside.size(); ++i) {
-          operands_inside[i] = outside_to_inside[inst->operand(i)];
-        }
-        outside_to_inside[inst] =
-            body->AddInstruction(inst->CloneWithNewOperands(
-                ShapeUtil::ChangeElementType(dus->operand(1)->shape(),
-                                             inst->shape().element_type()),
-                operands_inside));
-      };
+  auto add_broadcast = [&](const HloInstruction* broadcast) {
+    Shape padded_operand_shape = broadcast->operand(0)->shape();
+    for (int64_t i = 0; i < broadcast->dimensions().size(); ++i) {
+      padded_operand_shape.set_dimensions(
+          i, padded_shape.dimensions(broadcast->dimensions(i)));
+    }
+    auto* padded_operand =
+        PadToShape(base_motion_cluster.outside_to_inside[broadcast->operand(0)],
+                   padded_operand_shape, nullptr, body);
+    auto* inside_broadcast =
+        body->AddInstruction(broadcast->CloneWithNewOperands(
+            ShapeUtil::ChangeElementType(padded_shape,
+                                         padded_operand_shape.element_type()),
+            {padded_operand}));
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      motion_cluster.outside_to_inside[broadcast] = get_slice(
+          inside_broadcast, motion_cluster.slice_offsets, motion_cluster.dus);
+    }
+  };
+  auto add_iota = [&](const HloInstruction* iota) {
+    auto* inside_iota = body->AddInstruction(iota->CloneWithNewOperands(
+        ShapeUtil::ChangeElementType(padded_shape,
+                                     iota->shape().element_type()),
+        {}));
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      motion_cluster.outside_to_inside[iota] = get_slice(
+          inside_iota, motion_cluster.slice_offsets, motion_cluster.dus);
+    }
+  };
+  auto add_constant = [&](const HloInstruction* constant) {
+    auto* constant_clone = body->AddInstruction(constant->Clone());
+    auto* inside_constant =
+        PadToShape(constant_clone,
+                   ShapeUtil::ChangeElementType(
+                       padded_shape, constant->shape().element_type()),
+                   nullptr, body);
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      motion_cluster.outside_to_inside[constant] = get_slice(
+          inside_constant, motion_cluster.slice_offsets, motion_cluster.dus);
+    }
+  };
+  auto add_other_inst = [&](const HloInstruction* inst) {
+    std::vector<HloInstruction*> operands_inside(inst->operand_count());
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      for (int64_t i = 0; i < operands_inside.size(); ++i) {
+        operands_inside[i] = motion_cluster.outside_to_inside[inst->operand(i)];
+      }
+      motion_cluster.outside_to_inside[inst] =
+          body->AddInstruction(inst->CloneWithNewOperands(
+              ShapeUtil::ChangeElementType(
+                  motion_cluster.dus->operand(1)->shape(),
+                  inst->shape().element_type()),
+              operands_inside));
+    }
+  };
 
   while (!worklist.empty()) {
     auto* inst = worklist.back();
     worklist.pop_back();
-    if (outside_to_inside.count(inst) > 0) {
+    if (absl::c_all_of(
+            motion_clusters, [inst](const MotionCluster& motion_cluster) {
+              return motion_cluster.outside_to_inside.count(inst) > 0;
+            })) {
       continue;
     }
     if (inst->opcode() == HloOpcode::kBroadcast) {
-      add_broadcast(inst, slice_offsets, dus, outside_to_inside);
-      if (options.unroll_windowed_einsum) {
-        add_broadcast(inst, slice_offsets_unroll, dus_unroll,
-                      outside_to_inside_unroll);
-      }
+      add_broadcast(inst);
     } else if (inst->opcode() == HloOpcode::kIota) {
-      add_iota(inst, slice_offsets, dus, outside_to_inside);
-      if (options.unroll_windowed_einsum) {
-        add_iota(inst, slice_offsets_unroll, dus_unroll,
-                 outside_to_inside_unroll);
-      }
+      add_iota(inst);
     } else if (inst->opcode() == HloOpcode::kConstant) {
-      add_constant(inst, slice_offsets, dus, outside_to_inside);
-      if (options.unroll_windowed_einsum) {
-        add_constant(inst, slice_offsets_unroll, dus_unroll,
-                     outside_to_inside_unroll);
-      }
+      add_constant(inst);
     } else if (inst->opcode() == HloOpcode::kReduce) {
       // This is an output, for which we has special handling later.
     } else if (inst->IsElementwise()) {
-      add_other_inst(inst, dus, outside_to_inside);
-      if (options.unroll_windowed_einsum) {
-        add_other_inst(inst, dus_unroll, outside_to_inside_unroll);
-      }
+      add_other_inst(inst);
     } else {
       // Skip cloning other non-elementwise ops.
     }
@@ -4081,7 +4079,8 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
   }
   std::vector<HloInstruction*> new_outputs_inside(new_operands.size());
   for (int64_t i = 0; i < new_outputs_inside.size(); ++i) {
-    new_outputs_inside[i] = outside_to_inside[new_operands[i]];
+    new_outputs_inside[i] =
+        base_motion_cluster.outside_to_inside[new_operands[i]];
   }
 
   // Now create the reduce outputs inside of the loop.
@@ -4089,14 +4088,14 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     auto* reduce_outside = reduce_outputs[i];
     CHECK_EQ(reduce_outside->opcode(), HloOpcode::kReduce);
     int64_t index_in_operand = new_operands.size() - reduce_outputs.size() + i;
-    auto* last_iter_result = outside_to_inside[new_operands[index_in_operand]];
+    auto* last_iter_result =
+        base_motion_cluster.outside_to_inside[new_operands[index_in_operand]];
 
     auto create_inside_reduce =
         [&](absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
                 outside_to_inside,
-            HloInstruction* last_iter_result,
-            absl::Span<HloInstruction* const> slice_offsets)
-        -> StatusOr<HloInstruction*> {
+            absl::Span<HloInstruction* const> slice_offsets,
+            HloInstruction* last_iter_result) -> StatusOr<HloInstruction*> {
       HloInstruction* operand0 = outside_to_inside[reduce_outside->operand(0)];
       HloInstruction* operand1 = outside_to_inside[reduce_outside->operand(1)];
       TF_ASSIGN_OR_RETURN(
@@ -4171,16 +4170,13 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       }
       return output_inside;
     };
-    TF_ASSIGN_OR_RETURN(HloInstruction * output_inside,
-                        create_inside_reduce(outside_to_inside,
-                                             last_iter_result, slice_offsets));
-    if (options.unroll_windowed_einsum) {
+    for (MotionCluster& motion_cluster : motion_clusters) {
       TF_ASSIGN_OR_RETURN(
-          output_inside,
-          create_inside_reduce(outside_to_inside_unroll, output_inside,
-                               slice_offsets_unroll));
+          last_iter_result,
+          create_inside_reduce(motion_cluster.outside_to_inside,
+                               motion_cluster.slice_offsets, last_iter_result));
     }
-    new_outputs_inside[index_in_operand] = output_inside;
+    new_outputs_inside[index_in_operand] = last_iter_result;
   }
 
   // Body output.
@@ -4188,7 +4184,8 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       body->AddInstruction(HloInstruction::CreateTuple(new_outputs_inside));
   TF_RETURN_IF_ERROR(
       body_root->ReplaceOperandWithDifferentShape(2, new_output_inside));
-  TF_RETURN_IF_ERROR(body->RemoveInstructionAndUnusedOperands(dus));
+  TF_RETURN_IF_ERROR(
+      body->RemoveInstructionAndUnusedOperands(base_motion_cluster.dus));
   // Replace uses of the reduces outside the loop.
   auto* new_output_gte =
       computation->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -4230,8 +4227,7 @@ Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
               loop.while_loop, 1 - loop.windowed_operand));
     }
     // Currently unrolled loop does not support this optimization.
-    if (!options.bidirectional_windowed_einsum &&
-        !loop.windowed_in_contracting_dims &&
+    if (!loop.windowed_in_contracting_dims &&
         !loop.operands_sharded_at_contracting_dims) {
       // We have a dynamic-update-slice for the output in
       // batch/non-contracting-dim windowed dot-general. So moving reduce ops

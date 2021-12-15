@@ -61,9 +61,9 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
     c += "  int S = 0;\n";
     for (int i = 0; i < channels.size(); ++i) {
       std::string t_name = "args." + tensor_names[i];
-      const int depth = DivideRoundUp(channels[i], 4);
-      if (depth % 2 == 0) {
-        // We can read more at once inside of loop in case depth % 2 == 0
+      const int src_depth = DivideRoundUp(channels[i], 4);
+      if (src_depth % 2 == 0) {
+        // We can read more at once inside of loop in case src_depth % 2 == 0
         // it should be better for reading latency hiding
         c += "  for (int i = 0; i < " + t_name + ".Slices(); i += 2) {\n";
         c += "    FLT4 result0 = " + t_name + ".Read(" + coords + ", i);\n";

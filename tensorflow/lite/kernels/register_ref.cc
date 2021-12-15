@@ -342,7 +342,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_CAST, Register_CAST(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE_REF(),
              /* min_version = */ 1,
              /* max_version = */ 4);

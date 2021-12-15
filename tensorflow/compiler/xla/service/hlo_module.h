@@ -395,6 +395,10 @@ class HloModule {
 
   absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
+  void set_autofdo_profile(const void* profile) { autofdo_profile_ = profile; }
+
+  const void* autofdo_profile() const { return autofdo_profile_; }
+
   void add_profile_info(HloModuleProto::ProfileType profile_type,
                         double relative_speedup) {
     HloModuleProto::ProfileInfo profile_info;
@@ -464,8 +468,11 @@ class HloModule {
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
 
-  // a fingerprint to search autofdo profile entry.
+  // A fingerprint to search an AutofdoProfile entry.
   std::string autofdo_fingerprint_;
+
+  // An AutofdoProfile instance pointer.
+  const void* autofdo_profile_ = nullptr;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.

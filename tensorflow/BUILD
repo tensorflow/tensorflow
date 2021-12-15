@@ -46,7 +46,6 @@ licenses(["notice"])
 
 exports_files([
     "LICENSE",
-    "ACKNOWLEDGMENTS",
     # The leakr files are used by //third_party/cloud_tpu and
     # //third_party/tensorboard/google:copybara_config_test.
     "leakr_badwords.dic",
@@ -684,6 +683,7 @@ selects.config_setting_group(
         ":emscripten",
         ":ios",
     ],
+    visibility = if_google(["//visibility:public"]),
 )
 
 # This flag disables all google production dependencies, intended for
@@ -720,6 +720,7 @@ config_setting(
 selects.config_setting_group(
     name = "lite_protos",
     match_any = [":lite_protos_legacy"],
+    visibility = if_google(["//visibility:public"]),
 )
 
 selects.config_setting_group(
@@ -728,6 +729,7 @@ selects.config_setting_group(
         ":lite_protos",
         ":mobile",
     ],
+    visibility = if_google(["//visibility:public"]),
 )
 
 selects.config_setting_group(
@@ -736,6 +738,7 @@ selects.config_setting_group(
         ":full_protos",
         ":mobile",
     ],
+    visibility = if_google(["//visibility:public"]),
 )
 
 # copybara:uncomment_begin(google-only)
@@ -1059,6 +1062,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/data:standalone",
     ],
 )
 

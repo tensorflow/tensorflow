@@ -514,6 +514,10 @@ typedef struct {
   const float* boundaries;
 } TfLiteBucketizeParams;
 
+typedef struct {
+  bool approximate;
+} TfLiteGeluParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

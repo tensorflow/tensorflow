@@ -28,7 +28,7 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/cc/saved_model:reader",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/compiler/mlir/tfrt:import_model",
@@ -62,8 +62,6 @@ cc_library(
         "//tensorflow/core/tfrt/utils:bridge_graph_analysis",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
-        "//tensorflow/core/tfrt/utils:model_metadata",
-        "//tensorflow/core/tfrt/utils:statusor",
         "//tensorflow/core/tfrt/utils:tensor_util",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -99,7 +97,7 @@ cc_library(
     srcs = ["saved_model_import_input.cc"],
     hdrs = ["saved_model_import_input.h"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",

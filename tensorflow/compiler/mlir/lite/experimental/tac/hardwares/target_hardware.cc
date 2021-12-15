@@ -102,7 +102,7 @@ inline bool IsNonArithmeticOp(mlir::Operation* op) {
   if (llvm::isa<ReturnOp, FuncOp>(op)) return true;
   if (op->hasTrait<OpTrait::ConstantLike>()) return true;
   if (llvm::isa<QConstOp, SparseQConstOp>(op)) return true;
-  if (!IsTFLNonQuantDequantizeOp(op)) return true;
+  if (!NotTFLQuantDequantizeOp(op)) return true;
   return false;
 }
 

@@ -26,6 +26,12 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 @REM First, upgrade pypi wheels
 %PY_EXE% -m pip install --upgrade "setuptools<53" pip wheel
 
+# TODO(rameshsampath): Debug Python 310 requirements for Windows
+# For other Python versions, these packages are installed in packer VM build
+IF "%PYTHON_DIRECTORY%"=="Python310" (
+  %PY_EXE% -m pip install -r tensorflow/tools/ci_build/release/requirements_windows_py310.txt
+)
+
 @REM NOTE: Windows doesn't have any additional requirements from the common ones.
 %PY_EXE% -m pip install -r tensorflow/tools/ci_build/release/requirements_common.txt
 
@@ -47,7 +53,7 @@ SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 @REM Setup Bazel
 @REM
 :: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=3.7.2
+SET BAZEL_VERSION=4.2.1
 md C:\tools\bazel\
 wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%

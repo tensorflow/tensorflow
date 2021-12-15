@@ -71,6 +71,19 @@ int64_t TakeDataset::CardinalityInternal() const {
   } else if (count_ == kInfiniteCardinality) {
     return n;
   }
+  return std::min(n, count_);
+}
+
+int64_t TakeDataset::CardinalityInternal(CardinalityOptions options) const {
+  int64_t n = input_->Cardinality(options);
+  if (n == kUnknownCardinality) {
+    return kUnknownCardinality;
+  }
+  if (n == kInfiniteCardinality) {
+    return count_;
+  } else if (count_ == kInfiniteCardinality) {
+    return n;
+  }
 
   return std::min(n, count_);
 }

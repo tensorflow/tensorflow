@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/runtime_fallback/kernel/op_kernel_runner.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -46,7 +46,8 @@ class FunctionState : public ReferenceCounted<FunctionState> {
   static RCReference<FunctionState> CreateFunctionState(
       TfrtDataTypeSlice arg_types, tensorflow::DataTypeSlice ret_types,
       BefBuffer bef_buffer, RCReference<BEFFile> bef_file, CoreRuntimeOp fn,
-      std::unique_ptr<tensorflow::tfd::OpKernelRunnerTable> runner_table) {
+      std::unique_ptr<tensorflow::tfrt_stub::OpKernelRunnerTable>
+          runner_table) {
     return TakeRef(new FunctionState(arg_types, ret_types,
                                      std::move(bef_buffer), std::move(bef_file),
                                      std::move(fn), std::move(runner_table)));
@@ -58,7 +59,7 @@ class FunctionState : public ReferenceCounted<FunctionState> {
 
   const tensorflow::DataTypeVector& GetRetTypes() { return ret_types_; }
 
-  tensorflow::tfd::OpKernelRunnerTable* GetRunnerTable() {
+  tensorflow::tfrt_stub::OpKernelRunnerTable* GetRunnerTable() {
     return runner_table_.get();
   }
 
@@ -66,7 +67,7 @@ class FunctionState : public ReferenceCounted<FunctionState> {
   FunctionState(
       TfrtDataTypeSlice arg_types, tensorflow::DataTypeSlice ret_types,
       BefBuffer bef_buffer, RCReference<BEFFile> bef_file, CoreRuntimeOp fn,
-      std::unique_ptr<tensorflow::tfd::OpKernelRunnerTable> runner_table)
+      std::unique_ptr<tensorflow::tfrt_stub::OpKernelRunnerTable> runner_table)
       : arg_types_(arg_types.begin(), arg_types.end()),
         ret_types_(ret_types.begin(), ret_types.end()),
         bef_buffer_(std::move(bef_buffer)),
@@ -82,7 +83,7 @@ class FunctionState : public ReferenceCounted<FunctionState> {
 
   // This is the op_kernel cache used by kernel fallback compact mode. We will
   // initialize this table right after lowering the function.
-  std::unique_ptr<tensorflow::tfd::OpKernelRunnerTable> runner_table_;
+  std::unique_ptr<tensorflow::tfrt_stub::OpKernelRunnerTable> runner_table_;
 };
 
 // Cache for a single core runtime op or function (composite op). Thread safe.
@@ -97,7 +98,8 @@ class FunctionCache {
   };
 
   typedef std::function<tensorflow::Status(
-      tensorflow::tfd::OpKernelRunnerTable*, RCReference<RequestContext>*)>
+      tensorflow::tfrt_stub::OpKernelRunnerTable*,
+      RCReference<RequestContext>*)>
       RequestCtxBuilder;
 
   // Helper function to look up the cache. If miss, insert the function to the

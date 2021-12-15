@@ -45,7 +45,7 @@ struct FusionInfoCache {
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
 };
 
-constexpr int64_t kMaxOperandsAndOutputsPerFusion = 64;
+inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
 bool IsInputFusible(const HloInstruction& instr);
 

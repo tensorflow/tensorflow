@@ -85,7 +85,10 @@ tf_proto_library(
     srcs = ["worker.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
-    visibility = ["//visibility:public"],
+    visibility = if_google(
+        ["//tensorflow:internal"],
+        ["//visibility:public"],
+    ),
 )
 
 tf_proto_library(

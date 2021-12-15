@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -109,7 +110,7 @@ static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     se::DeviceMemoryBase out = arguments[allocation.parameter_number()]
                                    .Buffer(allocation.param_shape_index())
                                    .AsDeviceMemoryBase();
-    CHECK_EQ(allocation.size(), out.size())
+    CHECK_LE(allocation.size(), out.size())
         << "Size mismatch on param " << allocation.parameter_number()
         << " at shape index " << allocation.param_shape_index().ToString();
     VLOG(3) << "allocation is a parameter";
@@ -166,7 +167,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
-  auto cleanup = MakeCleanup(
+  auto cleanup = absl::MakeCleanup(
       [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name_); });
 
   size_t profile_counters_size =

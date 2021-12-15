@@ -34,7 +34,7 @@ enum class FftType : int32 {
   IRFFT = 3,  // Inverse real FFT; fft_length / 2 + 1 complex in,
               //                   fft_length real out
 };
-static constexpr int kFftTypeArraySize = 4;
+inline constexpr int FftTypeArraySize() { return 4; }
 
 namespace internal {
 

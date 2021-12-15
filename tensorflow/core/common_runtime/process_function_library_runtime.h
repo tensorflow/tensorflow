@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 
+#include <functional>
 #include <unordered_map>
 
 // clang-format off
@@ -242,6 +243,31 @@ class ProcessFunctionLibraryRuntime {
 #endif  // IS_MOBILE_PLATFORM
   };
 
+  // Structure detailing the asynchronous assumptions of a component function,
+  // such as whether it can support synchronous execution and any information
+  // needed to execute in proper order to resolve inter-subgraph dependencies.
+  class AsyncAttributes {
+   public:
+    enum Summary { kSafeForSync = 0, kSendOnly, kRecvOnly, kAsyncRequired };
+
+    AsyncAttributes()
+        : allow_control_flow_sync_execution_(false), summary_(kSafeForSync) {}
+    explicit AsyncAttributes(const Graph* graph,
+                             bool allow_control_flow_sync_execution)
+        : allow_control_flow_sync_execution_(allow_control_flow_sync_execution),
+          summary_(Summarize(graph)) {}
+    Summary summary() const { return summary_; }
+    bool allow_control_flow_sync_execution() const {
+      return allow_control_flow_sync_execution_;
+    }
+
+   private:
+    // This data member should be initialized before the summary_.
+    bool allow_control_flow_sync_execution_;
+    Summary summary_;
+    Summary Summarize(const Graph* graph);
+  };
+
   // Structure to keep track of how a component function (a single-device
   // piece of a multi-device function) fits into the multi-device function.
   struct ComponentFunctionData {
@@ -261,6 +287,8 @@ class ProcessFunctionLibraryRuntime {
     // ret_alloc_attrs[i] are the allocator attributes of the i-th return value
     // of the component function.
     std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+    AsyncAttributes async_attributes;
   };
 
   // Data structure holding information for a single instantiated multi-device
@@ -295,6 +323,9 @@ class ProcessFunctionLibraryRuntime {
     bool is_cross_process_;
     // Indicates whether this function has remote outputs.
     bool has_remote_outputs;
+
+    //  Indicates if running this function synchronously is both allowed + safe.
+    bool enable_sync_execution;
 
     // Maps the device name to the information about the component function
     // be run on this device.
@@ -400,11 +431,21 @@ class ProcessFunctionLibraryRuntime {
                                  InternalArgs* comp_args);
 #endif  // IS_MOBILE_PLATFORM
 
+  std::vector<string> GetOrderedSubgraphs(
+      const MultiDeviceFunctionData* data) const;
+
   Status PrepareRunMultiDevice(const FunctionLibraryRuntime::Options& opts,
                                FunctionLibraryRuntime::Handle handle,
                                const MultiDeviceFunctionData** data) const;
 
-  void RunMultiDevice(
+  Status RunMultiDeviceSync(
+      const FunctionLibraryRuntime::Options& opts,
+      FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
+      std::function<Status(const ComponentFunctionData& comp_data,
+                           InternalArgs* args)>
+          get_component_args) const;
+
+  void RunMultiDeviceAsync(
       const FunctionLibraryRuntime::Options& opts,
       FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
       std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,

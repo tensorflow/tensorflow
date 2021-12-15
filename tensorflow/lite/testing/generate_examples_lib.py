@@ -60,13 +60,7 @@ from tensorflow.lite.testing.op_tests.conv3d import make_conv3d_tests
 from tensorflow.lite.testing.op_tests.conv3d_transpose import make_conv3d_transpose_tests
 from tensorflow.lite.testing.op_tests.conv_activation import make_conv_relu_tests, make_conv_relu1_tests, make_conv_relu6_tests
 from tensorflow.lite.testing.op_tests.conv_bias_activation import make_conv_bias_relu6_tests
-# Note: This is a regression test for a bug (b/112303004) that Toco incorrectly
-# transforms Conv into DepthwiseConv when two Conv ops share the same constant
-# weight tensor.
 from tensorflow.lite.testing.op_tests.conv_to_depthwiseconv_with_shared_weights import make_conv_to_depthwiseconv_with_shared_weights_tests
-# Note: This is a regression test for a bug (b/112436267) that Toco incorrectly
-# fuses weights when multiple Conv2D/FULLY_CONNECTED ops share the same constant
-# weight tensor.
 from tensorflow.lite.testing.op_tests.conv_with_shared_weights import make_conv_with_shared_weights_tests
 from tensorflow.lite.testing.op_tests.cos import make_cos_tests
 from tensorflow.lite.testing.op_tests.cumsum import make_cumsum_tests
@@ -117,6 +111,7 @@ from tensorflow.lite.testing.op_tests.max_pool_with_argmax import make_max_pool_
 from tensorflow.lite.testing.op_tests.maximum import make_maximum_tests
 from tensorflow.lite.testing.op_tests.minimum import make_minimum_tests
 from tensorflow.lite.testing.op_tests.mirror_pad import make_mirror_pad_tests
+from tensorflow.lite.testing.op_tests.multinomial import make_multinomial_tests
 from tensorflow.lite.testing.op_tests.nearest_upsample import make_nearest_upsample_tests
 from tensorflow.lite.testing.op_tests.neg import make_neg_tests
 from tensorflow.lite.testing.op_tests.not_equal import make_not_equal_tests
@@ -196,22 +191,6 @@ from tensorflow.lite.testing.op_tests.zeros_like import make_zeros_like_tests
 
 from tensorflow.lite.testing.zip_test_utils import get_test_function
 
-# A map from regular expression to bug number. Any test failure with label
-# matching the expression will be considered due to the corresponding bug.
-KNOWN_BUGS = {
-    # TOCO doesn't support scalars as input.
-    # Concat doesn't work with a single input tensor
-    r"concat.*num_tensors=1": "67378344",
-    # Softmax graphs are too complex.
-    r"softmax.*dim=0": "67749831",
-    # BatchToSpaceND only supports 4D tensors.
-    r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
-    # Div will use floordiv.
-    r"div.*int32": "72051395",
-    # Strided slice cannot handle new_axis_mask.
-    r"strided_slice.*spec=\[None": "137470173",
-}
-
 
 class MultiGenState(object):
   """State of multiple set generation process.
@@ -248,9 +227,7 @@ class Options(object):
     self.output_path = None
     # Particular zip to output.
     self.zip_to_output = None
-    # Path to toco tool.
-    self.toco = None
-    # If a particular model is affected by a known bug count it as a Toco
+    # If a particular model is affected by a known bug count it as a converter
     # error.
     self.known_bugs_are_errors = False
     # Raise an exception if any converter error is encountered.
@@ -266,11 +243,11 @@ class Options(object):
     # For TF Quantization only: where conversion for HLO target.
     self.hlo_aware_conversion = True
     # The function to convert a TensorFLow model to TFLite model.
-    # See the document for `toco_convert` function for its required signature.
+    # See the document for `mlir_convert` function for its required signature.
     self.tflite_convert_function = None
     # A map from regular expression to bug number. Any test failure with label
     # matching the expression will be considered due to the corresponding bug.
-    self.known_bugs = KNOWN_BUGS
+    self.known_bugs = {}
     # Make tests by setting TF forward compatibility horizon to the future.
     self.make_forward_compat_test = False
     # No limitation on the number of tests.
@@ -282,7 +259,6 @@ class Options(object):
     # test sets.
     # TODO(juhoha): Separate the state from the options.
     self.multi_gen_state = None
-    self.use_experimental_converter = False
     self.mlir_quantizer = False
     # The list of ops' name that should exist in the converted model.
     # This feature is currently only supported in MLIR conversion path.
@@ -327,7 +303,7 @@ def generate_examples(options):
   else:
     # Remove suffixes to extract the test name from the output name.
     test_name = re.sub(
-        r"(_(|toco-flex|forward-compat|edgetpu|mlir-quant))?(_xnnpack)?\.zip$",
+        r"(_(|with-flex|forward-compat|edgetpu|mlir-quant))?(_xnnpack)?\.zip$",
         "",
         out,
         count=1)
@@ -370,7 +346,7 @@ def generate_multi_set_examples(options, test_sets):
 
       # Remove suffix and set test_name to run proper test generation function.
       multi_gen_state.test_name = re.sub(
-          r"(_(|toco-flex|forward-compat|mlir-quant))?$",
+          r"(_(|with-flex|forward-compat|mlir-quant))?$",
           "",
           test_name,
           count=1)
