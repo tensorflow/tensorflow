@@ -102,7 +102,10 @@
     customizable via overriding `Model.compute_metrics()`.
   * Losses computation logic in default `Model.train_step()` is now
     customizable via overriding `Model.compute_loss()`.
-
+  * `jit_compile` added to `Model.compile()` on an opt-in basis to compile the 
+    model's training step with [XLA](https://www.tensorflow.org/xla). Note that
+   `jit_compile=True` may not necessarily work for all models.
+  
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
