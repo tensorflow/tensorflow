@@ -440,3 +440,31 @@ func @partitioned_output_maximal_sharding_revert_mpmd(%arg0: tensor<*xi32>, %arg
 func @cluster_func(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
   return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func @check_propagation_downwards_with_alias
+func @check_propagation_downwards_with_alias(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\01\02\03", "\04\05\06"]
+  // CHECK-SAME: output_sharding_configuration = ["\04\05\06", "\01\02\03"]
+  "tf_device.cluster_func"(%arg0, %arg1) {
+      func = @func,
+      use_spmd_for_xla_partitioning = false
+  } : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>)
+  return
+}
+
+// CHECK-LABEL: func @func
+// CHECK-SAME: %arg0: tensor<*xi32> {mhlo.sharding = "\01\02\03"
+// CHECK-SAME: %arg1: tensor<*xi32> {mhlo.sharding = "\04\05\06"
+// CHECK-SAME: ->{{.*}}mhlo.sharding = "\04\05\06"{{.*}}mhlo.sharding = "\01\02\03"
+func @func(%arg0: tensor<*xi32> {tf.aliasing_output = 1 : i64},
+           %arg1: tensor<*xi32> {tf.aliasing_output = 0 : i64}) -> (tensor<*xi32>, tensor<*xi32>) {
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+  %1 = "tf.XlaSharding"(%arg1) { _XlaSharding = "\04\05\06"} : (tensor<*xi32>) -> tensor<*xi32>
+  // flip order
+  %2 = "tf.A"(%1) : (tensor<*xi32>) -> (tensor<*xi32>)
+  %3 = "tf.B"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  return %2, %3 : tensor<*xi32>, tensor<*xi32>
+}

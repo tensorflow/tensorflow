@@ -17,11 +17,12 @@
 
 *   `tf.lite`:
     *   Added TFLite builtin op support for the following TF ops:
-        *  `tf.raw_ops.Bucketize` op on CPU.
-        *  `tf.where` op for data types `tf.int32`/`tf.uint32`/`tf.int8`/`tf.uint8`/`tf.int64`.
-        *  `tf.random.normal` op for output data type `tf.float32` on CPU.
-        *  `tf.random.uniform` op for output data type `tf.float32` on CPU.
-        *  `tf.random.categorical` op for output data type `tf.int64` on CPU.
+        *   `tf.raw_ops.Bucketize` op on CPU.
+        *   `tf.where` op for data types
+            `tf.int32`/`tf.uint32`/`tf.int8`/`tf.uint8`/`tf.int64`.
+        *   `tf.random.normal` op for output data type `tf.float32` on CPU.
+        *   `tf.random.uniform` op for output data type `tf.float32` on CPU.
+        *   `tf.random.categorical` op for output data type `tf.int64` on CPU.
 *   `tensorflow.experimental.tensorrt`:
 
     *   `conversion_params` is now deprecated inside `TrtGraphConverterV2` in
@@ -32,6 +33,11 @@
         `.save()` function inside `TrtGraphConverterV2`. When `False`, the
         `.save()` function won't save any TRT engines that have been built. When
         `True` (default), the original behavior is preserved.
+    *   `TrtGraphConverterV2` provides a new API called `.summary()` which
+        outputs a summary of the inference converted by TF-TRT. It namely shows
+        each TRTEngineOp with their input(s)' and output(s)' shape and dtype. A
+        detailed version of the summary is available which prints additionally
+        all the TensorFlow OPs included in each of the TRTEngineOPs.
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
@@ -65,6 +71,21 @@
       layer which applies the hashing trick to the concatenation of crossed
       scalar inputs. This provides a stateless way to try adding feature crosses
       of integer or string data to a model.
+    * Removed `keras.layers.experimental.preprocessing.CategoryCrossing`. Users
+      should migrate to the `HashedCrossing` layer or use
+      `tf.sparse.cross`/`tf.ragged.cross` directly.
+    * Added additional `standardize` and `split` modes to `TextVectorization`.
+        * `standardize="lower"` will lowercase inputs.
+        * `standardize="string_punctuation"` will remove all puncuation.
+        * `split="character"` will split on every unicode character.
+    * Added an `output_mode` argument to the `Discretization` and `Hashing`
+      layers with the same semantics as other preprocessing layers. All
+      categorical preprocessing layers now support `output_mode`.
+    * All preprocessing layer output will follow the compute dtype of a
+      `tf.keras.mixed_precision.Policy`, unless constructed with
+      `output_mode="int"` in which case output will be `tf.int64`.
+      The output type of any preprocessing layer can be controlled individually
+      by passing a `dtype` argument to the layer.
   * `tf.random.Generator` for keras initializers and all RNG code.
     * Added 3 new APIs for enable/disable/check the usage of
       `tf.random.Generator` in keras backend, which will be the new backend for
@@ -77,6 +98,10 @@
   * `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
     `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is
     deprecated and will be removed in a future release.
+  * Metrics update and collection logic in default `Model.train_step()` is now
+    customizable via overriding `Model.compute_metrics()`.
+  * Losses computation logic in default `Model.train_step()` is now
+    customizable via overriding `Model.compute_loss()`.
 
 # Thanks to our Contributors
 
@@ -95,10 +120,6 @@ This release contains contributions from many people at Google, as well as:
   * The methods `Model.to_yaml()` and `keras.models.model_from_yaml` have been replaced to raise a `RuntimeError` as they can be abused to cause arbitrary code execution. It is recommended to use JSON serialization instead of YAML, or, a better alternative, serialize to H5.
   * `LinearModel` and `WideDeepModel` are moved to the `tf.compat.v1.keras.models.` namespace (`tf.compat.v1.keras.models.LinearModel` and `tf.compat.v1.keras.models.WideDeepModel`), and their `experimental` endpoints (`tf.keras.experimental.models.LinearModel` and `tf.keras.experimental.models.WideDeepModel`) are being deprecated.
   * RNG behavior change for all `tf.keras.initializers` classes. For any class constructed with a fixed seed, it will no longer generate same value when invoked multiple times. Instead, it will return different value, but a determinisitic sequence. This change will make the initialize behavior align between v1 and v2.
-  * Metrics update and collection logic in default `Model.train_step()` is now
-    customizable via overriding `Model.compute_metrics()`.
-  * Losses computation logic in default `Model.train_step()` is now
-    customizable via overriding `Model.compute_loss()`.
 
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with TF SavedModel's Signature concept.

@@ -497,9 +497,7 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
 
   auto* intra_op_threadpool = src_fallback_request_state->intra_op_threadpool();
 
-  auto session_metadata = src_fallback_request_state->session_metadata();
-  tfrt::ModelMetadata model_metadata(session_metadata.name(),
-                                     session_metadata.version());
+  const auto& session_metadata = src_fallback_request_state->session_metadata();
 
   const auto* device_manager = &src_fallback_request_state->device_manager();
 
@@ -507,7 +505,7 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
       &src_fallback_request_state->process_function_library_runtime();
 
   return SetUpKernelFallbackCompatRequestContext(
-      builder, device_manager, pflr, intra_op_threadpool, model_metadata,
+      builder, device_manager, pflr, intra_op_threadpool, session_metadata,
       /*runner=*/nullptr);
 }
 

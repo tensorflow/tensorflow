@@ -683,7 +683,14 @@ def tf_pyclif_proto_library(
     native.filegroup(name = name + "_pb2")
 
 def tf_additional_binary_deps():
-    return [clean_dep("@nsync//:nsync_cpp")] + if_cuda(
+    return [
+        clean_dep("@nsync//:nsync_cpp"),
+        # TODO(allenl): Split these out into their own shared objects. They are
+        # here because they are shared between contrib/ op shared objects and
+        # core.
+        clean_dep("//tensorflow/core/kernels:lookup_util"),
+        clean_dep("//tensorflow/core/util/tensor_bundle"),
+    ] + if_cuda(
         [
             clean_dep("//tensorflow/stream_executor:cuda_platform"),
         ],
@@ -692,13 +699,7 @@ def tf_additional_binary_deps():
             clean_dep("//tensorflow/stream_executor:rocm_platform"),
             clean_dep("//tensorflow/core/platform/default/build_config:rocm"),
         ],
-    ) + [
-        # TODO(allenl): Split these out into their own shared objects (they are
-        # here because they are shared between contrib/ op shared objects and
-        # core).
-        clean_dep("//tensorflow/core/kernels:lookup_util"),
-        clean_dep("//tensorflow/core/util/tensor_bundle"),
-    ] + if_mkl_ml(
+    ) + if_mkl_ml(
         [
             clean_dep("//third_party/mkl:intel_binary_blob"),
         ],

@@ -24,6 +24,7 @@ set(LIBS
         LmhloGPUDialect
         MhloRegisterDialects
         AllDiscRalPasses
+        LmhloPasses
         AllMhloPasses
         MLIRBufferTransforms
         MLIRHLOAnalysis

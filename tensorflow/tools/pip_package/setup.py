@@ -93,7 +93,7 @@ REQUIRED_PACKAGES = [
     'tensorboard >= 2.7, < 2.8',
     'tensorflow_estimator >= 2.7.0, < 2.8',
     'keras >= 2.7.0, < 2.8',
-    'tensorflow-io-gcs-filesystem >= 0.21.0; python_version<"3.10"',  # TODO(b/209682854)
+    'tensorflow-io-gcs-filesystem >= 0.23.0',
 ]
 
 

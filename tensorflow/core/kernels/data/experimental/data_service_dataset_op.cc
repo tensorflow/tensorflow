@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -1566,6 +1567,10 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
         ctx, CapturedFunction::Create(ctx, uncompress_fn_,
                                       /*captured_inputs=*/std::vector<Tensor>{},
                                       &captured_uncompress_func));
+
+    // Release the ownership of `dataset` and transfer it to the ParallelMap
+    // dataset for uncompression.
+    core::ScopedUnref unref(dataset);
     dataset = MakeDataServiceUncompressDataset(
                   /*input=*/dataset, std::move(captured_uncompress_func),
                   output_types_, output_shapes_)

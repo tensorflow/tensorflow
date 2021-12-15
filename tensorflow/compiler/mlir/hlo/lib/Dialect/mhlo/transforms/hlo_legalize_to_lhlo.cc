@@ -19,9 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"

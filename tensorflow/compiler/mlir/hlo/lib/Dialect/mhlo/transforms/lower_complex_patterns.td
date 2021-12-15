@@ -76,6 +76,42 @@ def : Pat<(HLO_AbsOp HLO_ComplexTensor:$val),
               (HLO_MulOp (HLO_RealOp:$real $val), $real),
               (HLO_MulOp (HLO_ImagOp:$imag $val), $imag)))>;
 
+// Can deconstruct sin(a + ib) as follows:
+//   sin(a) * cosh(b) + icos(a) * sinh(b)
+//   sinh(b) = (e^x - e^-x) / 2
+//   cosh(b) = (e^x + e^-x) / 2
+def : Pat<(HLO_SinOp HLO_ComplexTensor:$val),
+            (HLO_ComplexOp
+              (HLO_DivOp
+                (HLO_MulOp
+                  (HLO_SinOp (HLO_RealOp:$real $val)),
+                  (HLO_AddOp
+                    (HLO_ExpOp:$exp (HLO_ImagOp:$imag $val)),
+                    (HLO_ExpOp:$nexp (HLO_NegOp $imag)))),
+                 (HLO_ConstOp : $two (ConstantSplat<"2.0"> $real))),
+              (HLO_DivOp
+                (HLO_MulOp
+                  (HLO_CosOp $real),
+                  (HLO_SubOp $exp, $nexp)), $two))>;
+
+// Can deconstruct cos(a + ib) as follows:
+//   cos(a) * cosh(b) - isin(a) * sinh(b)
+//   sinh(b) = (e^x - e^-x) / 2
+//   cosh(b) = (e^x + e^-x) / 2
+def : Pat<(HLO_CosOp HLO_ComplexTensor:$val),
+            (HLO_ComplexOp
+              (HLO_DivOp
+                (HLO_MulOp
+                  (HLO_CosOp (HLO_RealOp:$real $val)),
+                  (HLO_AddOp
+                    (HLO_ExpOp:$exp (HLO_ImagOp:$imag $val)),
+                    (HLO_ExpOp:$nexp (HLO_NegOp $imag)))),
+                 (HLO_ConstOp : $two (ConstantSplat<"2.0"> $real))),
+              (HLO_DivOp
+                (HLO_MulOp
+                  (HLO_SinOp $real),
+                  (HLO_SubOp $nexp, $exp)), $two))>;
+
 // Exponential can be lowered to an exponential on the real component and a
 // sum of sinusoids of the imaginary component, which equates to a normal
 // exponential operator multiplied by Euler's formula.

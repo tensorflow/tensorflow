@@ -11,7 +11,6 @@ load(
     "gen_zip_test",
     "gen_zipped_test_file",
     "generated_test_models_all",
-    "merged_test_models",
 )
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -30,6 +29,7 @@ package(
 )
 
 exports_files([
+    "build_def.bzl",
     "generated_examples_zip_test.cc",
     "tflite_diff_example_test.cc",
     "init_tensorflow.h",
@@ -101,7 +101,7 @@ exports_files([
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, delegate, test_name, tags, args in generated_test_models_all() + merged_test_models()]
+) for conversion_mode, delegate, test_name, tags, args in generated_test_models_all()]
 
 test_suite(
     name = "generated_zip_tests",

@@ -143,7 +143,7 @@ struct ComputeOpAndFuncBufferizePass
           // Force identity maps for several ops which don't support memrefs
           // with affine_maps.
           return llvm::any_of(op->getUsers(), [](Operation* user) {
-            return isa<mlir::ReturnOp, mhlo::DynamicReshapeOp,
+            return isa<mlir::ReturnOp, mhlo::DynamicReshapeOp, tensor::CastOp,
                        tensor::CollapseShapeOp, tensor::ExpandShapeOp,
                        linalg::TiledLoopOp>(user);
           });
@@ -254,7 +254,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
                         tensor::FromElementsOp, tensor::CastOp, tensor::DimOp,
-                        chlo::MinimumBroadcastShapesOp,
+                        tensor::RankOp, chlo::MinimumBroadcastShapesOp,
                         bufferization::ToTensorOp, bufferization::ToMemrefOp,
                         tensor::ExpandShapeOp, tensor::CollapseShapeOp>();
     bufferization::BufferizeTypeConverter converter;
@@ -263,7 +263,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
              converter.isLegal(op->getResultTypes());
     };
     target.addDynamicallyLegalOp<ConstantOp, arith::ConstantOp,
-                                 arith::IndexCastOp, RankOp, SelectOp,
+                                 arith::IndexCastOp, SelectOp,
                                  tf_framework::JITExecuteOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());

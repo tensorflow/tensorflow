@@ -95,64 +95,70 @@ void GenerateRandomStandardNormalNumbers(
 
 // Generates random numbers following a multinomial distribution.
 // Source: third_party/tensorflow/core/kernels/multinomial_op.cc
-void GenerateMultinomialNumbers(Generator& rng, const float* logits,
-                                size_t logits_size, int64_t* output,
-                                size_t num_samples) {
-  // Compute the maximum logit.
-  float max = std::numeric_limits<float>::lowest();
-  for (size_t i = 0; i < logits_size; i++) {
-    if (std::isfinite(logits[i])) {
-      max = std::max(max, logits[i]);
-    }
-  }
-  const double max_logit = static_cast<double>(max);
+void GenerateMultinomialNumbers(Generator& rng, int batch_size,
+                                const float* logits, size_t logits_size,
+                                int64_t* output, size_t num_samples) {
+  // Skip a large fixed number of samples in the rng (random number generator)
+  // for each op invoke to ensure that the output is always unique. (Make a copy
+  // of the rng before skipping samples to use it in the current op invoke)
+  // Context: This feature (to skip fixed samples) was added in TF as some
+  // versions of the Multinomial op draw an unknown number of samples from the
+  // rng. Though the TFLite version below only draws a fixed number of samples,
+  // we still need to keep this feature to maintain parity with the TF op.
+  Generator rng_copy = rng;
+  rng.Skip(batch_size * ((num_samples + 3) / 4 * 4) * 2 *
+           256);  // Round to a multiple of 4, 2x is for CPU and 256 is a
+                  // conservative multiplier
 
-  // Compute the (unnormalized) cumulative probability distribution.
-  // For numerical stability (as the exponential function grows very fast),
-  // subtract the maximum logit. Though you can subtract any value without
-  // changing the output, we use the maximum logit for convenience.
-  std::vector<double> cdf(logits_size);
-  double cumulative_total = 0.0f;
-  for (size_t i = 0; i < logits_size; i++) {
-    if (std::isfinite(logits[i])) {
-      cumulative_total += exp(logits[i] - max_logit);
-    }
-    cdf[i] = cumulative_total;
-  }
+  // Variables to store intermediate results between batches.
+  typename Generator::ResultType rng_results;
+  int used_rng_results_index = Generator::kResultElementCount;
+  typename Generator::ResultElementType x0, x1;
 
-  // Generate random categorical numbers and populate the output.
-  size_t current_size = 0;
-  size_t rng_size = Generator::kResultElementCount;
+  // Iterate over all batches to compute the outputs.
+  for (int batch = 0; batch < batch_size; ++batch) {
+    const float* logits_row = logits + batch * logits_size;
+    int64_t* output_row = output + batch * num_samples;
 
-  while (current_size < num_samples) {
-    const int update_size = std::min(rng_size / 2, num_samples - current_size);
-    typename Generator::ResultType samples = rng();
-    for (int i = 0; i < update_size; i += 1) {
-      const double value = tensorflow::random::Uint64ToDouble(
-                               samples[i * 2], samples[i * 2 + 1]) *
-                           cumulative_total;
-      output[current_size + i] =
-          std::upper_bound(cdf.begin(), cdf.end(), value) - cdf.begin();
+    // Compute the maximum logit.
+    float max = std::numeric_limits<float>::lowest();
+    for (size_t i = 0; i < logits_size; i++) {
+      if (std::isfinite(logits_row[i])) {
+        max = std::max(max, logits_row[i]);
+      }
     }
-    current_size += update_size;
+    const double max_logit = static_cast<double>(max);
+
+    // Compute the (unnormalized) cumulative probability distribution.
+    // For numerical stability (as the exponential function grows very fast),
+    // subtract the maximum logit. Though you can subtract any value without
+    // changing the output, we use the maximum logit for convenience.
+    std::vector<double> cdf(logits_size);
+    double cumulative_total = 0.0f;
+    for (size_t i = 0; i < logits_size; i++) {
+      if (std::isfinite(logits_row[i])) {
+        cumulative_total += exp(logits_row[i] - max_logit);
+      }
+      cdf[i] = cumulative_total;
+    }
+
+    // Generate random categorical numbers and populate the output.
+    for (int64_t j = 0; j < num_samples; ++j) {
+      if (used_rng_results_index == Generator::kResultElementCount) {
+        rng_results = rng_copy();
+        used_rng_results_index = 0;
+      }
+      x0 = rng_results[used_rng_results_index];
+      x1 = rng_results[used_rng_results_index + 1];
+      used_rng_results_index += 2;
+      const double to_find =
+          (tensorflow::random::Uint64ToDouble(x0, x1) * cumulative_total);
+      auto found_iter = std::upper_bound(cdf.begin(), cdf.end(), to_find);
+      output_row[j] = std::distance(cdf.begin(), found_iter);
+    }
   }
 }
 
-// For the multinomial op, compute the number of samples to skip in the
-// generator between each invoke to ensure that outputs don't overlap.
-int ComputeMultinomialSamplesToSkip(int num_samples) {
-  // Number of skipped 128-bits samples (i.e, number of generator calls)
-  int num_samples_skipped = (num_samples + 1) / 2;
-
-  // Skip enough 128-bits samples to ensure that the output is always unique.
-  // Round to a multiple of 4 (+3 ensures a different state in every batch)
-  int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
-  // CPU generates 2 samples per number and 256 is a conservative multiplier.
-  int num_samples_to_skip_total = num_samples_ceil_4 * 2 * 256;
-  // Compute the number of 128-bits samples to skip.
-  int num_samples_to_skip = num_samples_to_skip_total - num_samples_skipped;
-  return num_samples_to_skip;
-}
 }  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -266,8 +272,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus EvalMultinomial(TfLiteContext* context, TfLiteNode* node) {
-  OpData* params = reinterpret_cast<OpData*>(node->user_data);
-  TF_LITE_ENSURE(context, params != nullptr);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // 'logits' is a 2-D float matrix with shape [batch_size, num_classes]
   const TfLiteTensor* logits_tensor = GetInput(context, node, 0);
@@ -278,41 +283,33 @@ TfLiteStatus EvalMultinomial(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, num_classes > 0);
 
   // 'num_samples' is an int scalar
-  const TfLiteTensor* num_samples = GetInput(context, node, 1);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(num_samples), 0);
-  const int num_samples_ = *num_samples->data.i32;
-  TF_LITE_ENSURE(context, num_samples_ >= 0);
+  const TfLiteTensor* num_samples_tensor = GetInput(context, node, 1);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(num_samples_tensor), 0);
+  const int num_samples = *num_samples_tensor->data.i32;
+  TF_LITE_ENSURE(context, num_samples >= 0);
 
   TfLiteTensor* output_tensor = GetOutput(context, node, 0);
   if (IsDynamicTensor(output_tensor)) {
     // 'output' is a 2-D int64 matrix with shape [batch_size, num_samples]
     TfLiteIntArray* output_shape = TfLiteIntArrayCreate(2);
     output_shape->data[0] = batch_size;
-    output_shape->data[1] = num_samples_;
+    output_shape->data[1] = num_samples;
     TF_LITE_ENSURE_OK(
         context, context->ResizeTensor(context, output_tensor, output_shape));
   }
 
-  OpData* data = reinterpret_cast<OpData*>(node->user_data);
-  int64_t* output = GetTensorData<int64_t>(output_tensor);
-  for (int batch = 0; batch < batch_size; ++batch) {
-    int logits_offset = num_classes * batch;
-    int outputs_offset = num_samples_ * batch;
-
-    switch (output_tensor->type) {
-      case kTfLiteInt64:
-        GenerateMultinomialNumbers(data->rng, logits + logits_offset,
-                                   num_classes, output + outputs_offset,
-                                   num_samples_);
-        break;
-      default:
-        TF_LITE_KERNEL_LOG(context,
-                           "Unsupported output datatype for Multinomial op: %s",
-                           TfLiteTypeGetName(output_tensor->type));
-        return kTfLiteError;
-    }
+  switch (output_tensor->type) {
+    case kTfLiteInt64:
+      GenerateMultinomialNumbers(data->rng, batch_size, logits, num_classes,
+                                 GetTensorData<int64_t>(output_tensor),
+                                 num_samples);
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(context,
+                         "Unsupported output datatype for Multinomial op: %s",
+                         TfLiteTypeGetName(output_tensor->type));
+      return kTfLiteError;
   }
-  data->rng.Skip(ComputeMultinomialSamplesToSkip(num_samples_));
   return kTfLiteOk;
 }
 

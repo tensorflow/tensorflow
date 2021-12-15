@@ -27,6 +27,30 @@ struct TfCpuRtPipelineOptions
   Option<bool> vectorize{*this, "vectorize",
                          llvm::cl::desc("Enable tiling for vectorization."),
                          llvm::cl::init(false)};
+
+  Option<bool> peel{*this, "peel", llvm::cl::desc("Enable loop peeling."),
+                    llvm::cl::init(true)};
+
+  Option<bool> fuse_fill{
+      *this, "fuse-fill",
+      llvm::cl::desc("Enable fusion of `linalg.fill` into a tiled reduction."),
+      llvm::cl::init(true)};
+
+  Option<int64_t> cwise_tile_size{
+      *this, "cwise-tile-size",
+      llvm::cl::desc(
+          "Tile size for the innermost dimension of an elementwise op."),
+      llvm::cl::init(8)};
+
+  Option<int64_t> reduction_1d_tile_size{
+      *this, "reduction-1d-tile-size",
+      llvm::cl::desc("Tile size for a 1D reduction."), llvm::cl::init(8)};
+
+  ListOption<int64_t> reduction_2d_tile_sizes{
+      *this, "reduction-2d-tile-sizes",
+      llvm::cl::desc("Tile sizes for a 2D reduction."), llvm::cl::ZeroOrMore,
+      llvm::cl::MiscFlags::CommaSeparated};
+
   Option<bool> legalize_i1_tensors{
       *this, "legalize-i1-tensors",
       llvm::cl::desc("Convert i1 tensors to i8 tensors."),

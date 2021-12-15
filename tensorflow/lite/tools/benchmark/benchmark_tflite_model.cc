@@ -648,7 +648,14 @@ TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
   auto resolver = GetOpResolver();
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
   const bool use_caching = params_.Get<bool>("use_caching");
-  tflite::InterpreterBuilder(*model_, *resolver)(&interpreter_, num_threads);
+
+  tflite::InterpreterBuilder builder(*model_, *resolver);
+  if (builder.SetNumThreads(num_threads) != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to set thread number";
+    return kTfLiteError;
+  }
+
+  builder(&interpreter_);
   if (!interpreter_) {
     TFLITE_LOG(ERROR) << "Failed to initialize the interpreter";
     return kTfLiteError;

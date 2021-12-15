@@ -354,6 +354,7 @@ class RpcOpsTest(test.TestCase):
       server.register("read_var", read_var)
 
   def test_client_timeout(self):
+    self.skipTest("b/210527152: Flaky")
     port = portpicker.pick_unused_port()
     address = "localhost:{}".format(port)
 

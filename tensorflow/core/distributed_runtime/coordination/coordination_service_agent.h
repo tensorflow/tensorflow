@@ -27,7 +27,8 @@ limitations under the License.
 namespace tensorflow {
 class CoordinationServiceConfig;
 class DeviceAttributes;
-class WorkerEnv;
+class DeviceMgr;
+class Env;
 class ServerDef;
 
 // CoordinationServiceAgent defines the interface for tasks to communicate with
@@ -50,10 +51,10 @@ class CoordinationServiceAgent {
 
   // Initialize coordination service agent.
   virtual Status Initialize(
-      const WorkerEnv* worker_env, const ServerDef& server_def,
+      Env* env, const DeviceMgr* device_mgr, const ServerDef& server_def,
       std::unique_ptr<CoordinationClientCache> client_cache,
       StatusCallback error_fn) = 0;
-  virtual Status Initialize(const WorkerEnv* worker_env,
+  virtual Status Initialize(Env* env, const DeviceMgr* device_mgr,
                             const std::string& job_name, int task_id,
                             const CoordinationServiceConfig& configs,
                             std::unique_ptr<CoordinationClient> leader_client,

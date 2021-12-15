@@ -118,20 +118,20 @@ struct TFLQuantizationBase
                                    NumericVerifyOp, RootOp>(ctx, quant_params) {
   }
 
-  static bool AllowHybridOperand(Operation* quantized_op) {
+  static bool AllowDynamicRangeQuantizedOperand(Operation* quantized_op) {
     // Collect the input if dynamic range quantization is on and the op supports
     // it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           dyn_cast<DynamicRangeQuantizedOpInterface>(quantized_op);
+           dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op);
   }
 
-  static bool AllowHybridResult(Operation* quantized_op) {
+  static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op) {
     // Collect the output if dynamic range quantization is on and the op
     // supports it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           dyn_cast<DynamicRangeQuantizedOpInterface>(quantized_op);
+           dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op);
   }
 };
 

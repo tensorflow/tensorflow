@@ -5020,8 +5020,55 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
     return Status::OK();
   }
   auto operand = reduce_window->mutable_operand(0);
+  auto init_value = reduce_window->mutable_operand(1);
   auto function = reduce_window->to_apply();
   const Window& window = reduce_window->window();
+
+  // reduce-window with a 1x1x..x1 window and no dilation etc can be replaced
+  // with a trivial elementwise operation, plus a pad op if necessary.
+  //
+  // We cowardly refuse to consider this optimization when the reduce-window
+  // subcomputation is anything other than a simple add/min/max.  Supporting
+  // more complex subcomputations is possible, but is tantamount to implementing
+  // jax.vmap()!
+  if (absl::c_all_of(window.dimensions(),
+                     [](const WindowDimension& dim) {
+                       return dim.size() == 1 &&             //
+                              dim.stride() == 1 &&           //
+                              dim.window_dilation() == 1 &&  //
+                              dim.base_dilation() == 1 &&    //
+                              !dim.window_reversal();
+                     }) &&
+      Match(function->root_instruction(),
+            m::AnyOf<HloInstruction>(
+                m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1)),
+                m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1))))) {
+    const HloInstruction* nested_root = function->root_instruction();
+    absl::InlinedVector<int64_t, 8> broadcast_dims(
+        nested_root->shape().dimensions_size());
+    absl::c_iota(broadcast_dims, 0);
+    TF_ASSIGN_OR_RETURN(
+        auto new_op, MakeBinaryHlo(nested_root->opcode(), operand,
+                                   MakeBroadcastHlo(init_value, broadcast_dims,
+                                                    operand->shape())));
+
+    if (absl::c_any_of(window.dimensions(), [](const WindowDimension& dim) {
+          return dim.padding_low() > 0 || dim.padding_high() > 0;
+        })) {
+      PaddingConfig padding_config;
+      for (const WindowDimension& window_dim : window.dimensions()) {
+        auto& padding_dim = *padding_config.add_dimensions();
+        padding_dim.set_edge_padding_low(window_dim.padding_low());
+        padding_dim.set_edge_padding_high(window_dim.padding_high());
+        padding_dim.set_interior_padding(0);
+      }
+      TF_ASSIGN_OR_RETURN(new_op,
+                          MakePadHlo(new_op, init_value, padding_config));
+    }
+
+    return ReplaceInstruction(reduce_window, new_op);
+  }
 
   if (options_.enable_window_reduce_to_reduce_replacement()) {
     // A reduce window can be expressed as a reduce and a reshape if all

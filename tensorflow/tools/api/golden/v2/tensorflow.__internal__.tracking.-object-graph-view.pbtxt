@@ -28,7 +28,7 @@ tf_class {
   }
   member_method {
     name: "list_children"
-    argspec: "args=[\'self\', \'obj\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'obj\', \'save_type\'], varargs=None, keywords=kwargs, defaults=[\'SaveType.CHECKPOINT\'], "
   }
   member_method {
     name: "list_objects"

@@ -32,14 +32,6 @@ class MhloDialect;
 #include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 }  // end namespace mhlo
-
-namespace lmhlo {
-
-#define GEN_PASS_CLASSES
-#include "mlir-hlo/Dialect/mhlo/transforms/lmhlo_passes.h.inc"
-
-}  // end namespace lmhlo
-
 }  // end namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H_

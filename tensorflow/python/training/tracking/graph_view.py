@@ -113,7 +113,7 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
           if slot_variable is None:
             continue
           slot_variable._maybe_initialize_trackable()  # pylint: disable=protected-access
-          if slot_variable._checkpoint_dependencies:  # pylint: disable=protected-access
+          if slot_variable._trackable_children():  # pylint: disable=protected-access
             # TODO(allenl): Gather dependencies of slot variables.
             raise NotImplementedError(
                 "Currently only variables with no dependencies can be saved as "
@@ -239,16 +239,28 @@ class ObjectGraphView(object):
       setattr(copied, key, copy.deepcopy(value, memo))
     return copied
 
-  def list_children(self, obj):
+  def list_children(self, obj, save_type=base.SaveType.CHECKPOINT, **kwargs):
+    """Returns all child trackables attached to obj.
+
+    Args:
+      obj: A `Trackable` object.
+      save_type: A string, can be 'savedmodel' or 'checkpoint'.
+      **kwargs: kwargs to use when retrieving the object's children.
+
+    Returns:
+      List of all children attached to the object.
+    """
     # pylint: disable=protected-access
     obj._maybe_initialize_trackable()
-    dependencies = obj._checkpoint_dependencies
+    children = [base.TrackableReference(name, ref) for name, ref
+                in obj._trackable_children(save_type, **kwargs).items()]
     # pylint: enable=protected-access
 
+    # GraphView objects may define children of the root object that are not
+    # actually attached, e.g. a Checkpoint object's save_counter.
     if obj is self.root and self._attached_dependencies:
-      dependencies = dependencies.copy()
-      dependencies.extend(self._attached_dependencies)
-    return dependencies
+      children.extend(self._attached_dependencies)
+    return children
 
   @property
   def saveables_cache(self):

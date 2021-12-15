@@ -316,6 +316,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_id",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,

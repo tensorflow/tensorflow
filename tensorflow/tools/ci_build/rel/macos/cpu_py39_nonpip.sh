@@ -21,7 +21,6 @@ install_bazelisk
 
 # Selects a version of Xcode.
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
-export MACOSX_DEPLOYMENT_TARGET=11.0
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up py39 via pyenv and check it worked

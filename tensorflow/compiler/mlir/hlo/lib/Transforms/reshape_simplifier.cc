@@ -56,7 +56,7 @@ bool isExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
 }
 
 // Rewrite dynamic reshapes that only insert one dimensions into
-// linalg.tensor_expand_shape.
+// tensor.expand_shape.
 struct ReshapeToExpandShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
   ReshapeToExpandShape(MLIRContext *ctx) : OpRewritePattern(ctx) {}

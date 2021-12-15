@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 
 namespace mlir {
@@ -62,21 +65,30 @@ int64_t FallbackExecuteOp::cost() {
 
   int64_t cost = 0;
 
-  // Get the sum of sizes of all ranked inputs.
+  // Get the sum of sizes of all ranked inputs for all operations in the
+  // function body. This approach approximates the cost analysis in the
+  // tfrt_compiler::CostAnalysis, because initially we want to get identical
+  // stream assignments, however long term we want to use more precise cost
+  // estimation, together with a more precise stream assignment.
   //
   // TODO(ezhulenev): Once we have a proper cost model for MLIR operations,
   // use it to compute a more precise cost estimation.
-  for (Type type : kernel_fn.getArgumentTypes()) {
-    TensorType tensor = type.dyn_cast<TensorType>();
-    if (!tensor || !tensor.hasRank()) continue;
+  for (mlir::Operation& op : kernel_fn.body().getOps()) {
+    // Skip return operation.
+    if (mlir::isa<mlir::ReturnOp>(op)) continue;
 
-    cost += GetRankedTensorSize(tensor);
+    // These ops are cheap regardless of their input sizes.
+    if (mlir::isa<mlir::TF::ShapeOp, mlir::TF::StridedSliceOp,
+                  mlir::TF::ReshapeOp, mlir::TF::ExpandDimsOp>(op)) {
+      cost += 1;
+      continue;
+    }
+
+    for (Type type : op.getOperandTypes()) {
+      if (auto tensor = type.dyn_cast<RankedTensorType>())
+        cost += GetRankedTensorSize(tensor);
+    }
   }
-
-  // Scale the cost by the number of operations in the function body. The choice
-  // of log2 function is arbitrary, seems to work well in benchmarks.
-  double scale = std::log2(kernel_fn.body().front().getOperations().size());
-  cost *= scale;
 
   return std::max<int64_t>(1, cost);
 }

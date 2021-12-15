@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
-#include "tensorflow/core/tfrt/utils/model_metadata.h"
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -51,7 +50,7 @@ Status SetUpKernelFallbackCompatRequestContext(
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata = absl::nullopt,
+    const absl::optional<SessionMetadata>& model_metadata = absl::nullopt,
     std::function<void(std::function<void()>)>* runner = nullptr);
 
 // Runner_table can be nullptr. In that case, kernel_fallback will use
@@ -61,7 +60,7 @@ Status SetUpKernelFallbackCompatRequestContext(
     tfrt_stub::OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata = absl::nullopt);
+    const absl::optional<SessionMetadata>& model_metadata = absl::nullopt);
 
 // The CoreRuntime dispatch function to run a TF kernel in kernel fallback
 // compat mode.

@@ -3222,6 +3222,45 @@ def tf_python_pybind_extension(
         compatible_with = compatible_with,
     )
 
+# copybara:comment_begin(oss only)
+# buildozer: enable=function-docstring-args
+def tf_python_pybind_ccsharedlib_extension(
+        name,
+        srcs,
+        module_name,
+        hdrs = [],
+        static_deps = [],
+        deps = [],
+        compatible_with = None,
+        copts = [],
+        defines = [],
+        features = [],
+        testonly = None,
+        visibility = None):
+    """A wrapper macro for pybind_ccsharedlib_extension.
+
+    It is used for targets under //third_party/tensorflow/python that link
+    against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
+    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
+    """
+    pybind_ccsharedlib_extension(
+        name,
+        srcs,
+        module_name,
+        hdrs = hdrs,
+        static_deps = static_deps,
+        deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+        compatible_with = compatible_with,
+        copts = copts,
+        defines = defines,
+        features = features,
+        link_in_framework = True,
+        testonly = testonly,
+        visibility = visibility,
+    )
+
+# copybara:comment_end
+
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
     """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension.
 

@@ -865,6 +865,44 @@ class _TRTEngineResource(tracking.TrackableResource):
           handle, ignore_lookup_error=True)
 
 
+def _print_row(fields, positions, print_fn):
+  """Prints a row."""
+  line = ""
+  for i, field in enumerate(fields):
+    field = str(field)
+    end_line_pos = positions[i]
+    if i > 0:
+      line = line + " "
+    line = "{0:{min_length}}".format(line + field, min_length=end_line_pos)
+
+    if len(line) > end_line_pos:
+      line = line[:(end_line_pos - 4)] + " ..."
+
+  print_fn(line)
+
+
+def _get_nodes_in_engine(graphdef, node_name):
+  ops_in_engine = collections.defaultdict(int)
+  for func in graphdef.library.function:
+    if f"{node_name}_native_segment" == func.signature.name:
+      node_count = len(func.node_def)
+      for node in func.node_def:
+        ops_in_engine[node.op] += 1
+      break
+  return node_count, ops_in_engine
+
+
+def _extract_shapes_from_node(node, key):
+  out_shape = []
+  for shape in node.attr[key].list.shape:
+    out_shape.append([dim.size for dim in shape.dim])
+  return out_shape
+
+
+def _get_engine_dtypes_from_node(node, key):
+  return [dtype.str() for dtype in node.attr[key].list.type]
+
+
 @tf_export("experimental.tensorrt.Converter", v1=[])
 class TrtGraphConverterV2(object):
   """An offline converter for TF-TRT transformation for TF 2.0 SavedModels.
@@ -1292,9 +1330,9 @@ class TrtGraphConverterV2(object):
     Args:
       output_saved_model_dir: directory to saved the converted SavedModel.
       save_gpu_specific_engines: whether to save TRT engines that have been
-        built. When True, all engines are saved and when False, the engines 
+        built. When True, all engines are saved and when False, the engines
         are not saved and will be rebuilt at inference time. By using
-        save_gpu_specific_engines=False after doing INT8 calibration, inference 
+        save_gpu_specific_engines=False after doing INT8 calibration, inference
         can be done on different GPUs than the GPU that the model was calibrated
         and saved on.
     """
@@ -1368,6 +1406,91 @@ class TrtGraphConverterV2(object):
 
     signatures[self._input_saved_model_signature_key] = self._converted_func
     save.save(self._saved_model, output_saved_model_dir, signatures)
+
+  def summary(self, line_length=160, detailed=True, print_fn=None):
+    """This method describes the results of the conversion by TF-TRT.
+
+    It includes information such as the name of the engine, the number of nodes
+    per engine, the input and output dtype, along with the input shape of each
+    TRTEngineOp.
+
+    Args:
+      line_length: Default line length when printing on the console. Minimum 160
+        characters long.
+      detailed: Whether or not to show the nodes inside each TRTEngineOp.
+      print_fn: Print function to use. Defaults to `print`. It will be called on
+        each line of the summary. You can set it to a custom function in order
+        to capture the string summary.
+
+    Raises:
+      RuntimeError: if the graph is not converted.
+    """
+    if not self._converted:
+      raise RuntimeError(
+          f"Impossible to call `{self.__class__.__name__}.summary()` before "
+          f"calling {self.__class__.__name__}.convert()`.")
+
+    if line_length < 160:
+      raise ValueError(f"Invalid `line_length` value has been received: "
+                       f"{line_length}. Minimum: 160.")
+
+    if print_fn is None:
+      print_fn = print
+
+    # positions are percentage of `line_length`. positions[i]+1 is the starting
+    # position for (i+1)th field. We also make sure that the last char printed
+    # for each field is a space.
+    positions = [.22, .30, .45, .60, .8, 1.]
+    positions = [int(line_length * p) for p in positions]
+
+    headers = [
+        "TRTEngineOP Name", "# Nodes", "Input DType", "Output Dtype",
+        "Input Shape", "Output Shape"
+    ]
+    _print_row(headers, positions, print_fn=print_fn)
+    print_fn("=" * line_length)
+
+    n_engines = 0
+    n_ops_converted = 0
+    n_ops_not_converted = 0
+
+    graphdef = self._converted_func.graph.as_graph_def(add_shapes=True)
+
+    for node in graphdef.node:
+      if node.op != "TRTEngineOp":
+        n_ops_not_converted += 1
+        continue
+      else:
+        n_engines += 1
+
+        in_shapes = _extract_shapes_from_node(node, "input_shapes")
+        out_shapes = _extract_shapes_from_node(node, "_output_shapes")
+        in_dtypes = _get_engine_dtypes_from_node(node, "InT")
+        out_dtypes = _get_engine_dtypes_from_node(node, "OutT")
+        node_count, converted_ops_dict = _get_nodes_in_engine(
+            graphdef, node.name)
+
+        n_ops_converted += node_count
+
+        if n_engines != 1:
+          print_fn(f"\n{'-'*40}\n")
+
+        _print_row([
+            node.name, node_count, in_dtypes, out_dtypes, in_shapes, out_shapes
+        ],
+                   positions,
+                   print_fn=print_fn)
+        if detailed:
+          print_fn()
+          for key, value in sorted(dict(converted_ops_dict).items()):
+            print_fn(f"\t- {key}: {value}x")
+
+    print_fn(f"\n{'='*line_length}")
+    print_fn(f"[*] Total number of TensorRT engines: {n_engines}")
+    total_ops = n_ops_not_converted + n_ops_converted
+    conversion_ratio = n_ops_converted / total_ops * 100
+    print_fn(f"[*] % of OPs Converted: {conversion_ratio:.2f}% "
+             f"[{n_ops_converted}/{total_ops}]\n")
 
 
 # TODO(laigd): use TrtConversionParams here.

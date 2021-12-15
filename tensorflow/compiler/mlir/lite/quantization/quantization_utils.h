@@ -256,16 +256,18 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 // matched pattern are rewritten by its quantized alternatives.
 //
 // The concrete pattern, extends from this base pattern, can specify whether it
-// allows "hybrid" operands and results for the operations in the current
-// context. These "hybrid" operands and results don't have quantization
-// parameters propagated to, so will be in float in the quantized results. The
-// concrete pattern should define the following two functions:
+// allows dynamic range quantized operands and results for the operations in the
+// current context. These "DynamicRangeQuantized" operands and results don't
+// have quantization parameters propagated to, so will be in float in the
+// quantized results. The concrete pattern should define the following two
+// functions:
 //
-//   bool AllowHybridOperand(Operation *) const
-//   bool AllowHybridResult(Operation *) const
+//   bool AllowDynamicRangeQuantizedOperand(Operation *) const
+//   bool AllowDynamicRangeQuantizedResult(Operation *) const
 //
-// Full integer quantization disallows "hybrid" operands or results.
-// Dynamic range quantization allows "hybrid" operands and results.
+// Full integer quantization disallows "DynamicRangeQuantized" operands or
+// results. Dynamic range quantization allows "DynamicRangeQuantized" operands
+// and results.
 template <typename ConcretTy, typename Q, typename DQ, typename VERIFIER,
           typename RootOp = DQ>
 class QuantizationPattern : public RewritePattern {
@@ -381,17 +383,30 @@ class QuantizationPattern : public RewritePattern {
         }
 
         auto ele_type = operand.getType().cast<TensorType>().getElementType();
-        if (auto op_inst = dyn_cast_or_null<DQ>(operand.getDefiningOp())) {
-          inputs.push_back(op_inst.input());
-        } else if (!ele_type.isF32()) {
-          // If the operand is an integer tensor, then it doesn't require the
-          // DQ op in the pattern.
-          inputs.push_back(operand);
-        } else if (static_cast<const ConcretTy*>(this)->AllowHybridOperand(
-                       quantizing_op)) {
-          inputs.push_back(operand);
+        if (static_cast<const ConcretTy*>(this)
+                ->AllowDynamicRangeQuantizedOperand(quantizing_op)) {
+          auto dq_op = dyn_cast_or_null<DQ>(operand.getDefiningOp());
+          auto dynamic_range_op =
+              dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantizing_op);
+          if (dq_op && dynamic_range_op &&
+              dynamic_range_op.GetDynamicRangeQuantKernelSupport()) {
+            // Dynamic range quantization is applied by having Q as an input.
+            inputs.push_back(dq_op.input());
+          } else {
+            // Otherwise, it's the case where the operand is activations or the
+            // quantizing_op is non-supported/weight-only.
+            inputs.push_back(operand);
+          }
         } else {
-          return failure();
+          if (auto dq_op = dyn_cast_or_null<DQ>(operand.getDefiningOp())) {
+            inputs.push_back(dq_op.input());
+          } else if (!ele_type.isF32()) {
+            // If the operand is an integer tensor, then it doesn't require the
+            // DQ op in the pattern.
+            inputs.push_back(operand);
+          } else {
+            return failure();
+          }
         }
       }
 
@@ -423,8 +438,8 @@ class QuantizationPattern : public RewritePattern {
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
-        } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult(
-                       quantizing_op)) {
+        } else if (static_cast<const ConcretTy*>(this)
+                       ->AllowDynamicRangeQuantizedResult(quantizing_op)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else {

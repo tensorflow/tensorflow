@@ -986,6 +986,17 @@ Status HloComputation::ReplaceInstructionWithDifferentShape(
 
   TF_RETURN_IF_ERROR(
       old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
+
+  // Preserve the old instruction's name if the new and old instruction have the
+  // same opcode.  This makes it easier to follow instructions as they're
+  // mutated through passes.
+  if (old_instruction->opcode() == new_instruction->opcode() &&
+      (old_instruction->opcode() != HloOpcode::kCustomCall ||
+       old_instruction->custom_call_target() ==
+           new_instruction->custom_call_target())) {
+    new_instruction->SetAndSanitizeName(old_instruction->name());
+  }
+
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 

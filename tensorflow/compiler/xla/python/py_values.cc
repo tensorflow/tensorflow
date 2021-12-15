@@ -328,7 +328,7 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
 
   auto res = handlers->find(arg.get_type().ptr());
   if (res == handlers->end()) {
-    for (auto base_class : arg.get_type().attr("mro")()) {
+    for (auto base_class : arg.get_type().attr("__mro__")) {
       res = handlers->find(base_class.ptr());
       if (res != handlers->end()) {
         return res->second(arg, to_device, options);
@@ -553,7 +553,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
   auto res = handlers->find(arg.get_type().ptr());
   if (res == handlers->end()) {
     // We attempt to look at the MRO classes
-    for (auto base_class : arg.get_type().attr("mro")()) {
+    for (auto base_class : arg.get_type().attr("__mro__")) {
       res = handlers->find(base_class.ptr());
       if (res != handlers->end()) {
         return res->second(arg, jax_enable_x64);
