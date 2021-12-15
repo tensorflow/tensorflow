@@ -1196,6 +1196,40 @@ func @gather_to_slice_reshape(%arg0: tensor<5x6x7xf32>) -> tensor<3x6xf32> {
   // CHECK: return %[[V1]] : tensor<3x6xf32>
 }
 
+// CHECK-LABEL: gather_to_slice_indices_clamp_upperbound
+func @gather_to_slice_indices_clamp_upperbound(%arg0 : tensor<4x2xui32>) -> tensor<2xui32> {
+  %0 = arith.constant dense<4> : tensor<1xi32>
+  %1 = "mhlo.gather"(%arg0, %0) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [0],
+      index_vector_dim = 0,
+      collapsed_slice_dims = [0],
+      start_index_map = [0]
+    >, indices_are_sorted = true,
+    slice_sizes = dense<[1, 2]> : tensor<2xi64>} : (tensor<4x2xui32>, tensor<1xi32>) -> tensor<2xui32>
+  return %1 : tensor<2xui32>
+  // CHECK:  %[[V0:.*]] = "mhlo.slice"(%arg0) {limit_indices = dense<[4, 2]> : tensor<2xi64>, start_indices = dense<[3, 0]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<4x2xui32>) -> tensor<1x2xui32>
+  // CHECK:  %[[V1:.*]] = "mhlo.reshape"(%[[V0]]) : (tensor<1x2xui32>) -> tensor<2xui32>
+  // CHECK: return %[[V1]] : tensor<2xui32>
+}
+
+// CHECK-LABEL: gather_to_slice_indices_clamp_lowerbound
+func @gather_to_slice_indices_clamp_lowerbound(%arg0 : tensor<4x2xui32>) -> tensor<2xui32> {
+  %0 = arith.constant dense<-1> : tensor<1xi32>
+  %1 = "mhlo.gather"(%arg0, %0) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [0],
+      index_vector_dim = 0,
+      collapsed_slice_dims = [0],
+      start_index_map = [0]
+    >, indices_are_sorted = true,
+    slice_sizes = dense<[1, 2]> : tensor<2xi64>} : (tensor<4x2xui32>, tensor<1xi32>) -> tensor<2xui32>
+  return %1 : tensor<2xui32>
+  // CHECK:  %[[V0:.*]] = "mhlo.slice"(%arg0) {limit_indices = dense<[1, 2]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<4x2xui32>) -> tensor<1x2xui32>
+  // CHECK:  %[[V1:.*]] = "mhlo.reshape"(%[[V0]]) : (tensor<1x2xui32>) -> tensor<2xui32>
+  // CHECK: return %[[V1]] : tensor<2xui32>
+}
+
 // CHECK-LABEL: func @fold_and_same
 func @fold_and_same(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
   %0 = "mhlo.and"(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>

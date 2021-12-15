@@ -91,6 +91,13 @@ namespace {
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
 
+// Clamps value to the range [lower, upper].  Requires lower <= upper.
+template <typename T>
+static T Clamp(const T& value, const T& lower, const T& upper) {
+  assert(lower <= upper);
+  return std::max(lower, std::min(value, upper));
+}
+
 // Verifies that dimension attribute for the op correctly indexes in operand or
 // result shape.
 template <typename OpT>
@@ -385,13 +392,20 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     if (index.getNumElements() != dnums.getStartIndexMap().size())
       return failure();
 
+    RankedTensorType operand_type =
+        gather->getOperand(0).getType().dyn_cast<RankedTensorType>();
+    if (!operand_type || !operand_type.hasStaticShape()) return failure();
+
     auto slice_end =
         llvm::to_vector<8>(gather.slice_sizes().getValues<int64_t>());
     llvm::SmallVector<int64_t, 8> slice_start(slice_end.size(), 0);
     for (auto it :
          llvm::zip(dnums.getStartIndexMap(), index.getValues<APInt>())) {
       int64_t map_index = std::get<0>(it);
-      int64_t offset = std::get<1>(it).getSExtValue();
+      // Clamp the indices within bounds to faithfully mirror gather semantics.
+      int64_t offset =
+          Clamp(std::get<1>(it).getSExtValue(), 0l,
+                operand_type.getDimSize(map_index) - slice_end[map_index]);
       slice_start[map_index] += offset;
       slice_end[map_index] += offset;
     }
