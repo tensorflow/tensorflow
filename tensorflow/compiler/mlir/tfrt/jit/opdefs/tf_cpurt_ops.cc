@@ -93,6 +93,8 @@ int64_t FallbackExecuteOp::cost() {
       continue;
     }
 
+    // Set initial op cost to 1, just like TFRT's cost model does.
+    cost += 1;
     for (Type type : op.getOperandTypes()) {
       if (auto tensor = type.dyn_cast<RankedTensorType>()) {
         cost += GetRankedTensorSize(tensor);

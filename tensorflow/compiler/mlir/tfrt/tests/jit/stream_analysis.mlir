@@ -48,60 +48,60 @@ module @dyn_m attributes {tfrt.compiled}  {
   }
 }
 
-// expected-remark@+1 {{stream id: 0, stream cost: 514, parent stream: -1}}
+// expected-remark@+1 {{stream id: 0, stream cost: 515, parent stream: -1}}
 func @rsqrt(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
-  // stream 0 cost = 1 (root) + 1 (%arg0) + 512 (cost @rsqrt_m)
-  //               = 514
-  // expected-remark@+1 {{stream id: 0, stream cost: 514, parent stream: -1}}
+  // stream 0 cost = 1 (root) + 1 (%arg0) + 513 (cost @rsqrt_m)
+  //               = 515
+  // expected-remark@+1 {{stream id: 0, stream cost: 515, parent stream: -1}}
   %res = tf_cpurt.fallback.execute @rsqrt_m::@compute (%arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)
 
-  // expected-remark@+1 {{stream id: 0, stream cost: 514, parent stream: -1}}
+  // expected-remark@+1 {{stream id: 0, stream cost: 515, parent stream: -1}}
   tfrt.return %res : !tfrt_fallback.tf_tensor
 }
 
-// expected-remark@+1 {{stream id: 0, stream cost: 262146, parent stream: -1}}
+// expected-remark@+1 {{stream id: 0, stream cost: 262147, parent stream: -1}}
 func @add(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
-  // stream 0 cost = 1 (root) + 1 (%arg0) + 512 * 512 (cost @add_m)
-  //               = 262146
-  // expected-remark@+1 {{stream id: 0, stream cost: 262146, parent stream: -1}}
+  // stream 0 cost = 1 (root) + 1 (%arg0) + (1 + 512 * 512) (cost @add_m)
+  //               = 262147
+  // expected-remark@+1 {{stream id: 0, stream cost: 262147, parent stream: -1}}
   %res = tf_cpurt.fallback.execute @add_m::@compute (%arg0, %arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)
 
-  // expected-remark@+1 {{stream id: 0, stream cost: 262146, parent stream: -1}}
+  // expected-remark@+1 {{stream id: 0, stream cost: 262147, parent stream: -1}}
   tfrt.return %res : !tfrt_fallback.tf_tensor
 }
 
-// expected-remark@+1 {{stream id: 0, stream cost: 2562, parent stream: -1}}
+// expected-remark@+1 {{stream id: 0, stream cost: 2567, parent stream: -1}}
 func @fusion(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
-  // stream 0 cost = 1 (root) + 1 (%arg0) + 512 * 5 (cost @fusion_m)
-  //               = 1 + 1 + 2560 = 2562
-  // expected-remark@+1 {{stream id: 0, stream cost: 2562, parent stream: -1}}
+  // stream 0 cost = 1 (root) + 1 (%arg0) + 513 * 5 (cost @fusion_m)
+  //               = 1 + 1 + 2565 = 2567
+  // expected-remark@+1 {{stream id: 0, stream cost: 2567, parent stream: -1}}
   %res = tf_cpurt.fallback.execute @fusion_m::@compute (%arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)
 
-  // expected-remark@+1 {{stream id: 0, stream cost: 2562, parent stream: -1}}
+  // expected-remark@+1 {{stream id: 0, stream cost: 2567, parent stream: -1}}
   tfrt.return %res : !tfrt_fallback.tf_tensor
 }
 
-// expected-remark@+1 {{stream id: 0, stream cost: 394, parent stream: -1}}
+// expected-remark@+1 {{stream id: 0, stream cost: 401, parent stream: -1}}
 func @dyn(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) +
-  //                 (0 [Const] + 129 [Mul] + 2 [Sub] + 129 [BiasAdd] + 1 [Tanh]
-  //                  + 2 [Mul] + 129 [AddV2]) (cost @dyn_m)
-  //               = 2 + (5 + 387) = 394
-  // expected-remark@+1 {{stream id: 0, stream cost: 394, parent stream: -1}}
+  //                 (1 [Const] + 130 [Mul] + 3 [Sub] + 130 [BiasAdd] + 2 [Tanh]
+  //                  + 3 [Mul] + 130 [AddV2]) (cost @dyn_m)
+  //               = 2 + (9 + 390) = 401
+  // expected-remark@+1 {{stream id: 0, stream cost: 401, parent stream: -1}}
   %res = tf_cpurt.fallback.execute @dyn_m::@compute (%arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)
 
-  // expected-remark@+1 {{stream id: 0, stream cost: 394, parent stream: -1}}
+  // expected-remark@+1 {{stream id: 0, stream cost: 401, parent stream: -1}}
   tfrt.return %res : !tfrt_fallback.tf_tensor
 }
