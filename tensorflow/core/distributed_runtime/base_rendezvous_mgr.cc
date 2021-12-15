@@ -132,10 +132,7 @@ BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
       session_(nullptr) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
-  {
-    mutex_lock l(calls_mu_);
-    calls_.clear();
-  }
+  CHECK(active_.empty());
   local_->Unref();
 }
 
@@ -397,26 +394,17 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
   }
 
   local_->StartAbort(derived_status);
-
-  bool status_ok = false;
   {
-    mutex_lock l(mu_);
-    status_ok = status_.ok();
-    if (status_ok) {
-      status_ = derived_status;
-    }
-  }
-
-  if (status_ok) {
     // Aborts all active RecvTensor calls.
-    mutex_lock l(calls_mu_);
-    for (auto& cm_and_token_and_calls : calls_) {
-      for (auto& call : cm_and_token_and_calls.second.second) {
-        call->StartAbort(derived_status);
+    mutex_lock l(mu_);
+    if (status_.ok()) {
+      status_ = derived_status;
+      for (auto& entry : active_) {
+        entry.first->StartAbort(derived_status);
+        entry.second();
       }
-      calls_[cm_and_token_and_calls.first].second.clear();
+      active_.clear();
     }
-    calls_.clear();
   }
 }
 
@@ -432,49 +420,32 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
       return;
     }
   }
-
-  CancellationToken token = CancellationManager::kInvalidToken;
   if (cm != nullptr) {
-    mutex_lock l(calls_mu_);
-    auto it = calls_.find(cm);
-    if (it == calls_.end()) {
-      token = cm->get_cancellation_token();
-      already_cancelled = !cm->RegisterCallback(token, [this, cm]() {
-        mutex_lock l(calls_mu_);
-        // Abort all the RecvTensor calls associated with thie cancellation
-        // manager.
-        for (const auto& call : calls_[cm].second) {
-          call->StartAbort(
-              errors::Cancelled("RecvFromRemoteAsync is cancelled."));
-        }
-      });
-    }
+    auto token = cm->get_cancellation_token();
+    already_cancelled = !cm->RegisterCallback(token, [this, call] {
+      {
+        tf_shared_lock l(mu_);
+        if (active_.find(call) == active_.end()) return;
+      }
+      call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+    });
+    callback = [cm, token] { cm->TryDeregisterCallback(token); };
   }
-
   if (already_cancelled) {
     call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
   } else {
-    mutex_lock l(calls_mu_);
-    if (calls_.find(cm) == calls_.end()) {
-      calls_.emplace(
-          cm, std::make_pair(
-                  token, std::unordered_set<BaseRecvTensorCall*>{}));  // NOLINT
-    }
-    bool emplaced = calls_[cm].second.emplace(call).second;
-    CHECK(emplaced);  // Crash OK.
+    mutex_lock l(mu_);
+    CHECK(active_.emplace(call, callback).second);  // Crash OK.
   }
 }
 
-void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
-                                          const Rendezvous::Args& args) {
-  auto cm = args.cancellation_manager;
-  mutex_lock l(calls_mu_);
-  calls_[cm].second.erase(call);
-  if (calls_[cm].second.empty()) {
-    calls_.erase(cm);
-    if (cm != nullptr) {
-      cm->TryDeregisterCallback(calls_[cm].first);
-    }
+void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call) {
+  mutex_lock l(mu_);
+  auto it = active_.find(call);
+  if (it != active_.end()) {
+    // Deregister the cancellation callback, if one was registered.
+    it->second();
+    active_.erase(it);
   }
 }
 

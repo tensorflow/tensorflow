@@ -38,7 +38,6 @@ namespace tensorflow {
 
 class BaseRemoteRendezvous;
 class BaseRecvTensorCall;
-class CancellationManager;
 
 // RendezvousMgr keeps track of a set of local rendezvous instances.
 // All tensors sent by this worker are buffered in a RendezvousMgr
@@ -167,11 +166,11 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   virtual bool IsSameWorker(DeviceNameUtils::ParsedName src,
                             DeviceNameUtils::ParsedName dst);
 
-  // If aborted, aborts "call". Otherwise, adds "call" into calls_.
+  // If aborted, aborts "call". Otherwise, adds "call" into active_.
   void RegisterCall(BaseRecvTensorCall* call, const Rendezvous::Args& args);
 
-  // Removes "call" from calls_ if "call" is in calls_.
-  void DeregisterCall(BaseRecvTensorCall* call, const Rendezvous::Args& args);
+  // Removes "call" from active_ if "call" is in active_.
+  void DeregisterCall(BaseRecvTensorCall* call);
 
   WorkerSession* session();
 
@@ -192,7 +191,6 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   bool remote_eager_context_default_ = false;
 
   mutable mutex mu_;
-  mutable mutex calls_mu_;
 
   // Status given by StartAbort() if any.
   Status status_ TF_GUARDED_BY(mu_);
@@ -210,16 +208,8 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
 
   typedef std::function<void()> InactiveCallback;
 
-  // "CancellationToken" is stored here so that when there's no active
-  // RecvTensorCalls, we can de-register the callback in the cancellation
-  // manager.
-  //
-  // Note: pointer to CancellationManager can be nullptr in certain use cases.
-  std::unordered_map<
-      CancellationManager*,
-      std::pair<CancellationToken,
-                std::unordered_set<BaseRecvTensorCall*>>>  // NOLINT
-      calls_ TF_GUARDED_BY(calls_mu_);
+  std::unordered_map<BaseRecvTensorCall*, InactiveCallback> active_
+      TF_GUARDED_BY(mu_);
 
   bool is_initialized_locked() TF_SHARED_LOCKS_REQUIRED(mu_) {
     return session_ != nullptr;
