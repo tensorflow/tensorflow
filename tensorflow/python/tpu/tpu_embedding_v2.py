@@ -1518,10 +1518,12 @@ def _ragged_embedding_lookup_with_reduce(
   ragged_result = embedding_ops.embedding_lookup_ragged(table, ragged)
   ragged_result = math_ops.reduce_sum(ragged_result * weights, axis=1)
   if combiner == "mean":
-    ragged_result = ragged_result / math_ops.reduce_sum(weights, axis=1)
+    ragged_result = math_ops.div_no_nan(ragged_result,
+                                        math_ops.reduce_sum(weights, axis=1))
   elif combiner == "sqrtn":
-    ragged_result = ragged_result / math_ops.sqrt(
-        math_ops.reduce_sum(weights * weights, axis=1))
+    ragged_result = math_ops.div_no_nan(
+        ragged_result,
+        math_ops.sqrt(math_ops.reduce_sum(weights * weights, axis=1)))
   return ragged_result
 
 
