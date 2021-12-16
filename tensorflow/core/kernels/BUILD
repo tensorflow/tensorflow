@@ -1992,6 +1992,26 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
+    name = "fused_layer_norm_op_test",
+    size = "small",
+    srcs = ["fused_layer_norm_op_test.cc"],
+    deps = [
+        ":fused_layer_norm_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "fused_batch_norm_ex_op_test",
     size = "small",
     srcs = ["fused_batch_norm_ex_op_test.cc"],
@@ -4238,6 +4258,16 @@ tf_kernel_library(
     ] + if_cuda([
         "//tensorflow/core/platform:stream_executor",
     ]),
+)
+
+tf_kernel_library(
+    name = "fused_layer_norm_op",
+    prefix = "fused_layer_norm_op",
+    deps = NN_DEPS + [
+        ":fill_functor",
+        ":gpu_prim_hdrs",
+        ":redux_functor",
+    ],
 )
 
 tf_kernel_library(

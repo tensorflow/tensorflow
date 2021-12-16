@@ -1797,6 +1797,14 @@ tf_module {
     argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'exponential_avg_factor\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1\', \'NHWC\', \'True\', \'None\'], "
   }
   member_method {
+    name: "FusedLayerNorm"
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'0.001\', \'None\'], "
+  }
+  member_method {
+    name: "FusedLayerNormGrad"
+    argspec: "args=[\'y_backprop\', \'x\', \'scale\', \'reserve_space_1\', \'reserve_space_2\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'0.001\', \'None\'], "
+  }
+  member_method {
     name: "FusedPadConv2D"
     argspec: "args=[\'input\', \'paddings\', \'filter\', \'mode\', \'strides\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

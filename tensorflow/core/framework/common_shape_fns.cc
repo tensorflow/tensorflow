@@ -1168,6 +1168,33 @@ Status AvgPoolGradShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+Status FusedLayerNormShape(shape_inference::InferenceContext* c) {
+  const int rank = 2;
+  ShapeHandle x;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &x));
+  int batch_dim_index = 1;
+  DimensionHandle batch_dim = c->Dim(x, batch_dim_index);
+
+  c->set_output(0, x);
+  c->set_output(1, c->Vector(batch_dim));
+  c->set_output(2, c->Vector(batch_dim));
+  return Status::OK();
+}
+
+Status FusedLayerNormGradShape(shape_inference::InferenceContext* c) {
+  const int rank = 2;
+  ShapeHandle x;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), rank, &x));
+
+  int channel_dim_index = 1;
+  DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
+
+  c->set_output(0, x);
+  c->set_output(1, c->Vector(channel_dim));
+  c->set_output(2, c->Vector(channel_dim));
+  return Status::OK();
+}
+
 Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
   string data_format_str;
   TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));

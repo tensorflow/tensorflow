@@ -163,6 +163,32 @@ REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
 
 // --------------------------------------------------------------------------
 
+REGISTER_OP("FusedLayerNorm")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Output("y: T")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Attr("T: {half, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.001")
+    .SetShapeFn(shape_inference::FusedLayerNormShape);
+
+REGISTER_OP("FusedLayerNormGrad")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("reserve_space_1: U")
+    .Input("reserve_space_2: U")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: U")
+    .Output("offset_backprop: U")
+    .Attr("T: {half, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.001")
+    .SetShapeFn(shape_inference::FusedLayerNormGradShape);
+
 REGISTER_OP("FusedBatchNorm")
     .Input("x: T")
     .Input("scale: T")

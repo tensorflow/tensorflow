@@ -153,6 +153,12 @@ Status AvgPoolShape(shape_inference::InferenceContext* c);
 // Shape function for AvgPoolGrad-like operations.
 Status AvgPoolGradShape(shape_inference::InferenceContext* c);
 
+// Shape function for FusedLayerNorm operations.
+Status FusedLayerNormShape(shape_inference::InferenceContext* c);
+
+// Shape function for FusedLayerNormGrad operations.
+Status FusedLayerNormGradShape(shape_inference::InferenceContext* c);
+
 // Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
 Status FusedBatchNormShape(shape_inference::InferenceContext* c);
 

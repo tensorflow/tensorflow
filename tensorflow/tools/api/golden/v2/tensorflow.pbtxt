@@ -677,6 +677,14 @@ tf_module {
     argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'jit_compile\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_relax_shapes\', \'experimental_compile\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\'], "
   }
   member_method {
+    name: "fused_layer_norm"
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'0.001\', \'None\'], "
+  }
+  member_method {
+    name: "fused_layer_norm_grad"
+    argspec: "args=[\'y_backprop\', \'x\', \'scale\', \'reserve_space_1\', \'reserve_space_2\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'0.001\', \'None\'], "
+  }
+  member_method {
     name: "gather"
     argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'axis\', \'batch_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\', \'None\'], "
   }
