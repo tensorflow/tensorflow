@@ -69,8 +69,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     std::vector<std::pair<int64_t, int64_t>> padding =
-        MakePadding(AsInt64Slice(input_shape.dimensions()), window_dimensions,
-                    window_strides, Padding::kSame);
+        MakePadding(input_shape.dimensions(), window_dimensions, window_strides,
+                    Padding::kSame);
 
     TF_ASSIGN_OR_RETURN(
         Window window, ShapeInference::InferWindowFromDimensions(

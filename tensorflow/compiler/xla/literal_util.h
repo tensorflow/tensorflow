@@ -323,7 +323,7 @@ template <typename NativeT>
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64_t>(values.size()),
        static_cast<int64_t>(values.begin()->size())},
-      AsInt64Slice(layout.minor_to_major())));
+      layout.minor_to_major()));
   literal.PopulateR2(values);
   return literal;
 }
@@ -410,7 +410,7 @@ template <typename NativeT>
     const Array<NativeT>& values, const Layout& layout) {
   Literal literal(ShapeUtil::MakeShapeWithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
-      AsInt64Slice(layout.minor_to_major())));
+      layout.minor_to_major()));
   literal.PopulateFromArray(values);
   return literal;
 }

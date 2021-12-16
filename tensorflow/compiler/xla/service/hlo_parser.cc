@@ -3426,8 +3426,8 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
   const int rank = static_cast<int>(shape.rank());
 
   // Create a literal with the given shape in default layout.
-  *literal = LiteralUtil::CreateFromDimensions(
-      shape.element_type(), AsInt64Slice(shape.dimensions()));
+  *literal = LiteralUtil::CreateFromDimensions(shape.element_type(),
+                                               shape.dimensions());
   int64_t nest_level = 0;
   int64_t linear_index = 0;
   // elems_seen_per_dim[i] is how many elements or sub-arrays we have seen for

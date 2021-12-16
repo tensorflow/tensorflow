@@ -178,9 +178,11 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
         assignment_.GetUniqueTopLevelSlice(computation->root_instruction()));
   }
 
+  bool has_thread_local_param = false;
   for (const HloInstruction* param : computation->parameter_instructions()) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice param_slice,
                         assignment_.GetUniqueTopLevelSlice(param));
+    has_thread_local_param |= param_slice.allocation()->is_thread_local();
     computation_parameter_allocations_[param_slice.allocation()->index()] =
         param->parameter_number();
   }
@@ -202,10 +204,15 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   // IR insert point.
 
   // Function epilogue: copying the value over to either the return register,
-  // or values pointing from the return register.
+  // or values pointing from the return register. If we have an allocation for
+  // the result, we can cue on whether it is thread_local. If it is a constant,
+  // we use the function parameters' allocations to identify a thread_local
+  // function.
   const BufferAllocation* root_allocation =
       computation_root_allocation_.allocation();
-  if (root_allocation && root_allocation->is_thread_local()) {
+  if (root_allocation &&
+      (root_allocation->is_thread_local() ||
+       (root_allocation->is_constant() && has_thread_local_param))) {
     EmitThreadLocalFunctionEpilogue(computation);
   }
 

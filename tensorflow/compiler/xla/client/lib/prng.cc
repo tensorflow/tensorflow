@@ -428,7 +428,7 @@ RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
   numbers = Slice(numbers, /*start_indices=*/{0},
                   /*limit_indices=*/{num_elems},
                   /*strides=*/{1});
-  return {Reshape(numbers, AsInt64Slice(shape.dimensions())), new_state};
+  return {Reshape(numbers, shape.dimensions()), new_state};
 }
 
 // Generates an array of primitive type U64 with the given shape containing
@@ -461,7 +461,7 @@ RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state,
   numbers = Slice(numbers, /*start_indices=*/{0},
                   /*limit_indices=*/{num_elems},
                   /*strides=*/{1});
-  return {Reshape(numbers, AsInt64Slice(shape.dimensions())), new_state};
+  return {Reshape(numbers, shape.dimensions()), new_state};
 }
 
 XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,

@@ -2101,7 +2101,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
              return (b != a + 1);
            }) == dims.end();
   };
-  if (!is_iota(AsInt64Slice(lhs_contracting_dims))) {
+  if (!is_iota(lhs_contracting_dims)) {
     return nullptr;
   }
   lhs = lhs->mutable_operand(0);
@@ -2123,7 +2123,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   }
   CHECK(IsPermutation(permutation));
   auto new_lhs_contracting_dims =
-      ComposePermutations(AsInt64Slice(lhs_contracting_dims), permutation);
+      ComposePermutations(lhs_contracting_dims, permutation);
   lhs_contracting_dims.Clear();
   for (auto dim : new_lhs_contracting_dims) {
     lhs_contracting_dims.Add(dim);
@@ -2260,15 +2260,15 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
       dnums.lhs_contracting_dimensions_size() == 0) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            lhs, AsInt64Slice(dnums.lhs_batch_dimensions()),
-                            AsInt64Slice(dnums.lhs_contracting_dimensions())));
+                            lhs, dnums.lhs_batch_dimensions(),
+                            dnums.lhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_lhs->shape())) {
       new_lhs = MakeConvertToHlo(new_lhs, dot->shape().element_type());
     }
     TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            rhs, AsInt64Slice(dnums.rhs_batch_dimensions()),
-                            AsInt64Slice(dnums.rhs_contracting_dimensions())));
+                            rhs, dnums.rhs_batch_dimensions(),
+                            dnums.rhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_rhs->shape())) {
       new_rhs = MakeConvertToHlo(new_rhs, dot->shape().element_type());
     }
@@ -2304,16 +2304,16 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         rhs->shape().rank()))) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            lhs, AsInt64Slice(dnums.lhs_batch_dimensions()),
-                            AsInt64Slice(dnums.lhs_contracting_dimensions())));
+                            lhs, dnums.lhs_batch_dimensions(),
+                            dnums.lhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_lhs->shape())) {
       new_lhs = MakeConvertToHlo(new_lhs, dot->shape().element_type());
     }
 
     TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            rhs, AsInt64Slice(dnums.rhs_batch_dimensions()),
-                            AsInt64Slice(dnums.rhs_contracting_dimensions())));
+                            rhs, dnums.rhs_batch_dimensions(),
+                            dnums.rhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_rhs->shape())) {
       new_rhs = MakeConvertToHlo(new_rhs, dot->shape().element_type());
     }

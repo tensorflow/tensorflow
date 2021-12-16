@@ -375,13 +375,11 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
   *computation_layout.mutable_result_layout() = ShapeLayout(bshape_with_layout);
   AssignLayouts(m.get(), &computation_layout);
 
-  auto log_minor_to_major =
-      AsInt64Slice(log->shape().layout().minor_to_major());
+  auto log_minor_to_major = log->shape().layout().minor_to_major();
   EXPECT_GT(PositionInContainer(log_minor_to_major, 1),
             PositionInContainer(log_minor_to_major, 2));
 
-  auto reshape_minor_to_major =
-      AsInt64Slice(reshape->shape().layout().minor_to_major());
+  auto reshape_minor_to_major = reshape->shape().layout().minor_to_major();
   EXPECT_GT(PositionInContainer(reshape_minor_to_major, 0),
             PositionInContainer(reshape_minor_to_major, 2));
 }

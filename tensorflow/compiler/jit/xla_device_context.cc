@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_device_context.h"
 
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
@@ -153,8 +156,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     // transferring the data to device.
     xla::BorrowingLiteral literal(
         static_cast<const char*>(DMAHelper::base(cpu_tensor)),
-        xla::ShapeUtil::MakeShape(shape.element_type(),
-                                  xla::AsInt64Slice(shape.dimensions())));
+        xla::ShapeUtil::MakeShape(shape.element_type(), shape.dimensions()));
 
     VLOG(2) << "Transfer to device as literal: " << literal.ToString() << " "
             << xla_tensor->shaped_buffer().ToString();

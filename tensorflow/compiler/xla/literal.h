@@ -1106,8 +1106,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
              primitive_util::NativeToPrimitiveType<NativeT>());
   absl::Span<NativeT> literal_data = data<NativeT>();
   if (rank > 0) {
-    StrideConfig stride_config(this_shape, this_shape,
-                               AsInt64Slice(this_shape.dimensions()));
+    StrideConfig stride_config(this_shape, this_shape, this_shape.dimensions());
     int64_t minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 

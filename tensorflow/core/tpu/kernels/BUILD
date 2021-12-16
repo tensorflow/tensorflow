@@ -533,6 +533,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:proto_helper",
+        "@com_google_absl//absl/cleanup",
     ],
 )
 

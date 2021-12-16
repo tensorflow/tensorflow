@@ -50,10 +50,9 @@ XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64_t> start,
 
     const int64_t n_dims = shape.rank();
     TF_RET_CHECK(n_minor_dims <= n_dims);
-    auto major_dims = AsInt64Slice(shape.dimensions())
-                          .subspan(
-                              /*pos=*/0,
-                              /*len=*/n_dims - n_minor_dims);
+    auto major_dims = shape.dimensions().subspan(
+        /*pos=*/0,
+        /*len=*/n_dims - n_minor_dims);
 
     // Prepends 0s in the major dim
     std::vector<int64_t> padded_start(n_dims, 0);
@@ -137,10 +136,9 @@ XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
     int64_t n_minor_dims = starts.size();
     TF_RET_CHECK(n_minor_dims == sizes.size());
     TF_RET_CHECK(n_minor_dims <= n_dims);
-    auto major_dims = AsInt64Slice(shape.dimensions())
-                          .subspan(
-                              /*pos=*/0,
-                              /*len=*/n_dims - sizes.size());
+    auto major_dims = shape.dimensions().subspan(
+        /*pos=*/0,
+        /*len=*/n_dims - sizes.size());
     TF_ASSIGN_OR_RETURN(auto padded_starts, PrependZerosInMajorDims(x, starts));
     auto padded_sizes = ConcatVectors(major_dims, sizes);
     return DynamicSlice(x, padded_starts, padded_sizes);

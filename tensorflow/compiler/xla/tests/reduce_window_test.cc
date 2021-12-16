@@ -676,7 +676,7 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
     Literal expected_literal = LiteralUtil::CreateFromArray(*expected);
     const Shape& expected_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
         input_literal.shape().element_type(),
-        AsInt64Slice(expected_literal.shape().dimensions()), param.layout);
+        expected_literal.shape().dimensions(), param.layout);
     ComputeAndCompareLiteral(&b, expected_literal, {input_arg.get()},
                              DefaultErrorSpec(), &expected_shape_with_layout);
   }

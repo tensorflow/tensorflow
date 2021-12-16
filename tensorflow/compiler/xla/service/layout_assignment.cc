@@ -1170,7 +1170,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
 
     const Shape& output_shape = instruction->shape();
     Shape output_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
-        output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
+        output_shape.element_type(), output_shape.dimensions(),
         LayoutUtil::MinorToMajor(output_layout));
     Shape operand_shape = operand->shape();
     *operand_shape.mutable_layout() =
@@ -1251,8 +1251,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       return nullptr;
     }
     Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
-        operand->shape().element_type(),
-        AsInt64Slice(operand->shape().dimensions()),
+        operand->shape().element_type(), operand->shape().dimensions(),
         LayoutUtil::MinorToMajor(operand_layout));
     Shape output_shape = user->shape();
     *output_shape.mutable_layout() =

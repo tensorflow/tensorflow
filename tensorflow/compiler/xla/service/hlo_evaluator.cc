@@ -499,10 +499,9 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
 Status HloEvaluator::HandleConstant(HloInstruction*) { return Status::OK(); }
 
 Status HloEvaluator::HandleReshape(HloInstruction* reshape) {
-  TF_ASSIGN_OR_RETURN(
-      evaluated_[reshape],
-      GetEvaluatedLiteralFor(reshape->operand(0))
-          .Reshape(AsInt64Slice(reshape->shape().dimensions())));
+  TF_ASSIGN_OR_RETURN(evaluated_[reshape],
+                      GetEvaluatedLiteralFor(reshape->operand(0))
+                          .Reshape(reshape->shape().dimensions()));
   return Status::OK();
 }
 
@@ -544,7 +543,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
     const Shape& operand_shape = operand->shape();
     TF_RETURN_IF_ERROR(result_literal.CopySliceFrom(
         GetEvaluatedLiteralFor(operand), source_indices, dest_indices,
-        AsInt64Slice(operand_shape.dimensions())));
+        operand_shape.dimensions()));
     dest_indices[concat_dim] +=
         ShapeUtil::GetDimension(operand_shape, concat_dim);
   }
@@ -2244,7 +2243,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   HloEvaluator embedded_evaluator(max_loop_iterations_);
   // Iterate through each dimension except 'sort_dim'.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-      key_shape, zero_base, AsInt64Slice(key_shape.dimensions()), increment,
+      key_shape, zero_base, key_shape.dimensions(), increment,
       [&](absl::Span<const int64_t> indices) -> StatusOr<bool> {
         // Extract a slice from each operand literal that corresponds to
         // exactly the row in dimension 'sort_dim'.
@@ -2425,8 +2424,7 @@ static StatusOr<bool> GenerateReduceOutputElement(
                       IsScalarAdd(function) && !is_tuple;
 
   const Shape& arg_shape = input_args[0]->shape();
-  absl::Span<const int64_t> arg_dimensions =
-      AsInt64Slice(arg_shape.dimensions());
+  absl::Span<const int64_t> arg_dimensions = arg_shape.dimensions();
   std::vector<int64_t> base(arg_dimensions.size());
   for (int64_t i = 0; i < output_index.size(); ++i) {
     base[result_to_arg_index[i]] = output_index[i];
@@ -2501,8 +2499,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
                                   ? inferred_return_shape.tuple_shapes(0)
                                   : inferred_return_shape;
 
-  absl::Span<const int64_t> arg_dimensions =
-      AsInt64Slice(arg_shape.dimensions());
+  absl::Span<const int64_t> arg_dimensions = arg_shape.dimensions();
 
   // All increments are set to 0.
   std::vector<int64_t> arg_dim_steps(arg_dimensions.size());

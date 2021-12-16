@@ -747,8 +747,8 @@ class ShapeUtil {
     std::vector<int64_t> base(shape.dimensions_size());
     std::vector<int64_t> incr(shape.dimensions_size(), 1);
     return ForEachIndexWithStatus(shape, base,
-                                  /*count=*/AsInt64Slice(shape.dimensions()),
-                                  incr, visitor_function);
+                                  /*count=*/shape.dimensions(), incr,
+                                  visitor_function);
   }
 
   template <typename FnType>
