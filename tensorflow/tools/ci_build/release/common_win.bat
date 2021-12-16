@@ -26,12 +26,6 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 @REM First, upgrade pypi wheels
 %PY_EXE% -m pip install --upgrade "setuptools<53" pip wheel
 
-# TODO(rameshsampath): Debug Python 310 requirements for Windows
-# For other Python versions, these packages are installed in packer VM build
-IF "%PYTHON_DIRECTORY%"=="Python310" (
-  %PY_EXE% -m pip install -r tensorflow/tools/ci_build/release/requirements_windows_py310.txt
-)
-
 @REM NOTE: Windows doesn't have any additional requirements from the common ones.
 %PY_EXE% -m pip install -r tensorflow/tools/ci_build/release/requirements_common.txt
 
