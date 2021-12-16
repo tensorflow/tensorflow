@@ -52,7 +52,7 @@ class TRTEngineOpInputOutputShapeTest(trt_test.TfTrtIntegrationTestBase):
                                 self)._GetInferGraph(*args, **kwargs)
 
     def get_func_from_saved_model(saved_model_dir):
-      saved_model_loaded = saved_model.load.load(
+      saved_model_loaded = saved_model.load(
           saved_model_dir, tags=[tag_constants.SERVING])
       graph_func = saved_model_loaded.signatures[
           signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
