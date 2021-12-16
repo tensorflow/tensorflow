@@ -447,7 +447,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     per_replica_output_shapes = None
     if per_replica_batch_size and per_replica_input_shapes is None:
       logging.warning(
-          "per_replica_batch_size argument will be deprecated, please specify"
+          "per_replica_batch_size argument will be deprecated, please specify "
           "all the input shapes using per_replica_input_shapes argument.")
       per_replica_output_shapes = self._get_output_shapes_from_batch_size(
           per_replica_batch_size)
@@ -1403,7 +1403,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     if len(shape) > 1 and shape[-1] != 1:
       raise ValueError(
           "Rank 2 or above dense tensor should have last dimension as 1 "
-          "as the last dimension will always be reduced."
+          "as the last dimension will always be reduced. "
           "Instead got dense tensor as shape {}".format(shape))
     return TensorShape(shape)
 
@@ -1510,9 +1510,9 @@ class TPUEmbedding(tracking.AutoTrackable):
         self._output_shapes):
       if not output_shape.is_fully_defined():
         raise ValueError(
-            f"Input Feature {path} has output shape set as"
+            f"Input Feature {path} has output shape set as "
             f"{output_shape} which is not fully defined. "
-            "Please specify the fully defined shape in either FeatureConfig"
+            "Please specify the fully defined shape in either FeatureConfig "
             "or for the build method.")
 
   def _is_tensor_shape_match(self, shape_a: TensorShape,
@@ -1841,7 +1841,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
               ragged_output, feature.output_shape + [feature.table.dim])
         else:
           raise ValueError(
-              "Output shape set in the FeatureConfig should be the factor of"
+              "Output shape set in the FeatureConfig should be the factor of "
               "the input data batch size. But instead got output shape {}, "
               "input data batch size {}".format(feature.output_shape,
                                                 batch_size))
