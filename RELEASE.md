@@ -118,7 +118,13 @@
   * `jit_compile` added to `Model.compile()` on an opt-in basis to compile the 
     model's training step with [XLA](https://www.tensorflow.org/xla). Note that
    `jit_compile=True` may not necessarily work for all models.
-  
+
+* Add `tf.config.experimental.enable_op_determinism`, which makes TensorFlow
+  ops run deterministically at the cost of performance. This is equivalent to
+  setting the previously-existing `TF_DETERMINISTIC_OPS` environmental variable
+  to `1`. The environmental variable is now deprecated, so the
+  `enable_op_determinism` function should be used instead.
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
