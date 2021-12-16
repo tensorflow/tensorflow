@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -124,57 +125,168 @@ OpTypeConstructor VariadicTensorContainer(FullTypeId t,
   };
 }
 
-StatusOr<FullTypeDef> SpecializeType(const AttrSlice& attrs,
-                                     const OpDef& op_def) {
-  FullTypeDef ft;
-  ft.set_type_id(TFT_PRODUCT);
+namespace {
 
-  for (int i = 0; i < op_def.output_arg_size(); i++) {
-    auto* t = ft.add_args();
+inline bool ReduceVariantTensor(FullTypeDef& t) {
+  // Special case for DT_VARIANT tensors. We leave those unset to avoid even
+  // more special casing downstream.
+  if (t.type_id() == TFT_TENSOR && t.args_size() &&
+      t.args(0).type_id() == TFT_LEGACY_VARIANT) {
+    t.Clear();
+    return true;
+  }
+  return false;
+}
 
-    *t = op_def.output_arg(i).experimental_full_type();
+typedef absl::flat_hash_map<StringPiece, const AttrValue*> AttrMap;
 
-    // Resolve dependent types. The convention for op registrations is to use
-    // attributes as type variables.
-    // See https://www.tensorflow.org/guide/create_op#type_polymorphism.
-    // Once the op signature can be defined entirely in FullType, this
-    // convention can be deprecated.
-    //
-    // Note: While this code performs some basic verifications, it generally
-    // assumes consistent op defs and attributes. If more complete
-    // verifications are needed, they should be done by separately, and in a
-    // way that can be reused for type inference.
-    for (int j = 0; j < t->args_size(); j++) {
-      auto* arg = t->mutable_args(j);
-      if (arg->type_id() == TFT_VAR) {
-        const auto* attr = attrs.Find(arg->s());
-        if (attr == nullptr) {
-          return Status(
-              error::INVALID_ARGUMENT,
-              absl::StrCat("Could not find an attribute for key ", arg->s()));
-        }
-        if (attr->value_case() == AttrValue::kList) {
-          const auto& attr_list = attr->list();
-          arg->set_type_id(TFT_PRODUCT);
-          for (int i = 0; i < attr_list.type_size(); i++) {
-            map_dtype_to_tensor(attr_list.type(i), arg->add_args());
-          }
+inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t);
 
-        } else if (attr->value_case() == AttrValue::kType) {
-          map_dtype_to_tensor(attr->type(), arg);
+Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
+  DCHECK_EQ(t.args_size(), 0);
 
-        } else {
-          return Status(error::UNIMPLEMENTED,
-                        absl::StrCat("unknown attribute type",
-                                     attrs.DebugString(), " key=", arg->s()));
-        }
+  StringPiece var_name = t.s();
+  if (!attrs.contains(var_name)) {
+    return Status(
+        error::INVALID_ARGUMENT,
+        absl::StrCat("could not find an attribute for key '", var_name, "'"));
+  }
+  const AttrValue* attr = attrs.at(var_name);
 
-        arg->clear_s();
-      }
+  const auto attr_type = attr->value_case();
+  if (attr_type == AttrValue::kType) {
+    map_dtype_to_tensor(attr->type(), t);
+  } else if (attr_type == AttrValue::kList) {
+    const auto& attr_list = attr->list();
+    if (attr_list.type_size() != 1) {
+      return Status(error::UNIMPLEMENTED,
+                    absl::StrCat("lists or other than one type element\n",
+                                 attr_list.DebugString(), "\nkey=", var_name));
     }
+    map_dtype_to_tensor(attr_list.type(0), t);
+  } else {
+    return Status(error::UNIMPLEMENTED,
+                  absl::StrCat("unsupported attribute type ",
+                               attr->DebugString(), " for name ", var_name));
+  }
+  t.clear_s();
+  return Status::OK();
+}
+
+Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
+  DCHECK_EQ(t.args_size(), 3);
+
+  const auto& cont = t.args(0);
+  const auto& tmpl = t.args(1);
+  const auto& t_var = t.args(2);
+
+  StringPiece var_name = t_var.s();
+  if (!attrs.contains(var_name)) {
+    return Status(
+        error::INVALID_ARGUMENT,
+        absl::StrCat("could not find an attribute for key '", var_name, "'"));
+  }
+  const AttrValue* attr = attrs.at(var_name);
+
+  FullTypeDef result;
+  result.set_type_id(cont.type_id());
+
+  const auto attr_type = attr->value_case();
+  if (attr_type == AttrValue::kType) {
+    FullTypeDef* target = result.add_args();
+    *target = tmpl;
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        SubstituteFromAttrs(attrs, *target), "while substituting '", var_name,
+        "' from\n", attr->DebugString(), "\ninto ", target->DebugString());
+
+  } else if (attr_type == AttrValue::kList) {
+    const auto& attr_list = attr->list();
+    int tsize = attr_list.type_size();
+    if (tsize == 0) {
+      return Status(error::UNIMPLEMENTED,
+                    absl::StrCat("unsupported list attribute type\n",
+                                 attr_list.DebugString(), "\nkey=", var_name));
+    }
+    AttrValue replacement;
+    attrs[var_name] = &replacement;
+    for (int i = 0; i < tsize; i++) {
+      replacement.set_type(attr_list.type(i));
+      FullTypeDef* target = result.add_args();
+      *target = tmpl;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(SubstituteFromAttrs(attrs, *target),
+                                      "while substituting '", var_name,
+                                      "' from\n", attr->DebugString(), "\n[", i,
+                                      "] into\n", target->DebugString());
+    }
+    // In case of error, it's ok for the attributes map to remain in an invalid
+    // state.
+    attrs[var_name] = attr;
+
+  } else {
+    return Status(error::UNIMPLEMENTED,
+                  absl::StrCat("unsupported attribute type\n",
+                               attr->DebugString(), "\nfor name ", var_name));
+  }
+  t = result;
+  return Status::OK();
+}
+
+Status SubstituteGeneric(AttrMap& attrs, FullTypeDef& t) {
+  int nargs = t.args_size();
+  for (int j = 0; j < nargs; j++) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        SubstituteFromAttrs(attrs, *(t.mutable_args(j))),
+        "while substituting arg ", j, ": ", t.args(j).DebugString());
+  }
+  return Status::OK();
+}
+
+inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t) {
+  // Resolve dependent types. The convention for op registrations is to use
+  // attributes as type variables.
+  // See https://www.tensorflow.org/guide/create_op#type_polymorphism.
+  // Once the op signature can be defined entirely in FullType, this
+  // convention can be deprecated.
+  //
+  // Note: While this code performs some basic verifications, it generally
+  // assumes consistent op defs and attributes. If more complete
+  // verifications are needed, they should be done by separately, and in a
+  // way that can be reused for type inference.
+  switch (t.type_id()) {
+    case TFT_VAR:
+      return SubstituteVar(attrs, t);
+
+    case TFT_FOR_EACH:
+      return SubstituteForEach(attrs, t);
+
+    default:
+      return SubstituteGeneric(attrs, t);
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
+                      FullTypeDef& target) {
+  target.set_type_id(TFT_PRODUCT);
+
+  AttrMap map;
+  for (const auto& attr : attrs) {
+    map.emplace(attr.first, &attr.second);
   }
 
-  return ft;
+  int nargs = op_def.output_arg_size();
+  for (int i = 0; i < nargs; i++) {
+    auto& t = *(target.add_args());
+    t = op_def.output_arg(i).experimental_full_type();
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        SubstituteFromAttrs(map, t), "while expanding vars of\n",
+        t.DebugString(), "\nfrom\n", attrs.SummarizeNode());
+    ReduceVariantTensor(t);
+  }
+
+  return Status::OK();
 }
 
 const FullTypeDef& GetArgDefaultUnset(const FullTypeDef& t, int i) {

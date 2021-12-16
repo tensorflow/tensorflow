@@ -24,4 +24,17 @@ END
 A new tensor copied from tensor whose values are element-wise maximum between tensor and updates according to the indices.
 END
   }
+  summary:"Apply a sparse update to a tensor taking the element-wise maximum."
+  description: <<END
+Returns a new tensor copied from `tensor` whose values are element-wise maximum between
+tensor and updates according to the indices.
+
+>>> tensor = [0, 0, 0, 0, 0, 0, 0, 0] 
+>>> indices = [[1], [4], [5]]
+>>> updates = [1, -1, 1]
+>>> tf.tensor_scatter_nd_max(tensor, indices, updates).numpy()
+array([0, 1, 0, 0, 0, 1, 0, 0], dtype=int32)
+
+Refer to `tf.tensor_scatter_nd_update` for more details.
+END
 }

@@ -1,5 +1,5 @@
-// RUN: tf-tfrt-opt -tf-cpurt-codegen-reduction %s --split-input-file |\
-// RUN: FileCheck %s
+// RUN: tf-tfrt-opt -codegen-reduction="reduction-2d-tile-sizes=4,4" \
+// RUN: %s -split-input-file | FileCheck %s
 
 func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
                         %rhs: tensor<?x?xf32>) -> tensor<?xf32> {
@@ -204,13 +204,13 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
 
      // CHECK: %[[LHS_SUB:.*]] = tensor.extract_slice %[[LHS_]][%[[I]]]
      // CHECK: %[[LHS_PAD:.*]] = linalg.pad_tensor %[[LHS_SUB]]
-     // CHECK: %[[LHS_RESHAPE:.*]] = linalg.tensor_expand_shape %[[LHS_PAD]]
+     // CHECK: %[[LHS_RESHAPE:.*]] = tensor.expand_shape %[[LHS_PAD]]
 // CHECK-SAME:   {{\[\[}}0, 1]]
 // CHECK-SAME:   : tensor<8xf32> into tensor<1x8xf32>
 
      // CHECK: %[[RHS_SUB:.*]] = tensor.extract_slice %[[RHS_]][%[[I]]]
      // CHECK: %[[RHS_PAD:.*]] = linalg.pad_tensor %[[RHS_SUB]]
-     // CHECK: %[[RHS_RESHAPE:.*]] = linalg.tensor_expand_shape %[[RHS_PAD]]
+     // CHECK: %[[RHS_RESHAPE:.*]] = tensor.expand_shape %[[RHS_PAD]]
 // CHECK-SAME:   {{\[\[}}0, 1]]
 // CHECK-SAME:   : tensor<8xf32> into tensor<1x8xf32>
 

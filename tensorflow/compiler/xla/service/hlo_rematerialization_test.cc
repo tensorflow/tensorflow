@@ -572,7 +572,7 @@ class CompressingRematerializationTest : public RematerializationTestBase {
     for (int64_t i = 0; i < descending_shape.rank(); ++i) {
       int64_t dim = descending_shape.dimensions(i);
       if (i == descending_shape.rank() - 1) {
-        dim = RoundUpToNearest<int64_t>(dim, 64);
+        dim = RoundUpTo<int64_t>(dim, 64);
       }
       size *= dim;
     }

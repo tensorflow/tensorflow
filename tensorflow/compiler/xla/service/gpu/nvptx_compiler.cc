@@ -136,6 +136,9 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::F16,
                                             /*pad_to_multiple_of=*/8);
   }
+  // Padding a gemm operand that's a constant results in pad(constant).  Run
+  // constant-folding to simplify this into a new constant.
+  pre_pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(

@@ -1129,10 +1129,9 @@ HloInstruction* HaloExchangeToPadOnLeft(PartitionedHlo& original,
     dim->set_window_reversal(false);
     int64_t low_padding = 0;
     if (absl::c_linear_search(dims, i)) {
-      low_padding =
-          RoundUpToNearest(original.base_shape().dimensions(i),
-                           original.sharding().tile_assignment().dim(i)) -
-          original.base_shape().dimensions(i);
+      low_padding = RoundUpTo(original.base_shape().dimensions(i),
+                              original.sharding().tile_assignment().dim(i)) -
+                    original.base_shape().dimensions(i);
     }
     dim->set_padding_low(low_padding);
     dim->set_padding_high(0);

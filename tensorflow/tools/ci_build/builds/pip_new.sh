@@ -335,6 +335,8 @@ bazel build \
 
 test_pip_virtualenv() {
   # Get args
+  WHL_PATH=$1
+  shift
   VENV_DIR_NAME=$1
   shift
   TEST_TYPE_FLAG=$1
@@ -558,6 +560,8 @@ run_test_with_bazel() {
 }
 
 run_all_tests() {
+  WHL_PATH=$1
+
   if [[ -z "${PIP_TESTS}" ]]; then
     echo "No test was specified to run. Skipping all tests."
     return 0
@@ -569,13 +573,13 @@ run_all_tests() {
     # Run tests.
     case "${TEST}" in
     "test_pip_virtualenv_clean")
-      test_pip_virtualenv venv_clean --clean
+      test_pip_virtualenv ${WHL_PATH} venv_clean --clean
       ;;
     "test_pip_virtualenv_non_clean")
-      test_pip_virtualenv venv
+      test_pip_virtualenv ${WHL_PATH} venv
       ;;
     "test_pip_virtualenv_oss_serial")
-      test_pip_virtualenv venv_oss --oss_serial
+      test_pip_virtualenv ${WHL_PATH} venv_oss --oss_serial
       ;;
     *)
       die "No matching test ${TEST} was found. Stopping test."
@@ -709,8 +713,22 @@ if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq
   ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${NEW_PROJECT_NAME} || die "build_pip_package FAILED"
 fi
 
+# On MacOS we not have to rename the wheel because it is generated with the
+# wrong tag.
+if [[ ${OS_TYPE} == "macos" ]] ; then
+  for WHL_PATH in $(ls ${PIP_WHL_DIR}/*macosx_10_15_x86_64.whl); do
+    # change 10_15 to 10_14
+    NEW_WHL_PATH=${WHL_PATH/macosx_10_15/macosx_10_14}
+    mv ${WHL_PATH} ${NEW_WHL_PATH}
+  done
+
+  # Also change global WHL_PATH. Ignore above shadow and everywhere else
+  NEW_WHL_PATH=${WHL_PATH/macosx_10_15/macosx_10_14}
+  WHL_PATH=${NEW_WHL_PATH}
+fi
+
 # Run tests (if any is specified).
-run_all_tests
+run_all_tests ${WHL_PATH}
 
 
 if [[ ${OS_TYPE} == "ubuntu" ]] && \

@@ -1054,7 +1054,6 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_mac",
-        "no_oss_py310",  # TODO(b/209163877)
         "no_pip",
         "no_tfrt",  # TODO(b/185944215)
         "no_windows",

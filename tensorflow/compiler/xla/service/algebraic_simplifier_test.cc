@@ -1883,6 +1883,147 @@ ENTRY ZeroSizedReduceWindow {
                                   m::Broadcast(m::Constant()))));
 }
 
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Add) {
+  const char* const hlo_string = R"(
+HloModule test
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce-window = reduce-window(p, constant), window={size=1x1}, to_apply=add
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::AddAnyOrder(m::Parameter(),
+                                m::Broadcast(m::ConstantEffectiveScalar(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Min) {
+  const char* const hlo_string = R"(
+HloModule test
+
+min {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT min = f32[] minimum(p0, p1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(inf)
+  ROOT reduce-window = reduce-window(p, constant), window={size=1x1}, to_apply=min
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MinimumAnyOrder(
+          m::Parameter(), m::Broadcast(m::ConstantEffectiveScalar(
+                              std::numeric_limits<float>::infinity())))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Max) {
+  const char* const hlo_string = R"(
+HloModule test
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(-inf)
+  ROOT reduce-window = reduce-window(p, constant), window={size=1x1}, to_apply=max
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MaximumAnyOrder(
+          m::Parameter(), m::Broadcast(m::ConstantEffectiveScalar(
+                              -std::numeric_limits<float>::infinity())))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindowWithPad) {
+  const char* const hlo_string = R"(
+HloModule test
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(-inf)
+  ROOT reduce-window = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4}, to_apply=max
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Pad(
+          m::MaximumAnyOrder(m::Parameter(),
+                             m::Broadcast(m::ConstantEffectiveScalar(
+                                 -std::numeric_limits<float>::infinity()))),
+          m::ConstantEffectiveScalar(
+              -std::numeric_limits<float>::infinity()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindowWithUnsupported) {
+  const char* const hlo_string = R"(
+HloModule test
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+unsupported_fn {
+  p0 = f32[] parameter(0)
+  ROOT p1 = f32[] parameter(1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(-inf)
+  a = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4 stride=1x2}, to_apply=max
+  b = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4 lhs_dilate=2x1}, to_apply=max
+  c = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4 rhs_dilate=2x1}, to_apply=max
+  d = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4 rhs_reversal=1x1}, to_apply=max
+  e = reduce-window(p, constant), window={size=1x1}, to_apply=unsupported_fn
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(RunHloPass(&simplifier, m.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
   auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
@@ -4485,75 +4626,31 @@ ENTRY entry {
 
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).
 TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
-  auto module = CreateNewVerifiedModule();
-  HloComputation::Builder builder(TestName());
-
-  // Create operand to the pad.
-  HloInstruction* operand =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 2, 3, 4}), "p0"));
-
-  // Create the pad.
-  PaddingConfig padding = MakeNoPaddingConfig(4);
-  padding.mutable_dimensions(1)->set_edge_padding_low(1);
-  padding.mutable_dimensions(3)->set_edge_padding_high(2);
-
-  HloInstruction* pad_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
-  HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
-      ShapeUtil::MakeShape(F32, {1, 3, 3, 5}), operand, pad_value, padding));
-
-  // Create add computation.
-  HloComputation* add_computation = nullptr;
-  {
-    HloComputation::Builder builder(TestName() + ".add");
-    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-    HloInstruction* p0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-    HloInstruction* p1 = builder.AddInstruction(
-        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-    builder.AddInstruction(
-        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
-    add_computation = module->AddEmbeddedComputation(builder.Build());
-  }
-
-  // Create the reduce-window.
-  Window window;
-  for (int64_t i = 0; i < pad->shape().rank(); ++i) {
-    auto* dim = window.add_dimensions();
-    dim->set_size(1);
-    dim->set_padding_low(10);
-    dim->set_padding_high(100);
-    dim->set_window_dilation(1);
-    dim->set_base_dilation(1);
-    dim->set_stride(1);
-  }
-  const Shape reduce_window_shape =
-      ShapeUtil::MakeShape(F32, {111, 113, 113, 116});
-  HloInstruction* reduce_init_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
-  HloInstruction* reduce_window =
-      builder.AddInstruction(HloInstruction::CreateReduceWindow(
-          reduce_window_shape, pad, reduce_init_value, window,
-          add_computation));
-
-  // Build the computation and run the simplifier.
-  auto computation = module->AddEntryComputation(builder.Build());
-  HloInstruction* root = computation->root_instruction();
-  EXPECT_EQ(root, reduce_window);
+  const string& hlo_string = R"(
+HloModule test
+fn {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+ENTRY entry {
+  param = f32[1,2,3,4] parameter(0)
+  const = f32[] constant(5)
+  pad = pad(param, const), padding=0_0x1_0x0_0x0_2
+  ROOT r = reduce-window(pad, const), to_apply=fn, window={size=2x2x2x2 pad=10_100x10_100x10_100x10_100}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-
+  ASSERT_TRUE(RunHloPass(&simplifier, module.get()).ValueOrDie());
   // Running simplification again should not result in any further changes.
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(RunHloPass(&simplifier, module.get()).ValueOrDie());
 
   // Verify the result
-  root = computation->root_instruction();
+  HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
-              GmockMatch(m::ReduceWindow(m::Op().Is(operand), m::Constant())));
-  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reduce_window_shape))
-      << ShapeUtil::HumanString(root->shape()) << " vs "
-      << ShapeUtil::HumanString(reduce_window_shape);
+              GmockMatch(m::ReduceWindow(m::Parameter(0), m::Constant())));
   EXPECT_EQ(root->window().dimensions(0).padding_low(), 10);
   EXPECT_EQ(root->window().dimensions(1).padding_low(), 11);
   EXPECT_EQ(root->window().dimensions(2).padding_low(), 10);
@@ -4567,79 +4664,32 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
 // Test that ReduceWindow(Convert(Pad(op, x)), y) can simplify to
 // ReduceWindow(Convert(op), x).
 TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
-  auto module = CreateNewVerifiedModule();
-  HloComputation::Builder builder(TestName());
-
-  // Create operand to the pad.
-  HloInstruction* parameter =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(BF16, {1, 2, 3, 4}), "p0"));
-
-  // Create the pad.
-  PaddingConfig padding = MakeNoPaddingConfig(4);
-  padding.mutable_dimensions(1)->set_edge_padding_low(1);
-  padding.mutable_dimensions(3)->set_edge_padding_high(2);
-
-  HloInstruction* pad_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
-  HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
-      ShapeUtil::MakeShape(BF16, {1, 3, 3, 5}), parameter, pad_value, padding));
-
-  HloInstruction* convert =
-      builder.AddInstruction(HloInstruction::CreateConvert(
-          ShapeUtil::ChangeElementType(pad->shape(), F32), pad));
-
-  // Create add computation.
-  HloComputation* add_computation = nullptr;
-  {
-    HloComputation::Builder builder(TestName() + ".add");
-    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-    HloInstruction* p0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-    HloInstruction* p1 = builder.AddInstruction(
-        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-    builder.AddInstruction(
-        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
-    add_computation = module->AddEmbeddedComputation(builder.Build());
-  }
-
-  // Create the reduce-window.
-  Window window;
-  for (int64_t i = 0; i < pad->shape().rank(); ++i) {
-    auto* dim = window.add_dimensions();
-    dim->set_size(1);
-    dim->set_padding_low(10);
-    dim->set_padding_high(100);
-    dim->set_window_dilation(1);
-    dim->set_base_dilation(1);
-    dim->set_stride(1);
-  }
-  const Shape reduce_window_shape =
-      ShapeUtil::MakeShape(F32, {111, 113, 113, 116});
-  HloInstruction* reduce_init_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
-  HloInstruction* reduce_window =
-      builder.AddInstruction(HloInstruction::CreateReduceWindow(
-          reduce_window_shape, convert, reduce_init_value, window,
-          add_computation));
-
-  // Build the computation and run the simplifier.
-  auto computation = module->AddEntryComputation(builder.Build());
-  HloInstruction* root = computation->root_instruction();
-  EXPECT_EQ(root, reduce_window);
+  const string& hlo_string = R"(
+HloModule test
+fn {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+ENTRY entry {
+  param = bf16[1,2,3,4] parameter(0)
+  const = bf16[] constant(5)
+  pad = pad(param, const), padding=0_0x1_0x0_0x0_2
+  converted = f32[1,3,3,6] convert(pad)
+  ROOT r = reduce-window(converted, const), to_apply=fn, window={size=2x2x2x2 pad=10_100x10_100x10_100x10_100}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-
+  ASSERT_TRUE(RunHloPass(&simplifier, module.get()).ValueOrDie());
   // Running simplification again should not result in any further changes.
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(RunHloPass(&simplifier, module.get()).ValueOrDie());
 
   // Verify the result
-  root = computation->root_instruction();
+  HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::ReduceWindow(m::Convert(m::Parameter(0)),
                                                m::Constant())));
-  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reduce_window_shape))
-      << ShapeUtil::HumanString(root->shape()) << " vs "
-      << ShapeUtil::HumanString(reduce_window_shape);
   EXPECT_EQ(root->window().dimensions(0).padding_low(), 10);
   EXPECT_EQ(root->window().dimensions(1).padding_low(), 11);
   EXPECT_EQ(root->window().dimensions(2).padding_low(), 10);
@@ -5447,6 +5497,7 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
   AlgebraicSimplifier simplifier(default_options_);
   TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(m.get()));
   ASSERT_TRUE(run_successful);
+  SCOPED_TRACE(m->ToString());
 
   EXPECT_TRUE(
       ShapeUtil::Equal(computation->root_instruction()->shape(), output_shape));
@@ -5472,7 +5523,7 @@ PadReduceWindowEffectiveBroadcastCases() {
        /*reduce_window_spatials=*/{7, 7}, /*prepend_a=*/true,
        /*should_become_broadcast=*/false},  //
       {/*input_spatials=*/{1, 1}, /*symmetric_pad_amount=*/{2, 2},
-       /*reduce_window_spatials=*/{1, 1}, /*prepend_a=*/true,
+       /*reduce_window_spatials=*/{2, 2}, /*prepend_a=*/true,
        /*should_become_broadcast=*/false},  //
       {/*input_spatials=*/{5, 1}, /*symmetric_pad_amount=*/{0, 2},
        /*reduce_window_spatials=*/{2, 5}, /*prepend_a=*/true,

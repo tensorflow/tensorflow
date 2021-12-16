@@ -17,7 +17,7 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 // CHECK:         ROOT %tuple.{{[0-9]+}} = (s32[0]{0}, s32[0]{0}) tuple(s32[0]{0} [[CONSTANT]], s32[0]{0} [[CONSTANT]])
 // CHECK:       }
 
-// NO_TUPLES-LABEL: HloModule main{{.[0-9+]}}
+// NO_TUPLES-LABEL: HloModule main
 // NO_TUPLES:       ENTRY %main.{{[0-9+]}} () -> (s32[0], s32[0]) {
 // NO_TUPLES:         [[CONSTANT:%.*]] = s32[0]{0} constant({})
 // NO_TUPLES:         ROOT %tuple.{{[0-9]+}} = (s32[0]{0}, s32[0]{0}) tuple(s32[0]{0} [[CONSTANT]], s32[0]{0} [[CONSTANT]])

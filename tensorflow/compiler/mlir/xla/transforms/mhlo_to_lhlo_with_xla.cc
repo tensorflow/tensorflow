@@ -20,6 +20,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -545,7 +546,7 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
 
   auto fusion = builder_.create<lmhlo::FusionOp>(getLocation(instr));
   auto after_fusion = builder_.saveInsertionPoint();
-  auto reverter = xla::MakeCleanup(
+  auto reverter = absl::MakeCleanup(
       [this, after_fusion] { builder_.restoreInsertionPoint(after_fusion); });
   builder_ = mlir::OpBuilder(fusion);
 
@@ -1342,7 +1343,7 @@ mlir::DenseIntElementsAttr LhloDialectEmitter::GetLayoutAttribute(
 Status LhloDialectEmitter::ImportAsLmhloRegion(xla::HloComputation* computation,
                                                mlir::Region* region) {
   auto after = builder_.saveInsertionPoint();
-  auto reverter = xla::MakeCleanup(
+  auto reverter = absl::MakeCleanup(
       [this, after] { builder_.restoreInsertionPoint(after); });
 
   builder_ = OpBuilder(region);

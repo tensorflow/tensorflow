@@ -1015,6 +1015,9 @@ Status GetOrCreateKernelAndDevice(
     bool allow_small_function_optimizations = false;
     bool int_args_and_retvals_on_device = false;
     bool allow_control_flow_sync_execution = false;
+    // TODO(b/176491312): Remove this if shape inference on import flag is
+    // removed.
+    bool shape_inference_on_tfe_dialect_import = true;
     if (ctx.RunEagerOpAsFunction() && !op->is_function()) {
       EagerOperation* wrapped_op = nullptr;
       TF_RETURN_IF_ERROR(ValidateOp(op));
@@ -1025,6 +1028,7 @@ Status GetOrCreateKernelAndDevice(
       run_function_with_flr = true;
       allow_small_function_optimizations = true;
       allow_control_flow_sync_execution = true;
+      shape_inference_on_tfe_dialect_import = false;
       int_args_and_retvals_on_device = IntArgsAndRetvalsOnDevice(op);
       op = wrapped_op;
     }
@@ -1071,7 +1075,8 @@ Status GetOrCreateKernelAndDevice(
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
           function_outputs_on_op_device, allow_small_function_optimizations,
-          allow_control_flow_sync_execution, int_args_and_retvals_on_device,
+          allow_control_flow_sync_execution,
+          shape_inference_on_tfe_dialect_import, int_args_and_retvals_on_device,
           std::move(rendezvous_creator), get_op_id));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "

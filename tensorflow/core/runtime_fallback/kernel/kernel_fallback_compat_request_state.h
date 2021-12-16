@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tensorflow/core/tfrt/utils/model_metadata.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 
@@ -74,7 +73,7 @@ class KernelFallbackCompatRequestState {
       tfrt_stub::OpKernelRunnerTable* runner_table,
       FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-      const absl::optional<tfrt::ModelMetadata>& model_metadata,
+      const absl::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
   // NOTE: This is the constructor for inference.
@@ -84,7 +83,7 @@ class KernelFallbackCompatRequestState {
       tfrt_stub::OpKernelRunnerTable* runner_table,
       FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-      const absl::optional<tfrt::ModelMetadata>& model_metadata,
+      const absl::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
   // Returns the user-specified custom device for this request. It is currently

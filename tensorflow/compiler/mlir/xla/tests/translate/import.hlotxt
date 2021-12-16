@@ -3,7 +3,9 @@
 
 // NO_DEAD_FUNCTION-NOT: @test
 
-HloModule main
+// CHECK: module @foobar
+HloModule foobar
+
 
 // CHECK-LABEL:  func @main(%arg0: tensor<f32>) -> tensor<f32> {
 ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {

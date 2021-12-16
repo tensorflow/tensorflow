@@ -939,5 +939,14 @@ Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc) {
       QType::castToExpressedType(signed_tensor_type));
 }
 
+LogicalResult RemoveDebugAttrPattern::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  // removeAttr will return nullptr if the attribute did not exist. Thus we can
+  // return success(result) to indicate if this op has changed.
+  return success(/*isSuccess=*/
+                 op->removeAttr(kDebugModeOpQuantAttrName) ||
+                 op->removeAttr(kDebugModeOpFloatAttrName));
+}
+
 }  // namespace quant
 }  // namespace mlir

@@ -249,8 +249,8 @@ static inline bool IsMklOp(const string& op_name, DataType T,
   return kernel_registered;
 }
 
-// TODO(mdfaijul): QuantizedConv2D is registered with input: QUINT8
-// filter:QINT8 for mkldnn integration. First a dummy kernel is created
+// TODO(intel-tf): QuantizedConv2D is registered with input: QUINT8
+// filter:QINT8 for oneDNN integration. First a dummy kernel is created
 // and then it is replaced by an actual kernel.
 static inline bool IsMklQuantizedOp(const string& op_name, DataType Tinput,
                                     DataType Tfilter) {

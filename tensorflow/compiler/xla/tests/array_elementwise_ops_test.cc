@@ -1943,6 +1943,17 @@ XLA_TEST_F(ArrayElementwiseOpTest, MaxF32s) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest,
+           DISABLED_ON_CPU(DefaultMaxF32sNaNPropagation)) {
+  XlaBuilder builder(TestName());
+  auto lhs = ConstantR1<float>(&builder, {1.0f, 1.0f, 2.25f, NAN, 6.0f});
+  auto rhs = ConstantR1<float>(&builder, {2.0f, -5.0f, 1.0f, 10.0f, NAN});
+  Max(lhs, rhs);
+
+  ComputeAndCompareR1<float>(&builder, {2.0f, 1.0f, 2.25f, NAN, NAN}, {},
+                             error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, MaxZeroElementF32s) {
   XlaBuilder builder(TestName());
   auto lhs = ConstantR1<float>(&builder, {});

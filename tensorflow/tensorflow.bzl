@@ -395,7 +395,7 @@ def tf_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_mkldnn_aarch64_acl(["-DENABLE_MKL", "-DENABLE_ONEDNN_OPENMP", "-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl(["-DENABLE_ONEDNN_OPENMP", "-DDNNL_AARCH64_USE_ACL=1"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -824,6 +824,7 @@ def tf_cc_shared_library(
             win_def_file = win_def_file,
         )
 
+        win_linker_inputs = [win_def_file] if win_def_file else []
         cc_shared_library_name = name_os_full + "_ccsharedlib"
         shared_lib_name = name_os_full + "_sharedlibname"
         cc_shared_library(
@@ -839,12 +840,15 @@ def tf_cc_shared_library(
                 clean_dep("//tensorflow:macos"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
-                clean_dep("//tensorflow:windows"): [],
+                clean_dep("//tensorflow:windows"): [
+                    "/DEF:$(location :%s)" % win_def_file,
+                    "/ignore:4070",
+                ] if win_def_file else [],
                 "//conditions:default": [
                     "-Wl,-soname," + soname,
                 ],
             }),
-            additional_linker_inputs = additional_linker_inputs,
+            additional_linker_inputs = additional_linker_inputs + win_linker_inputs,
             visibility = visibility,
         )
         native.alias(
@@ -3217,6 +3221,45 @@ def tf_python_pybind_extension(
         testonly = testonly,
         compatible_with = compatible_with,
     )
+
+# copybara:comment_begin(oss only)
+# buildozer: enable=function-docstring-args
+def tf_python_pybind_ccsharedlib_extension(
+        name,
+        srcs,
+        module_name,
+        hdrs = [],
+        static_deps = [],
+        deps = [],
+        compatible_with = None,
+        copts = [],
+        defines = [],
+        features = [],
+        testonly = None,
+        visibility = None):
+    """A wrapper macro for pybind_ccsharedlib_extension.
+
+    It is used for targets under //third_party/tensorflow/python that link
+    against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
+    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
+    """
+    pybind_ccsharedlib_extension(
+        name,
+        srcs,
+        module_name,
+        hdrs = hdrs,
+        static_deps = static_deps,
+        deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+        compatible_with = compatible_with,
+        copts = copts,
+        defines = defines,
+        features = features,
+        link_in_framework = True,
+        testonly = testonly,
+        visibility = visibility,
+    )
+
+# copybara:comment_end
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
     """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension.

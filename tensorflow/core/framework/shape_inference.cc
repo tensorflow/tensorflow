@@ -171,12 +171,11 @@ void InferenceContext::PreInputInit(
     const OpDef& op_def, const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes) {
   // TODO(mdan): This is also done at graph construction. Run only here instead?
-  const auto ret = full_type::SpecializeType(attrs_, op_def);
-  if (!ret.status().ok()) {
-    construction_status_ = ret.status();
+  Status s = full_type::SpecializeType(attrs_, op_def, ret_types_);
+  if (!s.ok()) {
+    construction_status_ = s;
     return;
   }
-  ret_types_ = ret.ValueOrDie();
 
   input_tensors_ = input_tensors;
   input_tensors_as_shapes_ = input_tensors_as_shapes;

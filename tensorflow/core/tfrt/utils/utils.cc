@@ -29,6 +29,8 @@ limitations under the License.
 
 namespace tfrt {
 
+using ::tensorflow::StatusOr;
+
 Expected<const char*> ConvertTfDeviceNameToTfrt(
     const char* device_name, tensorflow::EagerContext* eager_context) {
   // NOTE(fishx): We need to get tf_device first because DeviceMgr in current TF

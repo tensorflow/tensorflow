@@ -396,6 +396,7 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/host:host_stream",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",

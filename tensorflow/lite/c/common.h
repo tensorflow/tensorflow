@@ -98,7 +98,7 @@ typedef struct TfLiteIntArray {
 
 // Given the size (number of elements) in a TfLiteIntArray, calculate its size
 // in bytes.
-int TfLiteIntArrayGetSizeInBytes(int size);
+size_t TfLiteIntArrayGetSizeInBytes(int size);
 
 #ifndef TF_LITE_STATIC_MEMORY
 // Create a array of a given `size` (uninitialized entries).

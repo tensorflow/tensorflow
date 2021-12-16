@@ -36,20 +36,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
-class ClOperation;
-}
-namespace metal {
-class ComputeTask;
-struct ComputeTaskDescriptor;
-}
-namespace gl {
-class GlOperation;
-}
-namespace vulkan {
-class VulkanOperation;
-}
-
 // kCustom: default value
 //   GPUOperation::GetGridSize must be overloaded
 // kWBToX_HDToY_SToZ:
@@ -116,9 +102,23 @@ class GPUOperation {
   void SetSrc(GpuSpatialTensor* ptr, int index = 0);
   void SetDst(GpuSpatialTensor* ptr, int index = 0);
 
-  virtual void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const GpuInfo& gpu_info,
-      const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
+  struct DispatchInfo {
+    int3 work_group_size;
+    int3 work_groups_count;
+  };
+  void GetPossibleDispatches(TuningType tuning_type, const GpuInfo& gpu_info,
+                             const KernelInfo& kernel_info,
+                             std::vector<DispatchInfo>* dispatches) const;
+
+  const std::vector<std::string>& GetSrcTensorsNames() const {
+    return src_tensors_names_;
+  }
+  const std::vector<std::string>& GetDstTensorsNames() const {
+    return dst_tensors_names_;
+  }
+  const std::vector<GpuSpatialTensor*>& GetSrcTensors() const { return src_; }
+  const std::vector<GpuSpatialTensor*>& GetDstTensors() const { return dst_; }
+  const int3& GetWorkGroupsCount() const { return work_groups_count_; }
 
   absl::Status AssembleCode(const GpuInfo& gpu_info);
 
@@ -147,6 +147,7 @@ class GPUOperation {
     return absl::OkStatus();
   }
   void RecalculateGridSize() { grid_size_ = GetGridSize(); }
+  void RecalculateWorkGroupsCount();
 
   Arguments args_;
   std::string code_;
@@ -170,17 +171,15 @@ class GPUOperation {
   void CalculateConstArgsSize();
 
  protected:
-  friend class cl::ClOperation;
-  friend class gl::GlOperation;
-  friend class metal::ComputeTask;
-  friend struct metal::ComputeTaskDescriptor;
-  friend class vulkan::VulkanOperation;
   friend flatbuffers::Offset<tflite::gpu::data::GPUOperation> Encode(
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,
                              GPUOperation* op);
 
   virtual int3 GetGridSize() const;
+  virtual void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
   // Defines operation calculation precision and format of src/dst tensors.
   OperationDef definition_;

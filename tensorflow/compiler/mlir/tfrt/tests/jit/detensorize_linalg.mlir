@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt %s -tf-cpurt-detensorize-linalg | FileCheck %s
+// RUN: tf-tfrt-opt %s -detensorize-linalg | FileCheck %s
 
 #id = affine_map<(d0) -> (d0)>
 #empty = affine_map<(d0) -> ()>
@@ -7,7 +7,7 @@
 func @detensorize(%arg : tensor<100xi32>) -> (tensor<100xi1>) attributes {} {
   %c10 = arith.constant 10 : i32
   %tensor = tensor.from_elements %c10 : tensor<1xi32>
-  %collapse = linalg.tensor_collapse_shape %tensor []
+  %collapse = tensor.collapse_shape %tensor []
     : tensor<1xi32> into tensor<i32>
   %init = linalg.init_tensor [100] : tensor<100xi1>
   %result = linalg.generic {

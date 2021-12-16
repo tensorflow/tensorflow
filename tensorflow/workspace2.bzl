@@ -135,9 +135,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "94bc17589d1e74a4b8dccbda33cc93ac0ca42c641a493b3d462cb2407629bc57",
-        strip_prefix = "XNNPACK-482508b57643e1752b62d9cacf4647b0ea00c321",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/482508b57643e1752b62d9cacf4647b0ea00c321.zip"),
+        sha256 = "8ce46328c9ac5f1b8359e5c4352a2bbafc39614eae7f647d32a6d43cb110ad01",
+        strip_prefix = "XNNPACK-113092317754c7dea47bfb3cb49c4f59c3c1fa10",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/113092317754c7dea47bfb3cb49c4f59c3c1fa10.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -175,14 +175,15 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "930a2327c4fe4018a604f67ca3c0ebea01436aad7ce1f4e01d088732bd19d16f",
-        strip_prefix = "oneDNN-2.4.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.4.1.tar.gz"),
+        sha256 = "a86951e569509c670c09f3e4a31fe6b01811e5c1d15cc2374f8b5554b45b4271",
+        strip_prefix = "oneDNN-2.5-rc",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.5-rc.tar.gz"),
     )
 
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
+        patch_file = "//third_party/mkl_dnn:onednn-acl-bf16.patch",
         sha256 = "a7f2a4d80d5406d156dfc1d7b27d10b0af5ed061cf0b6197d3d12cddc6790fcb",
         strip_prefix = "oneDNN-2.4",
         urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.4.tar.gz"),
@@ -190,11 +191,11 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "1c62d41be62c14c8ff196d6aaa9f9efe0597b82a923350d922e8cde217dd1d86",
-        strip_prefix = "ComputeLibrary-21.08",
+        sha256 = "8322ed2e135999569082a95e7fbb2fa87786ffb1c67935b3ef71e00b53f2c887",
+        strip_prefix = "ComputeLibrary-21.11",
         build_file = "//third_party/compute_library:BUILD",
         patch_file = "//third_party/compute_library:compute_library.patch",
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v21.08.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v21.11.tar.gz"),
     )
 
     tf_http_archive(

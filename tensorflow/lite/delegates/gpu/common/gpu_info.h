@@ -255,6 +255,8 @@ struct OpenGlInfo {
   int max_compute_work_group_size_x;
   int max_compute_work_group_size_y;
   int max_compute_work_group_size_z;
+
+  bool SupportsExplicitFp16() const;
 };
 
 struct VulkanInfo {
@@ -276,6 +278,8 @@ struct VulkanInfo {
   int max_compute_work_group_size_x;
   int max_compute_work_group_size_y;
   int max_compute_work_group_size_z;
+
+  bool SupportsExplicitFp16() const;
 };
 
 enum class OpenClVersion {
@@ -381,6 +385,7 @@ struct GpuInfo {
   bool IsIntel() const;
 
   bool IsGlsl() const;
+  bool IsGlslSupportsExplicitFp16() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;

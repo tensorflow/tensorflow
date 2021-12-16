@@ -133,8 +133,7 @@ int64_t SizeOfTiledArray(absl::Span<int64_t const> shape,
   int64_t size = 1;
   for (size_t i = 0; i < shape.size(); ++i) {
     if (i >= shape.size() - tiling.size()) {
-      size *= RoundUpToNearest(shape[i],
-                               tiling[i - (shape.size() - tiling.size())]);
+      size *= RoundUpTo(shape[i], tiling[i - (shape.size() - tiling.size())]);
     } else {
       size *= shape[i];
     }
