@@ -1786,7 +1786,7 @@ REGISTER_OP("_MklLayerNorm")
     .Output("y: T")
     .Attr("T: {float, bfloat16}")
     .Attr("epsilon: float = 0.001")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
 expected to create these operators.
