@@ -227,7 +227,7 @@ class NNAPIDelegateKernel {
   // NNAPI Operation code.
   // Returns kTfLiteError in case of failures during mapping.
   static TfLiteStatus Map(TfLiteContext* context, int builtin_code, int version,
-                          int target_feature_level,
+                          int android_sdk_version,
                           const NNAPIOpMappingArgs& mapping_args,
                           ANeuralNetworksOperationType* nn_op_type,
                           NnapiDelegateVendorPlugin* vendor_plugin = nullptr);
@@ -235,7 +235,7 @@ class NNAPIDelegateKernel {
   // Returns true if the node can be accelerated with NNAPI.
   static bool Validate(
       const TfLiteContext* context, const TfLiteRegistration* registration,
-      int target_feature_level, const TfLiteNode* node,
+      int android_sdk_version, const TfLiteNode* node,
       bool is_accelerator_specified,
       NnapiDelegateVendorPlugin* vendor_plugin = nullptr,
       // Collects lists of failures collected during

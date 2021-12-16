@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
-
 #include <gtest/gtest.h>
 
 namespace {
@@ -22,8 +21,8 @@ TEST(NnapiLibTest, NnApiImplementation) {
   const NnApi* nnapi = NnApiImplementation();
   EXPECT_NE(nnapi, nullptr);
 #ifdef __ANDROID__
-  EXPECT_GT(nnapi->nnapi_runtime_feature_level, 0);
-  if (nnapi.nnapi_runtime_feature_level < 27) {
+  EXPECT_GT(nnapi->android_sdk_version, 0);
+  if (nnapi.android_sdk_version < 27) {
     EXPECT_FALSE(nnapi->nnapi_exists);
     EXPECT_EQ(nnapi->ANeuralNetworksMemory_createFromFd, nullptr);
     EXPECT_EQ(nnapi->ANeuralNetworksMemory_free, nullptr);
@@ -63,7 +62,7 @@ TEST(NnapiLibTest, NnApiImplementation) {
     EXPECT_NE(nnapi->ANeuralNetworksModel_setOperandValueFromMemory, nullptr);
     EXPECT_NE(nnapi->ANeuralNetworksModel_addOperation, nullptr);
     EXPECT_NE(nnapi->ANeuralNetworksModel_identifyInputsAndOutputs, nullptr);
-    if (nnapi->nnapi_runtime_feature_level >= 28) {
+    if (nnapi->android_sdk_version >= 28) {
       // relaxComputationFloat32toFloat16 only available with Android 9.0 (P).
       EXPECT_NE(nnapi->ANeuralNetworksModel_relaxComputationFloat32toFloat16,
                 nullptr);
@@ -89,7 +88,7 @@ TEST(NnapiLibTest, NnApiImplementation) {
   }
 #else
   EXPECT_FALSE(nnapi->nnapi_exists);
-  EXPECT_EQ(nnapi->nnapi_runtime_feature_level, 0);
+  EXPECT_EQ(nnapi->android_sdk_version, 0);
   EXPECT_EQ(nnapi->ANeuralNetworksMemory_createFromFd, nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksMemory_free, nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksModel_create, nullptr);
