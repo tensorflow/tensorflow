@@ -349,7 +349,13 @@ Status GpuCompiler::OptimizeHloModule(
     // handle it.
     pipeline.AddPass<ZeroSizedHloElimination>();
 
-    pipeline.AddPass<GpuScatterExpander>();
+    if (debug_options.xla_gpu_deterministic_ops()) {
+      // Scatter is nondeterministic, so eliminate all Scatters.
+      pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+    } else {
+      // Only Scatters unsupported on XLA:GPU are eliminated.
+      pipeline.AddPass<GpuScatterExpander>();
+    }
     // TODO(phawkins): replace QR and Eigh decompositions with calls to
     // cuSOLVER.
     pipeline.AddPass<QrExpander>();

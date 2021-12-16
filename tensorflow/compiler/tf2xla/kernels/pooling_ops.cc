@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -319,6 +320,13 @@ class MaxPoolGradOp : public XlaOpKernel {
     OP_REQUIRES(ctx, padding_ != EXPLICIT,
                 errors::Unimplemented(
                     "XLA does not support maxpoolgrad with explicit padding."));
+    // When determinism is enabled, the use of SelectAndScatter causes a generic
+    // error to be raised. We raise a more informative error here before
+    // SelectAndScatter is used.
+    OP_REQUIRES(
+        ctx, !tensorflow::OpDeterminismRequired(),
+        errors::Unimplemented("GPU MaxPool gradient ops do not yet have a "
+                              "deterministic XLA implementation."));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
