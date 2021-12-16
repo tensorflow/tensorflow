@@ -277,9 +277,13 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   xla::gpu::GpuExecutableRunOptions gpu_options;
   xla::DeviceAssignment device_assignment;
   xla::ExecutableRunOptions run_options;
-  OP_REQUIRES_OK(ctx, ResolveDeviceAssignment(
-                          ctx, compilation_result->collective_info, run_options,
-                          device_assignment, gpu_options));
+  if (compilation_result->collective_info.has_value()) {
+    OP_REQUIRES_OK(ctx, ResolveDeviceAssignment(
+                            ctx, *compilation_result->collective_info,
+                            run_options, device_assignment, gpu_options));
+  } else {
+    VLOG(2) << "No collective info provided: skipping device assignment";
+  }
 
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);

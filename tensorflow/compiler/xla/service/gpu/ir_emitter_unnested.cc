@@ -3170,6 +3170,8 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     return Unimplemented("%s", message);
   }
 
+  VLOG(1) << "Collective call is degenerate, not doing NCCL call";
+
   // All-gather with one replica is simply the identity function. Buffer
   // assignment expects a copy, so that's what we do.
   ThunkSequence thunks;
