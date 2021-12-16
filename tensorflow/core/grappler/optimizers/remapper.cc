@@ -275,7 +275,8 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
 
   if (is_one_dnn_enabled) {
     return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
-            IsMatMul(*contraction) || IsConv3D(*contraction)) &&
+            IsMatMul(*contraction) || IsConv3D(*contraction) ||
+            IsAnyBatchMatMul(*contraction)) &&
            (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
   }
   if (IsConv2D(*contraction)) {
@@ -1475,6 +1476,98 @@ bool FindTensorToHashBucket(const RemapperContext& ctx, int node_index,
   return true;
 }
 
+bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
+                          std::map<string, int>* matched_nodes_map,
+                          std::set<int>* remove_node_indices) {
+  if (!IsMKLEnabled()) return false;
+
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+  // clang-format off
+  utils::OpTypePattern fusion_pattern1 =
+    {"AddV2", "output", NodeStatus::kReplace,
+      {
+        {"Mul", "mul", NodeStatus::kRemove,
+          {
+            {"BatchMatMulV2", "batch_matmul", NodeStatus::kRemove},
+            {"*", "multiplicand", NodeStatus::kRemain}
+          }
+        },
+        {"*", "addend", NodeStatus::kRemain}
+      }
+    };
+
+  utils::OpTypePattern fusion_pattern2 =
+    {"AddV2", "output", NodeStatus::kReplace,
+      {
+        {"*", "addend", NodeStatus::kRemain},
+        {"Mul", "mul", NodeStatus::kRemove,
+          {
+            {"BatchMatMulV2", "batch_matmul", NodeStatus::kRemove},
+            {"*", "multiplicand", NodeStatus::kRemain}
+          }
+        }
+      }
+    };
+  // clang-format on
+
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  bool found_op_type_match = false;
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+  found_op_type_match =
+      graph_matcher.GetMatchedNodes(fusion_pattern1, ctx->nodes_to_preserve,
+                                    ctx->graph_view.GetNode(node_index),
+                                    matched_nodes_map, remove_node_indices);
+
+  if (!found_op_type_match) {
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_op_type_match =
+        graph_matcher.GetMatchedNodes(fusion_pattern2, ctx->nodes_to_preserve,
+                                      ctx->graph_view.GetNode(node_index),
+                                      matched_nodes_map, remove_node_indices);
+  }
+
+  // OneDNN is not optimized for all shapes with regard to binary-post ops
+  // fusion. Allow limited cases only for now that are optimized, (i)
+  // multiplicand is scalar, (ii) BatchMatmulV2 output is 4D tensor, and (iii)
+  // addend is 4D tensor with second dim_size = 1.
+  if (!found_op_type_match) return false;
+  if (!ctx->inferred_graph_properties) {
+    Status s = ctx->graph_properties.InferStatically(
+        /*assume_valid_feeds=*/true,
+        /*aggressive_shape_inference=*/false,
+        /*include_input_tensor_values=*/false,
+        /*include_output_tensor_values=*/true);
+    if (!s.ok()) return false;
+    ctx->inferred_graph_properties = true;
+  }
+  NodeDef* multiplicand_node_def =
+      ctx->graph_view.GetNode(matched_nodes_map->at("multiplicand"))->node();
+  auto multiplicand_props =
+      ctx->graph_properties.GetOutputProperties(multiplicand_node_def->name());
+  if (NumCoefficients(multiplicand_props[0].shape()) != 1) return false;
+
+  NodeDef* batch_matmul_node_def =
+      ctx->graph_view.GetNode(matched_nodes_map->at("batch_matmul"))->node();
+  if (!IsCpuCompatibleMatMul(*ctx, batch_matmul_node_def)) return false;
+
+  auto batch_matmul_props =
+      ctx->graph_properties.GetOutputProperties(batch_matmul_node_def->name());
+  if (Rank(batch_matmul_props[0].shape()) != 4) return false;
+
+  NodeDef* addend_node_def =
+      ctx->graph_view.GetNode(matched_nodes_map->at("addend"))->node();
+  auto addend_props =
+      ctx->graph_properties.GetOutputProperties(addend_node_def->name());
+  auto addend_shape = addend_props[0].shape();
+  if (!(Rank(addend_shape) == 4 && addend_shape.dim(1).size() == 1))
+    return false;
+  return found_op_type_match;
+}
+
 void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
                           const NodeDef* activation = nullptr) {
   DCHECK(IsConv2D(conv2d)) << "Input node must be a Conv2D";
@@ -1597,6 +1690,18 @@ void CopyMatMulAttributes(const NodeDef& matmul, NodeDef* fused_matmul,
     auto& activation_attr = activation->attr();
     (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
   }
+}
+
+void CopyBatchMatMulAttributes(const NodeDef& batchmatmul,
+                               NodeDef* fused_batch_matmul) {
+  DCHECK(IsAnyBatchMatMul(batchmatmul)) << "Input node must be a BatchMatMul";
+
+  auto* attr = fused_batch_matmul->mutable_attr();
+  auto& src_attr = batchmatmul.attr();
+
+  (*attr)["T"] = src_attr.at("T");
+  (*attr)["adj_x"] = src_attr.at("adj_x");
+  (*attr)["adj_y"] = src_attr.at("adj_y");
 }
 
 void SetFusedOpAttributes(NodeDef* fused,
@@ -2359,6 +2464,45 @@ Status AddTensorToHashBucketNode(RemapperContext* ctx,
   return Status::OK();
 }
 
+Status AddFusedBatchMatMul(RemapperContext* ctx,
+                           const std::map<string, int>& matched_nodes_map,
+                           const std::set<int>& remove_node_indices,
+                           std::vector<bool>* invalidated_nodes,
+                           std::vector<bool>* nodes_to_delete) {
+  auto* output_node =
+      ctx->graph_view.GetNode(matched_nodes_map.at("output"))->node();
+  auto* batch_matmul_node =
+      ctx->graph_view.GetNode(matched_nodes_map.at("batch_matmul"))->node();
+  auto* multiplicand_node =
+      ctx->graph_view.GetNode(matched_nodes_map.at("multiplicand"))->node();
+  auto* addend_node =
+      ctx->graph_view.GetNode(matched_nodes_map.at("addend"))->node();
+
+  NodeDef fused_node;
+  fused_node.set_name(output_node->name());
+  fused_node.set_op("_MklFusedBatchMatMulV2");
+  fused_node.set_device(batch_matmul_node->device());
+  fused_node.add_input(batch_matmul_node->input(0));
+  fused_node.add_input(batch_matmul_node->input(1));
+  fused_node.add_input(multiplicand_node->name());
+  fused_node.add_input(addend_node->name());
+
+  CopyBatchMatMulAttributes(*batch_matmul_node, &fused_node);
+  SetFusedOpAttributes(&fused_node, {"Mul", "Add"}, /*num_args=*/2);
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_node), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+  (*invalidated_nodes)[matched_nodes_map.at("output")] = true;
+
+  for (const auto& node_idx : remove_node_indices) {
+    (*nodes_to_delete)[node_idx] = true;
+  }
+  return Status::OK();
+}
+
 bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
 
@@ -2577,6 +2721,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         TF_RETURN_IF_ERROR(AddFusedMatMulBiasAddAndGelu(
             &ctx, matched_nodes_map, remove_node_indices, &invalidated_nodes,
             &nodes_to_delete, is_gelu_approximate));
+        continue;
+      }
+
+      // Remap BatchMatMul+Mul+AddV2 into the _FusedBatchMatMul.
+      matched_nodes_map.clear();
+      remove_node_indices.clear();
+      if (FindFusedBatchMatMul(&ctx, i, &matched_nodes_map,
+                               &remove_node_indices)) {
+        TF_RETURN_IF_ERROR(
+            AddFusedBatchMatMul(&ctx, matched_nodes_map, remove_node_indices,
+                                &invalidated_nodes, &nodes_to_delete));
         continue;
       }
     }
