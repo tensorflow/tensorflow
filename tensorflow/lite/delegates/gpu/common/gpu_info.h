@@ -268,8 +268,14 @@ struct VulkanInfo {
 
   int max_per_stage_descriptor_sampled_images = 0;
   uint32_t max_compute_work_group_invocations;
+  uint32_t max_image_dimension_1d;
   uint32_t max_image_dimension_2d;
+  uint32_t max_image_dimension_3d;
   uint32_t max_image_array_layers;
+  uint64_t max_texel_buffer_elements;
+  uint64_t max_uniform_buffer_range;
+  uint64_t max_storage_buffer_range;
+  uint64_t max_push_constants_size;
 
   uint32_t subgroup_size = 0;
   bool supports_subgroup_arithmetic = false;

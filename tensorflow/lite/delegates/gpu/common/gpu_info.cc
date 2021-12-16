@@ -814,9 +814,10 @@ uint64_t GpuInfo::GetMaxImage2DArrayLayers() const {
 uint64_t GpuInfo::GetMaxImage3DWidth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image3d_max_width;
-  }
-  if (IsApiMetal()) {
+  } else if (IsApiMetal()) {
     return metal_info.image3d_max_width;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_image_dimension_3d;
   }
   return 256;
 }
@@ -824,9 +825,10 @@ uint64_t GpuInfo::GetMaxImage3DWidth() const {
 uint64_t GpuInfo::GetMaxImage3DHeight() const {
   if (IsApiOpenCl()) {
     return opencl_info.image3d_max_height;
-  }
-  if (IsApiMetal()) {
+  } else if (IsApiMetal()) {
     return metal_info.image3d_max_height;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_image_dimension_3d;
   }
   return 256;
 }
@@ -834,9 +836,10 @@ uint64_t GpuInfo::GetMaxImage3DHeight() const {
 uint64_t GpuInfo::GetMaxImage3DDepth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image3d_max_depth;
-  }
-  if (IsApiMetal()) {
+  } else if (IsApiMetal()) {
     return metal_info.image3d_max_depth;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_image_dimension_3d;
   }
   return 256;
 }
@@ -846,6 +849,8 @@ uint64_t GpuInfo::GetMaxBufferSize() const {
     return opencl_info.buffer_max_size;
   } else if (IsApiMetal()) {
     return metal_info.buffer_max_size;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_storage_buffer_range;
   }
   return 128 * 1024 * 1024;
 }
@@ -855,6 +860,8 @@ uint64_t GpuInfo::GetMaxMemoryAllocationSize() const {
     return opencl_info.max_allocation_size;
   } else if (IsApiMetal()) {
     return metal_info.buffer_max_size;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_storage_buffer_range;
   }
   return 128 * 1024 * 1024;
 }
@@ -862,6 +869,8 @@ uint64_t GpuInfo::GetMaxMemoryAllocationSize() const {
 uint64_t GpuInfo::GetMaxImageBufferWidth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image_buffer_max_size;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_texel_buffer_elements;
   }
   return 64 * 1024;
 }
