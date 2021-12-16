@@ -108,6 +108,9 @@
   * `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
     `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is
     deprecated and will be removed in a future release.
+  * `tf.keras.experimental.SidecarEvaluator` is now available as
+    `tf.keras.utils.SidecarEvaluator`. The experimental endpoint is
+    deprecated and will be removed in a future release.
   * Metrics update and collection logic in default `Model.train_step()` is now
     customizable via overriding `Model.compute_metrics()`.
   * Losses computation logic in default `Model.train_step()` is now
