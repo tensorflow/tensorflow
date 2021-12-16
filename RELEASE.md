@@ -48,6 +48,39 @@
         though the input tensor remains to be rank 2, the activations now can be
         rank 2 or above by specifying the output shape in the feature config
         or via the build method.
+*   Deterministic Op Functionality
+    *   Add `tf.config.experimental.enable_op_determinism`
+        *   Replaces `TF_DETERMINISTIC_OPS`, which is now deprecated.
+        *   See [documentation](https://www.tensorflow.org/api_docs/python/tf/config/experimental/enable_op_determinism).
+    *   (since v2.7) Add determinsitic GPU implementations of:
+        *   Stateful ops used in `tf.data.Dataset`
+        *   `tf.convert_to_tensor` when fed with (sparse) `tf.IndexedSlices` (because it uses `tf.math.unsorted_segment_sum`)
+        *   `tf.gather` backprop (because `tf.convert_to_tensor` reduces `tf.gather`'s (sparse) `tf.IndexedSlices` gradients into its dense `params` input)
+        *   `tf.math.segment_mean`
+        *   `tf.math.segment_prod`
+        *   `tf.math.segment_sum`
+        *   `tf.math.unsorted_segment_mean`
+        *   `tf.math.unsorted_segment_prod`
+        *   `tf.math.unsorted_segment_sum`
+        *   `tf.math.unsorted_segment_sqrt`
+        *   `tf.nn.ctc_loss` (resolved, possibly in prior release, and confirmed with tests)
+        *   `tf.nn.sparse_softmax_crossentropy_with_logits`
+    *   (since v2.7) Run the following ops on CPU (with significant performance penalty):
+        *   `tf.scatter_nd` and other related scatter functions, such as `tf.tensor_scatter_nd_update`
+    *   (since v2.7) Add determinism-unimplemented exception-throwing to the following ops. When op-determinism is expected (i.e. after `tf.config.experimental.enable_op_determinism` has been called), an attempt to use the specified paths through the following ops on a GPU will cause `tf.errors.UnimplementedError` (with an understandable message), unless otherwise specified, to be thrown.
+        *   `tf.compat.v1.get_seed` if the global random seed has not yet been set (via `tf.random.set_seed`). Throws `RuntimeError` from Python or `InvalidArgument` from C++
+        *   `tf.compat.v1.nn.fused_batch_norm` backprop to `offset` when `is_training=False`
+        *   `tf.image.adjust_contrast` forward
+        *   `tf.image.resize` with `method=ResizeMethod.NEAREST` backprop
+        *   `tf.linalg.svd`
+        *   `tf.math.bincount`
+        *   `tf.nn.depthwise_conv2d` backprop to `filter` when not using cuDNN convolution
+        *   `tf.nn.dilation2d` gradient
+        *   `tf.nn.max_pool_with_argmax` gradient
+        *   `tf.raw_ops.DebugNumericSummary` and `tf.raw_ops.DebugNumericSummaryV2`
+        *   `tf.timestamp`. Throws `FailedPrecondition`
+        *   `tf.Variable.scatter_add` (and other scatter methods, both on ref and resource variables)
+        *   The random-number-generating ops in the `tf.random` module when the global random seed has not yet been set (via `tf.random.set_seed`). Throws `RuntimeError` from Python or `InvalidArgument` from C++
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
