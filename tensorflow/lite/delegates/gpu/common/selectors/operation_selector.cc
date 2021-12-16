@@ -52,9 +52,13 @@ bool IsRecommendedForWinograd4x4To6x6(const Convolution2DAttributes& attr,
   const int total_tiles = tiles_x * tiles_y;
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
-  int min_depth = 16;
-  if (gpu_info.IsAdreno() || gpu_info.IsAMD()) {
-    min_depth = 32;
+  int min_src_depth = 16;
+  int min_dst_depth = 16;
+  if (gpu_info.IsAdreno()) {
+    min_src_depth = 32;
+    min_dst_depth = 32;
+  } else if (gpu_info.IsAMD()) {
+    min_dst_depth = 8;
   }
   int min_tiles = 32;
   if (gpu_info.IsAdreno()) {
@@ -64,11 +68,8 @@ bool IsRecommendedForWinograd4x4To6x6(const Convolution2DAttributes& attr,
       min_tiles = 64;
     }
   }
-  if (gpu_info.IsAMD()) {
-    min_tiles = 64;
-  }
   const bool recommended_channels =
-      src_depth >= min_depth && dst_depth >= min_depth;
+      src_depth >= min_src_depth && dst_depth >= min_dst_depth;
   const bool recommended_hw = total_tiles >= min_tiles;
   return recommended_channels && recommended_hw;
 }
