@@ -14,6 +14,8 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include <algorithm>
+
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
@@ -210,8 +212,21 @@ void PropagateBroadcasts(DynamicBroadcastInDimOp root,
     }
   }
 
-  // Realize all the broadcast intents in reverse order.
-  for (auto it : llvm::reverse(bcast_intents_ordered)) {
+  // Realize all the broadcast intents in reverse topological order. We can use
+  // the positions in the block for this. All broadcast intents outside the
+  // block (e.g. arguments) will be sorted towards the front.
+  std::sort(
+      bcast_intents_ordered.begin(), bcast_intents_ordered.end(),
+      [the_block](const BroadcastIntent &a, const BroadcastIntent &b) {
+        Operation *a_op = a.target_value.getDefiningOp();
+        bool a_same_block = (a_op != nullptr) && a_op->getBlock() == the_block;
+        Operation *b_op = b.target_value.getDefiningOp();
+        bool b_same_block = (b_op != nullptr) && b_op->getBlock() == the_block;
+        if (a_same_block && b_same_block) return a_op->isBeforeInBlock(b_op);
+        if (!a_same_block) return true;
+        return false;
+      });
+  for (auto it : bcast_intents_ordered) {
     Operation *producer_op = it.target_value.getDefiningOp();
     Operation *output_dimensions_def = it.output_dimensions.getDefiningOp();
 
