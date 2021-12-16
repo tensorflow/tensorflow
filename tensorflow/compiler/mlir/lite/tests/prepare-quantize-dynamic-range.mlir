@@ -1,8 +1,10 @@
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range | FileCheck %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range  --tfl-enable-dynamic-range-per-channel-quantization=false | FileCheck --check-prefix=PerTensor %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range  --tfl-min-elements-for-weights=10000 | FileCheck --check-prefix=MinElement %s
 
 // CHECK-LABEL: QuantizeConv2D
 // PerTensor-LABEL: QuantizeConv2D
+// MinElement-LABEL: QuantizeConv2D
 func @QuantizeConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32> {
   %w = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
   %b = arith.constant dense<-1.23697901> : tensor<64xf32>
@@ -26,10 +28,16 @@ func @QuantizeConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32>
 // PerTensor-NOT: asymmetric_quantize_inputs = true
 // PerTensor-SAME: dilation_h_factor = 1 : i32
 // PerTensor: return %[[conv:.*]]
+
+// MinElement: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
+// MinElement: %[[b:.*]] = arith.constant dense<-1.23697901> : tensor<64xf32>
+// MinElement: %[[conv:.*]]= "tfl.conv_2d"(%arg0, %[[w]], %[[b]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x224x224x3xf32>, tensor<64x3x3x3xf32>, tensor<64xf32>) -> tensor<1x112x112x64xf32>
+// MinElement: return %[[conv:.*]]
 }
 
 // CHECK-LABEL: QuantizeDepthwiseConv2D
 // PerTensor-LABEL: QuantizeDepthwiseConv2D
+// MinElement-LABEL: QuantizeDepthwiseConv2D
 func @QuantizeDepthwiseConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32> {
   %w = arith.constant dense<127.0> : tensor<64x3x3x3xf32>
   %b = arith.constant dense<0.0> : tensor<64xf32>
@@ -53,6 +61,11 @@ func @QuantizeDepthwiseConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x11
 // PerTensor-NOT: asymmetric_quantize_inputs = true
 // PerTensor-SAME: depth_multiplier = 4 : i32
 // PerTensor: return %[[dconv:.*]]
+
+// MinElement: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
+// MinElement: %[[b:.*]] = arith.constant dense<0.000000e+00> : tensor<64xf32>
+// MinElement: %[[dconv:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[w]], %[[b]]) {depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<64x3x3x3xf32>, tensor<64xf32>) -> tensor<1x112x112x64xf32>
+// MinElement: return %[[dconv:.*]]
 }
 
 // CHECK-LABEL: QuantizeFullyConnected
@@ -84,6 +97,7 @@ func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112
 
 // CHECK-LABEL: QuantizeBatchMatmulWithActConst
 // PerTensor-LABEL: QuantizeBatchMatmulWithActConst
+// MinElement-LABEL: QuantizeBatchMatmulWithActConst
 func @QuantizeBatchMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x3x3x12xf32> {
   %w = arith.constant dense<127.0> : tensor<512x12xf32>
   %mm = "tfl.batch_matmul"(%arg0, %w) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x12xf32>) -> tensor<1x3x3x12xf32>
@@ -102,6 +116,10 @@ func @QuantizeBatchMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x
 // PerTensor: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[dq_w]]) {adj_x = false, adj_y = false
 // PerTensor-SAME: , asymmetric_quantize_inputs = true
 // PerTensor: return %[[mm:.*]]
+
+// MinElement: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x12xf32>
+// MinElement: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[w]]) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x12xf32>) -> tensor<1x3x3x12xf32>
+// MinElement: return %[[mm:.*]]
 }
 
 // CHECK-LABEL: NotQuantizeBatchMatmulWithConstAct

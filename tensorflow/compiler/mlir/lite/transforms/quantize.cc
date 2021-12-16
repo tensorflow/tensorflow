@@ -78,6 +78,13 @@ static llvm::cl::opt<bool> enable_dynamic_range_quantization(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+static llvm::cl::opt<bool> enable_weight_only_quantization(
+    "tfl-enable-weight-only-quantization", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Whether to run weight-only for post-training dynamic range "
+                   "quantization pass"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 static llvm::cl::opt<bool> enable_legacy_quantize(
     "tfl-legacy-quantize", llvm::cl::value_desc("bool"),
     llvm::cl::desc("Use legacy quantize mode in test. Valid when"
@@ -202,6 +209,7 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
   // Constructor used by the PassRegistration and only used by test.
   explicit QuantizePass() {
     quant_specs.legacy_float_scale = enable_legacy_quantize;
+    quant_specs.weight_only_quantization = enable_weight_only_quantization;
     ops_blocklist =
         StringSet(ops_blocklist_flag.begin(), ops_blocklist_flag.end());
     nodes_blocklist =
@@ -249,6 +257,7 @@ void QuantizePass::runOnFunction() {
       {enable_numeric_verify || quant_specs.verify_numeric, error_tolerance,
        enable_whole_model_verify || quant_specs.whole_model_verify,
        enable_log_if_failed},
+      enable_weight_only_quantization || quant_specs.weight_only_quantization,
       ops_blocklist,
       nodes_blocklist};
 

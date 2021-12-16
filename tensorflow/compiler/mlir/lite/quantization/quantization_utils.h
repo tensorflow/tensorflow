@@ -119,6 +119,9 @@ struct QuantPassSpec {
   // Variables to control TFL Numeric Verify
   NumericVerifySpec numeric_verify;
 
+  // Whether to apply weight-only quantization for all the applicable ops
+  bool weight_only_quantization;
+
   // Names of ops to block from quantization
   StringSet ops_blocklist;
 
@@ -282,6 +285,7 @@ class QuantizationPattern : public RewritePattern {
         error_tolerance_(quant_params.numeric_verify.error_tolerance),
         whole_model_verify_(quant_params.numeric_verify.whole_model_verify),
         log_if_failed_(quant_params.numeric_verify.log_if_failed_flag),
+        weight_only_quantization_(quant_params.weight_only_quantization),
         ops_blocklist_(quant_params.ops_blocklist),
         nodes_blocklist_(quant_params.nodes_blocklist) {}
 
@@ -389,7 +393,8 @@ class QuantizationPattern : public RewritePattern {
           auto dynamic_range_op =
               dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantizing_op);
           if (dq_op && dynamic_range_op &&
-              dynamic_range_op.GetDynamicRangeQuantKernelSupport()) {
+              dynamic_range_op.GetDynamicRangeQuantKernelSupport() &&
+              !weight_only_quantization_) {
             // Dynamic range quantization is applied by having Q as an input.
             inputs.push_back(dq_op.input());
           } else {
@@ -579,6 +584,7 @@ class QuantizationPattern : public RewritePattern {
   float error_tolerance_;
   bool whole_model_verify_;
   bool log_if_failed_;
+  bool weight_only_quantization_;
   const StringSet ops_blocklist_;
   const StringSet nodes_blocklist_;
 };
