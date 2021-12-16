@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -109,10 +110,29 @@ public interface InterpreterApi extends AutoCloseable {
       return this;
     }
 
+    /**
+     * Returns the number of threads to be used for ops that support multi-threading.
+     *
+     * <p>{@code numThreads} should be {@code >= -1}. Values of 0 (or 1) disable multithreading.
+     * Default value is -1: the number of threads used will be implementation-defined and
+     * platform-dependent.
+     */
+    public int getNumThreads() {
+      return numThreads;
+    }
+
     /** Sets whether to use NN API (if available) for op execution. Defaults to false (disabled). */
     public Options setUseNNAPI(boolean useNNAPI) {
       this.useNNAPI = useNNAPI;
       return this;
+    }
+
+    /**
+     * Returns whether to use NN API (if available) for op execution. Default value is false
+     * (disabled).
+     */
+    public boolean getUseNNAPI() {
+      return useNNAPI != null && useNNAPI;
     }
 
     /**
@@ -130,10 +150,32 @@ public interface InterpreterApi extends AutoCloseable {
       return this;
     }
 
+    /**
+     * Advanced: Returns whether the interpreter is able to be cancelled.
+     *
+     * <p>Interpreters may have an experimental API <a
+     * href="https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter#setCancelled(boolean)">setCancelled(boolean)</a>.
+     * If this interpreter is cancellable and such a method is invoked, a cancellation flag will be
+     * set to true. The interpreter will check the flag between Op invocations, and if it's {@code
+     * true}, the interpreter will stop execution. The interpreter will remain a cancelled state
+     * until explicitly "uncancelled" by {@code setCancelled(false)}.
+     */
+    public boolean isCancellable() {
+      return allowCancellation != null && allowCancellation;
+    }
+
     /** Adds a {@link Delegate} to be applied during interpreter creation. */
     public Options addDelegate(Delegate delegate) {
       delegates.add(delegate);
       return this;
+    }
+
+    /**
+     * Returns the list of delegates intended to be applied during interpreter creation (that have
+     * been registered via {@code addDelegate}).
+     */
+    public List<Delegate> getDelegates() {
+      return Collections.unmodifiableList(delegates);
     }
 
     int numThreads = -1;

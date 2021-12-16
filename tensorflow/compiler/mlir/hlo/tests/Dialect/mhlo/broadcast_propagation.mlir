@@ -22,6 +22,27 @@ func @single_bcast(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
   return %4 : tensor<?x16x?xf32>
 }
 
+// CHECK-LABEL: @single_bcast_ensure_order
+// CHECK-SAME:  %[[ARG0:.*]]: tensor<16x?xf32>, %[[ARG1:.*]]: tensor<16x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>
+func @single_bcast_ensure_order(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
+    %shape : tensor<3xindex>) -> tensor<?x16x?xf32> {
+  // CHECK-DAG: %[[BCASTED_ARG0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE]])
+  // CHECK-DAG: %[[BCASTED_ARG1:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[SHAPE]])
+  // CHECK-DAG: %[[ADD:.*]] = mhlo.add %[[BCASTED_ARG0]], %[[BCASTED_ARG1]] : [[BCASTED_TY:tensor<\?x16x\?xf32>]]
+  // CHECK-DAG: %[[MUL:.*]] = mhlo.multiply %[[ADD]], %[[ADD]] : [[BCASTED_TY]]
+  // CHECK-DAG: %[[SUB:.*]] = mhlo.subtract %[[MUL]], %[[MUL]] : [[BCASTED_TY]]
+  // CHECK-DAG: %[[DIV:.*]] = mhlo.divide %[[ADD]], %[[SUB]] : [[BCASTED_TY]]
+  // CHECK: return %[[DIV]] : [[BCASTED_TY]]
+  %0 = mhlo.add %arg0, %arg1 : tensor<16x?xf32>
+  %1 = mhlo.multiply %0, %0 : tensor<16x?xf32>
+  %2 = mhlo.subtract %1, %1 : tensor<16x?xf32>
+  %3 = mhlo.divide %0, %2 : tensor<16x?xf32>
+  %4 = "mhlo.dynamic_broadcast_in_dim"(%3, %shape) {
+      broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} :
+      (tensor<16x?xf32>, tensor<3xindex>) -> tensor<?x16x?xf32>
+  return %4 : tensor<?x16x?xf32>
+}
+
 // -----
 
 // CHECK-LABEL: @double_bcasts

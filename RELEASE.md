@@ -38,6 +38,16 @@
         each TRTEngineOp with their input(s)' and output(s)' shape and dtype. A
         detailed version of the summary is available which prints additionally
         all the TensorFlow OPs included in each of the TRTEngineOPs.
+*   `tf.tpu.experimental.embedding`:
+    *   `tf.tpu.experimental.embedding.FeatureConfig` now takes an additional
+        argument `output_shape` which can specify the shape of the output
+        activation for the feature.
+    *   `tf.tpu.experimental.embedding.TPUEmbedding` now has the same behavior
+        as `tf.tpu.experimental.embedding.serving_embedding_lookup` which can
+        take arbitrary rank of dense and sparse tensor. For ragged tensor,
+        though the input tensor remains to be rank 2, the activations now can be
+        rank 2 or above by specifying the output shape in the feature config
+        or via the build method.
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
@@ -98,10 +108,22 @@
   * `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
     `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is
     deprecated and will be removed in a future release.
+  * `tf.keras.experimental.SidecarEvaluator` is now available as
+    `tf.keras.utils.SidecarEvaluator`. The experimental endpoint is
+    deprecated and will be removed in a future release.
   * Metrics update and collection logic in default `Model.train_step()` is now
     customizable via overriding `Model.compute_metrics()`.
   * Losses computation logic in default `Model.train_step()` is now
     customizable via overriding `Model.compute_loss()`.
+  * `jit_compile` added to `Model.compile()` on an opt-in basis to compile the 
+    model's training step with [XLA](https://www.tensorflow.org/xla). Note that
+   `jit_compile=True` may not necessarily work for all models.
+
+* Add `tf.config.experimental.enable_op_determinism`, which makes TensorFlow
+  ops run deterministically at the cost of performance. This is equivalent to
+  setting the previously-existing `TF_DETERMINISTIC_OPS` environmental variable
+  to `1`. The environmental variable is now deprecated, so the
+  `enable_op_determinism` function should be used instead.
 
 # Thanks to our Contributors
 

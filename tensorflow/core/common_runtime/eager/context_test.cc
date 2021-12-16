@@ -365,18 +365,5 @@ TEST_F(EagerContextTest, ReuseGlobalRendezvous) {
   TestGlobalRendezvous(context(), true);
 }
 
-TEST_F(EagerContextTest, StepId) {
-  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-
-  EXPECT_EQ(context()->GetDistributedManager(), nullptr);
-  context()->SetDistributedManager(
-      std::make_unique<tensorflow::EagerContextDistributedManager>(context()));
-  auto* ctx_dist_mgr = context()->GetDistributedManager();
-
-  EXPECT_EQ(ctx_dist_mgr->step_id(), 0);
-  EXPECT_EQ(ctx_dist_mgr->GetNextStepId(), 1);
-  EXPECT_EQ(ctx_dist_mgr->step_id(), 1);
-}
-
 }  // namespace
 }  // namespace tensorflow
