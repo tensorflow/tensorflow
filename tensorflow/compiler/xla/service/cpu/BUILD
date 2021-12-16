@@ -1238,6 +1238,7 @@ tf_cc_test(
     name = "vectorized_reduce_with_no_vector_registers_test",
     size = "small",
     srcs = ["vectorized_reduce_with_no_vector_registers_test.cc"],
+    tags = ["no_aarch64"],
     deps = [
         ":cpu_compiler",
         ":cpu_transfer_manager",
