@@ -123,10 +123,8 @@ namespace wrap {
   __macro(hipsparseDestroySpMat)                \
   __macro(hipsparseDcsru2csr_bufferSizeExt)     \
   __macro(hipsparseDcsru2csr)                   \
-  __macro(hipsparseSpMM_bufferSize)             \
-  __macro(hipsparseSpMM)                        \
   __macro(hipsparseScsru2csr_bufferSizeExt)     \
-  __macro(hipsparseScsru2csr)                   \  
+  __macro(hipsparseScsru2csr)                   \
   __macro(hipsparseSpMM_bufferSize)             \
   __macro(hipsparseSpMM)                        \
   __macro(hipsparseZcsru2csr_bufferSizeExt)     \
