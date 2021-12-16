@@ -15,8 +15,6 @@
 """Helper classes for tensor shape inference."""
 import functools
 import operator
-import warnings
-
 import six
 
 from tensorflow.core.framework import tensor_shape_pb2
@@ -865,12 +863,6 @@ class TensorShape(object):
 
   def __bool__(self):
     """Returns True if this shape contains non-zero information."""
-    warnings.warn(
-        "The evaluation of TensorShape to bool will change in a future "
-        "release. It will raise an error if the shape is unspecified, return "
-        "False if the shape denotes a scalar, and return True otherwise. See "
-        "https://git.io/JDu0b for more details.",
-        stacklevel=2)
     return self._dims is not None
 
   # Python 3 wants __bool__, Python 2.7 wants __nonzero__
