@@ -1452,15 +1452,16 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
 
   Value fc_output;
   if (input_is_qtype) {
-    fc_output = buildRescaleOpConvOutput(rewriter, op, fc_op.getResult(),
-                                         input_type, filter_type, output_type);
+    fc_output = buildRescaleOpConvOutput(
+        rewriter, op, fc_op.getResult(), input_type, filter_type,
+        UnrankedTensorType::get(output_type.getElementType()));
   } else {
     fc_output = fc_op.getResult();
   }
 
   // If we know the output rank, we need to ensure the output shape is correct.
   ShapedType fc_type = fc_output.getType().cast<ShapedType>();
-  if (output_type.hasRank() && fc_type.getRank() != output_type.getRank()) {
+  if (output_type.hasRank()) {
     llvm::SmallVector<int64_t> output_shape;
 
     fc_output = CreateOpAndInfer<tosa::ReshapeOp>(
