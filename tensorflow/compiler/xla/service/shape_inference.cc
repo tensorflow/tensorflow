@@ -611,13 +611,13 @@ Status ValidateDotDimensionNumbers(
   };
 
   absl::Span<const int64_t> lhs_contracting_dimensions =
-      AsInt64Slice(dimension_numbers.lhs_contracting_dimensions());
+      dimension_numbers.lhs_contracting_dimensions();
   absl::Span<const int64_t> rhs_contracting_dimensions =
-      AsInt64Slice(dimension_numbers.rhs_contracting_dimensions());
+      dimension_numbers.rhs_contracting_dimensions();
   absl::Span<const int64_t> lhs_batch_dimensions =
-      AsInt64Slice(dimension_numbers.lhs_batch_dimensions());
+      dimension_numbers.lhs_batch_dimensions();
   absl::Span<const int64_t> rhs_batch_dimensions =
-      AsInt64Slice(dimension_numbers.rhs_batch_dimensions());
+      dimension_numbers.rhs_batch_dimensions();
 
   if (!dims_in_range(lhs.rank(), lhs_contracting_dimensions,
                      lhs_batch_dimensions) ||
@@ -1217,7 +1217,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   return ShapeUtil::MakeShape(output_shape.element_type(),
-                              AsInt64Slice(arg_shape->dimensions()));
+                              arg_shape->dimensions());
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBatchNormTrainingShape(

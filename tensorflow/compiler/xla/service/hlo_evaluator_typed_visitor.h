@@ -1610,9 +1610,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                                    0);
     std::vector<int64_t> step(evaluated_operand.shape().dimensions_size(), 1);
 
-    ShapeUtil::ForEachIndex(
-        evaluated_operand.shape(), zero_base,
-        AsInt64Slice(evaluated_operand.shape().dimensions()), step, func);
+    ShapeUtil::ForEachIndex(evaluated_operand.shape(), zero_base,
+                            evaluated_operand.shape().dimensions(), step, func);
 
     parent_->evaluated_[pad] = std::move(result);
     return Status::OK();
@@ -2969,8 +2968,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     std::vector<int64_t> base(update_literal.shape().dimensions_size(), 0);
     std::vector<int64_t> step(update_literal.shape().dimensions_size(), 1);
     ShapeUtil::ForEachIndex(update_literal.shape(), base,
-                            AsInt64Slice(update_literal.shape().dimensions()),
-                            step, func);
+                            update_literal.shape().dimensions(), step, func);
 
     return std::move(result);
   }

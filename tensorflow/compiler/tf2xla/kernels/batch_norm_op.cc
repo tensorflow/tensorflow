@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 // XLA implementation of BatchNorm operations.
+#include <algorithm>
+#include <numeric>
+#include <string>
+
 #include "tensorflow/compiler/tf2xla/kernels/relu_op.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -128,8 +132,7 @@ class FusedBatchNormOp : public XlaOpKernel {
             kVarianceOutputIndex,
             xla::Broadcast(
                 xla::NanValue(b, ctx->output_xla_type(kVarianceOutputIndex)),
-                xla::AsInt64Slice(
-                    status_or_output_shape.ValueOrDie().dimensions())));
+                status_or_output_shape.ValueOrDie().dimensions()));
 
       } else {
         if (exponential_avg_factor_ == 1.0f) {

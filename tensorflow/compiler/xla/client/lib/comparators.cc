@@ -91,8 +91,8 @@ XlaComputation CreateScalarComparisonComputation(
   }
   Shape shape = shape_or.ValueOrDie();
   shape.set_element_type(PRED);
-  XlaOp param_equal = Broadcast(One(b.get(), shape.element_type()),
-                                AsInt64Slice(shape.dimensions()));
+  XlaOp param_equal =
+      Broadcast(One(b.get(), shape.element_type()), shape.dimensions());
   XlaOp result = param_equal;
 
   for (int64_t i = 0; i < parameter_count; i++) {

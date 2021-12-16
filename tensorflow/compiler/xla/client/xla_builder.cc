@@ -2553,14 +2553,13 @@ XlaOp XlaBuilder::ReduceWindow(absl::Span<const XlaOp> operands,
     const Shape* operand_shape = nullptr;
     for (const auto& operand : operands) {
       TF_ASSIGN_OR_RETURN(operand_shape, GetShapePtr(operand));
-      TF_RETURN_IF_ERROR(
-          ValidatePaddingValues(AsInt64Slice(operand_shape->dimensions()),
-                                window_dimensions, window_strides));
+      TF_RETURN_IF_ERROR(ValidatePaddingValues(
+          operand_shape->dimensions(), window_dimensions, window_strides));
     }
     CHECK(operand_shape != nullptr);
     std::vector<std::pair<int64_t, int64_t>> padding_values =
-        MakePadding(AsInt64Slice(operand_shape->dimensions()),
-                    window_dimensions, window_strides, padding);
+        MakePadding(operand_shape->dimensions(), window_dimensions,
+                    window_strides, padding);
     TF_ASSIGN_OR_RETURN(auto window,
                         ShapeInference::InferWindowFromDimensions(
                             window_dimensions, window_strides, padding_values,
@@ -3145,8 +3144,8 @@ XlaOp XlaBuilder::SelectAndScatter(XlaOp operand, const XlaComputation& select,
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
     std::vector<std::pair<int64_t, int64_t>> padding_values =
-        MakePadding(AsInt64Slice(operand_shape->dimensions()),
-                    window_dimensions, window_strides, padding);
+        MakePadding(operand_shape->dimensions(), window_dimensions,
+                    window_strides, padding);
 
     TF_ASSIGN_OR_RETURN(auto window,
                         ShapeInference::InferWindowFromDimensions(

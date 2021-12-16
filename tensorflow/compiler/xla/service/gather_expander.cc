@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gather_expander.h"
+
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
@@ -204,8 +205,7 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const gathered_slice_with_dims_collapsed,
-      ElideDegenerateDims(gathered_slice,
-                          AsInt64Slice(dim_numbers.collapsed_slice_dims())));
+      ElideDegenerateDims(gathered_slice, dim_numbers.collapsed_slice_dims()));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const gathered_slice_for_update,
@@ -375,8 +375,7 @@ StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
                                    dim_numbers.index_vector_dim()));
 
   return PermuteBatchAndOffsetDims(accumulator_with_batch_dims_decanonicalized,
-                                   AsInt64Slice(dim_numbers.offset_dims()),
-                                   output_rank);
+                                   dim_numbers.offset_dims(), output_rank);
 }
 
 bool GatherExpander::InstructionMatchesPattern(HloInstruction* inst) {

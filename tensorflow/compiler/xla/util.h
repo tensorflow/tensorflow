@@ -169,31 +169,6 @@ absl::Span<const T> CastByteSlice(absl::Span<const uint8> slice) {
                              slice.size() / sizeof(T));
 }
 
-// int64_t is not the same type as tensorflow::protobuf_int64 in open-source.
-// Wrapper function that gives an int64_t array slice view of a repeated int64
-// protobuf field.
-static inline absl::Span<const int64_t> AsInt64Slice(
-    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
-  absl::Span<const tensorflow::protobuf_int64> slice(v);
-  return absl::Span<const int64_t>(
-      reinterpret_cast<const int64_t*>(slice.data()), slice.size());
-}
-
-// TODO(b/29771030): This nop overload was added to simplify the migration of
-// Shape from a proto to a C++ class. Remove after class has been migrated.
-static inline absl::Span<const int64_t> AsInt64Slice(
-    absl::Span<const int64_t> slice) {
-  return slice;
-}
-
-// As above, but for uint64 types.
-static inline absl::Span<const uint64_t> AsUInt64Slice(
-    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>& v) {
-  absl::Span<const tensorflow::protobuf_uint64> slice(v);
-  return absl::Span<const uint64_t>(
-      reinterpret_cast<const uint64_t*>(slice.data()), slice.size());
-}
-
 // Compares two containers for equality. Returns true iff the two containers
 // have the same size and all their elements compare equal using their
 // operator==. Like std::equal, but forces size equality.

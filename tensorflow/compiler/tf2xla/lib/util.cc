@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -33,7 +34,7 @@ xla::XlaOp Zeros(xla::XlaBuilder* builder, const xla::Shape& shape) {
   return xla::Broadcast(
       xla::ConstantLiteral(builder,
                            xla::LiteralUtil::Zero(shape.element_type())),
-      xla::AsInt64Slice(shape.dimensions()));
+      shape.dimensions());
 }
 
 xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,

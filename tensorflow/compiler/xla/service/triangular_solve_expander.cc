@@ -112,7 +112,7 @@ XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
       // Add a singleton dimension
       // i.e. [..., block_size, block_size] -> [..., 1, block_size, block_size]
       TF_ASSIGN_OR_RETURN(Shape blocks_shape, builder->GetShape(last_blocks));
-      auto shape_dims = AsInt64Slice(blocks_shape.dimensions());
+      auto shape_dims = blocks_shape.dimensions();
       auto last_blocks_dims = std::vector<int64_t>(ndims);
       std::copy(shape_dims.begin(), shape_dims.end(), last_blocks_dims.begin());
       last_blocks_dims.insert(last_blocks_dims.end() - 2, 1);
@@ -365,7 +365,7 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
                           /*broadcast_dimensions=*/{0, 1});
 
     // Reshape back to original batch major dimensions
-    return Reshape(inv_diag_blocks, AsInt64Slice(shape.dimensions()));
+    return Reshape(inv_diag_blocks, shape.dimensions());
   });
 }
 

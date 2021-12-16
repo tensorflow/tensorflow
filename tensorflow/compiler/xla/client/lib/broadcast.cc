@@ -29,7 +29,7 @@ StatusOr<XlaOp> BroadcastTo(XlaOp input,
                             absl::Span<int64_t const> output_dims) {
   XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
-  absl::Span<int64_t const> input_dims = AsInt64Slice(input_shape.dimensions());
+  absl::Span<int64_t const> input_dims = input_shape.dimensions();
 
   if (input_dims == output_dims) {
     return input;
