@@ -1119,7 +1119,7 @@ struct AsynchronousCopy {
   std::tuple<int64_t, int64_t, float, MemorySpaceAssignment::MemorySpace,
              int64_t>
   AsTuple() const {
-    return {start_time, end_time, resource, destination, id};
+    return std::make_tuple(start_time, end_time, resource, destination, id);
   }
 };
 
