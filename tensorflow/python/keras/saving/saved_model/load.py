@@ -1032,11 +1032,12 @@ class RevivedLayer(object):
     try:
       return self._config
     except AttributeError as e:
-      raise NotImplementedError("`_config` not found on layer. "
-                                "For custom layers, make sure you override "
-                                "`self.get_config()` and that your custom class "
-                                "is registered. Find more information in "
-                                "https://keras.io/guides/serialization_and_saving/ ", e)
+      raise NotImplementedError(
+        "`_config` not found on layer. "
+        "For custom layers, make sure you override "
+        "`self.get_config()` and that your custom class "
+        "is registered. Find more information in "
+        "https://keras.io/guides/serialization_and_saving/ ") from e
 
 
 def _revive_setter(layer, name, value):
