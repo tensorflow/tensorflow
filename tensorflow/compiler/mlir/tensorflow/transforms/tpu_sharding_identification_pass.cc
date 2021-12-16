@@ -164,22 +164,22 @@ void IdentifyXlaShardingForComputationInputs(
       continue;
     }
 
+    if (use_spmd && !IsMaximalVariable(operand)) {
+      // If XLA SPMD is enabled, host variables or non-variable per-replica
+      // inputs should take on replicate sharding, unless another sharding is
+      // set via a TPUPartitionedInput op. Exclude device variables, which
+      // should take maximal sharding.
+      sharding_for_args.push_back(kReplicateSharding);
+      continue;
+    }
+
     auto arg_sharding = GetXlaShardingFromArg(arg);
     if (arg_sharding) {
       sharding_for_args.push_back(arg_sharding.getValue());
       continue;
     }
 
-    if (use_spmd && !IsMaximalVariable(operand)) {
-      // If XLA SPMD is enabled, host variables or non-variable per-replica
-      // inputs should take on replicate sharding, so that every device gets the
-      // whole tensor(s) (and can slice them up later). Exclude device
-      // variables, which always should take maximal sharding.
-      sharding_for_args.push_back(kReplicateSharding);
-      continue;
-    }
-
-    // Otherwise, default to maximal sharding core 0.
+    // Default to maximal sharding core 0 if no sharding is present.
     sharding_for_args.push_back(logical_core_0_sharding);
   }
 }
@@ -298,6 +298,13 @@ void IdentifyXlaShardingForComputationOutputs(
       continue;
     }
 
+    if (use_spmd) {
+      // If XLA SPMD is enabled, outputs all should have replicate sharding,
+      // unless another sharding is set via a TPUPartitionedOutput op.
+      sharding_for_rets.push_back(kReplicateSharding);
+      continue;
+    }
+
     if (auto from_alias =
             GetXlaShardingFromAlias(result, aliases, sharding_for_args)) {
       sharding_for_rets.push_back(from_alias.getValue());
@@ -309,16 +316,7 @@ void IdentifyXlaShardingForComputationOutputs(
       continue;
     }
 
-    if (use_spmd) {
-      // If XLA SPMD is enabled, we default to replicate sharding. This way,
-      // all devices get the whole tensor(s), but if there's an XlaSharding op
-      // deeper in the function, they can use dynamic-slice to slice off their
-      // part of the computation.
-      sharding_for_rets.push_back(kReplicateSharding);
-      continue;
-    }
-
-    // Otherwise, default to maximal sharding core 0.
+    // Default to maximal sharding core 0 if no sharding is present.
     sharding_for_rets.push_back(logical_core_0_sharding);
   }
 }
