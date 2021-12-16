@@ -23,8 +23,10 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <ostream>
+#include <random>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"

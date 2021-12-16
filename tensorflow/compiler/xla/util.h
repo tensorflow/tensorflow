@@ -169,12 +169,6 @@ absl::Span<const T> CastByteSlice(absl::Span<const uint8> slice) {
                              slice.size() / sizeof(T));
 }
 
-// Convenience function to force a vector to convert to an immutable slice.
-template <typename T>
-absl::Span<const T> AsSlice(const std::vector<T>& v) {
-  return absl::Span<const T>(v);
-}
-
 // int64_t is not the same type as tensorflow::protobuf_int64 in open-source.
 // Wrapper function that gives an int64_t array slice view of a repeated int64
 // protobuf field.
