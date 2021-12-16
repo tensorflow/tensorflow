@@ -45,8 +45,11 @@ bool ProtoMapsEqual(const google::protobuf::Map<int64_t, int64_t>& x,
 constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
 constexpr DataType ToDataType<Eigen::half>::value;
+constexpr DataType ToDataType<Eigen::bfloat16>::value;
 constexpr DataType ToDataType<int8>::value;
 constexpr DataType ToDataType<int32>::value;
+constexpr DataType ToDataType<std::complex<float>>::value;
+constexpr DataType ToDataType<std::complex<double>>::value;
 
 AlgorithmDesc::AlgorithmDesc(
     int64_t engine_id,
