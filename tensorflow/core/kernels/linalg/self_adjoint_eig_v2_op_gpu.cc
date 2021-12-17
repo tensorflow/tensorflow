@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <numeric>
 #include <type_traits>
@@ -121,6 +121,16 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
            input.flat<Scalar>() /*in*/);
     }
 
+#if GOOGLE_CUDA
+    cublasFillMode_t fill = CUBLAS_FILL_MODE_UPPER;
+    cusolverEigMode_t jobz =
+        compute_v_ ? CUSOLVER_EIG_MODE_VECTOR : CUSOLVER_EIG_MODE_NOVECTOR;
+#elif TENSORFLOW_USE_ROCM
+    rocblas_fill fill = rocblas_fill_upper;
+    rocblas_evect jobz =
+        compute_v_ ? rocblas_evect_original : rocblas_evect_none;
+#endif
+
     // Compute eigen decomposition in-place in input_copy.
     std::vector<DeviceLapackInfo> dev_info;
     dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "heevd"));
@@ -130,9 +140,8 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
     for (int batch = 0; batch < batch_size; ++batch) {
       OP_REQUIRES_OK_ASYNC(
           context,
-          solver->Heevd(compute_v_ ? CUSOLVER_EIG_MODE_VECTOR
-                                   : CUSOLVER_EIG_MODE_NOVECTOR,
-                        CUBLAS_FILL_MODE_UPPER, n,
+          solver->Heevd(jobz,
+                        fill, n,
                         &input_copy_reshaped(batch, 0, 0), n,
                         &eigenvalues_real_reshaped(batch, 0),
                         dev_info.back().mutable_data() + batch),
@@ -168,10 +177,15 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
       Name("SelfAdjointEigV2").Device(DEVICE_GPU).TypeConstraint<Scalar>("T"), \
       (SelfAdjointEigV2OpGpu<Scalar>))
 
+#if GOOGLE_CUDA
 REGISTER(float);
 REGISTER(double);
 REGISTER(complex64);
 REGISTER(complex128);
+#elif TENSORFLOW_USE_ROCM
+REGISTER(std::complex<float>)
+REGISTER(std::complex<double>)
+#endif
 
 #undef REGISTER
 

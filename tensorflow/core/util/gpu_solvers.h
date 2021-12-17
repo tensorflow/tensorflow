@@ -319,8 +319,15 @@ class GpuSolver {
   template <typename Scalar>
   Status Ungqr(int m, int n, int k, Scalar* dev_a, int lda,
                const Scalar* dev_tau, int* dev_lapack_info);
+  
+  // Hermitian (Symmetric) Eigen decomposition.
+  template <typename Scalar>
+  Status Heevd(rocblas_evect jobz, rocblas_fill uplo, int n,
+               Scalar* dev_A, int lda,
+               typename Eigen::NumTraits<Scalar>::Real* dev_W,
+               int* dev_lapack_info);
 
-#else  // GOOGLE_CUDA
+#else //GOOGLE_CUDA
   // ====================================================================
   // Wrappers for cuSolverDN and cuBlas solvers start here.
   //

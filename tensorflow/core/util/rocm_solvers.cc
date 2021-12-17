@@ -424,6 +424,25 @@ TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
 
 TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);
 
+#define HEEVD_INSTANCE(Scalar, type_prefix)                                   \
+  template <>                                                                 \
+  Status GpuSolver::Heevd<Scalar>(                                            \
+      rocblas_evect jobz, rocblas_fill uplo, int n, Scalar* dev_A, int lda,   \
+      typename Eigen::NumTraits<Scalar>::Real* dev_W, int* dev_lapack_info) { \
+    mutex_lock lock(handle_map_mutex);                                        \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
+    using EigenScalar = typename Eigen::NumTraits<Scalar>::Real;              \
+    ScratchSpace<uint8> dev_workspace = this->GetScratchSpace<uint8>(         \
+        sizeof(EigenScalar*) * n, "", /*on host */ false);                    \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(heevd, type_prefix)(                 \
+        rocm_blas_handle_, jobz, uplo, n,                                     \
+        reinterpret_cast<ROCmScalar*>(dev_A), lda, dev_W,                     \
+        reinterpret_cast<EigenScalar*>(dev_workspace.mutable_data()),         \
+        dev_lapack_info));                                                    \
+    return Status::OK();                                                      \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_REAL(HEEVD_INSTANCE);
 #define GETRI_BATCHED_INSTANCE(Scalar, type_prefix)                           \
   template <>                                                                 \
   Status GpuSolver::GetriBatched<Scalar>(                                     \
