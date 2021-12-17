@@ -237,6 +237,20 @@ tf_cc_test_mkl(
     deps = ["@com_google_absl//absl/strings"] + MKL_TEST_DEPS,
 )
 
+tf_cc_test_mkl(
+    name = "mkl_swish_op_test",
+    size = "small",
+    srcs = ["mkl_swish_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        ":mkl_eltwise_activation_base_op",
+        ":mkl_swish_op",
+        "//tensorflow/cc:math_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core:direct_session",
+    ] + MKL_TEST_DEPS,
+)
+
 tf_mkl_kernel_library(
     name = "mkl_tfconv_op",
     prefix = "mkl_tfconv",
@@ -304,6 +318,19 @@ tf_cc_test_mkl(
 tf_mkl_kernel_library(
     name = "mkl_relu_op",
     prefix = "mkl_relu",
+    deps = MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_eltwise_activation_base_op",
+    prefix = "mkl_eltwise_activation_base",
+    deps = MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_swish_op",
+    hdrs = ["mkl_eltwise_activation_base_op.h"],
+    prefix = "mkl_swish",
     deps = MKL_DEPS,
 )
 

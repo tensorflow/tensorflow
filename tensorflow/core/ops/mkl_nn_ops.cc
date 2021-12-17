@@ -1795,6 +1795,17 @@ REGISTER_OP("_MklFusedBatchMatMulV2")
 expected to create these operators.
 )doc");
 
+REGISTER_OP("_MklSwish")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of Swish operator. Uses MKL DNN APIs to implement Swish operator.
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL
