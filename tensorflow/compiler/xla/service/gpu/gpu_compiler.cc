@@ -273,6 +273,8 @@ Status GpuCompiler::OptimizeHloModule(
     *hlo_proto_->mutable_hlo_module() = hlo_module->ToProto();
   }
 
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+
   if (hlo_module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     const int64_t num_partitions = hlo_module->config().num_partitions();
@@ -292,6 +294,9 @@ Status GpuCompiler::OptimizeHloModule(
       AlgebraicSimplifierOptions options;
       options.set_replace_transpose_with_bitcast(false);
       options.set_enable_conv_operand_swap(false);
+      // "slow" minmax means we propagate nan.
+      options.set_minmax_propagate_nan(
+          !debug_options.xla_gpu_enable_fast_min_max());
       spmd_simplify.AddPass<AlgebraicSimplifier>(options);
 
       spmd_simplify.AddPass<SortSimplifier>();
@@ -318,8 +323,6 @@ Status GpuCompiler::OptimizeHloModule(
     }
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   }
-
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   {
     HloPassPipeline pipeline("optimization");
@@ -405,8 +408,8 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Build simplification pipeline.  The passes in here are run to a fixed
     // point.
-    [&pipeline =
-         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
+    [&, &pipeline =
+            pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
       pipeline.AddInvariantCheckerDebug<HloVerifier>(
           /*layout_sensitive=*/false,
           /*allow_mixed_precision=*/false);
@@ -420,6 +423,10 @@ Status GpuCompiler::OptimizeHloModule(
           ScatterExpander::kEliminateSimpleScatters);
 
       AlgebraicSimplifierOptions options({}, ConvIsLowerable);
+      // "slow" minmax means we propagate nan.
+      options.set_minmax_propagate_nan(
+          !debug_options.xla_gpu_enable_fast_min_max());
+
       // When transposes appear in a fusion node, we can easily adjust the
       // multi-dimensional index to create the one needed for the operand.
       // This is not as easy with bitcasts, because we don't have the
@@ -487,6 +494,10 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options;
     options.set_replace_transpose_with_bitcast(false);
     options.set_enable_conv_operand_swap(false);
+    // "slow" minmax means we propagate nan.
+    options.set_minmax_propagate_nan(
+        !debug_options.xla_gpu_enable_fast_min_max());
+
     collectives_pipeline.AddPass<AlgebraicSimplifier>(options);
 
     collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
@@ -588,6 +599,9 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
+    // "slow" minmax means we propagate nan.
+    options.set_minmax_propagate_nan(
+        !debug_options.xla_gpu_enable_fast_min_max());
     pipeline.AddPass<AlgebraicSimplifier>(options);
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -656,6 +670,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // index.
   options.set_replace_transpose_with_bitcast(false);
   options.set_enable_conv_operand_swap(false);
+  // "slow" minmax means we propagate nan.
+  options.set_minmax_propagate_nan(
+      !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   // GemmRewriter assumes that all transposes are folded into gemms, but,

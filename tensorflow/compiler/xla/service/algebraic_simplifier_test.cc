@@ -1883,6 +1883,168 @@ ENTRY ZeroSizedReduceWindow {
                                   m::Broadcast(m::Constant()))));
 }
 
+TEST_F(AlgebraicSimplifierTest, NopMax) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY test {
+  p_s8   = s8[]   parameter(0)
+  p_u8   = u8[]   parameter(1)
+  p_s16  = s16[]  parameter(2)
+  p_u16  = u16[]  parameter(3)
+  p_s32  = s32[]  parameter(4)
+  p_u32  = u32[]  parameter(5)
+  p_s64  = s64[]  parameter(6)
+  p_u64  = u64[]  parameter(7)
+  p_f16  = f16[]  parameter(8)
+  p_bf16 = bf16[] parameter(9)
+  p_f32  = f32[]  parameter(10)
+  p_f64  = f64[]  parameter(11)
+
+  const_s8   = s8[]   constant(-128)
+  const_u8   = u8[]   constant(0)
+  const_s16  = s16[]  constant(-32768)
+  const_u16  = u16[]  constant(0)
+  const_s32  = s32[]  constant(-2147483648)
+  const_u32  = u32[]  constant(0)
+  const_s64  = s64[]  constant(-9223372036854775808)
+  const_u64  = u64[]  constant(0)
+  const_f16  = f16[]  constant(-inf)
+  const_bf16 = bf16[] constant(-inf)
+  const_f32  = f32[]  constant(-inf)
+  const_f64  = f64[]  constant(-inf)
+
+  max_s8   = s8[]   maximum(p_s8, const_s8)
+  max_u8   = u8[]   maximum(p_u8, const_u8)
+  max_s16  = s16[]  maximum(p_s16, const_s16)
+  max_u16  = u16[]  maximum(p_u16, const_u16)
+  max_s32  = s32[]  maximum(p_s32, const_s32)
+  max_u32  = u32[]  maximum(p_u32, const_u32)
+  max_s64  = s64[]  maximum(p_s64, const_s64)
+  max_u64  = u64[]  maximum(p_u64, const_u64)
+  max_f16  = f16[]  maximum(p_f16, const_f16)
+  max_bf16 = bf16[] maximum(p_bf16, const_bf16)
+  max_f32  = f32[]  maximum(p_f32, const_f32)
+  max_f64  = f64[]  maximum(p_f64, const_f64)
+
+  max2_s8   = s8[]   maximum(const_s8, p_s8)
+  max2_u8   = u8[]   maximum(const_u8, p_u8)
+  max2_s16  = s16[]  maximum(const_s16, p_s16)
+  max2_u16  = u16[]  maximum(const_u16, p_u16)
+  max2_s32  = s32[]  maximum(const_s32, p_s32)
+  max2_u32  = u32[]  maximum(const_u32, p_u32)
+  max2_s64  = s64[]  maximum(const_s64, p_s64)
+  max2_u64  = u64[]  maximum(const_u64, p_u64)
+  max2_f16  = f16[]  maximum(const_f16, p_f16)
+  max2_bf16 = bf16[] maximum(const_bf16, p_bf16)
+  max2_f32  = f32[]  maximum(const_f32, p_f32)
+  max2_f64  = f64[]  maximum(const_f64, p_f64)
+
+  ROOT tuple = tuple(max_s8, max_u8, max_s16, max_u16, max_s32, max_u32,
+                     max_s64, max_u64, max_f16, max_bf16, max_f32, max_f64,
+                     max2_s8, max2_u8, max2_s16, max2_u16, max2_s32, max2_u32,
+                     max2_s64, max2_u64, max2_f16, max2_bf16, max2_f32, max2_f64)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Parameter(0), m::Parameter(1), m::Parameter(2), m::Parameter(3),
+          m::Parameter(4), m::Parameter(5), m::Parameter(6), m::Parameter(7),
+          m::Parameter(8), m::Parameter(9), m::Parameter(10), m::Parameter(11),
+          m::Parameter(0), m::Parameter(1), m::Parameter(2), m::Parameter(3),
+          m::Parameter(4), m::Parameter(5), m::Parameter(6), m::Parameter(7),
+          m::Parameter(8), m::Parameter(9), m::Parameter(10),
+          m::Parameter(11))));
+}
+
+TEST_F(AlgebraicSimplifierTest, NopMin) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY test {
+  p_s8   = s8[]   parameter(0)
+  p_u8   = u8[]   parameter(1)
+  p_s16  = s16[]  parameter(2)
+  p_u16  = u16[]  parameter(3)
+  p_s32  = s32[]  parameter(4)
+  p_u32  = u32[]  parameter(5)
+  p_s64  = s64[]  parameter(6)
+  p_u64  = u64[]  parameter(7)
+  p_f16  = f16[]  parameter(8)
+  p_bf16 = bf16[] parameter(9)
+  p_f32  = f32[]  parameter(10)
+  p_f64  = f64[]  parameter(11)
+
+  const_s8   = s8[]   constant(127)
+  const_u8   = u8[]   constant(255)
+  const_s16  = s16[]  constant(32767)
+  const_u16  = u16[]  constant(65535)
+  const_s32  = s32[]  constant(2147483647)
+  const_u32  = u32[]  constant(4294967295)
+  const_s64  = s64[]  constant(9223372036854775807)
+  const_u64  = u64[]  constant(18446744073709551615)
+  const_f16  = f16[]  constant(inf)
+  const_bf16 = bf16[] constant(inf)
+  const_f32  = f32[]  constant(inf)
+  const_f64  = f64[]  constant(inf)
+
+  min_s8   = s8[]   minimum(p_s8, const_s8)
+  min_u8   = u8[]   minimum(p_u8, const_u8)
+  min_s16  = s16[]  minimum(p_s16, const_s16)
+  min_u16  = u16[]  minimum(p_u16, const_u16)
+  min_s32  = s32[]  minimum(p_s32, const_s32)
+  min_u32  = u32[]  minimum(p_u32, const_u32)
+  min_s64  = s64[]  minimum(p_s64, const_s64)
+  min_u64  = u64[]  minimum(p_u64, const_u64)
+  min_f16  = f16[]  minimum(p_f16, const_f16)
+  min_bf16 = bf16[] minimum(p_bf16, const_bf16)
+  min_f32  = f32[]  minimum(p_f32, const_f32)
+  min_f64  = f64[]  minimum(p_f64, const_f64)
+
+  min2_s8   = s8[]   minimum(const_s8, p_s8)
+  min2_u8   = u8[]   minimum(const_u8, p_u8)
+  min2_s16  = s16[]  minimum(const_s16, p_s16)
+  min2_u16  = u16[]  minimum(const_u16, p_u16)
+  min2_s32  = s32[]  minimum(const_s32, p_s32)
+  min2_u32  = u32[]  minimum(const_u32, p_u32)
+  min2_s64  = s64[]  minimum(const_s64, p_s64)
+  min2_u64  = u64[]  minimum(const_u64, p_u64)
+  min2_f16  = f16[]  minimum(const_f16, p_f16)
+  min2_bf16 = bf16[] minimum(const_bf16, p_bf16)
+  min2_f32  = f32[]  minimum(const_f32, p_f32)
+  min2_f64  = f64[]  minimum(const_f64, p_f64)
+
+  ROOT tuple = tuple(min_s8, min_u8, min_s16, min_u16, min_s32, min_u32,
+                     min_s64, min_u64, min_f16, min_bf16, min_f32, min_f64,
+                     min2_s8, min2_u8, min2_s16, min2_u16, min2_s32, min2_u32,
+                     min2_s64, min2_u64, min2_f16, min2_bf16, min2_f32, min2_f64)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Parameter(0), m::Parameter(1), m::Parameter(2), m::Parameter(3),
+          m::Parameter(4), m::Parameter(5), m::Parameter(6), m::Parameter(7),
+          m::Parameter(8), m::Parameter(9), m::Parameter(10), m::Parameter(11),
+          m::Parameter(0), m::Parameter(1), m::Parameter(2), m::Parameter(3),
+          m::Parameter(4), m::Parameter(5), m::Parameter(6), m::Parameter(7),
+          m::Parameter(8), m::Parameter(9), m::Parameter(10),
+          m::Parameter(11))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Add) {
   const char* const hlo_string = R"(
 HloModule test

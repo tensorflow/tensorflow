@@ -73,12 +73,26 @@ namespace {
 
 namespace m = match;
 
+// Unwraps broadcasts hunting for a constant.  If we find one, checks if the
+// constant contains only the given value.
 bool IsAll(const HloInstruction* op, int8_t value) {
   switch (op->opcode()) {
     case HloOpcode::kBroadcast:
       return IsAll(op->operand(0), value);
     case HloOpcode::kConstant:
       return op->literal().IsAll(value);
+    default:
+      return false;
+  }
+}
+
+bool IsAll(const HloInstruction* op, const Literal& scalar) {
+  CHECK(ShapeUtil::IsScalar(scalar.shape()));
+  switch (op->opcode()) {
+    case HloOpcode::kBroadcast:
+      return IsAll(op->operand(0), scalar);
+    case HloOpcode::kConstant:
+      return op->literal().IsAll(scalar);
     default:
       return false;
   }
@@ -2518,6 +2532,20 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(maximum, m::Maximum(m::Op(&lhs), m::Op(&rhs))));
 
+  // max(x, -inf) -> x
+  PrimitiveType ty = maximum->shape().element_type();
+  if (primitive_util::IsIntegralType(ty) ||
+      (primitive_util::IsFloatingPointType(ty) &&
+       options_.minmax_propagate_nan())) {
+    Literal min_val = LiteralUtil::MinValue(ty);
+    if (IsAll(lhs, min_val)) {
+      return ReplaceInstruction(maximum, rhs);
+    }
+    if (IsAll(rhs, min_val)) {
+      return ReplaceInstruction(maximum, lhs);
+    }
+  }
+
   HloInstruction* clamp_upper_bound_bcast;
   HloInstruction* clamp_lower_bound_bcast;
   HloInstruction* to_clamp;
@@ -2557,6 +2585,20 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
 Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(minimum, m::Minimum(m::Op(&lhs), m::Op(&rhs))));
+
+  // min(x, inf) -> x
+  PrimitiveType ty = minimum->shape().element_type();
+  if (primitive_util::IsIntegralType(ty) ||
+      (primitive_util::IsFloatingPointType(ty) &&
+       options_.minmax_propagate_nan())) {
+    Literal max_val = LiteralUtil::MaxValue(ty);
+    if (IsAll(lhs, max_val)) {
+      return ReplaceInstruction(minimum, rhs);
+    }
+    if (IsAll(rhs, max_val)) {
+      return ReplaceInstruction(minimum, lhs);
+    }
+  }
 
   HloInstruction* clamp_upper_bound_bcast;
   HloInstruction* clamp_lower_bound_bcast;

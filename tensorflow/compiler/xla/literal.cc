@@ -1783,216 +1783,200 @@ bool LiteralBase::operator==(const LiteralBase& other) const {
       });
 }
 
-namespace {
+template <typename NativeT>
+static bool EqualIncludingNan(NativeT a, NativeT b) {
+  return a == b || (std::isnan(a) && std::isnan(b));
+}
+
+template <typename T>
+static bool EqualIncludingNan(std::complex<T> a, std::complex<T> b) {
+  return EqualIncludingNan(a.real(), b.real()) &&
+         EqualIncludingNan(a.imag(), b.imag());
+}
 
 template <typename NativeT>
 static bool AllElementsEqualValue(absl::Span<const NativeT> data,
                                   NativeT value) {
   for (int64_t i = 0; i < data.size(); ++i) {
-    if (data[i] != value) {
+    if (!EqualIncludingNan(data[i], value)) {
       return false;
     }
   }
   return true;
 }
 
-}  // namespace
+bool Literal::Piece::IsAll(const Literal& scalar) const {
+  CHECK(ShapeUtil::IsScalar(scalar.shape()));
+  if (!subshape().IsArray()) {
+    return false;
+  }
 
-bool LiteralBase::IsAll(int8_t value) const {
-  return root_piece().ForEachSubpieceWithBool([&](const ShapeIndex& index,
-                                                  const Piece& piece) {
-    if (!piece.subshape().IsArray()) {
-      return true;
-    }
-
-    auto piece_is_all = [&]() {
-      switch (shape().element_type()) {
-        case U8:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint8>(piece.data<uint8>(), value);
-          }
-          return false;
-        case U16:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint16>(piece.data<uint16>(), value);
-          }
-          return false;
-        case U32:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint32>(piece.data<uint32>(), value);
-          }
-          return false;
-        case U64:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint64_t>(piece.data<uint64_t>(),
-                                                   value);
-          }
-          return false;
-        case S8:
-          return AllElementsEqualValue<int8>(piece.data<int8>(), value);
-        case S16:
-          return AllElementsEqualValue<int16>(piece.data<int16>(), value);
-        case S32:
-          return AllElementsEqualValue<int32>(piece.data<int32>(), value);
-        case S64:
-          return AllElementsEqualValue<int64_t>(piece.data<int64_t>(), value);
-        case F32:
-          return AllElementsEqualValue<float>(piece.data<float>(), value);
-        case F64:
-          return AllElementsEqualValue<double>(piece.data<double>(), value);
-        case F16:
-          return AllElementsEqualValue<half>(piece.data<half>(),
-                                             static_cast<half>(value));
-        case BF16:
-          return AllElementsEqualValue<bfloat16>(piece.data<bfloat16>(),
-                                                 static_cast<bfloat16>(value));
-        case PRED:
-          if (value == 0) {
-            return AllElementsEqualValue<bool>(piece.data<bool>(), false);
-          }
-          if (value == 1) {
-            return AllElementsEqualValue<bool>(piece.data<bool>(), true);
-          }
-          return false;
-        default:
-          return false;
-      }
-      return false;
-    };
-
-    if (!piece_is_all()) {
-      return false;
-    }
-    return true;
-  });
-}
-
-bool LiteralBase::IsAllFloat(float value) const {
-  return root_piece().ForEachSubpieceWithBool(
-      [&](const ShapeIndex& index, const Piece& piece) {
-        if (!piece.subshape().IsArray()) {
-          return true;
-        }
-
-        switch (shape().element_type()) {
-          case F32:
-            return AllElementsEqualValue<float>(piece.data<float>(), value);
-          case F64:
-            return AllElementsEqualValue<double>(piece.data<double>(), value);
-          case F16:
-            return AllElementsEqualValue<half>(piece.data<half>(),
-                                               static_cast<half>(value));
-          case BF16:
-            return AllElementsEqualValue<bfloat16>(
-                piece.data<bfloat16>(), static_cast<bfloat16>(value));
-          default:
-            return false;
-        }
-      });
-}
-
-bool LiteralBase::IsAllComplex(complex64 value) const {
-  switch (shape().element_type()) {
+  CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
+  switch (subshape().element_type()) {
+    case U8:
+      return AllElementsEqualValue(data<uint8>(),
+                                   scalar.GetFirstElement<uint8>());
+    case U16:
+      return AllElementsEqualValue(data<uint16>(),
+                                   scalar.GetFirstElement<uint16>());
+    case U32:
+      return AllElementsEqualValue(data<uint32>(),
+                                   scalar.GetFirstElement<uint32>());
+    case U64:
+      return AllElementsEqualValue(data<uint64_t>(),
+                                   scalar.GetFirstElement<uint64_t>());
+    case S8:
+      return AllElementsEqualValue(data<int8>(),
+                                   scalar.GetFirstElement<int8>());
+    case S16:
+      return AllElementsEqualValue(data<int16>(),
+                                   scalar.GetFirstElement<int16>());
+    case S32:
+      return AllElementsEqualValue(data<int32>(),
+                                   scalar.GetFirstElement<int32>());
+    case S64:
+      return AllElementsEqualValue(data<int64_t>(),
+                                   scalar.GetFirstElement<int64_t>());
+    case PRED:
+      return AllElementsEqualValue(data<bool>(),
+                                   scalar.GetFirstElement<bool>());
+    case F16:
+      return AllElementsEqualValue(data<half>(),
+                                   scalar.GetFirstElement<half>());
+    case BF16:
+      return AllElementsEqualValue(data<bfloat16>(),
+                                   scalar.GetFirstElement<bfloat16>());
+    case F32:
+      return AllElementsEqualValue(data<float>(),
+                                   scalar.GetFirstElement<float>());
+    case F64:
+      return AllElementsEqualValue(data<double>(),
+                                   scalar.GetFirstElement<double>());
     case C64:
-      return AllElementsEqualValue<complex64>(root_piece().data<complex64>(),
-                                              value);
+      return AllElementsEqualValue(data<complex64>(),
+                                   scalar.GetFirstElement<complex64>());
     case C128:
-      return AllElementsEqualValue<complex128>(root_piece().data<complex128>(),
-                                               value);
+      return AllElementsEqualValue(data<complex128>(),
+                                   scalar.GetFirstElement<complex128>());
     default:
       return false;
   }
 }
 
+bool LiteralBase::IsAll(const Literal& scalar) const {
+  return root_piece().IsAll(scalar);
+}
+
+bool LiteralBase::IsAll(int8_t value) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType ty = shape().element_type();
+  if (primitive_util::IsFloatingPointType(ty)) {
+    return IsAllFloat(value);
+  }
+  if (primitive_util::IsUnsignedIntegralType(ty) && value < 0) {
+    return false;
+  }
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  switch (ty) {
+    case U8:
+      scalar.Set<uint8_t>({}, value);
+      break;
+    case U16:
+      scalar.Set<uint16_t>({}, value);
+      break;
+    case U32:
+      scalar.Set<uint32_t>({}, value);
+      break;
+    case U64:
+      scalar.Set<uint64_t>({}, value);
+      break;
+    case S8:
+      scalar.Set<int8_t>({}, value);
+      break;
+    case S16:
+      scalar.Set<int16_t>({}, value);
+      break;
+    case S32:
+      scalar.Set<int32_t>({}, value);
+      break;
+    case S64:
+      scalar.Set<int64_t>({}, value);
+      break;
+    case PRED:
+      if (value == 0) {
+        scalar.Set<bool>({}, false);
+      } else if (value == 1) {
+        scalar.Set<bool>({}, true);
+      } else {
+        return false;
+      }
+      break;
+    default:
+      return false;
+  }
+  return root_piece().IsAll(scalar);
+}
+
+bool LiteralBase::IsAllFloat(float value) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType ty = shape().element_type();
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  switch (ty) {
+    case F16:
+      scalar.Set<half>({}, static_cast<half>(value));
+      break;
+    case BF16:
+      scalar.Set<bfloat16>({}, static_cast<bfloat16>(value));
+      break;
+    case F32:
+      scalar.Set<float>({}, value);
+      break;
+    case F64:
+      scalar.Set<double>({}, value);
+      break;
+    default:
+      return false;
+  }
+  return root_piece().IsAll(scalar);
+}
+
+bool LiteralBase::IsAllComplex(complex64 value) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType ty = shape().element_type();
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  switch (ty) {
+    case C64:
+      scalar.Set<complex64>({}, value);
+      break;
+    case C128:
+      scalar.Set<complex128>({}, value);
+      break;
+    default:
+      return false;
+  }
+  return root_piece().IsAll(scalar);
+}
+
 bool LiteralBase::IsAllFirst() const {
-  return root_piece().ForEachSubpieceWithBool(
-      [&](const ShapeIndex& index, const Piece& piece) {
-        if (!piece.subshape().IsArray()) {
-          return true;
-        }
+  if (!shape().IsArray()) {
+    return false;
+  }
 
-        // Empty shapes are not all the first element since there is no first
-        // element.
-        if (ShapeUtil::IsZeroElementArray(piece.subshape())) {
-          return false;
-        }
-        auto piece_is_all = [&]() {
-          switch (piece.subshape().element_type()) {
-            case PRED: {
-              auto data = piece.data<bool>();
-              return AllElementsEqualValue<bool>(data, data[0]);
-            }
-            // 8 bit types
-            case S8: {
-              auto data = piece.data<int8>();
-              return AllElementsEqualValue<int8>(data, data[0]);
-            }
-            case U8: {
-              auto data = piece.data<uint8>();
-              return AllElementsEqualValue<uint8>(data, data[0]);
-            }
-            // 16 bit types
-            case BF16: {
-              auto data = piece.data<bfloat16>();
-              return AllElementsEqualValue<bfloat16>(data, data[0]);
-            }
-            case F16: {
-              auto data = piece.data<half>();
-              return AllElementsEqualValue<half>(data, data[0]);
-            }
-            case S16: {
-              auto data = piece.data<int16>();
-              return AllElementsEqualValue<int16>(data, data[0]);
-            }
-            case U16: {
-              auto data = piece.data<uint16>();
-              return AllElementsEqualValue<uint16>(data, data[0]);
-            }
-            // 32 bit types
-            case F32: {
-              auto data = piece.data<float>();
-              return AllElementsEqualValue<float>(data, data[0]);
-            }
-            case U32: {
-              auto data = piece.data<uint32>();
-              return AllElementsEqualValue<uint32>(data, data[0]);
-            }
-            case S32: {
-              auto data = piece.data<int32>();
-              return AllElementsEqualValue<int32>(data, data[0]);
-            }
-            // 64 bit types
-            case C64: {
-              auto data = piece.data<complex64>();
-              return AllElementsEqualValue<complex64>(data, data[0]);
-            }
-            case F64: {
-              auto data = piece.data<double>();
-              return AllElementsEqualValue<double>(data, data[0]);
-            }
-            case S64: {
-              auto data = piece.data<int64_t>();
-              return AllElementsEqualValue<int64_t>(data, data[0]);
-            }
-            case U64: {
-              auto data = piece.data<uint64_t>();
-              return AllElementsEqualValue<uint64_t>(data, data[0]);
-            }
+  // Empty shapes are not all the first element since there is no first element.
+  if (ShapeUtil::IsZeroElementArray(shape())) {
+    return false;
+  }
 
-            case C128: {
-              auto data = piece.data<complex128>();
-              return AllElementsEqualValue<complex128>(data, data[0]);
-            }
-            default:
-              return false;
-          }
-        };
-
-        if (!piece_is_all()) {
-          return false;
-        }
-        return true;
-      });
+  absl::InlinedVector<int64_t, 4> start_indices(/*n=*/shape().rank(), 0);
+  absl::InlinedVector<int64_t, 4> end_indices(/*n=*/shape().rank(), 1);
+  Literal first = Slice(start_indices, end_indices);
+  return IsAll(first.Reshape({}).ValueOrDie());
 }
 
 bool LiteralBase::IsR1Iota() const {

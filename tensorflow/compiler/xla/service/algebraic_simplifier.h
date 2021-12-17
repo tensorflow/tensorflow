@@ -178,6 +178,13 @@ class AlgebraicSimplifierOptions {
     return replace_transpose_with_bitcast_;
   }
 
+  // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
+  //
+  // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
+  // true.
+  bool minmax_propagate_nan() const { return minmax_propagate_nan_; }
+  void set_minmax_propagate_nan(bool val) { minmax_propagate_nan_ = val; }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplierOptions that can be later used in an
@@ -206,6 +213,7 @@ class AlgebraicSimplifierOptions {
   bool enable_sink_broadcast_{true};
   bool replace_transpose_with_bitcast_{true};
   int64_t very_small_gather_size_{4};
+  bool minmax_propagate_nan_{true};
   Metadata metadata_;
 };
 

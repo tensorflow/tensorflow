@@ -202,6 +202,18 @@ class LiteralBase {
       std::function<void(absl::Span<const int64_t> indices, NativeT value)>
           per_cell) const;
 
+  // Checks whether all of this literal's values are equal to the given scalar
+  // literal.
+  //
+  // If `this` is not an array (e.g. it's a tuple), returns false.  This is
+  // simpler than trying to handle subshapes here, and it's almost always what
+  // you want.
+  //
+  // Preconditions:
+  //  - `scalar` is a scalar.
+  //  - `scalar` has the same element-type as `this`.
+  bool IsAll(const Literal& scalar) const;
+
   // Returns whether every element in this literal is equal to value.
   //
   // value is an int8 because we expect this to be called with small
@@ -210,34 +222,28 @@ class LiteralBase {
   //
   // If value doesn't fit in this literal's type, returns false.  Values of 1/0
   // are considered equal to true/false; other values are not considered equal
-  // to true. Also if this literal is not array-shaped false is returned.
+  // to true.
+  //
+  // Returns false if this literal is not array-shaped.
   bool IsAll(int8_t value) const;
 
-  // Like IsAll(const Literal&, int8), except we check whether the literal is
-  // equal to a particular floating-point number.
+  // Like IsAll(int8), except we check whether the literal is equal to a
+  // particular floating-point or complex number.
   //
-  // If the literal is not a floating-point value, this always returns false.
+  // Returns false if this literal is not a floating-point / complex value, or
+  // if it's not an array.
   //
-  // This casts value to the type of literal, then compares using ==.  The usual
-  // admonishments about floating-point equality checks apply.  We expect you to
-  // use this to check for values that can be expressed precisely as a float,
-  // e.g. -0.5.  Also if this literal is not array-shaped false is returned.
+  // This casts value to the type of literal, then compares using ==, with the
+  // caveat that NaNs are considered equal.  The usual admonishments about
+  // floating-point equality checks apply.  We expect you to use this to check
+  // for values that can be expressed precisely as a float, e.g. -0.5.
   bool IsAllFloat(float value) const;
-
-  // Like IsAll(const Literal&, int8), except we check whether the literal is
-  // equal to a particular complex number.
-  //
-  // If the literal is not a complex value, this always returns false.
-  //
-  // This casts value to the type of literal, then compares using ==.  The usual
-  // admonishments about floating-point equality checks apply.  We expect you to
-  // use this to check for complex values that can be expressed precisely as
-  // float pairs e.g. (-0.5, 1.0).
-  //
-  // This literal must have a dense layout.
   bool IsAllComplex(complex64 value) const;
 
-  // Literal consists entirely of the first element of the literal.
+  // Deetermines if this literal consists entirely of the first element of the
+  // literal.
+  //
+  // Returns false if this literal is not an array.
   bool IsAllFirst() const;
 
   // Literal consists entirely of an iota.
@@ -478,6 +484,15 @@ class LiteralBase {
       return ForEachMutableHelper(
           func, const_cast<xla::LiteralBase::Piece*>(this), &index);
     }
+
+    // Checks whether all elements of this Piece are equal to the given literal.
+    //
+    // Returns false if this Piece is not an array.
+    //
+    // Preconditions:
+    //  - `scalar` is a scalar.
+    //  - `scalar`'s type matches that of `this`.
+    bool IsAll(const Literal& scalar) const;
 
     // Returns true if this piece and 'other' contain the same data. This piece
     // and 'other' must be array-shaped and compatible. If a literal has dynamic
