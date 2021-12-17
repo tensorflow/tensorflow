@@ -1467,6 +1467,8 @@ using the `tf.gather operation`.  For example:
 
 def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
   NoSideEffect,
+  QuantizableResult,
+  FixedOutputRangeInterface,
   // Operand 0 (boxes) should have rank 2 with the dim[1] == 4 (box corners)
   TFL_OperandHasRank<0, 2>,
   PredOpTrait<"boxes should have dim[1] == 4",
