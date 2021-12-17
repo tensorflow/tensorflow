@@ -5176,6 +5176,80 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   return DenseElementsAttr::get(base_type, results);
 }
 
+//===----------------------------------------------------------------------===//
+// WhileOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(WhileOp whileOp) {
+  if (whileOp->getNumOperands() != whileOp.cond().front().getNumArguments())
+    return whileOp.emitOpError()
+           << "mismatch in operand count (" << whileOp->getNumOperands()
+           << ") vs the condition block argument count ("
+           << whileOp.cond().front().getNumArguments() << ")";
+  if (whileOp->getNumOperands() != whileOp.body().front().getNumArguments())
+    return whileOp.emitOpError()
+           << "mismatch in operand count (" << whileOp->getNumOperands()
+           << ") vs the body block argument count ("
+           << whileOp.body().front().getNumArguments() << ")";
+  for (const auto& enumeratedOperands :
+       llvm::enumerate(llvm::zip(whileOp->getOperandTypes(),
+                                 whileOp.cond().front().getArgumentTypes(),
+                                 whileOp.body().front().getArgumentTypes()))) {
+    int argCount = enumeratedOperands.index();
+    const auto& operands = enumeratedOperands.value();
+    Type operandType = std::get<0>(operands);
+    Type condType = std::get<1>(operands);
+    Type bodyType = std::get<2>(operands);
+    if (operandType != condType)
+      return whileOp.emitOpError()
+             << "type mismatch between operand #" << argCount
+             << " and the matching condition block argument: " << operandType
+             << " vs " << condType;
+    if (operandType != bodyType)
+      return whileOp.emitOpError()
+             << "type mismatch between operand #" << argCount
+             << " and the matching body block argument: " << operandType
+             << " vs " << bodyType;
+  }
+  // Check the return type for the condition block.
+  {
+    auto condReturnOp = cast<ReturnOp>(whileOp.cond().front().back());
+    if (condReturnOp->getNumOperands() != 1)
+      return condReturnOp.emitOpError()
+             << "expects a single operand for while condition body return, got "
+             << condReturnOp->getNumOperands();
+    auto operandType =
+        condReturnOp->getOperand(0).getType().dyn_cast<RankedTensorType>();
+    if (!operandType ||  // TODO(b/210930774): operandType.getRank() != 0 ||
+        !operandType.getElementType().isa<IntegerType>() ||
+        operandType.getElementType().cast<IntegerType>().getWidth() != 1)
+      return condReturnOp.emitOpError()
+             << "expects a zero-ranked tensor of i1, got "
+             << condReturnOp->getOperand(0).getType();
+  }
+  // Check the return type for the body block.
+  {
+    auto bodyReturnOp = cast<ReturnOp>(whileOp.body().front().back());
+    if (bodyReturnOp->getNumOperands() != whileOp->getNumOperands())
+      return bodyReturnOp.emitOpError()
+             << "expects body to return a many value as the operands ("
+             << whileOp->getNumOperands() << "), got "
+             << bodyReturnOp->getNumOperands();
+    for (const auto& enumeratedOperandTypes : llvm::enumerate(llvm::zip(
+             bodyReturnOp->getOperandTypes(), whileOp->getOperandTypes()))) {
+      Type operandType = std::get<0>(enumeratedOperandTypes.value());
+      Type returnType = std::get<1>(enumeratedOperandTypes.value());
+      if (operandType != returnType)
+        return bodyReturnOp.emitOpError()
+               << "type mismatch between operand #"
+               << enumeratedOperandTypes.index()
+               << " and the enclosing WhileOp returned value: " << operandType
+               << " vs " << returnType;
+    }
+  }
+  return success();
+}
+
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
 
