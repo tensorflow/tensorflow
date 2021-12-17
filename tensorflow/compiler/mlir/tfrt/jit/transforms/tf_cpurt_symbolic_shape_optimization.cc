@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
 namespace tensorflow {
 namespace {
@@ -70,7 +70,7 @@ namespace shape = mlir::shape;
 namespace tensor = mlir::tensor;
 
 #define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
 // -------------------------------------------------------------------------- //
 
@@ -152,7 +152,7 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
   // First find the input shape with the largest rank.
   SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapes_found;
   size_t maxRank = 0;
-  for (auto shape : llvm::enumerate(shapes)) {
+  for (const auto &shape : llvm::enumerate(shapes)) {
     auto found_shape = analysis.GetValueInfo(shape.value());
     if (!found_shape) return {};
     shapes_found.push_back(*found_shape);
@@ -162,8 +162,8 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
   SmallVector<const ShapeComponentAnalysis::SymbolicExpr*> joined_dimensions(
       maxRank);
   SmallVector<std::pair<Value, int64_t>> shape_and_rank_for_dim(maxRank);
-  for (auto shape : llvm::enumerate(shapes_found)) {
-    for (auto dim : llvm::enumerate(llvm::reverse(shape.value()))) {
+  for (const auto &shape : llvm::enumerate(shapes_found)) {
+    for (const auto &dim : llvm::enumerate(llvm::reverse(shape.value()))) {
       // 1 dimensions don't contribute to the final result.
       if (dim.value().isConstant(1)) continue;
       // If it's not a 1 dimension it will be present in the result. Remember

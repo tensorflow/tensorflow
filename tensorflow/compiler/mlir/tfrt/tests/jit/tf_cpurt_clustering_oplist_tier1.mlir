@@ -1,11 +1,11 @@
 // RUN: tf-tfrt-opt %s                                                         \
-// RUN:   -clustering="oplist=tier1 min-cluster-size=2"                        \
+// RUN:   -tf-cpurt-clustering="oplist=tier1 min-cluster-size=2"               \
 // RUN: | FileCheck %s --check-prefix CHECK --check-prefix=TIER1
 // RUN: tf-tfrt-opt %s                                                         \
-// RUN:   -clustering="oplist=tier1metadata min-cluster-size=2"                \
+// RUN:   -tf-cpurt-clustering="oplist=tier1metadata min-cluster-size=2"       \
 // RUN: | FileCheck %s --check-prefix CHECK --check-prefix=METADATA
 // RUN: tf-tfrt-opt %s                                                         \
-// RUN:   -clustering="oplist=tier1reductions min-cluster-size=2"              \
+// RUN:   -tf-cpurt-clustering="oplist=tier1reductions min-cluster-size=2"     \
 // RUN: | FileCheck %s --check-prefix CHECK --check-prefix=REDUCTIONS
 
 // CHECK-LABEL: func @single_cluster_one_result

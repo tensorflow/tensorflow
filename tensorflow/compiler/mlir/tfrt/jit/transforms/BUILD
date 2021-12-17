@@ -8,9 +8,9 @@ package(
 )
 
 tfrt_cc_library(
-    name = "clustering",
-    srcs = ["clustering.cc"],
-    hdrs = ["clustering.h"],
+    name = "tf_cpurt_clustering",
+    srcs = ["tf_cpurt_clustering.cc"],
+    hdrs = ["tf_cpurt_clustering.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -22,45 +22,45 @@ tfrt_cc_library(
 )
 
 gentbl_cc_library(
-    name = "passes_inc_gen",
+    name = "tf_cpurt_passes_inc_gen",
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
                 "-name=TFCPURT",
             ],
-            "passes.h.inc",
+            "tf_cpurt_passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "passes.td",
+    td_file = "tf_cpurt_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
-    name = "passes",
+    name = "tf_cpurt_passes",
     srcs = [
-        "buffer_forwarding.cc",
-        "clustering_pass.cc",
-        "codegen_cwise.cc",
-        "codegen_reduction.cc",
-        "copy_removal.cc",
-        "detensorize_linalg.cc",
-        "fission.cc",
-        "fuse_fill_into_tiled_reduction.cc",
-        "fusion.cc",
-        "legalize_i1_type.cc",
-        "math_approximation.cc",
-        "passes.cc",
-        "peel_tiled_loops.cc",
-        "sink_unused_outputs.cc",
-        "symbolic_shape_optimization.cc",
-        "vectorize_tiled_ops.cc",
+        "tf_cpurt_buffer_forwarding.cc",
+        "tf_cpurt_clustering_pass.cc",
+        "tf_cpurt_codegen_cwise.cc",
+        "tf_cpurt_codegen_reduction.cc",
+        "tf_cpurt_copy_removal.cc",
+        "tf_cpurt_detensorize_linalg.cc",
+        "tf_cpurt_fission.cc",
+        "tf_cpurt_fuse_fill_into_tiled_reduction.cc",
+        "tf_cpurt_fusion.cc",
+        "tf_cpurt_legalize_i1_type.cc",
+        "tf_cpurt_math_approximation.cc",
+        "tf_cpurt_passes.cc",
+        "tf_cpurt_peel_tiled_loops.cc",
+        "tf_cpurt_sink_unused_outputs.cc",
+        "tf_cpurt_symbolic_shape_optimization.cc",
+        "tf_cpurt_vectorize_tiled_ops.cc",
     ],
-    hdrs = ["passes.h"],
+    hdrs = ["tf_cpurt_passes.h"],
     deps = [
-        ":clustering",
-        ":passes_inc_gen",
+        ":tf_cpurt_clustering",
+        ":tf_cpurt_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
         "//tensorflow/compiler/mlir/hlo:shape_component_analysis",
@@ -90,28 +90,28 @@ cc_library(
 )
 
 gentbl_cc_library(
-    name = "test_passes_inc_gen",
+    name = "tf_cpurt_test_passes_inc_gen",
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
                 "-name=TFCPURTTest",
             ],
-            "test_passes.h.inc",
+            "tf_cpurt_test_passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "test_passes.td",
+    td_file = "tf_cpurt_test_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
-    name = "test_passes",
-    srcs = ["test_passes.cc"],
-    hdrs = ["test_passes.h"],
+    name = "tf_cpurt_test_passes",
+    srcs = ["tf_cpurt_test_passes.cc"],
+    hdrs = ["tf_cpurt_test_passes.h"],
     deps = [
-        ":clustering",
-        ":test_passes_inc_gen",
+        ":tf_cpurt_clustering",
+        ":tf_cpurt_test_passes_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",

@@ -13,21 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TEST_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TEST_PASSES_H_
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassManager.h"
+#include "mlir/Analysis/LoopAnalysis.h"
 
 namespace tensorflow {
 
-// See `test_passes.td` for the passes documentation.
-std::unique_ptr<mlir::FunctionPass> CreateTestTfCpurtClusteringPass();
-std::unique_ptr<mlir::FunctionPass> CreateTestTfCpurtClusteringPolicyPass();
+using ::mlir::Operation;
+using ::mlir::linalg::LinalgOp;
+
+bool IsContiguousMemref(mlir::Value value) {
+  auto memref_type = value.getType().dyn_cast<mlir::MemRefType>();
+  if (!memref_type) return false;
+  mlir::MemRefType canonical_type = canonicalizeStridedLayout(memref_type);
+  return canonical_type.getLayout().isIdentity();
+}
+
+mlir::FailureOr<Operation *> DetectCombiner(LinalgOp linalg_op) {
+  mlir::SmallVector<Operation *, 4> combiners;
+  if (!matchReduction(linalg_op.getRegionOutputArgs(), 0, combiners) ||
+      combiners.size() != 1)
+    return mlir::failure();
+  return combiners.front();
+}
 
 }  // namespace tensorflow
-
-#define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/test_passes.h.inc"
-
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TEST_PASSES_H_

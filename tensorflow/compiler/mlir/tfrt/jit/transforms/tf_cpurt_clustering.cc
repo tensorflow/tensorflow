@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/clustering.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_clustering.h"
 
 #include <functional>
 #include <utility>
@@ -825,9 +825,6 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
     assert(inserted.second && "clustered operations must be unique");
     (void)inserted;
   }
-
-  // TODO(b/202247905): Large clusters can lead to a very long compilation time.
-  if (ops.size() > 10) return failure();
 
   // TODO(ezhulenev): This is a temporary workaround to disable forming clusters
   // with known compilation problems.

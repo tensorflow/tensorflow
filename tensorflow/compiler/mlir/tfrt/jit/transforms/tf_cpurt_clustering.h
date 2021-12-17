@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_CLUSTERING_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_CLUSTERING_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_CLUSTERING_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_CLUSTERING_H_
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -80,4 +80,4 @@ mlir::LogicalResult VerifyCluster(const mlir::TFDevice::Cluster& cluster);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_CLUSTERING_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_CLUSTERING_H_

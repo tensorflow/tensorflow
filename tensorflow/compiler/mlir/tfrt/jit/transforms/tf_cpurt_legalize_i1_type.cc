@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
 namespace tensorflow {
 
@@ -50,7 +50,7 @@ using mlir::TypeConverter;
 using mlir::Value;
 
 #define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
 static Optional<Type> PromoteI1ToI8(Type input_type) {
   if (auto integer_type = input_type.dyn_cast<IntegerType>()) {

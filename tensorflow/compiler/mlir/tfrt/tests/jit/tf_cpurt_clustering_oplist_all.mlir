@@ -1,4 +1,5 @@
-// RUN: tf-tfrt-opt %s -clustering="oplist=all min-cluster-size=2" \
+// RUN: tf-tfrt-opt %s                                                         \
+// RUN:   -tf-cpurt-clustering="oplist=all min-cluster-size=2"                 \
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: func @single_cluster_one_result

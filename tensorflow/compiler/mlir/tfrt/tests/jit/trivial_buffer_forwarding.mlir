@@ -1,5 +1,5 @@
 // RUN: tf-tfrt-opt %s -split-input-file                                       \
-// RUN:                -linalg-trivial-buffer-forwarding              \
+// RUN:                -tf-cpurt-linalg-trivial-buffer-forwarding              \
 // RUN:   | FileCheck %s
 
 #map0 = affine_map<(d0, d1) -> (d0, d1)>

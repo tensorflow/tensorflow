@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 namespace tensorflow {
 namespace {
 
 #define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
 // Returns true if all linalg.generic operation iterators are "parallel".
 bool AllIteratorsAreParallel(mlir::linalg::GenericOp op) {

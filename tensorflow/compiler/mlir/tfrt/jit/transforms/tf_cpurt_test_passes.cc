@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/test_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_test_passes.h"
 
 #include <memory>
 
@@ -21,13 +21,13 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/clustering.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_clustering.h"
 
 namespace tensorflow {
 namespace {
 
 #define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/test_passes.h.inc"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_test_passes.h.inc"
 
 using mlir::FuncOp;
 using mlir::FunctionPass;

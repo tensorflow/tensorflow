@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -codegen-cwise %s | FileCheck %s
+// RUN: tf-tfrt-opt -tf-cpurt-codegen-cwise %s | FileCheck %s
 
 #map = affine_map<(d0, d1) -> (d0, d1)>
 func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {

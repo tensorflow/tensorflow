@@ -1,5 +1,5 @@
 // RUN: tf-tfrt-opt %s -allow-unregistered-dialect -split-input-file \
-// RUN: -peel-tiled-loops -cse -canonicalize | FileCheck %s
+// RUN: -tf-cpurt-peel-tiled-loops -cse -canonicalize | FileCheck %s
 
 #map0 = affine_map<(d0) -> (8, -d0 + 102401)>
 #map1 = affine_map<(d0)[s0] -> (d0 + s0)>

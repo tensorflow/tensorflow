@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -fuse-fill-into-tiled-reduction %s \
+// RUN: tf-tfrt-opt -tf-cpurt-fuse-fill-into-tiled-reduction %s \
 // RUN: --split-input-file |\
 // RUN: FileCheck %s
 

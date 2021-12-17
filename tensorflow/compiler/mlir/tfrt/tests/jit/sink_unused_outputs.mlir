@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -split-input-file -sink-unused-outputs %s |\
+// RUN: tf-tfrt-opt -split-input-file -tf-cpurt-sink-unused-outputs %s |\
 // RUN: FileCheck %s
 
 func @unused_output(%input: tensor<?x?xf32>) -> tensor<?xf32> {
