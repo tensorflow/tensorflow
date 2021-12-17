@@ -494,6 +494,20 @@ func @is_finte(%input: tensor<2x2xf32>) -> tensor<2x2xi1> {
 
 // -----
 
+// CHECK-LABEL: func @round
+func @round(%val: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: %[[HALF:.+]] = arith.constant 5.000000e-01
+  // CHECK: %[[ABS:.+]] = math.abs %arg1
+  // CHECK: %[[ADD:.+]] = arith.addf %[[ABS]], %[[HALF]]
+  // CHECK: %[[CEIL:.+]] = math.floor %[[ADD]]
+  // CHECK: %[[COPY:.+]] = math.copysign %[[CEIL]], %arg1
+  // CHECK: linalg.yield %[[COPY]]
+  %0 = "mhlo.round_nearest_afz"(%val) : (tensor<2x2xf32>) -> (tensor<2x2xf32>)
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @select
 func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
              %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
