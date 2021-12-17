@@ -172,28 +172,12 @@ absl::Span<const T> CastByteSlice(absl::Span<const uint8> slice) {
 // Compares two containers for equality. Returns true iff the two containers
 // have the same size and all their elements compare equal using their
 // operator==. Like std::equal, but forces size equality.
-template <typename Container1T, typename Container2T>
-bool ContainersEqual(const Container1T& c1, const Container2T& c2) {
-  return ((c1.size() == c2.size()) &&
-          std::equal(std::begin(c1), std::end(c1), std::begin(c2)));
-}
-
 template <typename Container1T,
           typename ElementType = typename Container1T::value_type>
 bool ContainersEqual(const Container1T& c1,
                      std::initializer_list<ElementType> il) {
   absl::Span<const ElementType> c2{il};
-  return ContainersEqual(c1, c2);
-}
-
-// Compares two containers for equality. Returns true iff the two containers
-// have the same size and all their elements compare equal using the predicate
-// p. Like std::equal, but forces size equality.
-template <typename Container1T, typename Container2T, class PredicateT>
-bool ContainersEqual(const Container1T& c1, const Container2T& c2,
-                     PredicateT p) {
-  return ((c1.size() == c2.size()) &&
-          std::equal(std::begin(c1), std::end(c1), std::begin(c2), p));
+  return absl::c_equal(c1, c2);
 }
 
 // Performs a copy of count values from src to dest, using different strides for
