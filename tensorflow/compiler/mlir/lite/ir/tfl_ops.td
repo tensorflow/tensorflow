@@ -1444,6 +1444,8 @@ using the `tf.gather operation`.  For example:
 
 def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
   NoSideEffect,
+  QuantizableResult,
+  FixedOutputRangeInterface,
   // Operand 0 (boxes) should have rank 2 with the dim[1] == 4 (box corners)
   TFL_OperandHasRank<0, 2>,
   PredOpTrait<"boxes should have dim[1] == 4",
@@ -1451,9 +1453,10 @@ def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
   // Operand 1 (scores) should be a 1-dim tensor
   TFL_OperandHasRank<1, 1>,
   // Other operands are scalar params.
-  TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
-  TFL_OperandHasRank<4, 0>, TFL_OperandHasRank<5, 0>,
-  FixedOutputRangeInterface]> {
+  TFL_OperandHasRank<2, 0>,
+  TFL_OperandHasRank<3, 0>,
+  TFL_OperandHasRank<4, 0>,
+  TFL_OperandHasRank<5, 0>]> {
   let summary = [{
 Greedily selects a subset of bounding boxes in descending order of score,
   }];
