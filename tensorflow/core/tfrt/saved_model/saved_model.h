@@ -44,15 +44,16 @@ limitations under the License.
 namespace tfrt {
 
 class BEFFile;
-class ConcurrentWorkQueue;
-class CoreRuntime;
-class HostAllocator;
 class HostContext;
-struct DecodedDiagnostic;
 
 namespace tpu {
 class TpuModelResource;
 }  // namespace tpu
+
+}  // namespace tfrt
+
+namespace tensorflow {
+namespace tfrt_stub {
 
 // TODO(tfrt-dev): Replace tfrt::TensorSpec with tensorflow::TensorSpec once the
 // latter is checked in.
@@ -120,9 +121,7 @@ class FunctionMetadata {
 class SavedModel {
  public:
   struct Options {
-    explicit Options(const tensorflow::tfrt_stub::Runtime* rt) : runtime(rt) {
-      DCHECK(runtime);
-    }
+    explicit Options(const Runtime* rt) : runtime(rt) { DCHECK(runtime); }
 
     // If true, the loading of any signature (or signature combination) will be
     // deferred until the first corresponding invocationof running. Otherwise,
@@ -135,7 +134,7 @@ class SavedModel {
 
     // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
     // more details. It must not be nullptr;
-    const tensorflow::tfrt_stub::Runtime* runtime = nullptr;
+    const Runtime* runtime = nullptr;
 
     // Model metadata used for monitoring and tracing.
     tensorflow::SessionMetadata model_metadata;
@@ -156,20 +155,19 @@ class SavedModel {
 
     // The thread pool used for this run. If it is nullptr, a default one set
     // in the tensorflow::tfrt_stub::Runtime will be used.
-    tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
+    WorkQueueInterface* work_queue = nullptr;
   };
 
-  explicit SavedModel(const tensorflow::tfrt_stub::Runtime* runtime)
-      : runtime_(runtime) {
+  explicit SavedModel(const Runtime* runtime) : runtime_(runtime) {
     DCHECK(runtime_);
   }
   virtual ~SavedModel();
 
-  const tensorflow::tfrt_stub::Runtime& runtime() const {
+  const Runtime& runtime() const {
     DCHECK(runtime_);
     return *runtime_;
   }
-  HostContext* GetHostContext() const;
+  tfrt::HostContext* GetHostContext() const;
 
   // Returns meta graph def. Note that the graph_def field in the MetaGraphDef
   // has already been removed.
@@ -218,7 +216,7 @@ class SavedModel {
       std::vector<tensorflow::Tensor>* outputs) = 0;
 
  private:
-  const tensorflow::tfrt_stub::Runtime* runtime_ = nullptr;
+  const Runtime* runtime_ = nullptr;
 };
 
 class SavedModelImpl final : public SavedModel {
@@ -240,17 +238,13 @@ class SavedModelImpl final : public SavedModel {
       Options options, absl::string_view saved_model_dir,
       tensorflow::MetaGraphDef meta_graph_def, tensorflow::Status* status);
 
-  // LoadSavedModel requires a CoreRuntime, even though we currently only use
-  // HostRuntime interfaces, because we currently lower from TF dialect to
-  // CoreRT dialect.
   SavedModelImpl(
       Options options, tensorflow::MetaGraphDef meta_graph_def,
-      tfrt::BefBuffer bef, RCReference<BEFFile> bef_file,
+      tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
-      std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state,
-      std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
-          graph_execution_state,
-      std::unique_ptr<tpu::TpuModelResource> tpu_model_resource,
+      std::unique_ptr<FallbackState> fallback_state,
+      std::unique_ptr<TfrtGraphExecutionState> graph_execution_state,
+      std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource,
       std::unique_ptr<tfrt::ResourceContext> resource_context);
 
   ~SavedModelImpl() override;
@@ -286,7 +280,7 @@ class SavedModelImpl final : public SavedModel {
   struct LoadingResult {
     std::string name;
     tfrt::BefBuffer bef;
-    tfrt::RCReference<BEFFile> bef_file;
+    tfrt::RCReference<tfrt::BEFFile> bef_file;
     std::unique_ptr<tfrt::ResourceContext> resource_context;
   };
 
@@ -296,8 +290,7 @@ class SavedModelImpl final : public SavedModel {
   //
   // TODO(b/178227859): Remove the need for the special handling for TPU here.
   static std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
-      const tensorflow::tfrt_stub::Runtime& runtime,
-      tpu::TpuModelResource* tpu_model_resource,
+      const Runtime& runtime, tfrt::tpu::TpuModelResource* tpu_model_resource,
       tensorflow::TfrtTpuInfraTarget tpu_target);
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
@@ -334,7 +327,7 @@ class SavedModelImpl final : public SavedModel {
   // Runs `func` with the given inputs, and outputs the result.
   tensorflow::Status RunInternal(const RunOptions& run_options,
                                  absl::string_view signature_name,
-                                 const Function& func,
+                                 const tfrt::Function& func,
                                  absl::Span<const tensorflow::Tensor> inputs,
                                  absl::Span<const tensorflow::Tensor> captures,
                                  std::vector<tensorflow::Tensor>* outputs,
@@ -349,15 +342,14 @@ class SavedModelImpl final : public SavedModel {
   // unnecessary memory usage.
   tensorflow::MetaGraphDef meta_graph_def_;
   tfrt::BefBuffer bef_;
-  RCReference<BEFFile> bef_file_;
-  RequestDeadlineTracker req_deadline_tracker_;
+  tfrt::RCReference<tfrt::BEFFile> bef_file_;
+  tfrt::RequestDeadlineTracker req_deadline_tracker_;
   absl::flat_hash_map<std::string, internal::Signature> signatures_;
-  std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state_;
-  std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
-      graph_execution_state_;
+  std::unique_ptr<FallbackState> fallback_state_;
+  std::unique_ptr<TfrtGraphExecutionState> graph_execution_state_;
   // TODO(b/178227859): Change the hardcoding of this specific TPU resource
   // (TpuModelResource) to a general and plugable interface.
-  std::unique_ptr<tpu::TpuModelResource> tpu_model_resource_;
+  std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource_;
   std::unique_ptr<tfrt::ResourceContext> resource_context_;
   tensorflow::mutex loading_result_cache_mu_;
   // For pointer stability of values in `absl::flat_hash_map<>`, additional
@@ -366,6 +358,20 @@ class SavedModelImpl final : public SavedModel {
                       std::unique_ptr<LoadingResult>>
       loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
 };
+
+}  // namespace tfrt_stub
+}  // namespace tensorflow
+
+namespace tfrt {
+
+using SavedModel = ::tensorflow::tfrt_stub::SavedModel;
+using SavedModelImpl = ::tensorflow::tfrt_stub::SavedModelImpl;
+using TensorSpec = ::tensorflow::tfrt_stub::TensorSpec;
+using FunctionMetadata = ::tensorflow::tfrt_stub::FunctionMetadata;
+
+namespace internal {
+using Signature = ::tensorflow::tfrt_stub::internal::Signature;
+}
 
 }  // namespace tfrt
 
