@@ -26,12 +26,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -100,7 +102,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   // Gets the value of running a single HLO instruction.
   //
-  // All of the operands to this instruction must be constants.
+  // This function recursively evaluates the dependency of this instruction
+  // within its parent computation until it encounters something that cannot be
+  // evaluated, such as an Infeed or a Parameter instruction.
+  // It makes best effort to partially evaluate a dependency if possible.
   StatusOr<Literal> Evaluate(HloInstruction* instruction);
 
   // Same as Evaluate, except returning false on error and accepts an output
@@ -183,6 +188,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const Array2D<int32>& lhs, const Array2D<int32>& rhs);
 
  protected:
+  // Evaluates the given instruction, and stores the evaluation result in the
+  // evaluated_ map.
+  // When a non-empty shape_index is given, the instruction may be partially
+  // evaluated at the given shape_index and the rest of the result could be
+  // marked as undetermined unless it has been previously evaluated using
+  // EvaluateInternal. Such partial evaluation reduces the computation and
+  // memory overhead in cases where we need only one tuple element by avoiding
+  // the evaluation of a full tuple.
+  Status EvaluateInternal(HloInstruction* instruction,
+                          const ShapeIndex& shape_index = {});
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
   //
@@ -214,6 +229,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleSetDimensionSize(HloInstruction* set_dimension_size) override;
 
   Status HandleParameter(HloInstruction* parameter) override;
+
+  Status HandleInfeed(HloInstruction* infeed) override;
 
   Status HandleConstant(HloInstruction* constant) override;
 
@@ -289,9 +306,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     return Unimplemented(
         "BatchNormTraining HLO is unsupported by the evaluator.");
   };
-  Status HandleInfeed(HloInstruction* infeed) override {
-    return Unimplemented("Infeed HLO is unsupported by the evaluator.");
-  };
   Status HandleOutfeed(HloInstruction* outfeed) override {
     return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
   };
@@ -309,13 +323,38 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     if (hlo->IsConstant()) {
       return hlo->literal();
     }
-    if (hlo->opcode() == HloOpcode::kParameter) {
+    if (hlo->opcode() == HloOpcode::kParameter && !arg_literals_.empty()) {
       return *arg_literals_.at(hlo->parameter_number());
     }
+
+    // We might have evaluated the full result, if so, get the partial result
+    // from the full result.
     auto it = evaluated_.find(hlo);
     CHECK(it != evaluated_.end())
         << "could not find evaluated value for: " << hlo->ToString();
     return it->second;
+  }
+
+  // Returns true if the given hlo has been evaluated and cached.
+  bool IsAlreadyEvaluated(const HloInstruction* hlo,
+                          const ShapeIndex& shape_index) {
+    if (hlo->IsConstant()) {
+      return true;
+    }
+    if (hlo->opcode() == HloOpcode::kParameter && !arg_literals_.empty()) {
+      return true;
+    }
+    auto it = evaluated_.find(hlo);
+    if (it == evaluated_.end()) {
+      return false;
+    }
+    // We may evaluate some elements of a tuple-shaped instruction and mark
+    // the other elements as undetermined. This way we avoid the computation
+    // and memory overhead of evaluating a large tuple when only some elements
+    // are needed. By marking the other elements undetermined, we allow the
+    // evaluator to update the cached tuple literal when more elements are
+    // evaluated.
+    return it->second.IsDetermined(shape_index);
   }
 
   // Tracks the HLO instruction and its evaluated literal result.
@@ -332,6 +371,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Storing Literal in place requires the container to have pointer stability
   // so we cannot use flat_hash_map any more.
   absl::node_hash_map<const HloInstruction*, Literal> evaluated_;
+  // Set by EvaluateInternal and opportunitiscally used by the HandleXXX
+  // functions. When non-empty, the HandleXXX function may evaluate the
+  // instruction at only the given shape index.
+  ShapeIndex visitor_shape_index_;
 
   // Use fast path that uses eigen in the evaluator.
   bool use_fast_path_ = false;

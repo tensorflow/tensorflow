@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -49,8 +50,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -274,34 +277,35 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   }
   engine_.seed(seed_);
 
-  TF_RETURN_IF_ERROR(computation.Accept(this));
+  TF_RETURN_IF_ERROR(EvaluateInternal(computation.root_instruction()));
 
+  const Literal& result =
+      GetEvaluatedLiteralFor(computation.root_instruction());
   if (VLOG_IS_ON(100)) {
     for (const HloInstruction* instr : computation.instructions()) {
       VLOG(100) << instr->name() << " = " << GetEvaluatedLiteralFor(instr);
     }
   }
 
-  return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
+  if (!result.IsKnown()) {
+    return tensorflow::errors::FailedPrecondition(
+        "Failed to evaluate instruction since it depends on infeed or "
+        "parameters to its parent computation.");
+  }
+  return result.Clone();
 }
 
 StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
-  if (instruction->opcode() == HloOpcode::kParameter) {
-    return tensorflow::errors::FailedPrecondition(
-        "Cannot evaluate a parameter.");
-  }
-  if (!hlo_query::AllOperandsAreConstants(*instruction)) {
-    return tensorflow::errors::FailedPrecondition(
-        "Not all operands are constants.");
-  }
-
   arg_literals_.clear();
   evaluated_.clear();
-
-  TF_RETURN_IF_ERROR(Preprocess(instruction));
-  TF_RETURN_IF_ERROR(instruction->Visit(this));
-  TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return GetEvaluatedLiteralFor(instruction).Clone();
+  TF_RETURN_IF_ERROR(EvaluateInternal(instruction));
+  const Literal& result = GetEvaluatedLiteralFor(instruction);
+  if (!result.IsKnown()) {
+    return tensorflow::errors::FailedPrecondition(
+        "Failed to evaluate instruction since it depends on infeed or "
+        "parameters to its parent computation.");
+  }
+  return result.Clone();
 }
 
 bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result) {
@@ -427,6 +431,48 @@ StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
+Status HloEvaluator::EvaluateInternal(HloInstruction* instruction,
+                                      const ShapeIndex& shape_index) {
+  // Don't need to evaluate this instruction again if it has already been
+  // evaluated.
+  if (IsAlreadyEvaluated(instruction, shape_index)) {
+    return Status::OK();
+  }
+
+  if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+    ShapeIndex new_shape_index = shape_index;
+    new_shape_index.push_front(instruction->tuple_index());
+    TF_RETURN_IF_ERROR(
+        EvaluateInternal(instruction->mutable_operand(0), new_shape_index));
+  } else if (instruction->opcode() == HloOpcode::kTuple &&
+             !shape_index.empty()) {
+    ShapeIndex new_shape_index = shape_index;
+    int64_t tuple_index = new_shape_index.front();
+    new_shape_index.pop_front();
+    TF_RETURN_IF_ERROR(EvaluateInternal(
+        instruction->mutable_operand(tuple_index), new_shape_index));
+  } else {
+    for (HloInstruction* operand : instruction->operands()) {
+      TF_RETURN_IF_ERROR(EvaluateInternal(operand));
+      // Except for the above and following cases, we do not support handling
+      // unknown operands for other HLOs. So mark the result as unknown.
+      if ((!GetEvaluatedLiteralFor(operand).IsKnown() &&
+           instruction->opcode() != HloOpcode::kCopy &&
+           instruction->opcode() != HloOpcode::kCopyStart &&
+           instruction->opcode() != HloOpcode::kCopyDone)) {
+        evaluated_[instruction] =
+            Literal::CreateFromShapeWithUnknownLeafArrays(instruction->shape());
+        return Status::OK();
+      }
+    }
+  }
+  visitor_shape_index_ = shape_index;
+  TF_RETURN_IF_ERROR(Preprocess(instruction));
+  TF_RETURN_IF_ERROR(instruction->Visit(this));
+  TF_RETURN_IF_ERROR(Postprocess(instruction));
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
   Literal result(bitcast->shape());
@@ -478,6 +524,12 @@ Status HloEvaluator::HandleSetDimensionSize(
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
+  if (arg_literals_.empty()) {
+    evaluated_[parameter] =
+        Literal::CreateFromShapeWithUnknownLeafArrays(parameter->shape());
+    return Status::OK();
+  }
+
   // Nothing to do other than sanity checks. Parameters' values are stored in
   // arg_literals_.
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
@@ -493,6 +545,12 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
       << ShapeUtil::HumanStringWithLayout(input_literal->shape());
 #endif
 
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleInfeed(HloInstruction* infeed) {
+  evaluated_[infeed] =
+      Literal::CreateFromShapeWithUnknownLeafArrays(infeed->shape());
   return Status::OK();
 }
 
@@ -832,11 +890,41 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
 
 Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
   std::vector<const Literal*> operand_literals;
-  for (auto operand : tuple->operands()) {
-    operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+  std::vector<Literal> operand_literal_values;
+  if (!visitor_shape_index_.empty()) {
+    // We only need to evaluate tuple at visitor_shape_index_. The other
+    // operands might not have been evaluated, so mark the other operands as
+    // undetermined.
+    int64_t tuple_index = visitor_shape_index_.front();
+    operand_literal_values.resize(tuple->operand_count());
+    for (int operand_index = 0; operand_index < tuple->operand_count();
+         ++operand_index) {
+      if (operand_index == tuple_index) {
+        operand_literals.push_back(
+            &GetEvaluatedLiteralFor(tuple->mutable_operand(operand_index)));
+      } else {
+        operand_literal_values[operand_index] =
+            Literal::CreateFromShapeWithUndeterminedLeafArrays(
+                ShapeUtil::GetSubshape(tuple->shape(), {operand_index}));
+        operand_literals.push_back(&operand_literal_values[operand_index]);
+      }
+    }
+  } else {
+    for (auto operand : tuple->operands()) {
+      operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+    }
   }
 
-  evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
+  if (evaluated_.contains(tuple)) {
+    Literal new_result = LiteralUtil::MakeTuple(operand_literals);
+    CHECK(new_result.IsDetermined(visitor_shape_index_));
+    TF_RETURN_IF_ERROR(
+        evaluated_[tuple].CopyFrom(new_result,
+                                   /*dest_shape_index=*/visitor_shape_index_,
+                                   /*src_shape_index=*/visitor_shape_index_));
+  } else {
+    evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
+  }
   return Status::OK();
 }
 
@@ -1962,7 +2050,6 @@ Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
   }
 
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
-
   evaluated_[copy_done] =
       Literal(ShapeUtil::GetTupleElementShape(operand->shape(), /*index=*/0));
   TF_RETURN_IF_ERROR(evaluated_[copy_done].CopyFrom(operand_tuple_literal,
