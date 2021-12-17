@@ -1785,7 +1785,11 @@ bool LiteralBase::operator==(const LiteralBase& other) const {
 
 template <typename NativeT>
 static bool EqualIncludingNan(NativeT a, NativeT b) {
-  return a == b || (std::isnan(a) && std::isnan(b));
+  // msvc can't compile std::isnan(a) where `a` is uint8_t.  This is a bug
+  // according to https://en.cppreference.com/w/cpp/numeric/math/isnan, but it's
+  // easy to work around.
+  return a == b || (std::isnan(static_cast<double>(a)) &&
+                    std::isnan(static_cast<double>(b)));
 }
 
 template <typename T>

@@ -1951,17 +1951,21 @@ ENTRY test {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
+  // We can't write GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(1), ...)
+  // because this generates a template expression that's too complicated for our
+  // MSVC to compile.  :(
   SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(
+  const HloInstruction* root;
+  ASSERT_THAT(
       m->entry_computation()->root_instruction(),
-      GmockMatch(m::Tuple(
-          m::Parameter(0), m::Parameter(1), m::Parameter(2), m::Parameter(3),
-          m::Parameter(4), m::Parameter(5), m::Parameter(6), m::Parameter(7),
-          m::Parameter(8), m::Parameter(9), m::Parameter(10), m::Parameter(11),
-          m::Parameter(0), m::Parameter(1), m::Parameter(2), m::Parameter(3),
-          m::Parameter(4), m::Parameter(5), m::Parameter(6), m::Parameter(7),
-          m::Parameter(8), m::Parameter(9), m::Parameter(10),
-          m::Parameter(11))));
+      GmockMatch(
+          m::Op(&root).WithOpcode(HloOpcode::kTuple).WithNumOperands(24)));
+  for (int i = 0; i < root->operand_count(); i++) {
+    SCOPED_TRACE(absl::StrCat("operand ", i));
+    const HloInstruction* operand = root->operand(i);
+    ASSERT_EQ(operand->opcode(), HloOpcode::kParameter);
+    EXPECT_EQ(operand->parameter_number(), i % 12);
+  }
 }
 
 TEST_F(AlgebraicSimplifierTest, NopMin) {
@@ -2033,16 +2037,22 @@ ENTRY test {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(
+
+  // We can't write GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(1), ...)
+  // because this generates a template expression that's too complicated for our
+  // MSVC to compile.  :(
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* root;
+  ASSERT_THAT(
       m->entry_computation()->root_instruction(),
-      GmockMatch(m::Tuple(
-          m::Parameter(0), m::Parameter(1), m::Parameter(2), m::Parameter(3),
-          m::Parameter(4), m::Parameter(5), m::Parameter(6), m::Parameter(7),
-          m::Parameter(8), m::Parameter(9), m::Parameter(10), m::Parameter(11),
-          m::Parameter(0), m::Parameter(1), m::Parameter(2), m::Parameter(3),
-          m::Parameter(4), m::Parameter(5), m::Parameter(6), m::Parameter(7),
-          m::Parameter(8), m::Parameter(9), m::Parameter(10),
-          m::Parameter(11))));
+      GmockMatch(
+          m::Op(&root).WithOpcode(HloOpcode::kTuple).WithNumOperands(24)));
+  for (int i = 0; i < root->operand_count(); i++) {
+    SCOPED_TRACE(absl::StrCat("operand ", i));
+    const HloInstruction* operand = root->operand(i);
+    ASSERT_EQ(operand->opcode(), HloOpcode::kParameter);
+    EXPECT_EQ(operand->parameter_number(), i % 12);
+  }
 }
 
 TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Add) {
