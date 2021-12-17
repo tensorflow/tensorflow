@@ -2192,9 +2192,6 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (np.ones([0, 4]), 0, 1),
       (np.ones([1, 2]), [2], None),
   )
-  @test_util.disable_xla(
-      "b/208452143: Auto-clustering with where op isn't supported. Has loose "
-      "output shape bounds")
   def testRepeat(self, array, repeats, axis):
     array = np.array(array)
 

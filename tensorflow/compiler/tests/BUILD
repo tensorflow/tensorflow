@@ -2086,9 +2086,7 @@ tf_xla_py_test(
     enable_mlir_bridge = True,
     shard_count = 5,
     tags = [
-        "no_oss",
-        "no_pip",
-        "notap",  # TODO(b/208452143): Fix the test.
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
     deps = [
