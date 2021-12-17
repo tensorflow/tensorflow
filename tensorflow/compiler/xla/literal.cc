@@ -145,8 +145,7 @@ MutableLiteralBase::StrideConfig::StrideConfig(
 Literal::Literal(const Shape& shape)
     : Literal(shape, /*allocate_arrays=*/true) {}
 
-void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
-                       ArrayValueState leaf_array_value_state) {
+void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
   if (shape.IsTuple()) {
     for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       const Shape& subshape = shape.tuple_shapes(i);
@@ -154,15 +153,20 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
       auto child_piece = Piece();
       child_piece.set_subshape(&subshape);
 
-      SetPiece(subshape, &child_piece, allocate_arrays, leaf_array_value_state);
+      SetPiece(subshape, &child_piece, allocate_arrays);
 
       piece->emplace_back(std::move(child_piece));
     }
   } else if (shape.IsArray()) {
-    piece->set_array_value_state(leaf_array_value_state);
-    if (leaf_array_value_state == LiteralBase::ArrayValueState::kKnown &&
-        allocate_arrays) {
-      piece->AllocateBuffers();
+    if (allocate_arrays) {
+      piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
+          piece->size_bytes(), kMinimumAlignment)));
+      if (shape.is_dynamic()) {
+        CHECK_EQ(piece->dynamic_size_buffer(), nullptr);
+        piece->set_dynamic_size_buffer(
+            static_cast<int32*>(tensorflow::port::AlignedMalloc(
+                piece->dynamic_size_buffer_bytes(), kMinimumAlignment)));
+      }
     }
   } else {
     // If the shape is neither an array nor tuple, then it must be
@@ -171,8 +175,7 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
   }
 }
 
-Literal::Literal(const Shape& shape, bool allocate_arrays,
-                 ArrayValueState leaf_array_value_state)
+Literal::Literal(const Shape& shape, bool allocate_arrays)
     : MutableLiteralBase() {
   shape_ = absl::make_unique<Shape>(shape);
   CHECK(LayoutUtil::HasLayout(*shape_));
@@ -180,7 +183,7 @@ Literal::Literal(const Shape& shape, bool allocate_arrays,
   root_piece_->set_subshape(shape_.get());
   CHECK(&root_piece_->subshape() == shape_.get());
 
-  SetPiece(*shape_, root_piece_, allocate_arrays, leaf_array_value_state);
+  SetPiece(*shape_, root_piece_, allocate_arrays);
 }
 
 Literal::~Literal() {
@@ -193,7 +196,12 @@ Literal::~Literal() {
 void Literal::DeallocateBuffers() {
   root_piece_->ForEachMutableSubpiece(
       [&](const ShapeIndex& index, Piece* piece) {
-        piece->DeallocateBuffers();
+        if (piece->buffer() != nullptr) {
+          tensorflow::port::AlignedFree(piece->buffer());
+        }
+        if (piece->dynamic_size_buffer() != nullptr) {
+          tensorflow::port::AlignedFree(piece->dynamic_size_buffer());
+        }
       });
 }
 
@@ -219,18 +227,6 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
           memset(piece->untyped_data(), 0, piece->size_bytes());
         }
       });
-  return literal;
-}
-
-Literal LiteralBase::CreateFromShapeWithUnknownLeafArrays(const Shape& shape) {
-  Literal literal(shape, /*allocate_arrays=*/false, ArrayValueState::kUnknown);
-  return literal;
-}
-
-Literal LiteralBase::CreateFromShapeWithUndeterminedLeafArrays(
-    const Shape& shape) {
-  Literal literal(shape, /*allocate_arrays=*/false,
-                  ArrayValueState::kUndetermined);
   return literal;
 }
 
@@ -495,48 +491,10 @@ void LiteralBase::Piece::SetDynamicSize(int64_t dim_index, int32_t size) {
   dynamic_size_buffer_[dim_index] = size;
 }
 
-void LiteralBase::Piece::AllocateBuffers() {
-  CHECK_EQ(buffer(), nullptr);
-  set_buffer(static_cast<char*>(
-      tensorflow::port::AlignedMalloc(size_bytes(), kMinimumAlignment)));
-  if (subshape().is_dynamic()) {
-    CHECK_EQ(dynamic_size_buffer(), nullptr);
-    set_dynamic_size_buffer(static_cast<int32*>(tensorflow::port::AlignedMalloc(
-        dynamic_size_buffer_bytes(), kMinimumAlignment)));
-  }
-}
-
-void LiteralBase::Piece::DeallocateBuffers() {
-  if (buffer_ != nullptr) {
-    tensorflow::port::AlignedFree(buffer_);
-    buffer_ = nullptr;
-  }
-  if (dynamic_size_buffer_ != nullptr) {
-    tensorflow::port::AlignedFree(dynamic_size_buffer_);
-    dynamic_size_buffer_ = nullptr;
-  }
-}
-
 Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                     bool only_dynamic_bound) {
   CHECK(subshape_ != nullptr);
   CHECK(src.subshape_ != nullptr);
-  if (src.array_value_state_ == ArrayValueState::kUnknown ||
-      src.array_value_state_ == ArrayValueState::kUndetermined) {
-    if (array_value_state_ == ArrayValueState::kKnown) {
-      DeallocateBuffers();
-    }
-    array_value_state_ = src.array_value_state_;
-    return Status::OK();
-  } else {
-    CHECK(src.array_value_state_ == ArrayValueState::kKnown);
-    if (array_value_state_ == ArrayValueState::kUndetermined ||
-        array_value_state_ == ArrayValueState::kUnknown) {
-      AllocateBuffers();
-    }
-    array_value_state_ = src.array_value_state_;
-  }
-
   if (ShapeUtil::Equal(subshape(), src.subshape())) {
     // If the layouts are equal it's faster just to memcpy.
     memcpy(buffer(), src.buffer(), src.size_bytes());
@@ -1034,14 +992,6 @@ std::unique_ptr<Literal> LiteralBase::CloneToUnique() const {
   return result;
 }
 
-bool LiteralBase::IsDetermined(const ShapeIndex& shape_index) const {
-  return piece(shape_index).IsDetermined();
-}
-
-bool LiteralBase::IsKnown(const ShapeIndex& shape_index) const {
-  return piece(shape_index).IsKnown();
-}
-
 string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
                                 const ShapeIndex& shape_index) const {
   const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
@@ -1359,18 +1309,8 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
     pieces->push_back("token");
   } else {
     CHECK(LayoutUtil::IsDenseArray(subshape));
-    if (literal.IsKnown(shape_index)) {
-      DenseArrayToStringHelper(literal, shape_index, print_shape, print_layout,
-                               pieces);
-    } else {
-      pieces->push_back(ShapeToString(print_layout, subshape));
-      pieces->push_back(" ");
-      if (literal.IsDetermined(shape_index)) {
-        pieces->push_back("unknown");
-      } else {
-        pieces->push_back("undetermined");
-      }
-    }
+    DenseArrayToStringHelper(literal, shape_index, print_shape, print_layout,
+                             pieces);
   }
 }
 
@@ -2196,14 +2136,6 @@ void CopyToRepeatedField(RepeatedFieldT* dest,
 
 }  // namespace
 
-void LiteralBase::Piece::set_array_value_state(ArrayValueState state) {
-  array_value_state_ = state;
-}
-
-LiteralBase::ArrayValueState LiteralBase::Piece::get_array_value_state() {
-  return array_value_state_;
-}
-
 void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
   *proto->mutable_shape() = subshape().ToProto();
   switch (subshape().element_type()) {
@@ -2414,42 +2346,6 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   return Status::OK();
 }
 
-bool LiteralBase::Piece::IsKnown() const {
-  if (array_value_state_ != ArrayValueState::kKnown) {
-    return false;
-  }
-  if (subshape().IsTuple()) {
-    bool are_all_leaf_arrays_known = true;
-    ForEachSubpiece([&are_all_leaf_arrays_known](const ShapeIndex& index,
-                                                 const Piece& piece) {
-      if (!piece.subshape().IsArray()) {
-        return;
-      }
-      are_all_leaf_arrays_known &= piece.IsKnown();
-    });
-    return are_all_leaf_arrays_known;
-  }
-  return true;
-}
-
-bool LiteralBase::Piece::IsDetermined() const {
-  if (array_value_state_ == ArrayValueState::kUndetermined) {
-    return false;
-  }
-  if (subshape().IsTuple()) {
-    bool are_all_leaf_arrays_determined = true;
-    ForEachSubpiece([&are_all_leaf_arrays_determined](const ShapeIndex& index,
-                                                      const Piece& piece) {
-      if (!piece.subshape().IsArray()) {
-        return;
-      }
-      are_all_leaf_arrays_determined &= piece.IsDetermined();
-    });
-    return are_all_leaf_arrays_determined;
-  }
-  return true;
-}
-
 LiteralProto LiteralBase::ToProto() const {
   LiteralProto proto;
   root_piece().ForEachSubpiece(
@@ -2495,7 +2391,6 @@ void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
       << ShapeUtil::HumanString(src_piece->subshape())
       << "dest_piece has shape: "
       << ShapeUtil::HumanString(dest_piece->subshape());
-  dest_piece->set_array_value_state(src_piece->get_array_value_state());
   if (shape.IsTuple()) {
     for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       const Shape& subshape = shape.tuple_shapes(i);

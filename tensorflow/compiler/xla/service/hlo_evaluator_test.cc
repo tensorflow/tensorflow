@@ -130,17 +130,6 @@ class HloEvaluatorTest : public HloTestBase {
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 
-  void TestEvaluateInstruction(HloInstruction* instruction,
-                               const Literal& expected) {
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, evaluator_.Evaluate(instruction));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
-  }
-
-  void TestEvaluationFailure(HloInstruction* instruction) {
-    StatusOr<Literal> result = evaluator_.Evaluate(instruction);
-    EXPECT_TRUE(!result.ok());
-  }
-
   std::unique_ptr<HloComputation> MaxComputationScalarF32() {
     HloComputation::Builder max_computation("max");
     Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
@@ -4150,19 +4139,18 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, DontFailOnCallUnimplementedOps) {
-  // Outfeed triggers unimplemented error within HandleCall, and we verify that
+  // Infeed triggers unimplemented error within HandleCall, and we verify that
   // the Evaluator does fail in such case.
   const string hlo_text = R"(
 HloModule DontFailOnCall
 
 call {
   token0 = token[] after-all()
-  constant = u32[3]{0} constant({1,2,3})
-  ROOT  outfeed = token[] outfeed(constant, token0), outfeed_shape=u32[3]{0}
+  ROOT infeed = ((u32[3]{0}, pred[]), token[]) infeed(token0)
 }
 
 ENTRY main {
-  ROOT result = token[] call(), to_apply=call
+  ROOT result = ((u32[3]{0}, pred[]), token[]) call(), to_apply=call
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
@@ -4171,19 +4159,18 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, DontFailOnFusionWithUnimplementedOps) {
-  // Outfeed triggers unimplemented error within HandleFusion, and we verify
-  // that the Evaluator does fail in such case.
+  // Infeed triggers unimplemented error within HandleFusion, and we verify that
+  // the Evaluator does fail in such case.
   const string hlo_text = R"(
 HloModule DontFailOnFusion
 
 fused_computation {
   token0 = token[] after-all()
-  constant = u32[3]{0} constant({1,2,3})
-  ROOT  outfeed = token[] outfeed(constant, token0), outfeed_shape=u32[3]{0}
+  ROOT infeed = ((u32[3]{0}, pred[]), token[]) infeed(token0)
 }
 
 ENTRY main {
-  ROOT result = token[] fusion(), kind=kLoop, calls=fused_computation
+  ROOT result = ((u32[3]{0}, pred[]), token[]) fusion(), kind=kLoop, calls=fused_computation
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
@@ -4690,154 +4677,6 @@ TEST_F(HloEvaluatorTest, SortC64) {
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
-}
-
-// Tests that HloEvaluator can evaluate an instruction even when its operands
-// are not constant.
-TEST_F(HloEvaluatorTest, RecursivelyEvaluateNonConstantOperands) {
-  Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
-  Literal c1_literal = LiteralUtil::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
-  Literal c2_literal = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 4.f}});
-
-  Shape shape = c0_literal.shape();
-  HloComputation::Builder b(TestName());
-  HloInstruction* c0 =
-      b.AddInstruction(HloInstruction::CreateConstant(std::move(c0_literal)));
-  HloInstruction* c1 =
-      b.AddInstruction(HloInstruction::CreateConstant(std::move(c1_literal)));
-  HloInstruction* c2 =
-      b.AddInstruction(HloInstruction::CreateConstant(std::move(c2_literal)));
-
-  HloInstruction* add0 = b.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, c0, c1));
-  HloInstruction* add1 = b.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, c1, c2));
-  HloInstruction* add2 = b.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add0, add1));
-
-  m_->AddEntryComputation(b.Build());
-  Literal expected = LiteralUtil::CreateR2<float>({{2, 16}, {6, 16}});
-  TestEvaluateInstruction(add2, expected);
-}
-
-// Tests that HloEvaluator can evaluate a GetTupleElement even when its operand
-// Tuple instruction cannot be fully evaluated. Note that this requires that the
-//  tuple element at the given tuple index can be evaluated.
-TEST_F(HloEvaluatorTest, GetTupleElementOnPartiallyKnownTupleSucceeds) {
-  Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
-
-  Shape shape = c0_literal.shape();
-  HloComputation::Builder b(TestName());
-  HloInstruction* c0 =
-      b.AddInstruction(HloInstruction::CreateConstant(std::move(c0_literal)));
-  HloInstruction* p0 =
-      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param.0"));
-  HloInstruction* p1 =
-      b.AddInstruction(HloInstruction::CreateParameter(1, shape, "param.1"));
-
-  HloInstruction* tuple =
-      b.AddInstruction(HloInstruction::CreateTuple({p0, p1, c0}));
-  HloInstruction* gte =
-      b.AddInstruction(HloInstruction::CreateGetTupleElement(tuple, 2));
-
-  m_->AddEntryComputation(b.Build());
-  Literal expected = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
-  TestEvaluateInstruction(gte, expected);
-}
-
-// Tests that Infeed cannot be evaluated.
-TEST_F(HloEvaluatorTest, InfeedFailure) {
-  HloComputation::Builder b(TestName());
-  HloInstruction* token = b.AddInstruction(HloInstruction::CreateToken());
-  HloInstruction* infeed = b.AddInstruction(HloInstruction::CreateInfeed(
-      ShapeUtil::MakeShape(F32, {4, 4}), token, ""));
-
-  m_->AddEntryComputation(b.Build());
-  TestEvaluationFailure(infeed);
-}
-
-// Tests that GetTupleElement cannot be evaluated if the corresponding tuple
-// element cannot be evaluated.
-TEST_F(HloEvaluatorTest, GetUnknownTupleElementFails) {
-  Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
-
-  Shape shape = c0_literal.shape();
-  HloComputation::Builder b(TestName());
-  HloInstruction* c0 =
-      b.AddInstruction(HloInstruction::CreateConstant(std::move(c0_literal)));
-  HloInstruction* p0 =
-      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param.0"));
-  HloInstruction* p1 =
-      b.AddInstruction(HloInstruction::CreateParameter(1, shape, "param.1"));
-
-  HloInstruction* tuple =
-      b.AddInstruction(HloInstruction::CreateTuple({p0, p1, c0}));
-  HloInstruction* gte =
-      b.AddInstruction(HloInstruction::CreateGetTupleElement(tuple, 0));
-
-  m_->AddEntryComputation(b.Build());
-  TestEvaluationFailure(gte);
-}
-
-// Tests that partial evaluation works for nested tuples.
-TEST_F(HloEvaluatorTest, GetTupleElementFromNestedTupleSucceeds) {
-  Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
-
-  Shape shape = c0_literal.shape();
-  HloComputation::Builder b(TestName());
-  HloInstruction* c0 =
-      b.AddInstruction(HloInstruction::CreateConstant(std::move(c0_literal)));
-  HloInstruction* p0 =
-      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param.0"));
-  HloInstruction* p1 =
-      b.AddInstruction(HloInstruction::CreateParameter(1, shape, "param.1"));
-
-  HloInstruction* tuple0 =
-      b.AddInstruction(HloInstruction::CreateTuple({p0, c0}));
-  HloInstruction* tuple1 =
-      b.AddInstruction(HloInstruction::CreateTuple({tuple0, p1}));
-  HloInstruction* gte0 =
-      b.AddInstruction(HloInstruction::CreateGetTupleElement(tuple1, 0));
-  HloInstruction* gte1 =
-      b.AddInstruction(HloInstruction::CreateGetTupleElement(gte0, 1));
-
-  m_->AddEntryComputation(b.Build());
-  Literal expected = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
-  TestEvaluateInstruction(gte1, expected);
-}
-
-// Tests that partial evaluation works when the GetTupleElement is interleaved
-// with other Tuple instructions.
-TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
-  Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
-
-  Shape shape = c0_literal.shape();
-  HloComputation::Builder b(TestName());
-  HloInstruction* c0 =
-      b.AddInstruction(HloInstruction::CreateConstant(std::move(c0_literal)));
-  HloInstruction* p0 =
-      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param.0"));
-  HloInstruction* p1 =
-      b.AddInstruction(HloInstruction::CreateParameter(1, shape, "param.1"));
-  HloInstruction* p2 =
-      b.AddInstruction(HloInstruction::CreateParameter(2, shape, "param.2"));
-
-  HloInstruction* tuple0 =
-      b.AddInstruction(HloInstruction::CreateTuple({p0, c0}));
-  HloInstruction* tuple1 =
-      b.AddInstruction(HloInstruction::CreateTuple({tuple0, p1}));
-  HloInstruction* gte0 =
-      b.AddInstruction(HloInstruction::CreateGetTupleElement(tuple1, 0));
-  HloInstruction* tuple2 =
-      b.AddInstruction(HloInstruction::CreateTuple({gte0, p2}));
-  HloInstruction* gte1 =
-      b.AddInstruction(HloInstruction::CreateGetTupleElement(tuple2, 0));
-  HloInstruction* gte2 =
-      b.AddInstruction(HloInstruction::CreateGetTupleElement(gte1, 1));
-
-  m_->AddEntryComputation(b.Build());
-  Literal expected = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
-  TestEvaluateInstruction(gte2, expected);
 }
 
 }  // namespace

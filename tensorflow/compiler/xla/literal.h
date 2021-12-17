@@ -357,16 +357,6 @@ class LiteralBase {
   template <typename NativeT>
   Literal Replicate(int64_t times) const;
 
-  // Returns true if the leaf arrays of the literal within the given shape index
-  // are all determined.
-  // See comments on ArrayValueState for detailed explanation.
-  bool IsDetermined(const ShapeIndex& shape_index = {}) const;
-
-  // Returns true if the leaf arrays of the literal within the given shape index
-  // are all known.
-  // See comments on ArrayValueState for detailed explanation.
-  bool IsKnown(const ShapeIndex& shape_index = {}) const;
-
   // Creates a new Literal object with the shape specified as parameter.
   // The content of the literal values is the default value of the primitive
   // type of literal itself (0 for numeric types, and false for predicates).
@@ -378,33 +368,12 @@ class LiteralBase {
   // MutableLiteralBase::Populate can be used instead.
   static Literal CreateFromShape(const Shape& shape);
 
-  // WARNING: These two functions are only supposed to be used by HloEvaluator.
-  // The rest of XLA assumes all literals are known.
-  // Similar to CreateFromShape() but marks all leaf arrays as unknown.
-  static Literal CreateFromShapeWithUnknownLeafArrays(const Shape& shape);
-  // Similar to CreateFromShape() but marks all leaf arrays as undetermined.
-  static Literal CreateFromShapeWithUndeterminedLeafArrays(const Shape& shape);
-
  protected:
-  // Array literals could be in one of the following three states:
-  //   1) Known: we have evaluated and known the value of the array literal.
-  //   2) Unknown: we have tried to evaluate the array literal, but its value
-  //               cannot be evaluated statically.
-  //   3) Undetermined: we haven't tried to evaluate the array literal.
-  //  Unknown and Undetermined states are only meant to be used within
-  //  HloEvaluator. The rest of XLA assumes array literals are all known.
-  //  Literals that are unknown or undetermined can be copied from, using
-  //  CopyFrom and Clone, or moved from using move constructor. Accessing values
-  //  of such literals causes undefined behavior.
-  enum class ArrayValueState { kKnown = 0, kUnknown = 1, kUndetermined = 2 };
-
   // A data structure representing a subshape at a particular ShapeIndex within
   // the literal. For array-shaped ShapeIndexes, this data structure holds the
   // pointer to the memory allocated for the array data.
   class Piece {
    public:
-    ArrayValueState get_array_value_state();
-    void set_array_value_state(ArrayValueState state);
     // Returns the buffer holding the array data for this piece as an array
     // slice. This piece must be array-shaped.
     template <typename NativeT>
@@ -427,8 +396,6 @@ class LiteralBase {
 
     int32 GetDynamicSize(int64_t dim_index) const;
     void SetDynamicSize(int64_t dim_index, int32_t size);
-    void AllocateBuffers();
-    void DeallocateBuffers();
     // Gets/sets the buffer holding the array data.
     char* buffer() const { return buffer_; }
     void set_buffer(char* buffer) { buffer_ = buffer; }
@@ -548,11 +515,6 @@ class LiteralBase {
     // piece must be equal (not just compatible) to the shape of the proto.
     Status CopyFromProto(const LiteralProto& proto);
 
-    // See comments on ArrayValueState for detailed explanation.
-    bool IsDetermined() const;
-
-    bool IsKnown() const;
-
    private:
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
     // The first non-OK (or non-true) value is returned by the function.
@@ -617,8 +579,6 @@ class LiteralBase {
 
     // Children pieces for tuple shaped pieces.
     std::vector<Piece> children_ = {};
-
-    ArrayValueState array_value_state_ = ArrayValueState::kKnown;
   };  // class Piece
 
   const Piece& piece(const ShapeIndex& shape_index) const {
@@ -856,8 +816,7 @@ class Literal : public MutableLiteralBase {
   // 'allocate_arrays' indicates whether to allocate memory for the arrays in
   // the shape. If false, buffer pointers inside of the Literal::Pieces are set
   // to nullptr.
-  Literal(const Shape& shape, bool allocate_arrays,
-          ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
+  Literal(const Shape& shape, bool allocate_arrays);
   Literal& operator=(Literal&& other);
 
   // Similar to CopyFrom, but with move semantics. The subshape of this literal
@@ -886,9 +845,7 @@ class Literal : public MutableLiteralBase {
   // Recursively sets the subshapes and buffers of all subpieces rooted at
   // 'piece'. If 'allocate_array' is true, memory is allocated for the arrays in
   // the shape.
-  void SetPiece(
-      const Shape& shape, Piece* piece, bool allocate_arrays,
-      ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
+  void SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays);
 };
 
 // The underlying buffer is not owned by this class and is always owned by
@@ -1074,6 +1031,7 @@ void MutableLiteralBase::MutableEachCell(
     return;
   }
   std::vector<int64_t> indices(shape().rank(), 0);
+
   Shape shape_dynamic = shape();
   for (int64_t i = 0; i < shape_dynamic.rank(); ++i) {
     shape_dynamic.set_dimensions(i, GetDynamicSize(i));
