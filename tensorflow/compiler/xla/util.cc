@@ -74,14 +74,14 @@ Status WithLogBacktrace(const Status& status) {
   return status;
 }
 
-ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
+ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
                                        const char* file, int line,
                                        TimerStats* timer_stats)
-    : enabled_(enabled),
+    : label_(label),
       file_(file),
       line_(line),
-      label_(label),
-      timer_stats_(timer_stats) {
+      timer_stats_(timer_stats),
+      enabled_(enabled) {
   if (enabled_) {
     start_micros_ = tensorflow::Env::Default()->NowMicros();
   }
@@ -130,9 +130,10 @@ string Reindent(absl::string_view original,
                 const absl::string_view indentation) {
   std::vector<string> pieces =
       absl::StrSplit(absl::string_view(original.data(), original.size()), '\n');
-  return absl::StrJoin(pieces, "\n", [indentation](string* out, string s) {
-    absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
-  });
+  return absl::StrJoin(
+      pieces, "\n", [indentation](std::string* out, absl::string_view s) {
+        absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
+      });
 }
 
 template <typename IntT, typename FloatT>

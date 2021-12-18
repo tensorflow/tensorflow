@@ -123,7 +123,7 @@ class ScopedLoggingTimer {
   // line: Line number to display in logging.
   // `timer_stats`: unowned non-null pointer which is used to populate the
   // global timer statistics.
-  ScopedLoggingTimer(const std::string& label, bool enabled, const char* file,
+  ScopedLoggingTimer(absl::string_view label, bool enabled, const char* file,
                      int line, TimerStats* timer_stats);
 
   // Stop the timer and log the tracked time. Timer is disabled after this
@@ -133,12 +133,12 @@ class ScopedLoggingTimer {
   ~ScopedLoggingTimer();
 
  private:
-  bool enabled_;
-  const char* file_;
-  int line_;
-  string label_;
+  const string label_;
+  const char* const file_;
+  const int line_;
+  TimerStats* const timer_stats_;
   uint64 start_micros_;
-  TimerStats* timer_stats_;
+  bool enabled_;
 };
 
 // Given a vector<T>, returns a Span<char> that points at its
