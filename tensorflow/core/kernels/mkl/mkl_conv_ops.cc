@@ -531,9 +531,8 @@ class MklConvOp : public OpKernel {
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
-    string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
-    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str_));
+    OP_REQUIRES(context, FormatFromString(data_format_str_, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(context, (strides_.size() == 4 || strides_.size() == 5),
                 errors::InvalidArgument("Sliding window strides field must "
@@ -629,7 +628,7 @@ class MklConvOp : public OpKernel {
 
       if (fuse_pad_ || pad_attr_enabled) {
         PadWithConvFusion(context, padding_left, padding_right,
-                          pad_attr_enabled);
+                          pad_attr_enabled, data_format_str_);
       }
 
       // Get shapes of input tensors in MKL-DNN order
@@ -676,14 +675,15 @@ class MklConvOp : public OpKernel {
       }
 
       bool is_conv2d = (strides_.size() == 4);
+      bool is_conv3d = (strides_.size() == 5);
 
-      if (!is_conv2d) {
+      if (!is_conv2d && !is_conv3d) {
         OP_REQUIRES(
             context, !pad_enabled,
-            errors::InvalidArgument("Pad + Conv fusion only works for 2D"));
+            errors::InvalidArgument("Pad + Conv fusion only works for 2D/3D"));
         OP_REQUIRES(
             context, !fuse_pad_,
-            errors::InvalidArgument("Pad+Conv fusion only works for 2D"));
+            errors::InvalidArgument("Pad+Conv fusion only works for 2D/3D"));
       }
 
       // TODO(intel-tf) 3-D support for Depthwise is not there
@@ -898,7 +898,8 @@ class MklConvOp : public OpKernel {
   }
 
   void PadWithConvFusion(OpKernelContext* context, memory::dims& padding_left,
-                         memory::dims& padding_right, bool pad_attr_enabled) {
+                         memory::dims& padding_right, bool pad_attr_enabled,
+                         string data_format_str_) {
     Tpadding* paddings = nullptr;
     if (pad_attr_enabled) {
       paddings = padding_list_.data();
@@ -922,24 +923,45 @@ class MklConvOp : public OpKernel {
     // Similarly, if the data format is NCHW, indices 0, 1, 2 and 3 of
     // paddings(_tf) will be zero.
     // i.e. for the above example, paddings = {0, 0, 0, 0, 1, 2, 3, 4}.
-    int64 pad_top = 0, pad_left = 0;
-    int64 pad_bottom = 0, pad_right = 0;
-    string data_format = ToString(data_format_);
-    if (data_format == "NHWC") {
+    int64 pad_top = 0, pad_left = 0, pad_front = 0;
+    int64 pad_bottom = 0, pad_right = 0, pad_back = 0;
+    if (data_format_str_ == "NHWC") {
       pad_top = paddings[2];
       pad_bottom = paddings[3];
       pad_left = paddings[4];
       pad_right = paddings[5];
-    } else if (data_format == "NCHW") {
+    } else if (data_format_str_ == "NCHW") {
       pad_top = paddings[4];
       pad_bottom = paddings[5];
       pad_left = paddings[6];
       pad_right = paddings[7];
+    } else if (data_format_str_ == "NDHWC") {
+      pad_front = paddings[2];
+      pad_back = paddings[3];
+      pad_top = paddings[4];
+      pad_bottom = paddings[5];
+      pad_left = paddings[6];
+      pad_right = paddings[7];
+    } else if (data_format_str_ == "NCDHW") {
+      pad_front = paddings[4];
+      pad_back = paddings[5];
+      pad_top = paddings[6];
+      pad_bottom = paddings[7];
+      pad_left = paddings[8];
+      pad_right = paddings[9];
     }
     // Create padding arrays for MKL-DNN convolutions.
     // MKL-DNN uses asymmetric padding.
-    padding_left = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
-    padding_right = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
+    if (data_format_str_ == "NHWC" || data_format_str_ == "NCHW") {
+      padding_left = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
+      padding_right = {static_cast<int>(pad_bottom),
+                       static_cast<int>(pad_right)};
+    } else if (data_format_str_ == "NDHWC" || data_format_str_ == "NCDHW") {
+      padding_left = {static_cast<int>(pad_front), static_cast<int>(pad_top),
+                      static_cast<int>(pad_left)};
+      padding_right = {static_cast<int>(pad_back), static_cast<int>(pad_bottom),
+                       static_cast<int>(pad_right)};
+    }
   }
 
  protected:
@@ -1114,6 +1136,7 @@ class MklConvOp : public OpKernel {
   bool is_filter_const_;
   mutex mu_;
   Padding padding_;
+  string data_format_str_;
   TensorFormat data_format_;
   Tensor cached_filter_data_ TF_GUARDED_BY(mu_);
   Tensor cached_filter_md_ TF_GUARDED_BY(mu_);
@@ -2064,22 +2087,27 @@ class MklFusedConv3DOp
 
     int num_args;
     OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
-    OP_REQUIRES(context, !fused_ops.empty(),
-                errors::InvalidArgument(
-                    "Fused Conv3D must have at least one fused op."));
-    if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
-        fused_ops.end()) {
-      OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
-                      "Fused Conv3D must have one extra argument: bias."));
-    } else if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
-                   fused_ops.end() &&
-               std::find(fused_ops.begin(), fused_ops.end(), "Add") ==
-                   fused_ops.end()) {
-      OP_REQUIRES(
-          context, num_args == 2,
-          errors::InvalidArgument(
-              "Fused Conv3D must have two extra arguments: bias and add."));
+
+    std::vector<int> padding_list;
+    OP_REQUIRES_OK(context, context->GetAttr("padding_list", &padding_list));
+    if (padding_list.empty()) {
+      OP_REQUIRES(context, !fused_ops.empty(),
+                  errors::InvalidArgument("Fused Conv3D must have at least one "
+                                          "fused op when Pad is not fused."));
+      if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
+          fused_ops.end()) {
+        OP_REQUIRES(context, num_args == 1,
+                    errors::InvalidArgument(
+                        "Fused Conv3D must have one extra argument: bias."));
+      } else if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
+                     fused_ops.end() &&
+                 std::find(fused_ops.begin(), fused_ops.end(), "Add") ==
+                     fused_ops.end()) {
+        OP_REQUIRES(
+            context, num_args == 2,
+            errors::InvalidArgument(
+                "Fused Conv3D must have two extra arguments: bias and add."));
+      }
     }
 
     if (fused_ops == std::vector<string>{"BiasAdd"}) {
@@ -2127,9 +2155,11 @@ class MklFusedConv3DOp
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu,
                                 leakyrelu_alpha);
     } else {
-      OP_REQUIRES(context, false,
-                  errors::Unimplemented("Fusion is not implemented: [",
-                                        absl::StrJoin(fused_ops, ","), "]"));
+      if (padding_list.empty()) {
+        OP_REQUIRES(context, false,
+                    errors::Unimplemented("Fusion is not implemented: [",
+                                          absl::StrJoin(fused_ops, ","), "]"));
+      }
     }
   }
 

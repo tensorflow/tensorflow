@@ -143,6 +143,19 @@ struct TensorToHashBucket {
   int string_to_hash_bucket = kMissingIndex;
 };
 
+// Pad followed by Conv3D/FusedConv3D
+struct PadWithConv3D {
+  PadWithConv3D() = default;
+  PadWithConv3D(int contraction_idx, int pad_idx, int padding_const_idx)
+      : contraction_idx(contraction_idx),
+        pad_idx(pad_idx),
+        padding_const_idx(padding_const_idx) {}
+
+  int contraction_idx = kMissingIndex;
+  int pad_idx = kMissingIndex;
+  int padding_const_idx = kMissingIndex;
+};
+
 // Contraction node followed by a BiasAdd.
 struct ContractionWithBiasAdd {
   ContractionWithBiasAdd() = default;
@@ -797,6 +810,39 @@ bool IsAddWithNoBroadcast(const RemapperContext& ctx, const NodeDef& node) {
     return true;
   }
   return false;
+}
+
+bool FindPadWithConv3D(const RemapperContext& ctx, int node_index,
+                       PadWithConv3D* matched) {
+  if (!IsMKLEnabled()) return false;
+  const auto* node_view = ctx.graph_view.GetNode(node_index);
+  const auto* node_def = node_view->node();
+  // The optimization is only for CPU
+  if (!NodeIsOnCpu(node_def)) return false;
+  // Root of the pattern must be a Conv3D or _FusedConv3D
+  if (!(IsConv3D(*node_def) || node_def->op() == kFusedConv3D)) return false;
+  if (!(HasDataType(node_def, DT_FLOAT) || HasDataType(node_def, DT_BFLOAT16)))
+    return false;
+
+  PadWithConv3D base;
+  // Input to Conv3D/_FusedConv3D must be a Pad
+  if (node_view->NumRegularFanins() < 1) return false;
+  const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
+  const auto* pad_node_view = regular_fanin_0.node_view();
+  const auto* pad_node_def = pad_node_view->node();
+  const auto& padding_const = pad_node_view->GetRegularFanin(1);
+  const auto* padding_const_node_view = padding_const.node_view();
+
+  if (!(pad_node_def->op() == "Pad") ||
+      !HaveSameDataType(node_def, pad_node_def))
+    return false;
+  const PadWithConv3D pattern{node_view->node_index(),
+                              pad_node_view->node_index(),
+                              padding_const_node_view->node_index()};
+
+  // Successfully found a Pad+{Conv3D, _FusedConv3D} pattern.
+  *matched = pattern;
+  return true;
 }
 
 bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
@@ -2186,6 +2232,63 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   return Status::OK();
 }
 
+Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
+                          std::vector<bool>* invalidated_nodes,
+                          std::vector<bool>* nodes_to_delete) {
+  const GraphDef* graph = ctx->graph_view.graph();
+  const NodeDef& contraction = graph->node(matched.contraction_idx);
+  const NodeDef& pad_node_def = graph->node(matched.pad_idx);
+  const NodeDef& padding_const_node_def =
+      graph->node(matched.padding_const_idx);
+  VLOG(2) << "Fuse " << pad_node_def.op() << " with contraction: "
+          << " contraction=" << contraction.name();
+
+  NodeDef fused_node;
+  fused_node.set_name(contraction.name());
+  fused_node.set_device(contraction.device());
+  fused_node.add_input(pad_node_def.input(0));  // 0: input
+  fused_node.add_input(contraction.input(1));   // 1: filter
+  fused_node.set_op(kFusedConv3D);
+
+  auto* attr = fused_node.mutable_attr();
+  auto& src_attr = contraction.attr();
+  (*attr)["T"] = src_attr.at("T");
+  (*attr)["strides"] = src_attr.at("strides");
+  (*attr)["data_format"] = src_attr.at("data_format");
+  (*attr)["padding"] = src_attr.at("padding");
+  (*attr)["dilations"] = src_attr.at("dilations");
+
+  if (contraction.op() == kFusedConv3D) {
+    fused_node.add_input(contraction.input(2));  // 2: bias
+    (*attr)["fused_ops"] = src_attr.at("fused_ops");
+    (*attr)["num_args"] = src_attr.at("num_args");
+  } else {
+    SetAttrValue(0, &(*attr)["num_args"]);
+  }
+
+  Tensor const_tensor;
+  if (padding_const_node_def.op() == "Const" &&
+      const_tensor.FromProto(
+          padding_const_node_def.attr().at("value").tensor())) {
+    auto const_value = const_tensor.flat<int32>();
+    std::vector<int32> paddings;
+    for (int i = 0; i < const_value.size(); ++i) {
+      paddings.push_back(const_value(i));
+      SetAttrValue(paddings, &(*attr)["padding_list"]);
+    }
+  }
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_node), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched.contraction_idx] = true;
+  (*nodes_to_delete)[matched.pad_idx] = true;
+  return Status::OK();
+}
+
 Status AddFusedContractionNode(
     RemapperContext* ctx, const ContractionWithBiasAndAddActivation& matched,
     std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
@@ -2962,6 +3065,14 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         TF_RETURN_IF_ERROR(
             AddFusedContractionNode(&ctx, contract_with_bias_and_add,
                                     &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
+
+      PadWithConv3D pad_with_conv3d;
+      // Remap Pad+{Conv3D,_FusedConv3D} into the _FusedConv3D.
+      if (FindPadWithConv3D(ctx, i, &pad_with_conv3d)) {
+        TF_RETURN_IF_ERROR(AddFusedConv3DNode(
+            &ctx, pad_with_conv3d, &invalidated_nodes, &nodes_to_delete));
         continue;
       }
 
