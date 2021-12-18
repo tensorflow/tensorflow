@@ -109,29 +109,29 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // The primitive type of the component of T. If T is not complex, then
   // ComponentT = T.
   struct ComponentT {
-    static constexpr PrimitiveType value =
-        !kIsComplex ? T
-                    : T == C128 ? F64 : T == C64 ? F32 : PRIMITIVE_TYPE_INVALID;
+    static constexpr PrimitiveType value = !kIsComplex ? T
+                                           : T == C128 ? F64
+                                           : T == C64  ? F32
+                                                       : PRIMITIVE_TYPE_INVALID;
   };
 
   // Same as ComponentT, but for the RefT primitive type.
   struct ComponentRefT {
-    static constexpr PrimitiveType value =
-        !kIsComplex ? RefT::value
-                    : RefT::value == C128
-                          ? F64
-                          : RefT::value == C64 ? F32 : PRIMITIVE_TYPE_INVALID;
+    static constexpr PrimitiveType value = !kIsComplex           ? RefT::value
+                                           : RefT::value == C128 ? F64
+                                           : RefT::value == C64
+                                               ? F32
+                                               : PRIMITIVE_TYPE_INVALID;
   };
 
   // The primitive type of an unsigned integer that can be bitcasted to and from
   // ComponentT.
   struct ComponentIntegralT {
-    static constexpr PrimitiveType value =
-        (T == C128 || T == F64)
-            ? U64
-            : (T == C64 || T == F32)
-                  ? U32
-                  : (T == F16 || T == BF16) ? U16 : PRIMITIVE_TYPE_INVALID;
+    static constexpr PrimitiveType value = (T == C128 || T == F64)  ? U64
+                                           : (T == C64 || T == F32) ? U32
+                                           : (T == F16 || T == BF16)
+                                               ? U16
+                                               : PRIMITIVE_TYPE_INVALID;
   };
 
   // Native types that correspond to the primitive types above.
@@ -279,7 +279,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     return std::move(result_literal);
   }
 
-  const string& Platform() { return platform_; }
+  const std::string& Platform() { return platform_; }
 
   // Returns the number of elements in each input literal.
   virtual int64_t GetInputSize() = 0;
@@ -503,7 +503,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   const PrimitiveType ty_;
 
   // The platform under test.
-  const string platform_;
+  const std::string platform_;
 
   // Testing will ignore inputs for which known_incorrect_fn_ returns true. The
   // argument to the function is the raw bits for the data being test, zero

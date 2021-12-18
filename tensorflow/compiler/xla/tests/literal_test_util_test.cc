@@ -129,12 +129,12 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
 
   tensorflow::Env* env = tensorflow::Env::Default();
 
-  string outdir;
+  std::string outdir;
   if (!tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
     outdir = tensorflow::testing::TmpDir();
   }
-  string pattern = tensorflow::io::JoinPath(outdir, "tempfile-*.pb");
-  std::vector<string> files;
+  std::string pattern = tensorflow::io::JoinPath(outdir, "tempfile-*.pb");
+  std::vector<std::string> files;
   TF_CHECK_OK(env->GetMatchingPaths(pattern, &files));
   for (const auto& f : files) {
     TF_CHECK_OK(env->DeleteFile(f)) << f;
@@ -144,12 +144,12 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
 
   // Now check we wrote temporary files to the temporary directory that we can
   // read.
-  std::vector<string> results;
+  std::vector<std::string> results;
   TF_CHECK_OK(env->GetMatchingPaths(pattern, &results));
 
   LOG(INFO) << "results: [" << absl::StrJoin(results, ", ") << "]";
   EXPECT_EQ(3, results.size());
-  for (const string& result : results) {
+  for (const std::string& result : results) {
     LiteralProto literal_proto;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), result,
                                             &literal_proto));

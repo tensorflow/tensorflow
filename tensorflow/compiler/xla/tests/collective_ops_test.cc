@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -35,8 +37,6 @@ limitations under the License.
 
 namespace xla {
 namespace {
-
-using ::testing::IsSupersetOf;
 
 class CollectiveOpsTest : public HloTestBase {
  public:
@@ -69,7 +69,7 @@ class CollectiveOpsTest : public HloTestBase {
         ROOT out = SHAPE bitcast(copy)
       }
     )";
-    std::vector<string> replica_group_strs;
+    std::vector<std::string> replica_group_strs;
     replica_group_strs.reserve(replica_groups.size());
     for (const auto& g : replica_groups) {
       replica_group_strs.push_back(
@@ -103,7 +103,7 @@ class CollectiveOpsTest : public HloTestBase {
     auto config = GetModuleConfigForTest();
     config.set_replica_count(kNumReplicas);
     auto module = MakeCrsModule(
-        /*shape_str=*/input_value.shape(),
+        /*shape=*/input_value.shape(),
         /*replica_groups=*/{}, config,
         /*op=*/op, /*datatype=*/dtype);
     TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
@@ -458,7 +458,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   absl::c_iota(input_vec, 0);
   auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
   auto module = MakeCrsModule(
-      /*shape_str=*/input_literal.shape(),
+      /*shape=*/input_literal.shape(),
       /*replica_groups=*/{{0}, {1, 2}, {3}}, config);
 
   TF_ASSERT_OK_AND_ASSIGN(

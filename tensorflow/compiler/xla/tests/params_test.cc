@@ -78,7 +78,7 @@ XLA_TEST_F(ParamsTest, ConstantR1S2F32Param) {
 
 XLA_TEST_F(ParamsTest, ConstantR1U8Param) {
   XlaBuilder builder(TestName());
-  string str("hello world");
+  std::string str("hello world");
   Literal param0_literal = LiteralUtil::CreateR1U8(str);
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(param0_literal).ConsumeValueOrDie();

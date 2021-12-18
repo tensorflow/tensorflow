@@ -98,7 +98,7 @@ ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
       ->set_xla_hlo_evaluator_use_fast_path(true);
 }
 
-string ClientLibraryTestBase::TestName() const {
+std::string ClientLibraryTestBase::TestName() const {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 
@@ -142,7 +142,7 @@ StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransferReference(
                                          &execution_options);
 }
 
-string ClientLibraryTestBase::ExecuteToString(
+std::string ClientLibraryTestBase::ExecuteToString(
     XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
   auto computation_status = builder->Build();
   if (!computation_status.ok()) {
@@ -186,7 +186,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     const xla::XlaComputation& computation, const Literal& expected,
     absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
-                             const string& error_message)>& verify_output) {
+                             const std::string& error_message)>&
+        verify_output) {
   // Try with no layout requirement.
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments));
   verify_output(actual, "");
@@ -211,10 +212,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
     const xla::XlaComputation& computation, const Literal& /*expected*/,
     absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
-                             const string& error_message)>& verify_output,
+                             const std::string& error_message)>& verify_output,
     const Shape* output_with_layout) {
   std::vector<GlobalData*> arguments_with_layout;
-  std::vector<string> layout_strings;
+  std::vector<std::string> layout_strings;
   // This is a recursive function. It's an std::function instead of a lambda
   // because it needs to capture itself. The index is the index of the argument
   // to try all layouts for.
@@ -259,7 +260,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         ExecuteAndTransfer(computation,
                            absl::Span<GlobalData* const>(arguments_with_layout),
                            output_with_layout));
-    string error_message = "Test with input layouts: ";
+    std::string error_message = "Test with input layouts: ";
     for (const auto& str : layout_strings) {
       absl::StrAppend(&error_message, str, " ");
     }
@@ -337,7 +338,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
       shape_with_layout = &layout_shape;
     }
   }
-  auto expect_equal = [&](const Literal& actual, const string& error_message) {
+  auto expect_equal = [&](const Literal& actual,
+                          const std::string& error_message) {
     EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, actual)) << error_message;
   };
   if (execution_options_.debug_options().xla_test_all_output_layouts()) {
@@ -394,7 +396,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
       shape_with_layout = &layout_shape;
     }
   }
-  auto expect_near = [&](const Literal& actual, const string& error_message) {
+  auto expect_near = [&](const Literal& actual,
+                         const std::string& error_message) {
     EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, error))
         << error_message;
   };
@@ -607,7 +610,7 @@ XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
 
 StatusOr<std::unique_ptr<GlobalData>>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(
-    int64_t parameter_number, const Literal& literal, const string& name,
+    int64_t parameter_number, const Literal& literal, const std::string& name,
     XlaBuilder* builder, XlaOp* data_handle) {
   return CreateParameterAndTransferLiteral(parameter_number, literal, name,
                                            nullptr, builder, data_handle);
@@ -637,7 +640,7 @@ Literal ClientLibraryTestBase::MaybeConvertLiteralToBfloat16(
 
 StatusOr<std::unique_ptr<GlobalData>>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(
-    int64_t parameter_number, const Literal& literal, const string& name,
+    int64_t parameter_number, const Literal& literal, const std::string& name,
     const DeviceHandle* device_handle, XlaBuilder* builder,
     XlaOp* data_handle) {
   Literal param_literal = MaybeConvertLiteralToBfloat16(literal);

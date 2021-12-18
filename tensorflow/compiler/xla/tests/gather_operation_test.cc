@@ -29,12 +29,12 @@ using absl::nullopt;
 
 class GatherOperationTest : public HloTestBase {
  protected:
-  void RunTest(const string& hlo_text, Literal* operand,
+  void RunTest(const std::string& hlo_text, Literal* operand,
                Literal* start_indices) {
     RunTest(hlo_text, {operand, start_indices});
   }
 
-  void RunTest(const string& hlo_text, absl::Span<Literal* const> args) {
+  void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -44,7 +44,7 @@ class GatherOperationTest : public HloTestBase {
 };
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherV1) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherV1
 
 ENTRY main {
@@ -66,7 +66,7 @@ ENTRY main {
 
 XLA_TEST_F(GatherOperationTest, BatchDimInMiddle) {
   // Reverse the middle dimension (dim 1).
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDimInMiddle
 
 ENTRY main {
@@ -89,7 +89,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherV2) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherV2
 
 ENTRY main {
@@ -110,7 +110,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherMultipleBatchDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherMultipleBatchDims
 
 ENTRY main {
@@ -131,7 +131,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherNdMultipleBatchDims_0) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherNdMultipleBatchDims
 
 ENTRY main {
@@ -153,7 +153,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherNdMultipleBatchDims_1) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherNdMultipleBatchDims
 
 ENTRY main {
@@ -175,7 +175,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherNd) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherNd
 
 ENTRY main {
@@ -198,7 +198,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherNdNonDefaultIndexVectorDim) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherNd
 
 ENTRY main {
@@ -242,7 +242,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, BatchDynamicSlice) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 ENTRY main {
@@ -286,7 +286,7 @@ XLA_TEST_F(GatherOperationTest, OutOfBoundsIndex) {
   // Out of bounds indices must not crash, and the indices in range should
   // produce the same values across all backends.
 
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 ENTRY main {
@@ -318,7 +318,7 @@ XLA_TEST_F(GatherOperationTest, OutOfBoundsIndex64Bit) {
   // larger than needed to access all values in the input, and the indices
   // produce the same values across all backends.
 
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 ENTRY main {
@@ -344,7 +344,7 @@ XLA_TEST_F(GatherOperationTest, TooSmallIndex8Bit) {
   // Indices of a type too small to index all locations in gather should not
   // fail.
 
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 ENTRY main {
@@ -371,7 +371,7 @@ XLA_TEST_F(GatherOperationTest, OutOfBoundsUnsignedIndex) {
   // Out of bounds indices must not crash, and the indices in range should
   // produce the same values across all backends.
 
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 ENTRY main {
@@ -397,7 +397,7 @@ XLA_TEST_F(GatherOperationTest, NegativeIndex) {
   // Negative indices must not crash, and the indices in range should produce
   // the same values across all backends.
 
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 ENTRY main {
@@ -428,7 +428,7 @@ XLA_TEST_F(GatherOperationTest, NegativeIndexIntoUnsignedOperand) {
   // Negative indices must not crash, and the indices in range should produce
   // the same values across all backends.
 
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 ENTRY main {
@@ -497,7 +497,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, ZeroSizedResult) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule ZeroSizedResult
 
 ENTRY main {
@@ -518,7 +518,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherV2) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule FusedTensorFlowGatherV2
 
 ENTRY main {
@@ -542,7 +542,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherMultipleBatchDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule FusedTensorFlowGatherMultipleBatchDims
 
 ENTRY main {
@@ -566,7 +566,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherNdMultipleBatchDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule FusedTensorFlowGatherNdMultipleBatchDims
 
 ENTRY main {
@@ -591,7 +591,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherNd) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule FusedTensorFlowGatherNd
 
 ENTRY main {
@@ -618,7 +618,7 @@ ENTRY main {
 
 XLA_TEST_F(GatherOperationTest,
            FusedTensorFlowGatherNdNonDefaultIndexVectorDim) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule FusedTensorFlowGatherNd
 
 ENTRY main {
@@ -668,7 +668,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, FusedBatchDynamicSlice) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule FusedBatchDynamicSlice
 
 ENTRY main {
@@ -692,7 +692,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, GatherFromScalar) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule GatherFromScalar
 
 ENTRY main {
@@ -712,7 +712,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(GatherOperationTest, GatherFromScalarNonZeroIndices) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule GatherFromScalar
 
 ENTRY main {

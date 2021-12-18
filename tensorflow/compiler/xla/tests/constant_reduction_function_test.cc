@@ -35,7 +35,7 @@ using absl::nullopt;
 class ConstantReductionFunctionTest : public HloTestBase {};
 
 TEST_F(ConstantReductionFunctionTest, Bool) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule jit_f__2.10
 
 reduction_computation__3.4 {

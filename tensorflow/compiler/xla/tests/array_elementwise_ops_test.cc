@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -2705,7 +2708,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
   auto m = ConstantR2<int32>(&builder, {{42, 73}, {42, 52}});
   Ne(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,2] {
+  const std::string expected = R"(pred[2,2] {
   { 0, 0 },
   { 0, 1 }
 })";
@@ -2719,7 +2722,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
   auto m = ConstantR2<int32>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
   Ge(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,4] {
+  const std::string expected = R"(pred[2,4] {
   { 1, 1, 0, 0 },
   { 0, 0, 0, 1 }
 })";
@@ -2733,7 +2736,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
   auto m = ConstantR2<int32>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
   Gt(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,4] {
+  const std::string expected = R"(pred[2,4] {
   { 0, 1, 0, 0 },
   { 0, 0, 0, 0 }
 })";
@@ -2747,7 +2750,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
   auto m = ConstantR2<int32>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
   Le(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,4] {
+  const std::string expected = R"(pred[2,4] {
   { 1, 0, 1, 1 },
   { 1, 1, 1, 1 }
 })";
@@ -2761,7 +2764,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Lt) {
   auto m = ConstantR2<int32>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
   Lt(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,4] {
+  const std::string expected = R"(pred[2,4] {
   { 0, 0, 1, 1 },
   { 1, 1, 1, 0 }
 })";
@@ -2971,7 +2974,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtR3F32sWithDegenerateDim2) {
 
   Array3D<int> expected_3d(
       {{{0, 1}, {0, 0}, {0, 0}}, {{0, 1}, {1, 0}, {0, 1}}});
-  const string expected = R"(pred[2,3,2] {
+  const std::string expected = R"(pred[2,3,2] {
 {
   { 0, 1 },
   { 0, 0 },
