@@ -280,7 +280,7 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
     return absl::StrCat(x, ",", y, "->", o);
   };
 
-  std::vector<std::vector<string>> good_test_cases = {
+  std::vector<std::vector<std::string>> good_test_cases = {
       {"ab", "bc", "ac"},
       {"Bab", "Bbc", "Bac"},
       {"ab", "cd", "dcba"},
@@ -310,7 +310,7 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
     }
   }
 
-  std::vector<string> einsum_strings_that_fail_parsing = {
+  std::vector<std::string> einsum_strings_that_fail_parsing = {
       "", "a", "ab->ba", "ab,bc,cd->ad", "a...b...,bc->a...c",
   };
   for (auto test_case : einsum_strings_that_fail_parsing) {

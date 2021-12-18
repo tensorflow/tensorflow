@@ -35,7 +35,7 @@ namespace {
 using XlaCompareOp = XlaOp (*)(XlaOp, XlaOp, absl::Span<const int64_t>);
 
 XlaComputation CreateScalarComparisonComputation(
-    const string& name, const std::vector<PrimitiveType>& operand_types,
+    const std::string& name, const std::vector<PrimitiveType>& operand_types,
     XlaBuilder* builder, XlaCompareOp generator) {
   CHECK_NE(operand_types.size(), 0);
   std::vector<absl::optional<XlaCompareOp>> generators(operand_types.size());
@@ -46,7 +46,7 @@ XlaComputation CreateScalarComparisonComputation(
 }  // namespace
 
 XlaComputation CreateScalarComparisonComputation(
-    const string& name, const std::vector<PrimitiveType>& operand_types,
+    const std::string& name, const std::vector<PrimitiveType>& operand_types,
     const std::vector<absl::optional<XlaCompareOp>>& generators,
     XlaBuilder* builder) {
   // Create a default computation where we compare only the first two

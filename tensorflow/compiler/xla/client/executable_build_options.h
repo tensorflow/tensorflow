@@ -73,7 +73,7 @@ class ExecutableBuildOptions {
 
   // Returns a string representation of the build options, suitable for
   // debugging.
-  string ToString() const;
+  std::string ToString() const;
 
   // The number of replicas of this computation that are to be executed.
   // Defaults to 1.
