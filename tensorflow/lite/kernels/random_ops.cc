@@ -95,9 +95,10 @@ void GenerateRandomStandardNormalNumbers(
 
 // Generates random numbers following a multinomial distribution.
 // Source: third_party/tensorflow/core/kernels/multinomial_op.cc
+template <typename IntType>
 void GenerateMultinomialNumbers(Generator& rng, int batch_size,
                                 const float* logits, size_t logits_size,
-                                int64_t* output, size_t num_samples) {
+                                IntType* output, size_t num_samples) {
   // Skip a large fixed number of samples in the rng (random number generator)
   // for each op invoke to ensure that the output is always unique. (Make a copy
   // of the rng before skipping samples to use it in the current op invoke)
@@ -118,7 +119,7 @@ void GenerateMultinomialNumbers(Generator& rng, int batch_size,
   // Iterate over all batches to compute the outputs.
   for (int batch = 0; batch < batch_size; ++batch) {
     const float* logits_row = logits + batch * logits_size;
-    int64_t* output_row = output + batch * num_samples;
+    IntType* output_row = output + batch * num_samples;
 
     // Compute the maximum logit.
     float max = std::numeric_limits<float>::lowest();
@@ -300,9 +301,14 @@ TfLiteStatus EvalMultinomial(TfLiteContext* context, TfLiteNode* node) {
 
   switch (output_tensor->type) {
     case kTfLiteInt64:
-      GenerateMultinomialNumbers(data->rng, batch_size, logits, num_classes,
-                                 GetTensorData<int64_t>(output_tensor),
-                                 num_samples);
+      GenerateMultinomialNumbers<int64_t>(
+          data->rng, batch_size, logits, num_classes,
+          GetTensorData<int64_t>(output_tensor), num_samples);
+      break;
+    case kTfLiteInt32:
+      GenerateMultinomialNumbers<int32_t>(
+          data->rng, batch_size, logits, num_classes,
+          GetTensorData<int32_t>(output_tensor), num_samples);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,

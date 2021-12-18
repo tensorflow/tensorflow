@@ -2930,3 +2930,12 @@ func @testMultinomial(%arg0: tensor<2xf32>, %arg1: tensor<1xi32>) -> tensor<10xi
   %0 = "tfl.multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0: i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi64>
   return %0 :  tensor<10xi64>
 }
+
+// -----
+
+// CHECK-LABEL: testMultinomialInt32
+func @testMultinomialInt32(%arg0: tensor<2xf32>, %arg1: tensor<1xi32>) -> tensor<10xi32> {
+  // CHECK: "tfl.multinomial"(%arg0, %arg1)
+  %0 = "tfl.multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0: i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi32>
+  return %0 :  tensor<10xi32>
+}

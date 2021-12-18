@@ -5369,7 +5369,7 @@ or unnormalized log-probabilities provided for all classes.
   );
 
   let results = (outs
-    TFL_TensorOf<[I64]>:$out);
+    TFL_TensorOf<[I32, I64]>:$out);
 
   let hasOptions = 1;
   let customOption = "RandomOptions";
