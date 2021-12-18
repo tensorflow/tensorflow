@@ -166,14 +166,16 @@ typedef struct TP_OptimizerRegistrationParams {
 
 // TF_InitGraph is used to do graph optimizer registration.
 // Plugin should implement TF_InitGraph to register graph optimizers.
-void TF_InitGraph(TP_OptimizerRegistrationParams* params, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_InitGraph(TP_OptimizerRegistrationParams* params,
+                                        TF_Status* status);
 
 // Get a set of node names that must be preserved. They can not be transformed
 // or removed during the graph transformation. This includes feed and fetch
 // nodes, keep_ops, init_ops. Fills in `num_values` and `storage_size`, they
 // will be used in `TF_GetNodesToPreserveList`.
-void TF_GetNodesToPreserveListSize(const TF_GrapplerItem* item, int* num_values,
-                                   size_t* storage_size, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_GetNodesToPreserveListSize(
+    const TF_GrapplerItem* item, int* num_values, size_t* storage_size,
+    TF_Status* status);
 
 // Get a set of node names that must be preserved. They can not be transformed
 // or removed during the graph transformation. This includes feed and fetch
@@ -185,14 +187,16 @@ void TF_GetNodesToPreserveListSize(const TF_GrapplerItem* item, int* num_values,
 // obtained from TF_GetNodesToPreserveSize
 //
 // Fails if storage_size is too small to hold the requested number of strings.
-void TF_GetNodesToPreserveList(const TF_GrapplerItem* item, char** values,
-                               size_t* lengths, int num_values, void* storage,
-                               size_t storage_size, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_GetNodesToPreserveList(
+    const TF_GrapplerItem* item, char** values, size_t* lengths, int num_values,
+    void* storage, size_t storage_size, TF_Status* status);
 
 // Get a set of node names for fetch nodes. Fills in `values` and `lengths`,
 // they will be used in `TF_GetFetchNodesList`
-void TF_GetFetchNodesListSize(const TF_GrapplerItem* item, int* num_values,
-                              size_t* storage_size, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_GetFetchNodesListSize(const TF_GrapplerItem* item,
+                                                    int* num_values,
+                                                    size_t* storage_size,
+                                                    TF_Status* status);
 
 // Get a set of node names for fetch nodes. Fills in `values` and `lengths`,
 // each of which must point to an array of length at least `num_values`.
@@ -202,9 +206,11 @@ void TF_GetFetchNodesListSize(const TF_GrapplerItem* item, int* num_values,
 // obtained from TF_GetFetchNodesSize
 //
 // Fails if storage_size is too small to hold the requested number of strings.
-void TF_GetFetchNodesList(const TF_GrapplerItem* item, char** values,
-                          size_t* lengths, int num_values, void* storage,
-                          size_t storage_size, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_GetFetchNodesList(const TF_GrapplerItem* item,
+                                                char** values, size_t* lengths,
+                                                int num_values, void* storage,
+                                                size_t storage_size,
+                                                TF_Status* status);
 
 // Infer OpInfo::TensorProperties for graph nodes inputs/outputs.
 //
@@ -215,10 +221,12 @@ void TF_GetFetchNodesList(const TF_GrapplerItem* item, char** values,
 typedef struct TF_GraphProperties TF_GraphProperties;
 
 // Create GraphProperties. The item must outlive the properties.
-TF_GraphProperties* TF_NewGraphProperties(const TF_GrapplerItem* item);
+TF_CAPI_EXPORT extern TF_GraphProperties* TF_NewGraphProperties(
+    const TF_GrapplerItem* item);
 
 // Delete GraphProperties.
-void TF_DeleteGraphProperties(TF_GraphProperties* graph_properties);
+TF_CAPI_EXPORT extern void TF_DeleteGraphProperties(
+    TF_GraphProperties* graph_properties);
 
 // Infer tensor shapes through abstract interpretation.
 // If assume_valid_feeds is true, it can help infer shapes in the fanout of fed
@@ -232,33 +240,32 @@ void TF_DeleteGraphProperties(TF_GraphProperties* graph_properties);
 // tensors will included in the input properties.
 // If include_output_tensor_values is true, the values of constant tensors will
 // be included in the output properties.
-void TF_InferStatically(TF_GraphProperties* graph_properties,
-                        TF_Bool assume_valid_feeds,
-                        TF_Bool aggressive_shape_inference,
-                        TF_Bool include_input_tensor_values,
-                        TF_Bool include_output_tensor_values, TF_Status* s);
+TF_CAPI_EXPORT extern void TF_InferStatically(
+    TF_GraphProperties* graph_properties, TF_Bool assume_valid_feeds,
+    TF_Bool aggressive_shape_inference, TF_Bool include_input_tensor_values,
+    TF_Bool include_output_tensor_values, TF_Status* s);
 
 // Get the size of input OpInfo::TensorProperties given node name.
-void TF_GetInputPropertiesListSize(TF_GraphProperties* graph_properties,
-                                   const char* name, int* num_values,
-                                   TF_Status* status);
+TF_CAPI_EXPORT extern void TF_GetInputPropertiesListSize(
+    TF_GraphProperties* graph_properties, const char* name, int* num_values,
+    TF_Status* status);
 
 // Get the size of output OpInfo::TensorProperties given node name.
-void TF_GetOutputPropertiesListSize(TF_GraphProperties* graph_properties,
-                                    const char* name, int* num_values,
-                                    TF_Status* status);
+TF_CAPI_EXPORT extern void TF_GetOutputPropertiesListSize(
+    TF_GraphProperties* graph_properties, const char* name, int* num_values,
+    TF_Status* status);
 
 // Get a list of input OpInfo::TensorProperties given node name.
 // Return the serialized list `properties`.
-void TF_GetInputPropertiesList(TF_GraphProperties* graph_properties,
-                               const char* name, TF_Buffer** properties,
-                               int num_values, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_GetInputPropertiesList(
+    TF_GraphProperties* graph_properties, const char* name,
+    TF_Buffer** properties, int num_values, TF_Status* status);
 
 // Get a list of output OpInfo::TensorProperties given node name.
 // Return the serialized list `properties`.
-void TF_GetOutputPropertiesList(TF_GraphProperties* graph_properties,
-                                const char* name, TF_Buffer** properties,
-                                int num_values, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_GetOutputPropertiesList(
+    TF_GraphProperties* graph_properties, const char* name,
+    TF_Buffer** properties, int num_values, TF_Status* status);
 
 // Helper to maintain a map between function names in a given
 // FunctionDefLibrary and function definitions.
@@ -266,16 +273,18 @@ void TF_GetOutputPropertiesList(TF_GraphProperties* graph_properties,
 typedef struct TF_FunctionLibraryDefinition TF_FunctionLibraryDefinition;
 
 // Create NewFunctionLibraryDefinition.
-TF_FunctionLibraryDefinition* TF_NewFunctionLibraryDefinition(
-    TF_Buffer* graph_buf, TF_Status* status);
+TF_CAPI_EXPORT extern TF_FunctionLibraryDefinition*
+TF_NewFunctionLibraryDefinition(TF_Buffer* graph_buf, TF_Status* status);
 
 // Delete NewFunctionLibraryDefinition.
-void TF_DeleteFunctionLibraryDefinition(TF_FunctionLibraryDefinition* fn_lib);
+TF_CAPI_EXPORT extern void TF_DeleteFunctionLibraryDefinition(
+    TF_FunctionLibraryDefinition* fn_lib);
 
 // Shorthand for calling LookUp to get the OpDef from FunctionLibraryDefinition
 // given op name. The returned OpDef is represented by TF_Buffer.
-void TF_LookUpOpDef(TF_FunctionLibraryDefinition* fn_lib, const char* name,
-                    TF_Buffer* buf, TF_Status* s);
+TF_CAPI_EXPORT extern void TF_LookUpOpDef(TF_FunctionLibraryDefinition* fn_lib,
+                                          const char* name, TF_Buffer* buf,
+                                          TF_Status* s);
 
 #ifdef __cplusplus
 }  // extern "C"
