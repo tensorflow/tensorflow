@@ -48,7 +48,7 @@ class Tile {
   }
   bool operator!=(const Tile& other) const { return !(*this == other); }
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns the bound of the tile in the given dimension index.
   int64_t dimension(int i) const { return dimensions_.at(i); }
@@ -107,7 +107,7 @@ class Layout {
   LayoutProto ToProto() const;
 
   // Returns a human-readable string that represents this layout.
-  string ToString() const;
+  std::string ToString() const;
 
   // Equal is a configurable functor to check the equality of two layouts.
   //

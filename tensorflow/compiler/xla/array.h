@@ -519,11 +519,11 @@ class Array {
   }
 
   // Returns a string representation of the array suitable for debugging.
-  string ToString() const {
+  std::string ToString() const {
     if (sizes_.empty()) {
       return "";
     }
-    std::vector<string> pieces;
+    std::vector<std::string> pieces;
     std::vector<int64_t> index(sizes_.size());
     do {
       // Emit leading spaces and opening square brackets

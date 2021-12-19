@@ -133,7 +133,7 @@ class ScopedLoggingTimer {
   ~ScopedLoggingTimer();
 
  private:
-  const string label_;
+  const std::string label_;
   const char* const file_;
   const int line_;
   TimerStats* const timer_stats_;
@@ -283,7 +283,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 //
 // Note: even different amounts of leading whitespace on different lines will be
 // uniformly replaced with "indentation".
-string Reindent(absl::string_view original, absl::string_view indentation);
+std::string Reindent(absl::string_view original, absl::string_view indentation);
 
 template <typename Container>
 int64_t PositionInContainer(const Container& container, int64_t value) {
@@ -294,11 +294,11 @@ int64_t PositionInContainer(const Container& container, int64_t value) {
 // appending the elements of the container. Prefix is prepended and suffix is
 // appended to the returned string.
 template <typename Container>
-string CommaSeparatedString(const Container& c, const char* prefix = "",
-                            const char* suffix = "") {
+std::string CommaSeparatedString(const Container& c, const char* prefix = "",
+                                 const char* suffix = "") {
   // Not using Join() since the implementation here is simple anyway and this
   // avoids copying the string to append prefix.
-  string comma_separated = prefix;
+  std::string comma_separated = prefix;
   const char* separator = "";
   for (const auto& entry : c) {
     absl::StrAppend(&comma_separated, separator, entry);
@@ -311,36 +311,37 @@ string CommaSeparatedString(const Container& c, const char* prefix = "",
 // Overload needed to allow the container to be an initializer list. The default
 // type for T makes an empty initializer list work as well.
 template <typename T = int>
-string CommaSeparatedString(const std::initializer_list<T>& c,
-                            const char* prefix = "", const char* suffix = "") {
+std::string CommaSeparatedString(const std::initializer_list<T>& c,
+                                 const char* prefix = "",
+                                 const char* suffix = "") {
   return CommaSeparatedString<std::initializer_list<T>>(c, prefix, suffix);
 }
 
 // Formats the container in the mathematical notation for a vector, e.g. (1, 3,
 // 7). StrAppend must support appending the elements of c.
 template <typename Container>
-string VectorString(const Container& c) {
+std::string VectorString(const Container& c) {
   return CommaSeparatedString(c, "(", ")");
 }
 
 // Overload needed to allow the container to be an initializer list. The default
 // type for T makes an empty initializer list work as well.
 template <typename T = int>
-string VectorString(const std::initializer_list<T>& c) {
+std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
 // Returns a string which can losslessly round trip to a bfloat.
-string RoundTripFpToString(tensorflow::bfloat16 value);
+std::string RoundTripFpToString(tensorflow::bfloat16 value);
 
 // Returns a string which can losslessly round trip to a fp16.
-string RoundTripFpToString(Eigen::half value);
+std::string RoundTripFpToString(Eigen::half value);
 
 // Returns a string which can losslessly round trip to a float.
-string RoundTripFpToString(float value);
+std::string RoundTripFpToString(float value);
 
 // Returns a string which can losslessly round trip to a double.
-string RoundTripFpToString(double value);
+std::string RoundTripFpToString(double value);
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64_t rank);
@@ -386,12 +387,12 @@ T RoundDownTo(T value, T divisor) {
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
-string HumanReadableNumFlops(double flops, double nanoseconds);
+std::string HumanReadableNumFlops(double flops, double nanoseconds);
 
 // Given a number of transcendental ops executed in an amount of time, produces
 // a string that represents the throughput;
 // e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
-string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
+std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
@@ -518,7 +519,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
     absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes);
 
 // Removes illegal characters from filenames.
-string SanitizeFileName(string file_name);
+std::string SanitizeFileName(std::string file_name);
 
 template <typename C, typename Value>
 int64_t FindIndex(const C& c, Value&& value) {

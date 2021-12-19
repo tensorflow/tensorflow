@@ -33,7 +33,7 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
   // the much more complex protobuf::util::MessageDifferencer class.  For
   // our purposes we just say that two protobufs are equal if their serialized
   // representations are equal.
-  string serialized1, serialized2;
+  std::string serialized1, serialized2;
   m1.AppendToString(&serialized1);
   m2.AppendToString(&serialized2);
   return (serialized1 == serialized2);
@@ -43,18 +43,19 @@ size_t ProtobufHash(const tensorflow::protobuf::Message& m) {
   // This is a bit fast and loose, but avoids introducing a dependency on
   // the much more complex protobuf::util::MessageDifferencer class.
   // We perform the hash on their serialized representation.
-  string serialized;
+  std::string serialized;
   m.AppendToString(&serialized);
-  return absl::Hash<string>()(serialized);
+  return absl::Hash<std::string>()(serialized);
 }
 
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
-                            const string& directory, const string& file_name,
-                            string* full_path) {
+                            const std::string& directory,
+                            const std::string& file_name,
+                            std::string* full_path) {
   tensorflow::Env* env = tensorflow::Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
-  string safe_file_name = SanitizeFileName(file_name) + ".pb";
-  string full_path_impl;
+  std::string safe_file_name = SanitizeFileName(file_name) + ".pb";
+  std::string full_path_impl;
   if (!full_path) {
     full_path = &full_path_impl;
   }

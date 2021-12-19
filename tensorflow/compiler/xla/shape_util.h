@@ -109,7 +109,7 @@ class ShapeIndex {
     return indices_ < other.indices_;
   }
 
-  string ToString() const;
+  std::string ToString() const;
 
   template <typename H>
   friend H AbslHashValue(H h, const ShapeIndex& index) {
@@ -165,7 +165,7 @@ class ShapeIndexView {
   bool operator==(const ShapeIndexView& other) const;
   bool operator!=(const ShapeIndexView& other) const;
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns true if this shape index starts with 'prefix'.
   bool StartsWith(ShapeIndexView prefix) const;
@@ -238,13 +238,13 @@ class ShapeUtil {
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
-  static string HumanString(const Shape& shape);
-  static string HumanStringWithLayout(const Shape& shape);
+  static std::string HumanString(const Shape& shape);
+  static std::string HumanStringWithLayout(const Shape& shape);
 
   // As above, but for program shapes, returns a string for the form:
   //
   // (param_name: f32[42x12], ...) -> f32[24x42]
-  static string HumanString(const ProgramShape& program_shape);
+  static std::string HumanString(const ProgramShape& program_shape);
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.

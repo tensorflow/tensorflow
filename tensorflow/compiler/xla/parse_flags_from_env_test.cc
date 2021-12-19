@@ -43,10 +43,10 @@ static void TestParseFlagsFromEnv(const char* msg) {
 
   // Check that actual flags can be parsed.
   bool simple = false;
-  string with_value;
-  string embedded_quotes;
-  string single_quoted;
-  string double_quoted;
+  std::string with_value;
+  std::string embedded_quotes;
+  std::string single_quoted;
+  std::string double_quoted;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("simple", &simple, ""),
       tensorflow::Flag("with_value", &with_value, ""),
@@ -94,7 +94,7 @@ TEST(ParseFlagsFromEnv, File) {
   if (tmp_dir == nullptr) {
     tmp_dir = kTempDir;
   }
-  string tmp_file =
+  std::string tmp_file =
       absl::StrFormat("%s/parse_flags_from_env.%d", tmp_dir, getpid());
   FILE* fp = fopen(tmp_file.c_str(), "w");
   CHECK_NE(fp, nullptr) << "can't write to " << tmp_file;
@@ -134,7 +134,7 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
       tensorflow::setenv("TF_XLA_FLAGS", test[i].env, /*overwrite=*/true);
     }
     tensorflow::SubProcess child;
-    std::vector<string> argv;
+    std::vector<std::string> argv;
     argv.push_back(binary_name);
     argv.push_back("--recursing");
     if (test[i].arg != nullptr) {
@@ -144,8 +144,8 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
     child.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
     child.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
     CHECK(child.Start()) << "test " << i;
-    string stdout_str;
-    string stderr_str;
+    std::string stdout_str;
+    std::string stderr_str;
     int child_status = child.Communicate(nullptr, &stdout_str, &stderr_str);
     CHECK_EQ(child_status, 0) << "test " << i << "\nstdout\n"
                               << stdout_str << "\nstderr\n"

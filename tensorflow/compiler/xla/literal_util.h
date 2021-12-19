@@ -293,7 +293,7 @@ class LiteralUtil {
   // Returns a multi-dimensional index as a string. For example: '{7, 8}' will
   // be returned for a 2-dimensional index with dimension 0 index equal to 7,
   // dimension 1 equal to 8.
-  static string MultiIndexAsString(absl::Span<const int64_t> multi_index);
+  static std::string MultiIndexAsString(absl::Span<const int64_t> multi_index);
 };
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal);

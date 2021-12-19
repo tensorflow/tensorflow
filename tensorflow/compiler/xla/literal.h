@@ -86,34 +86,34 @@ class LiteralBase {
 
   // Returns this literal's data as a string. This literal must be a rank-1 U8
   // array.
-  string GetR1U8AsString() const;
+  std::string GetR1U8AsString() const;
 
   // Returns a string representation of the literal value. The Shape of the
   // literal is a prefix of the literal value in the string.
 
   // Warning: this function can take minutes for multi-million
   // element Literals.
-  string ToString() const;
+  std::string ToString() const;
 
   // Similar to ToString, but return the result in a compact
   // one-line form.
-  string ToStringOneline() const;
+  std::string ToStringOneline() const;
 
   // Returns a string representation of the literal value which does *not*
   // include the shape string.
-  string ToStringWithoutShape() const;
+  std::string ToStringWithoutShape() const;
 
   // Similar to ToStringWithoutShape, but return the result in a compact
   // one-line form.
-  string ToStringWithoutShapeOneline() const;
+  std::string ToStringWithoutShapeOneline() const;
 
   // Returns a string representation of the literal value which includes the
   // shape string with its layout.does *not* include the shape string.
-  string ToStringWithLayout() const;
+  std::string ToStringWithLayout() const;
 
   // Similar to ToStringWithLayout, but return the result in a compact
   // one-line form.
-  string ToStringWithLayoutOneline() const;
+  std::string ToStringWithLayoutOneline() const;
 
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
@@ -139,8 +139,8 @@ class LiteralBase {
 
   // As Get(), but determines the correct type and converts the value
   // into text.
-  string GetAsString(absl::Span<const int64_t> multi_index,
-                     const ShapeIndex& shape_index = {}) const;
+  std::string GetAsString(absl::Span<const int64_t> multi_index,
+                          const ShapeIndex& shape_index = {}) const;
 
   // Return whether the value at the specified index is equal to the provided
   // generic `value` (T must be an arithmetic type).
@@ -196,7 +196,7 @@ class LiteralBase {
   // This literal must have a dense layout.
   void EachCellAsString(
       const std::function<void(absl::Span<const int64_t> indices,
-                               const string& value)>& per_cell) const;
+                               const std::string& value)>& per_cell) const;
   template <typename NativeT>
   void EachCell(
       std::function<void(absl::Span<const int64_t> indices, NativeT value)>

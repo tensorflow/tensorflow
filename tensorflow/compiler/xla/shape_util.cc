@@ -82,9 +82,11 @@ constexpr uint8 primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
 constexpr int64_t kAnnotationPrintInterval = 5;
 }  // namespace
 
-string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
+std::string ShapeIndex::ToString() const {
+  return ShapeIndexView(*this).ToString();
+}
 
-string ShapeIndexView::ToString() const {
+std::string ShapeIndexView::ToString() const {
   return StrCat("{", absl::StrJoin(indices_, ","), "}");
 }
 
@@ -630,7 +632,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ string ShapeUtil::HumanString(const Shape& shape) {
   if (shape.IsTuple()) {
-    string text = "(";
+    std::string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
     for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
@@ -645,7 +647,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     text += ")";
     return text;
   }
-  std::vector<string> dim_elements;
+  std::vector<std::string> dim_elements;
   const auto dimensions_size = shape.dimensions_size();
   dim_elements.reserve(dimensions_size);
   for (int i = 0; i < dimensions_size; ++i) {
@@ -662,7 +664,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
   if (shape.IsTuple()) {
-    string text = "(";
+    std::string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
     for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
@@ -677,9 +679,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     text += ")";
     return text;
   }
-  string result = HumanString(shape);
+  std::string result = HumanString(shape);
   if (IsScalar(shape)) {
-    string layout_str = LayoutUtil::HumanString(shape.layout());
+    std::string layout_str = LayoutUtil::HumanString(shape.layout());
     // Don't print "{}" as layout for scalars.
     if (layout_str != "{}") {
       StrAppend(&result, layout_str);
@@ -691,7 +693,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ string ShapeUtil::HumanString(const ProgramShape& program_shape) {
-  std::vector<string> parameters;
+  std::vector<std::string> parameters;
   const auto& shape_parameters = program_shape.parameters();
   parameters.reserve(shape_parameters.size());
   for (const auto& shape : shape_parameters) {

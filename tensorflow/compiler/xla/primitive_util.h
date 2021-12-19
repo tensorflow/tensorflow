@@ -358,7 +358,7 @@ struct PrimitiveTypeToNative<C128> {
 };
 
 // Returns the lower-case name of the given primitive type.
-const string& LowercasePrimitiveTypeName(PrimitiveType s);
+const std::string& LowercasePrimitiveTypeName(PrimitiveType s);
 
 // Returns the PrimitiveType matching the given name. The given name is expected
 // to be lower-case.

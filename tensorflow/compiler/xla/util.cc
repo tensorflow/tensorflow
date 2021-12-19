@@ -126,9 +126,9 @@ Status AppendStatus(Status prior, absl::string_view context) {
                 absl::StrCat(prior.error_message(), ": ", context)};
 }
 
-string Reindent(absl::string_view original,
-                const absl::string_view indentation) {
-  std::vector<string> pieces =
+std::string Reindent(absl::string_view original,
+                     const absl::string_view indentation) {
+  std::vector<std::string> pieces =
       absl::StrSplit(absl::string_view(original.data(), original.size()), '\n');
   return absl::StrJoin(
       pieces, "\n", [indentation](std::string* out, absl::string_view s) {
@@ -148,19 +148,19 @@ static void RoundTripNanPayload(FloatT value, std::string* result) {
   }
 }
 
-string RoundTripFpToString(tensorflow::bfloat16 value) {
+std::string RoundTripFpToString(tensorflow::bfloat16 value) {
   std::string result = absl::StrFormat("%.4g", static_cast<float>(value));
   RoundTripNanPayload<uint16_t>(value, &result);
   return result;
 }
 
-string RoundTripFpToString(Eigen::half value) {
+std::string RoundTripFpToString(Eigen::half value) {
   std::string result = absl::StrFormat("%.5g", static_cast<float>(value));
   RoundTripNanPayload<uint16_t>(value, &result);
   return result;
 }
 
-string RoundTripFpToString(float value) {
+std::string RoundTripFpToString(float value) {
   char buffer[tensorflow::strings::kFastToBufferSize];
   tensorflow::strings::FloatToBuffer(value, buffer);
   std::string result = buffer;
@@ -168,7 +168,7 @@ string RoundTripFpToString(float value) {
   return result;
 }
 
-string RoundTripFpToString(double value) {
+std::string RoundTripFpToString(double value) {
   char buffer[tensorflow::strings::kFastToBufferSize];
   tensorflow::strings::DoubleToBuffer(value, buffer);
   std::string result = buffer;
@@ -209,13 +209,13 @@ bool HasInteriorPadding(const PaddingConfig& config) {
 }
 
 namespace {
-string HumanReadableNumOps(double flops, double nanoseconds,
-                           absl::string_view op_prefix) {
+std::string HumanReadableNumOps(double flops, double nanoseconds,
+                                absl::string_view op_prefix) {
   if (nanoseconds == 0) {
     return absl::StrCat("NaN ", op_prefix, "OP/s");
   }
   double nano_flops = flops / nanoseconds;
-  string throughput = tensorflow::strings::HumanReadableNum(
+  std::string throughput = tensorflow::strings::HumanReadableNum(
       static_cast<int64_t>(nano_flops * 1e9));
   absl::string_view sp(throughput);
   // Use the more common "G(FLOPS)", rather than "B(FLOPS)"
@@ -228,11 +228,12 @@ string HumanReadableNumOps(double flops, double nanoseconds,
 }
 }  // namespace
 
-string HumanReadableNumFlops(double flops, double nanoseconds) {
+std::string HumanReadableNumFlops(double flops, double nanoseconds) {
   return HumanReadableNumOps(flops, nanoseconds, "FL");
 }
 
-string HumanReadableNumTranscendentalOps(double trops, double nanoseconds) {
+std::string HumanReadableNumTranscendentalOps(double trops,
+                                              double nanoseconds) {
   return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
@@ -255,7 +256,7 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
     }
     auto msg = text.substr(cur, eol - cur);
     tensorflow::internal::LogString(fname, lineno, sev,
-                                    string(msg.data(), msg.size()));
+                                    std::string(msg.data(), msg.size()));
     cur = eol + 1;
   }
 
@@ -376,7 +377,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
   }
   return dimensions;
 }
-string SanitizeFileName(string file_name) {
+std::string SanitizeFileName(std::string file_name) {
   for (char& c : file_name) {
     if (c == '/' || c == '\\' || c == '[' || c == ']' || c == ' ') {
       c = '_';

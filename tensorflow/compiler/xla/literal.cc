@@ -60,7 +60,7 @@ constexpr int kMinimumAlignment = 64;
 // Converts between little and big endian.
 //
 // Precondition: size % 2 == 0 (elements in the array are 16 bits long)
-void ConvertEndianShort(string* bytes) {
+void ConvertEndianShort(std::string* bytes) {
   CHECK_EQ(bytes->size() % 2, 0);
   for (int64_t i = 0, end = bytes->size(); i < end; i += 2) {
     std::swap((*bytes)[i], (*bytes)[i + 1]);
@@ -74,9 +74,9 @@ void ConvertEndianShort(char* bytes, int64_t size) {
   }
 }
 
-string CompactOneline(const string& input) {
-  string result;
-  std::vector<string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
+std::string CompactOneline(const std::string& input) {
+  std::string result;
+  std::vector<std::string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
   bool first = true;
   // Concatenate elements in "v" with spaces separating them, but ignoring
   // empty entries.
@@ -992,8 +992,8 @@ std::unique_ptr<Literal> LiteralBase::CloneToUnique() const {
   return result;
 }
 
-string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
-                                const ShapeIndex& shape_index) const {
+std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
+                                     const ShapeIndex& shape_index) const {
   const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
   CHECK(LayoutUtil::IsDenseArray(subshape));
   switch (subshape.element_type()) {
@@ -1179,27 +1179,27 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
 
 namespace {
 
-string ShapeToString(bool print_layout, const Shape& shape) {
+std::string ShapeToString(bool print_layout, const Shape& shape) {
   return print_layout ? ShapeUtil::HumanStringWithLayout(shape)
                       : ShapeUtil::HumanString(shape);
 }
 
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
                     bool print_shape, bool print_layout,
-                    std::vector<string>* pieces);
+                    std::vector<std::string>* pieces);
 
 void TupleToStringHelper(const LiteralBase& literal,
                          const ShapeIndex& shape_index, bool print_shape,
-                         bool print_layout, std::vector<string>* pieces) {
+                         bool print_layout, std::vector<std::string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   pieces->push_back("(\n");
-  std::vector<string> tuple_pieces;
+  std::vector<std::string> tuple_pieces;
   const auto tuple_element_count = ShapeUtil::TupleElementCount(subshape);
   tuple_pieces.reserve(tuple_element_count);
   for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
     ShapeIndex element_index = shape_index;
     element_index.push_back(i);
-    std::vector<string> element_pieces;
+    std::vector<std::string> element_pieces;
     ToStringHelper(literal, element_index, print_shape, print_layout,
                    &element_pieces);
     tuple_pieces.push_back(absl::StrJoin(element_pieces, ""));
@@ -1210,7 +1210,8 @@ void TupleToStringHelper(const LiteralBase& literal,
 
 void DenseArrayToStringHelper(const LiteralBase& literal,
                               const ShapeIndex& shape_index, bool print_shape,
-                              bool print_layout, std::vector<string>* pieces) {
+                              bool print_layout,
+                              std::vector<std::string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   int64_t rank = subshape.rank();
 
@@ -1223,7 +1224,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
         // Their sum is equal to the rank of the tensor.
         CHECK_EQ(rank, dimensions.size() + accum_indices->size());
 
-        auto brace_to_string = [&](string brace) -> string {
+        auto brace_to_string = [&](std::string brace) -> string {
           // Handle 1D tensor
           if (rank == 1) {
             return brace;
@@ -1251,7 +1252,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
 
         if (dimensions.empty()) {
           // Display predicates as 0s and 1s so that the string is more dense.
-          string elem;
+          std::string elem;
           if (subshape.element_type() == PRED && rank > 0) {
             elem = literal.Get<bool>(*accum_indices, shape_index) ? "1" : "0";
           } else {
@@ -1298,7 +1299,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
 
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
                     bool print_shape, bool print_layout,
-                    std::vector<string>* pieces) {
+                    std::vector<std::string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   CHECK(LayoutUtil::HasLayout(literal.shape()));
   CHECK(LayoutUtil::HasLayout(subshape));
@@ -1316,45 +1317,45 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
 
 }  // namespace
 
-string LiteralBase::ToString() const {
-  std::vector<string> pieces;
+std::string LiteralBase::ToString() const {
+  std::vector<std::string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/true,
                  /*print_layout=*/false, &pieces);
   return absl::StrJoin(pieces, "");
 }
 
-string LiteralBase::ToStringOneline() const {
+std::string LiteralBase::ToStringOneline() const {
   return CompactOneline(ToString());
 }
 
-string LiteralBase::ToStringWithoutShape() const {
-  std::vector<string> pieces;
+std::string LiteralBase::ToStringWithoutShape() const {
+  std::vector<std::string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/false,
                  /*print_layout=*/false, &pieces);
   return absl::StrJoin(pieces, "");
 }
 
-string LiteralBase::ToStringWithoutShapeOneline() const {
+std::string LiteralBase::ToStringWithoutShapeOneline() const {
   return CompactOneline(ToStringWithoutShape());
 }
 
-string LiteralBase::ToStringWithLayout() const {
-  std::vector<string> pieces;
+std::string LiteralBase::ToStringWithLayout() const {
+  std::vector<std::string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/true,
                  /*print_layout=*/true, &pieces);
   return absl::StrJoin(pieces, "");
 }
 
-string LiteralBase::ToStringWithLayoutOneline() const {
+std::string LiteralBase::ToStringWithLayoutOneline() const {
   return CompactOneline(ToStringWithLayout());
 }
 
 void LiteralBase::EachCellAsString(
     const std::function<void(absl::Span<const int64_t> indices,
-                             const string& value)>& per_cell) const {
+                             const std::string& value)>& per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
@@ -2284,7 +2285,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
       break;
     case S16: {
-      const string& s(proto.s16s());
+      const std::string& s(proto.s16s());
       TF_RET_CHECK(data<int16_t>().size() * sizeof(int16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2292,7 +2293,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case U16: {
-      const string& s(proto.u16s());
+      const std::string& s(proto.u16s());
       TF_RET_CHECK(data<uint16_t>().size() * sizeof(uint16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2300,7 +2301,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case F16: {
-      const string& s(proto.f16s());
+      const std::string& s(proto.f16s());
       TF_RET_CHECK(data<half>().size() * sizeof(half) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2309,7 +2310,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     } break;
 
     case BF16: {
-      const string& s(proto.bf16s());
+      const std::string& s(proto.bf16s());
       TF_RET_CHECK(data<bfloat16>().size() * sizeof(bfloat16) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2379,7 +2380,7 @@ int64_t LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
   return piece(shape_index).size_bytes();
 }
 
-string LiteralBase::GetR1U8AsString() const {
+std::string LiteralBase::GetR1U8AsString() const {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(shape().element_type(), U8);

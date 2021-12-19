@@ -75,7 +75,7 @@ static void AppendToEnvArgv(const char* s0, size_t s0len, const char* s1,
     a->argv.push_back(nullptr);
     a->argv_save.push_back(nullptr);
   } else {
-    string s = string(s0, s0len) + string(s1, s1len);
+    std::string s = string(s0, s0len) + string(s1, s1len);
     char* str = strdup(s.c_str());
     a->argv.push_back(str);
     a->argv_save.emplace_back(str);
@@ -85,7 +85,7 @@ static void AppendToEnvArgv(const char* s0, size_t s0len, const char* s1,
 
 // Like s.find_first_of(x, pos), but return s.size() when find_first_of() would
 // return string::npos.  This avoids if-statements elsewhere.
-static size_t FindFirstOf(const string& s, const char* x, size_t pos) {
+static size_t FindFirstOf(const std::string& s, const char* x, size_t pos) {
   size_t result = s.find_first_of(x, pos);
   return result == string::npos ? s.size() : result;
 }
@@ -93,14 +93,14 @@ static size_t FindFirstOf(const string& s, const char* x, size_t pos) {
 // Like s.find_first_not_of(x, pos), but return s.size() when
 // find_first_not_of() would return string::npos.  This avoids if-statements
 // elsewhere.
-static size_t FindFirstNotOf(const string& s, const char* x, size_t pos) {
+static size_t FindFirstNotOf(const std::string& s, const char* x, size_t pos) {
   size_t result = s.find_first_not_of(x, pos);
   return result == string::npos ? s.size() : result;
 }
 
 // Given a string containing flags, parse them into the XLA command line flags.
 // The parse is best effort, and gives up on the first syntax error.
-static void ParseArgvFromString(const string& flag_str, EnvArgv* a) {
+static void ParseArgvFromString(const std::string& flag_str, EnvArgv* a) {
   size_t b = FindFirstNotOf(flag_str, kWS, 0);
   while (b != flag_str.size() && flag_str[b] == '-') {
     // b is the index of the start of a flag.
@@ -120,7 +120,7 @@ static void ParseArgvFromString(const string& flag_str, EnvArgv* a) {
       char quote = flag_str[e];
       e++;  // point just past quote
       // Put in value the string with quotes removed.
-      string value;
+      std::string value;
       for (; e != flag_str.size() && (c = flag_str[e]) != quote; e++) {
         if (quote == '"' && c == '\\' && e + 1 != flag_str.size()) {
           // Handle backslash in double quoted strings.  They are literal in
@@ -150,7 +150,7 @@ static void SetArgvFromEnv(absl::string_view envvar, EnvArgv* a) {
     static const char kDummyArgv[] = "<argv[0]>";
     AppendToEnvArgv(kDummyArgv, strlen(kDummyArgv), nullptr, 0,
                     a);  // dummy argv[0]
-    const char* env = getenv(string(envvar).c_str());
+    const char* env = getenv(std::string(envvar).c_str());
     if (env == nullptr || env[0] == '\0') {
       // nothing
     } else if (env[strspn(env, kWS)] == '-') {  // flags in env var value
@@ -158,7 +158,7 @@ static void SetArgvFromEnv(absl::string_view envvar, EnvArgv* a) {
     } else {  // assume it's a file name
       FILE* fp = fopen(env, "r");
       if (fp != nullptr) {
-        string str;
+        std::string str;
         char buf[512];
         int n;
         while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) {
@@ -181,8 +181,8 @@ static void SetArgvFromEnv(absl::string_view envvar, EnvArgv* a) {
 
 // The simulated argv[] parsed from the environment, one for each different
 // environment variable we've seen.
-static std::unordered_map<string, EnvArgv>& EnvArgvs() {
-  static auto* env_argvs = new std::unordered_map<string, EnvArgv>();
+static std::unordered_map<std::string, EnvArgv>& EnvArgvs() {
+  static auto* env_argvs = new std::unordered_map<std::string, EnvArgv>();
   return *env_argvs;
 }
 
@@ -213,13 +213,13 @@ bool ParseFlagsFromEnvAndDieIfUnknown(
 
     // Some flags are set on XLA_FLAGS, others on TF_XLA_FLAGS.  If we find an
     // unrecognized flag, suggest the alternative.
-    string alternate_envvar;
+    std::string alternate_envvar;
     if (envvar == "TF_XLA_FLAGS") {
       alternate_envvar = "XLA_FLAGS";
     } else if (envvar == "XLA_FLAGS") {
       alternate_envvar = "TF_XLA_FLAGS";
     }
-    string did_you_mean;
+    std::string did_you_mean;
     if (!alternate_envvar.empty()) {
       did_you_mean = absl::StrFormat(
           "\nPerhaps you meant to specify these on the %s envvar?",
@@ -243,7 +243,7 @@ bool ParseFlagsFromEnvAndDieIfUnknown(
 void ResetFlagsFromEnvForTesting(absl::string_view envvar, int** pargc,
                                  std::vector<char*>** pargv) {
   tensorflow::mutex_lock lock(env_argv_mu);
-  EnvArgvs().erase(string(envvar));
+  EnvArgvs().erase(std::string(envvar));
   auto& env_argv = EnvArgvs()[string(envvar)];
   *pargc = &env_argv.argc;
   *pargv = &env_argv.argv;
