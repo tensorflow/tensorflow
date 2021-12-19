@@ -563,7 +563,7 @@ StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
     HloInstruction* instruction) {
   const TriangularSolveOptions& options =
       instruction->triangular_solve_options();
-  const string name = absl::StrFormat(
+  const std::string name = absl::StrFormat(
       "xla.triangular_solve_%s_%s_%s_%s_%s_%s",
       instruction->operand(0)->shape().ToString(),
       instruction->operand(1)->shape().ToString(),

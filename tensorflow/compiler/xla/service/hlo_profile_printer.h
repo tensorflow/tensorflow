@@ -25,8 +25,9 @@ limitations under the License.
 
 namespace xla {
 // Pretty-print an array of profile counters using hlo_profile_printer_data.
-string PrintHloProfile(const HloProfilePrinterData& hlo_profile_printer_data,
-                       const int64_t* counters, double clock_rate_ghz);
+std::string PrintHloProfile(
+    const HloProfilePrinterData& hlo_profile_printer_data,
+    const int64_t* counters, double clock_rate_ghz);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PROFILE_PRINTER_H_

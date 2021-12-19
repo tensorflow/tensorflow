@@ -41,14 +41,14 @@ limitations under the License.
 namespace llvm {
 class FastMathFlags;
 class TargetOptions;
-};
+};  // namespace llvm
 
 namespace xla {
 namespace llvm_ir {
 
 // Dump the given LLVM entity to a string. This works for Types and Values.
 template <typename T>
-string DumpToString(const T& entity) {
+std::string DumpToString(const T& entity) {
   std::string buffer_string;
   llvm::raw_string_ostream ostream(buffer_string);
   entity.print(ostream);
@@ -59,7 +59,7 @@ string DumpToString(const T& entity) {
 // Same as above, except that const T& does not work well with MILR because the
 // print methods are not const.
 template <typename T>
-string DumpToString(T& entity) {
+std::string DumpToString(T& entity) {
   std::string buffer_string;
   llvm::raw_string_ostream ostream(buffer_string);
   entity.print(ostream);
@@ -70,7 +70,7 @@ string DumpToString(T& entity) {
 // Dump the given LLVM module to a string. This requires a function distinct
 // from DumpToString because the signatures of the print() methods for Values
 // and Modules are slightly different.
-string DumpModuleToString(const llvm::Module& module);
+std::string DumpModuleToString(const llvm::Module& module);
 
 // Constructs a human-friendly name from the given inputs.  The result is
 // suitable for use as an llvm::Value's name.
@@ -81,15 +81,15 @@ string DumpModuleToString(const llvm::Module& module);
 //   - joining all of the nonempty inputs by '.', and then
 //   - removing all '%'s.
 //
-string IrName(absl::string_view a);
-string IrName(absl::string_view a, absl::string_view b);
-string IrName(const HloInstruction* a, absl::string_view b = "");
+std::string IrName(absl::string_view a);
+std::string IrName(absl::string_view a, absl::string_view b);
+std::string IrName(const HloInstruction* a, absl::string_view b = "");
 
 // Removes special characters from a function name.
 //
 // Note that this can cause different inputs to map to the same output, so after
 // sanitizing a function name, you must run it through a uniquer.
-string SanitizeFunctionName(string function_name);
+std::string SanitizeFunctionName(std::string function_name);
 
 // Emits a call to the specified intrinsic with the given operands. Overloaded
 // intrinsics (for example, "minnum") must include a type in overloaded_types

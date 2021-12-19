@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
+
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -82,8 +83,8 @@ StatusOr<DynamicParameterBinding> DynamicParameterBinding::CreateFromProto(
   return result;
 }
 
-string DynamicParameterBinding::ToString() const {
-  std::vector<string> pieces;
+std::string DynamicParameterBinding::ToString() const {
+  std::vector<std::string> pieces;
   pieces.push_back("DynamicParameterBinding: ");
   for (const auto& binding : bindings_) {
     const DynamicDimension& dynamic_dimension = binding.first;

@@ -76,7 +76,7 @@ std::unique_ptr<llvm::Module> DropConstantInitializers(
   return cloned_module;
 }
 
-string DumpModuleToString(const llvm::Module& module) {
+std::string DumpModuleToString(const llvm::Module& module) {
   std::string buffer_string;
   llvm::raw_string_ostream ostream(buffer_string);
   module.print(ostream, nullptr);
@@ -248,7 +248,7 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
 StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
                                                          int32* shape_size,
                                                          llvm::IRBuilder<>* b) {
-  string encoded_shape = shape.SerializeAsString();
+  std::string encoded_shape = shape.SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32>::max()) {
     return InternalError("Encoded shape size exceeded int32 size limit.");
   }
@@ -425,24 +425,24 @@ llvm::Instruction* AddRangeMetadata(int64_t lower, int64_t upper,
   return inst;
 }
 
-string IrName(absl::string_view a) {
+std::string IrName(absl::string_view a) {
   std::string s(a);
   s.erase(std::remove(s.begin(), s.end(), '%'), s.end());
   return s;
 }
 
-string IrName(absl::string_view a, absl::string_view b) {
+std::string IrName(absl::string_view a, absl::string_view b) {
   if (!a.empty() && !b.empty()) {
     return IrName(absl::StrCat(a, ".", b));
   }
   return IrName(absl::StrCat(a, b));
 }
 
-string IrName(const HloInstruction* a, absl::string_view b) {
+std::string IrName(const HloInstruction* a, absl::string_view b) {
   return IrName(a->name(), b);
 }
 
-string SanitizeFunctionName(string function_name) {
+std::string SanitizeFunctionName(std::string function_name) {
   // The backend with the strictest requirements on function names is NVPTX, so
   // we sanitize to its requirements.
   //
@@ -570,9 +570,9 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static Status CreateAndWriteStringToFile(const string& directory_name,
-                                         const string& file_name,
-                                         const string& text) {
+static Status CreateAndWriteStringToFile(const std::string& directory_name,
+                                         const std::string& file_name,
+                                         const std::string& text) {
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(
       tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
@@ -593,7 +593,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
-  string suffix =
+  std::string suffix =
       absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
                    filename_suffix.empty() ? "" : ".", filename_suffix);
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),

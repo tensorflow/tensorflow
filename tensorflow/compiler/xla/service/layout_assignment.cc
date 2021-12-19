@@ -77,7 +77,7 @@ BufferLayoutConstraint::BufferLayoutConstraint(const Layout& layout,
   CHECK(LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()).ok());
 }
 
-string BufferLayoutConstraint::ToString() const {
+std::string BufferLayoutConstraint::ToString() const {
   return absl::StrFormat("BufferLayoutConstraint %s: %s", buffer_->ToString(),
                          LayoutUtil::HumanString(layout_));
 }
@@ -97,13 +97,13 @@ OperandLayoutConstraint::OperandLayoutConstraint(
       << operand_no << " of instruction " << instruction->ToString() << ")";
 }
 
-string OperandLayoutConstraint::ToString() const {
+std::string OperandLayoutConstraint::ToString() const {
   return absl::StrFormat("OperandLayoutConstraint %s, operand %d: %s",
                          instruction_->name(), operand_no_,
                          shape_layout_.ToString());
 }
 
-string ComputationLayoutConstraint::ToString() const {
+std::string ComputationLayoutConstraint::ToString() const {
   return absl::StrFormat("ComputationLayoutConstraint (status=%d): %s",
                          layout_state_, computation_layout_.ToString());
 }
@@ -387,8 +387,9 @@ const ShapeLayout* LayoutAssignment::LayoutConstraints::ResultLayout() const {
              : nullptr;
 }
 
-string LayoutAssignment::ToString(const LayoutConstraints& constraints) const {
-  string output;
+std::string LayoutAssignment::ToString(
+    const LayoutConstraints& constraints) const {
+  std::string output;
   absl::StrAppend(&output, "LayoutConstraints for computation ",
                   constraints.computation()->name(), "\n");
   for (auto* instruction :

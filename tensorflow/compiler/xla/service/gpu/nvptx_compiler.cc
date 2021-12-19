@@ -185,7 +185,7 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
-  for (const string& full_filename :
+  for (const std::string& full_filename :
        module_config.debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
@@ -227,7 +227,7 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
   auto xla_gpu_llvm_ir_file =
       module->config().debug_options().xla_gpu_llvm_ir_file();
   auto matched_filename = absl::c_find_if(
-      xla_gpu_llvm_ir_file, [prefix](const string& full_filename) {
+      xla_gpu_llvm_ir_file, [prefix](const std::string& full_filename) {
         // To ease comparing many LLVM versions, accept different suffixes then
         // the original filename.
         return absl::StartsWith(tensorflow::io::Basename(full_filename),
@@ -340,7 +340,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     selected_module = llvm_module;
   }
 
-  string ptx;
+  std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     XLA_SCOPED_LOGGING_TIMER(
@@ -358,7 +358,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 }
 
 std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const string& ptx,
+    se::StreamExecutor* stream_exec, const std::string& ptx,
     se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
     bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
@@ -368,7 +368,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   decltype(compilation_cache_.begin()) iter;
   // Pointers into compilation_cache_ where the ptx and (optional) cubin are
   // stored.
-  const string* cache_ptx = nullptr;
+  const std::string* cache_ptx = nullptr;
   CompilationCacheValue* cache_value = nullptr;
 
   {

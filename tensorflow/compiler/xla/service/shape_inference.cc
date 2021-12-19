@@ -55,7 +55,7 @@ bool AllUnique(absl::Span<const int64_t> slice) {
 Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   if (!shape.IsArray()) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
-                           string(op_type), ShapeUtil::HumanString(shape));
+                           std::string(op_type), ShapeUtil::HumanString(shape));
   }
   return Status::OK();
 }
@@ -656,8 +656,8 @@ Status ValidateDotDimensionNumbers(
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
-  auto fail = [lhs, rhs](const string& addendum) -> Status {
-    string message =
+  auto fail = [lhs, rhs](const std::string& addendum) -> Status {
+    std::string message =
         StrFormat("Cannot infer shape for dot operation: %s <dot> %s.",
                   ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs));
     if (!addendum.empty()) {
@@ -1151,7 +1151,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       }
     }
 
-    std::vector<string> pieces;
+    std::vector<std::string> pieces;
     pieces.reserve(arg_shapes.size());
     for (const Shape* shape : arg_shapes) {
       pieces.push_back(ShapeUtil::HumanString(*shape));
@@ -2534,7 +2534,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 /* static */ StatusOr<Shape> ShapeInference::InferSliceShape(
     const Shape& arg, absl::Span<const int64_t> starts,
     absl::Span<const int64_t> limits, absl::Span<const int64_t> strides) {
-  auto error = [&](const string& message) {
+  auto error = [&](const std::string& message) {
     return InvalidArgument(
         "%s in slice operation; argument shape: %s; starts: {%s}; limits: "
         "{%s}; strides: {%s}.",
@@ -3134,7 +3134,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       continue;
     }
 
-    string reshape_debug_str = absl::StrFormat(
+    std::string reshape_debug_str = absl::StrFormat(
         "output: %s, input: %s, input_dim: "
         "%lld",
         ShapeUtil::HumanString(inferred_shape), ShapeUtil::HumanString(operand),
@@ -3337,9 +3337,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const Shape* const> arg_shapes, const ProgramShape& to_apply) {
   // The applied function's arity equals the number of arguments.
   if (arg_shapes.size() != to_apply.parameters_size()) {
-    string computation_signature = ShapeUtil::HumanString(to_apply);
-    string argument_shapes =
-        StrJoin(arg_shapes, ", ", [](string* out, const Shape* shape) {
+    std::string computation_signature = ShapeUtil::HumanString(to_apply);
+    std::string argument_shapes =
+        StrJoin(arg_shapes, ", ", [](std::string* out, const Shape* shape) {
           absl::StrAppend(out, ShapeUtil::HumanString(*shape));
         });
     return InvalidArgument(

@@ -141,11 +141,11 @@ class AlgebraicSimplifierOptions {
 
   int64_t very_small_gather_size() const { return very_small_gather_size_; }
 
-  void set_cudnn_batchnorm_forward_training_metadata(const string& c) {
+  void set_cudnn_batchnorm_forward_training_metadata(const std::string& c) {
     metadata_.cudnn_batchnorm_forward_training_metadata = c;
   }
 
-  const string& get_cudnn_batchnorm_forward_training_metadata() const {
+  const std::string& get_cudnn_batchnorm_forward_training_metadata() const {
     return metadata_.cudnn_batchnorm_forward_training_metadata;
   }
 
@@ -195,7 +195,7 @@ class AlgebraicSimplifierOptions {
   // guaranteed to be postive. This property has been used to recursively
   // determine if the operand of an instruction is always positive.
   struct Metadata {
-    string cudnn_batchnorm_forward_training_metadata{""};
+    std::string cudnn_batchnorm_forward_training_metadata{""};
     Metadata() {}
   };
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;

@@ -152,7 +152,7 @@ const auto kStridedIndexingX = TilingScheme::StridedIndexingX;
 // efficient.
 const int64_t kMinDimensionToTransposeTiled = 16;
 
-void AnnotateWithInt32Value(string name, int64_t value,
+void AnnotateWithInt32Value(std::string name, int64_t value,
                             const std::string& kernel_name,
                             llvm::Module* llvm_module) {
   llvm::NamedMDNode* nvvm_annotations_node =
@@ -504,7 +504,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     absl::string_view name, absl::Span<const BufferAllocation* const> args) {
   // Compute the kernel name. The opcode string may contain "-" which cannot be
   // in a PTX function name, so sanitize the name before uniquifying it.
-  string kernel_name = ir_emitter_context_->name_uniquer()->GetUniqueName(
+  std::string kernel_name = ir_emitter_context_->name_uniquer()->GetUniqueName(
       llvm_ir::SanitizeFunctionName(std::string(name)));
 
   // Create the kernel and add it to the module.
@@ -2181,7 +2181,8 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
   return Status::OK();
 }
 
-Status IrEmitterUnnested::AssertNonDeterminismIsOkay(const string& op_name) {
+Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
+    const std::string& op_name) {
   if (hlo_module_config_.debug_options().xla_gpu_deterministic_ops()) {
     return Unimplemented(
         "HLO instruction %s does not have a deterministic implementation, "
@@ -3155,7 +3156,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   if (!is_degenerate) {
     CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
 
-    string message = absl::StrFormat(
+    std::string message = absl::StrFormat(
         "Requested %s not implemented on GPU; replica_count: %d; "
         "partition_count: %d, group_mode: %s, operand_count: %d; NCCL support: "
         "%d",

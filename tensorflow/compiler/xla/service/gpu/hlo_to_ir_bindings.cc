@@ -196,8 +196,8 @@ void HloToIrBindings::UnbindAllLocalIrValues() {
   }
 }
 
-string HloToIrBindings::ToString() const {
-  string s = StrCat("** HloToIrBindings **\n");
+std::string HloToIrBindings::ToString() const {
+  std::string s = StrCat("** HloToIrBindings **\n");
   StrAppend(&s, "  is_nested_=", is_nested_, "\n");
   StrAppend(&s,
             "  temp_buffer_base_=", llvm_ir::DumpToString(*temp_buffer_base_),

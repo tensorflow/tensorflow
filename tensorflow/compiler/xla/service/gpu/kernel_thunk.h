@@ -48,7 +48,7 @@ class KernelThunk : public Thunk {
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
   KernelThunk(ThunkInfo thunk_info,
               absl::Span<const BufferAllocation* const> args,
-              const string& kernel_name,
+              const std::string& kernel_name,
               const LaunchDimensions& launch_dimensions);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
@@ -63,7 +63,7 @@ class KernelThunk : public Thunk {
   const std::vector<const BufferAllocation*>& arguments() const {
     return args_;
   }
-  const string& kernel_name() const { return kernel_name_; }
+  const std::string& kernel_name() const { return kernel_name_; }
   const LaunchDimensions& launch_dimensions() const {
     return launch_dimensions_;
   }
@@ -73,7 +73,7 @@ class KernelThunk : public Thunk {
   const std::vector<const BufferAllocation*> args_;
 
   // Entry kernel name for the computation.
-  const string kernel_name_;
+  const std::string kernel_name_;
 
   // The thread and block dimension used to launch the kernel.
   const LaunchDimensions launch_dimensions_;

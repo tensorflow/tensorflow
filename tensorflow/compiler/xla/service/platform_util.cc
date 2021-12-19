@@ -45,8 +45,8 @@ constexpr char kInterpreter[] = "interpreter";
 
 namespace {
 
-string CanonicalPlatformName(const string& platform_name) {
-  string lowercase_platform_name = absl::AsciiStrToLower(platform_name);
+std::string CanonicalPlatformName(const std::string& platform_name) {
+  std::string lowercase_platform_name = absl::AsciiStrToLower(platform_name);
   // "cpu" and "host" mean the same thing.
   if (lowercase_platform_name == "cpu") {
     return "host";
@@ -107,9 +107,9 @@ PlatformUtil::GetSupportedPlatforms() {
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
-  string platforms_string = absl::StrJoin(
+  std::string platforms_string = absl::StrJoin(
       platforms, ", ",
-      [](string* out, const se::Platform* p) { out->append(p->Name()); });
+      [](std::string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "must specify platform because more than one platform (except for the "
       "interpreter platform) found: %s.",
@@ -117,7 +117,7 @@ PlatformUtil::GetSupportedPlatforms() {
 }
 
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
-    const string& platform_name) {
+    const std::string& platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::MultiPlatformManager::PlatformWithName(
                           CanonicalPlatformName(platform_name)));

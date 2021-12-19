@@ -121,7 +121,7 @@ class ShapedBuffer {
   // Set all device memory pointers in the object to null.
   void clear();
 
-  string ToString() const;
+  std::string ToString() const;
 
  protected:
   Shape on_host_shape_;

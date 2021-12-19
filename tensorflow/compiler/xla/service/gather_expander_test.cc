@@ -26,7 +26,7 @@ namespace {
 using GatherExpanderTest = HloTestBase;
 
 TEST_F(GatherExpanderTest, ErrorStatusOnTooManyIndices) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherMultipleBatchDims
 
 ENTRY main {
@@ -55,7 +55,7 @@ ENTRY main {
 }
 
 TEST_F(GatherExpanderTest, AvoidDegenerateDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherV2
 
 ENTRY main {
@@ -115,7 +115,7 @@ ENTRY main {
 }
 
 TEST_F(GatherExpanderTest, CheckOpMetadata) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherV2
 
 ENTRY main {
@@ -156,7 +156,7 @@ ENTRY main {
 }
 
 TEST_F(GatherExpanderTest, EliminateSimpleGathersSkipsNontrivialGather) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherV1
 
 ENTRY main {
@@ -179,7 +179,7 @@ ENTRY main {
 }
 
 TEST_F(GatherExpanderTest, EliminateSimpleGathersRewritesTrivialGather) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule test
 
 ENTRY main {

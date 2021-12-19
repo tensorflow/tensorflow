@@ -713,7 +713,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns the last generated thunk.
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
-  Status AssertNonDeterminismIsOkay(const string& op_name);
+  Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;

@@ -615,7 +615,7 @@ class CompressingRematerializationTest : public RematerializationTestBase {
 
 // Test rematerialization only remats big buffer that pass certain limits.
 TEST_F(CompressingRematerializationTest, OnlyRematBigBuffer) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_float {
@@ -662,7 +662,7 @@ ENTRY %entry {
 
 // Test rematerialization of a single instruction.
 TEST_F(CompressingRematerializationTest, SingleRemat) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_float {
@@ -698,7 +698,7 @@ ENTRY %entry {
 }
 
 TEST_F(CompressingRematerializationTest, AllUsersUseSameCopy) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_float {
@@ -750,7 +750,7 @@ ENTRY %entry {
 // Test rematerialization of values through bitcasts
 // Its expected that the broadcast gets rematerialized
 TEST_F(HloRematerializationTest, ThroughBitcastRemat) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 ENTRY %mycomp (param: f32[1]) -> f32[1] {
@@ -815,7 +815,7 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
 // Test that the "deny list for move remats" engages when we rematerialize
 // through bitcasts.
 TEST_F(HloRematerializationTest, ThroughBitcastRematInfiniteLoop) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 ENTRY %mycomp (param: f32[1]) -> f32[1024] {
@@ -847,7 +847,7 @@ ENTRY %mycomp (param: f32[1]) -> f32[1024] {
 }
 
 TEST_F(HloRematerializationTest, RematTupleShape) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_mul_comp {
@@ -890,7 +890,7 @@ ENTRY %entry {
 }
 
 TEST_F(HloRematerializationTest, RematTupleShapeDoubleUse) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_mul_comp {
@@ -943,7 +943,7 @@ ENTRY %entry {
 }
 
 TEST_F(HloRematerializationTest, RematTupleShapeThroughBitcasts) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_mul_comp {
@@ -990,7 +990,7 @@ ENTRY %entry {
 }
 
 TEST_F(HloRematerializationTest, RematThroughTuple) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_mul_comp {
@@ -1042,7 +1042,7 @@ ENTRY %entry {
 
 // Make sure when rematerializing all-gathers we increment channel_ids properly.
 TEST_F(HloRematerializationTest, AllGatherChannelId) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 ENTRY %mycomp (param: f32[1]) -> f32[1] {

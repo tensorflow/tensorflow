@@ -47,12 +47,13 @@ class AllocationTracker {
   // handle that can be used for talking to XLA clients. The given shaped buffer
   // will be treated as the buffer corresponding to the only replica.
   StatusOr<GlobalDataHandle> Register(ScopedShapedBuffer shaped_buffer,
-                                      const string& tag);
+                                      const std::string& tag);
 
   // Registers a vector of shaped buffers of device memory, one per replica, and
   // returns a corresponding handle that can be used for talking to XLA clients.
   StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
-      std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag);
+      std::vector<ScopedShapedBuffer> replicated_buffers,
+      const std::string& tag);
 
   // Unregister the allocation for the given data handle.
   Status Unregister(const GlobalDataHandle& data);
@@ -95,7 +96,7 @@ class AllocationTracker {
   // object -- presumably this is a call from DeconstructTuple.
   template <typename ShapedBufferTy>
   StatusOr<GlobalDataHandle> RegisterInternal(
-      std::vector<ShapedBufferTy> replicated_buffers, const string& tag)
+      std::vector<ShapedBufferTy> replicated_buffers, const std::string& tag)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Adds the given device address to the allocation tracker, or if it already

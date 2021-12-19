@@ -63,8 +63,8 @@ namespace {
 using hlo_sharding_util::GroupedSharding;
 }  // namespace
 
-string SpmdLogger::MakeReport() {
-  string report;
+std::string SpmdLogger::MakeReport() {
+  std::string report;
   absl::StrAppend(&report,
                   "\n\n***** SPMD memory during transformation *****\n");
 
@@ -88,7 +88,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
   if (disabled_) {
     return;
   }
-  string report = hlo->ToString();
+  std::string report = hlo->ToString();
   int64_t max_value = -1;
   for (HloInstruction* inst : group) {
     if (!inst->shape().IsArray()) {
@@ -102,7 +102,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
 
 /* static */ string SpmdLogger::ReportBeforePartition(
     const HloModule& module, int64_t report_instruction_count) {
-  string report;
+  std::string report;
   absl::StrAppend(&report,
                   "\n\n***** SPMD memory usage before partition *****\n");
   absl::StrAppend(&report, "\n  ** Replicated instructions\n");
@@ -123,7 +123,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
 
 /* static */ string SpmdLogger::ReportAfterPartition(
     const HloModule& module, int64_t report_instruction_count) {
-  string report;
+  std::string report;
   absl::StrAppend(&report,
                   "\n\n***** SPMD memory usage after partition *****\n");
   absl::StrAppend(&report,
@@ -137,7 +137,7 @@ template <typename F>
 /* static */ string SpmdLogger::ReportMemoryUsage(
     const HloModule& module, const F& filter,
     int64_t report_instruction_count) {
-  string report;
+  std::string report;
   std::vector<HloInstruction*> instructions;
   instructions.reserve(module.instruction_count());
 

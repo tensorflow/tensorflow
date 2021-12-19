@@ -55,7 +55,7 @@ class LayoutConstraint {
       : mandatory_(mandatory), dfs_(dfs), priority_(priority) {}
   virtual ~LayoutConstraint() = default;
 
-  virtual string ToString() const = 0;
+  virtual std::string ToString() const = 0;
 
   // True if this constraint cannot be overwritten by a different constraint.
   bool mandatory() const { return mandatory_; }
@@ -89,7 +89,7 @@ class BufferLayoutConstraint : public LayoutConstraint {
   const LogicalBuffer& buffer() const { return *buffer_; }
   const Layout& layout() const { return layout_; }
 
-  string ToString() const override;
+  std::string ToString() const override;
 
  private:
   Layout layout_;
@@ -115,7 +115,7 @@ class OperandLayoutConstraint : public LayoutConstraint {
     return instruction_->operand(operand_no_);
   }
 
-  string ToString() const override;
+  std::string ToString() const override;
 
  private:
   ShapeLayout shape_layout_;
@@ -166,7 +166,7 @@ class ComputationLayoutConstraint : public LayoutConstraint {
   bool default_layout_is_used() const {
     return layout_state_ == kDefaultLayoutIsUsed;
   }
-  string ToString() const override;
+  std::string ToString() const override;
 
  private:
   // The layout_state_ variable is used to remember whether the layout for
@@ -573,7 +573,7 @@ class LayoutAssignment : public HloModulePass {
   // CallGraph of the module, used to track callsites of each computation.
   std::unique_ptr<CallGraph> call_graph_;
 
-  string ToString(const LayoutConstraints& constraints) const;
+  std::string ToString(const LayoutConstraints& constraints) const;
 
  private:
   // Map containing the layouts of all computations assigned so

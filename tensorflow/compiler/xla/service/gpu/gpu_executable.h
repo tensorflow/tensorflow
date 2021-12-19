@@ -125,16 +125,16 @@ class GpuExecutable : public Executable {
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
   // This should be called after set_ir_module_string.
-  const string& ir_module_string() const { return ir_module_string_; }
+  const std::string& ir_module_string() const { return ir_module_string_; }
 
   // This should be called before ExecuteOnStream.
-  void set_ir_module_string(const string& ir_module_string) {
+  void set_ir_module_string(const std::string& ir_module_string) {
     ir_module_string_ = ir_module_string;
   }
 
   // Returns the compiled code for the computation. The compiled code is PTX in
   // Cuda and unused empty string in ROCm.
-  const string& text() const { return text_; }
+  const std::string& text() const { return text_; }
 
   // Returns the binary stored in this GpuExecutable. The binary is cubin in
   // Cuda, and HSA code object in ROCm. It may be empty, in which case
@@ -208,10 +208,10 @@ class GpuExecutable : public Executable {
   // false positives.
   //
   // This string should be modified only before ExecuteOnStream.
-  string ir_module_string_;
+  std::string ir_module_string_;
 
   // The compiled code for the computation.
-  const string text_;
+  const std::string text_;
 
   // The GPU machine code for the computation, targeting GPUs at
   // compute_capability_.

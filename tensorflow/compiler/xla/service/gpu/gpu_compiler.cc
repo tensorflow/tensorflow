@@ -1183,7 +1183,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
   }
-  string ir_module_string_before_opt;
+  std::string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
   if (embed_ir_in_executable) {

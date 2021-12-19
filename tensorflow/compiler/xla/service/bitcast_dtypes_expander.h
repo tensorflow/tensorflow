@@ -37,7 +37,7 @@ class BitcastDtypesExpander : public OpExpanderPass {
       HloInstruction* instruction) override;
 
  private:
-  absl::flat_hash_map<string, HloComputation*> computation_cache_;
+  absl::flat_hash_map<std::string, HloComputation*> computation_cache_;
 };
 
 }  // namespace xla

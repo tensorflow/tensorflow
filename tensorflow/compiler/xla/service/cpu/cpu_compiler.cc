@@ -207,8 +207,8 @@ namespace cpu {
 using BufferInfo = cpu_function_runtime::BufferInfo;
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
-    string triple, string cpu_name, string features, string entry_point_name,
-    RelocationModel relocation_model)
+    std::string triple, std::string cpu_name, std::string features,
+    std::string entry_point_name, RelocationModel relocation_model)
     : triple_(std::move(triple)),
       cpu_name_(std::move(cpu_name)),
       features_(std::move(features)),
@@ -859,23 +859,23 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                 schedule.sequence(embedded_computation).instructions())
             .status());
   }
-  string function_name_prefix = entry_computation->name().empty()
-                                    ? "__compute"
-                                    : entry_computation->name();
+  std::string function_name_prefix = entry_computation->name().empty()
+                                         ? "__compute"
+                                         : entry_computation->name();
   TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
                       ir_emitter.EmitComputation(
                           entry_computation, function_name_prefix,
                           /*is_top_level_computation=*/true,
                           schedule.sequence(entry_computation).instructions()));
 
-  string function_name = [&]() {
+  std::string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
     llvm::Mangler::getNameWithPrefix(
         function_name_vector, entry_function->getName(), (*jit)->data_layout());
     return string(function_name_vector.begin(), function_name_vector.end());
   }();
 
-  string ir_module_string;
+  std::string ir_module_string;
   if (embed_ir_in_executable) {
     ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
   }
@@ -1084,7 +1084,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                   schedule.sequence(embedded_computation).instructions())
               .status());
     }
-    const string& entry_point_name = options.entry_point_name();
+    const std::string& entry_point_name = options.entry_point_name();
     TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
                         ir_emitter.EmitComputation(
                             computation, entry_point_name,

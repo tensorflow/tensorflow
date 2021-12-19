@@ -65,7 +65,8 @@ static std::string ModuleUniqueName(absl::string_view module_name,
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module, const string& entry_function_name,
+    std::unique_ptr<HloModule> hlo_module,
+    const std::string& entry_function_name,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
@@ -190,7 +191,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   VLOG(3) << "Executing compute function:";
   VLOG(3) << absl::StrFormat("  Number of buffer table entries: %u",
                              buffer_pointers.size());
-  auto ptr_printer = [](string* out, const void* p) {
+  auto ptr_printer = [](std::string* out, const void* p) {
     absl::StrAppend(out, absl::StrFormat("%p", p));
   };
   VLOG(3) << absl::StrFormat("  Buffer table: [%s]",

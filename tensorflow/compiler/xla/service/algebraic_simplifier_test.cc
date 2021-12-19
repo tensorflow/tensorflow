@@ -4176,16 +4176,16 @@ struct ConvPaddingTestcase {
         expected_conv_window(expected_conv_window),
         pad_value(pad_value) {}
 
-  string ToString() const {
+  std::string ToString() const {
     return absl::StrFormat(
         "padding=%s, orig_conv_window=%s, expected_conv_window=%s, "
         "pad_value=%f",
         padding, orig_conv_window, expected_conv_window, pad_value);
   }
 
-  string padding;
-  string orig_conv_window;
-  string expected_conv_window;
+  std::string padding;
+  std::string orig_conv_window;
+  std::string expected_conv_window;
   float pad_value;
 };
 
@@ -4732,7 +4732,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
 // reshape(transpose(reshape(op))) can simplify to
 // reshape(concat(slice(op), ..., slice(op))).
 TEST_F(AlgebraicSimplifierTest, TransposeReshapeToConcatSlice) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TransposeReshapeDepthToSpace
 
 ENTRY entry {
@@ -4759,7 +4759,7 @@ ENTRY entry {
 // reshape(transpose(reshape(op))) with a large number of chunks
 // is not rewritten.
 TEST_F(AlgebraicSimplifierTest, TransposeReshapeTooLarge) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TransposeReshapeDepthToSpaceBig
 
 ENTRY entry {
@@ -4779,7 +4779,7 @@ ENTRY entry {
 // Test that a reshape(transpose(reshape(op))) that does not constitute a
 // depth-to-space transformation is not rewritten.
 TEST_F(AlgebraicSimplifierTest, TransposeReshapeNotDepthToSpace) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TransposeReshapeDepthToSpace
 
 ENTRY entry {
@@ -4798,7 +4798,7 @@ ENTRY entry {
 
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).
 TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule test
 fn {
   p0 = f32[] parameter(0)
@@ -4836,7 +4836,7 @@ ENTRY entry {
 // Test that ReduceWindow(Convert(Pad(op, x)), y) can simplify to
 // ReduceWindow(Convert(op), x).
 TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule test
 fn {
   p0 = f32[] parameter(0)
@@ -5584,7 +5584,7 @@ struct PadReduceWindowEffectiveBroadcastCase {
   bool prepend_a;
   bool should_become_broadcast;
 
-  string ToTestCaseName() const {
+  std::string ToTestCaseName() const {
     return absl::StrCat(absl::StrJoin(input_spatials, ","), ";",
                         absl::StrJoin(symmetric_pad_spatials, ","), ";",
                         absl::StrJoin(reduce_window_spatials, ","), ";",

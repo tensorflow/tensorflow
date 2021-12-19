@@ -32,7 +32,7 @@ limitations under the License.
 namespace xla {
 
 StatusOr<GlobalDataHandle> AllocationTracker::Register(
-    ScopedShapedBuffer shaped_buffer, const string& tag) {
+    ScopedShapedBuffer shaped_buffer, const std::string& tag) {
   tensorflow::mutex_lock lock(mutex_);
   VLOG(2) << "Register";
   std::vector<ScopedShapedBuffer> replicated_buffers;
@@ -41,7 +41,8 @@ StatusOr<GlobalDataHandle> AllocationTracker::Register(
 }
 
 StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
-    std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag) {
+    std::vector<ScopedShapedBuffer> replicated_buffers,
+    const std::string& tag) {
   tensorflow::mutex_lock lock(mutex_);
   VLOG(2) << "RegisterReplicatedBuffers";
   return RegisterInternal(std::move(replicated_buffers), tag);
@@ -57,7 +58,7 @@ static ShapedBuffer ReleaseIfScopedShapedBuffer(ScopedShapedBuffer b) {
 
 template <typename ShapedBufferTy>
 StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
-    std::vector<ShapedBufferTy> replicated_buffers, const string& tag) {
+    std::vector<ShapedBufferTy> replicated_buffers, const std::string& tag) {
   static_assert(std::is_same<ShapedBufferTy, ShapedBuffer>::value ||
                     std::is_same<ShapedBufferTy, ScopedShapedBuffer>::value,
                 "ShapedBufferTy must be ShapedBuffer or ScopedShapedBuffer.");

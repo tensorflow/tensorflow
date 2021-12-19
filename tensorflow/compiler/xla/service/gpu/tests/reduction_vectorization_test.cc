@@ -77,7 +77,7 @@ ENTRY %cluster {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  string expected = R"(
+  std::string expected = R"(
 CHECK: ld.global.nc.v2.f32
 CHECK: st.global.v2.f32
 CHECK: st.global.v2.f32

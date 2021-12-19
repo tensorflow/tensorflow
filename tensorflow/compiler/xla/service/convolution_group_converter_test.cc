@@ -34,7 +34,7 @@ namespace op = testing::opcode_matchers;
 
 TEST_F(ConvolutionGroupConverterTest,
        ConvertFeatureGroupCountEqualToInputFeatureDim) {
-  string hlo_string = R"(HloModule Convolve1D1Window_0_module
+  std::string hlo_string = R"(HloModule Convolve1D1Window_0_module
 
 ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,2], filter: f32[1,1,2]) -> f32[1,2,2] {
   %input = f32[1,2,2]{2,1,0} parameter(0)
@@ -67,7 +67,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,2], filter: f32[1,1,2]) -> f32[1,2
 
 TEST_F(ConvolutionGroupConverterTest,
        ConvertFeatureGroupCountDivisorOfInputFeatureDim) {
-  string hlo_string = R"(HloModule Convolve1D1Window_0_module
+  std::string hlo_string = R"(HloModule Convolve1D1Window_0_module
 
 ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2,2] {
   %input = f32[1,2,4]{2,1,0} parameter(0)
@@ -97,7 +97,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2
 
 TEST_F(ConvolutionGroupConverterTest,
        ConvertBatchGroupCountEqualToInputBatchDim) {
-  string hlo_string = R"(HloModule Convolve1D1Window_0_module
+  std::string hlo_string = R"(HloModule Convolve1D1Window_0_module
 
 ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16,19,19,512]{3,2,1,0}) -> f32[3,3,512,1]{3,2,1,0} {
   %input = f32[16,19,19,512]{3,2,1,0} parameter(0)
@@ -126,7 +126,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16
 
 TEST_F(ConvolutionGroupConverterTest,
        ConvertBatchGroupCountNotEqualToInputBatchDim) {
-  string hlo_string = R"(HloModule m
+  std::string hlo_string = R"(HloModule m
   ENTRY main {
   %input = f32[1,1,1,4] parameter(0)
   %filter = f32[1,1,1,2] parameter(1)

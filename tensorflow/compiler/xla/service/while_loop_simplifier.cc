@@ -127,11 +127,11 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
             << "Instruction " << user->ToString(print_no_metadata)
             << " should be unused (except by root of while body), but has "
                "users: {"
-            << absl::StrJoin(user->users(), ", ",
-                             [&](string* out, const HloInstruction* instr) {
-                               absl::StrAppend(
-                                   out, instr->ToString(print_no_metadata));
-                             })
+            << absl::StrJoin(
+                   user->users(), ", ",
+                   [&](std::string* out, const HloInstruction* instr) {
+                     absl::StrAppend(out, instr->ToString(print_no_metadata));
+                   })
             << "}";
 
         replacements.emplace(user, nullptr);

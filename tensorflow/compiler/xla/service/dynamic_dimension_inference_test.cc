@@ -671,7 +671,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeIntoScalar) {
 }
 
 TEST_F(DynamicDimensionInferenceTest, GatherTest) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherV2
 
 ENTRY main {

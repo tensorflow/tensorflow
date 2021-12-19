@@ -45,14 +45,14 @@ class HloDomainVerifier::RunContext {
 Status HloDomainVerifier::RunContext::PopulateDomainKinds() {
   if (verifier_->kinds_.empty()) {
     // The caller specified no domain kinds, collect all the ones available.
-    std::set<string> kinds;
+    std::set<std::string> kinds;
     for (HloComputation* computation : module_->computations()) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->opcode() == HloOpcode::kDomain) {
           TF_RET_CHECK(instruction->user_side_metadata().Kind() ==
                        instruction->operand_side_metadata().Kind())
               << instruction->ToString();
-          kinds.insert(string(instruction->user_side_metadata().Kind()));
+          kinds.insert(std::string(instruction->user_side_metadata().Kind()));
         }
       }
     }

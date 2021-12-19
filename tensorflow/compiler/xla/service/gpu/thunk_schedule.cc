@@ -147,7 +147,7 @@ const std::list<const Thunk*>& ThunkSchedule::DependsOn(
   }
 }
 
-string ThunkSchedule::ToString() const {
+std::string ThunkSchedule::ToString() const {
   if (thunks_->empty()) {
     return "No thunks.";
   }
@@ -161,7 +161,7 @@ string ThunkSchedule::ToString() const {
     }
   };
 
-  string result = "Total order:\n";
+  std::string result = "Total order:\n";
   absl::StrAppend(&result, thunks_->ToString(0, get_thunk_annotation));
   absl::StrAppend(&result, "\nDependencies:\n");
   for (const auto& entry : depends_on_) {

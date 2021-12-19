@@ -207,7 +207,7 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
   return runners;
 }
 
-string NumBytesToString(int64_t bytes) {
+std::string NumBytesToString(int64_t bytes) {
   return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
                       bytes, "B)");
 }

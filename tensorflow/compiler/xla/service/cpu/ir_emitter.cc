@@ -160,10 +160,10 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
-    HloComputation* computation, const string& function_name_prefix,
+    HloComputation* computation, const std::string& function_name_prefix,
     bool is_top_level_computation,
     absl::Span<HloInstruction* const> instruction_order) {
-  string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
+  std::string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
   VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
   num_dynamic_loop_bounds_ = 0;
@@ -223,7 +223,7 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   return ir_function;
 }
 
-void IrEmitter::InitializeIrFunction(const string& function_name) {
+void IrEmitter::InitializeIrFunction(const std::string& function_name) {
   // Functions with local linkage get an inlining bonus.  Because we know
   // a-priori that embedded functions (non-entry functions) will not have its
   // name resolved, give it local linkage.
@@ -1412,7 +1412,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
 }
 
 IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
-    HloComputation* function, string* failure_reason) const {
+    HloComputation* function, std::string* failure_reason) const {
   CHECK_EQ(function->num_parameters(), 2);
 
   auto root_instruction = function->root_instruction();
@@ -1679,7 +1679,7 @@ void IrEmitter::EmitShardedVectorStore(
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
     absl::Span<const int64_t> dimensions, HloComputation* function,
-    string* failure_reason) {
+    std::string* failure_reason) {
   if (!reduce->shape().IsArray()) {
     *failure_reason = "vectorization of variadic reduce not implemented";
     return false;
@@ -1847,7 +1847,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   absl::Span<const int64_t> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
-    string vectorization_failure_reason;
+    std::string vectorization_failure_reason;
     TF_ASSIGN_OR_RETURN(
         bool vectorization_successful,
         EmitVectorizedReduce(reduce, arg, init_value, dimensions, function,
@@ -2526,7 +2526,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 
 StatusOr<bool> IrEmitter::EmitFastConcatenate(
     HloInstruction* concatenate, absl::Span<HloInstruction* const> operands,
-    string* failure_reason) {
+    std::string* failure_reason) {
   if (ShouldEmitParallelLoopFor(*concatenate)) {
     *failure_reason =
         "cannot generate memcpy-based concat for the parallel CPU backend";
@@ -2712,7 +2712,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
 
 Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
   absl::Span<HloInstruction* const> operands(concatenate->operands());
-  string failure_reason;
+  std::string failure_reason;
   TF_ASSIGN_OR_RETURN(
       bool successful,
       EmitFastConcatenate(concatenate, operands, &failure_reason));
@@ -2911,7 +2911,7 @@ llvm::Value* IrEmitter::GetProfileCounterCommon(
   }
 
   int64_t prof_counter_idx = it->second;
-  string counter_name = IrName("prof_counter", hlo.name());
+  std::string counter_name = IrName("prof_counter", hlo.name());
   return GEP(GetProfileCountersArgument(), b_.getInt64(prof_counter_idx),
              counter_name);
 }

@@ -2036,7 +2036,7 @@ TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
 }
 
 TEST_P(HloDataflowAnalysisTest, AddDependency) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule AddDependency
 ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   %p = f32[3] parameter(0)

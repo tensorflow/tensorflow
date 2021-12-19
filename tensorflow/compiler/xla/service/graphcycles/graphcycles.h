@@ -139,7 +139,7 @@ class GraphCycles {
   std::vector<int32> AllNodesInPostOrder() const;
 
   // Returns the graph in graphviz format.
-  string DebugString() const;
+  std::string DebugString() const;
 
   // ----------------------------------------------------
   struct Rep;

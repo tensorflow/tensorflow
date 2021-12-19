@@ -36,7 +36,7 @@ using ::testing::Not;
 
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {
  protected:
-  string GetOptimizedHlo(absl::string_view hlo_string) {
+  std::string GetOptimizedHlo(absl::string_view hlo_string) {
     // cudnn_vectorize_convolutions transforms convolutions, making it hard to
     // match them here in this test.  What's worse, the transforms it does
     // depends on the GPU that's available!  So just disable them for this
@@ -61,9 +61,9 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
 
   void TestMatchWithAllTypes(absl::string_view hlo_string) {
     for (absl::string_view type : {"f16", "f32", "f64"}) {
-      const string hlo_with_new_type =
+      const std::string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
-      string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
+      std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
       EXPECT_THAT(optimized_hlo_string,
                   Not(HasSubstr(kCudnnConvForwardCallTarget)));
       EXPECT_THAT(optimized_hlo_string,
@@ -75,10 +75,10 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
 
   void TestClamp(absl::string_view pre_hlo_string,
                  absl::string_view post_hlo_string) {
-    string alpha_conv_scalar, alpha_side_input_scalar;
-    string elementwise_type;
+    std::string alpha_conv_scalar, alpha_side_input_scalar;
+    std::string elementwise_type;
 
-    string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
+    std::string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
     EXPECT_THAT(optimized_hlo_string, Not(HasSubstr("Convert")));
     EXPECT_THAT(optimized_hlo_string, HasSubstr("__cudnn$conv"));
     EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.01}))
@@ -92,9 +92,9 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
 
   void TestNotMatchWithAllTypes(absl::string_view hlo_string) {
     for (absl::string_view type : {"f16", "f32", "f64"}) {
-      const string hlo_with_new_type =
+      const std::string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
-      string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
+      std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
       EXPECT_THAT(optimized_hlo_string, HasSubstr(kCudnnConvForwardCallTarget));
       EXPECT_THAT(optimized_hlo_string,
                   Not(HasSubstr(kCudnnConvBiasActivationForwardCallTarget)));
@@ -348,7 +348,7 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
       ROOT relu = f32[1,32,9,9] maximum(zeros, conv)
     })";
 
-  const string optimized_hlo_string =
+  const std::string optimized_hlo_string =
       backend()
           .compiler()
           ->RunHloPasses(
@@ -690,7 +690,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8NoClamp) {
   // Check that integer convolution without clamp to int8 is not allowed.
   // convert<int8>(custom_call<int32>(int32_x, int32_w,
   // cudnnConvolutionForward))
-  const string module_str = absl::StrFormat(R"(
+  const std::string module_str = absl::StrFormat(R"(
     HloModule Test
 
     ENTRY Test (input: s8[1,17,9,9], filter: s8[3,3,17,32]) -> s8[1,32,9,9] {
@@ -713,7 +713,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8NoClamp) {
   // it is still not allowed if the output is not clampped/converted to int8
   // max(0, alpha_conv * conv(x, w) + alpha_side * side_input + bias); for int8
 
-  const string module_str = absl::StrFormat(R"(
+  const std::string module_str = absl::StrFormat(R"(
     HloModule Test
 
     ENTRY Test (input: s8[1,17,9,9], filter: s8[3,3,17,32]) -> s8[1,32,9,9] {

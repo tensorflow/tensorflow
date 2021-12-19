@@ -170,7 +170,7 @@ class BufferAlias {
   }
   bool operator!=(const BufferAlias& other) const { return !(*this == other); }
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   HloInstruction* instruction_;
@@ -258,7 +258,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns true if 'user' cannot possibly use the buffer at 'index' in
   // 'operand'. Returns false otherwise.
@@ -281,8 +281,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // Populates instruction-defined buffers and aliases for each instruction
   // in 'instructions'.
-  Status PopulateDefinedBuffersAndAliases(const decltype(
-      std::declval<HloComputation>().instructions())& instructions);
+  Status PopulateDefinedBuffersAndAliases(
+      const decltype(std::declval<HloComputation>()
+                         .instructions())& instructions);
 
   // Creates an empty PointsToSet in the points_to_ map for the given
   // instruction.
@@ -299,7 +300,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // Print points-to set for 'instruction' to 'output'.
   void InstructionToString(const HloInstruction* instruction,
-                           string* output) const;
+                           std::string* output) const;
 
   // Information kept per instruction
   struct PerInstruction {
