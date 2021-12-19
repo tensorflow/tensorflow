@@ -169,7 +169,7 @@ int main(int argc, char* argv[]) {
                        "Whether the binary is being invoked recursively."),
       tensorflow::Flag("int_flag", &int_flag, "An integer flag to test with"),
   };
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok =
       xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", flag_list);
   if (!parse_ok) {

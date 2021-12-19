@@ -767,7 +767,7 @@ int main(int argc, char** argv) {
                        "Path to web browser used to display produced graphs."),
       tensorflow::Flag("help", &need_help, "Prints this help message"),
   };
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (argc != 1 || !parse_ok || need_help) {

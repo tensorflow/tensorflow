@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace {
 
-using xla::string;
+using std::string;
 
 xla::XlaComputation Doubler() {
   xla::XlaBuilder builder("doubler");

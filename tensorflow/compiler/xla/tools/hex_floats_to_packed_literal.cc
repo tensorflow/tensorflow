@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
-using xla::string;
+using std::string;
 
 int main(int argc, char** argv) {
   // Flags

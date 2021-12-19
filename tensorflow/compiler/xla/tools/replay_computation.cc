@@ -564,7 +564,7 @@ int main(int argc, char** argv) {
                        "to compiled and executed."),
   };
   xla::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (argc < 2 || !parse_ok) {

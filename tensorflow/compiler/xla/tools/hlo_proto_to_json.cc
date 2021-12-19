@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
+using std::string;
 using tensorflow::Env;
-using xla::string;
 
 namespace xla {
 namespace tools {
