@@ -13,6 +13,7 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
+    "cc_shared_library",
     "cc_test",
 )
 load(
@@ -47,13 +48,6 @@ load(
 )
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
-
-# copybara:comment_begin(oss only)
-load(
-    "//tensorflow/core/platform/default:experimental_cc_shared_library.bzl",
-    "cc_shared_library",
-)
-# copybara:comment_end
 
 def register_extension_info(**kwargs):
     pass
@@ -538,7 +532,6 @@ def _rpath_linkopts(name):
         ],
     })
 
-# copybara:comment_begin(oss only)
 def _rpath_user_link_flags(name):
     # Search parent directories up to the TensorFlow root directory for shared
     # object dependencies, even if this op shared object is deeply nested
@@ -558,8 +551,6 @@ def _rpath_user_link_flags(name):
             "-Wl,%s" % (_make_search_paths("$ORIGIN", levels_to_root),),
         ],
     })
-
-# copybara:comment_end
 
 # Bazel-generated shared objects which must be linked into TensorFlow binaries
 # to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
@@ -762,7 +753,7 @@ def tf_cc_shared_object(
             visibility = visibility,
         )
 
-# copybara:comment_begin(oss only)
+# buildozer: disable=function-docstring-args
 def tf_cc_shared_library(
         name,
         srcs = [],
@@ -890,8 +881,6 @@ def tf_cc_shared_library(
             visibility = visibility,
         )
 
-# copybara:comment_end
-
 # Links in the framework shared object
 # (//third_party/tensorflow:libtensorflow_framework.so) when not building
 # statically. Also adds linker options (rpaths) so that the framework shared
@@ -978,7 +967,6 @@ def tf_native_cc_binary(
         **kwargs
     )
 
-# copybara:comment_begin(oss only)
 # buildozer: disable=function-docstring-args
 def tf_native_cc_shared_library(
         name,
@@ -1023,8 +1011,6 @@ def tf_native_cc_shared_library(
         actual = cc_shared_library_name,
         visibility = visibility,
     )
-
-# copybara:comment_end
 
 def tf_gen_op_wrapper_cc(
         name,
@@ -3017,7 +3003,7 @@ def pybind_extension(
         compatible_with = compatible_with,
     )
 
-# copybara:comment_begin(oss only)
+# buildozer: disable=function-docstring-args
 def pybind_ccsharedlib_extension(
         name,
         srcs,
@@ -3185,8 +3171,6 @@ def pybind_ccsharedlib_extension(
         compatible_with = compatible_with,
     )
 
-# copybara:comment_end
-
 # buildozer: enable=function-docstring-args
 def tf_python_pybind_extension(
         name,
@@ -3222,7 +3206,6 @@ def tf_python_pybind_extension(
         compatible_with = compatible_with,
     )
 
-# copybara:comment_begin(oss only)
 # buildozer: enable=function-docstring-args
 def tf_python_pybind_ccsharedlib_extension(
         name,
@@ -3258,8 +3241,6 @@ def tf_python_pybind_ccsharedlib_extension(
         testonly = testonly,
         visibility = visibility,
     )
-
-# copybara:comment_end
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
     """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension.
