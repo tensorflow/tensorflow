@@ -1,9 +1,9 @@
-jpeg_*
-jinit_*
-jdiv_round_up
-jround_up
-jzero_far
-jcopy_*
-jsimd_*
-hwloc_*
+_jpeg_*
+_jinit_*
+_jdiv_round_up
+_jround_up
+_jzero_far
+_jcopy_*
+_jsimd_*
+_hwloc_*
 *mlir*
