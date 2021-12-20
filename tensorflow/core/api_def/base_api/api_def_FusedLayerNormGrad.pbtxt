@@ -1,0 +1,70 @@
+op {
+  graph_op_name: "FusedLayerNormGrad"
+  in_arg {
+    name: "y_backprop"
+    description: <<END
+A 2D Tensor for the gradient with respect to y.
+END
+  }
+  in_arg {
+    name: "x"
+    description: <<END
+A 2D Tensor for input data.
+END
+  }
+  in_arg {
+    name: "scale"
+    description: <<END
+A 1D Tensor for scaling factor, to scale the normalized x.
+END
+  }
+  in_arg {
+    name: "reserve_space_1"
+    description: <<END
+A 1D Tensor for the computed mean to be reused in gradient
+computation.
+END
+  }
+  in_arg {
+    name: "reserve_space_2"
+    description: <<END
+A 1D Tensor for the computed inverted variance to be reused in
+gradient computation.
+END
+  }
+  out_arg {
+    name: "x_backprop"
+    description: <<END
+A 2D Tensor for the gradient with respect to x.
+END
+  }
+  out_arg {
+    name: "scale_backprop"
+    description: <<END
+A 1D Tensor for the gradient with respect to scale.
+END
+  }
+  out_arg {
+    name: "offset_backprop"
+    description: <<END
+A 1D Tensor for the gradient with respect to offset.
+END
+  }
+  attr {
+    name: "T"
+    description: <<END
+The data type for the elements of input and output Tensors.
+END
+  }
+  attr {
+    name: "epsilon"
+    description: <<END
+A small float number added to the variance of x.
+END
+  }
+  summary: "Gradient for layer normalization."
+  description: <<END
+Note that the size of 2D Tensors are noted by "ND" and the size
+of 1D Tensors matches the dimension D of the 2D Tensors.
+END
+}

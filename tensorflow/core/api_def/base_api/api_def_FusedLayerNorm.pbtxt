@@ -1,0 +1,64 @@
+op {
+  graph_op_name: "FusedLayerNorm"
+  in_arg {
+    name: "x"
+    description: <<END
+A 2D Tensor for input data.
+END
+  }
+  in_arg {
+    name: "scale"
+    description: <<END
+A 1D Tensor for scaling factor, to scale the normalized x.
+END
+  }
+  in_arg {
+    name: "offset"
+    description: <<END
+A 1D Tensor for offset, to shift to the normalized x.
+END
+  }
+  out_arg {
+    name: "y"
+    description: <<END
+A 2D Tensor for output data.
+END
+  }
+  out_arg {
+    name: "reserve_space_1"
+    description: <<END
+A 1D Tensor for the computed mean, to be reused
+in the gradient computation.
+END
+  }
+  out_arg {
+    name: "reserve_space_2"
+    description: <<END
+A 1D Tensor for the computed inverted variance,
+to be reused in the gradient computation.
+END
+  }
+  attr {
+    name: "T"
+    description: <<END
+The data type for the elements of input and output Tensors.
+END
+  }
+  attr {
+    name: "U"
+    description: <<END
+The data type for the scale, offset, mean, and variance.
+END
+  }
+  attr {
+    name: "epsilon"
+    description: <<END
+A small float number added to the variance of x.
+END
+  }
+  summary: "Layer normalization."
+  description: <<END
+Note that the size of 2D Tensors are noted by "ND" and the size
+of 1D Tensors matches the dimension "D" of the 2D Tensors.
+END
+}
