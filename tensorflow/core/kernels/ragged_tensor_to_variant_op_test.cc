@@ -338,6 +338,7 @@ TEST_F(RaggedTensorToVariantKernelTest, NonBatchInput) {
 
 TEST_F(RaggedTensorToVariantKernelTest, ShapeFnTestBatched) {
   ShapeInferenceTestOp op("RaggedTensorToVariant");
+  (*op.node_def.mutable_attr())["Tvalues"].set_type(DT_INT32);
   (*op.node_def.mutable_attr())["batched_input"].set_b(true);
 
   // Tests with len(ragged_splits)==0.
@@ -379,6 +380,7 @@ TEST_F(RaggedTensorToVariantKernelTest, ShapeFnTestBatched) {
 
 TEST_F(RaggedTensorToVariantKernelTest, ShapeFnTestNotBatched) {
   ShapeInferenceTestOp op("RaggedTensorToVariant");
+  (*op.node_def.mutable_attr())["Tvalues"].set_type(DT_INT32);
   (*op.node_def.mutable_attr())["batched_input"].set_b(false);
 
   // Tests with len(ragged_splits)==0.
