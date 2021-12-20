@@ -571,30 +571,11 @@ namespace {
 std::vector<std::string> GetROCDLPaths(std::string amdgpu_version,
                                        const std::string& rocdl_dir_path) {
   // AMDGPU version-neutral bitcodes.
-<<<<<<< HEAD
-  static std::vector<string>* rocdl_filenames = new std::vector<string>(
-      {"opencl.bc", "ocml.bc", "ockl.bc", "oclc_finite_only_off.bc",
-       "oclc_daz_opt_off.bc", "oclc_correctly_rounded_sqrt_on.bc",
-       "oclc_unsafe_math_off.bc", "oclc_wavefrontsize64_on.bc"});
-=======
-#if TF_ROCM_VERSION >= 30900
   static std::vector<std::string>* rocdl_filenames =
       new std::vector<std::string>(
-          {"hc.bc", "opencl.bc", "ocml.bc", "ockl.bc",
-           "oclc_finite_only_off.bc", "oclc_daz_opt_off.bc",
-           "oclc_correctly_rounded_sqrt_on.bc", "oclc_unsafe_math_off.bc",
-           "oclc_wavefrontsize64_on.bc"});
-#else
-  static std::vector<std::string>* rocdl_filenames =
-      new std::vector<std::string>({"hc.amdgcn.bc", "opencl.amdgcn.bc",
-                                    "ocml.amdgcn.bc", "ockl.amdgcn.bc",
-                                    "oclc_finite_only_off.amdgcn.bc",
-                                    "oclc_daz_opt_off.amdgcn.bc",
-                                    "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
-                                    "oclc_unsafe_math_off.amdgcn.bc",
-                                    "oclc_wavefrontsize64_on.amdgcn.bc"});
-#endif
->>>>>>> google_upstream/master
+          {"opencl.bc", "ocml.bc", "ockl.bc", "oclc_finite_only_off.bc",
+           "oclc_daz_opt_off.bc", "oclc_correctly_rounded_sqrt_on.bc",
+           "oclc_unsafe_math_off.bc", "oclc_wavefrontsize64_on.bc"});
 
   // Construct full path to ROCDL bitcode libraries.
   std::vector<std::string> result;
