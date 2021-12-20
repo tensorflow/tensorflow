@@ -266,7 +266,7 @@ struct DotTestParam {
   bool addend_row_major;
 };
 
-string PrintDotTestParam(
+std::string PrintDotTestParam(
     const ::testing::TestParamInfo<DotTestParam>& test_param) {
   const DotTestParam& param = test_param.param;
   if (param.has_addend) {
@@ -1201,7 +1201,7 @@ XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
 }
 
 using EinsumParamType =
-    std::tuple<std::vector<int64_t>, std::vector<int64_t>, string>;
+    std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::string>;
 class EinsumTest : public DotOperationTest,
                    public ::testing::WithParamInterface<EinsumParamType> {};
 XLA_TEST_P(EinsumTest, SimpleEinsumTest) {

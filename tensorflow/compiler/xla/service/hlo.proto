@@ -661,3 +661,34 @@ message HloPassMetadata {
   int64 start_timestamp_usec = 8;
   int64 end_timestamp_usec = 9;
 }
+
+// Encodes attributes for an entry function.
+message EntryFunctionAttributes {
+  // Acts as the underlying container for an xla::ShapeIndex.
+  message ShapeIndex {
+    repeated int64 indices = 1;
+  }
+
+  // Encodes attributes for a single buffer parameter.
+  message BufferParameterAttributes {
+    // Represents an lmhlo.params function argument attribute.
+    int64 lmhlo_params = 1;
+
+    // Represents an lmhlo.param_shape_index function argument attribute.
+    ShapeIndex lmhlo_param_shape_index = 2;
+
+    // Represents an lmhlo.constant_name function argument attribute.
+    string lmhlo_constant_name = 3;
+
+    // Represents an lmhlo.must_alias function argument attribute.
+    bool lmhlo_must_alias = 4;
+
+    // Represents an lmhlo.params function argument attribute.
+    ShapeIndex lmhlo_output_index = 5;
+  }
+
+  repeated BufferParameterAttributes buffers = 1;
+
+  // xla::Shape in string format.
+  string result_xla_shape = 2;
+}

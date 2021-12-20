@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 
-#include "tensorflow/core/platform/logging.h"
-
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
@@ -24,6 +22,7 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace {
 
@@ -38,7 +37,7 @@ static void DieWithSMDiagnosticError(llvm::SMDiagnostic* diagnostic) {
 namespace xla {
 namespace gpu {
 
-std::unique_ptr<llvm::Module> LoadIRModule(const string& filename,
+std::unique_ptr<llvm::Module> LoadIRModule(const std::string& filename,
                                            llvm::LLVMContext* llvm_context) {
   llvm::SMDiagnostic diagnostic_err;
   std::unique_ptr<llvm::Module> module(
@@ -52,8 +51,8 @@ std::unique_ptr<llvm::Module> LoadIRModule(const string& filename,
   return module;
 }
 
-string ReplaceFilenameExtension(absl::string_view filename,
-                                absl::string_view new_extension) {
+std::string ReplaceFilenameExtension(absl::string_view filename,
+                                     absl::string_view new_extension) {
   auto pos = filename.rfind('.');
   absl::string_view stem = pos == absl::string_view::npos
                                ? filename

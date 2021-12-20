@@ -229,8 +229,8 @@ class Client {
  private:
   // Returns the execution statistics (e.g., gflop/s) as a string from the
   // ExecutionProfile returned from an execution of the computation.
-  StatusOr<string> ExecutionStatsAsString(const XlaComputation& computation,
-                                          const ExecutionProfile& profile);
+  StatusOr<std::string> ExecutionStatsAsString(
+      const XlaComputation& computation, const ExecutionProfile& profile);
 
   StatusOr<ChannelHandle> CreateChannelHandleByType(
       ChannelHandle::ChannelType type);

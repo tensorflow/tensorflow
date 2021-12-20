@@ -49,7 +49,9 @@ class GpuHloOrdering : public PredecessorHloOrdering {
                                                         : nullptr;
   }
 
-  string ToString() const override { return ToStringHelper("GpuHloOrdering"); }
+  std::string ToString() const override {
+    return ToStringHelper("GpuHloOrdering");
+  }
 
  private:
   std::unique_ptr<HloInstructionSequence> entry_sequence_;

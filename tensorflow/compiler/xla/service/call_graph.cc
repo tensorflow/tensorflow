@@ -34,7 +34,7 @@ namespace xla {
 using absl::StrAppendFormat;
 using absl::StrCat;
 
-string CallContextToString(CallContext context) {
+std::string CallContextToString(CallContext context) {
   switch (context) {
     case CallContext::kNone:
       return "kNone";
@@ -75,12 +75,12 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
   }
 }
 
-string CallSite::ToString() const {
+std::string CallSite::ToString() const {
   return StrCat(
       instruction()->name(), " calls in context ",
       CallContextToString(context()), ": ",
       absl::StrJoin(called_computations(), ", ",
-                    [](string* out, const HloComputation* computation) {
+                    [](std::string* out, const HloComputation* computation) {
                       out->append(computation->name());
                     }));
 }
@@ -430,8 +430,8 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
   return {nullptr, nullptr};
 }
 
-string CallGraph::ToString() const {
-  string out;
+std::string CallGraph::ToString() const {
+  std::string out;
   StrAppendFormat(&out, "Call graph for module %s:\n", module_->name());
   for (const CallGraphNode& node : nodes()) {
     StrAppendFormat(&out, "Computation %s:\n", node.computation()->name());

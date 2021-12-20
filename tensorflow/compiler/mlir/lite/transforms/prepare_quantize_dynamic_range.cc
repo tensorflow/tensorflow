@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
+#include "tensorflow/core/platform/logging.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> enable_dynamic_range_per_channel_quantization(
@@ -30,6 +32,13 @@ static llvm::cl::opt<bool> enable_dynamic_range_per_channel_quantization(
     llvm::cl::value_desc("bool"),
     llvm::cl::desc("Whether enable per-channel quantized weights."),
     llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<int64_t> min_elements_for_weights(
+    "tfl-min-elements-for-weights", llvm::cl::value_desc("int64_t"),
+    llvm::cl::desc("The minimum number of elements in a weights array required "
+                   "to apply quantization."),
+    llvm::cl::init(1024));
 
 //===----------------------------------------------------------------------===//
 // The prepare-dynamic-range-quantize Pass.
@@ -64,6 +73,7 @@ class PrepareDynamicRangeQuantizePass
     quant_specs_.enable_mlir_dynamic_range_quantizer = true;
     quant_specs_.disable_per_channel =
         !enable_dynamic_range_per_channel_quantization;
+    quant_specs_.minimum_elements_for_weights = min_elements_for_weights;
   }
 
   // Constructor used by manually creating the pass.
@@ -184,6 +194,16 @@ class PrepareDynamicRangeQuantizableOp
     QuantizedType quant_type = nullptr;
     DenseFPElementsAttr attr;
     if (!matchPattern(op->getResult(0), m_Constant(&attr))) return false;
+
+    if (attr.dyn_cast<DenseFPElementsAttr>().size() <
+        quant_specs_.minimum_elements_for_weights) {
+      op->emitRemark("Quantization is skipped for ")
+          << quantize_op->getName().getStringRef().str() << " because it has "
+          << attr.dyn_cast<DenseFPElementsAttr>().size()
+          << " elements which is fewer than the threshold("
+          << quant_specs_.minimum_elements_for_weights << " elements).";
+      return false;
+    }
 
     if (op_with_per_axis_support) {
       quant_type = quant::GetUniformQuantizedPerAxisTypeForWeight(

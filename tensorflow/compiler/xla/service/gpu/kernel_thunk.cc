@@ -34,7 +34,7 @@ namespace gpu {
 
 KernelThunk::KernelThunk(ThunkInfo thunk_info,
                          absl::Span<const BufferAllocation* const> args,
-                         const string& kernel_name,
+                         const std::string& kernel_name,
                          const LaunchDimensions& launch_dimensions)
     : Thunk(Kind::kKernel, thunk_info),
       args_(args.begin(), args.end()),

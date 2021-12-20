@@ -71,7 +71,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
         const int64_t kUserSliceSize = 128;
 
         const int64_t user_slice_begin =
-            RoundDownToNearest(operand->UserId(instruction), kUserSliceSize);
+            RoundDownTo(operand->UserId(instruction), kUserSliceSize);
 
         const int64_t user_slice_end =
             std::min(static_cast<int64_t>(operand->users().size()),

@@ -58,6 +58,11 @@ def CodegenCWise : FunctionPass<"tf-cpurt-codegen-cwise"> {
   let dependentDialects = [
     "mlir::linalg::LinalgDialect",
   ];
+  let options = [
+    Option<"cwise_tile_size", "cwise-tile-size",
+           "int64_t", /*default=*/"8",
+           "Tile size for the innermost dimension of an elementwise op.">,
+  ];
 }
 
 def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
@@ -81,6 +86,14 @@ def CodegenReduction : FunctionPass<"tf-cpurt-codegen-reduction"> {
     Matches linalg.generic to understand whether it is a reduction or not.
     After that performs tiling for vectorization and fusion of producers.
   }];
+
+  let options = [
+    Option<"reduction_1d_tile_size", "reduction-1d-tile-size",
+           "int64_t", /*default=*/"8", "Tile size for a 1D reduction.">,
+    ListOption<"reduction_2d_tile_sizes", "reduction-2d-tile-sizes", "int64_t",
+               "Tile sizes for a 2D reduction.",
+               "llvm::cl::MiscFlags::CommaSeparated">,
+  ];
 }
 
 def FuseFillIntoTiledReduction

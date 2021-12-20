@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 
+#include <string>
+
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -26,7 +28,7 @@ namespace op = testing::opcode_matchers;
 using HloExtractorTest = HloTestBase;
 
 TEST_F(HloExtractorTest, ExtractTopLevel) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule test
 
 ENTRY %entry {
@@ -62,7 +64,7 @@ ENTRY %entry {
 }
 
 TEST_F(HloExtractorTest, ExtractDag) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule test
 
 ENTRY %entry {
@@ -107,7 +109,7 @@ ENTRY %entry {
 }
 
 TEST_F(HloExtractorTest, ExtractWithConstant) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule test
 
 ENTRY %entry {

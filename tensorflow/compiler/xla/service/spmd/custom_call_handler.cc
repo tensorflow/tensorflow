@@ -41,16 +41,16 @@ namespace spmd {
 
 namespace {
 
-StatusOr<absl::flat_hash_map<string, int64_t>> ParseOpaqueAsAttributes(
+StatusOr<absl::flat_hash_map<std::string, int64_t>> ParseOpaqueAsAttributes(
     const HloInstruction* hlo) {
   absl::string_view opaque = Cast<HloCustomCallInstruction>(hlo)->opaque();
   HloLexer lexer(opaque);
-  absl::flat_hash_map<string, int64_t> result;
+  absl::flat_hash_map<std::string, int64_t> result;
   while (lexer.Lex() != TokKind::kEof) {
     if (lexer.GetKind() != TokKind::kAttributeName) {
       return InvalidArgument("Expects attribute name, %s", opaque);
     }
-    string attr_name = lexer.GetStrVal();
+    std::string attr_name = lexer.GetStrVal();
     if (lexer.Lex() != TokKind::kInt) {
       return InvalidArgument("expects integer attribute value");
     }
@@ -367,7 +367,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
 
 std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
     HloInstruction* input, int64_t dim, int64_t amount) {
-  string opaque = absl::StrCat("dimension=", dim, ",amount=", amount);
+  std::string opaque = absl::StrCat("dimension=", dim, ",amount=", amount);
   return HloInstruction::CreateCustomCall(input->shape(), {input},
                                           kSPMDOpRotateRight, opaque);
 }

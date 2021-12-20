@@ -89,8 +89,8 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_device_assignment(
   return *this;
 }
 
-string ExecutableBuildOptions::ToString() const {
-  string result_layout = "nullopt";
+std::string ExecutableBuildOptions::ToString() const {
+  std::string result_layout = "nullopt";
   if (result_layout_set_) {
     result_layout = ShapeUtil::HumanStringWithLayout(result_layout_);
   }

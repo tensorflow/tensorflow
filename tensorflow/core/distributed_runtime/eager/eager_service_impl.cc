@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
@@ -326,7 +330,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
             &client_cache));
     TF_RETURN_IF_ERROR(
         ctx->GetDistributedManager()->GetCoordinationServiceAgent()->Initialize(
-            env_, request->server_def(), std::move(client_cache),
+            env_->env, env_->device_mgr, request->server_def(),
+            std::move(client_cache),
             /*error_fn=*/[](Status s) {
               LOG(ERROR) << "Coordination agent is set to error: " << s;
             }));

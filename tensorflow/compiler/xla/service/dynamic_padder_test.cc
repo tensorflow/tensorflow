@@ -80,7 +80,7 @@ class DynamicPadderTest : public HloTestBase {
  protected:
   DynamicPadderTest() : HloTestBase() { module_ = CreateNewVerifiedModule(); }
 
-  std::unique_ptr<HloModule> GetHloModule(const string& hlo_text) {
+  std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
         ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
     return module;
@@ -122,7 +122,7 @@ class MemoryAlignmentTest : public HloTestBase {};
 // when the read or write address is not aligned with 32 bits.
 // TODO(b/203599920): Disabled on CPU due to ASAN test failure.
 TEST_F(MemoryAlignmentTest, DISABLED_ON_CPU(TestDataTypeFP16)) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
     HloModule TestDataTypeFP16
 
     update_add (p0: f16[], p1: f16[]) -> f16[] {
@@ -181,7 +181,7 @@ TEST_F(DynamicPadderTest, ReduceTest) {
 }
 
 TEST_F(DynamicPadderTest, DynamicLoweringTest) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule DynamicLowering
 
 ENTRY main {
@@ -234,7 +234,7 @@ ENTRY main {
 }
 
 TEST_F(DynamicPadderTest, DynamicLoweringTestTupleInput) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule DynamicLowering
 
 ENTRY main {
@@ -295,7 +295,7 @@ ENTRY main {
 }
 
 TEST_F(DynamicPadderTest, DynamicOutputNestedTuple) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule DynamicLowering
 
 ENTRY main {
@@ -437,7 +437,7 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
 }
 
 TEST_F(DynamicPadderTest, VariadicReduceWindowNoPadForTrivialWindow) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule VariadicReduceWindowNoPadForTrivialWindow
 
 add_f32 (a: f32[], b: s32[], c: f32[], d: s32[]) -> (f32[], s32[]) {
@@ -481,7 +481,7 @@ ENTRY main {
 // Test that dynamic padder has the same result as if not padded.
 class ExecutionTest : public HloTestBase {
  protected:
-  std::unique_ptr<HloModule> GetHloModule(const string& hlo_text) {
+  std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
         ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
     return module;
@@ -509,7 +509,7 @@ class ExecutionTest : public HloTestBase {
 XLA_TEST_F(ExecutionTest, ScatterUpdate) {
   // Test that scattering on indices=[2] is same as scattering on indices=[4]
   // and dynamic dimension = 2
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -531,7 +531,7 @@ ENTRY main {
 
 }
 )";
-  const string hlo_text_not_padded =
+  const std::string hlo_text_not_padded =
       absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "2"}});
   auto module_not_padded = GetHloModule(hlo_text_not_padded);
 
@@ -546,7 +546,7 @@ ENTRY main {
                          {&operand, &scatter_indices, &updates, &dynamic_size});
 
   // Pad input to 4.
-  const string hlo_text_padded =
+  const std::string hlo_text_padded =
       absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "4"}});
   auto module_padded = GetHloModule(hlo_text_padded);
   // Set up dynamic parameter binding.
@@ -570,7 +570,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, ScatterUpdateWindowDim) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule ScatterUpdateWindowDim
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -613,7 +613,7 @@ ENTRY main {
 XLA_TEST_F(ExecutionTest, ScatterUpdateF32) {
   // Test that scattering on indices=[2] is same as scattering on indices=[4]
   // and dynamic dimension = 2
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
@@ -679,7 +679,7 @@ XLA_TEST_F(ExecutionTest, WholeDimensionGather) {
   // [3, 4]
   //
   // Reducing this gives us 3 (4 is padded value so ignored)
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -722,7 +722,7 @@ ENTRY main {
 XLA_TEST_F(ExecutionTest, TwoDimensionReduce) {
   // Test that reducing on operand=[2,2] is same as reducing on operand=[4,4]
   // and dynamic dimension = 2
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -740,7 +740,7 @@ ENTRY main {
       to_apply=update_s32
 }
 )";
-  const string hlo_text_not_padded =
+  const std::string hlo_text_not_padded =
       absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "2"}});
   auto module_not_padded = GetHloModule(hlo_text_not_padded);
 
@@ -751,7 +751,7 @@ ENTRY main {
                                           {&operand, &dynamic_size});
 
   // Pad input to 4.
-  const string hlo_text_padded =
+  const std::string hlo_text_padded =
       absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "4"}});
   auto module_padded = GetHloModule(hlo_text_padded);
   // Set up dynamic parameter binding.
@@ -773,7 +773,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicDimensionClamp) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowTenaryV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -808,7 +808,7 @@ ENTRY main {
 
 XLA_TEST_F(ExecutionTest, DynamicConcat) {
   // Concatting a list of {dynamic_operand, static_operand, dynamic_operand}.
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule DynamicConcat
 
 ENTRY main {
@@ -842,7 +842,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicReverseSingleDim) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule DynamicConcat
 
 ENTRY main {
@@ -868,7 +868,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicReverseMultiDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule DynamicConcat
 
 ENTRY main {
@@ -897,7 +897,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicDimensionReduce) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -930,7 +930,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, InputMinorDimensionReshape) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -966,7 +966,7 @@ ENTRY main {
 
 XLA_TEST_F(ExecutionTest, SliceSingleElement) {
   // Slicing out a single element is supported.
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule Slicing
 
 ENTRY main {
@@ -989,7 +989,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshape) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1036,7 +1036,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshapeWithUnchangedDimMajor) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1081,7 +1081,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshapeWithUnchangedDimMinor) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1128,7 +1128,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicInputFeature) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule DynamicInputFeature
 
 ENTRY main {
@@ -1156,7 +1156,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicDimensionReshapeUnchanged) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1190,7 +1190,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DegeneratedDimension) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1235,7 +1235,7 @@ XLA_TEST_F(ExecutionTest, ReshapeSplitCombineSameTime) {
   // Split one input dynamic dim to multiple output dims while combining two
   // dimensions together.
   //
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1307,7 +1307,7 @@ XLA_TEST_F(ExecutionTest, WhileLoopStack) {
   //  [2, 2],
   //  [P, P]]
 
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule module
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1369,7 +1369,7 @@ ENTRY entry {
 }
 
 XLA_TEST_F(ExecutionTest, DoubleDynamicDimension) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1420,7 +1420,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicReshapeDoubleDynamicDimensions) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 ENTRY main {
@@ -1459,7 +1459,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicReshapeOutputDoubleDynamicDimensions) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 ENTRY main {
@@ -1498,7 +1498,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, SetGetDimensionSize) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 ENTRY main {
@@ -1524,7 +1524,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicSort) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TEST
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1560,7 +1560,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicPad) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TEST
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1599,7 +1599,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicPadInteriorPadding) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TEST
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1638,7 +1638,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicConditionalDimension) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule module
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -1688,7 +1688,7 @@ ENTRY entry {
 }
 
 XLA_TEST_F(ExecutionTest, DynamicTupleSort) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TEST
 
 %compare-greater-than (lhs: s32[], rhs: s32[], lhs_2: s32[], lhs_2: s32[]) -> pred[] {

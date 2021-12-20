@@ -37,7 +37,7 @@ namespace op = xla::testing::opcode_matchers;
 using AllGatherDecomposerTest = HloTestBase;
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAllGather) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {
@@ -59,7 +59,7 @@ ENTRY entry {
 }
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAndPartitionAllGather) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {
@@ -82,7 +82,7 @@ ENTRY entry {
 }
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAllGatherWithTrivialGroup) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {
@@ -105,7 +105,7 @@ ENTRY entry {
 }
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAllGatherWithSubgroups) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {
@@ -130,7 +130,7 @@ ENTRY entry {
 }
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAllGatherWithSubgroupsGlobalIds) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {

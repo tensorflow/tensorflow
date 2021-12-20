@@ -356,21 +356,10 @@ class Loader(object):
     if bound_inputs:
       for bound_input, internal_capture in zip(
           bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
-        if distribute_utils.is_distributed_variable(bound_input):
-          concrete_function.graph.capture_distributed_variable(
-              bound_input, internal_capture)
-          captured_inputs_list.append(bound_input)
-        elif distribute_utils.is_distributed_table(bound_input):
-          closure, spec = bound_input.resource_handle_call_time_value()
-          concrete_function.graph.replace_capture_with_deferred_capture(
-              bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
-              closure,
-              spec,
-              default_value=bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
-              placeholder=internal_capture)
+        if hasattr(bound_input, "__tf_experimental_restore_capture__"):
           captured_inputs_list.append(
-              concrete_function.graph.deferred_external_captures[-1])
-
+              bound_input.__tf_experimental_restore_capture__(
+                  concrete_function, internal_capture))
         else:
           captured_inputs_list.append(bound_input)
           concrete_function.graph.replace_capture(bound_input,
@@ -396,9 +385,10 @@ class Loader(object):
   def _get_tensor_from_node(self, node):
     """Resolves a node id into a tensor to be captured for a function."""
     with ops.init_scope():
-      if distribute_utils.is_distributed_variable(node):
+      # TODO(b/210144904): Use __tf_tensor__ instead for distributed checks
+      if getattr(node, "is_distributed_variable", False):
         return node
-      elif distribute_utils.is_distributed_table(node):
+      elif getattr(node, "is_distributed_table", False):
         return node
       elif resource_variable_ops.is_resource_variable(node):
         return node.handle

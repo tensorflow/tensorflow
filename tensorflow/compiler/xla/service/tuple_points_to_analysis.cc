@@ -38,7 +38,7 @@ limitations under the License.
 
 namespace xla {
 
-string BufferAlias::ToString() const {
+std::string BufferAlias::ToString() const {
   return absl::StrCat("BufferAlias(", instruction_->name(), "[",
                       absl::StrJoin(index_, ","), "])");
 }
@@ -177,8 +177,9 @@ Status TuplePointsToAnalysis::Analyze() {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(const decltype(
-    std::declval<HloComputation>().instructions())& instructions) {
+Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
+    const decltype(std::declval<HloComputation>()
+                       .instructions())& instructions) {
   for (auto* instruction : instructions) {
     PerInstruction* pi = PerInst(instruction);
     TF_RETURN_IF_ERROR(GatherBuffersDefinedByInstruction(
@@ -624,8 +625,8 @@ PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
   return *PerInst(instruction)->points_to_set;
 }
 
-string TuplePointsToAnalysis::ToString() const {
-  string output =
+std::string TuplePointsToAnalysis::ToString() const {
+  std::string output =
       absl::StrFormat("TuplePointsToSet for module %s:\n", module_->name());
   for (const auto* computation : module_->MakeNonfusionComputations()) {
     const char* entry =
@@ -653,21 +654,22 @@ string TuplePointsToAnalysis::ToString() const {
 }
 
 void TuplePointsToAnalysis::InstructionToString(
-    const HloInstruction* instruction, string* output) const {
-  const string prefix = instruction->IsFused() ? "    " : "";
+    const HloInstruction* instruction, std::string* output) const {
+  const std::string prefix = instruction->IsFused() ? "    " : "";
   absl::StrAppend(output, prefix, "  instruction ",
                   instruction->ToShortString(), ":\n");
   const PointsToSet& points_to_set = GetPointsToSet(instruction);
-  points_to_set.ForEachElement([&prefix, &output](
-                                   const ShapeIndex& index,
-                                   const PointsToSet::BufferList& points_to) {
-    absl::StrAppend(output, prefix, "    {", absl::StrJoin(index, ","), "}: ",
-                    absl::StrJoin(points_to, ", ",
-                                  [](string* out, const LogicalBuffer* source) {
-                                    out->append(source->ToString());
-                                  }),
-                    "\n");
-  });
+  points_to_set.ForEachElement(
+      [&prefix, &output](const ShapeIndex& index,
+                         const PointsToSet::BufferList& points_to) {
+        absl::StrAppend(
+            output, prefix, "    {", absl::StrJoin(index, ","), "}: ",
+            absl::StrJoin(points_to, ", ",
+                          [](std::string* out, const LogicalBuffer* source) {
+                            out->append(source->ToString());
+                          }),
+            "\n");
+      });
 }
 
 bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(

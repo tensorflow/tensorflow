@@ -111,13 +111,12 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
       saveables_cache = None
     super(_AugmentedGraphView, self).__init__(root, saveables_cache)
 
-    # Cache the results of `list_children` to ensure that the `Trackable`
-    # children are gathered exactly once.
+    # Cache the results of `GraphView.list_children()` to ensure that the
+    # `Trackable` children are gathered exactly once.
     self._children_cache = object_identity.ObjectIdentityDictionary()
 
     # Cache shared between objects in the same object graph. This is passed to
-    # each trackable object's `_list_extra_dependencies_for_serialization` and
-    # `_list_functions_for_serialization` function.
+    # `Trackable._trackable_children()`.
     self._serialization_cache = object_identity.ObjectIdentityDictionary()
 
   def set_signature(self, signature_map):
@@ -128,64 +127,15 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     self._children_cache[self.root][name] = signature_map
 
   def list_children(self, obj):
-    """Overrides parent method to include extra children."""
+    """Lists children of `obj` for SavedModel."""
     if obj not in self._children_cache:
-      self._cache_children(obj)
+      self._children_cache[obj] = dict(
+          super(_AugmentedGraphView, self).list_children(
+              obj,
+              save_type=base.SaveType.SAVEDMODEL,
+              cache=self._serialization_cache))
     for name, child in self._children_cache[obj].items():
       yield base.TrackableReference(name, child)
-
-  def _cache_children(self, obj):
-    # Retrieve functions attached to the object.
-    functions = obj._list_functions_for_serialization(  # pylint: disable=protected-access
-        self._serialization_cache)
-
-    # Trace concrete functions to force side-effects:
-    #   1. populate the cache for functions that have an input_signature
-    #      and have not been called
-    #   2. force side effects of creation of concrete functions, e.g. create
-    #      variables on first run.
-    for fn in functions.values():
-      if isinstance(fn, def_function.Function):
-        fn._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
-
-    # Retrieve children that are only included when exporting SavedModel.
-    extra_dependencies = obj._list_extra_dependencies_for_serialization(  # pylint: disable=protected-access
-        self._serialization_cache)
-
-    children = {}
-    for name, child in super(_AugmentedGraphView, self).list_children(obj):
-      if isinstance(child, (def_function.Function, defun.ConcreteFunction)):
-        # Skip "tracked" functions for now since there may be objects that
-        # automatically track functions that should not be saved.
-        # TODO(kathywu): remove once `_list_functions_for_serialization` has
-        # been fully deprecated.
-        continue
-
-      if (name in extra_dependencies and
-          name != signature_serialization.SIGNATURE_ATTRIBUTE_NAME):
-        # Extra dependencies (except for `.signatures`, which is always added
-        # when saving) should not have naming conflicts with dependencies
-        # defined by the user.
-        obj_identifier = obj._object_identifier  # pylint: disable=protected-access
-        raise ValueError(
-            f"Error when exporting object {obj} with identifier "
-            f"'{obj_identifier}'. The object has an attribute named "
-            f"'{name}', which is reserved. List of all reserved attributes: "
-            f"{list(extra_dependencies.keys())}")
-
-      if name in functions and child is not functions[name]:
-        raise ValueError(
-            "Can't save object because it has multiple children with the same "
-            f"name. Object: {obj}, attribute name: {name}, child 1: "
-            f"{child}, child 2: {functions[name]}")
-
-      children[name] = child
-
-    children.update(extra_dependencies)
-    children.update(functions)
-
-    self._children_cache[obj] = children
-    return children
 
   def list_dependencies(self, obj):
     """Yields `Trackables` that must be loaded before `obj`.

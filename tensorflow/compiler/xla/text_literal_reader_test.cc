@@ -28,7 +28,7 @@ namespace xla {
 namespace {
 
 TEST(TextLiteralReaderTest, ReadsR3File) {
-  string contents = R"(f32[1,2,3]
+  std::string contents = R"(f32[1,2,3]
 (0,0,0): 42.5
 (0,0,1): 43.5
 (0,0,2): 44.5
@@ -37,7 +37,7 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
 (0,1,2): 47.5
 )";
 
-  string fname = tensorflow::testing::TmpDir() + "/ReadsR3File.data.txt";
+  std::string fname = tensorflow::testing::TmpDir() + "/ReadsR3File.data.txt";
   EXPECT_TRUE(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, contents)
           .ok());

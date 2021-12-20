@@ -823,7 +823,7 @@ TEST_F(WhileCopyInsertionTest, IndependentTupleElements) {
 //                                 |
 //                        WHILE(X) (root)
 TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterWithCopies) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule DependentTupleElements
 
 %DependentTupleElements.Body (loop_state.1: (s32[], f32[8])) -> (s32[], f32[8]) {
@@ -891,7 +891,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
 //                         \      /
 //                           WHILE(PARAMETER) (root)
 TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterNoCopies) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule DependentTupleElements
 
 %DependentTupleElements.Body (loop_state.1: (s32[], f32[8])) -> (s32[], f32[8]) {
@@ -951,7 +951,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
 //                         \      /
 //                           WHILE(PARAMETER) (root)
 TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterBig) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule DependentTupleElements
 
 %DependentTupleElements.Body (loop_state.1: (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0})) -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) {
@@ -2028,7 +2028,7 @@ TEST_F(CopyInsertionTest, WhileBodyWithConstantRoot) {
 }
 
 TEST_F(CopyInsertionTest, TokensShouldNotBeCopied) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule TokensShouldNotBeCopied
 
 %Body (param.1: (s32[], token[])) -> (s32[], token[]) {
@@ -2252,7 +2252,7 @@ BENCHMARK(BM_ParallelWhiles)->Arg(512)->Arg(1024)->Arg(2048)->Arg(4096);
 BENCHMARK(BM_ManyElementTuple)->Arg(1024)->Arg(12288);
 
 TEST_F(CopyInsertionTest, SimpleControlFlowTest) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 if-body.v5 {
@@ -2334,7 +2334,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, ControlFlowTest) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 if-body.v5 {
@@ -2436,7 +2436,7 @@ ENTRY TestComputation {
 TEST_F(CopyInsertionTest, NestedWhiles) {
   // Verify that only no unnecessary copies remain after copy insertion for
   // trivial nested whiles (b/112472605).
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 cond.inner {
@@ -2474,7 +2474,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, NestedWhileAndConditional2) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 on_true
@@ -2523,7 +2523,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, NestedWhileAndConditional) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 on_true
@@ -2569,7 +2569,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, FixpointComputationRequired) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule Module
 
 fused_computation {
@@ -2613,7 +2613,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(CopyInsertionTest, NoAliasCheckViolation) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule cluster
 
 ENTRY Entry {
@@ -2878,7 +2878,7 @@ ENTRY main {
 }
 
 TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
     HloModule test
 
     fused_computation {
@@ -2928,7 +2928,7 @@ TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
 }
 
 TEST_F(CopyInsertionTest, NestedWhileAndConditional3) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 on_true.1
@@ -2993,7 +2993,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchMustCopy1) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
  branch_0_comp.5.clone {
@@ -3039,7 +3039,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchMustCopy2) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
  branch_0_comp.5.clone {
@@ -3090,7 +3090,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchMustCopy3) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule primitive_computation_cond.19
 %branch_0_comp.5.clone (parameter.0: (s32[2])) -> (s32[2]) {
   %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
@@ -3133,7 +3133,7 @@ ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2], p
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchDoNotCopy1) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
  branch_0_comp.5.clone {
@@ -3180,7 +3180,7 @@ TEST_F(CopyInsertionTest, RootInstructionNotLast) {
   // This is a test for b/189219227. When the root instruction is scheduled not
   // as the last instruction, it still lives out. So, we make sure that the copy
   // after the root cannot be removed.
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule module, is_scheduled=true
 
 body2 {

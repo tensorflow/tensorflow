@@ -141,7 +141,7 @@ TEST_F(LiteralUtilTest, LiteralVectorToString) {
 
 TEST_F(LiteralUtilTest, R2ToString) {
   const auto literal = LiteralUtil::CreateR2({{1, 2}, {3, 4}, {5, 6}});
-  const string expected = R"(s32[3,2] {
+  const std::string expected = R"(s32[3,2] {
   { 1, 2 },
   { 3, 4 },
   { 5, 6 }
@@ -152,7 +152,7 @@ TEST_F(LiteralUtilTest, R2ToString) {
 TEST_F(LiteralUtilTest, R2DynamicToString) {
   auto literal = LiteralUtil::CreateR2({{1, 2}, {3, 4}, {5, 6}});
   literal.SetDynamicSize(0, {}, 2);
-  const string expected = R"(s32[<=3,2](2,2) {
+  const std::string expected = R"(s32[<=3,2](2,2) {
   { 1, 2 },
   { 3, 4 }
 })";
@@ -161,7 +161,7 @@ TEST_F(LiteralUtilTest, R2DynamicToString) {
   // A Less trivial case where the memory layout is not consecutive.
   auto literal2 = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
   literal2.SetDynamicSize(1, {}, 2);
-  const string expected2 = R"(s32[2,<=3](2,2) {
+  const std::string expected2 = R"(s32[2,<=3](2,2) {
   { 1, 2 },
   { 4, 5 }
 })";
@@ -171,7 +171,7 @@ TEST_F(LiteralUtilTest, R2DynamicToString) {
 TEST_F(LiteralUtilTest, R3ToString) {
   const auto literal =
       LiteralUtil::CreateR3({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
-  const string expected = R"(s32[3,2,1] {
+  const std::string expected = R"(s32[3,2,1] {
 {
   {1},
   {2}
@@ -191,7 +191,7 @@ TEST_F(LiteralUtilTest, R3ToString) {
 TEST_F(LiteralUtilTest, R6ToString) {
   const auto literal =
       LiteralUtil::CreateFromDimensions(S32, {2, 2, 1, 1, 1, 2});
-  const string expected = R"(s32[2,2,1,1,1,2] {
+  const std::string expected = R"(s32[2,2,1,1,1,2] {
 { /*i0=0*/
 { /*i1=0*/
 { /*i2=0*/
@@ -232,7 +232,7 @@ TEST_F(LiteralUtilTest, TupleToString) {
   auto scalar = LiteralUtil::CreateR0<float>(1.0);
   auto matrix = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = LiteralUtil::MakeTuple({&scalar, &matrix});
-  const string expected = R"((
+  const std::string expected = R"((
 f32[] 1,
 f32[2,2] {
   { 1, 2 },
@@ -256,8 +256,8 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
 
   auto literal = LiteralUtil::CreateR3FromArray3D(array_3d);
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(2, 3, 2));
-  string result = literal.ToString();
-  const string expected = R"(f32[2,3,2] {
+  std::string result = literal.ToString();
+  const std::string expected = R"(f32[2,3,2] {
 {
   { 1, 2 },
   { 3, 4 },
@@ -281,8 +281,8 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   }, /*projection_p=*/1, /*projection_z=*/2);
   // clang-format on
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(1, 2, 3, 2));
-  string result = literal.ToString();
-  const string expected = R"(f32[1,2,3,2] {
+  std::string result = literal.ToString();
+  const std::string expected = R"(f32[1,2,3,2] {
 { /*i0=0*/
 { /*i1=0*/
   { 1, 2 },
@@ -302,8 +302,8 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
 TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
   EXPECT_THAT(literal_r4_2x2x3x3_dim0major_.shape().dimensions(),
               ElementsAre(2, 2, 3, 3));
-  string result = literal_r4_2x2x3x3_dim0major_.ToString();
-  const string expected = R"(f32[2,2,3,3] {
+  std::string result = literal_r4_2x2x3x3_dim0major_.ToString();
+  const std::string expected = R"(f32[2,2,3,3] {
 { /*i0=0*/
 { /*i1=0*/
   { 1, 2, 3 },
@@ -339,13 +339,13 @@ TEST_F(LiteralUtilTest, EachCellR2F32) {
     {9.3f, 12.4f},
   });
   // clang-format on
-  std::vector<std::tuple<int64_t, int64_t, string>> seen;
+  std::vector<std::tuple<int64_t, int64_t, std::string>> seen;
   literal.EachCellAsString(
-      [&seen](absl::Span<const int64_t> indices, const string& value) {
+      [&seen](absl::Span<const int64_t> indices, const std::string& value) {
         seen.emplace_back(indices[0], indices[1], value);
       });
 
-  using Elem = std::tuple<int64_t, int64_t, string>;
+  using Elem = std::tuple<int64_t, int64_t, std::string>;
   std::vector<Elem> expected = {Elem(0, 0, "3.1"), Elem(0, 1, "4.2"),
                                 Elem(1, 0, "9.3"), Elem(1, 1, "12.4")};
   EXPECT_EQ(expected, seen);

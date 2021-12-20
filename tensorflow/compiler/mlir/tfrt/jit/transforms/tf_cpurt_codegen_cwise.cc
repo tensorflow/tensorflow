@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -86,6 +88,10 @@ bool isNonTiledCwise(Operation *op) {
 }
 
 struct CodegenForCWisePass : public CodegenCWiseBase<CodegenForCWisePass> {
+  CodegenForCWisePass() = default;
+  explicit CodegenForCWisePass(int64_t tile_size) {
+    cwise_tile_size = tile_size;
+  }
   void runOnFunction() override {
     constexpr llvm::StringRef kTiledId = "tiled";
     auto func = getFunction();
@@ -93,15 +99,15 @@ struct CodegenForCWisePass : public CodegenCWiseBase<CodegenForCWisePass> {
     LinalgTilingOptions tiling_options;
     // Tile the innermost dimension by 8 for vectorization and scalarize the
     // other dimensions.
-    tiling_options.setTileSizeComputationFunction(
-        [](OpBuilder b, Operation *op) {
-          auto num_loops = llvm::cast<LinalgOp>(op).getNumLoops();
-          SmallVector<Value> tiles(num_loops,
-                                   b.create<ConstantIndexOp>(op->getLoc(), 1));
-          if (!tiles.empty())
-            tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), 8);
-          return tiles;
-        });
+    tiling_options.setTileSizeComputationFunction([&](OpBuilder b,
+                                                      Operation *op) {
+      auto num_loops = llvm::cast<LinalgOp>(op).getNumLoops();
+      SmallVector<Value> tiles(num_loops,
+                               b.create<ConstantIndexOp>(op->getLoc(), 1));
+      if (!tiles.empty())
+        tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), cwise_tile_size);
+      return tiles;
+    });
     tiling_options.setLoopType(mlir::linalg::LinalgTilingLoopType::TiledLoops);
 
     auto filter = LinalgTransformationFilter(
@@ -127,6 +133,11 @@ struct CodegenForCWisePass : public CodegenCWiseBase<CodegenForCWisePass> {
 
 std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForCWisePass() {
   return std::make_unique<CodegenForCWisePass>();
+}
+
+std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForCWisePass(
+    int64_t cwise_tile_size) {
+  return std::make_unique<CodegenForCWisePass>(cwise_tile_size);
 }
 
 }  // namespace tensorflow

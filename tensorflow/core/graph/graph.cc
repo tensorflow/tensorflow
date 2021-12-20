@@ -572,18 +572,14 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
 
   if (op_reg_data->type_ctor != nullptr) {
     VLOG(3) << "AddNode: found type constructor for " << node_def.name();
-    const auto ctor_type =
-        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def);
-    if (!ctor_type.ok()) {
-      *status = errors::InvalidArgument("type error: ",
-                                        ctor_type.status().ToString());
+    Status s =
+        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
+                                  *(node_def.mutable_experimental_type()));
+    if (!s.ok()) {
+      *status = errors::InvalidArgument("type error: ", s.ToString());
       VLOG(3) << "AddNode: type inference failed for " << node_def.name()
-              << ": " << status->ToString();
+              << ": " << s;
       return nullptr;
-    }
-    const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();
-    if (ctor_typedef.type_id() != TFT_UNSET) {
-      *(node_def.mutable_experimental_type()) = ctor_typedef;
     }
   } else {
     VLOG(3) << "AddNode: no type constructor for " << node_def.name();

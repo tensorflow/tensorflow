@@ -44,7 +44,7 @@ class HloAliasAnalysis {
       const HloModule* module,
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Return the buffer containing the given value.
   const HloBuffer& GetBufferContainingValue(const HloValue& value) const {

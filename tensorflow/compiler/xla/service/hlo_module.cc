@@ -45,7 +45,7 @@ limitations under the License.
 
 namespace xla {
 
-HloModule::HloModule(const string& name, HloModuleConfig config)
+HloModule::HloModule(const std::string& name, HloModuleConfig config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(std::move(config)),
       unique_id_(next_unique_module_id_++),
@@ -237,7 +237,7 @@ void HloModule::ReplaceComputations(
   computations_ = std::move(new_computations);
 }
 
-string HloModule::ToString(const HloPrintOptions& options) const {
+std::string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
   // When print_ids() is false, exclude module's name because it includes and
   // leads to non-deterministic fingerprint.
@@ -321,9 +321,9 @@ HloModuleProto HloModule::ToProto() const {
 }
 
 Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
-  absl::flat_hash_set<string> computation_names;
+  absl::flat_hash_set<std::string> computation_names;
   absl::flat_hash_set<int> computation_ids;
-  absl::flat_hash_set<string> instruction_names;
+  absl::flat_hash_set<std::string> instruction_names;
   absl::flat_hash_set<int> instruction_ids;
 
   for (const HloComputation* computation : computations()) {
@@ -534,7 +534,7 @@ bool IsUsedOutsideSubcomputation(const HloInstruction& hlo,
 
 HloInstruction* HloModule::OutlineExpressionFromComputation(
     absl::Span<HloInstruction* const> instructions_to_outline,
-    const string& outlined_computation_name, HloComputation* computation) {
+    const std::string& outlined_computation_name, HloComputation* computation) {
   auto builder = HloComputation::Builder(outlined_computation_name);
 
   // A map from original instructions to their counterparts in the new outlined
@@ -587,7 +587,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   }
 
   if (outputs.size() != 1) {
-    string error_message =
+    std::string error_message =
         "The subcomputation to outline has multiple outputs:\n";
     for (HloInstruction* output : outputs) {
       absl::StrAppend(&error_message, output->ToString(), "\n");
@@ -740,12 +740,12 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
   return result;
 }
 
-std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
+std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
   return Clone(config(), suffix);
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
-                                            const string& suffix) const {
+                                            const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = absl::make_unique<HloModule>(
       absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config);

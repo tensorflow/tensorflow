@@ -126,7 +126,7 @@ class LocalClientTestBase : public ManifestCheckingTest {
   // as the allocator.
   ExecutableRunOptions DefaultExecutableRunOptions() const;
 
-  string TestName() const {
+  std::string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 

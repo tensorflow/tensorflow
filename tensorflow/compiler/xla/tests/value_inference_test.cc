@@ -47,7 +47,7 @@ namespace {
 
 class ValueInferenceTest : public ::testing::Test {
  public:
-  string TestName() const {
+  std::string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 };
@@ -161,10 +161,8 @@ TEST_F(DynamismInferenceTest, VariadicReduce) {
   auto result = GetTupleElement(variadic_reduce, 0);
 
   // result[0] should be static; result[1] should be dynamic.
-  EXPECT_FALSE(
-      ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({0}));
-  EXPECT_TRUE(
-      ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({1}));
+  EXPECT_FALSE(ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({0}));
+  EXPECT_TRUE(ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({1}));
 }
 
 TEST_F(DynamismInferenceTest, DynamicSelectorWithMixedValues) {

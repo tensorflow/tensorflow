@@ -160,7 +160,7 @@ class LayoutUtil {
   static std::vector<int64_t> MakeLogicalToPhysical(const Layout& layout);
 
   // Returns a human-readable string that represents the given layout.
-  static string HumanString(const Layout& layout);
+  static std::string HumanString(const Layout& layout);
 
   // Copies the layout from 'src' to 'dst'. Recursively copies layouts of
   // tuples.  'src' and 'dst' need not be compatible but the two shapes must

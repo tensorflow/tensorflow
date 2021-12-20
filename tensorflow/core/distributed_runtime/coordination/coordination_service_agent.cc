@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -44,11 +43,13 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
  public:
   CoordinationServiceAgentImpl() = default;
   ~CoordinationServiceAgentImpl() override { Stop(); }
-  Status Initialize(const WorkerEnv* worker_env, const ServerDef& server_def,
+  Status Initialize(Env* env, const DeviceMgr* device_mgr,
+                    const ServerDef& server_def,
                     std::unique_ptr<CoordinationClientCache> client_cache,
                     StatusCallback error_fn) override;
-  Status Initialize(const WorkerEnv* worker_env, const std::string& job_name,
-                    int task_id, const CoordinationServiceConfig& configs,
+  Status Initialize(Env* env, const DeviceMgr* device_mgr,
+                    const std::string& job_name, int task_id,
+                    const CoordinationServiceConfig& configs,
                     std::unique_ptr<CoordinationClient> leader_client,
                     StatusCallback error_fn) override;
   bool IsInitialized() override;
@@ -81,7 +82,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   void Stop();
 
  private:
-  const WorkerEnv* env_;
+  Env* env_;                     // Not owned.
+  const DeviceMgr* device_mgr_;  // Not owned.
   const int64_t incarnation_id_ = random::New64();
   std::string job_name_;
   int task_id_;
@@ -111,7 +113,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
 };
 
 Status CoordinationServiceAgentImpl::Initialize(
-    const WorkerEnv* env, const ServerDef& server_def,
+    Env* env, const DeviceMgr* device_mgr, const ServerDef& server_def,
     std::unique_ptr<CoordinationClientCache> client_cache,
     StatusCallback error_fn) {
   CoordinationServiceConfig configs =
@@ -133,13 +135,13 @@ Status CoordinationServiceAgentImpl::Initialize(
     }
   }
   return Initialize(
-      env, server_def.job_name(), server_def.task_index(), configs,
+      env, device_mgr, server_def.job_name(), server_def.task_index(), configs,
       client_cache->GetOwnedClient(configs.service_leader()), error_fn);
 }
 
 Status CoordinationServiceAgentImpl::Initialize(
-    const WorkerEnv* worker_env, const std::string& job_name, int task_id,
-    const CoordinationServiceConfig& configs,
+    Env* env, const DeviceMgr* device_mgr, const std::string& job_name,
+    int task_id, const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client,
     StatusCallback error_fn) {
   mutex_lock l(state_mu_);
@@ -148,7 +150,8 @@ Status CoordinationServiceAgentImpl::Initialize(
         "Coordination service agent has already been initialized.");
   }
 
-  env_ = worker_env;
+  env_ = env;
+  device_mgr_ = device_mgr;
   job_name_ = job_name;
   task_id_ = task_id;
   configs_ = configs;
@@ -227,8 +230,8 @@ Status CoordinationServiceAgentImpl::Connect() {
     }
   }
 
-  heartbeat_thread_.reset(env_->env->StartThread(
-      ThreadOptions(), kHeartbeatThread, [this]() -> void {
+  heartbeat_thread_.reset(
+      env_->StartThread(ThreadOptions(), kHeartbeatThread, [this]() -> void {
         HeartbeatRequest request;
         request.set_job(job_name_);
         request.set_task(task_id_);
@@ -282,7 +285,7 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks() {
   request.set_job(job_name_);
   request.set_task(task_id_);
   std::vector<DeviceAttributes> devices;
-  env_->device_mgr->ListDeviceAttributes(&devices);
+  device_mgr_->ListDeviceAttributes(&devices);
   for (auto& d : devices) {
     request.add_local_device_attributes()->Swap(&d);
   }

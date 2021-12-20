@@ -56,9 +56,9 @@ template <typename T>
 using Vec = typename VecStruct<T>::type;
 
 struct Node {
-  int32 rank;    // rank number assigned by Pearce-Kelly algorithm
-  bool visited;  // Temporary marker used by depth-first-search
-  void* data;    // User-supplied data
+  int32 rank;          // rank number assigned by Pearce-Kelly algorithm
+  bool visited;        // Temporary marker used by depth-first-search
+  void* data;          // User-supplied data
   OrderedNodeSet in;   // List of immediate predecessor nodes in graph
   OrderedNodeSet out;  // List of immediate successor nodes in graph
 };
@@ -454,13 +454,13 @@ std::vector<int32> GraphCycles::AllNodesInPostOrder() const {
   return all_nodes;
 }
 
-string GraphCycles::DebugString() const {
+std::string GraphCycles::DebugString() const {
   absl::flat_hash_set<int32> free_nodes_set;
   for (int32_t free_node : rep_->free_nodes_) {
     free_nodes_set.insert(free_node);
   }
 
-  string result = "digraph {\n";
+  std::string result = "digraph {\n";
   for (int i = 0, end = rep_->nodes_.size(); i < end; i++) {
     if (free_nodes_set.contains(i)) {
       continue;

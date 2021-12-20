@@ -93,7 +93,7 @@ class HloGetTupleElementMatcher : public HloMatcher {
 class HloCustomCallMatcher : public HloMatcher {
  public:
   HloCustomCallMatcher(
-      ::testing::Matcher<string> call_target_matcher,
+      ::testing::Matcher<std::string> call_target_matcher,
       std::vector<::testing::Matcher<const HloInstruction*>> operands)
       : HloMatcher(HloOpcode::kCustomCall, operands),
         call_target_matcher_(call_target_matcher) {}
@@ -103,7 +103,7 @@ class HloCustomCallMatcher : public HloMatcher {
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  ::testing::Matcher<string> call_target_matcher_;
+  ::testing::Matcher<std::string> call_target_matcher_;
 };
 
 class HloShapeMatcher
@@ -405,17 +405,18 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement() {
 // - CustomCall() matches any CustomCall HLO at all.
 template <typename... M>
 inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall(
-    ::testing::Matcher<string> call_target_matcher, M... operands) {
+    ::testing::Matcher<std::string> call_target_matcher, M... operands) {
   return ::testing::MakeMatcher(new ::xla::testing::HloCustomCallMatcher(
       call_target_matcher, {operands...}));
 }
 // This overload of CustomCall(A, B, C, ...) exists iff A is not convertible to
-// ::testing::Matcher<string>.  In that case, we want to prefer the overload
-// above.
-template <typename FirstM, typename... M,
-          typename Dummy = typename std::enable_if<
-              !std::is_convertible<FirstM, ::testing::Matcher<string>>::value,
-              void>::type*>
+// ::testing::Matcher<std::string>.  In that case, we want to prefer the
+// overload above.
+template <
+    typename FirstM, typename... M,
+    typename Dummy = typename std::enable_if<
+        !std::is_convertible<FirstM, ::testing::Matcher<std::string>>::value,
+        void>::type*>
 inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall(
     FirstM operands_first, M... operands_rest) {
   return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(

@@ -28,7 +28,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-string SaxpyIRFile() {
+std::string SaxpyIRFile() {
   return tensorflow::io::JoinPath("tensorflow", "compiler", "xla", "service",
                                   "gpu", "llvm_gpu_backend", "tests_data",
                                   "saxpy.ll");
@@ -36,7 +36,7 @@ string SaxpyIRFile() {
 
 TEST(UtilsTest, TestLoadIRModule) {
   llvm::LLVMContext llvm_context;
-  string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
+  std::string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
   std::unique_ptr<llvm::Module> module = LoadIRModule(
       tensorflow::GetDataDependencyFilepath(SaxpyIRFile()), &llvm_context);
   // Sanity check that the module was loaded properly.

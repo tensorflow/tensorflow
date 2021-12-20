@@ -560,7 +560,7 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   }
 
   template <typename NativeT>
-  void DumpArray(const string& name, const Array3D<NativeT> values) {
+  void DumpArray(const std::string& name, const Array3D<NativeT> values) {
     Literal literal = LiteralUtil::CreateR3FromArray3D<NativeT>(values);
     LOG(INFO) << name << ":" << literal.ToString();
   }

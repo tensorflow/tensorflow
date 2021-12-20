@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/core/platform/test.h"
 
+// TODO(b/210165681): The tests in this file are fragile to HLO op names.
+
 namespace xla {
 namespace gpu {
 
@@ -44,7 +46,7 @@ ENTRY swap_conv {
 // CHECK-LABEL: ENTRY
 // CHECK:   [[FILTER:%[^ ]+]] = f32[1,30,30,512]{2,1,3,0}
 // CHECK:   [[INPUT:%[^ ]+]] = f32[512,128,3,3]{3,2,0,1}
-// CHECK:   %custom-call.1 = (f32[1,32,32,128]{2,1,3,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[1,30,30,512]{2,1,3,0} [[FILTER]], f32[512,128,3,3]{3,2,0,1} [[INPUT]]), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_io01->b01f
+// CHECK:   %cudnn-conv = (f32[1,32,32,128]{2,1,3,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[1,30,30,512]{2,1,3,0} [[FILTER]], f32[512,128,3,3]{3,2,0,1} [[INPUT]]), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_io01->b01f
       )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
@@ -67,7 +69,7 @@ ENTRY swap_conv {
 // CHECK-LABEL: ENTRY
 // CHECK:   [[INPUT:%[^ ]+]] = f32[1,30,30,512]{2,1,3,0}
 // CHECK:   [[FILTER:%[^ ]+]] = f32[512,128,3,3]{3,2,0,1}
-// CHECK:   %custom-call.1 = (f32[1,32,32,128]{2,1,3,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[1,30,30,512]{2,1,3,0} [[INPUT]], f32[512,128,3,3]{3,2,0,1} [[FILTER]]), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_io01->b01f
+// CHECK:   %cudnn-conv = (f32[1,32,32,128]{2,1,3,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[1,30,30,512]{2,1,3,0} [[INPUT]], f32[512,128,3,3]{3,2,0,1} [[FILTER]]), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_io01->b01f
       )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
@@ -94,7 +96,7 @@ ENTRY %conv3DBackpropInputV2(arg0.1: f32[3,3,3,2,3]) -> f32[2,4,3,3,2] {
 // CHECK:   [[INSTR_0:%[^ ]+]] =  f32[2,2,2,2,3]{3,2,1,4,0} constant({...})
 // CHECK:   [[INSTR_1:%[^ ]+]] =  f32[3,3,3,2,3]{4,3,2,1,0} parameter(0), parameter_replication={false}
 // CHECK:   [[INSTR_2:%[^ ]+]] =  f32[3,3,3,2,3]{2,1,0,3,4} copy(f32[3,3,3,2,3]{4,3,2,1,0} %arg0.1)
-// CHECK:   %custom-call.2 = (f32[2,5,3,3,2]{3,2,1,4,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[2,2,2,2,3]{3,2,1,4,0} [[INSTR_0]], f32[3,3,3,2,3]{2,1,0,3,4} [[INSTR_2]]), window={size=3x3x3 stride=2x2x2 pad=0_0x1_1x1_1}, dim_labels=b012f_012io->b012f, custom_call_target="__cudnn$convBackwardInput", metadata={op_type="Conv3DBackpropInputV2" op_name="gradients_2/Conv3DBackpropFilterV2_1_grad/Conv3DBackpropInputV2"}
+// CHECK:   %custom-call.1 = (f32[2,5,3,3,2]{3,2,1,4,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[2,2,2,2,3]{3,2,1,4,0} [[INSTR_0]], f32[3,3,3,2,3]{2,1,0,3,4} [[INSTR_2]]), window={size=3x3x3 stride=2x2x2 pad=0_0x1_1x1_1}, dim_labels=b012f_012io->b012f, custom_call_target="__cudnn$convBackwardInput", metadata={op_type="Conv3DBackpropInputV2" op_name="gradients_2/Conv3DBackpropFilterV2_1_grad/Conv3DBackpropInputV2"}
       )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }

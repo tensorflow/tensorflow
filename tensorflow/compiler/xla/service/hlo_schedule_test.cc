@@ -39,7 +39,7 @@ class HloScheduleTest : public HloTestBase {};
 TEST_F(HloScheduleTest, UpdateScheduleUnchangedModule) {
   // Updating the schedule of an unchanged HLO module should not affect the
   // schedule at all.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule UpdateScheduleUnchanged
 
 ENTRY main {
@@ -73,7 +73,7 @@ ENTRY main {
 TEST_F(HloScheduleTest, UpdateScheduleWithNewInstructions) {
   // Add some additional instructions to a module and verify the schedule can be
   // updated.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule UpdateScheduleWithNewInstructions
 
 ENTRY main {
@@ -121,7 +121,7 @@ ENTRY main {
 TEST_F(HloScheduleTest, UpdateScheduleWithAddedAndDeletedInstruction) {
   // Add and delete some instructions from a module and verify that the schedule
   // can be updated successfully.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule UpdateScheduleWithAddedAndDeletedInstruction
 
 ENTRY main {
@@ -168,7 +168,7 @@ ENTRY main {
 TEST_F(HloScheduleTest, UpdateScheduleWithCompletelyReplacedModule) {
   // Completely replace a module with an entirely new set of instructions and
   // verify that the schedule can be updated successfully.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule UpdateScheduleWithCompletelyReplacedModule
 
 ENTRY main {
@@ -210,7 +210,7 @@ ENTRY main {
 TEST_F(HloScheduleTest, UpdateScheduleWithMultipleComputations) {
   // Create changes to more than one computation in an HLO module and verify
   // that the schedule can be updated.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule UpdateScheduleWithMultipleComputations
 
 %Body (param.1: (s32[], token[])) -> (s32[], token[]) {
@@ -279,7 +279,7 @@ ENTRY %WhileLoop () -> s32[] {
 
 TEST_F(HloScheduleTest, UpdateScheduleComputationRemoved) {
   // Remove computations from a module and verify the schedule can be updated.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule UpdateScheduleWithMultipleComputations
 
 %Body (param.1: (s32[], token[])) -> (s32[], token[]) {

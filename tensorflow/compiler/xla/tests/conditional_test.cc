@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <random>
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -76,7 +77,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     return CreateFloorComputation(r1s2f32_);
   }
 
-  XlaComputation CreateTupleCeilComputation(const string& computation_name,
+  XlaComputation CreateTupleCeilComputation(const std::string& computation_name,
                                             const Shape& tuple_shape) {
     XlaBuilder builder(computation_name);
     auto tuple = Parameter(&builder, 0, tuple_shape, "tuple");
@@ -98,8 +99,8 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     return CreateTupleCeilComputation("CeilR1", tuple_2_r1s2f32_);
   }
 
-  XlaComputation CreateTupleFloorComputation(const string& computation_name,
-                                             const Shape& tuple_shape) {
+  XlaComputation CreateTupleFloorComputation(
+      const std::string& computation_name, const Shape& tuple_shape) {
     XlaBuilder builder(computation_name);
     auto tuple = Parameter(&builder, 0, tuple_shape, "tuple");
     auto x = GetTupleElement(tuple, 0);
@@ -120,7 +121,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     return CreateTupleFloorComputation("FloorR1", tuple_2_r1s2f32_);
   }
 
-  XlaComputation CreateTupleAddComputation(const string& computation_name,
+  XlaComputation CreateTupleAddComputation(const std::string& computation_name,
                                            const Shape& tuple_shape) {
     XlaBuilder builder(computation_name);
     auto tuple = Parameter(&builder, 0, tuple_shape, "tuple");
@@ -140,7 +141,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     return CreateTupleAddComputation("AddR1", tuple_2_r1s2f32_);
   }
 
-  XlaComputation CreateTupleSubComputation(const string& computation_name,
+  XlaComputation CreateTupleSubComputation(const std::string& computation_name,
                                            const Shape& tuple_shape) {
     XlaBuilder builder(computation_name);
     auto tuple = Parameter(&builder, 0, tuple_shape, "tuple");

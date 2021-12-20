@@ -33,9 +33,9 @@ using ::testing::StrEq;
 class HloPassPipelineTest : public HloTestBase {
  protected:
   StatusOr<HloModuleGroup> ParseModuleGroup(
-      absl::Span<const string> hlo_strings) {
+      absl::Span<const std::string> hlo_strings) {
     HloModuleGroup group(TestName());
-    for (const string& hlo_string : hlo_strings) {
+    for (const std::string& hlo_string : hlo_strings) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
       group.push_back(std::move(module));
@@ -101,7 +101,7 @@ class BarBlowerUpper : public HloModulePass {
 
 TEST_F(HloPassPipelineTest, ModulePassChanged) {
   // Test an HLO module pass which changes a module.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule ModulePassChanged
 
 ENTRY main {
@@ -124,7 +124,7 @@ ENTRY main {
 
 TEST_F(HloPassPipelineTest, ModulePassUnchanged) {
   // Test an HLO module pass which does not change a module.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule ModulePassUnchanged
 
 ENTRY main {
@@ -144,7 +144,7 @@ ENTRY main {
 
 TEST_F(HloPassPipelineTest, MixedPipeline) {
   // Test a pipeline with both a module pass and a module group pass.
-  const string module_0_str = R"(
+  const std::string module_0_str = R"(
 HloModule MixedPipeline.1
 
 ENTRY main {
@@ -153,7 +153,7 @@ ENTRY main {
   ROOT baz = f32[] multiply(a, b)
 }
 )";
-  const string module_1_str = R"(
+  const std::string module_1_str = R"(
 HloModule MixedPipeline.0
 
 ENTRY main {
@@ -186,7 +186,7 @@ ENTRY main {
 }
 
 TEST_F(HloPassPipelineTest, InvariantChecker) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule InvariantChecker
 
 ENTRY main {
@@ -238,7 +238,7 @@ ENTRY main {
 
 TEST_F(HloPassPipelineTest, ModuleGroupPassOnModule) {
   // Running a module group pass on a module should produce an error.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule ModuleGroupPassOnModule
 
 ENTRY main {

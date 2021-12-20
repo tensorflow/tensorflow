@@ -171,8 +171,8 @@ HloInstruction* GetExpandedFilterMask(
         add_instruction) {
   Shape expanded_filter_shape =
       ExpandedFilterShape(filter_shape, group_count, kernel_input_feature_dim);
-  Shape mask_shape = ShapeUtil::MakeShape(
-      S32, AsInt64Slice(expanded_filter_shape.dimensions()));
+  Shape mask_shape =
+      ShapeUtil::MakeShape(S32, expanded_filter_shape.dimensions());
   int64_t output_feature = filter_shape.dimensions(kernel_output_feature_dim);
   int64_t group_size = filter_shape.dimensions(kernel_input_feature_dim);
 
@@ -193,8 +193,8 @@ HloInstruction* GetExpandedFilterMask(
 
   // Compare the broadcasted output feature linspace to the input feature
   // linspace to create a diagonal predicate.
-  Shape predicate_shape = ShapeUtil::MakeShape(
-      PRED, AsInt64Slice(expanded_filter_shape.dimensions()));
+  Shape predicate_shape =
+      ShapeUtil::MakeShape(PRED, expanded_filter_shape.dimensions());
   return add_instruction(HloInstruction::CreateCompare(
       predicate_shape, broadcasted_mask1, broadcasted_mask2,
       ComparisonDirection::kEq));

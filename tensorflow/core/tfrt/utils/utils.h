@@ -19,9 +19,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/core/tfrt/utils/statusor.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
@@ -71,7 +70,7 @@ void AddDummyTfrtDevices(const std::vector<std::string>& device_names,
 
 // Creates a BEF file from a BEF buffer. `runtime` is used to provide host
 // context for opening `bef`.
-StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
+tensorflow::StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
     const tensorflow::tfrt_stub::Runtime& runtime, const tfrt::BefBuffer& bef);
 
 // Returns a unique integer within this process.

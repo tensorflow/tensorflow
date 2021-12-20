@@ -8,7 +8,6 @@ tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/compiler/mlir/hlo/WORKSPACE
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h
 tensorflow/core/platform/default/build_config/BUILD
-tensorflow/core/platform/default/experimental_cc_shared_library.bzl
 tensorflow/core/tfrt/tpu/tpu_resources.h
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h
 tensorflow/go/BUILD

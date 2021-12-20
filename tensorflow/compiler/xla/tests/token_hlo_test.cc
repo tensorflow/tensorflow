@@ -111,7 +111,7 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
 XLA_TEST_F(TokenHloTest, TokenInWhileLoop) {
   // Thread a token around a while loop. Token is created and consumed by a
   // AfterAll instruction in the while body.
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule TokenInWhileLoop
 
 %Body (param.1: (s32[], token[])) -> (s32[], token[]) {
@@ -151,7 +151,7 @@ ENTRY %TokenInWhileLoop () -> s32[] {
 }
 
 XLA_TEST_F(TokenHloTest, TokenInConditional) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule TokenInConditional
 
 %True (param.1: token[]) -> (s32[], token[]) {
@@ -201,7 +201,7 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
 }
 
 XLA_TEST_F(TokenHloTest, AddDependency) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule AddDependency, is_scheduled=true
 
 // Computes (p0 + 42) * (-p1)
@@ -229,7 +229,7 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
 }
 
 XLA_TEST_F(TokenHloTest, AddDependencyOfConstant) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule AddDependencyOfConstant, is_scheduled=true
 
 ENTRY %AddDependency (p0: f32[]) -> f32[] {
@@ -249,7 +249,7 @@ ENTRY %AddDependency (p0: f32[]) -> f32[] {
 }
 
 XLA_TEST_F(TokenHloTest, AddDependencyAsRoot) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule AddDependencyAsRoot, is_scheduled=true
 ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   %p = f32[3] parameter(0)
@@ -267,7 +267,7 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
 }
 
 XLA_TEST_F(TokenHloTest, TupleShapedAddDependency) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule TupleShapedAddDependency, is_scheduled=true
 ENTRY %TupleShapedAddDependency (p0: f32[3], p1: f32[3]) -> f32[3] {
   %p0 = f32[3] parameter(0)

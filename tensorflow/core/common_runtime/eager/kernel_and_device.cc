@@ -215,6 +215,9 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
   options.allow_control_flow_sync_execution =
       allow_control_flow_sync_execution_;
 
+  options.shape_inference_on_tfe_dialect_import =
+      shape_inference_on_tfe_dialect_import_;
+
   // In Eager mode we always inline all functions into the top-level
   // function body graph, to get a single executable graph, that could be
   // optimized across function boundaries (e.g. prune unused inputs and

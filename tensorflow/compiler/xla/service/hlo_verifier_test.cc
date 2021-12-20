@@ -869,8 +869,8 @@ TEST_F(HloVerifierTestAllowMixedPrecision, ReduceOperandComputationMismatch) {
   ASSERT_TRUE(status.ok());
 }
 
-string ReplicaGroupsStr(std::vector<std::vector<int64_t>> replica_groups) {
-  std::vector<string> replica_group_strs;
+std::string ReplicaGroupsStr(std::vector<std::vector<int64_t>> replica_groups) {
+  std::vector<std::string> replica_group_strs;
   replica_group_strs.reserve(replica_groups.size());
   for (const auto& g : replica_groups) {
     replica_group_strs.push_back(

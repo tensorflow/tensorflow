@@ -25,6 +25,33 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace {
+int3 GetWorkGroupsCountInternal(int grid_dimension, const int3& grid_size,
+                                const int3& work_group_size,
+                                const int3& work_group_launch_order) {
+  int3 work_groups_count;
+  if (grid_dimension == 1) {
+    work_groups_count.x = DivideRoundUp(grid_size.x, work_group_size.x);
+    work_groups_count.y = 1;
+    work_groups_count.z = 1;
+  } else if (grid_dimension == 2) {
+    int3 wgs;
+    wgs.x = DivideRoundUp(grid_size.x, work_group_size.x);
+    wgs.y = DivideRoundUp(grid_size.y, work_group_size.y);
+    work_groups_count.x = wgs[work_group_launch_order[0]];
+    work_groups_count.y = wgs[work_group_launch_order[1]];
+    work_groups_count.z = 1;
+  } else {  // grid_dimension == 3
+    int3 wgs;
+    wgs.x = DivideRoundUp(grid_size.x, work_group_size.x);
+    wgs.y = DivideRoundUp(grid_size.y, work_group_size.y);
+    wgs.z = DivideRoundUp(grid_size.z, work_group_size.z);
+    work_groups_count.x = wgs[work_group_launch_order[0]];
+    work_groups_count.y = wgs[work_group_launch_order[1]];
+    work_groups_count.z = wgs[work_group_launch_order[2]];
+  }
+  return work_groups_count;
+}
+
 std::string GetElementWiseCode(const OperationDef& op_def,
                                bool check_src_slices) {
   std::string c;
@@ -217,10 +244,32 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
   return absl::OkStatus();
 }
 
+void GPUOperation::RecalculateWorkGroupsCount() {
+  work_groups_count_ = GetWorkGroupsCountInternal(
+      grid_dimension_, grid_size_, work_group_size_, work_group_launch_order_);
+}
+
 void GPUOperation::CalculateConstArgsSize() {
   const_args_size_ = 0;
   for (const auto& obj : args_.GetObjects()) {
     const_args_size_ += obj.second->GetSizeInBytes();
+  }
+}
+
+void GPUOperation::GetPossibleDispatches(
+    TuningType tuning_type, const GpuInfo& gpu_info,
+    const KernelInfo& kernel_info,
+    std::vector<DispatchInfo>* dispatches) const {
+  std::vector<int3> work_group_sizes;
+  GetPossibleKernelWorkGroups(tuning_type, gpu_info, kernel_info,
+                              &work_group_sizes);
+  dispatches->resize(work_group_sizes.size());
+  for (int i = 0; i < work_group_sizes.size(); ++i) {
+    auto& dispatch_info = (*dispatches)[i];
+    dispatch_info.work_group_size = work_group_sizes[i];
+    dispatch_info.work_groups_count = GetWorkGroupsCountInternal(
+        grid_dimension_, grid_size_, work_group_sizes[i],
+        work_group_launch_order_);
   }
 }
 

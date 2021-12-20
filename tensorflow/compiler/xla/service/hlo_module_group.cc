@@ -49,7 +49,7 @@ std::vector<std::unique_ptr<HloModule>> HloModuleGroup::ConsumeModules() {
   return ret_modules;
 }
 
-string HloModuleGroup::ToString() const {
+std::string HloModuleGroup::ToString() const {
   std::ostringstream s;
   s << "HloModuleGroup " << name() << "\n\n";
   for (const HloModule* module : modules()) {

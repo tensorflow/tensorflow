@@ -270,7 +270,7 @@ HloSharding HloSharding::Single(const Shape& shape,
   return shape.IsTuple() ? SingleTuple(shape, sharding) : sharding;
 }
 
-string HloSharding::ToString(bool include_metadata) const {
+std::string HloSharding::ToString(bool include_metadata) const {
   if (IsTuple()) {
     CHECK(metadata_.empty());
     std::string result = "{";

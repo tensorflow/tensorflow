@@ -116,8 +116,8 @@ void PopulateTrigonometricToApproximationPatterns(
 // Populate patterns to move dynamic broadcasts up over element-wise operations
 // and broadcast the operands rather than the result. This will eventually allow
 // for larger fusions.
-void PopulateBroadcastsPropagationPatterns(MLIRContext *context,
-                                           OwningRewritePatternList *patterns);
+void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
+                                      OwningRewritePatternList *patterns);
 
 /// Populate rank specialization clustering and lowering patterns.
 void PopulateRankSpecializationClusterPatterns(

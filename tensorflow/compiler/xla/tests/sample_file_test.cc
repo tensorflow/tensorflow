@@ -43,7 +43,7 @@ class SampleFileTest : public HloTestBase {
 };
 
 TEST_F(SampleFileTest, Convolution) {
-  const string& filename = tensorflow::GetDataDependencyFilepath(
+  const std::string& filename = tensorflow::GetDataDependencyFilepath(
       tensorflow::io::JoinPath("tensorflow", "compiler", "xla", "tests",
                                "isolated_convolution.hlo"));
   EXPECT_TRUE(RunAndCompareFromFile(filename, ErrorSpec{0.01}));

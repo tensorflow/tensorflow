@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
 
+#include <string>
+
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -25,7 +27,7 @@ namespace {
 class HloModuleLoaderTest : public HloTestBase {};
 
 TEST_F(HloModuleLoaderTest, StripsLogHeaders) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 I0521 12:04:45.883483    1509 service.cc:186] HloModule test_log_stripping
 I0521 12:04:45.883483    1509 service.cc:186]
 I0521 12:04:45.883483    1509 service.cc:186] ENTRY entry {

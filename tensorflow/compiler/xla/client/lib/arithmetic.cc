@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace xla {
 
-XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
-                                       XlaBuilder* builder,
+XlaComputation CreateScalarComputation(const std::string& name,
+                                       PrimitiveType type, XlaBuilder* builder,
                                        XlaOpGenerator generator) {
   std::unique_ptr<XlaBuilder> b;
   if (type == PRED) {

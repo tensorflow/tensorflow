@@ -399,11 +399,11 @@ class GraphCyclesTest : public ::testing::Test {
     CHECK(g_.CheckInvariants());
   }
 
-  string Path(int x, int y) {
+  std::string Path(int x, int y) {
     static const int kPathSize = 5;
     int32 path[kPathSize];
     int np = g_.FindPath(x, y, kPathSize, path);
-    string result;
+    std::string result;
     for (int i = 0; i < np; i++) {
       if (i >= kPathSize) {
         result += " ...";

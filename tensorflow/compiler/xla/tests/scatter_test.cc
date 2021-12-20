@@ -26,12 +26,12 @@ using absl::nullopt;
 
 class ScatterTest : public HloTestBase {
  protected:
-  void RunTest(const string& hlo_text, Literal* operand,
+  void RunTest(const std::string& hlo_text, Literal* operand,
                Literal* scatter_indices, Literal* updates) {
     RunTest(hlo_text, {operand, scatter_indices, updates});
   }
 
-  void RunTest(const string& hlo_text, absl::Span<Literal* const> args) {
+  void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -41,7 +41,7 @@ class ScatterTest : public HloTestBase {
 };
 
 XLA_TEST_F(ScatterTest, TensorFlowScatterV1_Update) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -69,7 +69,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, TensorFlowScatterV1_WithFusedAdds) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -196,7 +196,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, TensorFlowScatter_Add) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatter_Add
 
 add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -225,7 +225,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, TensorFlowScatter_Add_UniqueIndices) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatter_Add
 
 add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -255,7 +255,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, TensorFlowScatter_Mul) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatter_Mul
 
 mul_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -284,7 +284,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, TensorFlowScatter_F32) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowScatter_F32
 
 add_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
@@ -516,7 +516,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, NoUpdateWindowDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule Scatter_NoUpdateWindowDims
 
 add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -545,7 +545,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, OutOfBoundsIndex) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -575,7 +575,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, OutOfBoundsUnsignedIndex) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -605,7 +605,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, NegativeIndex) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -726,7 +726,7 @@ ENTRY main {
 }
 
 XLA_TEST_F(ScatterTest, EmptyIndices) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule EmptyIndices
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {

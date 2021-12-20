@@ -663,6 +663,9 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   HloInstruction* new_root =
       conditional->branch_computation(0)->root_instruction();
   *conditional->mutable_shape() = new_root->shape();
+  // Keep conditional instruction sharding consistent with the branches. Note
+  // that this sharding could be lost after this pass.
+  conditional->set_sharding(new_root->sharding_ptr());
   VLOG(1) << "done moving instructions out of branches\n"
           << conditional_parent->ToString(HloPrintOptions::Fingerprint())
           << "\n";
@@ -813,6 +816,9 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
   HloInstruction* new_root =
       conditional->branch_computation(0)->root_instruction();
   *conditional->mutable_shape() = new_root->shape();
+  // Keep conditional instruction sharding consistent with the branches. Note
+  // that this sharding could be lost after this pass.
+  conditional->set_sharding(new_root->sharding_ptr());
   VLOG(2) << "Before removing instructions:"
           << conditional->parent()->ToString() << "\n";
   // Remove hoisted instructions from the branches.

@@ -136,7 +136,8 @@ using MatMulTestParam = std::tuple<MatMulShape, bool, bool, bool>;
 class EigenMatMulTest : public CpuRuntimeTest,
                         public ::testing::WithParamInterface<MatMulTestParam> {
  public:
-  static string Name(const ::testing::TestParamInfo<MatMulTestParam>& info) {
+  static std::string Name(
+      const ::testing::TestParamInfo<MatMulTestParam>& info) {
     MatMulShape shape = std::get<0>(info.param);
     bool transpose_lhs = std::get<1>(info.param);
     bool transpose_rhs = std::get<2>(info.param);
@@ -173,7 +174,8 @@ INSTANTIATE_TEST_SUITE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
 class MKLMatMulTest : public CpuRuntimeTest,
                       public ::testing::WithParamInterface<MatMulTestParam> {
  public:
-  static string Name(const ::testing::TestParamInfo<MatMulTestParam>& info) {
+  static std::string Name(
+      const ::testing::TestParamInfo<MatMulTestParam>& info) {
     MatMulShape shape = std::get<0>(info.param);
     bool transpose_lhs = std::get<1>(info.param);
     bool transpose_rhs = std::get<2>(info.param);

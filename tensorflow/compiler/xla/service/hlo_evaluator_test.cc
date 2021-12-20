@@ -3488,7 +3488,7 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_NoOutputWindowDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule GatherXd
 
 ENTRY main {
@@ -3924,7 +3924,7 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_NoUpdateWindowDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule Scatter_NoUpdateWindowDims
 
 add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -3993,7 +3993,7 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_OobIndices) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDynamicUpdateSlice
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
@@ -4090,7 +4090,7 @@ TEST_F(HloEvaluatorTest, DoesCompareBF16) {
 }
 
 TEST_P(HloEvaluatorBf16Test, Bf16Reduction) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule Bf16Reduction
 
 add_bf16 (lhs: bf16[], rhs: bf16[]) -> bf16[] {
@@ -4115,7 +4115,7 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, MixedPrecisionReduction) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule MixedPrecisionReduction
 
 add_f32 {
@@ -4141,7 +4141,7 @@ ENTRY main {
 TEST_F(HloEvaluatorTest, DontFailOnCallUnimplementedOps) {
   // Infeed triggers unimplemented error within HandleCall, and we verify that
   // the Evaluator does fail in such case.
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule DontFailOnCall
 
 call {
@@ -4161,7 +4161,7 @@ ENTRY main {
 TEST_F(HloEvaluatorTest, DontFailOnFusionWithUnimplementedOps) {
   // Infeed triggers unimplemented error within HandleFusion, and we verify that
   // the Evaluator does fail in such case.
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule DontFailOnFusion
 
 fused_computation {
@@ -4180,7 +4180,7 @@ ENTRY main {
 
 TEST_P(HloEvaluatorBf16Test, SliceWithDifferentLayout) {
   // Regression test for b/114735354.
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule SliceWithDifferentLayout
 
 ENTRY main {
@@ -4207,7 +4207,7 @@ ENTRY main {
   ROOT bitcast = %s[121,32,1]{0,1,2} bitcast(%s[32,121]{1,0} param)
 }
 )";
-  string hlo_text;
+  std::string hlo_text;
   if (use_bfloat16_) {
     hlo_text = absl::StrFormat(hlo_text_base, "bf16", "bf16", "bf16");
   } else {

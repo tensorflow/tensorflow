@@ -73,6 +73,7 @@ filegroup(
     name = "java_stable_srcs",
     srcs = [
         "src/main/java/org/tensorflow/lite/DataType.java",
+        "src/main/java/org/tensorflow/lite/DataTypeUtils.java",
         "src/main/java/org/tensorflow/lite/Delegate.java",
         "src/main/java/org/tensorflow/lite/InterpreterApi.java",
         "src/main/java/org/tensorflow/lite/InterpreterFactory.java",

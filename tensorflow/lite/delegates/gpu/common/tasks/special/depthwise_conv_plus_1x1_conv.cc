@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/depthwise_conv_plus_1x1_conv.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -147,13 +148,11 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
        "\n";
   c += "    return; \n";
   c += "  } \n";
-  std::string mem_type = gpu_info.IsMali() ? "__global" : "__constant";
-  c += "  " + mem_type + " FLT4* constants = args.constants.GetPtr();\n";
   int intermediate_depth = DivideRoundUp(dw_attr.weights.shape.i, 4);
   int weights_counter = 0;
   for (int d = 0; d < intermediate_depth; ++d) {
-    c += "  FLT4 dw_res_" + std::to_string(d) + " = constants[" +
-         std::to_string(weights_counter++) + "];\n";
+    c += "  FLT4 dw_res_" + std::to_string(d) + " = args.constants.Read(" +
+         std::to_string(weights_counter++) + ");\n";
   }
   c += "  int x_offseted = X * args.stride_x + args.padding_x;\n";
   c += "  int y_offseted = Y * args.stride_y + args.padding_y;\n";
@@ -206,8 +205,8 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
         c += "  src" + s_postfix + " = args.src_tensor.Read(x_c, y_c, " +
              std::to_string(d) + ")" + s_postfix + multiplier + ";\n";
         c += "  dw_res_" + std::to_string(d) + s_postfix + " += src" +
-             s_postfix + " * constants[" + std::to_string(weights_counter++) +
-             "]" + s_postfix + ";\n";
+             s_postfix + " * args.constants.Read(" +
+             std::to_string(weights_counter++) + ")" + s_postfix + ";\n";
       }
     }
   }
@@ -223,21 +222,21 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
     }
   }
   for (int d = 0; d < result_depth; ++d) {
-    c += "  FLT4 conv_res_" + std::to_string(d) + " = constants[" +
-         std::to_string(weights_counter++) + "];\n";
+    c += "  FLT4 conv_res_" + std::to_string(d) + " = args.constants.Read(" +
+         std::to_string(weights_counter++) + ");\n";
   }
   for (int d = 0; d < result_depth; ++d) {
     for (int s = 0; s < intermediate_depth; ++s) {
       std::string src = "dw_res_" + std::to_string(s);
       std::string dst = "conv_res_" + std::to_string(d);
-      c += "  " + dst + " += " + src + ".x * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-      c += "  " + dst + " += " + src + ".y * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-      c += "  " + dst + " += " + src + ".z * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-      c += "  " + dst + " += " + src + ".w * constants[" +
-           std::to_string(weights_counter++) + "];\n";
+      c += "  " + dst + " += " + src + ".x * args.constants.Read(" +
+           std::to_string(weights_counter++) + ");\n";
+      c += "  " + dst + " += " + src + ".y * args.constants.Read(" +
+           std::to_string(weights_counter++) + ");\n";
+      c += "  " + dst + " += " + src + ".z * args.constants.Read(" +
+           std::to_string(weights_counter++) + ");\n";
+      c += "  " + dst + " += " + src + ".w * args.constants.Read(" +
+           std::to_string(weights_counter++) + ");\n";
     }
     c += "  args.dst_tensor.Write(conv_res_" + std::to_string(d) + ", X, Y, " +
          std::to_string(d) + ");\n";

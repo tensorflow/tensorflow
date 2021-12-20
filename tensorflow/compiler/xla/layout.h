@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LAYOUT_H_
 #define TENSORFLOW_COMPILER_XLA_LAYOUT_H_
 
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -38,7 +39,7 @@ class Tile {
 
   // De/Serialize a Tile to and from a TileProto.
   static Tile CreateFromProto(const TileProto& tile_proto) {
-    return Tile(AsInt64Slice(tile_proto.dimensions()));
+    return Tile(tile_proto.dimensions());
   }
   TileProto ToProto() const;
 
@@ -47,7 +48,7 @@ class Tile {
   }
   bool operator!=(const Tile& other) const { return !(*this == other); }
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns the bound of the tile in the given dimension index.
   int64_t dimension(int i) const { return dimensions_.at(i); }
@@ -106,7 +107,7 @@ class Layout {
   LayoutProto ToProto() const;
 
   // Returns a human-readable string that represents this layout.
-  string ToString() const;
+  std::string ToString() const;
 
   // Equal is a configurable functor to check the equality of two layouts.
   //

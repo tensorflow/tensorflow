@@ -93,7 +93,7 @@ class HloModuleGroupMetadata {
 
     HloInstruction* instruction() const { return instruction_; }
 
-    string ToString() const;
+    std::string ToString() const;
 
    private:
     HloInstruction* instruction_ = nullptr;

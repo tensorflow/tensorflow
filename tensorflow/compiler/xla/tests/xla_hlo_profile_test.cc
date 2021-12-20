@@ -44,13 +44,13 @@ class HloProfileTest : public ClientLibraryTestBase {};
 
 struct ParsedProfileOutputLine {
   int64_t cycles;
-  string cycles_percentage;
+  std::string cycles_percentage;
   double usec;
-  string flops;
-  string trops;
-  string bytes_per_sec;
-  string bytes_per_cycle;
-  string opcode;
+  std::string flops;
+  std::string trops;
+  std::string bytes_per_sec;
+  std::string bytes_per_cycle;
+  std::string opcode;
 };
 
 ::testing::AssertionResult HasFlops(
@@ -80,26 +80,27 @@ struct ParsedProfileOutputLine {
 }
 
 Status ParseOneProfileOutputLine(
-    const string& line, bool expect_hlo,
-    absl::flat_hash_map<string, ParsedProfileOutputLine>* parsed_results,
+    const std::string& line, bool expect_hlo,
+    absl::flat_hash_map<std::string, ParsedProfileOutputLine>* parsed_results,
     absl::Span<const absl::string_view> opcodes_to_ignore = {}) {
-  string separator = "[^:]*:: +";
-  string match_percentage = R"(\d+\.\d*% +\d+Σ)";
-  string match_cycles = R"((\d+) cycles +\( *()" + match_percentage + R"()\))";
-  string match_usecs = "([0-9.]+) usec";
-  string match_flops = "([^ ]*)";
-  string match_trops = "([^ ]*)";
-  string match_bytes_per_sec = "([0-9.TGMKi]*)(?:B/s)?";
-  string match_bytes_per_cycle = "([0-9.TGMKi]*)(?:B/cycle)?";
+  std::string separator = "[^:]*:: +";
+  std::string match_percentage = R"(\d+\.\d*% +\d+Σ)";
+  std::string match_cycles =
+      R"((\d+) cycles +\( *()" + match_percentage + R"()\))";
+  std::string match_usecs = "([0-9.]+) usec";
+  std::string match_flops = "([^ ]*)";
+  std::string match_trops = "([^ ]*)";
+  std::string match_bytes_per_sec = "([0-9.TGMKi]*)(?:B/s)?";
+  std::string match_bytes_per_cycle = "([0-9.TGMKi]*)(?:B/cycle)?";
 
   // The underlined part is what we're trying to match with match_opcode:
   //
   //   %dot33 = f32[256,256]{1,0} dot(...)
   //                              ^^^
 
-  string match_opcode = expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*"
-                                   : "(\\[total\\])( \\[entry\\])?";
-  string regexp_pattern = absl::StrCat(
+  std::string match_opcode = expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*"
+                                        : "(\\[total\\])( \\[entry\\])?";
+  std::string regexp_pattern = absl::StrCat(
       " +", match_cycles, separator, match_usecs, separator, match_flops,
       separator, match_trops, separator, match_bytes_per_sec, separator,
       match_bytes_per_cycle, separator, match_opcode);
@@ -123,12 +124,12 @@ Status ParseOneProfileOutputLine(
   return Status::OK();
 }
 
-bool IsExtraMetricProfileOutputLine(const string& line) {
+bool IsExtraMetricProfileOutputLine(const std::string& line) {
   return RE2::FullMatch(line, "Extra metric \\S+: \\d+");
 }
 
 // Returns void so that we can ASSERT.
-void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
+void ExecuteAndFetchProfile(std::string* profile_output, LocalClient* client,
                             const XlaComputation& computation,
                             const Shape& lhs_arg_shape,
                             const Shape& rhs_arg_shape) {
@@ -204,14 +205,15 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileSingleComputation)) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 
-  string profile_output;
+  std::string profile_output;
   ExecuteAndFetchProfile(&profile_output, client, computation, lhs_shape,
                          rhs_shape);
   VLOG(4) << "Profile Output:\n" << profile_output;
-  std::vector<string> profile_output_lines =
+  std::vector<std::string> profile_output_lines =
       absl::StrSplit(profile_output, '\n');
 
-  absl::flat_hash_map<string, ParsedProfileOutputLine> parsed_profile_lines;
+  absl::flat_hash_map<std::string, ParsedProfileOutputLine>
+      parsed_profile_lines;
 
   int line_no = 0;
 
@@ -306,12 +308,12 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 
-  string profile_output;
+  std::string profile_output;
   ExecuteAndFetchProfile(&profile_output, client, computation, matrix_shape,
                          matrix_shape);
   SCOPED_TRACE(profile_output);
 
-  std::vector<string> profile_output_lines =
+  std::vector<std::string> profile_output_lines =
       absl::StrSplit(profile_output, '\n');
 
   auto while_body_profile_start =
@@ -332,7 +334,8 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
 
   ASSERT_NE(while_body_profile_end, profile_output_lines.end());
 
-  absl::flat_hash_map<string, ParsedProfileOutputLine> parsed_profile_lines;
+  absl::flat_hash_map<std::string, ParsedProfileOutputLine>
+      parsed_profile_lines;
 
   for (auto while_body_profile_i = while_body_profile_start + 1;
        while_body_profile_i != while_body_profile_end; while_body_profile_i++) {

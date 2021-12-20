@@ -50,7 +50,7 @@ XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
   if (shape.IsArray()) {
     return Broadcast(
         ConstantLiteral(builder, LiteralUtil::One(shape.element_type())),
-        AsInt64Slice(shape.dimensions()));
+        shape.dimensions());
   }
   std::vector<XlaOp> parts;
   const auto& tuple_shapes = shape.tuple_shapes();
