@@ -283,7 +283,7 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
     XlaBuilder builder("condition");
     auto state = Parameter(&builder, 0, while_result_shape, "state");
     auto iteration = GetTupleElement(state, 0);
-    Gt(ConstantR0<int32>(&builder, 5), iteration);
+    Gt(ConstantR0<int32_t>(&builder, 5), iteration);
     TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
@@ -293,14 +293,14 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
     auto state = Parameter(&builder, 0, while_result_shape, "state");
     auto matrix = GetTupleElement(state, 1);
     auto next_iteration =
-        Add(GetTupleElement(state, 0), ConstantR0<int32>(&builder, 1));
+        Add(GetTupleElement(state, 0), ConstantR0<int32_t>(&builder, 1));
     Tuple(&builder, {next_iteration, Mul(matrix, matrix)});
     TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   XlaBuilder builder(TestName());
   auto initial_while_state =
-      Tuple(&builder, {ConstantR0<int32>(&builder, 0),
+      Tuple(&builder, {ConstantR0<int32_t>(&builder, 0),
                        Parameter(&builder, 0, matrix_shape, "initial_value")});
   auto while_result = While(condition, body, initial_while_state);
   Add(GetTupleElement(while_result, 1),

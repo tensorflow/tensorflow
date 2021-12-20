@@ -38,7 +38,7 @@ template <typename NativeT>
 class PseudorandomGenerator {
  public:
   explicit PseudorandomGenerator(NativeT min_value, NativeT max_value,
-                                 uint32 seed)
+                                 uint32_t seed)
       : min_(min_value), max_(max_value), generator_(seed) {}
 
   // Get a pseudorandom value.

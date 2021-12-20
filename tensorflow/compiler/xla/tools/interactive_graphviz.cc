@@ -563,7 +563,7 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
     return;
   }
 
-  uint64 graph_width = kDefaultWidth;
+  uint64_t graph_width = kDefaultWidth;
   absl::flat_hash_set<const HloInstruction*> boundary;
   if (tokens.size() >= 2) {
     if (comp) {
