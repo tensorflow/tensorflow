@@ -118,11 +118,6 @@ class MklLayerNormOp : public OpKernel {
                                    MklDnnType<float>(),
                                    memory::format_tag::x},
                                   cpu_engine, shift_buf_dst);
-      void* shift_buf_dst =
-          scale_shift_buf + sizeof(float) * num_elements_scale;
-      auto shift_mem_dst = memory(
-          {{num_elements_shift}, MklDnnType<float>(), memory::format_tag::x},
-          cpu_engine, shift_buf_dst);
       auto shift_reorder_prim = reorder(shift_mem_src, shift_mem_dst);
       std::unordered_map<int, memory> shift_reorder_args;
       shift_reorder_args.insert({DNNL_ARG_FROM, shift_mem_src});
