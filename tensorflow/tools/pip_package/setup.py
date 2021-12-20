@@ -82,6 +82,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.14.5',
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
+    'setuptools < 60',  # TODO(b/211495558): Breaking change in v60 on distutils
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
