@@ -468,10 +468,9 @@ install_tensorflow_pip() {
   # Check that requested python version matches configured one.
   check_python_pip_version
 
-  # Force upgrade of setuptools. We need it to install pips using
-  # `install_requires` notation introduced in setuptools >=20.5. The default
-  # version of setuptools is 5.5.1.
-  ${PIP_BIN_PATH} install --upgrade setuptools || \
+  # setuptools v60.0.0 introduced a breaking change on how distutils is linked
+  # https://github.com/pypa/setuptools/blob/main/CHANGES.rst#v6000
+  ${PIP_BIN_PATH} install --upgrade "setuptools<60" || \
     die "Error: setuptools install, upgrade FAILED"
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
