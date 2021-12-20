@@ -36,7 +36,6 @@ limitations under the License.
 #include "llvm/Support/ErrorOr.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
 namespace tensorflow {
@@ -354,12 +353,6 @@ struct SymbolicShapeOptimizationPass
     patterns.insert<CstrBroadcastableOpLowering>(ctx);
     // Rewrite shape.broadcast based on the symbolic shapes.
     patterns.insert<BroadcastOpLowering>(ctx);
-
-    // Move broadcasts up across mhlo operations to enable more opportunities
-    // for constraints and broadcasts optimizations. These patterns are only
-    // applicable if we do not lower mhlo broadcasts to linalg.generic.
-    if (optimize_only_constraints)
-      mlir::mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns);
 
     // Rewrite broadcasts based on the symbolic shapes if enabled.
     if (!optimize_only_constraints)

@@ -188,7 +188,7 @@ func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
   // CHECK-NOT: shape.
   // CHECK: %[[LHS:.*]] = memref.reinterpret_cast
   // CHECK: %[[RHS:.*]] = memref.reinterpret_cast
-  // CHECK: linalg.generic {{.*}} ins(%[[LHS]], %[[RHS]] :
+  // CHECK: linalg.generic {{.*}} ins(%[[RHS]], %[[LHS]] :
   // CHECK:   mulf
   %0 = "tf.Mul"(%arg0, %arg1)
        : (tensor<?x1xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
