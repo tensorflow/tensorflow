@@ -1286,7 +1286,9 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
         "batch_group_count", rewriter.getI64IntegerAttr(1));
 
     Value paddings_op = rewriter.create<tensor::FromElementsOp>(
-        op.getLoc(), rewriter.getI32Type(), paddings);
+        op.getLoc(),
+        RankedTensorType::get(2 * num_spatial_dims, rewriter.getI32Type()),
+        paddings);
 
     SmallVector<Value, 3> operands(op.getOperands());
     operands.push_back(paddings_op);
@@ -3204,13 +3206,22 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
           loc, rewriter.getIndexType(), begin_value);
       begin_values.push_back(begin_value_casted);
     }
-
+    auto index_ty = rewriter.getIndexType();
     auto start_indices = rewriter.create<tensor::FromElementsOp>(
-        loc, rewriter.getIndexType(), begin_values);
+        loc,
+        RankedTensorType::get({static_cast<int64_t>(begin_values.size())},
+                              index_ty),
+        begin_values);
     auto end_indices = rewriter.create<tensor::FromElementsOp>(
-        loc, rewriter.getIndexType(), end_values);
+        loc,
+        RankedTensorType::get({static_cast<int64_t>(end_values.size())},
+                              index_ty),
+        end_values);
     auto stride_indices = rewriter.create<tensor::FromElementsOp>(
-        loc, rewriter.getIndexType(), stride_values);
+        loc,
+        RankedTensorType::get({static_cast<int64_t>(stride_values.size())},
+                              index_ty),
+        stride_values);
 
     auto d_slice = rewriter.create<mhlo::RealDynamicSliceOp>(
         loc, op.getOperation()->getResult(0).getType(), input, start_indices,
@@ -3491,12 +3502,23 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
           loc, slice_size, rewriter.create<arith::ConstantIndexOp>(loc, i));
       end_indices[dim_index] = rewriter.create<arith::MulIOp>(
           loc, slice_size, rewriter.create<arith::ConstantIndexOp>(loc, i + 1));
+
+      Type index_ty = rewriter.getIndexType();
       auto begin_value = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getIndexType(), begin_indices);
+          loc,
+          RankedTensorType::get({static_cast<int64_t>(begin_indices.size())},
+                                index_ty),
+          begin_indices);
       auto end_value = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getIndexType(), end_indices);
+          loc,
+          RankedTensorType::get({static_cast<int64_t>(end_indices.size())},
+                                index_ty),
+          end_indices);
       auto stride_value = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getIndexType(), strides);
+          loc,
+          RankedTensorType::get({static_cast<int64_t>(strides.size())},
+                                index_ty),
+          strides);
       slices.push_back(rewriter.create<RealDynamicSliceOp>(
           loc, op.getOperation()->getResult(i).getType(), input, begin_value,
           end_value, stride_value));
@@ -4234,7 +4256,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       auto divisor_casted = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.getI64Type(), divisor_count);
       auto divisor_tensor = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getI64Type(), ValueRange{divisor_casted});
+          loc, ValueRange{divisor_casted});
       auto divisor_reshaped = rewriter.create<mhlo::ReshapeOp>(
           loc, RankedTensorType::get({}, rewriter.getI64Type()),
           divisor_tensor);
@@ -4762,6 +4784,7 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
         (multiples_ty.getDimSize(0) != input_rank)) {
       return failure();
     }
+    Type index_ty = rewriter.getIndexType();
     // %out_dim_size
     SmallVector<Value, 4> out_dim_size;
     out_dim_size.reserve(input_rank * 2);
@@ -4770,8 +4793,8 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
           loc, rewriter.getIndexAttr(dim_idx));
       Value multiples_size =
           rewriter.create<tensor::ExtractOp>(loc, multiples, ValueRange{index});
-      Value multiples_size_casted = rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.getIndexType(), multiples_size);
+      Value multiples_size_casted =
+          rewriter.create<arith::IndexCastOp>(loc, index_ty, multiples_size);
       out_dim_size.push_back(multiples_size_casted);
       out_dim_size.push_back(input_shape_values[dim_idx]);
     }
@@ -4784,7 +4807,10 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
         GetI64ElementsAttr(broadcast_dimensions, &rewriter);
 
     Value out_dim_size_tensor = rewriter.create<tensor::FromElementsOp>(
-        loc, rewriter.getIndexType(), out_dim_size);
+        loc,
+        RankedTensorType::get({static_cast<int64_t>(out_dim_size.size())},
+                              index_ty),
+        out_dim_size);
     SmallVector<int64_t, 4> broadcast_shape(input_rank * 2,
                                             ShapedType::kDynamicSize);
     RankedTensorType broadcast_type =
@@ -4801,7 +4827,7 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
       shape_values.push_back(dim_size_value);
     }
     Value shape = rewriter.create<tensor::FromElementsOp>(
-        loc, rewriter.getIndexType(), shape_values);
+        loc, RankedTensorType::get({input_rank}, index_ty), shape_values);
     rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, op.getType(),
                                                         broadcast, shape);
     return success();
@@ -5643,21 +5669,34 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
 
     SmallVector<Value, 4> results;
     results.reserve(op.getNumResults());
+    Type i32_ty = rewriter.getI32Type();
     for (int64_t i = 0; i < op.getNumResults(); ++i) {
       begin_indices[axis] = rewriter.create<arith::ConstantIntOp>(loc, i, 32);
       end_indices[axis] = rewriter.create<arith::ConstantIntOp>(loc, i + 1, 32);
       Value slice_op = rewriter.create<RealDynamicSliceOp>(
           loc, RankedTensorType::get(slice_shape, value_type.getElementType()),
           op.value(),
-          rewriter.create<tensor::FromElementsOp>(loc, rewriter.getI32Type(),
-                                                  begin_indices),
-          rewriter.create<tensor::FromElementsOp>(loc, rewriter.getI32Type(),
-                                                  end_indices),
-          rewriter.create<tensor::FromElementsOp>(loc, rewriter.getI32Type(),
-                                                  strides));
+          rewriter.create<tensor::FromElementsOp>(
+              loc,
+              RankedTensorType::get(
+                  {static_cast<int64_t>(begin_indices.size())}, i32_ty),
+              begin_indices),
+          rewriter.create<tensor::FromElementsOp>(
+              loc,
+              RankedTensorType::get({static_cast<int64_t>(end_indices.size())},
+                                    i32_ty),
+              end_indices),
+          rewriter.create<tensor::FromElementsOp>(
+              loc,
+              RankedTensorType::get({static_cast<int64_t>(strides.size())},
+                                    i32_ty),
+              strides));
       // Reshape to drop the axis dimension.
       Value new_shape = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getI32Type(), shape_values);
+          loc,
+          RankedTensorType::get({static_cast<int64_t>(shape_values.size())},
+                                i32_ty),
+          shape_values);
       Value reshape_op = rewriter.create<DynamicReshapeOp>(loc, op.getType(i),
                                                            slice_op, new_shape);
       results.push_back(reshape_op);
