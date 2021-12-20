@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
@@ -1451,6 +1452,21 @@ py_test(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "ragged_factory_ops_test",
+    size = "small",
+    srcs = ["ragged_factory_ops_test.py"],
+    deps = [
+        ":ragged_functional_ops",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
     ],
 )
