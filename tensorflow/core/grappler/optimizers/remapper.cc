@@ -1138,145 +1138,6 @@ bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
   return found_op_type_match;
 }
 
-// Keras LayerNormalization api uses multiple TensorFlow ops. Current fusion
-// pattern is only for the case, when LayerNormalization uses FusedBatcNormV3.
-// We further restrict it to only 2D or 3D tensor inputs to keras
-// LayerNormalization api.
-bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
-                      std::map<string, int>* matched_nodes_map,
-                      std::set<int>* remove_node_indices) {
-  if (!IsMKLEnabled()) return false;
-
-  // The following pattern will be searched in the graph with additional
-  // contraints. Here * means any type of op.
-  // clang-format off
-  //              Subgraph for fusion
-  //              -------------------
-  //
-  //     *(input)  *  * Const  *  Const                       FusedOp
-  //          \    |   \  |    |  /        Const              -------
-  //           \   |    \ |    | /  Const   /
-  //           Reshape  Fill   Fill  /     /         *(input) *(gamma)  *(beta)
-  //              \      /      /   /     /                \     |      /
-  //               \    /      /   /     /                  \    |     /
-  //          F u s e d B a t c h N o r m V 3              _MklLayerNorm
-  //                 \
-  //                  \   *
-  //                   \ /
-  //                 Reshape
-  //                    \   *(gamma)
-  //                     \ /
-  //                     Mul
-  //             *(beta) /
-  //                \   /
-  //                AddV2(output)
-  // clang-format on
-  using utils::MatchingDirection;
-  using utils::NodeStatus;
-  // clang-format off
-  utils::OpTypePattern layer_norm_pattern =
-    {"AddV2", "output", NodeStatus::kReplace,
-      {
-        {"*", "beta", NodeStatus::kRemain},
-        {"Mul", "scale", NodeStatus::kRemove,
-          {
-            {"Reshape", "post_reshape", NodeStatus::kRemove,
-              {
-                {"FusedBatchNormV3", "fused_batch_norm", NodeStatus::kRemove,
-                  {
-                    {"Reshape", "pre_reshape", NodeStatus::kRemove,
-                      {
-                        {"*", "input", NodeStatus::kRemain},
-                        {"*", "pre_shape", NodeStatus::kRemain}
-                      }
-                    },
-                    {"Fill", "fill_scale", NodeStatus::kRemove,
-                      {
-                        {"*", "dims_fill_scale", NodeStatus::kRemain},
-                        {"Const", "unit_gamma", NodeStatus::kRemain}
-                      }
-                    },
-                    {"Fill", "fill_offset", NodeStatus::kRemove,
-                      {
-                        {"*", "dims_fill_offset", NodeStatus::kRemain},
-                        {"Const", "zero_beta", NodeStatus::kRemain}
-                      }
-                    },
-                    {"Const", "empty", NodeStatus::kRemain},
-                    {"Const", "empty", NodeStatus::kRemain}
-                  }
-                },
-                {"*", "post_shape", NodeStatus::kRemain}
-              }
-            },
-            {"*", "gamma", NodeStatus::kRemain}
-          }
-        }
-      }
-    };  // clang-format on
-
-  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
-      &(ctx->graph_view));
-  bool found_op_type_match = false;
-  matched_nodes_map->clear();
-  remove_node_indices->clear();
-  found_op_type_match =
-      graph_matcher.GetMatchedNodes(layer_norm_pattern, ctx->nodes_to_preserve,
-                                    ctx->graph_view.GetNode(node_index),
-                                    matched_nodes_map, remove_node_indices);
-
-  // Additional check for LayerNorm
-  if (found_op_type_match) {
-    // LayerNorm uses FusedBatchNorm in training mode.
-    NodeDef* fused_batch_norm_node =
-        ctx->graph_view.GetNode(matched_nodes_map->at("fused_batch_norm"))
-            ->node();
-    bool is_training = false;
-    if (!TryGetNodeAttr(*fused_batch_norm_node, kIsTraining, &is_training) ||
-        !is_training)
-      return false;
-
-    // FusedBatchNorm node should have mean/variance as empty constant
-    NodeDef* empty_const_node =
-        ctx->graph_view.GetNode(matched_nodes_map->at("empty"))->node();
-    Tensor const_tensor;
-    if (empty_const_node != nullptr && empty_const_node->op() == "Const" &&
-        const_tensor.FromProto(empty_const_node->attr().at("value").tensor())) {
-      if (const_tensor.NumElements() != 0) return false;
-    } else {
-      return false;
-    }
-
-    // TODO(intel-tf): Relax the restriction of 2D/3D tensor once kernel
-    // supports that.
-    if (!ctx->inferred_graph_properties) {
-      Status s = ctx->graph_properties.InferStatically(
-          /*assume_valid_feeds=*/true,
-          /*aggressive_shape_inference=*/false,
-          /*include_input_tensor_values=*/true,
-          /*include_output_tensor_values=*/false);
-      if (!s.ok()) return false;
-      ctx->inferred_graph_properties = true;
-    }
-    NodeDef* input_node_def =
-        ctx->graph_view.GetNode(matched_nodes_map->at("input"))->node();
-    auto input_props =
-        ctx->graph_properties.GetOutputProperties(input_node_def->name());
-    NodeDef* output_node_def =
-        ctx->graph_view.GetNode(matched_nodes_map->at("output"))->node();
-    auto output_props =
-        ctx->graph_properties.GetOutputProperties(output_node_def->name());
-    if (ShapesSymbolicallyEqual(input_props[0].shape(),
-                                output_props[0].shape())) {
-      int rank = Rank(input_props[0].shape());
-      if (rank < 2 || rank > 3) return false;
-    } else {
-      return false;
-    }
-  }
-  return found_op_type_match;
-}
-
 bool FindFusedBatchNorm(const RemapperContext& ctx, int node_index,
                         FusedBatchNorm* matched) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
@@ -2275,42 +2136,6 @@ Status AddFusedMatMulBiasAddAndGelu(
   return Status::OK();
 }
 
-Status AddMklLayerNorm(RemapperContext* ctx,
-                       const std::map<string, int>& matched_nodes_map,
-                       const std::set<int>& remove_node_indices,
-                       std::vector<bool>* invalidated_nodes,
-                       std::vector<bool>* nodes_to_delete) {
-  auto* pre_reshape_node =
-      ctx->graph_view.GetNode(matched_nodes_map.at("pre_reshape"))->node();
-  auto* scale_node =
-      ctx->graph_view.GetNode(matched_nodes_map.at("gamma"))->node();
-  auto* output_node =
-      ctx->graph_view.GetNode(matched_nodes_map.at("output"))->node();
-
-  NodeDef fused_node;
-  fused_node.set_name(output_node->name());
-  fused_node.set_op("_MklLayerNorm");
-  fused_node.set_device(output_node->device());
-  fused_node.add_input(pre_reshape_node->input(0));
-  fused_node.add_input(scale_node->name());
-  fused_node.add_input(output_node->input(0));
-  auto* attr = fused_node.mutable_attr();
-  auto& src_attr = output_node->attr();
-  (*attr)["T"] = src_attr.at("T");
-
-  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
-  mutation->AddNode(std::move(fused_node), &status);
-  TF_RETURN_IF_ERROR(status);
-  TF_RETURN_IF_ERROR(mutation->Apply());
-  (*invalidated_nodes)[matched_nodes_map.at("output")] = true;
-
-  for (const auto& node_idx : remove_node_indices) {
-    (*nodes_to_delete)[node_idx] = true;
-  }
-  return Status::OK();
-}
-
 Status ReplaceSigmoidMulWithSwish(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
@@ -2997,16 +2822,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         TF_RETURN_IF_ERROR(ReplaceSigmoidMulWithSwish(
             &ctx, sigmoidmul_matched_nodes_map, sigmoidmul_remove_node_indices,
             &invalidated_nodes, &nodes_to_delete));
-        continue;
-      }
-
-      // Remap smaller ops from layernorm python api into _MklLayerNorm
-      matched_nodes_map.clear();
-      remove_node_indices.clear();
-      if (FindMklLayerNorm(&ctx, i, &matched_nodes_map, &remove_node_indices)) {
-        TF_RETURN_IF_ERROR(
-            AddMklLayerNorm(&ctx, matched_nodes_map, remove_node_indices,
-                            &invalidated_nodes, &nodes_to_delete));
         continue;
       }
     }

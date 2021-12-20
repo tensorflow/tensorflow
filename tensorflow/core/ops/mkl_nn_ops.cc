@@ -1806,15 +1806,6 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklLayerNorm")
-    .Input("x: T")
-    .Input("scale: T")
-    .Input("offset: T")
-    .Output("y: T")
-    .Attr("T: {float, bfloat16}")
-    .Attr("epsilon: float = 0.001")
-    .SetShapeFn(shape_inference::UnchangedShape);
-
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL
