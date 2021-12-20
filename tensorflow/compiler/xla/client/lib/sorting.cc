@@ -45,8 +45,7 @@ XlaOp TopK(XlaOp input, int64_t k) {
       }
     }
 
-    Shape iota_shape =
-        ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
+    Shape iota_shape = ShapeUtil::MakeShape(S32, input_shape.dimensions());
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
     for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {
@@ -92,8 +91,7 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
       return TopK(input, k);
     }
 
-    Shape iota_shape =
-        ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
+    Shape iota_shape = ShapeUtil::MakeShape(S32, input_shape.dimensions());
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
     for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {

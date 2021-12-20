@@ -39,9 +39,10 @@ namespace nvptx {
 // The Compile.* interfaces each create their own llvm::LLVMContext objects for
 // thread safety, but note that LLVM's multithreaded support is very
 // preliminary; multithreaded use is not recommended at this time.
-StatusOr<string> CompileToPtx(
+StatusOr<std::string> CompileToPtx(
     llvm::Module* module, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config, const string& libdevice_dir_path,
+    const HloModuleConfig& hlo_module_config,
+    const std::string& libdevice_dir_path,
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
 }  // namespace nvptx
 
@@ -51,7 +52,8 @@ namespace amdgpu {
 // The contents of the module may be changed.
 StatusOr<std::vector<uint8>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config, const string& rocdl_dir_path);
+    const HloModuleConfig& hlo_module_config,
+    const std::string& rocdl_dir_path);
 }  // namespace amdgpu
 
 }  // namespace gpu

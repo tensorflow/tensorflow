@@ -199,10 +199,10 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   const GemmBackendConfig &backend_config = gemm_config.backend_config;
   const DotDimensionNumbers &dim_nums = backend_config.dot_dimension_numbers();
   absl::Span<const int64_t> output_batch_dims =
-      AsInt64Slice((dim_nums.lhs_batch_dimensions_size() >
-                    dim_nums.rhs_batch_dimensions_size())
-                       ? dim_nums.lhs_batch_dimensions()
-                       : dim_nums.rhs_batch_dimensions());
+      (dim_nums.lhs_batch_dimensions_size() >
+       dim_nums.rhs_batch_dimensions_size())
+          ? dim_nums.lhs_batch_dimensions()
+          : dim_nums.rhs_batch_dimensions();
 
   int64_t batch_size = backend_config.batch_size();
   int64_t output_row_dim = output_batch_dims.size();

@@ -36,7 +36,6 @@ limitations under the License.
 #include "llvm/Support/ErrorOr.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
 namespace tensorflow {
@@ -152,7 +151,7 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
   // First find the input shape with the largest rank.
   SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapes_found;
   size_t maxRank = 0;
-  for (auto shape : llvm::enumerate(shapes)) {
+  for (const auto &shape : llvm::enumerate(shapes)) {
     auto found_shape = analysis.GetValueInfo(shape.value());
     if (!found_shape) return {};
     shapes_found.push_back(*found_shape);
@@ -162,8 +161,8 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
   SmallVector<const ShapeComponentAnalysis::SymbolicExpr*> joined_dimensions(
       maxRank);
   SmallVector<std::pair<Value, int64_t>> shape_and_rank_for_dim(maxRank);
-  for (auto shape : llvm::enumerate(shapes_found)) {
-    for (auto dim : llvm::enumerate(llvm::reverse(shape.value()))) {
+  for (const auto &shape : llvm::enumerate(shapes_found)) {
+    for (const auto &dim : llvm::enumerate(llvm::reverse(shape.value()))) {
       // 1 dimensions don't contribute to the final result.
       if (dim.value().isConstant(1)) continue;
       // If it's not a 1 dimension it will be present in the result. Remember
@@ -354,12 +353,6 @@ struct SymbolicShapeOptimizationPass
     patterns.insert<CstrBroadcastableOpLowering>(ctx);
     // Rewrite shape.broadcast based on the symbolic shapes.
     patterns.insert<BroadcastOpLowering>(ctx);
-
-    // Move broadcasts up across mhlo operations to enable more opportunities
-    // for constraints and broadcasts optimizations. These patterns are only
-    // applicable if we do not lower mhlo broadcasts to linalg.generic.
-    if (optimize_only_constraints)
-      mlir::mhlo::PopulateBroadcastsPropagationPatterns(ctx, &patterns);
 
     // Rewrite broadcasts based on the symbolic shapes if enabled.
     if (!optimize_only_constraints)

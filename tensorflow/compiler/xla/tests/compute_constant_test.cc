@@ -48,7 +48,7 @@ class ComputeConstantTest : public ::testing::Test {
   explicit ComputeConstantTest(se::Platform* platform = nullptr)
       : platform_(platform) {}
 
-  string TestName() const {
+  std::string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 

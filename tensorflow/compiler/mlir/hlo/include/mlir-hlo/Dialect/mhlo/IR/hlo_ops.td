@@ -899,6 +899,7 @@ def HLO_WhileOp: HLO_Op<"while", [
 
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+  let verifier = [{ return mhlo::verify(*this); }];
 }
 
 def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
@@ -1950,6 +1951,7 @@ def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",

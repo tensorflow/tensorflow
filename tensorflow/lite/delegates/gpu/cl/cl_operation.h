@@ -61,7 +61,9 @@ class ClOperation {
   const GPUOperation& GetGpuOperation() const { return *operation_; }
   uint64_t GetKernelFingerprint() const { return kernel_fingerprint_; }
 
-  const OperationDef& GetDefinition() const { return operation_->definition_; }
+  const OperationDef& GetDefinition() const {
+    return operation_->GetDefinition();
+  }
 
   absl::Status AddOperation(ClOperation* operation);
 
@@ -73,7 +75,7 @@ class ClOperation {
 
   absl::Status AddToQueue(CLCommandQueue* queue) {
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
-    return queue->Dispatch(kernel_, operation_->work_groups_count_,
+    return queue->Dispatch(kernel_, operation_->GetWorkGroupsCount(),
                            operation_->work_group_size_);
   }
 
@@ -81,7 +83,7 @@ class ClOperation {
   absl::Status AddToQueueNTimes(ProfilingCommandQueue* queue, int n,
                                 int flush_period = 0) {
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
-    return queue->DispatchNTimes(kernel_, operation_->work_groups_count_,
+    return queue->DispatchNTimes(kernel_, operation_->GetWorkGroupsCount(),
                                  operation_->work_group_size_, n, flush_period);
   }
 

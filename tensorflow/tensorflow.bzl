@@ -13,6 +13,7 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
+    "cc_shared_library",
     "cc_test",
 )
 load(
@@ -47,13 +48,6 @@ load(
 )
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
-
-# copybara:comment_begin(oss only)
-load(
-    "//tensorflow/core/platform/default:experimental_cc_shared_library.bzl",
-    "cc_shared_library",
-)
-# copybara:comment_end
 
 def register_extension_info(**kwargs):
     pass
@@ -396,7 +390,7 @@ def tf_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_mkldnn_aarch64_acl(["-DENABLE_MKL", "-DENABLE_ONEDNN_OPENMP", "-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl(["-DENABLE_ONEDNN_OPENMP", "-DDNNL_AARCH64_USE_ACL=1"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -539,7 +533,6 @@ def _rpath_linkopts(name):
         ],
     })
 
-# copybara:comment_begin(oss only)
 def _rpath_user_link_flags(name):
     # Search parent directories up to the TensorFlow root directory for shared
     # object dependencies, even if this op shared object is deeply nested
@@ -559,8 +552,6 @@ def _rpath_user_link_flags(name):
             "-Wl,%s" % (_make_search_paths("$ORIGIN", levels_to_root),),
         ],
     })
-
-# copybara:comment_end
 
 # Bazel-generated shared objects which must be linked into TensorFlow binaries
 # to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
@@ -763,7 +754,7 @@ def tf_cc_shared_object(
             visibility = visibility,
         )
 
-# copybara:comment_begin(oss only)
+# buildozer: disable=function-docstring-args
 def tf_cc_shared_library(
         name,
         srcs = [],
@@ -891,8 +882,6 @@ def tf_cc_shared_library(
             visibility = visibility,
         )
 
-# copybara:comment_end
-
 # Links in the framework shared object
 # (//third_party/tensorflow:libtensorflow_framework.so) when not building
 # statically. Also adds linker options (rpaths) so that the framework shared
@@ -979,7 +968,6 @@ def tf_native_cc_binary(
         **kwargs
     )
 
-# copybara:comment_begin(oss only)
 # buildozer: disable=function-docstring-args
 def tf_native_cc_shared_library(
         name,
@@ -1024,8 +1012,6 @@ def tf_native_cc_shared_library(
         actual = cc_shared_library_name,
         visibility = visibility,
     )
-
-# copybara:comment_end
 
 def tf_gen_op_wrapper_cc(
         name,
@@ -3018,7 +3004,7 @@ def pybind_extension(
         compatible_with = compatible_with,
     )
 
-# copybara:comment_begin(oss only)
+# buildozer: disable=function-docstring-args
 def pybind_ccsharedlib_extension(
         name,
         srcs,
@@ -3186,8 +3172,6 @@ def pybind_ccsharedlib_extension(
         compatible_with = compatible_with,
     )
 
-# copybara:comment_end
-
 # buildozer: enable=function-docstring-args
 def tf_python_pybind_extension(
         name,
@@ -3221,6 +3205,42 @@ def tf_python_pybind_extension(
         link_in_framework = True,
         testonly = testonly,
         compatible_with = compatible_with,
+    )
+
+# buildozer: enable=function-docstring-args
+def tf_python_pybind_ccsharedlib_extension(
+        name,
+        srcs,
+        module_name,
+        hdrs = [],
+        static_deps = [],
+        deps = [],
+        compatible_with = None,
+        copts = [],
+        defines = [],
+        features = [],
+        testonly = None,
+        visibility = None):
+    """A wrapper macro for pybind_ccsharedlib_extension.
+
+    It is used for targets under //third_party/tensorflow/python that link
+    against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
+    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
+    """
+    pybind_ccsharedlib_extension(
+        name,
+        srcs,
+        module_name,
+        hdrs = hdrs,
+        static_deps = static_deps,
+        deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+        compatible_with = compatible_with,
+        copts = copts,
+        defines = defines,
+        features = features,
+        link_in_framework = True,
+        testonly = testonly,
+        visibility = visibility,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):

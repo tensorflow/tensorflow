@@ -332,7 +332,7 @@ Service::ExecuteParallelAndRegisterResult(
     absl::Span<Executable* const> executables,
     absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
     Backend* backend, absl::Span<const DeviceHandle> device_handles,
-    absl::Span<const string> result_tags, ExecutionProfile* profile) {
+    absl::Span<const std::string> result_tags, ExecutionProfile* profile) {
   // Streams where the computation are launched, so we can wait on the streams
   // to complete.
   std::vector<StreamPool::Ptr> streams;
@@ -459,7 +459,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
     absl::Span<const std::vector<const ShapedBuffer*>> arguments,
     Backend* backend, const DeviceHandle& device_handle,
-    const string& result_tag, ExecutionProfile* profile) {
+    const std::string& result_tag, ExecutionProfile* profile) {
   // Set up streams.
   std::vector<StreamPool::Ptr> streams;
 
@@ -561,7 +561,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   std::vector<std::vector<se::StreamExecutor*>> all_executors;
   std::vector<const HloModuleProto*> module_protos;
   std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
-  std::vector<string> computation_names;
+  std::vector<std::string> computation_names;
   std::vector<DeviceHandle> device_handles;
 
   int num_requested_devices =

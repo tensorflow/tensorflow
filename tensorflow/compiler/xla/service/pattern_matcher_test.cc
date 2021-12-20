@@ -491,25 +491,26 @@ TEST_F(PatternMatcherTest, TestConcat) {
 }
 
 template <typename Pattern>
-string Description(const Pattern& pattern) {
+std::string Description(const Pattern& pattern) {
   std::stringstream ss;
   pattern.DescribeTo(&ss);
   return ss.str();
 }
 
 template <typename Elem, typename Pattern>
-string Explanation(Elem* elem, const Pattern& pattern) {
+std::string Explanation(Elem* elem, const Pattern& pattern) {
   std::stringstream ss;
   MatchOption options{/*.capture=*/true, /*.explain_os=*/&ss};
   Match(elem, pattern, options);
   return ss.str();
 }
 template <typename Elem, typename Pattern>
-string Explanation(const std::unique_ptr<Elem>& elem, const Pattern& pattern) {
+std::string Explanation(const std::unique_ptr<Elem>& elem,
+                        const Pattern& pattern) {
   return Explanation(elem.get(), pattern);
 }
 template <typename Elem, typename Pattern>
-string Explanation(const Elem& elem, const Pattern& pattern) {
+std::string Explanation(const Elem& elem, const Pattern& pattern) {
   return Explanation(&elem, pattern);
 }
 
@@ -672,7 +673,7 @@ TEST_F(PatternMatcherTest, ShapeDescribeToAndExplain) {
 
 std::unique_ptr<HloInstruction> SetName(absl::string_view name,
                                         std::unique_ptr<HloInstruction> instr) {
-  instr->SetAndSanitizeName(string(name));
+  instr->SetAndSanitizeName(std::string(name));
   return instr;
 }
 

@@ -472,12 +472,12 @@ MatchBackwardInput(HloInstruction* conv) {
       reverse_filter->IsConstant()) {
     // Create a double-reverse, which is a nop.
     HloComputation* c = conv->parent();
-    reverse_filter = c->AddInstruction(HloInstruction::CreateReverse(
-        reverse_filter->shape(), reverse_filter,
-        AsInt64Slice(dnums.kernel_spatial_dimensions())));
-    reverse_filter = c->AddInstruction(HloInstruction::CreateReverse(
-        reverse_filter->shape(), reverse_filter,
-        AsInt64Slice(dnums.kernel_spatial_dimensions())));
+    reverse_filter = c->AddInstruction(
+        HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
+                                      dnums.kernel_spatial_dimensions()));
+    reverse_filter = c->AddInstruction(
+        HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
+                                      dnums.kernel_spatial_dimensions()));
     TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_num=*/1, reverse_filter));
   }
 

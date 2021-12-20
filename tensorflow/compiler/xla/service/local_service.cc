@@ -205,7 +205,8 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
 }
 
 StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
-    std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag) {
+    std::vector<ScopedShapedBuffer> replicated_buffers,
+    const std::string& tag) {
   return allocation_tracker_.RegisterReplicatedBuffers(
       std::move(replicated_buffers), tag);
 }

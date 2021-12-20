@@ -99,7 +99,8 @@ std::string GetPaddingCode(const OperationDef& op_def,
     c += "  bool inside_x = s_x >= 0 && s_x < args.src_tensor.Width();\n";
     c += "  bool inside_y = s_y >= 0 && s_y < args.src_tensor.Height();\n";
     if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
-      c += "  inside_y &= (s_b >= 0 && s_b < args.src_tensor.Batch());\n";
+      c += "  inside_y = inside_y && (s_b >= 0 && s_b < "
+           "args.src_tensor.Batch());\n";
     }
     c += "  if (inside_x && inside_y) {\n";
     if (attr.prepended.c == 0 && attr.appended.c == 0) {

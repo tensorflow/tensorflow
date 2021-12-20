@@ -47,7 +47,7 @@ enum class CallContext {
   kNone
 };
 
-string CallContextToString(CallContext context);
+std::string CallContextToString(CallContext context);
 std::ostream& operator<<(std::ostream& out, const CallContext& context);
 
 CallContext GetInstructionCallContext(HloOpcode opcode);
@@ -73,7 +73,7 @@ class CallSite {
   // Returns the context in which computations are called at this call site.
   CallContext context() const { return context_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   // The calling instruction.
@@ -123,7 +123,7 @@ class CallGraphNode {
   // (usually the entry computation node) to this node.
   int depth() const { return depth_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   // Only CallGraph can modify CallGraphNode.
@@ -248,7 +248,7 @@ class CallGraph {
   // (Often a vector of size 1.)
   std::vector<HloInstruction*> GetComputationCallers(HloComputation* c);
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   CallGraph(const HloModule* module);

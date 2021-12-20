@@ -109,9 +109,9 @@ DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
   return std::move(assignment);
 }
 
-string DeviceAssignment::ToString() const {
-  string output = StrCat("Computations: ", computation_count(),
-                         " Replicas: ", replica_count(), "\n");
+std::string DeviceAssignment::ToString() const {
+  std::string output = StrCat("Computations: ", computation_count(),
+                              " Replicas: ", replica_count(), "\n");
   for (int computation = 0; computation < computation_count(); ++computation) {
     StrAppend(&output, "Computation ", computation, ": ");
     for (int replica = 0; replica < replica_count(); ++replica) {

@@ -258,7 +258,7 @@ struct DotOutputFusionLayoutAssignmentResult {
 };
 
 static StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
-    HloModule* module, const string& test_name, int m, int k, int n,
+    HloModule* module, const std::string& test_name, int m, int k, int n,
     const int64_t dot_operand_idx_in_add) {
   DotOutputFusionLayoutAssignmentResult result;
 

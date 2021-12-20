@@ -73,12 +73,26 @@ namespace {
 
 namespace m = match;
 
+// Unwraps broadcasts hunting for a constant.  If we find one, checks if the
+// constant contains only the given value.
 bool IsAll(const HloInstruction* op, int8_t value) {
   switch (op->opcode()) {
     case HloOpcode::kBroadcast:
       return IsAll(op->operand(0), value);
     case HloOpcode::kConstant:
       return op->literal().IsAll(value);
+    default:
+      return false;
+  }
+}
+
+bool IsAll(const HloInstruction* op, const Literal& scalar) {
+  CHECK(ShapeUtil::IsScalar(scalar.shape()));
+  switch (op->opcode()) {
+    case HloOpcode::kBroadcast:
+      return IsAll(op->operand(0), scalar);
+    case HloOpcode::kConstant:
+      return op->literal().IsAll(scalar);
     default:
       return false;
   }
@@ -2101,7 +2115,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
              return (b != a + 1);
            }) == dims.end();
   };
-  if (!is_iota(AsInt64Slice(lhs_contracting_dims))) {
+  if (!is_iota(lhs_contracting_dims)) {
     return nullptr;
   }
   lhs = lhs->mutable_operand(0);
@@ -2123,7 +2137,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   }
   CHECK(IsPermutation(permutation));
   auto new_lhs_contracting_dims =
-      ComposePermutations(AsInt64Slice(lhs_contracting_dims), permutation);
+      ComposePermutations(lhs_contracting_dims, permutation);
   lhs_contracting_dims.Clear();
   for (auto dim : new_lhs_contracting_dims) {
     lhs_contracting_dims.Add(dim);
@@ -2260,15 +2274,15 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
       dnums.lhs_contracting_dimensions_size() == 0) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            lhs, AsInt64Slice(dnums.lhs_batch_dimensions()),
-                            AsInt64Slice(dnums.lhs_contracting_dimensions())));
+                            lhs, dnums.lhs_batch_dimensions(),
+                            dnums.lhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_lhs->shape())) {
       new_lhs = MakeConvertToHlo(new_lhs, dot->shape().element_type());
     }
     TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            rhs, AsInt64Slice(dnums.rhs_batch_dimensions()),
-                            AsInt64Slice(dnums.rhs_contracting_dimensions())));
+                            rhs, dnums.rhs_batch_dimensions(),
+                            dnums.rhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_rhs->shape())) {
       new_rhs = MakeConvertToHlo(new_rhs, dot->shape().element_type());
     }
@@ -2304,16 +2318,16 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         rhs->shape().rank()))) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            lhs, AsInt64Slice(dnums.lhs_batch_dimensions()),
-                            AsInt64Slice(dnums.lhs_contracting_dimensions())));
+                            lhs, dnums.lhs_batch_dimensions(),
+                            dnums.lhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_lhs->shape())) {
       new_lhs = MakeConvertToHlo(new_lhs, dot->shape().element_type());
     }
 
     TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            rhs, AsInt64Slice(dnums.rhs_batch_dimensions()),
-                            AsInt64Slice(dnums.rhs_contracting_dimensions())));
+                            rhs, dnums.rhs_batch_dimensions(),
+                            dnums.rhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_rhs->shape())) {
       new_rhs = MakeConvertToHlo(new_rhs, dot->shape().element_type());
     }
@@ -2518,6 +2532,20 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(maximum, m::Maximum(m::Op(&lhs), m::Op(&rhs))));
 
+  // max(x, -inf) -> x
+  PrimitiveType ty = maximum->shape().element_type();
+  if (primitive_util::IsIntegralType(ty) ||
+      (primitive_util::IsFloatingPointType(ty) &&
+       options_.minmax_propagate_nan())) {
+    Literal min_val = LiteralUtil::MinValue(ty);
+    if (IsAll(lhs, min_val)) {
+      return ReplaceInstruction(maximum, rhs);
+    }
+    if (IsAll(rhs, min_val)) {
+      return ReplaceInstruction(maximum, lhs);
+    }
+  }
+
   HloInstruction* clamp_upper_bound_bcast;
   HloInstruction* clamp_lower_bound_bcast;
   HloInstruction* to_clamp;
@@ -2557,6 +2585,20 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
 Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(minimum, m::Minimum(m::Op(&lhs), m::Op(&rhs))));
+
+  // min(x, inf) -> x
+  PrimitiveType ty = minimum->shape().element_type();
+  if (primitive_util::IsIntegralType(ty) ||
+      (primitive_util::IsFloatingPointType(ty) &&
+       options_.minmax_propagate_nan())) {
+    Literal max_val = LiteralUtil::MaxValue(ty);
+    if (IsAll(lhs, max_val)) {
+      return ReplaceInstruction(minimum, rhs);
+    }
+    if (IsAll(rhs, max_val)) {
+      return ReplaceInstruction(minimum, lhs);
+    }
+  }
 
   HloInstruction* clamp_upper_bound_bcast;
   HloInstruction* clamp_lower_bound_bcast;
@@ -5020,8 +5062,55 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
     return Status::OK();
   }
   auto operand = reduce_window->mutable_operand(0);
+  auto init_value = reduce_window->mutable_operand(1);
   auto function = reduce_window->to_apply();
   const Window& window = reduce_window->window();
+
+  // reduce-window with a 1x1x..x1 window and no dilation etc can be replaced
+  // with a trivial elementwise operation, plus a pad op if necessary.
+  //
+  // We cowardly refuse to consider this optimization when the reduce-window
+  // subcomputation is anything other than a simple add/min/max.  Supporting
+  // more complex subcomputations is possible, but is tantamount to implementing
+  // jax.vmap()!
+  if (absl::c_all_of(window.dimensions(),
+                     [](const WindowDimension& dim) {
+                       return dim.size() == 1 &&             //
+                              dim.stride() == 1 &&           //
+                              dim.window_dilation() == 1 &&  //
+                              dim.base_dilation() == 1 &&    //
+                              !dim.window_reversal();
+                     }) &&
+      Match(function->root_instruction(),
+            m::AnyOf<HloInstruction>(
+                m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1)),
+                m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1))))) {
+    const HloInstruction* nested_root = function->root_instruction();
+    absl::InlinedVector<int64_t, 8> broadcast_dims(
+        nested_root->shape().dimensions_size());
+    absl::c_iota(broadcast_dims, 0);
+    TF_ASSIGN_OR_RETURN(
+        auto new_op, MakeBinaryHlo(nested_root->opcode(), operand,
+                                   MakeBroadcastHlo(init_value, broadcast_dims,
+                                                    operand->shape())));
+
+    if (absl::c_any_of(window.dimensions(), [](const WindowDimension& dim) {
+          return dim.padding_low() > 0 || dim.padding_high() > 0;
+        })) {
+      PaddingConfig padding_config;
+      for (const WindowDimension& window_dim : window.dimensions()) {
+        auto& padding_dim = *padding_config.add_dimensions();
+        padding_dim.set_edge_padding_low(window_dim.padding_low());
+        padding_dim.set_edge_padding_high(window_dim.padding_high());
+        padding_dim.set_interior_padding(0);
+      }
+      TF_ASSIGN_OR_RETURN(new_op,
+                          MakePadHlo(new_op, init_value, padding_config));
+    }
+
+    return ReplaceInstruction(reduce_window, new_op);
+  }
 
   if (options_.enable_window_reduce_to_reduce_replacement()) {
     // A reduce window can be expressed as a reduce and a reshape if all

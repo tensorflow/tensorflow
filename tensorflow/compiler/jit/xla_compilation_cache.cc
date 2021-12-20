@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -232,6 +233,9 @@ Status XlaCompilationCache::BuildExecutable(
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
   build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
       options.detailed_logging);
+  if (tensorflow::OpDeterminismRequired()) {
+    build_options.mutable_debug_options()->set_xla_gpu_deterministic_ops(true);
+  }
   TF_ASSIGN_OR_RETURN(
       auto executables,
       client_->Compile(*result.computation, argument_layouts, build_options));

@@ -70,7 +70,7 @@ class DeviceAssignment : public Array2D<int> {
   static StatusOr<std::unique_ptr<DeviceAssignment>> Deserialize(
       const DeviceAssignmentProto& proto);
 
-  string ToString() const;
+  std::string ToString() const;
 };
 
 // A generic implementation of the XLA computation placer, which assigns device

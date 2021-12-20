@@ -35,14 +35,14 @@ ABSL_FLAG(
     bool, enable_grappler, false,
     "If true, run grappler passes before importing the SavedModel into MLIR.");
 
-namespace tfrt {
-namespace saved_model_test {
+namespace tensorflow {
+namespace tfrt_stub {
 
 std::unique_ptr<tensorflow::tfrt_stub::Runtime> DefaultTfrtRuntime(
     int num_threads) {
   return tensorflow::tfrt_stub::Runtime::Create(
       tensorflow::tfrt_stub::WrapDefaultWorkQueue(
-          CreateMultiThreadedWorkQueue(num_threads, num_threads)));
+          tfrt::CreateMultiThreadedWorkQueue(num_threads, num_threads)));
 }
 
 SavedModel::Options DefaultSavedModelOptions(
@@ -156,5 +156,5 @@ void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
   }
 }
 
-}  // namespace saved_model_test
-}  // namespace tfrt
+}  // namespace tfrt_stub
+}  // namespace tensorflow

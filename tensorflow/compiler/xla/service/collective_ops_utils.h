@@ -188,7 +188,7 @@ struct RendezvousKey {
     }
   }
 
-  string ToString() const {
+  std::string ToString() const {
     return absl::StrFormat(
         "RendezvousKey{run_id=%s, global_devices=[%s], "
         "num_local_participants=%d, collective_op_kind=%s, op_id=%d}",
@@ -261,7 +261,7 @@ struct AllReduceParticipantData : ParticipantData {
   // pair for the participant. Participants are in no particular order.
   std::vector<std::pair<GlobalDeviceId, int64_t>> local_devices;
 
-  string ToString() const override {
+  std::string ToString() const override {
     std::vector<std::string> buffer_strs;
     for (const Buffer& buffer : buffers) {
       buffer_strs.push_back(

@@ -86,34 +86,34 @@ class LiteralBase {
 
   // Returns this literal's data as a string. This literal must be a rank-1 U8
   // array.
-  string GetR1U8AsString() const;
+  std::string GetR1U8AsString() const;
 
   // Returns a string representation of the literal value. The Shape of the
   // literal is a prefix of the literal value in the string.
 
   // Warning: this function can take minutes for multi-million
   // element Literals.
-  string ToString() const;
+  std::string ToString() const;
 
   // Similar to ToString, but return the result in a compact
   // one-line form.
-  string ToStringOneline() const;
+  std::string ToStringOneline() const;
 
   // Returns a string representation of the literal value which does *not*
   // include the shape string.
-  string ToStringWithoutShape() const;
+  std::string ToStringWithoutShape() const;
 
   // Similar to ToStringWithoutShape, but return the result in a compact
   // one-line form.
-  string ToStringWithoutShapeOneline() const;
+  std::string ToStringWithoutShapeOneline() const;
 
   // Returns a string representation of the literal value which includes the
   // shape string with its layout.does *not* include the shape string.
-  string ToStringWithLayout() const;
+  std::string ToStringWithLayout() const;
 
   // Similar to ToStringWithLayout, but return the result in a compact
   // one-line form.
-  string ToStringWithLayoutOneline() const;
+  std::string ToStringWithLayoutOneline() const;
 
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
@@ -139,8 +139,8 @@ class LiteralBase {
 
   // As Get(), but determines the correct type and converts the value
   // into text.
-  string GetAsString(absl::Span<const int64_t> multi_index,
-                     const ShapeIndex& shape_index = {}) const;
+  std::string GetAsString(absl::Span<const int64_t> multi_index,
+                          const ShapeIndex& shape_index = {}) const;
 
   // Return whether the value at the specified index is equal to the provided
   // generic `value` (T must be an arithmetic type).
@@ -196,11 +196,23 @@ class LiteralBase {
   // This literal must have a dense layout.
   void EachCellAsString(
       const std::function<void(absl::Span<const int64_t> indices,
-                               const string& value)>& per_cell) const;
+                               const std::string& value)>& per_cell) const;
   template <typename NativeT>
   void EachCell(
       std::function<void(absl::Span<const int64_t> indices, NativeT value)>
           per_cell) const;
+
+  // Checks whether all of this literal's values are equal to the given scalar
+  // literal.
+  //
+  // If `this` is not an array (e.g. it's a tuple), returns false.  This is
+  // simpler than trying to handle subshapes here, and it's almost always what
+  // you want.
+  //
+  // Preconditions:
+  //  - `scalar` is a scalar.
+  //  - `scalar` has the same element-type as `this`.
+  bool IsAll(const Literal& scalar) const;
 
   // Returns whether every element in this literal is equal to value.
   //
@@ -210,34 +222,28 @@ class LiteralBase {
   //
   // If value doesn't fit in this literal's type, returns false.  Values of 1/0
   // are considered equal to true/false; other values are not considered equal
-  // to true. Also if this literal is not array-shaped false is returned.
+  // to true.
+  //
+  // Returns false if this literal is not array-shaped.
   bool IsAll(int8_t value) const;
 
-  // Like IsAll(const Literal&, int8), except we check whether the literal is
-  // equal to a particular floating-point number.
+  // Like IsAll(int8), except we check whether the literal is equal to a
+  // particular floating-point or complex number.
   //
-  // If the literal is not a floating-point value, this always returns false.
+  // Returns false if this literal is not a floating-point / complex value, or
+  // if it's not an array.
   //
-  // This casts value to the type of literal, then compares using ==.  The usual
-  // admonishments about floating-point equality checks apply.  We expect you to
-  // use this to check for values that can be expressed precisely as a float,
-  // e.g. -0.5.  Also if this literal is not array-shaped false is returned.
+  // This casts value to the type of literal, then compares using ==, with the
+  // caveat that NaNs are considered equal.  The usual admonishments about
+  // floating-point equality checks apply.  We expect you to use this to check
+  // for values that can be expressed precisely as a float, e.g. -0.5.
   bool IsAllFloat(float value) const;
-
-  // Like IsAll(const Literal&, int8), except we check whether the literal is
-  // equal to a particular complex number.
-  //
-  // If the literal is not a complex value, this always returns false.
-  //
-  // This casts value to the type of literal, then compares using ==.  The usual
-  // admonishments about floating-point equality checks apply.  We expect you to
-  // use this to check for complex values that can be expressed precisely as
-  // float pairs e.g. (-0.5, 1.0).
-  //
-  // This literal must have a dense layout.
   bool IsAllComplex(complex64 value) const;
 
-  // Literal consists entirely of the first element of the literal.
+  // Deetermines if this literal consists entirely of the first element of the
+  // literal.
+  //
+  // Returns false if this literal is not an array.
   bool IsAllFirst() const;
 
   // Literal consists entirely of an iota.
@@ -478,6 +484,15 @@ class LiteralBase {
       return ForEachMutableHelper(
           func, const_cast<xla::LiteralBase::Piece*>(this), &index);
     }
+
+    // Checks whether all elements of this Piece are equal to the given literal.
+    //
+    // Returns false if this Piece is not an array.
+    //
+    // Preconditions:
+    //  - `scalar` is a scalar.
+    //  - `scalar`'s type matches that of `this`.
+    bool IsAll(const Literal& scalar) const;
 
     // Returns true if this piece and 'other' contain the same data. This piece
     // and 'other' must be array-shaped and compatible. If a literal has dynamic
@@ -1106,8 +1121,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
              primitive_util::NativeToPrimitiveType<NativeT>());
   absl::Span<NativeT> literal_data = data<NativeT>();
   if (rank > 0) {
-    StrideConfig stride_config(this_shape, this_shape,
-                               AsInt64Slice(this_shape.dimensions()));
+    StrideConfig stride_config(this_shape, this_shape, this_shape.dimensions());
     int64_t minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 

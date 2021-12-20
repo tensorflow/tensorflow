@@ -38,7 +38,7 @@ class HloProfileIndexMap {
   explicit HloProfileIndexMap(const HloModule& module)
       : HloProfileIndexMap(module, {}) {}
   explicit HloProfileIndexMap(const HloModule& module,
-                              absl::Span<const string> extra_metrics);
+                              absl::Span<const std::string> extra_metrics);
 
   HloProfileIndexMap(const HloProfileIndexMap&) = default;
   HloProfileIndexMap(HloProfileIndexMap&&) = default;
@@ -54,7 +54,7 @@ class HloProfileIndexMap {
     return FindOrDie(computation_to_profile_idx(), &computation);
   }
 
-  size_t GetProfileIndexFor(const string& key) const {
+  size_t GetProfileIndexFor(const std::string& key) const {
     return xla::FindOrDie(extra_metric_to_profile_idx(), key);
   }
 
@@ -84,7 +84,7 @@ class HloProfileIndexMap {
     return computation_to_profile_idx_;
   }
 
-  const std::unordered_map<string, int64_t>& extra_metric_to_profile_idx()
+  const std::unordered_map<std::string, int64_t>& extra_metric_to_profile_idx()
       const {
     return extra_metric_to_profile_idx_;
   }
@@ -94,13 +94,14 @@ class HloProfileIndexMap {
       instruction_to_profile_idx_;
   std::unordered_map<const HloComputation*, int64_t>
       computation_to_profile_idx_;
-  std::unordered_map<string, int64_t> extra_metric_to_profile_idx_;
+  std::unordered_map<std::string, int64_t> extra_metric_to_profile_idx_;
 };
 
 // Create an instance of `HloProfilePrinterData`.
 std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
-    const HloCostAnalysis& cost_analysis, const string& entry_computation_name);
+    const HloCostAnalysis& cost_analysis,
+    const std::string& entry_computation_name);
 
 // Describes how much time each HLO operation took.
 //
@@ -139,7 +140,7 @@ class HloExecutionProfile {
   }
 
   // Record extra metric.
-  void set_extra_metrics(const string& metric, uint64 value) {
+  void set_extra_metrics(const std::string& metric, uint64 value) {
     profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(metric)] =
         value;
   }
@@ -149,7 +150,7 @@ class HloExecutionProfile {
   // frequency, and the effective throughput given the provided cost_analysis
   // for the operations in a given computation. Returns an empty string if it
   // wasn't possible to generate a printable version.
-  string ToString(float clock_rate_ghz) const {
+  std::string ToString(float clock_rate_ghz) const {
     return PrintHloProfile(hlo_profile_printer_data_, profile_counters_.data(),
                            clock_rate_ghz);
   }

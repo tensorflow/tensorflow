@@ -896,6 +896,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.composite_devices = &composite_devices;
   optimization_options.default_function_device = default_device;
   optimization_options.function_def = fdef;
+  optimization_options.shape_inference_on_tfe_dialect_import =
+      options.shape_inference_on_tfe_dialect_import;
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
   if (should_run_optimization_passes) {

@@ -47,7 +47,7 @@ void LlvmIrGenTestBase::ResetIrHook() {
 }
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(
-    std::unique_ptr<HloModule> hlo_module, const string& pattern,
+    std::unique_ptr<HloModule> hlo_module, const std::string& pattern,
     bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
   Status status = CompileToExecutable(std::move(hlo_module)).status();
@@ -59,6 +59,7 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
   EXPECT_TRUE(filecheck_result.ValueOrDie()) << "Full IR: " << ir_;
 }
 
+<<<<<<< HEAD
 void LlvmIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const std::vector<string>& patterns,
     bool match_optimized_ir) {
@@ -79,6 +80,10 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
                                            const string& expected_llvm_ir,
+=======
+void LlvmIrGenTestBase::CompileAndVerifyIr(const std::string& hlo_text,
+                                           const std::string& expected_llvm_ir,
+>>>>>>> google_upstream/master
                                            bool match_optimized_ir) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
@@ -89,7 +94,7 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
 
 void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
-    const string& pattern, bool match_optimized_ir) {
+    const std::string& pattern, bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
   Status status =
       CompileToAotCompilationResult(std::move(hlo_module), options).status();

@@ -847,7 +847,12 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return kTfLiteOk;
     }
     case BuiltinOperator_GELU: {
-      // TODO(b/206869911): Parse GELU params.
+      auto params = safe_allocator.Allocate<TfLiteGeluParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* gelu_params = op->builtin_options_as_GeluOptions()) {
+        params->approximate = gelu_params->approximate();
+      }
+      *builtin_data = params.release();
       return kTfLiteOk;
     }
     // Below are the ops with no builtin_data structure.

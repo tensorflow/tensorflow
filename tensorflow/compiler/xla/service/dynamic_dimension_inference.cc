@@ -476,87 +476,85 @@ Status DynamicDimensionInferenceVisitor::HandleReduce(HloInstruction* hlo) {
 }
 
 Status DynamicDimensionInferenceVisitor::HandleDot(HloInstruction* hlo) {
-  return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex operand_shape_index,
-               int64_t operand_dimension, int64_t operand_index,
-               HloInstruction* dynamic_size) {
-        // There are three types of dimensions in a dot:
-        // A. batch dims
-        // B. contracting dims
-        // C. non-batch non-contracting dims.
-        // The output dimensions of a dot has three parts with the following
-        // order:
-        // [(type A), (lhs type C), (rhs type C)]
-        //
-        // Note that both lhs and rhs have the same dimension sizes for batch,
-        // but the dimension index could be different.
-        //
-        // Given one dynamic input dimension, either lhs or rhs, we use a
-        // mapping to find the corresponding output dimension.
-        HloInstruction* dot = hlo;
-        const DotDimensionNumbers& dimension_numbers =
-            dot->dot_dimension_numbers();
-        // A map from the operand dimensions to result dimension.
-        absl::flat_hash_map<int64_t, int64_t> result_dim_mapping;
-        int64_t current_result_dims = 0;
+  return ForEachOperandDynamicDimension(hlo, [&](HloInstruction* operand,
+                                                 ShapeIndex operand_shape_index,
+                                                 int64_t operand_dimension,
+                                                 int64_t operand_index,
+                                                 HloInstruction* dynamic_size) {
+    // There are three types of dimensions in a dot:
+    // A. batch dims
+    // B. contracting dims
+    // C. non-batch non-contracting dims.
+    // The output dimensions of a dot has three parts with the following
+    // order:
+    // [(type A), (lhs type C), (rhs type C)]
+    //
+    // Note that both lhs and rhs have the same dimension sizes for batch,
+    // but the dimension index could be different.
+    //
+    // Given one dynamic input dimension, either lhs or rhs, we use a
+    // mapping to find the corresponding output dimension.
+    HloInstruction* dot = hlo;
+    const DotDimensionNumbers& dimension_numbers = dot->dot_dimension_numbers();
+    // A map from the operand dimensions to result dimension.
+    absl::flat_hash_map<int64_t, int64_t> result_dim_mapping;
+    int64_t current_result_dims = 0;
 
-        bool lhs = operand_index == 0;
+    bool lhs = operand_index == 0;
 
-        // The first loop keep tracks of batch dimension. RHS and LHS could have
-        // different batch dimension numbers.
-        if (lhs) {
-          for (int64_t i : dimension_numbers.lhs_batch_dimensions()) {
-            result_dim_mapping[i] = current_result_dims++;
-          }
-        } else {
-          for (int64_t i : dimension_numbers.rhs_batch_dimensions()) {
-            result_dim_mapping[i] = current_result_dims++;
-          }
-        }
+    // The first loop keep tracks of batch dimension. RHS and LHS could have
+    // different batch dimension numbers.
+    if (lhs) {
+      for (int64_t i : dimension_numbers.lhs_batch_dimensions()) {
+        result_dim_mapping[i] = current_result_dims++;
+      }
+    } else {
+      for (int64_t i : dimension_numbers.rhs_batch_dimensions()) {
+        result_dim_mapping[i] = current_result_dims++;
+      }
+    }
 
-        // Handle dimensions in the lhs.
-        for (int64_t i = 0; i < dot->operand(0)->shape().rank(); i++) {
-          // Look for non-contracting and non-batching dimension.
-          if (absl::c_linear_search(
-                  dimension_numbers.lhs_contracting_dimensions(), i)) {
-            continue;
-          }
-          if (absl::c_linear_search(dimension_numbers.lhs_batch_dimensions(),
-                                    i)) {
-            continue;
-          }
-          if (lhs) {
-            result_dim_mapping[i] = current_result_dims;
-          }
-          current_result_dims++;
-        }
+    // Handle dimensions in the lhs.
+    for (int64_t i = 0; i < dot->operand(0)->shape().rank(); i++) {
+      // Look for non-contracting and non-batching dimension.
+      if (absl::c_linear_search(dimension_numbers.lhs_contracting_dimensions(),
+                                i)) {
+        continue;
+      }
+      if (absl::c_linear_search(dimension_numbers.lhs_batch_dimensions(), i)) {
+        continue;
+      }
+      if (lhs) {
+        result_dim_mapping[i] = current_result_dims;
+      }
+      current_result_dims++;
+    }
 
-        // Handle dimensions in the rhs.
-        for (int64_t i = 0; i < dot->operand(1)->shape().rank(); i++) {
-          // Look for non-contracting and non-batching dimension.
-          if (absl::c_linear_search(
-                  dimension_numbers.rhs_contracting_dimensions(), i)) {
-            continue;
-          }
-          if (absl::c_linear_search(dimension_numbers.rhs_batch_dimensions(),
-                                    i)) {
-            continue;
-          }
-          if (!lhs) {
-            result_dim_mapping[i] = current_result_dims;
-          }
-          current_result_dims++;
-        }
+    // Handle dimensions in the rhs.
+    for (int64_t i = 0; i < dot->operand(1)->shape().rank(); i++) {
+      // Look for non-contracting and non-batching dimension.
+      if (absl::c_linear_search(dimension_numbers.rhs_contracting_dimensions(),
+                                i)) {
+        continue;
+      }
+      if (absl::c_linear_search(dimension_numbers.rhs_batch_dimensions(), i)) {
+        continue;
+      }
+      if (!lhs) {
+        result_dim_mapping[i] = current_result_dims;
+      }
+      current_result_dims++;
+    }
 
-        // Check if the operand dim is in the result shape. If so, add another
-        // work item to trace that dimension.
-        auto iter = result_dim_mapping.find(operand_dimension);
-        if (iter != result_dim_mapping.end()) {
-          parent_->SetDynamicSize(dot, {}, iter->second, dynamic_size);
-        }
+    // Check if the operand dim is in the result shape. If so, add another
+    // work item to trace that dimension.
+    auto iter = result_dim_mapping.find(operand_dimension);
+    if (iter != result_dim_mapping.end()) {
+      parent_->SetDynamicSize(dot, {}, iter->second, dynamic_size);
+    }
 
-        return Status::OK();
-      });
+    return Status::OK();
+  });
 }
 
 Status DynamicDimensionInferenceVisitor::HandleTranspose(HloInstruction* hlo) {
@@ -1808,8 +1806,8 @@ StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
   return inference;
 }
 
-string DynamicDimensionInference::ToString() const {
-  std::vector<string> pieces;
+std::string DynamicDimensionInference::ToString() const {
+  std::vector<std::string> pieces;
   pieces.push_back("DynamicDimensionInference: ");
   for (const auto& mapping : dynamic_mapping_) {
     const DynamicDimension& dynamic_dimension = mapping.first;

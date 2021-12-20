@@ -766,7 +766,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     class Valid(tracking.AutoTrackable):
 
       def _deserialization_dependencies(self):
-        return {x.name: x.ref for x in self._checkpoint_dependencies}
+        return {name: ref for name, ref in self._trackable_children().items()}
 
     root = Valid()
     root.f = variables.Variable(1.0)

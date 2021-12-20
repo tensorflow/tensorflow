@@ -60,7 +60,7 @@ constexpr int kMinimumAlignment = 64;
 // Converts between little and big endian.
 //
 // Precondition: size % 2 == 0 (elements in the array are 16 bits long)
-void ConvertEndianShort(string* bytes) {
+void ConvertEndianShort(std::string* bytes) {
   CHECK_EQ(bytes->size() % 2, 0);
   for (int64_t i = 0, end = bytes->size(); i < end; i += 2) {
     std::swap((*bytes)[i], (*bytes)[i + 1]);
@@ -74,9 +74,9 @@ void ConvertEndianShort(char* bytes, int64_t size) {
   }
 }
 
-string CompactOneline(const string& input) {
-  string result;
-  std::vector<string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
+std::string CompactOneline(const std::string& input) {
+  std::string result;
+  std::vector<std::string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
   bool first = true;
   // Concatenate elements in "v" with spaces separating them, but ignoring
   // empty entries.
@@ -992,8 +992,8 @@ std::unique_ptr<Literal> LiteralBase::CloneToUnique() const {
   return result;
 }
 
-string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
-                                const ShapeIndex& shape_index) const {
+std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
+                                     const ShapeIndex& shape_index) const {
   const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
   CHECK(LayoutUtil::IsDenseArray(subshape));
   switch (subshape.element_type()) {
@@ -1179,27 +1179,27 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
 
 namespace {
 
-string ShapeToString(bool print_layout, const Shape& shape) {
+std::string ShapeToString(bool print_layout, const Shape& shape) {
   return print_layout ? ShapeUtil::HumanStringWithLayout(shape)
                       : ShapeUtil::HumanString(shape);
 }
 
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
                     bool print_shape, bool print_layout,
-                    std::vector<string>* pieces);
+                    std::vector<std::string>* pieces);
 
 void TupleToStringHelper(const LiteralBase& literal,
                          const ShapeIndex& shape_index, bool print_shape,
-                         bool print_layout, std::vector<string>* pieces) {
+                         bool print_layout, std::vector<std::string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   pieces->push_back("(\n");
-  std::vector<string> tuple_pieces;
+  std::vector<std::string> tuple_pieces;
   const auto tuple_element_count = ShapeUtil::TupleElementCount(subshape);
   tuple_pieces.reserve(tuple_element_count);
   for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
     ShapeIndex element_index = shape_index;
     element_index.push_back(i);
-    std::vector<string> element_pieces;
+    std::vector<std::string> element_pieces;
     ToStringHelper(literal, element_index, print_shape, print_layout,
                    &element_pieces);
     tuple_pieces.push_back(absl::StrJoin(element_pieces, ""));
@@ -1210,7 +1210,8 @@ void TupleToStringHelper(const LiteralBase& literal,
 
 void DenseArrayToStringHelper(const LiteralBase& literal,
                               const ShapeIndex& shape_index, bool print_shape,
-                              bool print_layout, std::vector<string>* pieces) {
+                              bool print_layout,
+                              std::vector<std::string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   int64_t rank = subshape.rank();
 
@@ -1223,7 +1224,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
         // Their sum is equal to the rank of the tensor.
         CHECK_EQ(rank, dimensions.size() + accum_indices->size());
 
-        auto brace_to_string = [&](string brace) -> string {
+        auto brace_to_string = [&](std::string brace) -> string {
           // Handle 1D tensor
           if (rank == 1) {
             return brace;
@@ -1251,7 +1252,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
 
         if (dimensions.empty()) {
           // Display predicates as 0s and 1s so that the string is more dense.
-          string elem;
+          std::string elem;
           if (subshape.element_type() == PRED && rank > 0) {
             elem = literal.Get<bool>(*accum_indices, shape_index) ? "1" : "0";
           } else {
@@ -1298,7 +1299,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
 
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
                     bool print_shape, bool print_layout,
-                    std::vector<string>* pieces) {
+                    std::vector<std::string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   CHECK(LayoutUtil::HasLayout(literal.shape()));
   CHECK(LayoutUtil::HasLayout(subshape));
@@ -1316,45 +1317,45 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
 
 }  // namespace
 
-string LiteralBase::ToString() const {
-  std::vector<string> pieces;
+std::string LiteralBase::ToString() const {
+  std::vector<std::string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/true,
                  /*print_layout=*/false, &pieces);
   return absl::StrJoin(pieces, "");
 }
 
-string LiteralBase::ToStringOneline() const {
+std::string LiteralBase::ToStringOneline() const {
   return CompactOneline(ToString());
 }
 
-string LiteralBase::ToStringWithoutShape() const {
-  std::vector<string> pieces;
+std::string LiteralBase::ToStringWithoutShape() const {
+  std::vector<std::string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/false,
                  /*print_layout=*/false, &pieces);
   return absl::StrJoin(pieces, "");
 }
 
-string LiteralBase::ToStringWithoutShapeOneline() const {
+std::string LiteralBase::ToStringWithoutShapeOneline() const {
   return CompactOneline(ToStringWithoutShape());
 }
 
-string LiteralBase::ToStringWithLayout() const {
-  std::vector<string> pieces;
+std::string LiteralBase::ToStringWithLayout() const {
+  std::vector<std::string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/true,
                  /*print_layout=*/true, &pieces);
   return absl::StrJoin(pieces, "");
 }
 
-string LiteralBase::ToStringWithLayoutOneline() const {
+std::string LiteralBase::ToStringWithLayoutOneline() const {
   return CompactOneline(ToStringWithLayout());
 }
 
 void LiteralBase::EachCellAsString(
     const std::function<void(absl::Span<const int64_t> indices,
-                             const string& value)>& per_cell) const {
+                             const std::string& value)>& per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
@@ -1783,216 +1784,204 @@ bool LiteralBase::operator==(const LiteralBase& other) const {
       });
 }
 
-namespace {
+template <typename NativeT>
+static bool EqualIncludingNan(NativeT a, NativeT b) {
+  // msvc can't compile std::isnan(a) where `a` is uint8_t.  This is a bug
+  // according to https://en.cppreference.com/w/cpp/numeric/math/isnan, but it's
+  // easy to work around.
+  return a == b || (std::isnan(static_cast<double>(a)) &&
+                    std::isnan(static_cast<double>(b)));
+}
+
+template <typename T>
+static bool EqualIncludingNan(std::complex<T> a, std::complex<T> b) {
+  return EqualIncludingNan(a.real(), b.real()) &&
+         EqualIncludingNan(a.imag(), b.imag());
+}
 
 template <typename NativeT>
 static bool AllElementsEqualValue(absl::Span<const NativeT> data,
                                   NativeT value) {
   for (int64_t i = 0; i < data.size(); ++i) {
-    if (data[i] != value) {
+    if (!EqualIncludingNan(data[i], value)) {
       return false;
     }
   }
   return true;
 }
 
-}  // namespace
+bool Literal::Piece::IsAll(const Literal& scalar) const {
+  CHECK(ShapeUtil::IsScalar(scalar.shape()));
+  if (!subshape().IsArray()) {
+    return false;
+  }
 
-bool LiteralBase::IsAll(int8_t value) const {
-  return root_piece().ForEachSubpieceWithBool([&](const ShapeIndex& index,
-                                                  const Piece& piece) {
-    if (!piece.subshape().IsArray()) {
-      return true;
-    }
-
-    auto piece_is_all = [&]() {
-      switch (shape().element_type()) {
-        case U8:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint8>(piece.data<uint8>(), value);
-          }
-          return false;
-        case U16:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint16>(piece.data<uint16>(), value);
-          }
-          return false;
-        case U32:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint32>(piece.data<uint32>(), value);
-          }
-          return false;
-        case U64:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint64_t>(piece.data<uint64_t>(),
-                                                   value);
-          }
-          return false;
-        case S8:
-          return AllElementsEqualValue<int8>(piece.data<int8>(), value);
-        case S16:
-          return AllElementsEqualValue<int16>(piece.data<int16>(), value);
-        case S32:
-          return AllElementsEqualValue<int32>(piece.data<int32>(), value);
-        case S64:
-          return AllElementsEqualValue<int64_t>(piece.data<int64_t>(), value);
-        case F32:
-          return AllElementsEqualValue<float>(piece.data<float>(), value);
-        case F64:
-          return AllElementsEqualValue<double>(piece.data<double>(), value);
-        case F16:
-          return AllElementsEqualValue<half>(piece.data<half>(),
-                                             static_cast<half>(value));
-        case BF16:
-          return AllElementsEqualValue<bfloat16>(piece.data<bfloat16>(),
-                                                 static_cast<bfloat16>(value));
-        case PRED:
-          if (value == 0) {
-            return AllElementsEqualValue<bool>(piece.data<bool>(), false);
-          }
-          if (value == 1) {
-            return AllElementsEqualValue<bool>(piece.data<bool>(), true);
-          }
-          return false;
-        default:
-          return false;
-      }
-      return false;
-    };
-
-    if (!piece_is_all()) {
-      return false;
-    }
-    return true;
-  });
-}
-
-bool LiteralBase::IsAllFloat(float value) const {
-  return root_piece().ForEachSubpieceWithBool(
-      [&](const ShapeIndex& index, const Piece& piece) {
-        if (!piece.subshape().IsArray()) {
-          return true;
-        }
-
-        switch (shape().element_type()) {
-          case F32:
-            return AllElementsEqualValue<float>(piece.data<float>(), value);
-          case F64:
-            return AllElementsEqualValue<double>(piece.data<double>(), value);
-          case F16:
-            return AllElementsEqualValue<half>(piece.data<half>(),
-                                               static_cast<half>(value));
-          case BF16:
-            return AllElementsEqualValue<bfloat16>(
-                piece.data<bfloat16>(), static_cast<bfloat16>(value));
-          default:
-            return false;
-        }
-      });
-}
-
-bool LiteralBase::IsAllComplex(complex64 value) const {
-  switch (shape().element_type()) {
+  CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
+  switch (subshape().element_type()) {
+    case U8:
+      return AllElementsEqualValue(data<uint8>(),
+                                   scalar.GetFirstElement<uint8>());
+    case U16:
+      return AllElementsEqualValue(data<uint16>(),
+                                   scalar.GetFirstElement<uint16>());
+    case U32:
+      return AllElementsEqualValue(data<uint32>(),
+                                   scalar.GetFirstElement<uint32>());
+    case U64:
+      return AllElementsEqualValue(data<uint64_t>(),
+                                   scalar.GetFirstElement<uint64_t>());
+    case S8:
+      return AllElementsEqualValue(data<int8>(),
+                                   scalar.GetFirstElement<int8>());
+    case S16:
+      return AllElementsEqualValue(data<int16>(),
+                                   scalar.GetFirstElement<int16>());
+    case S32:
+      return AllElementsEqualValue(data<int32>(),
+                                   scalar.GetFirstElement<int32>());
+    case S64:
+      return AllElementsEqualValue(data<int64_t>(),
+                                   scalar.GetFirstElement<int64_t>());
+    case PRED:
+      return AllElementsEqualValue(data<bool>(),
+                                   scalar.GetFirstElement<bool>());
+    case F16:
+      return AllElementsEqualValue(data<half>(),
+                                   scalar.GetFirstElement<half>());
+    case BF16:
+      return AllElementsEqualValue(data<bfloat16>(),
+                                   scalar.GetFirstElement<bfloat16>());
+    case F32:
+      return AllElementsEqualValue(data<float>(),
+                                   scalar.GetFirstElement<float>());
+    case F64:
+      return AllElementsEqualValue(data<double>(),
+                                   scalar.GetFirstElement<double>());
     case C64:
-      return AllElementsEqualValue<complex64>(root_piece().data<complex64>(),
-                                              value);
+      return AllElementsEqualValue(data<complex64>(),
+                                   scalar.GetFirstElement<complex64>());
     case C128:
-      return AllElementsEqualValue<complex128>(root_piece().data<complex128>(),
-                                               value);
+      return AllElementsEqualValue(data<complex128>(),
+                                   scalar.GetFirstElement<complex128>());
     default:
       return false;
   }
 }
 
+bool LiteralBase::IsAll(const Literal& scalar) const {
+  return root_piece().IsAll(scalar);
+}
+
+bool LiteralBase::IsAll(int8_t value) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType ty = shape().element_type();
+  if (primitive_util::IsFloatingPointType(ty)) {
+    return IsAllFloat(value);
+  }
+  if (primitive_util::IsUnsignedIntegralType(ty) && value < 0) {
+    return false;
+  }
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  switch (ty) {
+    case U8:
+      scalar.Set<uint8_t>({}, value);
+      break;
+    case U16:
+      scalar.Set<uint16_t>({}, value);
+      break;
+    case U32:
+      scalar.Set<uint32_t>({}, value);
+      break;
+    case U64:
+      scalar.Set<uint64_t>({}, value);
+      break;
+    case S8:
+      scalar.Set<int8_t>({}, value);
+      break;
+    case S16:
+      scalar.Set<int16_t>({}, value);
+      break;
+    case S32:
+      scalar.Set<int32_t>({}, value);
+      break;
+    case S64:
+      scalar.Set<int64_t>({}, value);
+      break;
+    case PRED:
+      if (value == 0) {
+        scalar.Set<bool>({}, false);
+      } else if (value == 1) {
+        scalar.Set<bool>({}, true);
+      } else {
+        return false;
+      }
+      break;
+    default:
+      return false;
+  }
+  return root_piece().IsAll(scalar);
+}
+
+bool LiteralBase::IsAllFloat(float value) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType ty = shape().element_type();
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  switch (ty) {
+    case F16:
+      scalar.Set<half>({}, static_cast<half>(value));
+      break;
+    case BF16:
+      scalar.Set<bfloat16>({}, static_cast<bfloat16>(value));
+      break;
+    case F32:
+      scalar.Set<float>({}, value);
+      break;
+    case F64:
+      scalar.Set<double>({}, value);
+      break;
+    default:
+      return false;
+  }
+  return root_piece().IsAll(scalar);
+}
+
+bool LiteralBase::IsAllComplex(complex64 value) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType ty = shape().element_type();
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  switch (ty) {
+    case C64:
+      scalar.Set<complex64>({}, value);
+      break;
+    case C128:
+      scalar.Set<complex128>({}, value);
+      break;
+    default:
+      return false;
+  }
+  return root_piece().IsAll(scalar);
+}
+
 bool LiteralBase::IsAllFirst() const {
-  return root_piece().ForEachSubpieceWithBool(
-      [&](const ShapeIndex& index, const Piece& piece) {
-        if (!piece.subshape().IsArray()) {
-          return true;
-        }
+  if (!shape().IsArray()) {
+    return false;
+  }
 
-        // Empty shapes are not all the first element since there is no first
-        // element.
-        if (ShapeUtil::IsZeroElementArray(piece.subshape())) {
-          return false;
-        }
-        auto piece_is_all = [&]() {
-          switch (piece.subshape().element_type()) {
-            case PRED: {
-              auto data = piece.data<bool>();
-              return AllElementsEqualValue<bool>(data, data[0]);
-            }
-            // 8 bit types
-            case S8: {
-              auto data = piece.data<int8>();
-              return AllElementsEqualValue<int8>(data, data[0]);
-            }
-            case U8: {
-              auto data = piece.data<uint8>();
-              return AllElementsEqualValue<uint8>(data, data[0]);
-            }
-            // 16 bit types
-            case BF16: {
-              auto data = piece.data<bfloat16>();
-              return AllElementsEqualValue<bfloat16>(data, data[0]);
-            }
-            case F16: {
-              auto data = piece.data<half>();
-              return AllElementsEqualValue<half>(data, data[0]);
-            }
-            case S16: {
-              auto data = piece.data<int16>();
-              return AllElementsEqualValue<int16>(data, data[0]);
-            }
-            case U16: {
-              auto data = piece.data<uint16>();
-              return AllElementsEqualValue<uint16>(data, data[0]);
-            }
-            // 32 bit types
-            case F32: {
-              auto data = piece.data<float>();
-              return AllElementsEqualValue<float>(data, data[0]);
-            }
-            case U32: {
-              auto data = piece.data<uint32>();
-              return AllElementsEqualValue<uint32>(data, data[0]);
-            }
-            case S32: {
-              auto data = piece.data<int32>();
-              return AllElementsEqualValue<int32>(data, data[0]);
-            }
-            // 64 bit types
-            case C64: {
-              auto data = piece.data<complex64>();
-              return AllElementsEqualValue<complex64>(data, data[0]);
-            }
-            case F64: {
-              auto data = piece.data<double>();
-              return AllElementsEqualValue<double>(data, data[0]);
-            }
-            case S64: {
-              auto data = piece.data<int64_t>();
-              return AllElementsEqualValue<int64_t>(data, data[0]);
-            }
-            case U64: {
-              auto data = piece.data<uint64_t>();
-              return AllElementsEqualValue<uint64_t>(data, data[0]);
-            }
+  // Empty shapes are not all the first element since there is no first element.
+  if (ShapeUtil::IsZeroElementArray(shape())) {
+    return false;
+  }
 
-            case C128: {
-              auto data = piece.data<complex128>();
-              return AllElementsEqualValue<complex128>(data, data[0]);
-            }
-            default:
-              return false;
-          }
-        };
-
-        if (!piece_is_all()) {
-          return false;
-        }
-        return true;
-      });
+  absl::InlinedVector<int64_t, 4> start_indices(/*n=*/shape().rank(), 0);
+  absl::InlinedVector<int64_t, 4> end_indices(/*n=*/shape().rank(), 1);
+  Literal first = Slice(start_indices, end_indices);
+  return IsAll(first.Reshape({}).ValueOrDie());
 }
 
 bool LiteralBase::IsR1Iota() const {
@@ -2296,7 +2285,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
       break;
     case S16: {
-      const string& s(proto.s16s());
+      const std::string& s(proto.s16s());
       TF_RET_CHECK(data<int16_t>().size() * sizeof(int16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2304,7 +2293,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case U16: {
-      const string& s(proto.u16s());
+      const std::string& s(proto.u16s());
       TF_RET_CHECK(data<uint16_t>().size() * sizeof(uint16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2312,7 +2301,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case F16: {
-      const string& s(proto.f16s());
+      const std::string& s(proto.f16s());
       TF_RET_CHECK(data<half>().size() * sizeof(half) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2321,7 +2310,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     } break;
 
     case BF16: {
-      const string& s(proto.bf16s());
+      const std::string& s(proto.bf16s());
       TF_RET_CHECK(data<bfloat16>().size() * sizeof(bfloat16) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2391,7 +2380,7 @@ int64_t LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
   return piece(shape_index).size_bytes();
 }
 
-string LiteralBase::GetR1U8AsString() const {
+std::string LiteralBase::GetR1U8AsString() const {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(shape().element_type(), U8);

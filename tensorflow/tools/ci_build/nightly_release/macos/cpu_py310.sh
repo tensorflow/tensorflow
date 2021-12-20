@@ -21,7 +21,6 @@ install_bazelisk
 
 # Selects a version of Xcode.
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
-export MACOSX_DEPLOYMENT_TARGET=11.0
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up py310 via pyenv and check it worked
@@ -55,7 +54,10 @@ done
 
 # Upload the built packages to pypi.
 for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
-
+  # Change 10_15 to 10_14
+  NEW_WHL_PATH=${f/macosx_10_15/macosx_10_14}
+  mv ${f} ${NEW_WHL_PATH}
+  f=${NEW_WHL_PATH}
   # test the whl pip package
   chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
   ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${f}

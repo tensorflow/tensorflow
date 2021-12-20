@@ -130,7 +130,7 @@ class MakeErrorStream {
     tensorflow::error::Code code_;
 
     PriorMessageHandling prior_message_handling_ = kAppendToPriorMessage;
-    string prior_message_;
+    std::string prior_message_;
     bool is_done_;  // true after Status object has been returned
     std::ostringstream stream_;
     bool should_log_;

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -504,7 +505,7 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
     PartitionedHlo& indices, SpmdPartitioningVisitor* visitor) {
   absl::InlinedVector<std::pair<HloInstruction*, HloSharding>, 2>
       top_level_sharding_to_reset;
-  auto cleaner = MakeCleanup([&top_level_sharding_to_reset] {
+  auto cleaner = absl::MakeCleanup([&top_level_sharding_to_reset] {
     for (auto& to_reset : top_level_sharding_to_reset) {
       to_reset.first->set_sharding(to_reset.second);
     }

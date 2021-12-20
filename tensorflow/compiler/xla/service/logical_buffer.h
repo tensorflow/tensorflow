@@ -51,7 +51,7 @@ class LogicalBuffer : public BufferValue {
     return ShapeUtil::GetSubshape(instruction_->shape(), index_);
   }
 
-  string ToString() const override;
+  std::string ToString() const override;
 
  private:
   HloInstruction* instruction_;

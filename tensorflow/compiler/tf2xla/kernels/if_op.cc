@@ -266,9 +266,15 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   XlaCompiler::CompilationResult then_result;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, then_branch_,
                                                 arguments, &then_result));
+  OP_REQUIRES_OK(
+      ctx, ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
+               then_result));
   XlaCompiler::CompilationResult else_result;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch_,
                                                 arguments, &else_result));
+  OP_REQUIRES_OK(
+      ctx, ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
+               else_result));
 
   StatusOr<bool> has_tensor_array_gradients = PopulateTensorArrayGradients(
       ctx, b, absl::MakeSpan(arguments), &then_result, &else_result);

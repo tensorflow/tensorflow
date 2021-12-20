@@ -41,7 +41,7 @@ namespace xla {
 namespace gpu {
 
 // Returns the square root of the input rounded up to the nearest square.
-static int64_t SqrtOfRoundUpToNearestSquare(int64_t input) {
+static int64_t SqrtOfRoundUpToSquare(int64_t input) {
   return static_cast<int64_t>(std::ceil(std::sqrt(input)));
 }
 
@@ -123,7 +123,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     //
     // it can be seen that the distance to the nearest square is at most twice
     // the square root of the input number.
-    int64_t num_fit = SqrtOfRoundUpToNearestSquare(reduced_dim_size);
+    int64_t num_fit = SqrtOfRoundUpToSquare(reduced_dim_size);
 
     // Pad reduced dimension to the required number of elements.
     bool no_padding_necessary = reduced_dim_size % num_fit == 0;

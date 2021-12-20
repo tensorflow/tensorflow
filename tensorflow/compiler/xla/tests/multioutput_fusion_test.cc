@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <math.h>
+
 #include <algorithm>
 #include <memory>
 #include <new>
@@ -295,7 +296,7 @@ const char* const kScalarOps = R"(
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMinor)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -317,7 +318,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMajor)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -339,7 +340,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionScalar)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -362,7 +363,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMinorWithExtraOutput)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -385,7 +386,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMajorWithExtraOutput)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -408,7 +409,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionScalarWithExtraOutput)) {
-  const string testcase = R"(
+  const std::string testcase = R"(
     HloModule m, is_scheduled=true
 
     Add {
@@ -439,7 +440,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionNonConstInit)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,32,32]{2,1,0} parameter(0)
       init1 = f32[] parameter(1)
@@ -462,7 +463,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionDifferentElementTypes)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce (p0: f16[2,32,32]) -> (f32[2,32], f32[2,32], f16[2,32,32]) {
       p0 = f16[2,32,32]{2,1,0} parameter(0)
       convert = f32[2,32,32]{2,1,0} convert(p0)

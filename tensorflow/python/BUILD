@@ -1194,6 +1194,24 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "compiled_collective_ops_gpu_test",
+    size = "small",
+    srcs = ["ops/compiled_collective_ops_gpu_test.py"],
+    python_version = "PY3",
+    tags = [
+        "guitar",
+        "multi_gpu",
+        "no_windows",
+    ],
+    deps = [
+        ":client_testlib",
+        ":collective_ops",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "control_flow_grad",
     srcs =

@@ -44,7 +44,7 @@ struct ReverseSpec {
   std::vector<int64_t> reversal;
   bool use_bfloat16;
 
-  string ToTestCaseName() const {
+  std::string ToTestCaseName() const {
     return absl::StrFormat(
         "reverse_%s_in_dims_%s_%s", absl::StrJoin(input_dims, "x"),
         absl::StrJoin(reversal, "x"), use_bfloat16 ? "bf16" : "f32");

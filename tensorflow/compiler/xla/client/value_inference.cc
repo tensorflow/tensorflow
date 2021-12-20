@@ -1235,57 +1235,56 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       // Each branch i has 2 dependenices:
       // 2*i: Branch result value
       // 2*i + 1: Branch value is dynamic.
-      return node.AddVisit(
-          [root, branch_size,
-           context](absl::Span<Literal> operands) -> StatusOr<Literal> {
-            int64_t pred_is_dynamic = operands[1].Get<bool>({});
-            auto result = CreatePredLiteral(
-                true, ShapeUtil::GetSubshape(Shape(root->shape()),
-                                             context.shape_index));
-            if (pred_is_dynamic) {
-              VLOG(1) << "predict is dynamic value" << result.ToString();
-              // If predicate is dynamic, the result is only static if all
-              // branches are static and return the same value.
-              result.MutableEachCell<bool>(
-                  [&](absl::Span<const int64_t> indices, bool value) {
-                    string branch_value = operands[2].GetAsString(indices, {});
-                    for (int64_t i = 0; i < branch_size; ++i) {
-                      const int64_t branch_value_index = 2 + 2 * i;
-                      const int64_t branch_dynamism_index = 2 + 2 * i + 1;
-                      auto branch_is_dynamic =
-                          operands[branch_dynamism_index].Get<bool>(indices);
-                      if (branch_is_dynamic) {
-                        return true;
-                      }
+      return node.AddVisit([root, branch_size,
+                            context](absl::Span<Literal> operands)
+                               -> StatusOr<Literal> {
+        int64_t pred_is_dynamic = operands[1].Get<bool>({});
+        auto result = CreatePredLiteral(
+            true,
+            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
+        if (pred_is_dynamic) {
+          VLOG(1) << "predict is dynamic value" << result.ToString();
+          // If predicate is dynamic, the result is only static if all
+          // branches are static and return the same value.
+          result.MutableEachCell<bool>(
+              [&](absl::Span<const int64_t> indices, bool value) {
+                std::string branch_value = operands[2].GetAsString(indices, {});
+                for (int64_t i = 0; i < branch_size; ++i) {
+                  const int64_t branch_value_index = 2 + 2 * i;
+                  const int64_t branch_dynamism_index = 2 + 2 * i + 1;
+                  auto branch_is_dynamic =
+                      operands[branch_dynamism_index].Get<bool>(indices);
+                  if (branch_is_dynamic) {
+                    return true;
+                  }
 
-                      if (branch_value !=
-                          operands[branch_value_index].GetAsString(indices,
-                                                                   {})) {
-                        return true;
-                      }
-                    }
-                    // Value of the branch is static.
-                    return false;
-                  });
-              return result;
-            } else {
-              VLOG(1) << "predict is constant value";
-              // If predicate is static, return true if given branch result
-              // value is dynamic.
-              int64_t branch_index = 0;
-              if (operands[0].shape().element_type() == PRED) {
-                if (operands[0].Get<bool>({})) {
-                  branch_index = 0;
-                } else {
-                  branch_index = 1;
+                  if (branch_value !=
+                      operands[branch_value_index].GetAsString(indices, {})) {
+                    return true;
+                  }
                 }
-              } else {
-                branch_index = operands[0].GetIntegralAsS64({}).value();
-              }
-              const int64_t branch_dynamism_index = 2 + 2 * branch_index + 1;
-              return std::move(operands[branch_dynamism_index]);
+                // Value of the branch is static.
+                return false;
+              });
+          return result;
+        } else {
+          VLOG(1) << "predict is constant value";
+          // If predicate is static, return true if given branch result
+          // value is dynamic.
+          int64_t branch_index = 0;
+          if (operands[0].shape().element_type() == PRED) {
+            if (operands[0].Get<bool>({})) {
+              branch_index = 0;
+            } else {
+              branch_index = 1;
             }
-          });
+          } else {
+            branch_index = operands[0].GetIntegralAsS64({}).value();
+          }
+          const int64_t branch_dynamism_index = 2 + 2 * branch_index + 1;
+          return std::move(operands[branch_dynamism_index]);
+        }
+      });
     }
     case HloOpcode::kGetTupleElement: {
       int64_t operand_handle = root->operand_ids(0);

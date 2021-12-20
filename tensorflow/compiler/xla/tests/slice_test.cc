@@ -241,7 +241,8 @@ class SliceR1Test : public ClientLibraryTestBase,
 // A version of SliceR1Test used to label and disable 'large' tests
 class SliceR1LargeTest : public SliceR1Test {};
 
-string SliceR1TestDataToString(const ::testing::TestParamInfo<R1Spec>& data) {
+std::string SliceR1TestDataToString(
+    const ::testing::TestParamInfo<R1Spec>& data) {
   const R1Spec& spec = data.param;
   return absl::StrFormat("%d_%d_%d_%d", spec.input_dim0, spec.slice_start,
                          spec.slice_limit, spec.slice_stride);
@@ -477,7 +478,7 @@ struct R4Spec {
   std::array<int64_t, 4> slice_strides;
 };
 
-string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
+std::string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
   const R4Spec& spec = data.param;
   return absl::StrCat("input_", absl::StrJoin(spec.input_dims, "x"),
                       "__layout_", absl::StrJoin(spec.input_layout, ""),

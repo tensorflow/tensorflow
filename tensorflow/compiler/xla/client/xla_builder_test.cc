@@ -65,7 +65,7 @@ class XlaBuilderTest : public ::testing::Test {
   }
 
   // Returns the name of the test currently being run.
-  string TestName() const {
+  std::string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 };

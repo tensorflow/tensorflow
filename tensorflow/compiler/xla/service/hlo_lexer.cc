@@ -375,7 +375,7 @@ TokKind HloLexer::LexNumberOrPattern() {
       R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
-    CHECK(absl::SimpleAtod(string(token_state_.token_start, current_ptr_),
+    CHECK(absl::SimpleAtod(std::string(token_state_.token_start, current_ptr_),
                            &token_state_.decimal_val));
     return TokKind::kDecimal;
   }
@@ -498,7 +498,7 @@ TokKind HloLexer::LexString() {
     current_ptr_ = consumable.begin();
     absl::string_view raw =
         StringPieceFromPointers(token_state_.token_start + 1, current_ptr_ - 1);
-    string error;
+    std::string error;
     if (!absl::CUnescape(raw, &token_state_.str_val, &error)) {
       LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
       return TokKind::kError;
@@ -508,7 +508,7 @@ TokKind HloLexer::LexString() {
   return TokKind::kError;
 }
 
-string TokKindToString(TokKind kind) {
+std::string TokKindToString(TokKind kind) {
   switch (kind) {
     case TokKind::kEof:
       return "kEof";

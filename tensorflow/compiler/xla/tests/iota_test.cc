@@ -27,7 +27,7 @@ namespace xla {
 namespace {
 
 XLA_TEST_F(HloTestBase, IotaReshapeR1) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
     i = s32[24] iota(), iota_dimension=0
@@ -38,7 +38,7 @@ XLA_TEST_F(HloTestBase, IotaReshapeR1) {
 }
 
 XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
     i = s32[5,5,111,42] iota(), iota_dimension=0

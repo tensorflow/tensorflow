@@ -91,6 +91,13 @@ namespace {
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
 
+// Clamps value to the range [lower, upper].  Requires lower <= upper.
+template <typename T>
+static T Clamp(const T& value, const T& lower, const T& upper) {
+  assert(lower <= upper);
+  return std::max(lower, std::min(value, upper));
+}
+
 // Verifies that dimension attribute for the op correctly indexes in operand or
 // result shape.
 template <typename OpT>
@@ -385,13 +392,20 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     if (index.getNumElements() != dnums.getStartIndexMap().size())
       return failure();
 
+    RankedTensorType operand_type =
+        gather->getOperand(0).getType().dyn_cast<RankedTensorType>();
+    if (!operand_type || !operand_type.hasStaticShape()) return failure();
+
     auto slice_end =
         llvm::to_vector<8>(gather.slice_sizes().getValues<int64_t>());
     llvm::SmallVector<int64_t, 8> slice_start(slice_end.size(), 0);
     for (auto it :
          llvm::zip(dnums.getStartIndexMap(), index.getValues<APInt>())) {
       int64_t map_index = std::get<0>(it);
-      int64_t offset = std::get<1>(it).getSExtValue();
+      // Clamp the indices within bounds to faithfully mirror gather semantics.
+      int64_t offset =
+          Clamp(std::get<1>(it).getSExtValue(), static_cast<int64_t>(0),
+                operand_type.getDimSize(map_index) - slice_end[map_index]);
       slice_start[map_index] += offset;
       slice_end[map_index] += offset;
     }
@@ -2201,15 +2215,24 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
                                 PatternRewriter& rewriter) const override {
     Value input = dynamic_slice.operand();
     auto input_tensor = input.getType().dyn_cast<RankedTensorType>();
-    if (!input_tensor) return failure();
+    if (!input_tensor || !input_tensor.hasStaticShape()) return failure();
 
+    auto slice_sizes = dynamic_slice.slice_sizes().getValues<int64_t>();
     SmallVector<int64_t, 4> temp_start_indices;
-    for (Value start : dynamic_slice.start_indices()) {
+    for (const auto& index_and_slice_start :
+         llvm::enumerate(dynamic_slice.start_indices())) {
       APInt val;
+      Value start = index_and_slice_start.value();
+      int64_t index = index_and_slice_start.index();
       if (!matchPattern(start, m_ConstantInt(&val))) {
         return failure();
       }
-      temp_start_indices.push_back(*(val.getRawData()));
+      // Clamp the indices within bounds to faithfully mirror dynamic slice
+      // semantics.
+      int64_t clamped_start =
+          Clamp(val.getSExtValue(), static_cast<int64_t>(0),
+                input_tensor.getDimSize(index) - slice_sizes[index]);
+      temp_start_indices.push_back(clamped_start);
     }
 
     // At this point we've determined that the start indices are all constants;
@@ -4644,6 +4667,32 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   return getOperand();
 }
 
+// transpose(transpose(X)) => transpose(X)
+static LogicalResult EliminateRedundantTranspse(TransposeOp op,
+                                                PatternRewriter& rewriter) {
+  auto tranpose_operand = op.operand().getDefiningOp<TransposeOp>();
+  if (!tranpose_operand) {
+    return failure();
+  }
+  auto operand_permutation = tranpose_operand.permutation().getValues<APInt>();
+  auto new_permutation =
+      op.permutation()
+          .mapValues(op.permutation().DenseElementsAttr::getElementType(),
+                     [&operand_permutation](const APInt& index) -> APInt {
+                       return operand_permutation[index.getSExtValue()];
+                     })
+          .cast<DenseIntElementsAttr>();
+  rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getResult().getType(),
+                                           tranpose_operand.operand(),
+                                           new_permutation);
+  return success();
+}
+
+void TransposeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                              MLIRContext* /*context*/) {
+  results.insert(EliminateRedundantTranspse);
+}
+
 static LogicalResult Verify(TransposeOp op) {
   // permutation is an attribute of the op so it has static shape.
   auto permutationType = op.permutation().getType();
@@ -5125,6 +5174,80 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   } while (next_index(update_index, update_type.getShape()));
 
   return DenseElementsAttr::get(base_type, results);
+}
+
+//===----------------------------------------------------------------------===//
+// WhileOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(WhileOp whileOp) {
+  if (whileOp->getNumOperands() != whileOp.cond().front().getNumArguments())
+    return whileOp.emitOpError()
+           << "mismatch in operand count (" << whileOp->getNumOperands()
+           << ") vs the condition block argument count ("
+           << whileOp.cond().front().getNumArguments() << ")";
+  if (whileOp->getNumOperands() != whileOp.body().front().getNumArguments())
+    return whileOp.emitOpError()
+           << "mismatch in operand count (" << whileOp->getNumOperands()
+           << ") vs the body block argument count ("
+           << whileOp.body().front().getNumArguments() << ")";
+  for (const auto& enumeratedOperands :
+       llvm::enumerate(llvm::zip(whileOp->getOperandTypes(),
+                                 whileOp.cond().front().getArgumentTypes(),
+                                 whileOp.body().front().getArgumentTypes()))) {
+    int argCount = enumeratedOperands.index();
+    const auto& operands = enumeratedOperands.value();
+    Type operandType = std::get<0>(operands);
+    Type condType = std::get<1>(operands);
+    Type bodyType = std::get<2>(operands);
+    if (operandType != condType)
+      return whileOp.emitOpError()
+             << "type mismatch between operand #" << argCount
+             << " and the matching condition block argument: " << operandType
+             << " vs " << condType;
+    if (operandType != bodyType)
+      return whileOp.emitOpError()
+             << "type mismatch between operand #" << argCount
+             << " and the matching body block argument: " << operandType
+             << " vs " << bodyType;
+  }
+  // Check the return type for the condition block.
+  {
+    auto condReturnOp = cast<ReturnOp>(whileOp.cond().front().back());
+    if (condReturnOp->getNumOperands() != 1)
+      return condReturnOp.emitOpError()
+             << "expects a single operand for while condition body return, got "
+             << condReturnOp->getNumOperands();
+    auto operandType =
+        condReturnOp->getOperand(0).getType().dyn_cast<RankedTensorType>();
+    if (!operandType ||  // TODO(b/210930774): operandType.getRank() != 0 ||
+        !operandType.getElementType().isa<IntegerType>() ||
+        operandType.getElementType().cast<IntegerType>().getWidth() != 1)
+      return condReturnOp.emitOpError()
+             << "expects a zero-ranked tensor of i1, got "
+             << condReturnOp->getOperand(0).getType();
+  }
+  // Check the return type for the body block.
+  {
+    auto bodyReturnOp = cast<ReturnOp>(whileOp.body().front().back());
+    if (bodyReturnOp->getNumOperands() != whileOp->getNumOperands())
+      return bodyReturnOp.emitOpError()
+             << "expects body to return a many value as the operands ("
+             << whileOp->getNumOperands() << "), got "
+             << bodyReturnOp->getNumOperands();
+    for (const auto& enumeratedOperandTypes : llvm::enumerate(llvm::zip(
+             bodyReturnOp->getOperandTypes(), whileOp->getOperandTypes()))) {
+      Type operandType = std::get<0>(enumeratedOperandTypes.value());
+      Type returnType = std::get<1>(enumeratedOperandTypes.value());
+      if (operandType != returnType)
+        return bodyReturnOp.emitOpError()
+               << "type mismatch between operand #"
+               << enumeratedOperandTypes.index()
+               << " and the enclosing WhileOp returned value: " << operandType
+               << " vs " << returnType;
+    }
+  }
+  return success();
 }
 
 using mlir::hlo::parseWindowAttributes;

@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/PatternMatch.h"
@@ -56,7 +56,7 @@ bool isExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
 }
 
 // Rewrite dynamic reshapes that only insert one dimensions into
-// linalg.tensor_expand_shape.
+// tensor.expand_shape.
 struct ReshapeToExpandShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
   ReshapeToExpandShape(MLIRContext *ctx) : OpRewritePattern(ctx) {}

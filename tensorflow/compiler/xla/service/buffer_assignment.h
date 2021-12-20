@@ -200,7 +200,7 @@ class BufferAllocation {
       return H::combine(std::move(h), s.index(), s.offset(), s.size());
     }
 
-    string ToString() const;
+    std::string ToString() const;
 
    private:
     const BufferAllocation* allocation_ = nullptr;
@@ -213,7 +213,7 @@ class BufferAllocation {
   // REQUIRES: 'buffer' must be assigned to this allocation.
   Slice GetSlice(const HloValue& buffer) const;
 
-  string ToString() const;
+  std::string ToString() const;
   BufferAllocationProto ToProto() const;
 
   // Whether the buffer is a parameter to or live out of the entry computation.
@@ -467,11 +467,11 @@ class BufferAssignment {
   // Returns the HloLiveRange object used to construct this assignment.
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
-  string ToString() const;
+  std::string ToString() const;
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
-  string ToVerboseString() const;
-  string BufferInfoString() const;
+  std::string ToVerboseString() const;
+  std::string BufferInfoString() const;
   BufferAssignmentProto ToProto() const;
 
   // Statistics for the assignment.  Values initialized to -1 are not always
@@ -491,7 +491,7 @@ class BufferAssignment {
     int64_t total_allocation_bytes = 0;
     int64_t total_fragmentation_bytes = -1;
 
-    string ToString() const;
+    std::string ToString() const;
   };
   const Stats& GetStats() const { return stats_; }
 

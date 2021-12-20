@@ -48,7 +48,7 @@ class HloDomainRemover : public HloModulePass {
  private:
   class RunContext;
 
-  string kind_;
+  std::string kind_;
   std::function<Status(const DomainMetadata::Domain&,
                        const DomainMetadata* metadata)>
       normalizer_;

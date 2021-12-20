@@ -57,8 +57,12 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   }
 
   HloProto proto;
+  mlir::MlirToHloConversionOptions options;
+  // We don't want the conversion to muck with our operator names.
+  options.legalize_node_names = false;
   TF_RETURN_IF_ERROR(
-      ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple));
+      ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple,
+                          /*shape_representation_fn=*/nullptr, options));
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
   return Status::OK();

@@ -28,7 +28,7 @@ using absl::nullopt;
 
 class ElementalIrEmitterExecutionTest : public HloTestBase {
  protected:
-  void RunTest(const string& hlo_text, absl::Span<Literal* const> args) {
+  void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -49,7 +49,7 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
 };
 
 XLA_TEST_F(ElementalIrEmitterExecutionTest, DotFusion) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule FusedDot
 
 fused_computation {

@@ -529,6 +529,7 @@ cc_library(
         "reference/floor_mod.h",
         "reference/fully_connected.h",
         "reference/gather.h",
+        "reference/gelu.h",
         "reference/hard_swish.h",
         "reference/integer_ops/add.h",
         "reference/integer_ops/conv.h",
@@ -592,6 +593,7 @@ cc_library(
     deps = [
         ":common",
         ":compatibility",
+        ":constants",
         ":cppmath",
         ":quantization_util",
         ":strided_slice_logic",

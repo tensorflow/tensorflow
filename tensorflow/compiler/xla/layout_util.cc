@@ -321,13 +321,13 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 /* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Shape& shape) {
   CHECK(IsDenseArray(shape));
-  return AsInt64Slice(shape.layout().minor_to_major());
+  return shape.layout().minor_to_major();
 }
 
 /* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Layout& layout) {
   CHECK(layout.format() == DENSE);
-  return AsInt64Slice(layout.minor_to_major());
+  return layout.minor_to_major();
 }
 
 /* static */ int64_t LayoutUtil::Major(const Layout& layout,

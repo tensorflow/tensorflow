@@ -76,7 +76,7 @@ se::fft::Type FftTypeToSeType(FftType type, bool double_precision) {
   }
 }
 
-string FftTypeToString(se::fft::Type type) {
+std::string FftTypeToString(se::fft::Type type) {
   switch (type) {
     case se::fft::Type::kC2CForward:
     case se::fft::Type::kZ2ZForward:

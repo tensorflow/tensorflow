@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CONDITIONAL_CODE_MOTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CONDITIONAL_CODE_MOTION_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -53,7 +55,7 @@ class Boundary {
     return res;
   }
   bool operator==(const Boundary& that) const {
-    return ContainersEqual(operands_, that.operands_);
+    return absl::c_equal(operands_, that.operands_);
   }
   template <typename H>
   friend H AbslHashValue(H h, const Boundary& boundary) {

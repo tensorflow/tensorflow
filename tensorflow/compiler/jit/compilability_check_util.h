@@ -136,13 +136,6 @@ class RecursiveCompilabilityChecker {
     // Whether to allow the compilation of CollectiveReduceV2Op.
     bool allow_collective_reduce_v2 = true;
 
-    // Whether to allow the compilation of WhereOp. Compilation of the WhereOp
-    // generates output with bounded dynamic shape that may cause failures with
-    // auto clustering.
-    // TODO(b/203693252): Enable tf.where during autoclustering after all the
-    // legalization issues are fixed.
-    bool allow_where_op = true;
-
     // Whether to allow the compilation of UniqueOp. Compilation of the UniqueOp
     // generates output with bounded dynamic shape that may cause failures with
     // auto clustering.

@@ -82,7 +82,7 @@ class ThunkSchedule {
     return 0;
   }
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   void RemoveRedundantDependencyEdges();

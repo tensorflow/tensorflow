@@ -257,14 +257,14 @@ absl::Status GPUSubgraphFromGraph(
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
   if ((gpu_info.IsAdreno() || gpu_info.IsNvidia() || gpu_info.IsMali() ||
-       gpu_info.IsApple()) &&
+       gpu_info.IsApple() || gpu_info.IsAMD()) &&
       TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
                                   tensor_descriptors, consumed_nodes,
                                   gpu_subgraph)
           .ok()) {
     return absl::OkStatus();
   }
-  if ((gpu_info.IsIntel() || gpu_info.IsNvidia()) &&
+  if ((gpu_info.IsIntel() || gpu_info.IsNvidia() || gpu_info.IsAMD()) &&
       TryFCFCAdd(gpu_info, precision, graph, first_node_id, tensor_descriptors,
                  consumed_nodes, gpu_subgraph)
           .ok()) {

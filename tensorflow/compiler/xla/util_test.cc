@@ -31,10 +31,10 @@ namespace {
 // Also throws in some trailing whitespace on the original to show it is
 // removed.
 TEST(UtilTest, ReindentsDifferentNumberOfLeadingSpacesUniformly) {
-  string original = R"(   hello there
+  std::string original = R"(   hello there
       world)";
-  string got = Reindent(original, "  ");
-  string want = R"(  hello there
+  std::string got = Reindent(original, "  ");
+  std::string want = R"(  hello there
   world)";
   EXPECT_EQ(want, got);
 }

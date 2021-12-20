@@ -29,6 +29,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <random>
 #include <string>
@@ -108,7 +109,8 @@ class ReduceTest : public ClientLibraryTestBase {
         input_data[i] *= -1;
       }
     }
-    Literal input_literal = LiteralUtil::CreateR1(AsSlice(input_data));
+    Literal input_literal =
+        LiteralUtil::CreateR1(absl::MakeConstSpan(input_data));
     std::unique_ptr<GlobalData> input_global_data =
         client_->TransferToServer(input_literal).ConsumeValueOrDie();
 

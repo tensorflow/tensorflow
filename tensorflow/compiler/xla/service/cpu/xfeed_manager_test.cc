@@ -64,7 +64,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
 // code would in the process of executing the infeed operation.
 void ProcessNextBuffer(int32_t length) {
   auto shape = ShapeUtil::MakeShape(U8, {length});
-  string bytes = shape.SerializeAsString();
+  std::string bytes = shape.SerializeAsString();
   void* buffer = __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
       /*run_options=*/nullptr, length, bytes.data(), bytes.size());
   __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
@@ -74,7 +74,7 @@ void ProcessNextBuffer(int32_t length) {
 // Performs the acquire/release sequence on the outfeed, as the generated CPU
 // code would in the process of executing the outfeed operation.
 void ProcessNextOutfeedBuffer(int32_t length, const Shape& shape) {
-  string bytes = shape.SerializeAsString();
+  std::string bytes = shape.SerializeAsString();
   void* buffer = __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
       /*run_options=*/nullptr, length, bytes.data(), bytes.size());
   __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(

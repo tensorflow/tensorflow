@@ -69,7 +69,7 @@ class HloDomainTest : public HloTestBase {
 // HLO instructions with the same metadata().op_name() values.
 class OpNameMetadata : public DomainMetadata {
  public:
-  explicit OpNameMetadata(string opname) : opname_(std::move(opname)) {}
+  explicit OpNameMetadata(std::string opname) : opname_(std::move(opname)) {}
 
   std::unique_ptr<DomainMetadata> Clone() const override {
     return absl::make_unique<OpNameMetadata>(opname_);
@@ -87,14 +87,14 @@ class OpNameMetadata : public DomainMetadata {
     return opname_ == other_ptr->opname_;
   }
 
-  string ToString() const override { return opname_; }
+  std::string ToString() const override { return opname_; }
 
   static absl::string_view KindName() { return "opname"; }
 
-  size_t Hash() const override { return std::hash<string>()(opname_); }
+  size_t Hash() const override { return std::hash<std::string>()(opname_); }
 
  private:
-  string opname_;
+  std::string opname_;
 };
 
 // Creator function for OpNameMetadata domains.

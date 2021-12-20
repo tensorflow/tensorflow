@@ -104,7 +104,7 @@ void BuildProfilerSubmodule(py::module* m) {
                     &tensorflow::ProfileOptions::set_duration_ms)
       .def_property(
           "repository_path", &tensorflow::ProfileOptions::repository_path,
-          [](tensorflow::ProfileOptions* options, const string& path) {
+          [](tensorflow::ProfileOptions* options, const std::string& path) {
             options->set_repository_path(path);
           });
 

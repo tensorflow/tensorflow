@@ -64,7 +64,7 @@ XlaOp GetDiagonalMask(XlaOp x, int diagonal) {
     auto m = shape.dimensions(n_dims - 2);
     auto n = shape.dimensions(n_dims - 1);
     absl::Span<const int64_t> major_dims =
-        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
+        shape.dimensions().subspan(/*pos=*/0, /*len=*/n_dims - 2);
     auto a = Iota(builder, S32, n);
     auto b = Iota(builder, S32, m) + ConstantR0WithType(builder, S32, diagonal);
     auto indicator = Eq(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
@@ -218,7 +218,7 @@ XlaOp TriangleMask(XlaOp x, int diagonal) {
     const int64_t m = shape.dimensions(n_dims - 2);
     const int64_t n = shape.dimensions(n_dims - 1);
     absl::Span<const int64_t> major_dims =
-        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
+        shape.dimensions().subspan(/*pos=*/0, /*len=*/n_dims - 2);
     auto a = Iota(builder, S32, n);
     auto b = Iota(builder, S32, m) + ConstantR0<int32>(builder, diagonal);
     XlaOp indicator;
