@@ -15,7 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <string>
+
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
@@ -3000,13 +3006,13 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
 
   // Helper lambda to extract port num from _Send and _Recv op name.
   auto get_port_num = [](const string& name) -> int {
-    if (name.find("bn_0") != string::npos) {
+    if (absl::StrContains(name, "bn_0")) {
       return 0;
-    } else if (name.find("bn_1") != string::npos) {
+    } else if (absl::StrContains(name, "bn_1")) {
       return 1;
-    } else if (name.find("bn_2") != string::npos) {
+    } else if (absl::StrContains(name, "bn_2")) {
       return 2;
-    } else if (name.find("bn_minus1") != string::npos) {
+    } else if (absl::StrContains(name, "bn_minus1")) {
       return -1;
     }
     return -999;
@@ -3162,6 +3168,99 @@ TEST_F(VirtualSchedulerTest, AddFromOneTensor) {
   auto ops_executed = RunScheduler("");
   EXPECT_GT(ops_executed.count("y"), 0);
   EXPECT_GT(ops_executed.count("x"), 0);
+}
+
+TEST_F(VirtualSchedulerTest, TestNodeCostOutputTensorSize) {
+  // Create a schedule with more than 2 ops to be executed.
+  CreateGrapplerItemWithMatmulChain();
+  InitScheduler();
+  RunScheduler("ab");
+
+  int32_t persistent_memory_before =
+      scheduler_->GetPersistentMemoryUsage().at(kCPU0);
+
+  auto* device_states = scheduler_->GetDeviceStates();
+  int32_t memory_usage = device_states->at(kCPU0).memory_usage;
+
+  // Set temporary/persistent memory to some values for the first node cost.
+  Costs node_costs = Costs::ZeroCosts(false);
+
+  const int32_t node_one_cost = 12345;
+  const int32_t node_two_cost = 98765;
+
+  const int32_t input_size = 4 * 3200 * 3200;
+
+  node_costs.persistent_memory = node_one_cost;
+  node_costs.temporary_memory = 0;
+  node_costs.output_tensor_size_bytes = {{0, node_one_cost}};
+  node_costs.persistent_output_ports = {0};
+
+  // Mark first node executed and check device state.
+  scheduler_->MarkCurrNodeExecuted(node_costs);
+  device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_0 = device_states->at(kCPU0);
+
+  // The expected memory usage is previous memory usage minus the size
+  // of the two inputs for the multiply operation.
+  memory_usage -= 2 * input_size;
+  EXPECT_EQ(cpu_state_0.memory_usage, memory_usage);
+
+  int64_t persistent_memory = node_one_cost + persistent_memory_before;
+  EXPECT_EQ(scheduler_->GetPersistentMemoryUsage().at(kCPU0),
+            persistent_memory);
+
+  // Set second node costs to temporary memory.
+  node_costs = Costs::ZeroCosts(false);
+  node_costs.persistent_memory = 0;
+  node_costs.temporary_memory = node_two_cost;
+  node_costs.output_tensor_size_bytes = {{0, node_two_cost}};
+
+  scheduler_->MarkCurrNodeExecuted(node_costs);
+  device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_1 = device_states->at(kCPU0);
+
+  // Again we remove the inputs from memory usage.  The output of the previous
+  // operation is not subtracted because it is set as persistent memory.
+  memory_usage += node_two_cost - input_size;
+  EXPECT_EQ(cpu_state_1.memory_usage, memory_usage);
+  EXPECT_EQ(scheduler_->GetPersistentMemoryUsage().at(kCPU0),
+            persistent_memory);
+
+  // Finish off the schedule to test if the Summary counts persistent memory
+  // correctly.
+  bool more_nodes = true;
+  do {
+    OpContext op_context = scheduler_->GetCurrNode();
+    node_costs = SimplePredictCosts(op_context);
+    more_nodes = scheduler_->MarkCurrNodeExecuted(node_costs);
+  } while (more_nodes);
+
+  RunMetadata metadata;
+  Costs final_cost = scheduler_->Summary(&metadata);
+
+  EXPECT_EQ(final_cost.persistent_memory, persistent_memory);
+
+  // Since we adjusted the node costs, we expect the requested and allocated
+  // memory are not equal for nodes "abc" and "abcd" .
+  StepStats stepstats = metadata.step_stats();
+  for (const auto& device_step_stats : stepstats.dev_stats()) {
+    for (const auto& stats : device_step_stats.node_stats()) {
+      const auto& allocation_description =
+          stats.output().at(0).tensor_description().allocation_description();
+      if (stats.node_name() == "abc") {
+        EXPECT_NE(allocation_description.allocated_bytes(),
+                  allocation_description.requested_bytes());
+        const auto& mem_stats = stats.memory_stats();
+        EXPECT_EQ(mem_stats.persistent_memory_size(), node_one_cost);
+      } else if (stats.node_name() == "abcd") {
+        EXPECT_NE(allocation_description.allocated_bytes(),
+                  allocation_description.requested_bytes());
+      } else {
+        EXPECT_EQ(allocation_description.allocated_bytes(),
+                  allocation_description.requested_bytes());
+      }
+    }
+  }
 }
 
 }  // namespace
