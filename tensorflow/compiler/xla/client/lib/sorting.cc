@@ -109,8 +109,8 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
       auto iota_s32 = values_and_indices[3];
 
       // Slice value and indices for this partition.
-      XlaOp start = Mul(Add(partition, ConstantR0<int32>(builder, 1)),
-                        ConstantR0<int32>(builder, per_partition_size));
+      XlaOp start = Mul(Add(partition, ConstantR0<int32_t>(builder, 1)),
+                        ConstantR0<int32_t>(builder, per_partition_size));
       XlaOp sliced_input =
           DynamicSliceInMinorDims(input, {start}, {per_partition_size});
       XlaOp sliced_indices =

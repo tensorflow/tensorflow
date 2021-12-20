@@ -3446,7 +3446,7 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64_t dimension) {
     // Calling GetDimensionSize on a static dimension returns a constant
     // instruction.
     if (!operand_shape->is_dynamic_dimension(dimension)) {
-      return ConstantR0<int32>(this, operand_shape->dimensions(dimension));
+      return ConstantR0<int32_t>(this, operand_shape->dimensions(dimension));
     }
     *instr.mutable_shape() = shape.ToProto();
     instr.add_dimensions(dimension);
@@ -3465,7 +3465,7 @@ XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64_t dimension) {
     // Setting an op's dynamic dimension to its static size removes the dynamic
     // dimension.
     XlaOp static_size =
-        ConstantR0<int32>(this, operand_shape->dimensions(dimension));
+        ConstantR0<int32_t>(this, operand_shape->dimensions(dimension));
     return SetDimensionSizeInternal(shape, operand, static_size, dimension);
   });
 }
@@ -3493,7 +3493,7 @@ StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
       shape.is_dynamic_dimension(dimension)) {
     TF_ASSIGN_OR_RETURN(auto constant_size,
                         Literal::CreateFromProto(val_proto->literal(), true));
-    if (constant_size.Get<int32>({}) == shape.dimensions(dimension)) {
+    if (constant_size.Get<int32_t>({}) == shape.dimensions(dimension)) {
       return operand;
     }
   }
@@ -3597,8 +3597,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
         if (!(operand_proto->shape().is_dynamic_dimension(dimension) &&
               dynamic_dimension_is_minus_one)) {
-          constant_value =
-              static_cast<int32>(operand_proto->shape().dimensions(dimension));
+          constant_value = static_cast<int32_t>(
+              operand_proto->shape().dimensions(dimension));
         }
         Literal literal = LiteralUtil::CreateR0(constant_value);
         *const_instr.mutable_literal() = literal.ToProto();

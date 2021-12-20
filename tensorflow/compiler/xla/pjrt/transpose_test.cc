@@ -384,14 +384,14 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
   }
 };
 
-TEST_P(TransposeTest, TransposeInt8) { TestTranspose<int8>(1); }
-TEST_P(TransposeTest, TransposeInt16) { TestTranspose<int16>(1); }
-TEST_P(TransposeTest, TransposeInt32) { TestTranspose<int32>(1); }
+TEST_P(TransposeTest, TransposeInt8) { TestTranspose<int8_t>(1); }
+TEST_P(TransposeTest, TransposeInt16) { TestTranspose<int16_t>(1); }
+TEST_P(TransposeTest, TransposeInt32) { TestTranspose<int32_t>(1); }
 TEST_P(TransposeTest, TransposeInt64) { TestTranspose<int64_t>(1); }
 TEST_P(TransposeTest, TransposeInt128) { TestTranspose<absl::int128>(1); }
 
-TEST_P(TransposeTest, ParallelTransposeInt8) { TestTranspose<int8>(16); }
-TEST_P(TransposeTest, ParallelTransposeInt32) { TestTranspose<int32>(16); }
+TEST_P(TransposeTest, ParallelTransposeInt8) { TestTranspose<int8_t>(16); }
+TEST_P(TransposeTest, ParallelTransposeInt32) { TestTranspose<int32_t>(16); }
 
 INSTANTIATE_TEST_SUITE_P(TransposeTestInstance, TransposeTest,
                          ::testing::ValuesIn(GetTransposeTestCases()));
