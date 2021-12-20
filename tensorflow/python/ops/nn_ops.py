@@ -3831,9 +3831,10 @@ def softmax_v2(logits, axis=None, name=None):
   is 1.
 
   This function performs the equivalent of
-
-      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis, keepdims=True)
-
+  
+  ```
+  softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis, keepdims=True)
+  ```
   Example usage:
 
   >>> softmax = tf.nn.softmax([-1, 0., 1.])
