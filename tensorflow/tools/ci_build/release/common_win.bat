@@ -24,14 +24,14 @@ SET PY_EXE=C:\%PYTHON_DIRECTORY%\python.exe
 SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 
 @REM First, upgrade pypi wheels
-@REM NOTE: Windows doesn't have any additional requirements from the common ones.
 IF "%PYTHON_DIRECTORY%"=="Python310" (
   %PY_EXE% -m pip install --upgrade "setuptools<60" pip wheel
-  %PY_EXE% -m pip install -r tensorflow/tools/ci_build/release/requirements_win_py310.txt
 ) ELSE (
   %PY_EXE% -m pip install --upgrade "setuptools<53" pip wheel
-  %PY_EXE% -m pip install -r tensorflow/tools/ci_build/release/requirements_common.txt
 )
+
+@REM NOTE: Windows doesn't have any additional requirements from the common ones.
+%PY_EXE% -m pip install -r tensorflow/tools/ci_build/release/requirements_common.txt
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (
