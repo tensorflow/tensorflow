@@ -1249,6 +1249,8 @@ def HLO_BroadcastOp : HLO_ShapedInterfaceOp<"broadcast",
   );
 
   let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
