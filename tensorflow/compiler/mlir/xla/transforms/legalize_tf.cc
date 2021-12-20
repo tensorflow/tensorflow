@@ -7072,7 +7072,7 @@ class ConvertPrintOp : public OpRewritePattern<TF::PrintOp> {
   }
 };
 
-// Convert tf.xlasort to mhlo.sort
+// Convert tf.Xlasort to mhlo.Sort
 class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -7089,7 +7089,7 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
   }
 };
 
-// Converts a TF.XlaVariadicReduceV2 op to an mhlo.Reduce op.
+// Converts tf.XlaVariadicReduceV2 to mhlo.Reduce
 class ConvertXlaVariadicReduceV2Op
     : public OpRewritePattern<TF::XlaVariadicReduceV2Op> {
  public:
@@ -7099,12 +7099,10 @@ class ConvertXlaVariadicReduceV2Op
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    SmallVector<Value> inputs(op.inputs());
-    SmallVector<Value> init_values(op.init_values());
-    auto dims_to_reduce_attr = GetI64ElementsAttr(op.dimensions_to_reduce());
     // Create the mhlo.reduce op.
-    auto reduce_op = rewriter.create<mhlo::ReduceOp>(loc, inputs, init_values,
-                                                     dims_to_reduce_attr);
+    auto reduce_op = rewriter.create<mhlo::ReduceOp>(
+        loc, op.inputs(), op.init_values(),
+        GetI64ElementsAttr(op.dimensions_to_reduce()));
     mlir::SymbolRefAttr func = op.reducer();
     auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
