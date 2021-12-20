@@ -1729,7 +1729,8 @@ class EarlyStopping(Callback):
         improvement.
     patience: Number of epochs with no improvement
         after which training will be stopped.
-    verbose: verbosity mode.
+    verbose: int. 0: quiet, 1: message when the training is stopped
+        and if weights got restored.
     mode: One of `{"auto", "min", "max"}`. In `min` mode,
         training will stop when the quantity
         monitored has stopped decreasing; in `"max"`
