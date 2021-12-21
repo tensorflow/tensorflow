@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/public/version.h"
@@ -1195,6 +1196,12 @@ Status Converter::BuildCudaEngine(
   builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
   VLOG(1) << "Setting sparsity for TensorRT8!";
 #endif
+
+  if (tensorflow::tensor_float_32_execution_enabled()) {
+    builder_config->setFlag(nvinfer1::BuilderFlag::kTF32);
+  } else {
+    builder_config->clearFlag(nvinfer1::BuilderFlag::kTF32);
+  }
 
   if (precision_mode_ == TrtPrecisionMode::FP16) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
