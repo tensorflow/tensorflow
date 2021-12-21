@@ -1046,6 +1046,21 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.outputs = {{0, {}}};
       property.version = 1;
       break;
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
+      property.inputs = {{0, {}}, {1, {}}, {3, {}}, {4, {}}, {5, {}}};
+      // No quantizable output.
+      property.version = 2;
+      break;
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
+      TensorProperty tensor_property;
+      tensor_property.restriction = true;
+      tensor_property.restricted_value_int8 = {1 / 256.0f, -128};
+      tensor_property.restricted_value_int16 = {1 / 32768.0f, 0};
+      property.inputs = {{0, {}}, {1, {}}, {3, {}}, {4, {}}, {5, {}}};
+      property.outputs = {{1, tensor_property}};
+      property.quantize_input_as_activations = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_ASSIGN_VARIABLE:
       property.inputs = {{1, {}}};
       property.quantize_input_as_activations = true;
