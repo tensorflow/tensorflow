@@ -416,6 +416,21 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
       " Did you specify either --config=rocm or --config=cuda ?");
 #endif
+
+#if TENSORFLOW_USE_ROCM
+  auto gpu_modules = module.getOps<::mlir::gpu::GPUModuleOp>();
+  for (::mlir::gpu::GPUModuleOp gpu_module : gpu_modules) {
+    gpu_module.walk([&](mlir::gpu::GPUFuncOp gpu_kernel) {
+      if (gpu_kernel.isKernel()) {
+        gpu_kernel->setAttr(
+            "rocdl.max_flat_work_group_size",
+            mlir::IntegerAttr::get(
+                mlir::IntegerType::get(module.getContext(), 32), 1024));
+      }
+    });
+  }
+#endif
+
   mlir::PassManager pm(module.getContext());
   // We cannot verify as the signature of the kernel is rewritten.
   // pm.enableVerifier(false);
