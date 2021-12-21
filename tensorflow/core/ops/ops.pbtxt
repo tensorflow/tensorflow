@@ -37496,6 +37496,13 @@ op {
   output_arg {
     name: "encoded_ragged"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_RAGGED
+      args {
+        type_id: TFT_VAR
+        s: "Tvalues"
+      }
+    }
   }
   attr {
     name: "RAGGED_RANK"
