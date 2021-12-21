@@ -39,7 +39,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
         expect_shape_match_(expect_shape_match) {}
   ~TestInfeedBuffer() override { EXPECT_TRUE(done_called_); }
 
-  int32 length() override { return length_; }
+  int32_t length() override { return length_; }
   void* data() override { return nullptr; }
   void Done(StatusOr<Shape> shape) override {
     CHECK(!done_called_);
@@ -56,7 +56,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
  private:
   Shape shape_;
   bool done_called_;
-  int32 length_;
+  int32_t length_;
   bool expect_shape_match_;
 };
 

@@ -67,8 +67,8 @@ HloModuleGroupProto HloModuleGroup::ToProto() const {
   return proto;
 }
 
-uint64 HloModuleGroup::Hash() const {
-  uint64 result = 0;
+uint64_t HloModuleGroup::Hash() const {
+  uint64_t result = 0;
   for (auto& module : modules_) {
     result = tensorflow::Hash64Combine(result, module->Hash());
   }

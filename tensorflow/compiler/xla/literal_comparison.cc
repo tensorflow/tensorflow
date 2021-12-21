@@ -41,8 +41,8 @@ template <typename T>
 T GetRawValue(T val) {
   return val;
 }
-uint16 GetRawValue(Eigen::half val) {
-  return Eigen::numext::bit_cast<uint16>(val);
+uint16_t GetRawValue(Eigen::half val) {
+  return Eigen::numext::bit_cast<uint16_t>(val);
 }
 
 // Helper function for comparing a floating point type, FloatT, bitwise equal
@@ -70,17 +70,18 @@ bool CompareEqual(NativeT lhs, NativeT rhs,
 template <>
 bool CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
                             absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs, multi_index);
+  return CompareFloatsBitwiseEqual<bfloat16, uint16_t>(lhs, rhs, multi_index);
 }
 template <>
 bool CompareEqual<Eigen::half>(Eigen::half lhs, Eigen::half rhs,
                                absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs, multi_index);
+  return CompareFloatsBitwiseEqual<Eigen::half, uint16_t>(lhs, rhs,
+                                                          multi_index);
 }
 template <>
 bool CompareEqual<float>(float lhs, float rhs,
                          absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs, multi_index);
+  return CompareFloatsBitwiseEqual<float, uint32_t>(lhs, rhs, multi_index);
 }
 template <>
 bool CompareEqual<double>(double lhs, double rhs,
@@ -127,17 +128,17 @@ Status MakeErrorStatus(NativeT lhs, NativeT rhs,
 template <>
 Status MakeErrorStatus(bfloat16 lhs, bfloat16 rhs,
                        absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<bfloat16, uint16>(lhs, rhs, multi_index);
+  return MakeBitwiseErrorStatus<bfloat16, uint16_t>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(Eigen::half lhs, Eigen::half rhs,
                        absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<Eigen::half, uint16>(lhs, rhs, multi_index);
+  return MakeBitwiseErrorStatus<Eigen::half, uint16_t>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(float lhs, float rhs,
                        absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<float, uint32>(lhs, rhs, multi_index);
+  return MakeBitwiseErrorStatus<float, uint32_t>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(double lhs, double rhs,
@@ -713,25 +714,25 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         result = Equal<bool>(expected, actual, index, 0, miscompared_ptr);
         break;
       case S8:
-        result = Equal<int8>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<int8_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case S16:
-        result = Equal<int16>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<int16_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case S32:
-        result = Equal<int32>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<int32_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case S64:
         result = Equal<int64_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U8:
-        result = Equal<uint8>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<uint8_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U16:
-        result = Equal<uint16>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<uint16_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U32:
-        result = Equal<uint32>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<uint32_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U64:
         result = Equal<uint64_t>(expected, actual, index, 0, miscompared_ptr);

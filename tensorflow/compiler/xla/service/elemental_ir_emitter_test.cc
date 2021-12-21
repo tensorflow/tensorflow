@@ -67,8 +67,8 @@ ENTRY main {
 }
 )";
 
-  Literal lhs = LiteralUtil::CreateR3<int32>({{{1}, {2}}});
-  Literal rhs = LiteralUtil::CreateR3<int32>({{{3}, {4}}});
+  Literal lhs = LiteralUtil::CreateR3<int32_t>({{{1}, {2}}});
+  Literal rhs = LiteralUtil::CreateR3<int32_t>({{{3}, {4}}});
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
@@ -91,8 +91,8 @@ ENTRY main {
 }
 )";
 
-  Literal lhs = LiteralUtil::CreateR2<int32>({{1, 2}, {3, 4}});
-  Literal rhs = LiteralUtil::CreateR2<int32>({{10, 20}, {30, 40}});
+  Literal lhs = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+  Literal rhs = LiteralUtil::CreateR2<int32_t>({{10, 20}, {30, 40}});
   RunTest(hlo_text, {&lhs, &rhs});
 }
 

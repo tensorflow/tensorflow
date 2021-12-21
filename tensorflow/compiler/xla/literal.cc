@@ -96,8 +96,8 @@ template <typename T>
 T GetRawValue(T val) {
   return val;
 }
-uint16 GetRawValue(Eigen::half val) {
-  return Eigen::numext::bit_cast<uint16>(val);
+uint16_t GetRawValue(Eigen::half val) {
+  return Eigen::numext::bit_cast<uint16_t>(val);
 }
 
 bool LiteralProtoHasValues(const LiteralProto& proto) {
@@ -164,7 +164,7 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
       if (shape.is_dynamic()) {
         CHECK_EQ(piece->dynamic_size_buffer(), nullptr);
         piece->set_dynamic_size_buffer(
-            static_cast<int32*>(tensorflow::port::AlignedMalloc(
+            static_cast<int32_t*>(tensorflow::port::AlignedMalloc(
                 piece->dynamic_size_buffer_bytes(), kMinimumAlignment)));
       }
     }
@@ -230,23 +230,23 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
   return literal;
 }
 
-int32 LiteralBase::GetDynamicSize(int64_t dim_index) const {
+int32_t LiteralBase::GetDynamicSize(int64_t dim_index) const {
   return GetDynamicSize(dim_index, {});
 }
 
-int32 LiteralBase::GetDynamicSize(int64_t dim_index,
-                                  const ShapeIndex& shape_index) const {
+int32_t LiteralBase::GetDynamicSize(int64_t dim_index,
+                                    const ShapeIndex& shape_index) const {
   return piece(shape_index).GetDynamicSize(dim_index);
 }
 
 absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
   switch (shape().element_type()) {
     case U8:
-      return GetFirstElement<uint8>();
+      return GetFirstElement<uint8_t>();
     case U16:
-      return GetFirstElement<uint16>();
+      return GetFirstElement<uint16_t>();
     case U32:
-      return GetFirstElement<uint32>();
+      return GetFirstElement<uint32_t>();
     case U64: {
       int64_t v = GetFirstElement<uint64_t>();
       if (v < 0) {
@@ -255,11 +255,11 @@ absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
       return v;
     }
     case S8:
-      return GetFirstElement<int8>();
+      return GetFirstElement<int8_t>();
     case S16:
-      return GetFirstElement<int16>();
+      return GetFirstElement<int16_t>();
     case S32:
-      return GetFirstElement<int32>();
+      return GetFirstElement<int32_t>();
     case S64:
       return GetFirstElement<int64_t>();
     default:
@@ -466,7 +466,7 @@ void CopyElementsBetween(absl::Span<NativeT> dest,
 }
 }  // namespace
 
-int32 LiteralBase::Piece::GetDynamicSize(int64_t dim_index) const {
+int32_t LiteralBase::Piece::GetDynamicSize(int64_t dim_index) const {
   CHECK(LayoutUtil::IsDenseArray(subshape()));
   if (!subshape_->is_dynamic_dimension(dim_index)) {
     // This is a static dimension, return size.
@@ -481,8 +481,9 @@ void LiteralBase::Piece::SetDynamicSize(int64_t dim_index, int32_t size) {
   CHECK(subshape_->is_dynamic_dimension(dim_index));
   if (dynamic_size_buffer() == nullptr) {
     // Lazily initialize the dynamic size buffer.
-    set_dynamic_size_buffer(static_cast<int32*>(tensorflow::port::AlignedMalloc(
-        dynamic_size_buffer_bytes(), kMinimumAlignment)));
+    set_dynamic_size_buffer(
+        static_cast<int32_t*>(tensorflow::port::AlignedMalloc(
+            dynamic_size_buffer_bytes(), kMinimumAlignment)));
     /*for (int64_t i = 0; i < subshape().rank(); ++i) {
       // Initialized to -1 to help debug.
       dynamic_size_buffer_[i] = -1;
@@ -510,13 +511,13 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                     subshape(), src.subshape());            \
     }                                                                       \
     break;
-      COPY_ELEMENTS(U8, uint8);
-      COPY_ELEMENTS(U16, uint16);
-      COPY_ELEMENTS(U32, uint32);
-      COPY_ELEMENTS(U64, uint64);
-      COPY_ELEMENTS(S8, int8);
-      COPY_ELEMENTS(S16, int16);
-      COPY_ELEMENTS(S32, int32);
+      COPY_ELEMENTS(U8, uint8_t);
+      COPY_ELEMENTS(U16, uint16_t);
+      COPY_ELEMENTS(U32, uint32_t);
+      COPY_ELEMENTS(U64, uint64_t);
+      COPY_ELEMENTS(S8, int8_t);
+      COPY_ELEMENTS(S16, int16_t);
+      COPY_ELEMENTS(S32, int32_t);
       COPY_ELEMENTS(S64, int64_t);
       COPY_ELEMENTS(F16, half);
       COPY_ELEMENTS(BF16, bfloat16);
@@ -659,26 +660,26 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
 
   switch (shape().element_type()) {
     case U8:
-      return CopySliceFromInternal<uint8>(src_literal, src_base, dest_base,
-                                          copy_size);
+      return CopySliceFromInternal<uint8_t>(src_literal, src_base, dest_base,
+                                            copy_size);
     case U16:
-      return CopySliceFromInternal<uint16>(src_literal, src_base, dest_base,
-                                           copy_size);
+      return CopySliceFromInternal<uint16_t>(src_literal, src_base, dest_base,
+                                             copy_size);
     case U32:
-      return CopySliceFromInternal<uint32>(src_literal, src_base, dest_base,
-                                           copy_size);
+      return CopySliceFromInternal<uint32_t>(src_literal, src_base, dest_base,
+                                             copy_size);
     case U64:
       return CopySliceFromInternal<uint64_t>(src_literal, src_base, dest_base,
                                              copy_size);
     case S8:
-      return CopySliceFromInternal<int8>(src_literal, src_base, dest_base,
-                                         copy_size);
+      return CopySliceFromInternal<int8_t>(src_literal, src_base, dest_base,
+                                           copy_size);
     case S16:
-      return CopySliceFromInternal<int16>(src_literal, src_base, dest_base,
-                                          copy_size);
+      return CopySliceFromInternal<int16_t>(src_literal, src_base, dest_base,
+                                            copy_size);
     case S32:
-      return CopySliceFromInternal<int32>(src_literal, src_base, dest_base,
-                                          copy_size);
+      return CopySliceFromInternal<int32_t>(src_literal, src_base, dest_base,
+                                            copy_size);
     case S64:
       return CopySliceFromInternal<int64_t>(src_literal, src_base, dest_base,
                                             copy_size);
@@ -947,19 +948,19 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
     case PRED:
       return SliceInternal<bool>(result_shape, start_indices);
     case U8:
-      return SliceInternal<uint8>(result_shape, start_indices);
+      return SliceInternal<uint8_t>(result_shape, start_indices);
     case U16:
-      return SliceInternal<uint16>(result_shape, start_indices);
+      return SliceInternal<uint16_t>(result_shape, start_indices);
     case U32:
-      return SliceInternal<uint32>(result_shape, start_indices);
+      return SliceInternal<uint32_t>(result_shape, start_indices);
     case U64:
       return SliceInternal<uint64_t>(result_shape, start_indices);
     case S8:
-      return SliceInternal<int8>(result_shape, start_indices);
+      return SliceInternal<int8_t>(result_shape, start_indices);
     case S16:
-      return SliceInternal<int16>(result_shape, start_indices);
+      return SliceInternal<int16_t>(result_shape, start_indices);
     case S32:
-      return SliceInternal<int32>(result_shape, start_indices);
+      return SliceInternal<int32_t>(result_shape, start_indices);
     case S64:
       return SliceInternal<int64_t>(result_shape, start_indices);
     case F16:
@@ -1000,19 +1001,19 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
     case PRED:
       return Get<bool>(multi_index, shape_index) ? "true" : "false";
     case S8:
-      return StrCat(Get<int8>(multi_index, shape_index));
+      return StrCat(Get<int8_t>(multi_index, shape_index));
     case S16:
-      return StrCat(Get<int16>(multi_index, shape_index));
+      return StrCat(Get<int16_t>(multi_index, shape_index));
     case S32:
-      return StrCat(Get<int32>(multi_index, shape_index));
+      return StrCat(Get<int32_t>(multi_index, shape_index));
     case S64:
       return StrCat(Get<int64_t>(multi_index, shape_index));
     case U8:
-      return StrCat(Get<uint8>(multi_index, shape_index));
+      return StrCat(Get<uint8_t>(multi_index, shape_index));
     case U16:
-      return StrCat(Get<uint16>(multi_index, shape_index));
+      return StrCat(Get<uint16_t>(multi_index, shape_index));
     case U32:
-      return StrCat(Get<uint32>(multi_index, shape_index));
+      return StrCat(Get<uint32_t>(multi_index, shape_index));
     case U64:
       return StrCat(Get<uint64_t>(multi_index, shape_index));
     case F16:
@@ -1045,17 +1046,17 @@ absl::optional<int64_t> LiteralBase::GetIntegralAsS64(
     case PRED:
       return Get<bool>(multi_index);
     case S8:
-      return Get<int8>(multi_index);
+      return Get<int8_t>(multi_index);
     case U8:
-      return Get<uint8>(multi_index);
+      return Get<uint8_t>(multi_index);
     case S16:
-      return Get<int16>(multi_index);
+      return Get<int16_t>(multi_index);
     case U16:
-      return Get<uint16>(multi_index);
+      return Get<uint16_t>(multi_index);
     case S32:
-      return Get<int32>(multi_index);
+      return Get<int32_t>(multi_index);
     case U32:
-      return Get<uint32>(multi_index);
+      return Get<uint32_t>(multi_index);
     case S64:
       return Get<int64_t>(multi_index);
     case U64:
@@ -1098,7 +1099,7 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
     case C128:
       return {Get<complex128>(multi_index)};
     case S8:
-      return {Get<int8>(multi_index)};
+      return {Get<int8_t>(multi_index)};
     default:
       return absl::nullopt;
   }
@@ -1133,16 +1134,16 @@ Status MutableLiteralBase::SetIntegralAsS64(
       Set<bool>(multi_index, value);
       break;
     case U8:
-      Set<uint8>(multi_index, value);
+      Set<uint8_t>(multi_index, value);
       break;
     case S32:
-      Set<int32>(multi_index, value);
+      Set<int32_t>(multi_index, value);
       break;
     case S64:
       Set<int64_t>(multi_index, value);
       break;
     case U32:
-      Set<uint32>(multi_index, value);
+      Set<uint32_t>(multi_index, value);
       break;
     case U64:
       Set<uint64_t>(multi_index, value);
@@ -1466,7 +1467,7 @@ BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   // cast to unsigned short first.
   auto converter = [](NativeSrcT src) {
     return Eigen::numext::bit_cast<Eigen::half>(
-        absl::bit_cast<uint16>(GetRawValue(src)));
+        absl::bit_cast<uint16_t>(GetRawValue(src)));
   };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, Eigen::half>(
       src_literal, converter);
@@ -1716,19 +1717,19 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
     case PRED:
       return EqualElementsInternal<bool>(other, &multi_index);
     case S8:
-      return EqualElementsInternal<int8>(other, &multi_index);
+      return EqualElementsInternal<int8_t>(other, &multi_index);
     case S16:
-      return EqualElementsInternal<int16>(other, &multi_index);
+      return EqualElementsInternal<int16_t>(other, &multi_index);
     case S32:
-      return EqualElementsInternal<int32>(other, &multi_index);
+      return EqualElementsInternal<int32_t>(other, &multi_index);
     case S64:
       return EqualElementsInternal<int64_t>(other, &multi_index);
     case U8:
-      return EqualElementsInternal<uint8>(other, &multi_index);
+      return EqualElementsInternal<uint8_t>(other, &multi_index);
     case U16:
-      return EqualElementsInternal<uint16>(other, &multi_index);
+      return EqualElementsInternal<uint16_t>(other, &multi_index);
     case U32:
-      return EqualElementsInternal<uint32>(other, &multi_index);
+      return EqualElementsInternal<uint32_t>(other, &multi_index);
     case U64:
       return EqualElementsInternal<uint64_t>(other, &multi_index);
     case F32:
@@ -1819,26 +1820,26 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
   CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
   switch (subshape().element_type()) {
     case U8:
-      return AllElementsEqualValue(data<uint8>(),
-                                   scalar.GetFirstElement<uint8>());
+      return AllElementsEqualValue(data<uint8_t>(),
+                                   scalar.GetFirstElement<uint8_t>());
     case U16:
-      return AllElementsEqualValue(data<uint16>(),
-                                   scalar.GetFirstElement<uint16>());
+      return AllElementsEqualValue(data<uint16_t>(),
+                                   scalar.GetFirstElement<uint16_t>());
     case U32:
-      return AllElementsEqualValue(data<uint32>(),
-                                   scalar.GetFirstElement<uint32>());
+      return AllElementsEqualValue(data<uint32_t>(),
+                                   scalar.GetFirstElement<uint32_t>());
     case U64:
       return AllElementsEqualValue(data<uint64_t>(),
                                    scalar.GetFirstElement<uint64_t>());
     case S8:
-      return AllElementsEqualValue(data<int8>(),
-                                   scalar.GetFirstElement<int8>());
+      return AllElementsEqualValue(data<int8_t>(),
+                                   scalar.GetFirstElement<int8_t>());
     case S16:
-      return AllElementsEqualValue(data<int16>(),
-                                   scalar.GetFirstElement<int16>());
+      return AllElementsEqualValue(data<int16_t>(),
+                                   scalar.GetFirstElement<int16_t>());
     case S32:
-      return AllElementsEqualValue(data<int32>(),
-                                   scalar.GetFirstElement<int32>());
+      return AllElementsEqualValue(data<int32_t>(),
+                                   scalar.GetFirstElement<int32_t>());
     case S64:
       return AllElementsEqualValue(data<int64_t>(),
                                    scalar.GetFirstElement<int64_t>());
@@ -1996,19 +1997,19 @@ bool LiteralBase::IsR1Iota() const {
   auto is_iota_at_idx = [&](const int64_t idx) {
     switch (shape().element_type()) {
       case U8:
-        return static_cast<int64_t>(Get<uint8>({idx})) == idx;
+        return static_cast<int64_t>(Get<uint8_t>({idx})) == idx;
       case U16:
-        return static_cast<int64_t>(Get<uint16>({idx})) == idx;
+        return static_cast<int64_t>(Get<uint16_t>({idx})) == idx;
       case U32:
-        return static_cast<int64_t>(Get<uint32>({idx})) == idx;
+        return static_cast<int64_t>(Get<uint32_t>({idx})) == idx;
       case U64:
         return static_cast<int64_t>(Get<uint64_t>({idx})) == idx;
       case S8:
-        return Get<int8>({idx}) == idx;
+        return Get<int8_t>({idx}) == idx;
       case S16:
-        return Get<int16>({idx}) == idx;
+        return Get<int16_t>({idx}) == idx;
       case S32:
-        return Get<int32>({idx}) == idx;
+        return Get<int32_t>({idx}) == idx;
       case S64:
         return Get<int64_t>({idx}) == idx;
       case F32:
@@ -2056,19 +2057,19 @@ absl::optional<int64_t> LiteralBase::IsR1StridedIota() const {
   auto get_element_at = [&](const int64_t idx) -> int64_t {
     switch (type) {
       case U8:
-        return static_cast<int64_t>(Get<uint8>({idx}));
+        return static_cast<int64_t>(Get<uint8_t>({idx}));
       case U16:
-        return static_cast<int64_t>(Get<uint16>({idx}));
+        return static_cast<int64_t>(Get<uint16_t>({idx}));
       case U32:
-        return static_cast<int64_t>(Get<uint32>({idx}));
+        return static_cast<int64_t>(Get<uint32_t>({idx}));
       case U64:
         return static_cast<int64_t>(Get<uint64_t>({idx}));
       case S8:
-        return Get<int8>({idx});
+        return Get<int8_t>({idx});
       case S16:
-        return Get<int16>({idx});
+        return Get<int16_t>({idx});
       case S32:
-        return Get<int32>({idx});
+        return Get<int32_t>({idx});
       case S64:
         return Get<int64_t>({idx});
       default:
@@ -2097,19 +2098,19 @@ bool LiteralBase::IsZero(absl::Span<const int64_t> indices) const {
   CHECK(shape().IsArray());
   switch (shape().element_type()) {
     case U8:
-      return Get<uint8>(indices) == 0;
+      return Get<uint8_t>(indices) == 0;
     case U16:
-      return Get<uint16>(indices) == 0;
+      return Get<uint16_t>(indices) == 0;
     case U32:
-      return Get<uint32>(indices) == 0;
+      return Get<uint32_t>(indices) == 0;
     case U64:
       return Get<uint64_t>(indices) == 0;
     case S8:
-      return Get<int8>(indices) == 0;
+      return Get<int8_t>(indices) == 0;
     case S16:
-      return Get<int16>(indices) == 0;
+      return Get<int16_t>(indices) == 0;
     case S32:
-      return Get<int32>(indices) == 0;
+      return Get<int32_t>(indices) == 0;
     case S64:
       return Get<int64_t>(indices) == 0;
     case F32:
@@ -2148,21 +2149,21 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
       break;
     case S8:
-      proto->set_s8s(static_cast<const signed char*>(data<int8>().data()),
+      proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
                      element_count());
       break;
     case U8:
-      proto->set_u8s(static_cast<const unsigned char*>(data<uint8>().data()),
+      proto->set_u8s(static_cast<const unsigned char*>(data<uint8_t>().data()),
                      element_count());
       break;
     case U32:
-      CopyToRepeatedField(proto->mutable_u32s(), data<uint32>());
+      CopyToRepeatedField(proto->mutable_u32s(), data<uint32_t>());
       break;
     case U64:
       CopyToRepeatedField(proto->mutable_u64s(), data<uint64_t>());
       break;
     case S32:
-      CopyToRepeatedField(proto->mutable_s32s(), data<int32>());
+      CopyToRepeatedField(proto->mutable_s32s(), data<int32_t>());
       break;
     case S64:
       CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
@@ -2263,23 +2264,23 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
     case S8: {
-      auto s8_data = data<int8>();
+      auto s8_data = data<int8_t>();
       TF_RET_CHECK(proto.s8s().size() == s8_data.size());
       std::copy(proto.s8s().begin(), proto.s8s().end(), s8_data.begin());
     } break;
     case U8: {
-      auto u8_data = data<uint8>();
+      auto u8_data = data<uint8_t>();
       TF_RET_CHECK(proto.u8s().size() == u8_data.size());
       std::copy(proto.u8s().begin(), proto.u8s().end(), u8_data.begin());
     } break;
     case S32:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32>(), proto.s32s()));
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
       break;
     case S64:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
       break;
     case U32:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32>(), proto.u32s()));
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
       break;
     case U64:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
@@ -2384,7 +2385,7 @@ std::string LiteralBase::GetR1U8AsString() const {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(shape().element_type(), U8);
-  return string(absl::bit_cast<const char*>(data<uint8>().data()),
+  return string(absl::bit_cast<const char*>(data<uint8_t>().data()),
                 ShapeUtil::ElementsIn(shape()));
 }
 

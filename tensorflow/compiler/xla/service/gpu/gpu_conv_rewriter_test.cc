@@ -641,7 +641,8 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
                           0));
 }
 
-// Check that a forward convolution instruction with int8 inputs is not allowed
+// Check that a forward convolution instruction with int8_t inputs is not
+// allowed
 TEST_F(GpuConvRewriterTest, TestForwardInt8Convolution) {
   const std::string module_str = absl::StrFormat(R"(
     HloModule Test

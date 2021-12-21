@@ -39,7 +39,7 @@ class XfeedBuffer {
  public:
   virtual ~XfeedBuffer() = default;
 
-  virtual int32 length() = 0;
+  virtual int32_t length() = 0;
   virtual void* data() = 0;
 
   // The 'shape' parameter reflects what shape the embedded program was

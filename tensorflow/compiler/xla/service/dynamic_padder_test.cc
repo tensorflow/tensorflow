@@ -536,10 +536,11 @@ ENTRY main {
   auto module_not_padded = GetHloModule(hlo_text_not_padded);
 
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0, 2});
-  Literal updates = LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
-  Literal dynamic_size = LiteralUtil::CreateR0<int32>(2);
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({0, 2});
+  Literal updates =
+      LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {70, 80, 90}});
+  Literal dynamic_size = LiteralUtil::CreateR0<int32_t>(2);
 
   Literal not_padded =
       ExecuteAndTransfer(std::move(module_not_padded),
@@ -557,8 +558,8 @@ ENTRY main {
       DynamicParameterBinding::DynamicParameter{3, {}},
       DynamicParameterBinding::DynamicDimension{2, {}, 0}));
   // Pad the rest of input with garbage data.
-  Literal scatter_indices_padded = LiteralUtil::CreateR1<int32>({0, 2, 0, 4});
-  Literal updates_padded = LiteralUtil::CreateR2<int32>(
+  Literal scatter_indices_padded = LiteralUtil::CreateR1<int32_t>({0, 2, 0, 4});
+  Literal updates_padded = LiteralUtil::CreateR2<int32_t>(
       {{10, 20, 30}, {70, 80, 90}, {30, 22, 11}, {-1, 20, -1}});
   DynamicPadder padder;
   TF_CHECK_OK(padder.Run(module_padded.get()).status());
@@ -598,15 +599,15 @@ ENTRY main {
 )";
   auto hlo_module = GetHloModule(hlo_text);
 
-  Literal operand = LiteralUtil::CreateR3<int32>({{{0, 0, 0}, {0, 0, 0}}});
-  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0});
+  Literal operand = LiteralUtil::CreateR3<int32_t>({{{0, 0, 0}, {0, 0, 0}}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({0});
   Literal updates =
-      LiteralUtil::CreateR3<int32>({{{10}, {20}, {30}}, {{70}, {80}, {90}}});
+      LiteralUtil::CreateR3<int32_t>({{{10}, {20}, {30}}, {{70}, {80}, {90}}});
 
   Literal padded = PadAndExecute(std::move(hlo_module),
                                  {&operand, &scatter_indices, &updates}, false);
   Literal expected =
-      LiteralUtil::CreateR3<int32>({{{10, 20, 30}, {70, 80, 90}}});
+      LiteralUtil::CreateR3<int32_t>({{{10, 20, 30}, {70, 80, 90}}});
   EXPECT_EQ(padded, expected);
 }
 
@@ -640,11 +641,11 @@ ENTRY main {
 
   Literal operand = LiteralUtil::CreateR2<float>(
       {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}, {7.0, 8.0, 9.0}});
-  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({0, 2});
   Literal updates =
       LiteralUtil::CreateR2<float>({{10.0, 20.0, 30.0}, {70.0, 80.0, 90.0}});
   // Dynamic Size is 1, pad to 2
-  Literal dynamic_size = LiteralUtil::CreateR0<int32>(1);
+  Literal dynamic_size = LiteralUtil::CreateR0<int32_t>(1);
 
   auto module_padded = GetHloModule(hlo_text);
   // Set up dynamic parameter binding.
@@ -707,14 +708,14 @@ ENTRY main {
 )";
   // Slicing out entire dimension propagates the dimension
   Literal operand =
-      LiteralUtil::CreateR3<int32>({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
+      LiteralUtil::CreateR3<int32_t>({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
   auto module = GetHloModule(hlo_text);
   DynamicPadder padder;
   TF_CHECK_OK(padder.Run(module.get()).status());
   Literal result = PadAndExecute(std::move(module), {&operand});
 
   // Only first element will be reduced.
-  Literal expected = LiteralUtil::CreateR0<int32>(3);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(3);
 
   EXPECT_EQ(result, expected);
 }
@@ -744,8 +745,8 @@ ENTRY main {
       absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "2"}});
   auto module_not_padded = GetHloModule(hlo_text_not_padded);
 
-  Literal operand = LiteralUtil::CreateR2<int32>({{1, 2}, {4, 5}});
-  Literal dynamic_size = LiteralUtil::CreateR0<int32>(2);
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{1, 2}, {4, 5}});
+  Literal dynamic_size = LiteralUtil::CreateR0<int32_t>(2);
 
   Literal not_padded = ExecuteAndTransfer(std::move(module_not_padded),
                                           {&operand, &dynamic_size});
@@ -762,7 +763,7 @@ ENTRY main {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 1}));
   // Pad the rest of input with garbage data.
-  Literal operand_padded = LiteralUtil::CreateR2<int32>(
+  Literal operand_padded = LiteralUtil::CreateR2<int32_t>(
       {{1, 2, 3, 4}, {4, 5, 6, 7}, {1, 2, 3, 4}, {4, 5, 6, 7}});
   DynamicPadder padder;
   TF_CHECK_OK(padder.Run(module_padded.get()).status());
@@ -795,13 +796,13 @@ ENTRY main {
 )";
 
   // Input has upper bound of 5, dynamic dimension is 3.
-  Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5});
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4, 5});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
 
   // only first 3 elements will be reduced.
-  Literal expected = LiteralUtil::CreateR0<int32>(6);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(6);
 
   EXPECT_EQ(result, expected);
 }
@@ -826,17 +827,17 @@ ENTRY main {
 
   // Input has upper bound of 3, dynamic dimension is 2. Using -1 as padding.
   Literal operand_0 =
-      LiteralUtil::CreateR1<int32>({1, 2, -1});  // Dynamic operand.
+      LiteralUtil::CreateR1<int32_t>({1, 2, -1});  // Dynamic operand.
   Literal operand_1 =
-      LiteralUtil::CreateR1<int32>({3, 4, 5});  // Static operand.
+      LiteralUtil::CreateR1<int32_t>({3, 4, 5});  // Static operand.
   Literal operand_2 =
-      LiteralUtil::CreateR1<int32>({6, 7, -1});  // Dynamic operand.
+      LiteralUtil::CreateR1<int32_t>({6, 7, -1});  // Dynamic operand.
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module),
                                  {&operand_0, &operand_1, &operand_2}, false);
   result.SetDynamicSize(0, 7);
-  Literal expected = LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5, 6, 7});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4, 5, 6, 7});
 
   EXPECT_EQ(result, expected);
 }
@@ -857,12 +858,12 @@ ENTRY main {
 
   // Input has upper bound of 3, dynamic dimension is 2. Using -1 as padding.
   Literal operand_0 =
-      LiteralUtil::CreateR1<int32>({1, 2, -1});  // Dynamic operand.
+      LiteralUtil::CreateR1<int32_t>({1, 2, -1});  // Dynamic operand.
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand_0}, false);
   result.SetDynamicSize(0, 2);
-  Literal expected = LiteralUtil::CreateR1<int32>({2, 1});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({2, 1});
 
   EXPECT_EQ(result, expected);
 }
@@ -884,14 +885,14 @@ ENTRY main {
 )";
 
   // Input has upper bound of 3, dynamic dimension is 2. Using -1 as padding.
-  Literal operand_0 = LiteralUtil::CreateR2<int32>(
+  Literal operand_0 = LiteralUtil::CreateR2<int32_t>(
       {{1, 2, -1}, {3, 4, -1}, {-1, -1, -1}});  // Dynamic operand.
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand_0}, false);
   result.SetDynamicSize(0, 2);
   result.SetDynamicSize(1, 2);
-  Literal expected = LiteralUtil::CreateR2<int32>({{4, 3}, {2, 1}});
+  Literal expected = LiteralUtil::CreateR2<int32_t>({{4, 3}, {2, 1}});
 
   EXPECT_EQ(result, expected);
 }
@@ -918,13 +919,13 @@ ENTRY main {
 )";
 
   // Input has upper bound of 5, dynamic dimension is 3.
-  Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5});
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4, 5});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
 
   // only first 3 elements will be reduced.
-  Literal expected = LiteralUtil::CreateR0<int32>(6);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(6);
 
   EXPECT_EQ(result, expected);
 }
@@ -952,14 +953,14 @@ ENTRY main {
 )";
 
   // The third dimension has upper bound of 5, dynamic dimension is 3.
-  Literal operand = LiteralUtil::CreateR4<int32>(
+  Literal operand = LiteralUtil::CreateR4<int32_t>(
       {{{{1}, {2}, {3}, {4}, {5}}, {{2}, {4}, {6}, {7}, {8}}}});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
 
   // Only the first 6 elements will be reduced.
-  Literal expected = LiteralUtil::CreateR0<int32>(18);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(18);
 
   EXPECT_EQ(result, expected);
 }
@@ -978,12 +979,12 @@ ENTRY main {
 )";
 
   // The dynamic dimension has upper bound of 5, dynamic dimension is 3.
-  Literal operand = LiteralUtil::CreateR1<int32>({0, 1, 2, 3, 4});
+  Literal operand = LiteralUtil::CreateR1<int32_t>({0, 1, 2, 3, 4});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
 
-  Literal expected = LiteralUtil::CreateR1<int32>({0});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({0});
 
   EXPECT_EQ(result, expected);
 }
@@ -1013,7 +1014,7 @@ ENTRY main {
 
   // The third dimension has upper bound of 5, dynamic dimension is 3.
   Literal operand =
-      LiteralUtil::CreateR1<int32>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+      LiteralUtil::CreateR1<int32_t>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
@@ -1030,7 +1031,7 @@ ENTRY main {
   //  [0+2, 1+3]
   //  [4+6, 5+7]
   //
-  Literal expected = LiteralUtil::CreateR2<int32>({{2, 4}, {10, 12}});
+  Literal expected = LiteralUtil::CreateR2<int32_t>({{2, 4}, {10, 12}});
 
   EXPECT_EQ(result, expected);
 }
@@ -1059,8 +1060,8 @@ ENTRY main {
 )";
 
   // The third dimension has upper bound of 5, dynamic dimension is 3.
-  Literal operand =
-      LiteralUtil::CreateR2<int32>({{0, 1, 2, 3, 4, 5}, {6, 7, 8, 9, 10, 11}});
+  Literal operand = LiteralUtil::CreateR2<int32_t>(
+      {{0, 1, 2, 3, 4, 5}, {6, 7, 8, 9, 10, 11}});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
@@ -1075,7 +1076,7 @@ ENTRY main {
   //  [0+1, 2+3]
   //  [6+7, 8+9]
   //
-  Literal expected = LiteralUtil::CreateR2<int32>({{1, 5}, {13, 17}});
+  Literal expected = LiteralUtil::CreateR2<int32_t>({{1, 5}, {13, 17}});
 
   EXPECT_EQ(result, expected);
 }
@@ -1104,7 +1105,7 @@ ENTRY main {
 )";
 
   // The third dimension has upper bound of 5, dynamic dimension is 3.
-  Literal operand = LiteralUtil::CreateR2<int32>(
+  Literal operand = LiteralUtil::CreateR2<int32_t>(
       {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {8, 9}, {10, 11}});
   auto module = GetHloModule(hlo_text);
 
@@ -1122,7 +1123,7 @@ ENTRY main {
   //  [0+2, 1+3]
   //  [4+6, 5+7]
   //
-  Literal expected = LiteralUtil::CreateR2<int32>({{2, 4}, {10, 12}});
+  Literal expected = LiteralUtil::CreateR2<int32_t>({{2, 4}, {10, 12}});
 
   EXPECT_EQ(result, expected);
 }
@@ -1178,13 +1179,13 @@ ENTRY main {
 )";
 
   // Test dynamic padder in unchanged dimension reshape.
-  Literal operand = LiteralUtil::CreateR4<int32>(
+  Literal operand = LiteralUtil::CreateR4<int32_t>(
       {{{{1}, {2}, {3}, {4}, {5}}, {{2}, {4}, {6}, {7}, {8}}}});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
 
-  Literal expected = LiteralUtil::CreateR1<int32>({6, 12});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({6, 12});
 
   EXPECT_EQ(result, expected);
 }
@@ -1214,13 +1215,13 @@ ENTRY main {
 )";
 
   // First dimension (1) is dynamic. Since dynamic size is 0, result is also 0.
-  Literal operand = LiteralUtil::CreateR4<int32>(
+  Literal operand = LiteralUtil::CreateR4<int32_t>(
       {{{{1}, {2}, {3}, {4}, {5}}, {{2}, {4}, {6}, {7}, {8}}}});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
 
-  Literal expected = LiteralUtil::CreateR0<int32>(0);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(0);
 
   EXPECT_EQ(result, expected);
 }
@@ -1264,10 +1265,10 @@ ENTRY main {
 )";
 
   // First and last dims are dynamic. Padded data are expressed as -1.
-  Literal operand = LiteralUtil::CreateR3<int32>({{{0, -1}, {1, -1}},
-                                                  {{2, -1}, {3, -1}},
-                                                  {{-1, -1}, {-1, -1}},
-                                                  {{-1, -1}, {-1, -1}}});
+  Literal operand = LiteralUtil::CreateR3<int32_t>({{{0, -1}, {1, -1}},
+                                                    {{2, -1}, {3, -1}},
+                                                    {{-1, -1}, {-1, -1}},
+                                                    {{-1, -1}, {-1, -1}}});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
@@ -1279,7 +1280,7 @@ ENTRY main {
   //
   // Reducing it produces 0 + 1 + 2 + 3 = 6
 
-  Literal expected = LiteralUtil::CreateR0<int32>(6);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(6);
 
   EXPECT_EQ(result, expected);
 }
@@ -1363,7 +1364,7 @@ ENTRY entry {
   //  [P, P]]
   //
   // Reducing along major dimension gives us [3, 3]
-  Literal expected = LiteralUtil::CreateR1<int32>({{3, 3}});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({{3, 3}});
 
   EXPECT_EQ(result, expected);
 }
@@ -1394,7 +1395,7 @@ ENTRY main {
 )";
 
   // First dimension (1) is dynamic. Since dynamic size is 0, result is also 0.
-  Literal operand = LiteralUtil::CreateR3<int32>(
+  Literal operand = LiteralUtil::CreateR3<int32_t>(
       {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}}, {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}}});
   auto module = GetHloModule(hlo_text);
 
@@ -1414,7 +1415,7 @@ ENTRY main {
   //
   // Reducing it produces 16
 
-  Literal expected = LiteralUtil::CreateR0<int32>(16);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(16);
 
   EXPECT_EQ(result, expected);
 }
@@ -1436,7 +1437,7 @@ ENTRY main {
 )";
 
   // First dimension (1) is dynamic. Since dynamic size is 0, result is also 0.
-  Literal operand = LiteralUtil::CreateR3<int32>(
+  Literal operand = LiteralUtil::CreateR3<int32_t>(
       {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}}, {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}}});
   auto module = GetHloModule(hlo_text);
 
@@ -1453,7 +1454,7 @@ ENTRY main {
   //
   // Reshaping (with correct reshape rewriting) produces:
   // [0, 1, 3, 4, 0, 1, 3, 4]
-  Literal expected = LiteralUtil::CreateR1<int32>({0, 1, 3, 4, 0, 1, 3, 4});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({0, 1, 3, 4, 0, 1, 3, 4});
 
   EXPECT_EQ(result, expected);
 }
@@ -1471,7 +1472,7 @@ ENTRY main {
   ROOT reshaped = s32[2, <=3, <=3] dynamic-reshape(param_dynamic, two, two, two)
 }
 )";
-  Literal operand = LiteralUtil::CreateR1<int32>(
+  Literal operand = LiteralUtil::CreateR1<int32_t>(
       {0, 1, 3, 4, 0, 1, 3, 4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1});
 
   auto module = GetHloModule(hlo_text);
@@ -1492,7 +1493,7 @@ ENTRY main {
   // [3, 4, P]
   // [P, P, P]]
   Literal expected =
-      LiteralUtil::CreateR3<int32>({{{0, 1}, {3, 4}}, {{0, 1}, {3, 4}}});
+      LiteralUtil::CreateR3<int32_t>({{{0, 1}, {3, 4}}, {{0, 1}, {3, 4}}});
 
   EXPECT_EQ(result, expected);
 }
@@ -1512,13 +1513,13 @@ ENTRY main {
 )";
 
   // First dimension (1) is dynamic. Since dynamic size is 0, result is also 0.
-  Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3});
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 2, 3});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand});
 
   // Should return the size 2 instead of 3.
-  Literal expected = LiteralUtil::CreateR0<int32>(2);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(2);
 
   EXPECT_EQ(result, expected);
 }
@@ -1549,12 +1550,12 @@ ENTRY main {
 }
 )";
 
-  Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 2});
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 4, 3, 2});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand},
                                  /*slice_dynamic_output=*/false);
-  Literal expected = LiteralUtil::CreateR1<int32>({4, 3, 1, 2});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({4, 3, 1, 2});
 
   EXPECT_EQ(result, expected);
 }
@@ -1585,7 +1586,7 @@ ENTRY main {
 }
 )";
 
-  Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 5});
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 4, 3, 5});
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   // After padding head and tail with "2", the effective data will be [2, 1, 4,
@@ -1593,7 +1594,7 @@ ENTRY main {
 
   Literal result = PadAndExecute(std::move(module), {&operand},
                                  /*slice_dynamic_output=*/false);
-  Literal expected = LiteralUtil::CreateR0<int32>(12);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(12);
 
   EXPECT_EQ(result, expected);
 }
@@ -1625,14 +1626,14 @@ ENTRY main {
 )";
 
   // Only the first 3 elements are effective: 1, 4, 3
-  Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 5});
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 4, 3, 5});
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   // After interior padding with "2", the effective data will be
   // [1, 2, 4, 2, 3]
   Literal result = PadAndExecute(std::move(module), {&operand},
                                  /*slice_dynamic_output=*/false);
-  Literal expected = LiteralUtil::CreateR0<int32>(12);
+  Literal expected = LiteralUtil::CreateR0<int32_t>(12);
 
   EXPECT_EQ(result, expected);
 }
@@ -1677,12 +1678,12 @@ ENTRY entry {
 }
 )";
 
-  Literal operand = LiteralUtil::CreateR2<int32>({{0, 1}, {2, 3}, {4, 5}});
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}, {4, 5}});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand},
                                  /*slice_dynamic_output=*/false);
-  Literal expected = LiteralUtil::CreateR1<int32>({4, 8});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({4, 8});
 
   EXPECT_EQ(result, expected);
 }
@@ -1718,12 +1719,12 @@ ENTRY main {
 }
 )";
 
-  Literal operand = LiteralUtil::CreateR1<int32>({0, 4, 2});
+  Literal operand = LiteralUtil::CreateR1<int32_t>({0, 4, 2});
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand},
                                  /*slice_dynamic_output=*/false);
-  Literal expected = LiteralUtil::CreateR1<int32>({4, 0, 2});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({4, 0, 2});
 
   EXPECT_EQ(result, expected);
 }

@@ -621,7 +621,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
     return;
   }
   int64_t execution_count;
-  uint64 timestamp;
+  uint64_t timestamp;
   {
     static auto& module_id_to_execution_count TF_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();

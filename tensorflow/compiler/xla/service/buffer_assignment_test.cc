@@ -2439,7 +2439,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
       HloInstruction::CreateWhile(r0s32, cond1, body1, while0));
 
   auto zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(r0s32, HloOpcode::kAdd, zero, zero));
   auto cond2 = module->AddEmbeddedComputation(build_cond());

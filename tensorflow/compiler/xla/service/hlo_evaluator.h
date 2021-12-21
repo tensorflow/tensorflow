@@ -179,8 +179,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   static std::unique_ptr<Array2D<std::complex<double>>> MatmulArray2D(
       const Array2D<std::complex<double>>& lhs,
       const Array2D<std::complex<double>>& rhs);
-  static std::unique_ptr<Array2D<int32>> MatmulArray2D(
-      const Array2D<int32>& lhs, const Array2D<int32>& rhs);
+  static std::unique_ptr<Array2D<int32_t>> MatmulArray2D(
+      const Array2D<int32_t>& lhs, const Array2D<int32_t>& rhs);
 
  protected:
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
@@ -367,7 +367,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   int64_t max_loop_iterations_ = 0;
 
   // Module-level seed handle.
-  uint64 seed_ = 0;
+  uint64_t seed_ = 0;
   // RNG engine.
   std::minstd_rand0 engine_;
 

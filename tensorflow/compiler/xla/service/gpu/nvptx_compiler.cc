@@ -311,7 +311,7 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   return stream_exec->GetDeviceDescription().cuda_compute_capability();
 }
 
-StatusOr<std::pair<std::string, std::vector<uint8>>>
+StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
@@ -349,15 +349,15 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                                  module_config, libdevice_dir));
   }
 
-  std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
+  std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, absl::get<se::CudaComputeCapability>(gpu_version),
       module_config, relocatable);
 
-  return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
-                                                    std::move(cubin));
+  return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
+                                                      std::move(cubin));
 }
 
-std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
+std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     se::StreamExecutor* stream_exec, const std::string& ptx,
     se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
     bool relocatable) {
@@ -394,7 +394,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
         }
-        StatusOr<std::vector<uint8>> maybe_cubin = se::CompileGpuAsm(
+        StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
             stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
@@ -464,8 +464,9 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->cubin_data;
 }
 
-StatusOr<std::vector<uint8>> NVPTXCompiler::LinkModules(
-    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8>> modules) {
+StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
+    se::StreamExecutor* stream_exec,
+    std::vector<std::vector<uint8_t>> modules) {
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
   for (auto& module : modules) {

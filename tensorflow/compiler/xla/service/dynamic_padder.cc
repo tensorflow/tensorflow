@@ -188,7 +188,7 @@ StatusOr<bool> ReplaceGetSize(
   } else {
     int32_t size = instr->operand(0)->shape().dimensions(dim);
     HloInstruction* new_instr = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(size)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(size)));
     TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
     dynamic_dimension_inference->ReplaceAllDynamicDimensionUsesWith(instr,
                                                                     new_instr);
@@ -462,7 +462,7 @@ Status RewriteDynamicReshapeSplitInput(
   // gather to ignore dynamic dimension.
   HloInstruction* operand_static_dim_size =
       comp->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(operand_shape.dimensions(input_dim))));
+          LiteralUtil::CreateR0<int32_t>(operand_shape.dimensions(input_dim))));
   HloInstruction* operand_static =
       comp->AddInstruction(HloInstruction::CreateSetDimensionSize(
           operand_shape, reshape->mutable_operand(0), operand_static_dim_size,
@@ -679,7 +679,7 @@ Status RewriteDynamicReshapeCombineInput(
   gather_dim_numbers.add_collapsed_slice_dims(output_dim);
 
   HloInstruction* static_dim_size = comp->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
           reshape->shape().dimensions(output_dim))));
 
   // Temporarily removes dynamic dimension of the reshape before we send it to
@@ -823,7 +823,7 @@ StatusOr<bool> RewriteReverse(
       // Start at bound_size - dynamic_size.
       HloInstruction* bound_size =
           comp->AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int32>(reverse_shape.dimensions(i))));
+              LiteralUtil::CreateR0<int32_t>(reverse_shape.dimensions(i))));
       HloInstruction* dynamic_size =
           dynamic_dimension_inference->GetDynamicSize(reverse, {}, i);
       HloInstruction* start_offset =
@@ -884,8 +884,9 @@ HloInstruction* RewriteInputWithDynamicPadding(
     HloInstruction* slicing_start =
         comp->AddInstruction(HloInstruction::CreateBinary(
             ShapeUtil::MakeScalarShape(S32), HloOpcode::kSubtract,
-            comp->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<int32>(padding_dim->edge_padding_low()))),
+            comp->AddInstruction(
+                HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
+                    padding_dim->edge_padding_low()))),
             padding_before[dim_index]));
     start_indices[shape_dim] = slicing_start;
 
@@ -1262,7 +1263,7 @@ StatusOr<bool> RewriteDynamicConcat(
   std::vector<HloInstruction*> offsets;
   for (int64_t i = 0; i < concat->shape().dimensions_size(); ++i) {
     offsets.push_back(comp->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0))));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0))));
   }
   HloInstruction* rewritten_concat = concat;
   // Keep track of previous users before rewrite so that we can update their
@@ -1280,7 +1281,7 @@ StatusOr<bool> RewriteDynamicConcat(
         dynamic_dimension_inference->GetDynamicSize(operand, {}, concat_dim);
     if (dynamic_size == nullptr) {
       HloInstruction* static_size = comp->AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
               operand->shape().dimensions(concat_dim))));
       offsets[concat_dim] = comp->AddInstruction(HloInstruction::CreateBinary(
           ShapeUtil::MakeScalarShape(S32), HloOpcode::kAdd, offsets[concat_dim],
@@ -1839,7 +1840,7 @@ StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToDynamic(
           dynamic_dimension_inference_->GetDynamicSize(inst, {}, i);
       if (dimension_size == nullptr) {
         dimension_size = comp->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(output_shape.dimensions(i))));
+            LiteralUtil::CreateR0<int32_t>(output_shape.dimensions(i))));
       } else {
         output_shape.set_dynamic_dimension(i, true);
       }

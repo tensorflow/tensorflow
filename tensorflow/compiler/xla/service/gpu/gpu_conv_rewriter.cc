@@ -691,10 +691,10 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
       // In addition to replacing a convolution instruction with
       // a custom call, integer convolutions must have this pattern to match
       // CuDNN semantics:
-      // conv<InputT=int32, ResultT=int32>(
-      //   convert<int32>(int8_x), convert<int32>(int8_y))
+      // conv<InputT=int32_t, ResultT=int32_t>(
+      //   convert<int32_t>(int8_x), convert<int32_t>(int8_y))
       // We transform it to:
-      // custom_call<int32>(int8_x, int8_y, target=cudnnConvolutionForward)
+      // custom_call<int32_t>(int8_x, int8_y, target=cudnnConvolutionForward)
       //
       // We will error out, if the pattern is not found for integer
       // convolution.
@@ -711,10 +711,10 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
           !is_int8_to_int32_cast(kernel_convert)) {
         return Unimplemented(
             "Integer convolutions for CuDNN must have this pattern: "
-            "conv<InputT=int32, ResultT=int32>(convert<int32>(int8_x), "
-            "convert<int32>(int8_y))");
+            "conv<InputT=int32_t, ResultT=int32_t>(convert<int32_t>(int8_x), "
+            "convert<int32_t>(int8_y))");
       }
-      // Bypass the convert<int32> for both inputs.
+      // Bypass the convert<int32_t> for both inputs.
       TF_RETURN_IF_ERROR(conv->ReplaceOperandWithDifferentShape(
           0, input_convert->mutable_operand(0)));
       TF_RETURN_IF_ERROR(

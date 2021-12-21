@@ -1096,7 +1096,7 @@ class HloFusionInstruction : public HloInstruction {
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
-  uint64 InnerHash() const override;
+  uint64_t InnerHash() const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1224,9 +1224,9 @@ class HloReducePrecisionInstruction : public HloInstruction {
                                          const int exponent_bits,
                                          const int mantissa_bits);
   // Returns the number of exponent bits for a reduce-precision node.
-  int32 exponent_bits() const { return exponent_bits_; }
+  int32_t exponent_bits() const { return exponent_bits_; }
   // Returns the number of mantissa bits for a reduce-precision node.
-  int32 mantissa_bits() const { return mantissa_bits_; }
+  int32_t mantissa_bits() const { return mantissa_bits_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1243,8 +1243,8 @@ class HloReducePrecisionInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   // The bit sizes for a reduce-precision operation.
-  int32 exponent_bits_ = 0;
-  int32 mantissa_bits_ = 0;
+  int32_t exponent_bits_ = 0;
+  int32_t mantissa_bits_ = 0;
 };
 
 class HloInfeedInstruction : public HloInstruction {

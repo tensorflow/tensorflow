@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_trip_count_annotator.h"
+
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -173,7 +174,7 @@ TEST_F(TripCountAnnotatorTest, LessThanOrEqualTo) {
 TEST_F(TripCountAnnotatorTest, Int64Overflow) {
   // for(i = INT64_MIN; i < INT64_MAX; ++i)
   //
-  // We store the trip count as an int64, so this loop is unanalyzable.
+  // We store the trip count as an int64_t, so this loop is unanalyzable.
   const char* kModuleStr = R"(
     HloModule test
     Body {

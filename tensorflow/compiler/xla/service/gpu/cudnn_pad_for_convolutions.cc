@@ -109,7 +109,7 @@ static Status PadConv(HloCustomCallInstruction* conv,
     auto* new_conv_result = add(
         HloInstruction::CreateGetTupleElement(new_result_shape, new_conv, 0));
     auto* empty_temp_buffer =
-        add(HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8>({})));
+        add(HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8_t>({})));
     auto* sliced_result = add(HloInstruction::CreateSlice(
         result_shape, new_conv_result, start_indices, end_indices, strides));
     new_conv =

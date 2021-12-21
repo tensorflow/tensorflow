@@ -27,9 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
-using tensorflow::int32;
-using tensorflow::string;
-
 // We emulate a GraphCycles object with a node vector and an edge vector.
 // We then compare the two implementations.
 
@@ -300,7 +297,7 @@ TEST(GraphCycles, RandomizedTest) {
         if (!nodes.empty()) {
           int from = RandomNode(&rnd, &nodes);
           int to = RandomNode(&rnd, &nodes);
-          int32 path[2 * kMaxNodes];
+          int32_t path[2 * kMaxNodes];
           int path_len = graph_cycles.FindPath(nodes[from], nodes[to],
                                                2 * kMaxNodes, path);
           std::unordered_set<int> seen;
@@ -401,7 +398,7 @@ class GraphCyclesTest : public ::testing::Test {
 
   std::string Path(int x, int y) {
     static const int kPathSize = 5;
-    int32 path[kPathSize];
+    int32_t path[kPathSize];
     int np = g_.FindPath(x, y, kPathSize, path);
     std::string result;
     for (int i = 0; i < np; i++) {
@@ -516,7 +513,7 @@ static void BM_StressTest(::testing::benchmark::State &state) {
 
   for (auto s : state) {
     tensorflow::GraphCycles g;
-    int32 *nodes = new int32[num_nodes];
+    int32_t *nodes = new int32_t[num_nodes];
     for (int i = 0; i < num_nodes; i++) {
       nodes[i] = g.NewNode();
     }
@@ -539,7 +536,7 @@ static void BM_ContractEdge(::testing::benchmark::State &state) {
   for (auto s : state) {
     state.PauseTiming();
     tensorflow::GraphCycles g;
-    std::vector<int32> nodes;
+    std::vector<int32_t> nodes;
     nodes.reserve(num_nodes);
     for (int i = 0; i < num_nodes; i++) {
       nodes.push_back(g.NewNode());

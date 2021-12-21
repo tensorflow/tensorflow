@@ -62,7 +62,7 @@ class GpuExecutable : public Executable {
 
   struct ConstantInfo {
     std::string symbol_name;
-    std::vector<uint8> content;
+    std::vector<uint8_t> content;
     int allocation_index = -1;
   };
 
@@ -80,7 +80,7 @@ class GpuExecutable : public Executable {
 
   struct Params {
     std::string asm_text;
-    std::vector<uint8> binary;
+    std::vector<uint8_t> binary;
     GpuVersion gpu_version;
     // The GpuExecutable will either execute Thunks or a whole-program BEF
     // depending on which is supplied.
@@ -139,7 +139,7 @@ class GpuExecutable : public Executable {
   // Returns the binary stored in this GpuExecutable. The binary is cubin in
   // Cuda, and HSA code object in ROCm. It may be empty, in which case
   // compilation is left up to the GPU driver.
-  const std::vector<uint8>& binary() const { return binary_; }
+  const std::vector<uint8_t>& binary() const { return binary_; }
 
   // ExecuteAsyncOnStream will fail if the compute capability of the stream
   // doesn't match the compute capability passed to this object's constructor.
@@ -217,7 +217,7 @@ class GpuExecutable : public Executable {
   // compute_capability_.
   //
   // May be empty, in which case we leave compilation up to the GPU driver.
-  const std::vector<uint8> binary_;
+  const std::vector<uint8_t> binary_;
 
   // The GPU version for compute compatibility check.
   GpuVersion gpu_version_;

@@ -240,7 +240,7 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
   }
   // Each dynamic dimension size is represented as a S32.
-  int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
 }
 
@@ -942,13 +942,13 @@ static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
   VLOG(5) << error_string;
 }
 
-StatusOr<std::pair<std::string, std::vector<uint8>>>
+StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    std::unique_ptr<llvm::Module> llvm_module,
                                    se::StreamExecutor* stream_exec,
                                    const CompileOptions& options,
                                    const HloModule* debug_module) {
-  using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
+  using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
 
   const auto compile_single_module =
       [this, stream_exec, &module_config, debug_module](
@@ -976,7 +976,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                   : ".");
     }
     GpuVersion gpu_version = GetGpuVersion(stream_exec);
-    StatusOr<std::pair<std::string, std::vector<uint8>>> result =
+    StatusOr<std::pair<std::string, std::vector<uint8_t>>> result =
         CompileTargetBinary(module_config, llvm_module, gpu_version,
                             stream_exec, relocatable, debug_module);
 
@@ -1118,7 +1118,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   counter.Wait();
 
   std::string ptx_snippets;
-  std::vector<std::vector<uint8>> submodule_compile_results;
+  std::vector<std::vector<uint8_t>> submodule_compile_results;
   for (auto& maybe_result : compile_results) {
     TF_ASSIGN_OR_RETURN(auto result, maybe_result);
     if (result.second.empty()) {
@@ -1194,7 +1194,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   llvm_ir::DumpIrIfEnabled(*module, *compile_module_results.llvm_module,
                            /*optimized=*/false);
 
-  using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
+  using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
   TF_ASSIGN_OR_RETURN(
       BackendCompileResult backend_result,
       CompileToTargetBinary(module->config(),
@@ -1405,7 +1405,7 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   auto thunk_schedule =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
 
-  using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
+  using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
   TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
                       compiler->CompileToTargetBinary(
                           module_config, std::move(llvm_module), stream_exec,

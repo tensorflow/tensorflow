@@ -117,14 +117,14 @@ class HloModuleConfig {
   }
 
   // Sets/returns the module seed set during execution.
-  void set_seed(uint64 seed) { seed_ = seed; }
-  uint64 seed() const { return seed_; }
+  void set_seed(uint64_t seed) { seed_ = seed; }
+  uint64_t seed() const { return seed_; }
 
   // Set the launch id of the program. Launch id identifies a set of programs
   // that should be launched together.
-  void set_launch_id(uint64 launch_id) { launch_id_ = launch_id; }
+  void set_launch_id(uint64_t launch_id) { launch_id_ = launch_id; }
 
-  int32 launch_id() const { return launch_id_; }
+  int32_t launch_id() const { return launch_id_; }
 
   void set_replica_count(int64_t replica_count) {
     replica_count_ = replica_count;
@@ -306,10 +306,10 @@ class HloModuleConfig {
   absl::optional<ComputationLayout> entry_computation_layout_;
 
   // Module/graph-level seed handle.
-  uint64 seed_ = 0;
+  uint64_t seed_ = 0;
 
   // Program id that identifies a set of program to be launched together.
-  int32 launch_id_ = 0;
+  int32_t launch_id_ = 0;
 
   // The number of replicas (data parallelism) to compile this binary for.
   int64_t replica_count_ = 1;

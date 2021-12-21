@@ -91,7 +91,7 @@ class ComputationLayout {
 
   bool operator==(const ComputationLayout& other) const;
   bool operator!=(const ComputationLayout& other) const;
-  uint64 Hash() const;
+  uint64_t Hash() const;
 
  private:
   std::vector<ShapeLayout> parameter_layouts_;

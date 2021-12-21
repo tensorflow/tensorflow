@@ -869,11 +869,11 @@ size_t HloSharding::Hash() const {
     return 1;
   }
   size_t h = 0;
-  for (uint32 v : tile_assignment_) {
-    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
+  for (uint32_t v : tile_assignment_) {
+    h = tensorflow::Hash64Combine(h, std::hash<uint32_t>{}(v));
   }
   if (replicate_on_last_tile_dim_) {
-    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(1));
+    h = tensorflow::Hash64Combine(h, std::hash<uint32_t>{}(1));
   }
   return h;
 }

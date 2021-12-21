@@ -109,7 +109,7 @@ struct TimerStats {
   tensorflow::mutex stats_mutex;
   double cumulative_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   double max_secs ABSL_GUARDED_BY(stats_mutex) = 0;
-  uint64 times_called ABSL_GUARDED_BY(stats_mutex) = 0;
+  uint64_t times_called ABSL_GUARDED_BY(stats_mutex) = 0;
 };
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
@@ -137,7 +137,7 @@ class ScopedLoggingTimer {
   const char* const file_;
   const int line_;
   TimerStats* const timer_stats_;
-  uint64 start_micros_;
+  uint64_t start_micros_;
   bool enabled_;
 };
 
@@ -147,23 +147,23 @@ class ScopedLoggingTimer {
 // Warning: if the vector is updated its storage pointer may change, so use this
 // with caution (ideally in limited scopes with temporary lifetimes).
 template <typename T>
-absl::Span<uint8> MutableByteSlice(std::vector<T>* v) {
-  return absl::Span<uint8>(reinterpret_cast<uint8*>(v->data()),
-                           v->size() * sizeof(T));
+absl::Span<uint8_t> MutableByteSlice(std::vector<T>* v) {
+  return absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(v->data()),
+                             v->size() * sizeof(T));
 }
 
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.
 template <typename T>
-absl::Span<const uint8> CastToByteSlice(absl::Span<const T> slice) {
-  return absl::Span<const uint8>(reinterpret_cast<const uint8*>(slice.data()),
-                                 slice.size() * sizeof(T));
+absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
+  return absl::Span<const uint8_t>(
+      reinterpret_cast<const uint8_t*>(slice.data()), slice.size() * sizeof(T));
 }
 
 // Casts a byte slice to a non-byte type T, checking that the original slice
 // length is a multiple of sizeof(T).
 template <typename T>
-absl::Span<const T> CastByteSlice(absl::Span<const uint8> slice) {
+absl::Span<const T> CastByteSlice(absl::Span<const uint8_t> slice) {
   CHECK_EQ(0, slice.size() % sizeof(T));
   return absl::Span<const T>(reinterpret_cast<const T*>(slice.data()),
                              slice.size() / sizeof(T));
@@ -554,7 +554,7 @@ bool IsInt32(T x) {
   // Following conversion rules: "the value is unchanged if it can be
   // represented in the destination type (and bit-field width); otherwise, the
   // value is implementation-defined."
-  return static_cast<int32>(x) == x;
+  return static_cast<int32_t>(x) == x;
 }
 
 template <typename T>

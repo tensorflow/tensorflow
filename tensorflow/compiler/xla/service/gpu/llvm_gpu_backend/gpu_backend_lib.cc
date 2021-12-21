@@ -612,10 +612,10 @@ std::vector<std::string> GetROCDLPaths(std::string amdgpu_version,
 }
 
 struct HsacoCacheEntry {
-  uint64 hash;
+  uint64_t hash;
   std::string ir;
   std::string gfx;
-  std::vector<uint8> hsaco;
+  std::vector<uint8_t> hsaco;
 };
 
 struct HsacoCache {
@@ -627,15 +627,15 @@ struct HsacoCache {
 
  public:
   static bool Find(const std::string& ir, uint64_t& hash,
-                   const std::string& gfx, std::vector<uint8>& hsaco);
+                   const std::string& gfx, std::vector<uint8_t>& hsaco);
   static void Add(const std::string& ir, uint64_t hash, const std::string& gfx,
-                  const std::vector<uint8>& hsaco);
+                  const std::vector<uint8_t>& hsaco);
 };
 
 static HsacoCache g_hsacoCache;
 
 bool HsacoCache::Find(const std::string& ir, uint64_t& hash,
-                      const std::string& gfx, std::vector<uint8>& hsaco) {
+                      const std::string& gfx, std::vector<uint8_t>& hsaco) {
   std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
   hash = std::hash<std::string>{}(ir);
   bool hit = false;
@@ -656,7 +656,8 @@ bool HsacoCache::Find(const std::string& ir, uint64_t& hash,
 }
 
 void HsacoCache::Add(const std::string& ir, uint64_t hash,
-                     const std::string& gfx, const std::vector<uint8>& hsaco) {
+                     const std::string& gfx,
+                     const std::vector<uint8_t>& hsaco) {
   std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
   g_hsacoCache.cache.resize(g_hsacoCache.cache.size() + 1);
   g_hsacoCache.cache.back().ir = ir;
@@ -667,7 +668,7 @@ void HsacoCache::Add(const std::string& ir, uint64_t hash,
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-StatusOr<std::vector<uint8>> EmitModuleToHsaco(
+StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     llvm::Module* module, llvm::TargetMachine* target_machine) {
   auto* env = tensorflow::Env::Default();
   std::vector<std::string> tempdir_vector;
@@ -773,7 +774,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   std::ifstream hsaco_file(hsaco_path, std::ios::binary | std::ios::ate);
   std::ifstream::pos_type hsaco_file_size = hsaco_file.tellg();
 
-  std::vector<uint8> hsaco(hsaco_file_size);
+  std::vector<uint8_t> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
   hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
   hsaco_file.close();
@@ -913,14 +914,14 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
 }  // namespace
 
 namespace amdgpu {
-StatusOr<std::vector<uint8>> CompileToHsaco(
+StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config,
     const std::string& rocdl_dir_path) {
   static absl::once_flag backend_init_flag;
   absl::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
 
-  std::vector<uint8> hsaco;
+  std::vector<uint8_t> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;
   std::string str;
   llvm::raw_string_ostream stream(str);

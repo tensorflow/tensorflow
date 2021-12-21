@@ -77,7 +77,7 @@ class ScratchBufAllocator : public se::ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return scratch_.size(); }
 
-  se::port::StatusOr<DeviceMemory<uint8>> AllocateBytes(
+  se::port::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     if (allocated_) {
       return se::port::InternalError(
@@ -90,7 +90,7 @@ class ScratchBufAllocator : public se::ScratchAllocator {
     }
 
     allocated_ = true;
-    return se::DeviceMemory<uint8>(scratch_);
+    return se::DeviceMemory<uint8_t>(scratch_);
   }
 
  private:
@@ -572,11 +572,11 @@ Status RunGpuConv(const gpu::GpuConvConfig& config,
       PrimitiveType output_primitive_type = config.output_type;
       switch (output_primitive_type) {
         case F32:
-          return RunGpuConvImpl<int8, float, float>(params, stream,
-                                                    scratch_memory, options);
+          return RunGpuConvImpl<int8_t, float, float>(params, stream,
+                                                      scratch_memory, options);
         case S8:
-          return RunGpuConvImpl<int8, float, int8>(params, stream,
-                                                   scratch_memory, options);
+          return RunGpuConvImpl<int8_t, float, int8_t>(params, stream,
+                                                       scratch_memory, options);
         default:
           return Unimplemented("Unimplemented convolution");
       }

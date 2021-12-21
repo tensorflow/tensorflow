@@ -590,9 +590,9 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
   GpuExecutable::ConstantInfo info;
   llvm::Constant* initializer;
   if (should_emit_initializer) {
-    std::vector<uint8> content;
+    std::vector<uint8_t> content;
     TF_RETURN_IF_ERROR(CopyDenseElementsDataToXlaFormat(literal, &content));
-    initializer = llvm::ConstantDataArray::get<uint8>(
+    initializer = llvm::ConstantDataArray::get<uint8_t>(
         ir_emitter_context_->llvm_module()->getContext(), content);
   } else {
     TF_RETURN_IF_ERROR(
@@ -779,7 +779,8 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
 
     const int64_t dim_index = i - 1;
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+        b_.getInt8Ty(), raw_buffer,
+        raw_data_size + dim_index * sizeof(int32_t));
     llvm::Value* dyn_dim_size =
         CreateLoad(metadata, b_.getInt32Ty(), alignment);
     dynamic_dims.push_back(dyn_dim_size);
@@ -913,7 +914,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
       const int64_t dim_index = i - 1;
       llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
           b_.getInt8Ty(), raw_buffer,
-          raw_data_size + dim_index * sizeof(int32));
+          raw_data_size + dim_index * sizeof(int32_t));
       // output[i] stores dynamic_dim_(i-1)
       CreateStore(dynamic_dims[dim_index], metadata, alignment);
     }
@@ -2245,7 +2246,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
 
   llvm::Type* index_type = GetIndexTypeForKernel(
       select_and_scatter_op, launch_dimensions.launch_bound(), &b_);
-  auto index_typed_constant = [&](uint64 c) -> llvm::Constant* {
+  auto index_typed_constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_type, c);
   };
 
@@ -2864,7 +2865,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
     }
   }
 
-  uint64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
+  uint64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   int64_t num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
   VLOG(2) << context.name << " requires " << num_stages << " stages.";
   CHECK_GE(1ULL << num_stages, dimension_to_sort_bound);
@@ -2894,7 +2895,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   // smaller than our chosen power of 2 tile size, and pass them to SortInPlace.
   // Each thread then processes one tile of data.
 
-  const uint64 kTileSize = std::min(2048ULL, 1ULL << num_stages);
+  const uint64_t kTileSize = std::min(2048ULL, 1ULL << num_stages);
 
   // If we cannot combine several xor masks together, we don't use tiling, so we
   // calculate the standard launch dimensions for the shape. However we only
@@ -2902,7 +2903,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   // next highest power of 2), because each iteration compares one pair of
   // elements.
   Shape standard_iteration_shape = keys_shape;
-  uint64 standard_num_iterations_in_sort_dim = 1ULL << (num_stages - 1);
+  uint64_t standard_num_iterations_in_sort_dim = 1ULL << (num_stages - 1);
   standard_iteration_shape.set_dimensions(dimension_to_sort,
                                           standard_num_iterations_in_sort_dim);
   TF_ASSIGN_OR_RETURN(
@@ -2918,15 +2919,15 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   Shape iteration_shape = keys_shape;
 
   // We iterate through the element pairs that should be compared.
-  uint64 num_iterations_in_sort_dim = rounded_bound / 2;
+  uint64_t num_iterations_in_sort_dim = rounded_bound / 2;
   iteration_shape.set_dimensions(dimension_to_sort, num_iterations_in_sort_dim);
-  uint64 num_iterations = ShapeUtil::ElementsIn(iteration_shape);
+  uint64_t num_iterations = ShapeUtil::ElementsIn(iteration_shape);
 
   // For correctness reasons we need exactly 'kTileSize' / 2 many threads per
   // block. Each thread is responsible for copying exactly two adjacent elements
   // into shared memory, and then does a comparison of two possibly different
   // elements taken from shared memory.
-  const uint64 kThreadsPerBlock = kTileSize / 2;
+  const uint64_t kThreadsPerBlock = kTileSize / 2;
 
   // Check whether we should use any tiling. We might not be able to use it if
   // we have not enough threads, or not enough shared memory. Also it does not
@@ -2953,7 +2954,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
       total_shared_memory_needed,
       ir_emitter_context_->gpu_device_info().shared_memory_per_block);
 
-  uint64 num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
+  uint64_t num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
   VLOG(2) << absl::StreamFormat("%s launch dims: %d blocks, %d threads/block",
                                 context.name, num_blocks, kThreadsPerBlock);
@@ -3422,10 +3423,10 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
-    absl::Span<const uint8> init_value, const BufferAllocation::Slice& dest,
+    absl::Span<const uint8_t> init_value, const BufferAllocation::Slice& dest,
     const Shape& output_shape) {
   int64_t num_bytes = init_value.size();
-  if (absl::c_all_of(init_value, [](uint8 byte) { return byte == 0; })) {
+  if (absl::c_all_of(init_value, [](uint8_t byte) { return byte == 0; })) {
     return absl::make_unique<MemzeroThunk>(Thunk::ThunkInfo(), dest);
   }
 
@@ -3434,14 +3435,14 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
   // an even multiple of 32 bits long.
   if ((num_bytes == 1 || num_bytes == 2) &&
       ShapeUtil::ByteSizeOf(output_shape) % 4 == 0) {
-    uint16 pattern16;
+    uint16_t pattern16;
     if (num_bytes == 1) {
-      uint8 b = init_value.front();
-      pattern16 = uint16{b} | (uint16{b} << 8);
+      uint8_t b = init_value.front();
+      pattern16 = uint16_t{b} | (uint16_t{b} << 8);
     } else {
       memcpy(&pattern16, init_value.data(), sizeof(pattern16));
     }
-    uint32 pattern32 = uint32{pattern16} | (uint32{pattern16} << 16);
+    uint32_t pattern32 = uint32_t{pattern16} | (uint32_t{pattern16} << 16);
     return absl::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(),
                                                     pattern32, dest);
   }
@@ -3451,7 +3452,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
   if (num_bytes >= 4 && num_bytes % 4 == 0 &&
       memcmp(init_value.data(), init_value.data() + 4, init_value.size() - 4) ==
           0) {
-    uint32 word;
+    uint32_t word;
     memcpy(&word, init_value.data(), sizeof(word));
     return absl::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), word,
                                                     dest);
@@ -3483,7 +3484,7 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
   }
 
   if (const_init) {
-    std::vector<uint8> literal_bytes;
+    std::vector<uint8_t> literal_bytes;
     TF_RETURN_IF_ERROR(
         CopyDenseElementsDataToXlaFormat(const_init, &literal_bytes));
 
@@ -4011,7 +4012,7 @@ llvm::Value* IrEmitterUnnested::GetOutputAddressForReduction(
     const TilingKernelInfo& tiling_kernel_info,
     const IrEmitterUnnested::ReductionOutputMap& output_arrays,
     const HloReduceInstruction* reduction, int output_idx) {
-  auto constant = [&](uint64 c) -> llvm::Constant* {
+  auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
 
@@ -4129,7 +4130,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
     const HloReduceInstruction* reduction, int partial_result_idx) {
   const HloComputation* reducer = reduction->to_apply();
   const auto& thread_id_info = tiling_kernel_info.thread_id_info;
-  auto constant = [&](uint64 c) -> llvm::Constant* {
+  auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
   auto is_zero = [&](llvm::Value* value) {
@@ -4225,7 +4226,7 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
   const HloComputation* reducer = reduction->to_apply();
   const auto& thread_id_info = tiling_kernel_info.thread_id_info;
 
-  auto constant = [&](uint64 c) -> llvm::Constant* {
+  auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
   auto is_zero = [&](llvm::Value* value) {
@@ -4312,7 +4313,7 @@ llvm::Value* IrEmitterUnnested::EmitThreadId(int64_t threads_per_block,
 
 IrEmitterUnnested::ThreadIdInfo IrEmitterUnnested::EmitThreadIdInfo(
     const TilingScheme& tiling_scheme, llvm::Type* index_ty) {
-  auto constant = [&](uint64 c) -> llvm::Constant* {
+  auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
   llvm::Value* thread_id_physical =
@@ -4352,7 +4353,7 @@ IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
     const TileElementGenerator& tile_element_generator) {
   absl::Span<const int64_t> dims_in_elems = tiling_scheme.GetDimsInElems();
   Vector3 dims_in_blocks = tiling_scheme.GetDimsInBlocks();
-  auto constant = [&](uint64 c) -> llvm::Constant* {
+  auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
 

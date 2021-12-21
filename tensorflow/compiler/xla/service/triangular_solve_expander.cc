@@ -63,14 +63,14 @@ XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
       // Construct the starting indices of the diagonal blocks
       auto start_indices =
           Transpose(Broadcast(Mul(Iota(builder, S32, num_blocks),
-                                  ConstantR0<int32>(builder, block_size)),
+                                  ConstantR0<int32_t>(builder, block_size)),
                               /*broadcast_sizes=*/{2}),
                     /*permutation=*/{1, 0});
 
       PaddingConfig padding_config =
           MakeEdgePaddingConfig({{0, 0}, {ndims - 2, 0}});
       start_indices =
-          Pad(start_indices, ConstantR0<int32>(builder, 0), padding_config);
+          Pad(start_indices, ConstantR0<int32_t>(builder, 0), padding_config);
 
       // Gather the diagonal blocks
       std::vector<int64_t> slice_sizes(ndims);
@@ -317,7 +317,7 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
     {
       auto i = GetTupleElement(
           Parameter(condb.get(), 0, tuple_shape, "InvertDiagCondTuple"), 0);
-      Lt(i, ConstantR0<int32>(condb.get(), block_size));
+      Lt(i, ConstantR0<int32_t>(condb.get(), block_size));
     }
     TF_ASSIGN_OR_RETURN(auto cond, condb->Build());
 
@@ -332,7 +332,7 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
       auto body_out = GetTupleElement(input_tuple, 1);
       auto body_input = GetTupleElement(input_tuple, 2);
 
-      auto zero = ConstantR0<int32>(bodyb.get(), 0);
+      auto zero = ConstantR0<int32_t>(bodyb.get(), 0);
       auto j = lower_triangular ? i : ScalarLike(i, block_size - 1) - i;
       auto input_row =
           DynamicSlice(body_input, {zero, j, zero},
