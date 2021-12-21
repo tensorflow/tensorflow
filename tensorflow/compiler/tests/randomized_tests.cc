@@ -365,6 +365,16 @@ class OpTest : public ::testing::Test {
   // Choose spatial dimensions for a windowed op such as pooling or convolution.
   WindowedSpatialDims ChooseWindowedSpatialDims(int num_spatial_dims);
 
+  struct BatchMatMulArguments {
+    std::vector<int64_t> lhs_dims;
+    std::vector<int64_t> rhs_dims;
+    DataType dtype;
+    bool adj_lhs;
+    bool adj_rhs;
+  };
+  // Choose arguments for the tf.BatchMatMul{V2} ops.
+  BatchMatMulArguments ChooseBatchMatMulArguments(bool broadcastable_batch);
+
   struct XlaDotArguments {
     std::vector<int64_t> lhs_dims;
     std::vector<int64_t> rhs_dims;
@@ -919,6 +929,41 @@ Tensor OpTest::RandomReductionIndices(int rank) {
     }
   }
   return test::AsTensor<int32>(indices);
+}
+
+OpTest::BatchMatMulArguments OpTest::ChooseBatchMatMulArguments(
+    bool broadcastable_batch) {
+  BatchMatMulArguments a;
+  a.dtype = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+
+  int64_t min_size = 0;
+  int64_t max_size = 7;
+  auto batch_dims_to = RandomDims(0, 3, min_size, max_size);
+  int rank = batch_dims_to.size() + 2;
+  std::pair<std::vector<int64_t>, std::vector<int64_t>> batch_dims_nobcast(
+      batch_dims_to, batch_dims_to);
+  auto batch_dims = broadcastable_batch ? BroadcastableDims(batch_dims_to)
+                                        : batch_dims_nobcast;
+  std::vector<int64_t> lhs_dims(batch_dims.first), rhs_dims(batch_dims.second);
+  int64_t inner_dim = RandomDim();
+  lhs_dims.push_back(RandomDim(min_size, max_size));
+  lhs_dims.push_back(inner_dim);
+  rhs_dims.push_back(inner_dim);
+  rhs_dims.push_back(RandomDim(min_size, max_size));
+
+  std::bernoulli_distribution random_bool;
+  a.adj_lhs = random_bool(generator());
+  a.adj_rhs = random_bool(generator());
+  if (a.adj_lhs) {
+    std::swap(lhs_dims[rank - 1], lhs_dims[rank - 2]);
+  }
+  if (a.adj_rhs) {
+    std::swap(rhs_dims[rank - 1], rhs_dims[rank - 2]);
+  }
+
+  a.lhs_dims = lhs_dims;
+  a.rhs_dims = rhs_dims;
+  return a;
 }
 
 OpTest::WindowedSpatialDims OpTest::ChooseWindowedSpatialDims(
@@ -1554,30 +1599,26 @@ TEST_F(OpTest, AvgPool3DGrad) {
 TEST_F(OpTest, BatchMatMul) {
   GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
-    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
-    std::vector<int64_t> output_dims = RandomDims(2, 5, 0, 7);
-    int64_t ndims = output_dims.size();
-    int64_t inner_dim = RandomDim();
-    std::vector<int64_t> x_dims(output_dims), y_dims(output_dims);
-    x_dims[ndims - 1] = inner_dim;
-    y_dims[ndims - 2] = inner_dim;
-
-    std::bernoulli_distribution random_bool;
-    bool adj_x = random_bool(generator());
-    bool adj_y = random_bool(generator());
-    if (adj_x) {
-      std::swap(x_dims[ndims - 1], x_dims[ndims - 2]);
-    }
-    if (adj_y) {
-      std::swap(y_dims[ndims - 1], y_dims[ndims - 2]);
-    }
-
+    const BatchMatMulArguments a = ChooseBatchMatMulArguments(false);
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BatchMatMul")
-                                             .RandomInput(type, x_dims)
-                                             .RandomInput(type, y_dims)
-                                             .Attr("T", type)
-                                             .Attr("adj_x", adj_x)
-                                             .Attr("adj_y", adj_y));
+                                             .RandomInput(a.dtype, a.lhs_dims)
+                                             .RandomInput(a.dtype, a.rhs_dims)
+                                             .Attr("T", a.dtype)
+                                             .Attr("adj_x", a.adj_lhs)
+                                             .Attr("adj_y", a.adj_rhs));
+  });
+}
+
+TEST_F(OpTest, BatchMatMulV2) {
+  GTEST_SKIP() << "b/201095155";
+  Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
+    const BatchMatMulArguments a = ChooseBatchMatMulArguments(true);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BatchMatMulV2")
+                                             .RandomInput(a.dtype, a.lhs_dims)
+                                             .RandomInput(a.dtype, a.rhs_dims)
+                                             .Attr("T", a.dtype)
+                                             .Attr("adj_x", a.adj_lhs)
+                                             .Attr("adj_y", a.adj_rhs));
   });
 }
 
