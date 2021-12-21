@@ -1,4 +1,4 @@
-// RUN: xla-opt -xla-legalize-tf-control-flow %s | FileCheck %s
+// RUN: xla-opt -split-input-file -xla-legalize-tf-control-flow %s | FileCheck %s
 
 // CHECK-LABEL: @if
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<f32>, [[ARG1:%.+]]: tensor<f32>)
@@ -39,7 +39,6 @@ attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
   %0 = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
-
 
 // CHECK-LABEL: @ifRegion
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<f32>, [[ARG1:%.+]]: tensor<f32>)
@@ -153,35 +152,34 @@ func @caseRegion(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32>) ->
   return %0#0, %0#1 : tensor<f32>, tensor<f32>
 }
 
+// -----
+
+// This test case also ensures the mhlo dialect is loaded as a dependency by the
+// pass and hence the split here.
 
 // CHECK-LABEL: func @while
-func @while() -> tensor<i32> {
-  // CHECK-DAG: [[VAL0:%.+]] = mhlo.constant dense<0>
-  // CHECK-DAG: [[VAL1:%.+]] = mhlo.constant dense<-1>
-  %0 = mhlo.constant dense<0> : tensor<i32>
-  %1 = mhlo.constant dense<-1> : tensor<i32>
-  // CHECK: [[VAL2:%.+]]:3 = mhlo.while([[ITER_ARG0:.*]] = [[VAL0]], [[ITER_ARG1:.*]] =  [[VAL1]], [[ITER_ARG2:.*]] =  [[VAL0]])
+// CHECK-SAME: %[[VAL0:.*]]: tensor<i32>, %[[VAL1:.*]]: tensor<i32>
+func @while(%in0: tensor<i32>, %in1: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[VAL2:%.+]]:3 = mhlo.while([[ITER_ARG0:.*]] = %[[VAL0]], [[ITER_ARG1:.*]] =  %[[VAL1]], [[ITER_ARG2:.*]] =  %[[VAL0]])
   // CHECK:   [[VAL3:%.+]] = call @while_cond([[ITER_ARG0]], [[ITER_ARG1]], [[ITER_ARG2]])
   // CHECK:   "mhlo.return"([[VAL3]])
   // CHECK: } do {
   // CHECK:   [[VAL3:%.+]]:3 = call @while_body([[ITER_ARG0]], [[ITER_ARG1]], [[ITER_ARG2]])
   // CHECK:   "mhlo.return"([[VAL3]]#0, [[VAL3]]#1, [[VAL3]]#2)
   // CHECK: return [[VAL2]]#2
-  %2:3 = "tf.While"(%0, %1, %0) {body = @while_body, cond = @while_cond, is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
+  %2:3 = "tf.While"(%in0, %in1, %in0) {body = @while_body, cond = @while_cond, is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
   return %2#2 : tensor<i32>
 }
 func @while_cond(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<i1> {
-  %0 = mhlo.constant dense<10> : tensor<i32>
-  %1 = "mhlo.compare"(%arg2, %0) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-  return %1 : tensor<i1>
+  %0 = "tf.Const"()  {value = dense<1> : tensor<i1>}  : () -> tensor<i1>
+  return %0 : tensor<i1>
 }
 func @while_body(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
-  %0 = mhlo.constant dense<1> : tensor<i32>
-  %1 = mhlo.add %arg2, %0 : tensor<i32>
-  %2 = mhlo.add %arg0, %0 : tensor<i32>
-  return %2, %arg1, %1 : tensor<i32>, tensor<i32>, tensor<i32>
+  %0 = "tf.Const"()  {value = dense<1> : tensor<i32>}  : () -> tensor<i32>
+  return %0, %0, %0 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
+// -----
 
 // CHECK-LABEL: func @whileRegion
 func @whileRegion() -> tensor<i32> {
