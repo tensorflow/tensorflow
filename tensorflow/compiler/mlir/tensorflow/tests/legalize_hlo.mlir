@@ -2731,54 +2731,6 @@ func @while_with_variadic() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
 
 // -----
 
-// CHECK-LABEL:  func @invalid_while_with_tuple(
-// CHECK-SAME:                          %arg0: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>> {
-// CHECK:          %0 = "mhlo.while"(%arg0) ( {
-// CHECK:          ^bb0(%arg1: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>):  // no predecessors
-// CHECK:            %1 = "mhlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tensor<i32>
-// CHECK:            %2 = "mhlo.get_tuple_element"(%arg1) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>>>
-// CHECK:            %3 = "mhlo.get_tuple_element"(%2) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>>
-// CHECK:            %4 = "mhlo.get_tuple_element"(%3) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
-// CHECK:            %5 = "tf.Less"(%1, %4) : (tensor<i32>, tensor<i32>) -> tensor<i1>
-// CHECK:            "mhlo.return"(%5) : (tensor<i1>) -> ()
-// CHECK:          },  {
-// CHECK:          ^bb0(%arg1: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>):  // no predecessors
-// CHECK:            %1 = "mhlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tensor<i32>
-// CHECK:            %2 = "mhlo.get_tuple_element"(%arg1) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>>>
-// CHECK:            %3 = "mhlo.get_tuple_element"(%2) {index = 0 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>>>) -> tensor<i32>
-// CHECK:            %4 = "mhlo.get_tuple_element"(%2) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>>
-// CHECK:            %5 = "mhlo.get_tuple_element"(%4) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
-// CHECK:            %6 = "tf.AddV2"(%1, %3) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:            %7 = "mhlo.tuple"(%6, %2) : (tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
-// CHECK:            "mhlo.return"(%7) : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> ()
-// CHECK:          }) : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
-// CHECK:          return %0 : tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
-// CHECK:        }
-func @invalid_while_with_tuple(%arg0: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>> {
-  %3 = "mhlo.while"(%arg0) ( {
-  ^bb0(%arg9: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>):  // no predecessors
-    %t0 = "mhlo.get_tuple_element"(%arg9) {index = 0 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tensor<i32>
-    %t_1_2 = "mhlo.get_tuple_element"(%arg9) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>>>
-    %t_2_2 = "mhlo.get_tuple_element"(%t_1_2) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>>
-    %t2 = "mhlo.get_tuple_element"(%t_2_2) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
-    %4 = "mhlo.compare"(%t0, %t2) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    "mhlo.return"(%4) : (tensor<i1>) -> ()
-  },  {
-  ^bb0(%arg9: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>):  // no predecessors
-    %t0 = "mhlo.get_tuple_element"(%arg9) {index = 0 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tensor<i32>
-    %t_1_2 = "mhlo.get_tuple_element"(%arg9) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>>>
-    %t1 = "mhlo.get_tuple_element"(%t_1_2) {index = 0 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>>>) -> tensor<i32>
-    %t_2_2 = "mhlo.get_tuple_element"(%t_1_2) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>>
-    %t2 = "mhlo.get_tuple_element"(%t_2_2) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
-    %3 = mhlo.add %t0, %t1 : tensor<i32>
-    %4 = "mhlo.tuple"(%3, %t_1_2) : (tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
-    "mhlo.return"(%4) : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> ()
-  }) : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>)
-  return %3: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
-}
-
-// -----
-
 // CHECK-LABEL:  func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>) {
 // CHECK-DAG:      %[[CST_0:.*]] = arith.constant dense<1> : tensor<i32>
 // CHECK-DAG:      %[[CST_1:.*]] = arith.constant dense<0> : tensor<i32>

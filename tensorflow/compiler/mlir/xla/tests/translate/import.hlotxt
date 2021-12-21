@@ -904,10 +904,8 @@ add {
   // CHECK-SAME:   window_strides = dense<[1, 2]> : tensor<2xi64>
   // CHECK_SAME: }
   // CHECK_SAME: : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x3xf32>, tensor<4x3xf32>)
-  // CHECK: [[TUPLE:%.*]] = "mhlo.tuple"([[REDUCE_WINDOW]]#0, [[REDUCE_WINDOW]]#1) {xla_shape = {{.*}}} : (tensor<4x3xf32>, tensor<4x3xf32>) -> tuple<tensor<4x3xf32>, tensor<4x3xf32>>
   %reduce-window.15 = (f32[4,3], f32[4,3]) reduce-window(f32[4,6] %Arg1, f32[4,6] %Arg0, f32[] %constant.4, f32[] %constant.5), window={size=1x2 stride=1x2}, to_apply=%reducer_window_helper
-  // CHECK: [[GET_TUPLE_ELEMENT:%.*]] = "mhlo.get_tuple_element"([[TUPLE]]) {index = 1 : i32}
-  // CHECK: return [[GET_TUPLE_ELEMENT]] : tensor<4x3xf32>
+  // CHECK: return [[REDUCE_WINDOW]]#1 : tensor<4x3xf32>
   ROOT %get-tuple-element.16 = f32[4,3] get-tuple-element((f32[4,3], f32[4,3]) %reduce-window.15), index=1
 }
 
@@ -1107,9 +1105,6 @@ add {
 %test_tuple(Arg_0.1: s32[1], Arg_1.2: f32[1, 2]) -> (s32[1], f32[1,2]) {
   %Arg_0.1 = s32[1] parameter(0)
   %Arg_1.2 = f32[1, 2] parameter(1)
-
-  // CHECK-NEXT:  %0 = "mhlo.tuple"(%arg0) {xla_shape = {{.*}}} : (tensor<1xi32>) -> tuple<tensor<1xi32>>
-  %tuple.3 = (s32[1]) tuple(%Arg_0.1)
 
   // CHECK:  "mhlo.tuple"(%arg0, %arg1) {xla_shape = {{.*}}} : (tensor<1xi32>, tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>>
   ROOT %tuple.4 = (s32[1], f32[1,2]) tuple(%Arg_0.1, %Arg_1.2)

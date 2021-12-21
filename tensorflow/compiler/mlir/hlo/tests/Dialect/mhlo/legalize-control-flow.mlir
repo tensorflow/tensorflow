@@ -25,6 +25,43 @@ func @while(%arg0: tensor<i64>) -> tensor<i64> {
   return %0 : tensor<i64>
 }
 
+// CHECK-LABEL: func @while_multi_operands(%arg0: tensor<3xi32>) -> tuple<tensor<i32>, tensor<3xi32>> {
+func @while_multi_operands(%arg0: tensor<3xi32>) -> tuple<tensor<i32>, tensor<3xi32>> {
+  // CHECK:      br ^bb1(%1, %arg0 : tensor<i32>, tensor<3xi32>)
+  // CHECK:    ^bb1(%[[VAL0:.*]]: tensor<i32>, %[[VAL1:.*]]: tensor<3xi32>):
+  // CHECK:      %[[VAL2:.*]] = mhlo.constant dense<8> : tensor<i32>
+  // CHECK:      %[[VAL3:.*]] = "mhlo.compare"(%[[VAL0]], %[[VAL2]]) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK:      %[[VAL4:.*]] = tensor.extract %[[VAL3]][] : tensor<i1>
+  // CHECK:      cond_br %[[VAL4]], ^bb2(%[[VAL0]], %[[VAL1]] : tensor<i32>, tensor<3xi32>), ^bb3(%[[VAL0]], %[[VAL1]] : tensor<i32>, tensor<3xi32>)
+  // CHECK:    ^bb2(%[[VAL5:.*]]: tensor<i32>, %[[VAL6:.*]]: tensor<3xi32>):
+  // CHECK:      %[[VAL7:.*]] = mhlo.add
+  // CHECK:      %[[VAL8:.*]] = mhlo.add
+  // CHECK:      br ^bb1(%[[VAL7]], %[[VAL8]] : tensor<i32>, tensor<3xi32>)
+  // CHECK:    ^bb3(%[[VAL9:.*]]: tensor<i32>, %[[VAL10:.*]]: tensor<3xi32>):
+  // CHECK:      %[[VAL11:.*]] = "mhlo.tuple"(%[[VAL9]], %[[VAL10]])
+  // CHECK-NEXT: return %[[VAL11]]
+  %0 = mhlo.constant dense<false> : tensor<i1>
+  %1 = mhlo.constant dense<0> : tensor<i32>
+  %2:2 = "mhlo.while"(%1, %arg0) ( {
+  ^bb0(%arg1: tensor<i32> , %arg2: tensor<3xi32> ):  // no predecessors
+    %4 = mhlo.constant dense<false> : tensor<i1>
+    %5 = mhlo.constant dense<8> : tensor<i32>
+    %6 = "mhlo.compare"(%arg1, %5) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "mhlo.return"(%6) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<3xi32>):  // no predecessors
+    %4 = mhlo.constant dense<false> : tensor<i1>
+    %5 = mhlo.constant dense<1> : tensor<i32>
+    %6 = mhlo.add %arg1, %5 : tensor<i32>
+    %7 = "mhlo.convert"(%arg1) : (tensor<i32>) -> tensor<i32>
+    %8 = "mhlo.broadcast_in_dim"(%7) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<i32>) -> tensor<3xi32>
+    %9 = mhlo.add %arg2, %8 : tensor<3xi32>
+    "mhlo.return"(%6, %9) : (tensor<i32>, tensor<3xi32>) -> ()
+  }) : (tensor<i32>, tensor<3xi32>) -> (tensor<i32>, tensor<3xi32>)
+  %3 = "mhlo.tuple"(%2#0, %2#1) {xla_shape = "(s32[], s32[3]{0})"} : (tensor<i32>, tensor<3xi32>) -> tuple<tensor<i32>, tensor<3xi32>>
+  return %3 : tuple<tensor<i32>, tensor<3xi32>>
+}
+
 // CHECK-LABEL: func @conditional
 func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK:   [[C0:%.+]] = arith.constant dense<1.000000e+01> : tensor<f32>
