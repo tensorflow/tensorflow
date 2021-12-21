@@ -159,6 +159,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 3, &weights));
   const TfLiteTensor* value;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 4, &value));
+  const size_t values_size = NumElements(value);
 
   const int lookup_rank = SizeOfDimension(indices, 1);
   const int embedding_rank = NumDimensions(value);
@@ -253,6 +254,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     current_squares_weight += w * w;
     current_total_weight += w;
     for (int k = 0; k < embedding_size; k++) {
+      // only index if indices are valid
+      if (current_output_offset + k < 0) continue;
+      if (current_output_offset + k >= output_size) continue;
+      if (example_embedding_offset + k < 0) continue;
+      if (example_embedding_offset + k >= values_size) continue;
       output_ptr[current_output_offset + k] +=
           value_ptr[example_embedding_offset + k] * w;
     }
