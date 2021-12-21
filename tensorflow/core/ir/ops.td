@@ -120,6 +120,9 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
       return "tfg";
     }
 
+    /// Get a special name to use when printing block arguments.
+    void getAsmBlockArgumentNames(Region &region, OpAsmSetValueNameFn set_name_fn);
+
     //===------------------------------------------------------------------===//
     // CallableOpInterface
     //===------------------------------------------------------------------===//
