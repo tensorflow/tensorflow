@@ -1144,6 +1144,29 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_legalize_shape_ops_to_standard",
+    srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_shape_ops_to_standard.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        ":type_conversion",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "merge_assuming_ops",
     srcs = ["lib/Dialect/mhlo/transforms/merge_assuming_ops.cc"],
     hdrs = [
@@ -1750,6 +1773,7 @@ cc_library(
         ":chlo_legalize_to_hlo",
         ":copy_removal",
         ":expand_hlo_tuples",
+        ":hlo_legalize_shape_ops_to_standard",
         ":hlo_legalize_to_lhlo",
         ":hlo_legalize_to_memref",
         ":input_inline_fusion",

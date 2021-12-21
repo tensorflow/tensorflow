@@ -240,8 +240,10 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
-  // Transform HLO operations to LinAlg.
+  // Transform HLO operations to LinAlg and standard.
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
