@@ -327,6 +327,24 @@ class OpTest : public ::testing::Test {
                                  absl::Span<const int64_t> shape);
   Tensor RandomNonNegativeTensor(DataType dtype);
 
+  // Like RandomTensor, but all values are in the range [lo, hi].
+  template <typename T>
+  Tensor RandomBoundedTensor(DataType dtype, T lo, T hi,
+                             bool needs_unique_values,
+                             absl::Span<const int64_t> shape);
+  template <typename T>
+  Tensor RandomBoundedTensor(DataType dtype, T lo, T hi,
+                             bool needs_unique_values);
+
+  // Like RandomTensor, but the value at index i is in the range [lo[i], hi[i]].
+  Tensor RandomBoundedTensor(DataType dtype, Tensor lo, Tensor hi);
+
+  // Like RandomTensor, but return a pair {left, right} with
+  // left[i] <= right[i].
+  std::pair<Tensor, Tensor> RandomLteTensors(DataType dtype,
+                                             absl::Span<const int64_t> shape);
+  std::pair<Tensor, Tensor> RandomLteTensors(DataType dtype);
+
   // Returns a random subset of the integers in the range [0, rank), suitable
   // for use as reduction indices.
   Tensor RandomReductionIndices(int rank);
@@ -411,6 +429,199 @@ OpTest::OpTest() {
   TF_CHECK_OK(session_->Create(def));
 }
 
+namespace {
+template <typename T>
+Tensor TensorFromValues(DataType dtype, absl::Span<const int64_t> shape,
+                        absl::Span<T> vals) {
+  Tensor tensor(dtype, TensorShape(shape));
+  test::FillValues<T>(&tensor, vals);
+  return tensor;
+}
+
+int64_t ShapeNumVals(absl::Span<const int64_t> shape) {
+  int64_t num_vals = 1;
+  for (int i = 0; i < shape.size(); ++i) {
+    num_vals *= shape[i];
+  }
+  return num_vals;
+}
+}  // namespace
+
+// TensorGenerator is an abstact class that has one implementing class for each
+// (DataType,T) pair. The implementing class implements RandomVals, which is
+// the only Tensor generation code that is specific to the DataType.
+template <typename T>
+class TensorGenerator {
+ public:
+  explicit TensorGenerator(OpTest& test) : test_(test) {}
+  virtual ~TensorGenerator() {}
+  virtual DataType dtype() = 0;
+  virtual void RandomVals(absl::optional<T> lo, absl::optional<T> hi,
+                          bool needs_unique_values,
+                          absl::FixedArray<T>& vals) = 0;
+
+  Tensor RandomTensor(absl::optional<T> lo, absl::optional<T> hi,
+                      bool needs_unique_values,
+                      absl::Span<const int64_t> shape) {
+    absl::FixedArray<T> vals(ShapeNumVals(shape));
+    RandomVals(lo, hi, needs_unique_values, vals);
+    return TensorFromValues<T>(dtype(), shape, absl::Span<T>(vals));
+  }
+
+  std::pair<Tensor, Tensor> RandomLteTensors(absl::Span<const int64_t> shape) {
+    int64_t num_vals = ShapeNumVals(shape);
+    absl::FixedArray<T> less(num_vals);
+    RandomVals({}, {}, false, less);
+    absl::FixedArray<T> greater(num_vals);
+    RandomVals({}, {}, false, greater);
+    for (int i = 0; i < num_vals; ++i) {
+      if (less[i] > greater[i]) {
+        std::swap(less[i], greater[i]);
+      }
+    }
+    std::pair<Tensor, Tensor> pair(
+        TensorFromValues<T>(dtype(), shape, absl::Span<T>(less)),
+        TensorFromValues<T>(dtype(), shape, absl::Span<T>(greater)));
+    return pair;
+  }
+
+ protected:
+  OpTest& test_;
+};
+
+class TensorGeneratorFloat : public TensorGenerator<float> {
+ public:
+  explicit TensorGeneratorFloat(OpTest& test) : TensorGenerator(test) {}
+  DataType dtype() override { return DT_FLOAT; }
+  void RandomVals(absl::optional<float> lo, absl::optional<float> hi,
+                  bool needs_unique_values,
+                  absl::FixedArray<float>& vals) override {
+    absl::flat_hash_set<float> already_generated;
+    std::uniform_real_distribution<float> distribution(lo.value_or(-1.0f),
+                                                       hi.value_or(1.0f));
+    for (int64_t i = 0; i < vals.size(); ++i) {
+      float generated;
+      do {
+        generated = distribution(test_.generator());
+      } while (needs_unique_values &&
+               !already_generated.insert(generated).second);
+      vals[i] = (generated);
+    }
+  }
+};
+
+class TensorGeneratorDouble : public TensorGenerator<double> {
+ public:
+  explicit TensorGeneratorDouble(OpTest& test) : TensorGenerator(test) {}
+  DataType dtype() override { return DT_DOUBLE; }
+  void RandomVals(absl::optional<double> lo, absl::optional<double> hi,
+                  bool needs_unique_values,
+                  absl::FixedArray<double>& vals) override {
+    absl::flat_hash_set<double> already_generated;
+    std::uniform_real_distribution<double> distribution(lo.value_or(-1.0),
+                                                        hi.value_or(1.0));
+    for (int64_t i = 0; i < vals.size(); ++i) {
+      double generated;
+      do {
+        generated = distribution(test_.generator());
+      } while (needs_unique_values &&
+               !already_generated.insert(generated).second);
+      vals[i] = generated;
+    }
+  }
+};
+
+class TensorGeneratorComplex64 : public TensorGenerator<complex64> {
+ public:
+  explicit TensorGeneratorComplex64(OpTest& test) : TensorGenerator(test) {}
+  DataType dtype() override { return DT_COMPLEX64; }
+  void RandomVals(absl::optional<complex64> lo, absl::optional<complex64> hi,
+                  bool needs_unique_values,
+                  absl::FixedArray<complex64>& vals) override {
+    absl::flat_hash_set<std::pair<float, float>> already_generated;
+    if (lo || hi) {
+      LOG(FATAL) << "Lower or upper bounds are not supported for complex64.";
+    }
+    std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
+    for (int64_t i = 0; i < vals.size(); ++i) {
+      complex64 generated;
+      do {
+        generated = complex64(distribution(test_.generator()),
+                              distribution(test_.generator()));
+      } while (needs_unique_values &&
+               !already_generated
+                    .insert(std::make_pair(generated.real(), generated.imag()))
+                    .second);
+      vals[i] = generated;
+    }
+  }
+};
+
+class TensorGeneratorInt32 : public TensorGenerator<int32> {
+ public:
+  explicit TensorGeneratorInt32(OpTest& test) : TensorGenerator(test) {}
+  DataType dtype() override { return DT_INT32; }
+  void RandomVals(absl::optional<int32> lo, absl::optional<int32> hi,
+                  bool needs_unique_values,
+                  absl::FixedArray<int32>& vals) override {
+    absl::flat_hash_set<int32> already_generated;
+    std::uniform_int_distribution<int32> distribution(lo.value_or(-(1 << 20)),
+                                                      hi.value_or(1 << 20));
+    for (int64_t i = 0; i < vals.size(); ++i) {
+      int32_t generated;
+      do {
+        generated = distribution(test_.generator());
+      } while (needs_unique_values &&
+               !already_generated.insert(generated).second);
+      vals[i] = generated;
+    }
+  }
+};
+
+class TensorGeneratorInt64 : public TensorGenerator<int64> {
+ public:
+  explicit TensorGeneratorInt64(OpTest& test) : TensorGenerator(test) {}
+  DataType dtype() override { return DT_INT64; }
+  void RandomVals(absl::optional<int64> lo, absl::optional<int64> hi,
+                  bool needs_unique_values,
+                  absl::FixedArray<int64>& vals) override {
+    absl::flat_hash_set<int64_t> already_generated;
+    std::uniform_int_distribution<int64_t> distribution(
+        lo.value_or(-(1LL << 40)), hi.value_or(1LL << 40));
+    for (int64_t i = 0; i < vals.size(); ++i) {
+      int64_t generated;
+      do {
+        generated = distribution(test_.generator());
+      } while (needs_unique_values &&
+               !already_generated.insert(generated).second);
+      vals[i] = generated;
+    }
+  }
+};
+
+class TensorGeneratorBool : public TensorGenerator<bool> {
+ public:
+  explicit TensorGeneratorBool(OpTest& test) : TensorGenerator(test) {}
+  DataType dtype() override { return DT_BOOL; }
+  void RandomVals(absl::optional<bool> lo, absl::optional<bool> hi,
+                  bool needs_unique_values,
+                  absl::FixedArray<bool>& vals) override {
+    absl::flat_hash_set<bool> already_generated;
+    if (lo || hi) {
+      LOG(FATAL) << "Lower or upper bounds are not supported for bool.";
+    }
+    std::bernoulli_distribution distribution;
+    for (int64_t i = 0; i < vals.size(); ++i) {
+      bool generated;
+      do {
+        generated = distribution(test_.generator());
+      } while (needs_unique_values &&
+               !already_generated.insert(generated).second);
+      vals[i] = generated;
+    }
+  }
+};
+
 void OpTest::Repeatedly(const std::function<TestResult(void)>& fn) {
   int const max_repetitions = tf_xla_test_repetitions;
   int valid_test_runs = 0;
@@ -494,95 +705,28 @@ int64_t OpTest::RandomSeed() {
 
 Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
                             absl::Span<const int64_t> shape) {
-  Tensor tensor(dtype, TensorShape(shape));
   switch (dtype) {
-    case DT_FLOAT: {
-      absl::flat_hash_set<float> already_generated;
-      std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
-      test::FillFn<float>(&tensor, [&](int i) -> float {
-        float generated;
-        do {
-          generated = distribution(generator());
-        } while (needs_unique_values &&
-                 !already_generated.insert(generated).second);
-        return generated;
-      });
-      break;
-    }
-    case DT_DOUBLE: {
-      absl::flat_hash_set<double> already_generated;
-      std::uniform_real_distribution<double> distribution(-1.0, 1.0);
-      test::FillFn<double>(&tensor, [&](int i) -> double {
-        double generated;
-        do {
-          generated = distribution(generator());
-        } while (needs_unique_values &&
-                 !already_generated.insert(generated).second);
-        return generated;
-      });
-      break;
-    }
-    case DT_COMPLEX64: {
-      absl::flat_hash_set<std::pair<float, float>> already_generated;
-      std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
-      test::FillFn<complex64>(&tensor, [&](int i) {
-        complex64 generated;
-        do {
-          generated =
-              complex64(distribution(generator()), distribution(generator()));
-        } while (
-            needs_unique_values &&
-            !already_generated
-                 .insert(std::make_pair(generated.real(), generated.imag()))
-                 .second);
-        return generated;
-      });
-      break;
-    }
-    case DT_INT32: {
-      absl::flat_hash_set<int32> already_generated;
-      std::uniform_int_distribution<int32> distribution(-(1 << 20), 1 << 20);
-      test::FillFn<int32>(&tensor, [&](int i) -> int32 {
-        int32_t generated;
-        do {
-          generated = distribution(generator());
-        } while (needs_unique_values &&
-                 !already_generated.insert(generated).second);
-        return generated;
-      });
-      break;
-    }
-    case DT_INT64: {
-      absl::flat_hash_set<int64_t> already_generated;
-      std::uniform_int_distribution<int64_t> distribution(-(1LL << 40),
-                                                          1LL << 40);
-      test::FillFn<int64_t>(&tensor, [&](int i) -> int64_t {
-        int64_t generated;
-        do {
-          generated = distribution(generator());
-        } while (needs_unique_values &&
-                 !already_generated.insert(generated).second);
-        return generated;
-      });
-      break;
-    }
-    case DT_BOOL: {
-      absl::flat_hash_set<bool> already_generated;
-      std::bernoulli_distribution distribution;
-      test::FillFn<bool>(&tensor, [&](int i) -> bool {
-        bool generated;
-        do {
-          generated = distribution(generator());
-        } while (needs_unique_values &&
-                 !already_generated.insert(generated).second);
-        return generated;
-      });
-      break;
-    }
+    case DT_FLOAT:
+      return TensorGeneratorFloat(*this).RandomTensor(
+          {}, {}, needs_unique_values, shape);
+    case DT_DOUBLE:
+      return TensorGeneratorDouble(*this).RandomTensor(
+          {}, {}, needs_unique_values, shape);
+    case DT_COMPLEX64:
+      return TensorGeneratorComplex64(*this).RandomTensor(
+          {}, {}, needs_unique_values, shape);
+    case DT_INT32:
+      return TensorGeneratorInt32(*this).RandomTensor(
+          {}, {}, needs_unique_values, shape);
+    case DT_INT64:
+      return TensorGeneratorInt64(*this).RandomTensor(
+          {}, {}, needs_unique_values, shape);
+    case DT_BOOL:
+      return TensorGeneratorBool(*this).RandomTensor(
+          {}, {}, needs_unique_values, shape);
     default:
       LOG(FATAL) << "Unimplemented type " << dtype << " in RandomTensor";
   }
-  return tensor;
 }
 
 Tensor OpTest::RandomTensor(DataType dtype) {
@@ -591,45 +735,143 @@ Tensor OpTest::RandomTensor(DataType dtype) {
 
 Tensor OpTest::RandomNonNegativeTensor(DataType dtype,
                                        absl::Span<const int64_t> shape) {
-  Tensor tensor(dtype, TensorShape(shape));
+  switch (dtype) {
+    case DT_FLOAT:
+      return TensorGeneratorFloat(*this).RandomTensor({0.0f}, {}, false, shape);
+    case DT_DOUBLE:
+      return TensorGeneratorDouble(*this).RandomTensor({0.0}, {}, false, shape);
+    case DT_INT32:
+      return TensorGeneratorInt32(*this).RandomTensor({0}, {}, false, shape);
+    case DT_INT64:
+      return TensorGeneratorInt64(*this).RandomTensor({0}, {}, false, shape);
+    default:
+      LOG(FATAL) << "Unimplemented type " << dtype
+                 << " in RandomNonNegativeTensor";
+  }
+}
+
+Tensor OpTest::RandomNonNegativeTensor(DataType dtype) {
+  return RandomNonNegativeTensor(dtype, RandomDims());
+}
+
+template <typename T>
+Tensor OpTest::RandomBoundedTensor(DataType dtype, T lo, T hi,
+                                   bool needs_unique_values,
+                                   absl::Span<const int64_t> shape) {
+  switch (dtype) {
+    case DT_FLOAT:
+      return TensorGeneratorFloat(*this).RandomTensor(
+          {lo}, {hi}, needs_unique_values, shape);
+    case DT_DOUBLE:
+      return TensorGeneratorDouble(*this).RandomTensor(
+          {lo}, {hi}, needs_unique_values, shape);
+    case DT_INT32:
+      return TensorGeneratorInt32(*this).RandomTensor(
+          {lo}, {hi}, needs_unique_values, shape);
+    case DT_INT64:
+      return TensorGeneratorInt64(*this).RandomTensor(
+          {lo}, {hi}, needs_unique_values, shape);
+    default:
+      LOG(FATAL) << "RandomBoundedTensor does not support type " << dtype
+                 << ".";
+  }
+}
+
+template <typename T>
+Tensor OpTest::RandomBoundedTensor(DataType dtype, T lo, T hi,
+                                   bool needs_unique_values) {
+  return RandomBoundedTensor<T>(dtype, lo, hi, needs_unique_values,
+                                RandomDims());
+}
+
+Tensor OpTest::RandomBoundedTensor(DataType dtype, Tensor lo, Tensor hi) {
+  TensorShape shape = lo.shape();
+  if (hi.shape() != shape) {
+    LOG(FATAL) << "hi and lo do not have the same shape in RandomBoundedTensor";
+  }
+  if (hi.dtype() != dtype) {
+    LOG(FATAL) << "hi does not have the expected dtype in RandomBoundedTensor";
+  }
+  if (lo.dtype() != dtype) {
+    LOG(FATAL) << "lo does not have the expected dtype in RandomBoundedTensor";
+  }
+  Tensor tensor(dtype, shape);
   switch (dtype) {
     case DT_FLOAT: {
-      std::uniform_real_distribution<float> distribution(0.0f, 1.0f);
-      test::FillFn<float>(&tensor, [this, &distribution](int i) -> float {
+      auto lo_flat = lo.flat<float>();
+      auto hi_flat = hi.flat<float>();
+      test::FillFn<float>(&tensor, [this, &lo_flat, &hi_flat](int i) -> float {
+        std::uniform_real_distribution<float> distribution(lo_flat(i),
+                                                           hi_flat(i));
         return distribution(generator());
       });
       break;
     }
     case DT_DOUBLE: {
-      std::uniform_real_distribution<double> distribution(0.0, 1.0);
-      test::FillFn<double>(&tensor, [this, &distribution](int i) -> double {
-        return distribution(generator());
-      });
+      auto lo_flat = lo.flat<double>();
+      auto hi_flat = hi.flat<double>();
+      test::FillFn<double>(
+          &tensor, [this, &lo_flat, &hi_flat](int i) -> double {
+            std::uniform_real_distribution<double> distribution(lo_flat(i),
+                                                                hi_flat(i));
+            return distribution(generator());
+          });
       break;
     }
     case DT_INT32: {
-      std::uniform_int_distribution<int32> distribution(0, 1 << 20);
-      test::FillFn<int32>(&tensor, [this, &distribution](int i) -> int32 {
+      auto lo_flat = lo.flat<int32>();
+      auto hi_flat = hi.flat<int32>();
+      test::FillFn<int32>(&tensor, [this, &lo_flat, &hi_flat](int i) -> int32 {
+        std::uniform_int_distribution<int32> distribution(lo_flat(i),
+                                                          hi_flat(i));
         return distribution(generator());
       });
       break;
     }
     case DT_INT64: {
-      std::uniform_int_distribution<int64_t> distribution(0, 1LL << 40);
-      test::FillFn<int64_t>(&tensor, [this, &distribution](int i) -> int64_t {
-        return distribution(generator());
-      });
+      auto lo_flat = lo.flat<int64>();
+      auto hi_flat = hi.flat<int64>();
+      test::FillFn<int64_t>(
+          &tensor, [this, &lo_flat, &hi_flat](int i) -> int64_t {
+            std::uniform_int_distribution<int64_t> distribution(lo_flat(i),
+                                                                hi_flat(i));
+            return distribution(generator());
+          });
       break;
     }
     default:
-      LOG(FATAL) << "Unimplemented type " << dtype
-                 << " in RandomNonNegativeTensor";
+      LOG(FATAL) << "RandomBoundedTensor does not support type " << dtype
+                 << ".";
   }
   return tensor;
 }
 
-Tensor OpTest::RandomNonNegativeTensor(DataType dtype) {
-  return RandomNonNegativeTensor(dtype, RandomDims());
+std::pair<Tensor, Tensor> OpTest::RandomLteTensors(
+    DataType dtype, absl::Span<const int64_t> shape) {
+  switch (dtype) {
+    case DT_FLOAT:
+      return TensorGeneratorFloat(*this).RandomLteTensors(shape);
+    case DT_DOUBLE:
+      return TensorGeneratorDouble(*this).RandomLteTensors(shape);
+    case DT_COMPLEX64:
+      LOG(FATAL) << "RandomLteTensors unavailable for DT_COMPLEX64";
+      break;
+    case DT_INT32:
+      return TensorGeneratorInt32(*this).RandomLteTensors(shape);
+    case DT_INT64:
+      return TensorGeneratorInt64(*this).RandomLteTensors(shape);
+    case DT_BOOL:
+      LOG(FATAL) << "RandomLteTensors unavailable for DT_BOOL";
+      break;
+    default:
+      LOG(FATAL) << "Unimplemented type " << dtype << " in RandomLteTensors";
+  }
+  Tensor tensor(dtype, TensorShape(shape));
+  return std::pair<Tensor, Tensor>(tensor, tensor);
+}
+
+std::pair<Tensor, Tensor> OpTest::RandomLteTensors(DataType dtype) {
+  return RandomLteTensors(dtype, RandomDims());
 }
 
 std::vector<int64_t> OpTest::BroadcastableToDims(std::vector<int64_t> dims) {
@@ -1041,6 +1283,15 @@ TEST_F(OpTest, Abs) {
   });
 }
 
+TEST_F(OpTest, Acos) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Acos")
+            .Input(RandomBoundedTensor<float>(DT_FLOAT, -1, 1, false))
+            .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Acosh) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
@@ -1161,6 +1412,15 @@ TEST_F(OpTest, ArgMin) {
             .Attr("T", type)
             .Attr("Tidx", DT_INT32)
             .Attr("output_type", DT_INT32));
+  });
+}
+
+TEST_F(OpTest, Asin) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Asin")
+            .Input(RandomBoundedTensor<float>(DT_FLOAT, -1, 1, false))
+            .Attr("T", DT_FLOAT));
   });
 }
 
@@ -1548,6 +1808,28 @@ TEST_F(OpTest, Ceil) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Ceil").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, ClipByValue) {
+  // TODO(b/211012085): Change input_dims to BroadcastableDimsN(3). The
+  //                    compiled ClipByValue fails in this case.
+  //                    --tf_xla_random_seed=200839030
+  Repeatedly([this]() {
+    auto type = Choose<DataType>({DT_INT32, DT_INT64, DT_FLOAT});
+    // ClipByValue requires that broadcasting min and max tensors do not cause
+    // the returned shape to be larger than the input shape.
+    auto input_dims = RandomDims();
+    // clip_value_min must be <= clip_value_max for correct results. Different
+    // implementations handle the max < min case differently, so ensure that
+    // min <= max.
+    auto min_max_dims = BroadcastableToDims(input_dims);
+    auto min_max = RandomLteTensors(type, min_max_dims);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ClipByValue")
+                                             .RandomInput(type, input_dims)
+                                             .Input(min_max.first)
+                                             .Input(min_max.second)
+                                             .Attr("T", type));
   });
 }
 
@@ -2281,6 +2563,36 @@ TEST_F(OpTest, Gather) {
   });
 }
 
+TEST_F(OpTest, GatherNd) {
+  // :randomized_tests_mlir fails with --tf_xla_random_seed=459353625
+  // --test_arg=--tf_xla_test_repetitions=100
+  GTEST_SKIP() << "b/201095155";
+  Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
+    auto params_type = Choose<DataType>(kAllXlaTypes);
+    // GatherNd seems undefined on the case where params has rank 0.
+    std::vector<int64_t> params_shape = RandomDims(1);
+    auto indices_type = DT_INT32;
+    std::vector<int64_t> output_outer_shape = RandomDims(0, 4, 0, 32);
+    int64_t index_len = RandomDim(0, params_shape.size() + 1);
+    std::vector<int64_t> output_shape(output_outer_shape);
+    output_shape.push_back(index_len);
+    Tensor lo(indices_type, TensorShape(output_shape));
+    test::FillFn<int32>(&lo, [](int i) -> int32 { return 0; });
+    Tensor hi(indices_type, TensorShape(output_shape));
+    test::FillFn<int32>(&hi, [index_len, &params_shape](int i) -> int32 {
+      int idx_dim = i % index_len;
+      return params_shape[idx_dim] - 1;
+    });
+    Tensor indices = RandomBoundedTensor(indices_type, lo, hi);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("GatherNd")
+            .RandomInput(params_type, params_shape)
+            .Input(indices)
+            .Attr("Tindices", indices_type)
+            .Attr("Tparams", params_type));
+  });
+}
+
 TEST_F(OpTest, Greater) {
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
@@ -2319,6 +2631,28 @@ TEST_F(OpTest, Imag) {
   });
 }
 
+TEST_F(OpTest, InplaceUpdate) {
+  Repeatedly([this]() {
+    auto type = Choose<DataType>(kAllXlaTypes);
+    std::vector<int64_t> common_dims =
+        RandomDims(0, kDefaultMaxRank - 1, 0, kDefaultMaxDimensionSize);
+    // TODO(b/211012712): Once needs_unique_values case is linear instead of
+    // quadratic time, use default Dim max instead of 8.
+    std::vector<int64_t> v_dims{RandomDim(1, 8)};
+    v_dims.insert(v_dims.end(), common_dims.begin(), common_dims.end());
+    std::vector<int64_t> x_dims{RandomDim(v_dims[0])};
+    x_dims.insert(x_dims.end(), common_dims.begin(), common_dims.end());
+    std::vector<int64_t> i_shape{v_dims[0]};
+    Tensor i =
+        RandomBoundedTensor<int32>(DT_INT32, 0, x_dims[0] - 1, true, i_shape);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("InplaceUpdate")
+                                             .RandomInput(type, x_dims)
+                                             .Input(i)
+                                             .RandomInput(type, v_dims)
+                                             .Attr("T", type));
+  });
+}
+
 TEST_F(OpTest, Inv) {
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
@@ -2332,6 +2666,17 @@ TEST_F(OpTest, Invert) {
     DataType type = DT_INT32;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Invert").RandomInput(type).Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, InvertPermutation) {
+  Repeatedly([this]() {
+    // TODO(b/211012712): Once needs_unique_values case is linear instead of
+    // quadratic time, use default Dim max instead of 8.
+    int64_t len = RandomDim(0, 8);
+    Tensor x = RandomBoundedTensor<int32>(DT_INT32, 0, len - 1, true, {len});
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("InvertPermutation").Input(x).Attr("T", DT_INT32));
   });
 }
 
@@ -2385,6 +2730,20 @@ TEST_F(OpTest, LeakyReluGrad) {
             .RandomInput(DT_FLOAT, dims)
             .Attr("T", DT_FLOAT)
             .Attr("alpha", alpha(generator())));
+  });
+}
+
+TEST_F(OpTest, LeftShift) {
+  Repeatedly([this]() {
+    bool is64 = RandomBool();
+    auto dims = RandomDims();
+    auto type = is64 ? DT_INT64 : DT_INT32;
+    int max_shift = is64 ? 63 : 31;
+    auto y = RandomBoundedTensor(type, 0, max_shift, false, dims);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("LeftShift")
+                                             .RandomInput(type, dims)
+                                             .Input(y)
+                                             .Attr("T", type));
   });
 }
 
@@ -2551,6 +2910,25 @@ TEST_F(OpTest, MatMul) {
                                              .Attr("T", type)
                                              .Attr("transpose_a", transpose_a)
                                              .Attr("transpose_b", transpose_b));
+  });
+}
+
+TEST_F(OpTest, MatrixBandPart) {
+  Repeatedly([this]() {
+    auto type = Choose<DataType>(kAllXlaTypes);
+    auto index_type = Choose<DataType>({DT_INT32, DT_INT64});
+    auto num_lower =
+        RandomBoundedTensor<int32>(index_type, -2 * kDefaultMaxDimensionSize,
+                                   2 * kDefaultMaxDimensionSize, false, {});
+    auto num_upper =
+        RandomBoundedTensor<int32>(index_type, -2 * kDefaultMaxDimensionSize,
+                                   2 * kDefaultMaxDimensionSize, false, {});
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatrixBandPart")
+                                             .RandomInput(type)
+                                             .Input(num_lower)
+                                             .Input(num_upper)
+                                             .Attr("T", type)
+                                             .Attr("Tindex", index_type));
   });
 }
 
@@ -3237,10 +3615,46 @@ TEST_F(OpTest, ReverseV2) {
   });
 }
 
+TEST_F(OpTest, RightShift) {
+  Repeatedly([this]() {
+    bool is64 = RandomBool();
+    auto dims = RandomDims();
+    auto type = is64 ? DT_INT64 : DT_INT32;
+    int max_shift = is64 ? 63 : 31;
+    auto y = RandomBoundedTensor(type, 0, max_shift, false, dims);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("RightShift")
+                                             .RandomInput(type, dims)
+                                             .Input(y)
+                                             .Attr("T", type));
+  });
+}
+
 TEST_F(OpTest, Rint) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Rint").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Roll) {
+  Repeatedly([this]() {
+    auto input_type = Choose<DataType>(kAllXlaTypes);
+    auto axis_type = Choose<DataType>({DT_INT32, DT_INT64});
+    // TODO(b/201095155,b/197140886): shift_type = DT_INT64 doesn't work.
+    auto shift_type = DT_INT32;
+    auto input_shape = RandomDims(1);
+    int rank = input_shape.size();
+    auto axis_shape = RandomDims(1, 1, 1, rank + 1);
+    auto axis = RandomBoundedTensor(axis_type, 0, rank - 1, true, axis_shape);
+    auto shift = RandomTensor(shift_type, false, axis_shape);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Roll")
+            .RandomInput(input_type, input_shape)
+            .Input(shift)
+            .Input(axis)
+            .Attr("T", input_type)
+            .Attr("Taxis", axis_type)
+            .Attr("Tshift", shift_type));
   });
 }
 
