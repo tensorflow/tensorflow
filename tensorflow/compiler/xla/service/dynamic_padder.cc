@@ -288,6 +288,101 @@ HloInstruction* PadWithScalar(HloInstruction* inst, int64_t dim,
   return padded;
 }
 
+// Generate a 1-0 mask for input_dim where 1 means data in dynamic shape.
+HloInstruction* GenerateBinaryMask(
+    HloInstruction* reshape, int64_t input_dim,
+    absl::Span<const int64_t> output_dims,
+    absl::Span<HloInstruction*> output_dynamic_dims, HloInstruction* one,
+    HloInstruction* zero, bool split_input) {
+  Shape input_shape =
+      split_input ? reshape->operand(0)->shape() : reshape->shape();
+  Shape output_shape =
+      split_input ? reshape->shape() : reshape->operand(0)->shape();
+  HloComputation* comp = reshape->parent();
+  const Shape mask_input_shape =
+      ShapeUtil::MakeShape(xla::S32, {input_shape.dimensions(input_dim)});
+  const Shape pred_input_shape =
+      ShapeUtil::MakeShape(xla::PRED, {input_shape.dimensions(input_dim)});
+  HloInstruction* pred_true = comp->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  HloInstruction* input_shape_pred_mask = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(pred_input_shape, pred_true, {}));
+  bool need_rewrite = false;
+  // Iota contains a linear index for each element in input shape.
+  HloInstruction* iota =
+      comp->AddInstruction(HloInstruction::CreateIota(mask_input_shape, 0));
+
+  // Compute the multi-dimensional indices from a linear index and
+  // compare to dynamic dimension size to generate the mask.
+  // For a 2x3x3 shape, iota is first set to:
+  //   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17]
+  // iota % 3 gives the index for the last dimension.
+  //   [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2]
+  // Then iota goes to:
+  //   [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5] (after div 3)
+  // iota % 3 gives the index of the second last dimension.
+  //   [0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 0, 0, 1, 1, 1, 2, 2, 2]
+  // Then iota goes to:
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1] (after div 3)
+  // It gives the index of the major dimension.
+  // For example, element 16 in the original iota will in the end get index
+  // (1, 2, 1). Each index is used for generating the mask (if necessary) by
+  // comparing to the dynamic size value for that dimension.
+  //
+  // Skip index 0 since there is no need to rewrite a major output dimension.
+  for (int64_t i = 1; i < output_dims.size(); ++i) {
+    if (output_dynamic_dims[output_dims[i]] != nullptr) {
+      // If there is dynamic dimension in the output, need to rewrite the input.
+      need_rewrite = true;
+      break;
+    }
+  }
+  if (!need_rewrite) {
+    return nullptr;
+  }
+
+  for (int64_t i = output_dims.size() - 1; i > 0; i--) {
+    const int64_t output_dim = output_dims[i];
+    HloInstruction* dynamic_size = output_dynamic_dims[output_dim];
+    HloInstruction* static_output_dim_size =
+        comp->AddInstruction(HloInstruction::CreateConstant(
+            LiteralUtil::CreateR0<int32>(output_shape.dimensions(output_dim))));
+    HloInstruction* broadcasted_static_output_dim_size =
+        comp->AddInstruction(HloInstruction::CreateBroadcast(
+            mask_input_shape, static_output_dim_size, {}));
+    if (dynamic_size != nullptr) {
+      // Generate the mask for output_dim.
+      HloInstruction* dim_index =
+          comp->AddInstruction(HloInstruction::CreateBinary(
+              mask_input_shape, HloOpcode::kRemainder, iota,
+              broadcasted_static_output_dim_size));
+      HloInstruction* broadcasted_effective_size = comp->AddInstruction(
+          HloInstruction::CreateBroadcast(mask_input_shape, dynamic_size, {}));
+      HloInstruction* selected =
+          comp->AddInstruction(HloInstruction::CreateCompare(
+              pred_input_shape, dim_index, broadcasted_effective_size,
+              ComparisonDirection::kLt));
+
+      // Merge the mask.
+      input_shape_pred_mask = comp->AddInstruction(HloInstruction::CreateBinary(
+          pred_input_shape, HloOpcode::kAnd, input_shape_pred_mask, selected));
+    }
+
+    // Update iota values by "shifting out" dimension i.
+    iota = comp->AddInstruction(
+        HloInstruction::CreateBinary(mask_input_shape, HloOpcode::kDivide, iota,
+                                     broadcasted_static_output_dim_size));
+  }
+
+  HloInstruction* broadcasted_one = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(mask_input_shape, one, {}));
+  HloInstruction* broadcasted_zero = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(mask_input_shape, zero, {}));
+  return comp->AddInstruction(HloInstruction::CreateTernary(
+      mask_input_shape, HloOpcode::kSelect, input_shape_pred_mask,
+      broadcasted_one, broadcasted_zero));
+}
+
 // In a reshape if a dynamic dimension is splitted into multiple output
 // dimensions, we need to rewrite the input of the reshape.
 //
@@ -320,22 +415,17 @@ HloInstruction* PadWithScalar(HloInstruction* inst, int64_t dim,
 // [[a,b,P]
 //  [c,d,P]]
 //
-// The way we do this is by a 5-steps cumsum-gather algorithm:
+// The way we do this is by a 4-steps cumsum-gather algorithm:
 //
 // 1.First we use the output shape to generate a binary 0-1 masking, which masks
-// out the padded area of the output:
-// [[1,1,0]
-//  [1,1,0]]
+// out the padded area of the flattened output shape:
+// [1,1,0,1,1,0]
 //
-// 2.Then we do an inverse reshape to reshape it from output shape back to input
-// shape [2,3]->[6]:
-//  [1,1,0,1,1,0]
-//
-// 3.We then do a cumsum with the mask:
+// 2.We then do a cumsum with the mask:
 //  [1,2,2,3,4,4] and subtract it with 1:
 //  [0,1,1,2,3,3]
 //
-// 4.Use the result of cumsum as gather indices to rearrange the original
+// 3.Use the result of cumsum as gather indices to rearrange the original
 // data. Feed the original input [a,b,c,d,P,P] and indices into gather.
 //
 //  operand [a,b,c,d,P,P], indices [0,1,1,2,3,3]
@@ -347,7 +437,7 @@ HloInstruction* PadWithScalar(HloInstruction* inst, int64_t dim,
 //  doesn't matter.
 //
 //
-// 5.Feed the sorted input to original reshape[6]->[2,3], we can now get the
+// 4.Feed the sorted input to original reshape[6]->[2,3], we can now get the
 // correct result:
 //  [[a,b,P]
 //   [c,d,P]]
@@ -365,53 +455,27 @@ Status RewriteDynamicReshapeSplitInput(
   HloComputation* comp = reshape->parent();
   const Shape mask_input_shape =
       ShapeUtil::MakeShape(xla::S32, {operand_shape.dimensions(input_dim)});
-
-  std::vector<int64_t> reshaped_dims;
-  reshaped_dims.reserve(output_dims.size());
-  for (int64_t output_dim : output_dims) {
-    reshaped_dims.push_back(reshape->shape().dimensions(output_dim));
-  }
-
-  const Shape mask_reshaped_shape =
-      ShapeUtil::MakeShape(xla::S32, reshaped_dims);
+  const Shape pred_input_shape =
+      ShapeUtil::MakeShape(xla::PRED, {operand_shape.dimensions(input_dim)});
 
   HloInstruction* zero = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
   HloInstruction* one = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::One(S32)));
+
   // Step 1 -- generate binary mask.
-  // Mask starts with all one, each dynamic dimension sets that dimension of the
-  // mask to partially zero in the end.
-  HloInstruction* binary_mask = comp->AddInstruction(
-      HloInstruction::CreateBroadcast(mask_reshaped_shape, one, {}));
 
-  bool need_rewrite = false;
-
-  // Pad the effective dimension with 1.
-  //
-  // Index starts from 1 since there is no need to rewrite a major output
-  // dimension.
-  for (int64_t i = 1; i < output_dims.size(); ++i) {
-    const int64_t output_dim = output_dims[i];
-    HloInstruction* dynamic_size = output_dynamic_dims[output_dim];
-    if (dynamic_size == nullptr) {
-      continue;
-    }
-    // If there is dynamic dimension in the output, need to rewrite the input.
-    need_rewrite = true;
-
-    binary_mask = PadWithScalar(binary_mask, i, dynamic_size, zero);
-  }
-  if (!need_rewrite) {
+  HloInstruction* input_shape_binary_mask =
+      GenerateBinaryMask(reshape, input_dim, output_dims, output_dynamic_dims,
+                         one, zero, /*split_input=*/true);
+  if (input_shape_binary_mask == nullptr) {
+    // No need to rewrite.
+    VLOG(2) << "No need to rewrite";
     return Status::OK();
   }
-  // Step 2.
-  // Do a reverse reshape to flatten the binary mask (with output shape) back to
-  // input shape.
-  HloInstruction* input_shape_binary_mask = comp->AddInstruction(
-      HloInstruction::CreateReshape(mask_input_shape, binary_mask));
 
-  // Step 3. Do a cumsum on the binary mask.
+  // Step 2. Do a cumsum on the binary mask.
+
   auto embedded_builder = HloComputation::Builder("add");
   {
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
@@ -456,7 +520,7 @@ Status RewriteDynamicReshapeSplitInput(
   gather_dim_numbers.set_index_vector_dim(1);
   gather_dim_numbers.add_collapsed_slice_dims(input_dim);
 
-  // Step 4. Gather.
+  // Step 3. Gather.
 
   // Temporarily removes dynamic dimension before entering gather -- we want the
   // gather to ignore dynamic dimension.
@@ -476,7 +540,7 @@ Status RewriteDynamicReshapeSplitInput(
                            operand_shape.dimensions()),
       operand_static, cumsum, gather_dim_numbers, slice_sizes, true));
 
-  // Step 6: Feed gather input to original reshape.
+  // Step 4: Feed gather input to original reshape.
 
   TF_RETURN_IF_ERROR(reshape->ReplaceOperandWith(0, gather));
 
@@ -538,29 +602,24 @@ Status RewriteDynamicReshapeSplitInput(
 // We need to rewrite the reshape such that it produces:
 // [a,b,c,d,P,P]
 //
-// The way we do this is by a 5-steps sort-gather algorithm:
+// The way we do this is by a 4-steps sort-gather algorithm:
 //
 // 1.First we use the input shape to generate a binary 0-1 masking, which masks
 // out the padded area of the output:
-// [[0,0,1]
-//  [0,0,1]]
+//  [1,1,0,1,1,0]
 //
-// 2.Then we do an reshape to reshape the mask from input shape to output
-// shape [2,3]->[6]:
-//  [0,0,1,0,0,1]
-//
-// 3.We then generate an iota mask using the output shape:
+// 2.We then generate an iota mask using the output shape:
 //  [0,1,2,3,4,5]
 //
-// 4.Stable sort the iota mask using the binary mask as key:
-//  key  [0,0,1,0,0,1]
+// 3.Stable sort the iota mask using the binary mask as key:
+//  key  [1,1,0,1,1,0]
 //  value[0,1,2,3,4,5]
 //     | Sort by key
 //     v
-//  key  [0,0,0,0,1,1]
+//  key  [1,1,1,1,0,0]
 //  value[0,1,3,4,2,5]
 //
-// 5.Gather the original output [a,b,P,c,d,P] using the sorted iota mask:
+// 4.Gather the original output [a,b,P,c,d,P] using the sorted iota mask:
 //      original output       gather indices
 //       [a,b,P,c,d,P]         [0,1,3,4,2,5]
 //            |                    |
@@ -583,54 +642,24 @@ Status RewriteDynamicReshapeCombineInput(
   const Shape input_shape = reshape->operand(0)->shape();
   const Shape mask_output_shape =
       ShapeUtil::MakeShape(xla::S32, {output_shape.dimensions(output_dim)});
-  std::vector<int64_t> input_dim_sizes;
-  input_dim_sizes.reserve(input_dims.size());
-  for (int64_t input_dim : input_dims) {
-    input_dim_sizes.push_back(input_shape.dimensions(input_dim));
-  }
 
-  const Shape mask_input_shape =
-      ShapeUtil::MakeShape(xla::S32, input_dim_sizes);
-
-  // Step 1 -- generate binary mask.
-  // Mask starts with all zero, each dynamic dimension sets that dimension of
-  // the mask to partially ones in the end.
-  HloInstruction* binary_mask = comp->AddInstruction(
-      HloInstruction::CreateBroadcast(mask_input_shape, zero, {}));
-
-  bool need_rewrite = false;
-
-  // Pad the effective dimension with 1.
-  //
-  // Index starts from 1 since there is no need to rewrite a major output
-  // dimension.
-  for (int64_t i = 1; i < input_dims.size(); ++i) {
-    const int64_t input_dim = input_dims[i];
-    HloInstruction* dynamic_size = input_dynamic_dims[input_dim];
-    if (dynamic_size == nullptr) {
-      continue;
-    }
-    // If there is a dynamic dimension in the input, need to rewrite the output.
-    need_rewrite = true;
-
-    binary_mask = PadWithScalar(binary_mask, i, dynamic_size, one);
-  }
-  if (!need_rewrite) {
+  // Step 1.
+  // Generate binary mask.
+  HloInstruction* output_shape_binary_mask =
+      GenerateBinaryMask(reshape, output_dim, input_dims, input_dynamic_dims,
+                         one, zero, /*split_input=*/false);
+  if (output_shape_binary_mask == nullptr) {
+    // No need to rewrite.
     VLOG(2) << "No need to rewrite";
     return Status::OK();
   }
 
   // Step 2.
-  // Do a reshape to flatten the binary mask into output_shape
-  HloInstruction* output_shape_binary_mask = comp->AddInstruction(
-      HloInstruction::CreateReshape(mask_output_shape, binary_mask));
-
-  // Step 3.
   // Generate an iota with output shape.
   HloInstruction* iota =
       comp->AddInstruction(HloInstruction::CreateIota(mask_output_shape, 0));
 
-  // Step 4.
+  // Step 3.
   // Stable sort the iota mask using the binary mask as key and iota as value:
 
   // Build computation for sort, key is the mask, value is the iota.
@@ -649,7 +678,7 @@ Status RewriteDynamicReshapeCombineInput(
       3, ShapeUtil::MakeScalarShape(S32), "rhs_value"));
   comp_builder.AddInstruction(
       HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), lhs_key,
-                                    rhs_key, ComparisonDirection::kLt));
+                                    rhs_key, ComparisonDirection::kGt));
   HloComputation* compare =
       comp->parent()->AddEmbeddedComputation(comp_builder.Build());
 
@@ -662,7 +691,7 @@ Status RewriteDynamicReshapeCombineInput(
   HloInstruction* gather_indices = comp->AddInstruction(
       HloInstruction::CreateGetTupleElement(mask_output_shape, sort, 1));
 
-  // Step 5.Gather the original output using the sorted iota mask:
+  // Step 4.Gather the original output using the sorted iota mask:
 
   GatherDimensionNumbers gather_dim_numbers;
   // Use gather to rearrange the output dim dimension.
