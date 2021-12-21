@@ -75,6 +75,7 @@ namespace kernel_gen {
 namespace {
 
 using mlir::Value;
+using mlir::memref::RankOp;
 using mlir::scf::ParallelOp;
 
 constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
@@ -98,10 +99,10 @@ bool IsSmallAlloc(Value alloc) {
     if (type.getRank() <= kMaxRankOfAllocatedMemRef) {
       for (Value alloc_arg : alloc.getDefiningOp()->getOperands()) {
         if (auto select = alloc_arg.getDefiningOp<mlir::SelectOp>()) {
-          if (!select.getTrueValue().getDefiningOp<mlir::RankOp>() ||
-              !select.getFalseValue().getDefiningOp<mlir::RankOp>())
+          if (!select.getTrueValue().getDefiningOp<RankOp>() ||
+              !select.getFalseValue().getDefiningOp<RankOp>())
             return false;
-        } else if (!alloc_arg.getDefiningOp<mlir::RankOp>()) {
+        } else if (!alloc_arg.getDefiningOp<RankOp>()) {
           return false;
         }
       }
@@ -373,7 +374,9 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addNestedPass<::mlir::FuncOp>(mlir::createForLoopSpecializationPass());
   // Take launches to launches with kernels.
   if (!cpu_codegen) {
-    pm.addPass(::mlir::createGpuKernelOutliningPass());
+    const std::string gpuDataLayoutSpec =
+        "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
+    pm.addPass(mlir::createGpuKernelOutliningPass(gpuDataLayoutSpec));
   }
 
   pm.addPass(::mlir::createLowerAffinePass());

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
@@ -125,6 +125,10 @@ void CreateTfCpuRtPipeline(OpPassManager& pm,
       CreateSymbolicShapeOptimizationPass(/*constraints_only=*/true));
 
   // Move up broadcasting operations to allow for more fusion opportunities.
+  // Add the broadcast propagation pass first, because it can help to avoid
+  // exponential complexity from the EarlyBroadcastInDimOp pattern which is used
+  // in the merge assuming ops pass further down.
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

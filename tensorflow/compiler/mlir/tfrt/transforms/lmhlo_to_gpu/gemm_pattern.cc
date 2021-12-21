@@ -182,10 +182,10 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
   const mlir::mhlo::DotDimensionNumbersAttr dim_nums =
       op.dot_dimension_numbers();
   absl::Span<const int64_t> output_batch_dims =
-      xla::AsInt64Slice((dim_nums.getLhsBatchingDimensions().size() >
-                         dim_nums.getRhsBatchingDimensions().size())
-                            ? dim_nums.getLhsBatchingDimensions()
-                            : dim_nums.getRhsBatchingDimensions());
+      (dim_nums.getLhsBatchingDimensions().size() >
+       dim_nums.getRhsBatchingDimensions().size())
+          ? dim_nums.getLhsBatchingDimensions()
+          : dim_nums.getRhsBatchingDimensions();
 
   int64_t batch_size = op.batch_size();
   int64_t output_row_dim = output_batch_dims.size();

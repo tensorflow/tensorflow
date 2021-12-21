@@ -24,7 +24,8 @@ namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using memory_space_assignment::AsynchronousCopyOrdering;
+using memory_space_assignment::AsynchronousCopy;
+using memory_space_assignment::AsynchronousCopyResource;
 using memory_space_assignment::CostAnalysisPrefetchIntervalPicker;
 using memory_space_assignment::InstructionCountPrefetchIntervalPicker;
 using memory_space_assignment::MemorySpaceAssignment;
@@ -2521,121 +2522,6 @@ TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
                        op::Add(op::Parameter(0), op::Parameter(0)))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, CopyOrdering) {
-  // Test to make sure the CopyStarts follow the same CopyDone order. The shapes
-  // are picked in increasing order to exploit the fact that heap simulator
-  // processes larger tensors first. This checks the ability of the compiler to
-  // reschedule:
-  //
-  //  CS1            CD1
-  //   +--------------+
-  //    +-----------+
-  //   CS2         CD2
-  //
-  // into:
-  //
-  //    CS1          CD1
-  //     +------------+
-  //    +-----------+
-  //   CS2         CD2
-  HloComputation::Builder builder(TestName());
-  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 1});
-  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 2});
-  Shape shape3 = ShapeUtil::MakeShape(F32, {2, 3});
-  Shape shape4 = ShapeUtil::MakeShape(F32, {2, 4});
-  PaddingConfig padding_config = MakeEdgePaddingConfig({{0, 0}, {0, 1}});
-  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape3, shape4});
-  HloInstruction* p0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "p"));
-  HloInstruction* p4 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(shape4, p0, 1));
-  HloInstruction* p3 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(shape3, p0, 0));
-  HloInstruction* p2 =
-      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "p2"));
-  HloInstruction* p1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "p1"));
-  HloInstruction* negate0 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, p1));
-  HloInstruction* negate1 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate0));
-  HloInstruction* negate2 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate1));
-  HloInstruction* negate3 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate2));
-  HloInstruction* negate4 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate3));
-  HloInstruction* negate5 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate4));
-  HloInstruction* negate6 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate5));
-  HloInstruction* padding_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(F32)));
-  HloInstruction* add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, negate6, p1));
-  HloInstruction* padded_add1 = builder.AddInstruction(
-      HloInstruction::CreatePad(shape2, add1, padding_value, padding_config));
-  HloInstruction* add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape2, HloOpcode::kAdd, padded_add1, p2));
-  HloInstruction* padded_add2 = builder.AddInstruction(
-      HloInstruction::CreatePad(shape3, add2, padding_value, padding_config));
-  HloInstruction* negate7 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape4, HloOpcode::kNegate, p4));
-  HloInstruction* add3 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape3, HloOpcode::kAdd, padded_add2, p3));
-  HloInstruction* padded_add3 = builder.AddInstruction(
-      HloInstruction::CreatePad(shape4, add3, padding_value, padding_config));
-  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
-      shape4, HloOpcode::kAdd, padded_add3, negate7));
-
-  auto module = CreateNewVerifiedModule();
-  HloComputation* computation = module->AddEntryComputation(builder.Build());
-
-  HloSchedule schedule(module.get());
-  schedule.set_sequence(computation, {p0,
-                                      p4,
-                                      p3,
-                                      p2,
-                                      p1,
-                                      negate0,
-                                      negate1,
-                                      negate2,
-                                      negate3,
-                                      negate4,
-                                      negate5,
-                                      negate6,
-                                      padding_value,
-                                      add1,
-                                      padded_add1,
-                                      add2,
-                                      padded_add2,
-                                      negate7,
-                                      add3,
-                                      padded_add3,
-                                      add4});
-  TF_CHECK_OK(module->set_schedule(schedule));
-
-  // Use a large max prefetch interval to force CopyStart/CopyDone right after
-  // the parameters.
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*max_prefetch_interval=*/50);
-
-  // Iterate over the schedule to make sure CopyStart order and the
-  // corresponding CopyDone order match.
-  std::list<const HloInstruction*> copy_starts;
-  for (HloInstruction* instruction : module->schedule()
-                                         .sequence(module->entry_computation())
-                                         .instructions()) {
-    if (instruction->opcode() == HloOpcode::kCopyStart) {
-      copy_starts.push_back(instruction);
-    }
-    if (instruction->opcode() == HloOpcode::kCopyDone) {
-      EXPECT_EQ(copy_starts.front(), instruction->operand(0));
-      copy_starts.pop_front();
-    }
-  }
-}
-
 TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
   // Test to ensure CopyStart/CopyDone is placed only in the entry computation.
   auto module = CreateNewVerifiedModule();
@@ -4052,125 +3938,6 @@ TEST_P(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     buffer_interval_compare, &prefetch_interval_picker);
-}
-
-TEST_P(MemorySpaceAssignmentTest, MoveCopyDoneEarlier) {
-  // This tests the case where an earlier placed smaller buffer may block a
-  // larger buffer due to asynchronous copy ordering. The smaller buffer (the
-  // operand of sin) will be placed first. The cos, whose operand is 3 times
-  // larger than sin's, needs longer time for the asynhronous copy. The cos is
-  // placed right after sin, leading to a copy ordering violation:
-  //
-  // param1------------------>CS----->CD->sin
-  // param0------------->CS------------------->CD->cos
-  //
-  // To fix this, we need to move copy done for cos earlier and ensure both of
-  // these buffers get alternate memory allocations:
-  //
-  // param1------------------>CS----->CD->sin
-  // param0-->CS------------------->CD------------>cos
-  absl::string_view hlo_string = R"(
-  HloModule module, is_scheduled=true
-
-  ENTRY Entry {
-    param0 = f32[8,3] parameter(0)
-    param1 = f32[2,4] parameter(1)
-    a = f32[2,4] negate(param1)
-    b = f32[2,4] negate(a)
-    c = f32[2,4] negate(b)
-    d = f32[2,4] negate(c)
-    e = f32[2,4] negate(d)
-    f = f32[2,4] negate(e)
-    g = f32[2,4] negate(f)
-    h = f32[2,4] negate(g)
-    i = f32[2,4] negate(h)
-    j = f32[2,4] negate(i)
-    k = f32[2,4] negate(j)
-    l = f32[2,4] negate(k)
-    m = f32[2,4] negate(l)
-    n = f32[2,4] negate(m)
-    sin = f32[2,4] sine(param1)
-    o = f32[2,4] negate(n)
-    cos = f32[8,3] cosine(param0)
-    ROOT tuple = (f32[8,3], f32[2,4], f32[2,4]) tuple(cos, sin, o)
-  }
-  )";
-
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
-        auto get_opcode_priority = [](const HloOpcode& opcode) {
-          switch (opcode) {
-            case HloOpcode::kSin:
-              return 0;
-            case HloOpcode::kCos:
-              return 1;
-            case HloOpcode::kTanh:
-              return 2;
-            default:
-              return 3;
-          }
-        };
-
-        auto get_user_priority = [&](const HloValue& value) {
-          int priority = INT_MAX;
-          for (const auto& use : value.uses()) {
-            priority = std::min(priority,
-                                get_opcode_priority(use.instruction->opcode()));
-          }
-          return priority;
-        };
-
-        return get_user_priority(*a.buffer) < get_user_priority(*b.buffer);
-      };
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
-  Options options;
-  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
-                          FakeMemorySpaceAssignmentCostAnalysis::Create(
-                              hlo_cost_analysis, *module, options));
-  cost_analysis->SetOverrideForGetAsyncCopyElapsed([](const Shape& shape) {
-    // This should return 2 for f32[2,4] and 6 for f32[8,3].
-    return ShapeSize(shape) / 16;
-  });
-  CostAnalysisPrefetchIntervalPicker interval_picker(
-      *cost_analysis,
-      /*min_overlap_to_async_copy_ratio=*/1.0,
-      /*preferred_overlap_to_async_copy_ratio=*/1.5,
-      /*max_overlap_to_mem_size_async_copy_ratio=*/4.0,
-      /*mem_size_bytes=*/128);
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    buffer_interval_compare, &interval_picker);
-
-  // Check that both cos and sin could get their operands prefetched.
-  const HloInstruction* cos =
-      module->entry_computation()->GetInstructionWithName("cos");
-  const HloInstruction* sin =
-      module->entry_computation()->GetInstructionWithName("sin");
-  EXPECT_THAT(sin->operand(0),
-              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                            op::Parameter(1)));
-  EXPECT_THAT(cos->operand(0),
-              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                            op::Parameter(0)));
-
-  // Sanity check that the cos' operand copy-done is scheduled earlier than
-  // sin's operand.
-  auto find_schedule_index = [&](const HloInstruction* instruction) {
-    const auto& instructions =
-        module->schedule().sequence(module->entry_computation()).instructions();
-    for (int i = 0; i < instructions.size(); ++i) {
-      if (instruction == instructions[i]) {
-        return i;
-      }
-    }
-    CHECK(false);
-    return -1;
-  };
-  EXPECT_GT(find_schedule_index(sin->operand(0)),
-            find_schedule_index(cos->operand(0)));
 }
 
 TEST_P(MemorySpaceAssignmentTest, WhileAliasedArgumentRequiredAssignmentBug) {
@@ -5933,37 +5700,304 @@ INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
 
-using AsynchronousCopyOrderingTest = ::testing::Test;
+using AsynchronousCopyResourceTest = ::testing::Test;
 
-TEST_F(AsynchronousCopyOrderingTest, Simple) {
-  // Given asynchronous copies like the following, ensure the pipelining order
-  // is maintained (earlier start time must have earlier end time).
-  // 3,11       +-------+         OK
-  // 1,8      +------+            OK
-  // 5,14         +--------+      OK
-  // 7,14           +------+      OK
-  // 2,16      +-------------+    Violate
-  // 9,12             +--+        Violate
-  // 6,17          +----------+   Violate
-  // 5,13         +-------+       OK (same start as 5,14)
-  // 5,14         +--------+      OK (same as 5,14)
+TEST_F(AsynchronousCopyResourceTest, Simple) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 3 1 6 7 1 7 2 2 4
+  // -1,3,5    +-----+                OK
+  // resource:  0 0 1 6 7 1 7 2 2 4
+  //  1,4,4        +---+              OK
+  // resource:  0 0 0 3 7 1 7 2 2 4
+  //  5,9,10               +-----+
+  // resource:  0 0 0 3 7 1 0 0 1 4
+  //  4,9,3              +-------+    Violate
+  //  4,8,2              +-----+      OK; The 5,9 copy shifts resource to right.
+  // resource:  0 0 0 3 7 0 0 0 0 4
   auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
-  AsynchronousCopyOrdering ordering;
-  EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
-  ordering.AddCopy({3, 11, 11, alternate_mem_space});
-  EXPECT_FALSE(ordering.ViolatesOrdering(1, 8));
-  ordering.AddCopy({1, 8, 8, alternate_mem_space});
-  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
-  ordering.AddCopy({5, 14, 14, alternate_mem_space});
-  EXPECT_FALSE(ordering.ViolatesOrdering(7, 14));
-  ordering.AddCopy({7, 14, 14, alternate_mem_space});
-  EXPECT_TRUE(ordering.ViolatesOrdering(2, 16));
-  EXPECT_TRUE(ordering.ViolatesOrdering(9, 12));
-  EXPECT_TRUE(ordering.ViolatesOrdering(6, 17));
-  EXPECT_FALSE(ordering.ViolatesOrdering(5, 13));
-  ordering.AddCopy({5, 13, 13, alternate_mem_space});
-  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
-  ordering.AddCopy({5, 14, 14, alternate_mem_space});
+  AsynchronousCopyResource resource(
+      {2.0, 3.0, 1.0, 6.0, 7.0, 1.0, 7.0, 2.0, 2.0, 4.0});
+  EXPECT_TRUE(resource.HasEnoughResource(-1, 3, 5.0));
+  resource.AddCopy({-1, 3, 5.0, alternate_mem_space, 0});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 4, 4.0));
+  resource.AddCopy({1, 4, 4.0, alternate_mem_space, 1});
+  EXPECT_TRUE(resource.HasEnoughResource(5, 9, 10.0));
+  resource.AddCopy({5, 9, 10.0, alternate_mem_space, 2});
+  EXPECT_FALSE(resource.HasEnoughResource(4, 9, 3.0));
+  EXPECT_TRUE(resource.HasEnoughResource(4, 8, 2.0));
+  resource.AddCopy({4, 8, 2.0, alternate_mem_space, 3});
+}
+
+TEST_F(AsynchronousCopyResourceTest, Propagate) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 2 2 2 2 2 2 2 2 2
+  // 6,10,2                  +-----+   OK
+  // resource:  2 2 2 2 2 2 2 0 2 2
+  // 5,9,2                 +-----+     OK
+  // resource:  2 2 2 2 2 2 0 0 2 2
+  // 4,8,2               +-----+       OK
+  // resource:  2 2 2 2 2 0 0 0 2 2
+  // 3,7,2             +-----+         OK
+  // resource:  2 2 2 2 0 0 0 0 2 2
+  // 2,6,2           +-----+           OK
+  // resource:  2 2 2 0 0 0 0 0 2 2
+  // 1,5,2         +-----+             OK
+  // resource:  2 2 0 0 0 0 0 0 2 2
+  // 0,4,3       +-----+               OK
+  // resource:  2 0 0 0 0 0 0 0 1 2
+  // 0,4,3       +-----+               OK
+  // resource:  2 0 0 0 0 0 0 0 0 0
+  // 0,4,1       +-----+               Violate
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
+  EXPECT_TRUE(resource.HasEnoughResource(6, 10, 2.0));
+  resource.AddCopy({6, 10, 2.0, alternate_mem_space, 0});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(5, 9, 2.0));
+  resource.AddCopy({5, 9, 2.0, alternate_mem_space, 1});
+  EXPECT_TRUE(resource.HasEnoughResource(4, 8, 2.0));
+  resource.AddCopy({4, 8, 2.0, alternate_mem_space, 2});
+  EXPECT_TRUE(resource.HasEnoughResource(3, 7, 2.0));
+  resource.AddCopy({3, 7, 2.0, alternate_mem_space, 3});
+  EXPECT_TRUE(resource.HasEnoughResource(2, 6, 2.0));
+  resource.AddCopy({2, 6, 2.0, alternate_mem_space, 4});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 2.0));
+  resource.AddCopy({1, 5, 2.0, alternate_mem_space, 5});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 3.0));
+  resource.AddCopy({0, 4, 3.0, alternate_mem_space, 6});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 3.0));
+  resource.AddCopy({0, 4, 3.0, alternate_mem_space, 7});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(0, 4, 1.0));
+}
+
+TEST_F(AsynchronousCopyResourceTest, CantPropagate) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 2 2 2 2 2 2 2 2 2
+  // 5,10,2                +-------+   OK
+  // resource:  2 2 2 2 2 2 0 2 2 2
+  // 4,7,2               +---+         OK
+  // resource:  2 2 2 2 2 0 0 2 2 2
+  // 4,8,4               +-----+       OK
+  // resource:  2 2 2 2 2 0 0 0 0 2
+  // 3,6,4             +---+           Violate
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
+  EXPECT_TRUE(resource.HasEnoughResource(5, 10, 2.0));
+  resource.AddCopy({5, 10, 2.0, alternate_mem_space, 0});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 2.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(4, 7, 2.0));
+  resource.AddCopy({4, 7, 2.0, alternate_mem_space, 1});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 0.0, 2.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(4, 8, 4.0));
+  resource.AddCopy({4, 8, 4.0, alternate_mem_space, 2});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(3, 6, 4.0));
+}
+
+TEST_F(AsynchronousCopyResourceTest, Nested) {
+  // time:      0 1 2 3 4
+  // resource:  2 2 2 2 2
+  // 1,3,2         +-+       OK
+  // resource:  2 2 0 2 2
+  // 0,4,4       +-----+     Violate
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 3, 2.0));
+  resource.AddCopy({1, 3, 2.0, alternate_mem_space, 0});
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 2.0, 2.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(0, 4, 4.0));
+}
+
+TEST_F(AsynchronousCopyResourceTest, Remove) {
+  // time:      0 1 2 3 4
+  // resource:  2 2 2 2 2
+  // add:2,5,2       +---+   OK
+  // resource:  2 2 2 0 2
+  // add:-1,2,3+---+         OK
+  // resource:  0 1 2 0 2
+  // add:0,4,4   +-----+     OK
+  // resource:  0 0 0 0 1
+  // rem:0,4,4   +-----+
+  // resource:  0 1 2 0 2
+  // rem:2,5,2       +---+
+  // resource:  0 1 2 2 2
+  // rem:-1,2,3+---+
+  // resource:  2 2 2 2 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
+  AsynchronousCopy copy1{2, 5, 2.0, alternate_mem_space, 0};
+  AsynchronousCopy copy2{-1, 2, 3.0, alternate_mem_space, 1};
+  AsynchronousCopy copy3{0, 4, 4.0, alternate_mem_space, 2};
+  EXPECT_TRUE(resource.HasEnoughResource(2, 5, 2.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 0.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(-1, 2, 3.0));
+  resource.AddCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 1.0, 2.0, 0.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 4.0));
+  resource.AddCopy(copy3);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 0.0, 0.0, 0.0, 1.0}));
+  resource.RemoveCopy(copy3);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 1.0, 2.0, 0.0, 2.0}));
+  resource.RemoveCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 1.0, 2.0, 2.0, 2.0}));
+  resource.RemoveCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
+}
+
+TEST_F(AsynchronousCopyResourceTest, NestedRemove) {
+  // time:      0 1 2 3 4
+  // resource:  2 2 2 2 2
+  // add:1,3,2     +-+       OK
+  // resource:  2 2 0 2 2
+  // add:0,4,4   +-----+     Violate
+  // rem:1,3,2     +-+
+  // resource:  2 2 2 2 2
+  // add:0,4,4   +-----+     OK
+  // resource:  2 0 0 2 2
+  // add:1,3,2     +-+       Violate
+  // rem:0,4,4   +-----+
+  // resource:  2 2 2 2 2
+  // add:1,3,2     +-+       OK
+  // resource:  2 2 0 2 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
+  AsynchronousCopy copy1{1, 3, 2.0, alternate_mem_space, 0};
+  AsynchronousCopy copy2{0, 4, 4.0, alternate_mem_space, 1};
+  EXPECT_TRUE(resource.HasEnoughResource(1, 3, 2.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 2.0, 2.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(0, 4, 4.0));
+  resource.RemoveCopy(copy1);
+  auto current_resources = resource.GetCurrentResources();
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 4.0));
+  resource.AddCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 0.0, 0.0, 2.0, 2.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(1, 3, 2.0));
+  resource.RemoveCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 3, 2.0));
+}
+
+TEST_F(AsynchronousCopyResourceTest, PropagateRemove) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 2 2 2 2 2 2 2 2 2
+  // add:6,10,2              +-----+   OK
+  // resource:  2 2 2 2 2 2 2 0 2 2
+  // add:5,9,2             +-----+     OK
+  // resource:  2 2 2 2 2 2 0 0 2 2
+  // add:4,8,2           +-----+       OK
+  // resource:  2 2 2 2 2 0 0 0 2 2
+  // add:3,7,2         +-----+         OK
+  // resource:  2 2 2 2 0 0 0 0 2 2
+  // add:2,6,2       +-----+           OK
+  // resource:  2 2 2 0 0 0 0 0 2 2
+  // add:1,5,2     +-----+             OK
+  // resource:  2 2 0 0 0 0 0 0 2 2
+  // add:0,4,3   +-----+               OK
+  // resource:  2 0 0 0 0 0 0 0 1 2
+  // add:0,5,3   +-------+             OK
+  // resource:  2 0 0 0 0 0 0 0 0 0
+  // rem:0,5,3   +-------+
+  // resource:  2 0 0 0 0 0 0 0 1 2
+  // rem:0,4,3   +-----+
+  // resource:  2 2 0 0 0 0 0 0 2 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
+  EXPECT_TRUE(resource.HasEnoughResource(6, 10, 2.0));
+  resource.AddCopy({6, 10, 2.0, alternate_mem_space, 0});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(5, 9, 2.0));
+  resource.AddCopy({5, 9, 2.0, alternate_mem_space, 1});
+  EXPECT_TRUE(resource.HasEnoughResource(4, 8, 2.0));
+  resource.AddCopy({4, 8, 2.0, alternate_mem_space, 2});
+  EXPECT_TRUE(resource.HasEnoughResource(3, 7, 2.0));
+  resource.AddCopy({3, 7, 2.0, alternate_mem_space, 3});
+  EXPECT_TRUE(resource.HasEnoughResource(2, 6, 2.0));
+  resource.AddCopy({2, 6, 2.0, alternate_mem_space, 4});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 2.0));
+  resource.AddCopy({1, 5, 2.0, alternate_mem_space, 5});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0}));
+  AsynchronousCopy copy1{0, 4, 3.0, alternate_mem_space, 6};
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 3.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 5, 3.0));
+  AsynchronousCopy copy2{0, 5, 3.0, alternate_mem_space, 7};
+  resource.AddCopy(copy2);
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
+  resource.RemoveCopy(copy2);
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0}));
+  resource.RemoveCopy(copy1);
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0}));
+}
+
+TEST_F(AsynchronousCopyResourceTest, StartAtZeroAndRemove) {
+  // time:      0 1 2 3 4
+  // resource:  0 0 1 1 2
+  // add:0,4,2   +-----+     OK
+  // resource:  0 0 0 0 2
+  // rem:0,4,2   +-----+
+  // resource:  0 0 1 1 2
+  // add:0,4,2   +-----+     OK
+  // resource:  0 0 0 0 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({0.0, 0.0, 1.0, 1.0, 2.0});
+  AsynchronousCopy copy1{0, 4, 2.0, alternate_mem_space, 0};
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 2.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 0.0, 0.0, 0.0, 2.0}));
+  resource.RemoveCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 0.0, 1.0, 1.0, 2.0}));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 0.0, 0.0, 0.0, 2.0}));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {

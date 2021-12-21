@@ -15,7 +15,10 @@ limitations under the License.
 
 // This file implements logic for lowering HLO/LHLO dialect to Linalg dialect.
 
+#include <algorithm>
 #include <numeric>
+#include <string>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -28,8 +31,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -496,7 +498,7 @@ class EinsumToLinalgConverter : public OpConversionPattern<mhlo::EinsumOp> {
     // Create a 1:1 map from f:strDimension -> affineDimension.
     int64_t nloops = input_ind.size();
     DenseMap<StringRef, AffineExpr> str_affine_dim_umap;
-    for (auto it : llvm::enumerate(input_ind)) {
+    for (auto& it : llvm::enumerate(input_ind)) {
       str_affine_dim_umap[it.value()] = rewriter.getAffineDimExpr(it.index());
     }
 
@@ -1088,7 +1090,7 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
           }
 
           Value index_op = b.create<linalg::IndexOp>(loc, dim);
-          for (auto it : llvm::enumerate(adaptor.getOperands())) {
+          for (auto& it : llvm::enumerate(adaptor.getOperands())) {
             Value arg = it.value();
             Value new_concat_dim_size;
             scf::IfOp if_op;
@@ -1152,14 +1154,14 @@ class ConstConverterTensor : public OpConversionPattern<mhlo::ConstOp> {
 };
 
 // TODO(b/156787842): Support the lowering for dynamic shapes.
-template <typename OpTy>
 class ReverseConverter
-    : public DataMovementOpConverter<ReverseConverter<OpTy>, OpTy> {
+    : public DataMovementOpConverter<ReverseConverter, mhlo::ReverseOp> {
  public:
-  using DataMovementOpConverter<ReverseConverter<OpTy>,
-                                OpTy>::DataMovementOpConverter;
-  static SmallVector<AffineMap, 2> getIndexingMaps(OpTy op, Builder* b) {
-    auto result_type = GetHloOpResultType(op).template cast<ShapedType>();
+  using DataMovementOpConverter<ReverseConverter,
+                                mhlo::ReverseOp>::DataMovementOpConverter;
+  static SmallVector<AffineMap, 2> getIndexingMaps(mhlo::ReverseOp op,
+                                                   Builder* b) {
+    auto result_type = GetHloOpResultType(op).cast<ShapedType>();
     auto nloops = result_type.getRank();
     SmallVector<AffineExpr, 2> input_exprs;
     input_exprs.reserve(nloops);
@@ -1177,25 +1179,23 @@ class ReverseConverter
   }
 };
 
-template <typename OpTy>
-class SliceConverter : public OpConversionPattern<OpTy> {
+class SliceConverter : public OpConversionPattern<mhlo::SliceOp> {
  public:
-  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      OpTy slice_op, typename OpTy::Adaptor adaptor,
+      mhlo::SliceOp slice_op, typename mhlo::SliceOp::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    auto arg_type =
-        adaptor.getOperands()[0].getType().template dyn_cast<ShapedType>();
+    auto arg_type = adaptor.getOperands()[0].getType().dyn_cast<ShapedType>();
     if (!arg_type || !arg_type.hasRank()) {
       return rewriter.notifyMatchFailure(slice_op, "expects known-rank args");
     }
 
     SmallVector<OpFoldResult, 3> offsets, sizes, strides;
     for (int i = 0, e = arg_type.getRank(); i < e; ++i) {
-      auto start = slice_op.start_indices().template getValues<int64_t>()[i];
-      auto limit = slice_op.limit_indices().template getValues<int64_t>()[i];
-      auto stride = slice_op.strides().template getValues<int64_t>()[i];
+      auto start = slice_op.start_indices().getValues<int64_t>()[i];
+      auto limit = slice_op.limit_indices().getValues<int64_t>()[i];
+      auto stride = slice_op.strides().getValues<int64_t>()[i];
       offsets.push_back(rewriter.getI64IntegerAttr(start));
       // Say that there are k elements in total, we have condition:
       //   start + (k - 1) * strides <= limit - 1
@@ -1232,7 +1232,7 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
                                       .getType()
                                       .cast<RankedTensorType>()
                                       .getElementType()));
-    for (auto en : llvm::enumerate(
+    for (auto& en : llvm::enumerate(
              llvm::zip(adaptor.start_indices(),
                        dynamic_slice_op.slice_sizes().getValues<int64_t>()))) {
       int64_t size = std::get<1>(en.value());
@@ -1315,7 +1315,7 @@ class DynamicUpdateSliceConverter
                                 .getElementType();
     Value zero = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getZeroAttr(start_index_type));
-    for (auto en : llvm::enumerate(adaptor.start_indices())) {
+    for (auto& en : llvm::enumerate(adaptor.start_indices())) {
       // By mhlo.DynamicUpdateSlice definition:
       //   `start_indices[i] = clamp(start_indices[i],
       //       0, operand.dimension_size[i] - update.dimension_size[i])`
@@ -1399,7 +1399,7 @@ SmallVector<Value, 2> GetDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
 }
 
 template <DotOperationType op_type, typename LinalgOp>
-class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
+class DotOpConversion : public OpConversionPattern<mhlo::DotOp> {
  public:
   using OpConversionPattern<mhlo::DotOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1439,8 +1439,7 @@ SmallVector<Value, 8> GetDotGeneralOpInitTensorDynSizes(
   return dyn_shape;
 }
 
-class DotGeneralOpOnTensorsConversion
-    : public OpConversionPattern<mhlo::DotGeneralOp> {
+class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
  public:
   using OpConversionPattern<mhlo::DotGeneralOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1554,7 +1553,7 @@ class ReduceRegionReturnOpConversion
   }
 };
 
-class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
+class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
  public:
   using OpConversionPattern<mhlo::ReduceOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1646,7 +1645,7 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
 };
 
 /// Converts mhlo.pad operation to linalg.pad_tensor op.
-struct PadOpOnTensorsConversion : public OpConversionPattern<mhlo::PadOp> {
+struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
   using OpConversionPattern<mhlo::PadOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -1683,8 +1682,7 @@ struct PadOpOnTensorsConversion : public OpConversionPattern<mhlo::PadOp> {
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
 /// convolution cases. The op must have canonical dimension numbers. Depthwise
 /// convolution and pointwise convolution are not handled in the conversion.
-struct NormalConvOpOnTensorsConversion
-    : public OpConversionPattern<mhlo::ConvOp> {
+struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
   using OpConversionPattern<mhlo::ConvOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -1764,8 +1762,7 @@ struct NormalConvOpOnTensorsConversion
 /// Converts mhlo.convolution operation to
 /// linalg.depthwise_conv_2d_input_nhwc_filter_hwcf op or
 /// depthwise_conv_2d_input_nhwc_filter_hwc op.
-struct DepthwiseConvOpOnTensorsConversion
-    : public OpConversionPattern<mhlo::ConvOp> {
+struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
   using OpConversionPattern<mhlo::ConvOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -2064,7 +2061,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
   }
 };
 
-struct ReduceWindowOpOnTensorsConversion
+struct ReduceWindowOpConversion
     : public OpConversionPattern<mhlo::ReduceWindowOp> {
   using OpConversionPattern<mhlo::ReduceWindowOp>::OpConversionPattern;
 
@@ -2259,7 +2256,7 @@ struct ReduceWindowOpOnTensorsConversion
 };
 
 /// Converts xla-hlo.torch_index_select op to a linalg.generic op.
-struct TorchIndexSelectOpOnTensorsConversion
+struct TorchIndexSelectOpConversion
     : public OpConversionPattern<mhlo::TorchIndexSelectOp> {
   using OpConversionPattern<mhlo::TorchIndexSelectOp>::OpConversionPattern;
 
@@ -2360,7 +2357,7 @@ struct TorchIndexSelectOpOnTensorsConversion
 /// lowerings, special-cases of gather should be extracted in separate
 /// lowerings, and ideally encapsulated as separate ops or canonicalization
 /// patterns.
-struct GatherOnTensorsConversion : public OpConversionPattern<mhlo::GatherOp> {
+struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
   using OpConversionPattern<mhlo::GatherOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -2525,8 +2522,7 @@ struct GatherOnTensorsConversion : public OpConversionPattern<mhlo::GatherOp> {
   }
 };
 
-struct ScatterUpdateOnTensorsConversion
-    : public OpConversionPattern<mhlo::ScatterOp> {
+struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
   using OpConversionPattern<mhlo::ScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -2845,6 +2841,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::PowOp>,
       PointwiseToLinalgConverter<mhlo::RealOp>,
       PointwiseToLinalgConverter<mhlo::RemOp>,
+      PointwiseToLinalgConverter<mhlo::RoundOp>,
       PointwiseToLinalgConverter<mhlo::RsqrtOp>,
       PointwiseToLinalgConverter<mhlo::SelectOp>,
       PointwiseToLinalgConverter<mhlo::ShiftLeftOp>,
@@ -2857,29 +2854,27 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
       PointwiseToLinalgConverter<mhlo::XorOp>,
       ReshapeOpConverter,
-      ReverseConverter<mhlo::ReverseOp>,
-      SliceConverter<mhlo::SliceOp>,
+      ReverseConverter,
+      SliceConverter,
       ComputeReshapeShapeConversion,
       CstrReshapableConversion,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
       TransposeConverter<mhlo::TransposeOp>,
-      DotOpOnTensorsConversion<DotOperationType::kMatrixMatrix,
-                               linalg::MatmulOp>,
-      DotOpOnTensorsConversion<DotOperationType::kMatrixVector,
-                               linalg::MatvecOp>,
-      DotOpOnTensorsConversion<DotOperationType::kVectorDot, linalg::DotOp>,
-      DotGeneralOpOnTensorsConversion,
-      NormalConvOpOnTensorsConversion,
-      DepthwiseConvOpOnTensorsConversion,
-      ReduceOnTensorsConversion,
+      DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
+      DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,
+      DotOpConversion<DotOperationType::kVectorDot, linalg::DotOp>,
+      DotGeneralOpConversion,
+      NormalConvOpConversion,
+      DepthwiseConvOpConversion,
+      ReduceConversion,
       ReduceWindowOpOnTensorsGenericConversion,
-      ReduceWindowOpOnTensorsConversion,
+      ReduceWindowOpConversion,
       RngUniformConversion,
-      ScatterUpdateOnTensorsConversion,
-      GatherOnTensorsConversion,
-      TorchIndexSelectOpOnTensorsConversion,
-      PadOpOnTensorsConversion>(type_converter, context);
+      ScatterUpdateConversion,
+      GatherConversion,
+      TorchIndexSelectOpConversion,
+      PadOpConversion>(type_converter, context);
   // clang-format on
   patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
                    ReduceRegionXLAOpConversion<mhlo::AndOp>,

@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace xla {
 
-enum class FftType : int32 {
+enum class FftType : int32_t {
   FFT = 0,    // Forward FFT; complex in, complex out.
   IFFT = 1,   // Inverse FFT; complex in, complex out.
   RFFT = 2,   // Forward real FFT; real in, fft_length / 2 + 1 complex out

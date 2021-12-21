@@ -45,8 +45,7 @@ XlaOp TopK(XlaOp input, int64_t k) {
       }
     }
 
-    Shape iota_shape =
-        ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
+    Shape iota_shape = ShapeUtil::MakeShape(S32, input_shape.dimensions());
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
     for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {
@@ -92,8 +91,7 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
       return TopK(input, k);
     }
 
-    Shape iota_shape =
-        ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
+    Shape iota_shape = ShapeUtil::MakeShape(S32, input_shape.dimensions());
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
     for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {
@@ -111,8 +109,8 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
       auto iota_s32 = values_and_indices[3];
 
       // Slice value and indices for this partition.
-      XlaOp start = Mul(Add(partition, ConstantR0<int32>(builder, 1)),
-                        ConstantR0<int32>(builder, per_partition_size));
+      XlaOp start = Mul(Add(partition, ConstantR0<int32_t>(builder, 1)),
+                        ConstantR0<int32_t>(builder, per_partition_size));
       XlaOp sliced_input =
           DynamicSliceInMinorDims(input, {start}, {per_partition_size});
       XlaOp sliced_indices =

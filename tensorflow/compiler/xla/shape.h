@@ -53,7 +53,7 @@ class Shape {
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
-  string ToString(bool print_layout = false) const;
+  std::string ToString(bool print_layout = false) const;
 
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
@@ -175,9 +175,11 @@ class Shape {
     clear_layout();
   }
 
-  string SerializeAsString() const { return ToProto().SerializeAsString(); }
-  string ShortDebugString() const { return ToProto().ShortDebugString(); }
-  string DebugString() const { return ToProto().DebugString(); }
+  std::string SerializeAsString() const {
+    return ToProto().SerializeAsString();
+  }
+  std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
+  std::string DebugString() const { return ToProto().DebugString(); }
 
   // Equal is a configurable functor to check the equality of two shapes.
   //
@@ -286,7 +288,7 @@ class ProgramShape {
   // Returns a proto representation of the object.
   ProgramShapeProto ToProto() const;
 
-  string ToString() const;
+  std::string ToString() const;
 
   // The following methods mirror the protobuf generated code interface for the
   // message ProgramShapeProto. This enabled easy migration of this data
@@ -312,37 +314,39 @@ class ProgramShape {
 
   // Methods for accessing and manipulating the names of the parameters.
   int parameter_names_size() const { return parameter_names_.size(); }
-  const string& parameter_names(int index) const {
+  const std::string& parameter_names(int index) const {
     return parameter_names_.at(index);
   }
-  void set_parameter_names(int index, const string& value) {
+  void set_parameter_names(int index, const std::string& value) {
     parameter_names_.at(index) = value;
   }
-  string* mutable_parameter_names(int index) {
+  std::string* mutable_parameter_names(int index) {
     return &parameter_names_.at(index);
   }
-  void add_parameter_names(const string& value) {
+  void add_parameter_names(const std::string& value) {
     parameter_names_.push_back(value);
   }
-  string* add_parameter_names() {
+  std::string* add_parameter_names() {
     parameter_names_.push_back("");
     return &parameter_names_.back();
   }
   void clear_parameter_names() { parameter_names_.clear(); }
-  const std::vector<string>& parameter_names() const {
+  const std::vector<std::string>& parameter_names() const {
     return parameter_names_;
   }
-  std::vector<string>* mutable_parameter_names() { return &parameter_names_; }
+  std::vector<std::string>* mutable_parameter_names() {
+    return &parameter_names_;
+  }
 
-  string ShortDebugString() const { return ToProto().ShortDebugString(); }
-  string DebugString() const { return ToProto().DebugString(); }
+  std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
+  std::string DebugString() const { return ToProto().DebugString(); }
 
  private:
   // The shapes of the parameters of the computation represented by this object.
   std::vector<Shape> parameters_;
 
   // The names of the parameters of the computation represented by this object.
-  std::vector<string> parameter_names_;
+  std::vector<std::string> parameter_names_;
 
   // The shape of the result of the computation represented by this object.
   Shape result_;

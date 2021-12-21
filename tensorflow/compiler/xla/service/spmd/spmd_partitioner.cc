@@ -63,8 +63,8 @@ namespace {
 using hlo_sharding_util::GroupedSharding;
 }  // namespace
 
-string SpmdLogger::MakeReport() {
-  string report;
+std::string SpmdLogger::MakeReport() {
+  std::string report;
   absl::StrAppend(&report,
                   "\n\n***** SPMD memory during transformation *****\n");
 
@@ -88,7 +88,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
   if (disabled_) {
     return;
   }
-  string report = hlo->ToString();
+  std::string report = hlo->ToString();
   int64_t max_value = -1;
   for (HloInstruction* inst : group) {
     if (!inst->shape().IsArray()) {
@@ -102,7 +102,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
 
 /* static */ string SpmdLogger::ReportBeforePartition(
     const HloModule& module, int64_t report_instruction_count) {
-  string report;
+  std::string report;
   absl::StrAppend(&report,
                   "\n\n***** SPMD memory usage before partition *****\n");
   absl::StrAppend(&report, "\n  ** Replicated instructions\n");
@@ -123,7 +123,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
 
 /* static */ string SpmdLogger::ReportAfterPartition(
     const HloModule& module, int64_t report_instruction_count) {
-  string report;
+  std::string report;
   absl::StrAppend(&report,
                   "\n\n***** SPMD memory usage after partition *****\n");
   absl::StrAppend(&report,
@@ -137,7 +137,7 @@ template <typename F>
 /* static */ string SpmdLogger::ReportMemoryUsage(
     const HloModule& module, const F& filter,
     int64_t report_instruction_count) {
-  string report;
+  std::string report;
   std::vector<HloInstruction*> instructions;
   instructions.reserve(module.instruction_count());
 
@@ -545,7 +545,7 @@ PartitionedHlo PartitionedHlo::PadWithValue(
           index_limit;
     }
     auto limit = state_.b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(index_limit)));
+        LiteralUtil::CreateR0<int32_t>(index_limit)));
     auto broadcast_limit = state_.b->AddInstruction(
         HloInstruction::CreateBroadcast(index_shape, limit, {}));
     return state_.b->AddInstruction(HloInstruction::CreateCompare(
@@ -1152,7 +1152,7 @@ PartitionedHlo PartitionedHlo::Broadcast() const {
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
 
   auto src_core_id = state_.b->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR0<uint32>(sharding.GetUniqueDevice())));
+      LiteralUtil::CreateR0<uint32_t>(sharding.GetUniqueDevice())));
   Shape bcast_shape = ShapeUtil::ChangeElementType(shape, PRED);
   auto is_src_core = state_.b->AddInstruction(HloInstruction::CreateBroadcast(
       bcast_shape,
@@ -2263,7 +2263,7 @@ Status SpmdPartitioningVisitor::HandleIota(HloInstruction* hlo) {
       auto partition_ordinals = MakeTiledPartitionOrdinals(
           sharding, MakePartitioningState().partition_id, &b_);
       auto multiplier = b_.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(iota->shape().dimensions(dimension))));
+          LiteralUtil::CreateR0<int32_t>(iota->shape().dimensions(dimension))));
       auto offset = b_.AddInstruction(HloInstruction::CreateBinary(
           ShapeUtil::MakeShape(S32, {}), HloOpcode::kMultiply,
           partition_ordinals[dimension], multiplier));
@@ -2302,7 +2302,7 @@ Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
   auto operand_shape = ShapeUtil::MakeTupleShape(operand_shapes);
 
   auto on_device = b_.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(device)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(device)));
   auto pred = b_.AddInstruction(HloInstruction::CreateCompare(
       ShapeUtil::MakeShape(PRED, {}), MakePartitioningState().partition_id,
       on_device, ComparisonDirection::kEq));
@@ -2643,7 +2643,7 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
 
   // Create a branch for each unique partitioned shape.
   std::vector<Shape> per_branch_partitioned_shapes;
-  std::vector<int32> conditional_branch_indices(num_partitions_);
+  std::vector<int32_t> conditional_branch_indices(num_partitions_);
   for (int64_t i = 0; i < num_partitions_; ++i) {
     auto partitioned_shape =
         MakeNonPaddedShapeForGivenPartition(shape, sharding, i);
@@ -2679,7 +2679,7 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
   } else {
     // Otherwise, use a constant table to look up the branch index.
     auto branch_index_table = b_.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<int32>(conditional_branch_indices)));
+        LiteralUtil::CreateR1<int32_t>(conditional_branch_indices)));
     branch_index = b_.AddInstruction(HloInstruction::CreateDynamicSlice(
         ShapeUtil::MakeShape(S32, {1}), branch_index_table,
         {state.partition_id}, {1}));
@@ -3067,7 +3067,7 @@ Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
 
   // Create a branch for each unique partitioned shape.
   std::vector<Shape> per_branch_partitioned_shapes;
-  std::vector<int32> conditional_branch_indices(num_partitions_);
+  std::vector<int32_t> conditional_branch_indices(num_partitions_);
   for (int64_t i = 0; i < num_partitions_; ++i) {
     auto partitioned_shape =
         MakeNonPaddedShapeForGivenPartition(shape, sharding, i);
@@ -3104,7 +3104,7 @@ Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
   } else {
     // Otherwise, use a constant table to look up the branch index.
     auto branch_index_table = b_.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<int32>(conditional_branch_indices)));
+        LiteralUtil::CreateR1<int32_t>(conditional_branch_indices)));
     branch_index = b_.AddInstruction(HloInstruction::CreateDynamicSlice(
         ShapeUtil::MakeShape(S32, {1}), branch_index_table, {partition_id_},
         {1}));
@@ -3523,7 +3523,7 @@ Status SpmdPartitioningVisitor::HandleSelectAndScatter(HloInstruction* hlo) {
             ShapeUtil::MakeShape(PRED, {}), zero, partition_ordinals[i],
             ComparisonDirection::kEq));
         auto pad_low_hlo = b_.AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(pad_low)));
+            LiteralUtil::CreateR0<int32_t>(pad_low)));
         slice_offsets[i] = b_.AddInstruction(HloInstruction::CreateTernary(
             zero->shape(), HloOpcode::kSelect, is_shard0, pad_low_hlo,
             left_halo_size));

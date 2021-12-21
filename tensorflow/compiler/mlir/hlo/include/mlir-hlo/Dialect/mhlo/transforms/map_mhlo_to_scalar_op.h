@@ -795,6 +795,30 @@ inline Value MapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
 }
 
 template <>
+inline Value MapMhloOpToStdScalarOp<mhlo::RoundOp>(Location loc,
+                                                   ArrayRef<Type> result_types,
+                                                   ArrayRef<Type> arg_types,
+                                                   ValueRange args,
+                                                   OpBuilder* b) {
+  mhlo::RoundOp::Adaptor adaptor(args);
+  auto lb = ImplicitLocOpBuilder(loc, *b);
+  auto operand = adaptor.operand();
+  auto operand_ty = operand.getType();
+  auto element_ty = getElementTypeOrSelf(operand_ty);
+
+  if (auto float_type = element_ty.dyn_cast<FloatType>()) {
+    Value half =
+        b->create<arith::ConstantOp>(loc, b->getFloatAttr(float_type, 0.5));
+    auto abs = lb.create<math::AbsOp>(operand_ty, operand);
+    auto add = lb.create<arith::AddFOp>(abs, half);
+    auto floor = lb.create<math::FloorOp>(add);
+    return lb.create<mlir::math::CopySignOp>(floor, operand);
+  }
+
+  return nullptr;
+}
+
+template <>
 inline Value MapMhloOpToStdScalarOp<mhlo::SelectOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Type> arg_types,

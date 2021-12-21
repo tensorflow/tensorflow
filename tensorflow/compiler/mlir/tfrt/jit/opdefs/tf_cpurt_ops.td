@@ -84,7 +84,7 @@ def FallbackCompileOp : TF_CPURT_Op<"fallback.compile",
 }
 
 def FallbackExecuteOp : TF_CPURT_Op<"fallback.execute",
-    [DeclareOpInterfaceMethods<TFRT_CostFunctionInterface>]> {
+    [NoSideEffect, DeclareOpInterfaceMethods<TFRT_CostFunctionInterface>]> {
   let summary = "cpurt execute operation with a fallback runtime interop";
   let description = [{
     `tf_cpurt.fallback.execute` compiles a Tensorflow program defined by the

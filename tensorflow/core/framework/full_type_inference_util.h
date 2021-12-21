@@ -39,6 +39,10 @@ namespace full_type {
 // to keep them separate, even though it leads to some redundancy. The
 // same can be said about the shape inference function.
 
+// Note: Unlike type constructors, which describe op definitions, type inference
+// functions are meant to modify the type information of specific nodes (i.e.
+// NodeDef proto).
+
 // Helper for a type inference function which has the same type as the i'th
 // input.
 // The n arg allows multiple outputs, e.g. (T -> Product[T, T]).
@@ -49,6 +53,23 @@ ForwardTypeInferenceFn ReplicateInput(int i = 0, int n = 1);
 // number of inputs, e.g. (T, T -> Product[T]), (T, T, T -> Product[T]), etc.
 // Assumes all inputs are of identical type.
 ForwardTypeInferenceFn ReplicateIdenticalInputs();
+
+// Helper for the type inference counterpart of Unary, that is (U ->
+// PRODUCT[<t>[U]]), where <t> is parameterized by this factory, and U is the
+// type of the input specified by container_idx.
+// Note: when we migrate to a more formal type definition of an op, these two
+// functions will naturally merge.
+ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int container_idx);
+
+// Helper for ops with semantics of adding an element to a container (<t>[T]),
+// that is (<t>[U], V -> PRODUCT[<t>[Union[U, V]]]), where <t> is parameterized
+// by this factory, U is the type of the input specified by container_idx, and V
+// is the type of the input specified by element_idx. The homogeneous arg allows
+// for constraints which guarantee that U and V must have a subtyping
+// relationship, case in which either V or U is selected, whichever is the
+// supertype.
+ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
+                                         int element_idx, bool homogeneous);
 
 }  // namespace full_type
 

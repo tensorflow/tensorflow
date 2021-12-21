@@ -109,7 +109,7 @@ struct TimerStats {
   tensorflow::mutex stats_mutex;
   double cumulative_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   double max_secs ABSL_GUARDED_BY(stats_mutex) = 0;
-  uint64 times_called ABSL_GUARDED_BY(stats_mutex) = 0;
+  uint64_t times_called ABSL_GUARDED_BY(stats_mutex) = 0;
 };
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
@@ -123,7 +123,7 @@ class ScopedLoggingTimer {
   // line: Line number to display in logging.
   // `timer_stats`: unowned non-null pointer which is used to populate the
   // global timer statistics.
-  ScopedLoggingTimer(const std::string& label, bool enabled, const char* file,
+  ScopedLoggingTimer(absl::string_view label, bool enabled, const char* file,
                      int line, TimerStats* timer_stats);
 
   // Stop the timer and log the tracked time. Timer is disabled after this
@@ -133,12 +133,12 @@ class ScopedLoggingTimer {
   ~ScopedLoggingTimer();
 
  private:
+  const std::string label_;
+  const char* const file_;
+  const int line_;
+  TimerStats* const timer_stats_;
+  uint64_t start_micros_;
   bool enabled_;
-  const char* file_;
-  int line_;
-  string label_;
-  uint64 start_micros_;
-  TimerStats* timer_stats_;
 };
 
 // Given a vector<T>, returns a Span<char> that points at its
@@ -147,84 +147,37 @@ class ScopedLoggingTimer {
 // Warning: if the vector is updated its storage pointer may change, so use this
 // with caution (ideally in limited scopes with temporary lifetimes).
 template <typename T>
-absl::Span<uint8> MutableByteSlice(std::vector<T>* v) {
-  return absl::Span<uint8>(reinterpret_cast<uint8*>(v->data()),
-                           v->size() * sizeof(T));
+absl::Span<uint8_t> MutableByteSlice(std::vector<T>* v) {
+  return absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(v->data()),
+                             v->size() * sizeof(T));
 }
 
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.
 template <typename T>
-absl::Span<const uint8> CastToByteSlice(absl::Span<const T> slice) {
-  return absl::Span<const uint8>(reinterpret_cast<const uint8*>(slice.data()),
-                                 slice.size() * sizeof(T));
+absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
+  return absl::Span<const uint8_t>(
+      reinterpret_cast<const uint8_t*>(slice.data()), slice.size() * sizeof(T));
 }
 
 // Casts a byte slice to a non-byte type T, checking that the original slice
 // length is a multiple of sizeof(T).
 template <typename T>
-absl::Span<const T> CastByteSlice(absl::Span<const uint8> slice) {
+absl::Span<const T> CastByteSlice(absl::Span<const uint8_t> slice) {
   CHECK_EQ(0, slice.size() % sizeof(T));
   return absl::Span<const T>(reinterpret_cast<const T*>(slice.data()),
                              slice.size() / sizeof(T));
 }
 
-// Convenience function to force a vector to convert to an immutable slice.
-template <typename T>
-absl::Span<const T> AsSlice(const std::vector<T>& v) {
-  return absl::Span<const T>(v);
-}
-
-// int64_t is not the same type as tensorflow::protobuf_int64 in open-source.
-// Wrapper function that gives an int64_t array slice view of a repeated int64
-// protobuf field.
-static inline absl::Span<const int64_t> AsInt64Slice(
-    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
-  absl::Span<const tensorflow::protobuf_int64> slice(v);
-  return absl::Span<const int64_t>(
-      reinterpret_cast<const int64_t*>(slice.data()), slice.size());
-}
-
-// TODO(b/29771030): This nop overload was added to simplify the migration of
-// Shape from a proto to a C++ class. Remove after class has been migrated.
-static inline absl::Span<const int64_t> AsInt64Slice(
-    absl::Span<const int64_t> slice) {
-  return slice;
-}
-
-// As above, but for uint64 types.
-static inline absl::Span<const uint64_t> AsUInt64Slice(
-    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>& v) {
-  absl::Span<const tensorflow::protobuf_uint64> slice(v);
-  return absl::Span<const uint64_t>(
-      reinterpret_cast<const uint64_t*>(slice.data()), slice.size());
-}
-
 // Compares two containers for equality. Returns true iff the two containers
 // have the same size and all their elements compare equal using their
 // operator==. Like std::equal, but forces size equality.
-template <typename Container1T, typename Container2T>
-bool ContainersEqual(const Container1T& c1, const Container2T& c2) {
-  return ((c1.size() == c2.size()) &&
-          std::equal(std::begin(c1), std::end(c1), std::begin(c2)));
-}
-
 template <typename Container1T,
           typename ElementType = typename Container1T::value_type>
 bool ContainersEqual(const Container1T& c1,
                      std::initializer_list<ElementType> il) {
   absl::Span<const ElementType> c2{il};
-  return ContainersEqual(c1, c2);
-}
-
-// Compares two containers for equality. Returns true iff the two containers
-// have the same size and all their elements compare equal using the predicate
-// p. Like std::equal, but forces size equality.
-template <typename Container1T, typename Container2T, class PredicateT>
-bool ContainersEqual(const Container1T& c1, const Container2T& c2,
-                     PredicateT p) {
-  return ((c1.size() == c2.size()) &&
-          std::equal(std::begin(c1), std::end(c1), std::begin(c2), p));
+  return absl::c_equal(c1, c2);
 }
 
 // Performs a copy of count values from src to dest, using different strides for
@@ -330,7 +283,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 //
 // Note: even different amounts of leading whitespace on different lines will be
 // uniformly replaced with "indentation".
-string Reindent(absl::string_view original, absl::string_view indentation);
+std::string Reindent(absl::string_view original, absl::string_view indentation);
 
 template <typename Container>
 int64_t PositionInContainer(const Container& container, int64_t value) {
@@ -341,11 +294,11 @@ int64_t PositionInContainer(const Container& container, int64_t value) {
 // appending the elements of the container. Prefix is prepended and suffix is
 // appended to the returned string.
 template <typename Container>
-string CommaSeparatedString(const Container& c, const char* prefix = "",
-                            const char* suffix = "") {
+std::string CommaSeparatedString(const Container& c, const char* prefix = "",
+                                 const char* suffix = "") {
   // Not using Join() since the implementation here is simple anyway and this
   // avoids copying the string to append prefix.
-  string comma_separated = prefix;
+  std::string comma_separated = prefix;
   const char* separator = "";
   for (const auto& entry : c) {
     absl::StrAppend(&comma_separated, separator, entry);
@@ -358,36 +311,37 @@ string CommaSeparatedString(const Container& c, const char* prefix = "",
 // Overload needed to allow the container to be an initializer list. The default
 // type for T makes an empty initializer list work as well.
 template <typename T = int>
-string CommaSeparatedString(const std::initializer_list<T>& c,
-                            const char* prefix = "", const char* suffix = "") {
+std::string CommaSeparatedString(const std::initializer_list<T>& c,
+                                 const char* prefix = "",
+                                 const char* suffix = "") {
   return CommaSeparatedString<std::initializer_list<T>>(c, prefix, suffix);
 }
 
 // Formats the container in the mathematical notation for a vector, e.g. (1, 3,
 // 7). StrAppend must support appending the elements of c.
 template <typename Container>
-string VectorString(const Container& c) {
+std::string VectorString(const Container& c) {
   return CommaSeparatedString(c, "(", ")");
 }
 
 // Overload needed to allow the container to be an initializer list. The default
 // type for T makes an empty initializer list work as well.
 template <typename T = int>
-string VectorString(const std::initializer_list<T>& c) {
+std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
 // Returns a string which can losslessly round trip to a bfloat.
-string RoundTripFpToString(tensorflow::bfloat16 value);
+std::string RoundTripFpToString(tensorflow::bfloat16 value);
 
 // Returns a string which can losslessly round trip to a fp16.
-string RoundTripFpToString(Eigen::half value);
+std::string RoundTripFpToString(Eigen::half value);
 
 // Returns a string which can losslessly round trip to a float.
-string RoundTripFpToString(float value);
+std::string RoundTripFpToString(float value);
 
 // Returns a string which can losslessly round trip to a double.
-string RoundTripFpToString(double value);
+std::string RoundTripFpToString(double value);
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64_t rank);
@@ -433,12 +387,12 @@ T RoundDownTo(T value, T divisor) {
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
-string HumanReadableNumFlops(double flops, double nanoseconds);
+std::string HumanReadableNumFlops(double flops, double nanoseconds);
 
 // Given a number of transcendental ops executed in an amount of time, produces
 // a string that represents the throughput;
 // e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
-string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
+std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
@@ -565,7 +519,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
     absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes);
 
 // Removes illegal characters from filenames.
-string SanitizeFileName(string file_name);
+std::string SanitizeFileName(std::string file_name);
 
 template <typename C, typename Value>
 int64_t FindIndex(const C& c, Value&& value) {
@@ -600,7 +554,7 @@ bool IsInt32(T x) {
   // Following conversion rules: "the value is unchanged if it can be
   // represented in the destination type (and bit-field width); otherwise, the
   // value is implementation-defined."
-  return static_cast<int32>(x) == x;
+  return static_cast<int32_t>(x) == x;
 }
 
 template <typename T>

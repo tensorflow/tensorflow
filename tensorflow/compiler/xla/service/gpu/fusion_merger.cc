@@ -309,7 +309,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
           << " merged_to_current_bytes_ratio: " << merged_to_current_bytes_ratio
           << " into users { "
           << absl::StrJoin(users, ", ",
-                           [](string* out, HloInstruction* user) {
+                           [](std::string* out, HloInstruction* user) {
                              absl::StrAppend(out, user->name());
                            })
           << " }";

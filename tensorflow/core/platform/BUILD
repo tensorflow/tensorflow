@@ -1939,4 +1939,5 @@ bzl_library(
     srcs = [
         "rules_cc.bzl",
     ] + tf_platform_alias("rules_cc.bzl"),
+    deps = ["@bazel_skylib//rules:common_settings"],
 )

@@ -61,7 +61,7 @@ class FlattenCallGraphTest : public HloTestBase {
   // given computation with value 'callsites' number of times.
   std::unique_ptr<HloComputation> MakeCallingComputation(
       HloComputation* callee_computation, int64_t callsites,
-      const string& suffix = ".CallingComputation") {
+      const std::string& suffix = ".CallingComputation") {
     HloComputation::Builder builder(TestName() + suffix);
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));

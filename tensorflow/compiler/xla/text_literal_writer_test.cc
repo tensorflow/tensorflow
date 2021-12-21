@@ -36,13 +36,13 @@ TEST(TextLiteralWriterTest, WritesFloatLiteral) {
       {3.14, 2.17},
       {1.23, 4.56},
   });
-  string path;
+  std::string path;
   ASSERT_TRUE(tensorflow::Env::Default()->LocalTempFilename(&path));
   ASSERT_IS_OK(TextLiteralWriter::WriteToPath(literal, path));
-  string contents;
+  std::string contents;
   TF_ASSERT_OK(tensorflow::ReadFileToString(tensorflow::Env::Default(), path,
                                             &contents));
-  const string expected = R"(f32[2,2]
+  const std::string expected = R"(f32[2,2]
 (0, 0): 3.14
 (0, 1): 2.17
 (1, 0): 1.23

@@ -72,7 +72,8 @@ limitations under the License.
 #include "tfrt/support/logging.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 
-namespace tfrt {
+namespace tensorflow {
+namespace tfrt_stub {
 namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
@@ -125,24 +126,23 @@ tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
 }
 
 struct RequestInfo {
-  RCReference<RequestContext> tfrt_request_context;
-  std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface> request_queue;
+  tfrt::RCReference<tfrt::RequestContext> tfrt_request_context;
+  std::unique_ptr<WorkQueueInterface> request_queue;
   std::function<void(std::function<void()>)> runner;
 };
 
 StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
     const SavedModel::RunOptions& run_options,
     const SessionMetadata& model_metadata, tfrt::HostContext* host,
-    tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
-    ResourceContext* resource_context,
-    const tensorflow::tfrt_stub::FallbackState& fallback_state) {
+    WorkQueueInterface* work_queue, tfrt::ResourceContext* resource_context,
+    const FallbackState& fallback_state) {
   DCHECK(host);
   DCHECK(work_queue);
   // Create request context and prepare deadline tracker.
   // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
   // contention.
-  RequestContextBuilder request_context_builder(host, resource_context,
-                                                GetUniqueInt());
+  tfrt::RequestContextBuilder request_context_builder(host, resource_context,
+                                                      tfrt::GetUniqueInt());
 
   // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
   // directly.
@@ -172,13 +172,14 @@ StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
 
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfCpuRtRequestContext(&request_context_builder));
-
-  request_context_builder.set_request_options(
-      RequestOptions{.priority = run_options.priority});
+  tfrt::RequestOptions request_options;
+  request_options.priority = run_options.priority;
+  request_context_builder.set_request_options(request_options);
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
-    return tensorflow::errors::Internal(StrCat(expected_req_ctx.takeError()));
+    return tensorflow::errors::Internal(
+        tfrt::StrCat(expected_req_ctx.takeError()));
   }
 
   request_info->tfrt_request_context = std::move(expected_req_ctx.get());
@@ -259,9 +260,8 @@ StatusOr<SignatureMap> GetFunctionSignaturesFromTFSavedModelMLIR(
 tensorflow::Status RunInitializers(
     const InitializersAndSignatures& initializers_and_signatures,
     const SessionMetadata& model_metadata, tfrt::BEFFile* bef_file,
-    const tensorflow::tfrt_stub::Runtime& runtime,
-    tfrt::ResourceContext* resource_context,
-    const tensorflow::tfrt_stub::FallbackState& fallback_state) {
+    const Runtime& runtime, tfrt::ResourceContext* resource_context,
+    const FallbackState& fallback_state) {
   auto* host = runtime.core_runtime()->GetHostContext();
   TF_ASSIGN_OR_RETURN(auto request_info,
                       SetUpRequestContext(/*run_options=*/{}, model_metadata,
@@ -284,10 +284,10 @@ tensorflow::Status RunInitializers(
 
     const auto& signature = initializers_and_signatures.signature_map.at(init);
 
-    auto ready_chain = GetReadyChain();
+    auto ready_chain = tfrt::GetReadyChain();
 
     // The actual arguments are the concat of side-effect chain and assets.
-    llvm::SmallVector<AsyncValue*, 1> arguments;
+    llvm::SmallVector<tfrt::AsyncValue*, 1> arguments;
     auto cleanup = tensorflow::gtl::MakeCleanup([&]() {
       for (auto* argument : arguments) argument->DropRef();
     });
@@ -296,14 +296,12 @@ tensorflow::Status RunInitializers(
 
     for (const auto& capture : signature.captures) {
       arguments.push_back(
-          MakeAvailableAsyncValueRef<tensorflow::tfrt_stub::FallbackTensor>(
-              capture)
-              .release());
+          tfrt::MakeAvailableAsyncValueRef<FallbackTensor>(capture).release());
     }
 
     assert(arguments.size() == func->argument_types().size());
 
-    llvm::SmallVector<RCReference<AsyncValue>, 1> results;
+    llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 1> results;
     results.resize(func->result_types().size());
     assert(results.size() == 1);
 
@@ -396,9 +394,8 @@ std::vector<std::string> FindNamesForValidSignatures(
 
 StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
-    const tensorflow::tfrt_stub::FallbackState& fallback_state,
-    std::string saved_model_dir, bool import_user_signatures,
-    bool run_placer_grappler_on_functions) {
+    const FallbackState& fallback_state, std::string saved_model_dir,
+    bool import_user_signatures, bool run_placer_grappler_on_functions) {
   std::vector<std::string> signature_names;
   if (import_user_signatures) {
     signature_names = FindNamesForValidSignatures(meta_graph_def);
@@ -413,11 +410,10 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
   // in a different code path. And it is injected to the MLIR importer so that
   // the importer can import the transformed graph instead of the original
   // graph.
-  TF_ASSIGN_OR_RETURN(
-      auto import_input,
-      tensorflow::tfrt_stub::TfrtSavedModelMLIRImportInput::Create(
-          fallback_state, &meta_graph_def, /*debug_info=*/{},
-          run_placer_grappler_on_functions));
+  TF_ASSIGN_OR_RETURN(auto import_input,
+                      TfrtSavedModelMLIRImportInput::Create(
+                          fallback_state, &meta_graph_def, /*debug_info=*/{},
+                          run_placer_grappler_on_functions));
 
   TF_ASSIGN_OR_RETURN(
       auto module,
@@ -459,7 +455,7 @@ tensorflow::Status InitSavedModel(
     const InitializersAndSignatures& initializers_and_signatures,
     tfrt::BEFFile* bef_file, const SavedModel::Options& options,
     tfrt::ResourceContext* resource_context,
-    const tensorflow::tfrt_stub::FallbackState& fallback_state) {
+    const FallbackState& fallback_state) {
   TF_RETURN_IF_ERROR(RunInitializers(
       initializers_and_signatures, options.model_metadata, bef_file,
       *options.runtime, resource_context, fallback_state));
@@ -471,7 +467,7 @@ tensorflow::Status InitSavedModel(
 
 SavedModel::~SavedModel() {}
 
-HostContext* SavedModel::GetHostContext() const {
+tfrt::HostContext* SavedModel::GetHostContext() const {
   return runtime_->core_runtime()->GetHostContext();
 }
 
@@ -545,11 +541,11 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     Options options, absl::string_view saved_model_dir,
     tensorflow::MetaGraphDef meta_graph_def, tensorflow::Status* status) {
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
-  metrics::AddTFRTVersionMetric();
+  tfrt::metrics::AddTFRTVersionMetric();
 
   if (options.compile_options.tpu_target ==
       tensorflow::TfrtTpuInfraTarget::kBridgeFallback) {
-    auto s = CheckTpuMlirBridgeCompatibility(meta_graph_def);
+    auto s = tfrt::CheckTpuMlirBridgeCompatibility(meta_graph_def);
     if (!s.ok()) {
       LOG(INFO)
           << "TFRT detected Bridge unsupported feature, using TF fallback";
@@ -582,8 +578,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // used for captured functions in certain tf.data ops
     const auto& fdef_lib = meta_graph_def.graph_def().library();
     TF_ASSIGN_OR_RETURN(auto fallback_state,
-                        tensorflow::tfrt_stub::FallbackState::Create(
-                            session_options, fdef_lib));
+                        FallbackState::Create(session_options, fdef_lib));
     TF_ASSIGN_OR_RETURN(
         auto mlir_module,
         ImportSavedModel(
@@ -622,10 +617,10 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
     // Step 3: Initialize runtime states using special BEF functions.
     auto init_start_time = absl::Now();
-    TF_ASSIGN_OR_RETURN(auto bef_file,
-                        CreateBefFileFromBefBuffer(*options.runtime, bef));
+    TF_ASSIGN_OR_RETURN(
+        auto bef_file, tfrt::CreateBefFileFromBefBuffer(*options.runtime, bef));
 
-    auto tpu_model_resource = std::make_unique<tpu::TpuModelResource>();
+    auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
     auto resource_context =
         CreateResourceContext(*options.runtime, tpu_model_resource.get(),
                               options.compile_options.tpu_target);
@@ -641,7 +636,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
     TF_ASSIGN_OR_RETURN(
         auto graph_execution_state,
-        tensorflow::tfrt_stub::TfrtGraphExecutionState::Create(
+        TfrtGraphExecutionState::Create(
             std::move(*meta_graph_def.mutable_graph_def()), *fallback_state,
             options.run_placer_grappler_on_functions));
 
@@ -664,11 +659,10 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
 SavedModelImpl::SavedModelImpl(
     Options options, tensorflow::MetaGraphDef meta_graph_def,
-    tfrt::BefBuffer bef, RCReference<BEFFile> bef_file, SignatureMap signatures,
-    std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state,
-    std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
-        graph_execution_state,
-    std::unique_ptr<tpu::TpuModelResource> tpu_model_resource,
+    tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file,
+    SignatureMap signatures, std::unique_ptr<FallbackState> fallback_state,
+    std::unique_ptr<TfrtGraphExecutionState> graph_execution_state,
+    std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource,
     std::unique_ptr<tfrt::ResourceContext> resource_context)
     : SavedModel(options.runtime),
       options_(std::move(options)),
@@ -919,8 +913,7 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
 }
 
 std::unique_ptr<tfrt::ResourceContext> SavedModelImpl::CreateResourceContext(
-    const tensorflow::tfrt_stub::Runtime& runtime,
-    tpu::TpuModelResource* tpu_model_resource,
+    const Runtime& runtime, tfrt::tpu::TpuModelResource* tpu_model_resource,
     tensorflow::TfrtTpuInfraTarget tpu_target) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   runtime.CreateRuntimeResources(resource_context.get());
@@ -1132,7 +1125,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 3: Initialize runtime states using special BEF functions.
   TF_ASSIGN_OR_RETURN(
       loading_result->bef_file,
-      CreateBefFileFromBefBuffer(*options_.runtime, loading_result->bef));
+      tfrt::CreateBefFileFromBefBuffer(*options_.runtime, loading_result->bef));
   TF_RETURN_IF_ERROR(RunInitializers(
       /*initializers_and_signatures=*/{}, options_.model_metadata,
       loading_result->bef_file.get(), *options_.runtime,
@@ -1202,7 +1195,7 @@ SavedModelImpl::GetOrCreateLoadingResult(
 
 tensorflow::Status SavedModelImpl::RunInternal(
     const RunOptions& run_options, absl::string_view signature_name,
-    const Function& func, absl::Span<const tensorflow::Tensor> inputs,
+    const tfrt::Function& func, absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const tensorflow::Tensor> captures,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context) {
@@ -1224,8 +1217,8 @@ tensorflow::Status SavedModelImpl::RunInternal(
             {{"_r", 1},
              {"id", request_id},
              {"signature", signature_name},
-             {"model_id", StrCat(options_.model_metadata.name(),
-                                 options_.model_metadata.version())}});
+             {"model_id", absl::StrCat(options_.model_metadata.name(),
+                                       options_.model_metadata.version())}});
       },
       tensorflow::profiler::ContextType::kTfrtExecutor,
       request_info->tfrt_request_context->id());
@@ -1240,7 +1233,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
         deadline, request_info->tfrt_request_context);
   }
 
-  ExecutionContext exec_ctx{request_info->tfrt_request_context};
+  tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
   if (run_options.work_queue) {
     // TODO(b/198671794): Avoid creating `request_queue` when the `work_queue`
     // in `run_options` is specified.
@@ -1251,19 +1244,18 @@ tensorflow::Status SavedModelImpl::RunInternal(
     exec_ctx.set_work_queue(runtime().work_queue());
   }
 
-  llvm::SmallVector<AsyncValue*, 4> arguments;
+  llvm::SmallVector<tfrt::AsyncValue*, 4> arguments;
   auto cleanup = tensorflow::gtl::MakeCleanup([&]() {
     for (auto* argument : arguments) argument->DropRef();
   });
 
   // The first argument is a chain for side-effects. Since SavedModel::Run()
   // only returns when side-effects are visible, we can use a ready chain here.
-  arguments.push_back(GetReadyChain().release());
+  arguments.push_back(tfrt::GetReadyChain().release());
 
   for (const auto& input : inputs) {
     arguments.push_back(
-        MakeAvailableAsyncValueRef<tensorflow::tfrt_stub::FallbackTensor>(input)
-            .release());
+        tfrt::MakeAvailableAsyncValueRef<FallbackTensor>(input).release());
   }
 
   DCHECK(captures.empty()) << "signature should have no captures, which is "
@@ -1272,12 +1264,12 @@ tensorflow::Status SavedModelImpl::RunInternal(
   if (arguments.size() != func.argument_types().size())
     return tensorflow::errors::Internal("incorrect number of inputs.");
 
-  llvm::SmallVector<RCReference<AsyncValue>, 4> chain_and_results;
+  llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 4> chain_and_results;
   chain_and_results.resize(func.result_types().size());
 
   // Hand over the execution to thread pool.
-  std::array<RCReference<AsyncValue>, 1> executed = {
-      EnqueueWork(exec_ctx, [&]() -> Chain {
+  std::array<tfrt::RCReference<tfrt::AsyncValue>, 1> executed = {
+      EnqueueWork(exec_ctx, [&]() -> tfrt::Chain {
         func.Execute(exec_ctx, arguments, chain_and_results);
         return {};
       })};
@@ -1291,7 +1283,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
   DCHECK(!chain_and_results.empty());
 
-  RCReference<AsyncValue>& chain = chain_and_results[0];
+  tfrt::RCReference<tfrt::AsyncValue>& chain = chain_and_results[0];
   auto results = llvm::drop_begin(chain_and_results, 1);
 
   tensorflow::StatusGroup status_group;
@@ -1300,7 +1292,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
     status_group.Update(CreateTfErrorStatus(chain->GetError()));
   }
 
-  for (RCReference<AsyncValue>& result : results) {
+  for (tfrt::RCReference<tfrt::AsyncValue>& result : results) {
     DCHECK(result->IsAvailable());
 
     if (result->IsError()) {
@@ -1311,9 +1303,8 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
     // The result must be a host tensor. This is guaranteed as the compiler
     // will insert necessary device transfer operations in the graph.
-    DCHECK(result->IsType<tensorflow::tfrt_stub::FallbackTensor>());
-    const auto& host_tensor =
-        result->get<tensorflow::tfrt_stub::FallbackTensor>().tensor();
+    DCHECK(result->IsType<FallbackTensor>());
+    const auto& host_tensor = result->get<FallbackTensor>().tensor();
     // Make a copy of tensor here as the different result AsyncValues might
     // point to the same underlying tensor.
     outputs->push_back(host_tensor);
@@ -1333,4 +1324,5 @@ tensorflow::Status SavedModelImpl::RunInternal(
   return status_group.as_summary_status();
 }
 
-}  // namespace tfrt
+}  // namespace tfrt_stub
+}  // namespace tensorflow

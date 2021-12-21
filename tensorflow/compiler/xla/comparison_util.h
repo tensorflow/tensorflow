@@ -27,7 +27,7 @@ namespace xla {
 class Comparison {
  public:
   // Represents type of comparison
-  enum class Type : uint8 {
+  enum class Type : uint8_t {
     kFloat,
     kFloatTotalOrder,
     kSigned,
@@ -35,7 +35,7 @@ class Comparison {
   };
   //
   // Represents different comparison operations.
-  enum class Direction : uint8 {
+  enum class Direction : uint8_t {
     kEq,
     kNe,
     kGe,
@@ -116,7 +116,7 @@ class Comparison {
 inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
   return os << cmp.ToString();
 }
-string ComparisonDirectionToString(Comparison::Direction direction);
+std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
 
 StatusOr<Comparison::Direction> StringToComparisonDirection(

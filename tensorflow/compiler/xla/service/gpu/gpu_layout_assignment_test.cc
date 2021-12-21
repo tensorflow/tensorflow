@@ -365,7 +365,7 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
 TEST_F(LayoutAssignmentTest, DotLayoutS8) {
   const char* hlo_text = R"(
   HloModule DotLayout
-  ENTRY int8 {
+  ENTRY int8_t {
     p0 = s8[1024,65536] parameter(0)
     p1 = s8[65536,65536] parameter(1)
     ROOT out = s32[1024,65536] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}

@@ -1693,7 +1693,7 @@ class CopyRemover {
     }
   }
 
-  string ValueListToString(const ValueNode* element) {
+  std::string ValueListToString(const ValueNode* element) {
     std::string result = "{";
     auto VisitValueNode = [&](const ValueNode* node) {
       if (result == "{") {
@@ -1708,8 +1708,8 @@ class CopyRemover {
     return result;
   }
 
-  string ToString() const {
-    string out = absl::StrCat("CopyRemover:\n");
+  std::string ToString() const {
+    std::string out = absl::StrCat("CopyRemover:\n");
     StrAppend(&out, "  Def-use chains in each buffer:\n");
     for (const ValueNode* head : value_lists_) {
       StrAppend(&out, "    Buffer defined by ", head->value->ToShortString(),
@@ -1718,7 +1718,7 @@ class CopyRemover {
       do {
         StrAppend(&out, "      ", p->value->ToShortString(), ", uses: ",
                   absl::StrJoin(p->uses, "; ",
-                                [](string* s, const HloUse* use) {
+                                [](std::string* s, const HloUse* use) {
                                   StrAppend(s, use->ToString());
                                 }),
                   "\n");

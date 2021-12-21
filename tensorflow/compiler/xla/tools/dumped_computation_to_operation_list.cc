@@ -40,11 +40,12 @@ namespace tools {
 
 class OperationDumper : public DfsHloVisitorWithDefault {
  public:
-  explicit OperationDumper(const string& path) : path_(path) {}
+  explicit OperationDumper(const std::string& path) : path_(path) {}
 
   Status DefaultAction(HloInstruction* hlo) override {
-    string params = absl::StrJoin(
-        hlo->operands(), ", ", [](string* out, const HloInstruction* operand) {
+    std::string params = absl::StrJoin(
+        hlo->operands(), ", ",
+        [](std::string* out, const HloInstruction* operand) {
           absl::StrAppend(out, ShapeUtil::HumanString(operand->shape()));
         });
     // Spit `op_name(params...) -> result_type :: path` to stdout.
@@ -55,7 +56,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
   }
 
  private:
-  string path_;
+  std::string path_;
 };
 
 void RealMain(absl::Span<char* const> args) {

@@ -75,6 +75,7 @@ float ActivationFunction(float x) {
 inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
                          const float* bias_data, int array_size,
                          float* array_data) {
+  if (bias_size == 0) return;
   // Note: see b/132215220: in May 2019 we thought it would be OK to replace
   // this with the Eigen one-liner:
   //   return (array.colwise() + bias).cwiseMin(clamp_max).cwiseMin(clamp_max).

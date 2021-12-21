@@ -336,7 +336,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         expected=(np.zeros(key.shape, dtype=key.dtype),
                   np.zeros(shape, dtype=dtype)))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):

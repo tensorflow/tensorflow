@@ -178,7 +178,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
 namespace {
 
 Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64 start_micros, se::Stream* stream_to_sync);
+                           uint64_t start_micros, se::Stream* stream_to_sync);
 
 Status ExecuteThunks(const std::string& module_name,
                      const ThunkSchedule& thunk_schedule,
@@ -207,7 +207,7 @@ Status ExecuteThunks(const std::string& module_name,
     sub_streams.back()->ThenWaitFor(main_stream);
   }
 
-  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -264,7 +264,7 @@ Status ExecuteThunks(const std::string& module_name,
 }
 
 Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64 start_micros,
+                           uint64_t start_micros,
                            se::Stream* stream_to_sync = nullptr) {
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
@@ -282,7 +282,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
   // FinishExecution() blocks until main_stream has completed if profiling is
   // enabled; we therefore do not need to defer profile collection onto a
   // stream.
-  uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
 
   if (run_options->run_options().execution_profile()) {
     ExecutionProfile* profile = run_options->run_options().execution_profile();
@@ -546,7 +546,7 @@ static Status ExecuteBef(const std::string& module_name,
 
   se::Stream* main_stream = run_options->stream();
 
-  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },

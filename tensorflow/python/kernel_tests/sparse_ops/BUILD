@@ -86,7 +86,6 @@ cuda_py_test(
     srcs = ["sparse_ops_test.py"],
     shard_count = 5,
     tags = [
-        "noasan",
         "optonly",  # b/77589990
     ],
     deps = [
@@ -195,7 +194,6 @@ cuda_py_test(
     srcs = ["sparse_tensor_dense_matmul_op_deterministic_test.py"],
     tags = [
         "no_cuda_asan",
-        "noasan",
         "notsan",
     ],  # b/192492331
     xla_tags = [

@@ -647,7 +647,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
   std::unique_ptr<Thunk> BuildConstantInitializerThunk(
-      absl::Span<const uint8> init_value, const BufferAllocation::Slice& dest,
+      absl::Span<const uint8_t> init_value, const BufferAllocation::Slice& dest,
       const Shape& output_shape);
 
   StatusOr<std::unique_ptr<Thunk>> TryBuildConstantInitializerThunk(
@@ -713,7 +713,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns the last generated thunk.
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
-  Status AssertNonDeterminismIsOkay(const string& op_name);
+  Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;

@@ -34,8 +34,8 @@ limitations under the License.
 
 namespace xla {
 
-string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
-  string repr =
+std::string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
+  std::string repr =
       (instruction_ != nullptr) ? instruction_->ToShortString() : "NULL";
   switch (kind_) {
     case ComputationKind::kInvalid:

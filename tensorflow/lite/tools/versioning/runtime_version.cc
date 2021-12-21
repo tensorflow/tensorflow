@@ -369,6 +369,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_WHERE, 2}, "2.8.0"},
               {{BuiltinOperator_RANDOM_UNIFORM, 1}, "2.8.0"},
               {{BuiltinOperator_MULTINOMIAL, 1}, "2.8.0"},
+              {{BuiltinOperator_GELU, 1}, "2.8.0"},
               {{BuiltinOperator_AVERAGE_POOL_3D, 1}, "2.8.0"},
               {{BuiltinOperator_MAX_POOL_3D, 1}, "2.8.0"},
           });

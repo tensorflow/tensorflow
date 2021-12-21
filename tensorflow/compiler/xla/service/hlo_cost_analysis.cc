@@ -118,7 +118,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
   return Status::OK();
 }
 
-/*static*/ float HloCostAnalysis::GetProperty(const string& key,
+/*static*/ float HloCostAnalysis::GetProperty(const std::string& key,
                                               const Properties& properties,
                                               const float default_value) {
   auto key_value = properties.find(key);
@@ -126,7 +126,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
 }
 
 /*static*/ float HloCostAnalysis::GetPropertyForHlo(
-    const HloInstruction& hlo, const string& key,
+    const HloInstruction& hlo, const std::string& key,
     const HloToProperties& hlo_to_properties) {
   auto it = hlo_to_properties.find(&hlo);
   if (it == hlo_to_properties.end()) {
@@ -1022,7 +1022,7 @@ Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     //  - cudnn may use complex conv algorithms that do fewer (or more!) flops
     //    than we calculate.
     //
-    //  - for int8 convs, these aren't *fl*ops, but we fudge it.
+    //  - for int8_t convs, these aren't *fl*ops, but we fudge it.
     current_properties_[kFlopsKey] = GetConvolutionFlops(custom_call);
 
     // conv custom-calls return a tuple (real_output, temp_bytes).  Count just

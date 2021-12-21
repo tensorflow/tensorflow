@@ -32,13 +32,13 @@ struct ReduceLayout {
   std::array<int64_t, 4> input_minor_to_major;
   std::array<int64_t, 3> output_minor_to_major;
 
-  string ToString() const {
+  std::string ToString() const {
     return absl::StrCat(absl::StrJoin(input_minor_to_major, "x"), "_",
                         absl::StrJoin(output_minor_to_major, "x"));
   }
 };
 
-string PrintReduceLayout(
+std::string PrintReduceLayout(
     ::testing::TestParamInfo<ReduceLayout> reduce_layout_param) {
   return reduce_layout_param.param.ToString();
 }

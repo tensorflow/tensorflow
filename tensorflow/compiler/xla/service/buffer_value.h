@@ -146,7 +146,7 @@ class BufferValue {
   bool operator==(const BufferValue& other) const { return id_ == other.id_; }
   bool operator!=(const BufferValue& other) const { return id_ != other.id_; }
 
-  virtual string ToString() const = 0;
+  virtual std::string ToString() const = 0;
 
   // TODO(lauj) rename LogicalBufferProto to BufferValueProto.
   LogicalBufferProto ToProto(const SizeFunction& size_fn) const;

@@ -32,7 +32,8 @@ ABSL_CONST_INIT const char kPossibleAutoJitAlternative[] =
     "variable TF_XLA_FLAGS=\"tf_xla_auto_jit=2\" which will attempt to use xla "
     "to compile as much of the graph as the compiler is able to.";
 
-static Status MakeStatus(tensorflow::error::Code code, const string& message) {
+static Status MakeStatus(tensorflow::error::Code code,
+                         const std::string& message) {
   return Status(code, message);
 }
 
@@ -41,7 +42,7 @@ static Status MakeStatus(tensorflow::error::Code code, const string& message) {
 static void LogError(const Status& status, const char* filename, int line,
                      int log_severity, bool should_log_stack_trace) {
   if (TF_PREDICT_TRUE(log_severity != tensorflow::NUM_SEVERITIES)) {
-    string stack_trace;
+    std::string stack_trace;
     if (should_log_stack_trace) {
       stack_trace = absl::StrCat("\n", tensorflow::CurrentStackTrace());
     }
@@ -73,9 +74,9 @@ static void LogError(const Status& status, const char* filename, int line,
 // trace is included in the log message (ignored if should_log is
 // false).
 static Status MakeError(const char* filename, int line,
-                        tensorflow::error::Code code, const string& message,
-                        bool should_log, int log_severity,
-                        bool should_log_stack_trace) {
+                        tensorflow::error::Code code,
+                        const std::string& message, bool should_log,
+                        int log_severity, bool should_log_stack_trace) {
   if (TF_PREDICT_FALSE(code == tensorflow::error::OK)) {
     LOG(ERROR) << "Cannot create error with status OK";
     code = tensorflow::error::UNKNOWN;
@@ -146,10 +147,10 @@ Status MakeErrorStream::Impl::GetStatus() {
 
   is_done_ = true;
 
-  const string& stream_str = stream_.str();
-  const string str = prior_message_handling_ == kAppendToPriorMessage
-                         ? absl::StrCat(prior_message_, stream_str)
-                         : absl::StrCat(stream_str, prior_message_);
+  const std::string& stream_str = stream_.str();
+  const std::string str = prior_message_handling_ == kAppendToPriorMessage
+                              ? absl::StrCat(prior_message_, stream_str)
+                              : absl::StrCat(stream_str, prior_message_);
   if (TF_PREDICT_FALSE(str.empty())) {
     return MakeError(
         file_, line_, code_,

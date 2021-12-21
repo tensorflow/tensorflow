@@ -83,7 +83,7 @@ class ComputationLayout {
   bool LayoutIsSet() const;
 
   // Returns a string representation of this object.
-  string ToString() const;
+  std::string ToString() const;
 
   // Create a ProgramShape proto based on the parameter and result shapes held
   // within this object.
@@ -91,7 +91,7 @@ class ComputationLayout {
 
   bool operator==(const ComputationLayout& other) const;
   bool operator!=(const ComputationLayout& other) const;
-  uint64 Hash() const;
+  uint64_t Hash() const;
 
  private:
   std::vector<ShapeLayout> parameter_layouts_;

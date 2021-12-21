@@ -28,14 +28,15 @@ namespace {
 
 using HloMatchersTest = HloTestBase;
 
-string DescribeHloMatcher(const ::testing::Matcher<const HloInstruction*>& m) {
+std::string DescribeHloMatcher(
+    const ::testing::Matcher<const HloInstruction*>& m) {
   std::stringstream ss;
   m.DescribeTo(&ss);
   return ss.str();
 }
 
 template <typename M, typename T>
-string Explain(const T& t, const M& m) {
+std::string Explain(const T& t, const M& m) {
   ::testing::StringMatchResultListener listener;
   EXPECT_THAT(t, ::testing::Not(m));  // For the error message.
   EXPECT_FALSE(m.MatchAndExplain(t, &listener));
@@ -92,7 +93,7 @@ TEST_F(HloMatchersTest, CustomCallMatcher) {
   auto c1 =
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1, 2, 3}));
   auto c2 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({1, 2, 3}));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({1, 2, 3}));
   auto call = HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1}), {c1.get(), c2.get()}, "foo_target");
 
@@ -200,7 +201,7 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
 }
 
 TEST_F(HloMatchersTest, DotMatcher) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule DotOperationFusion_TransposeFusion
 
 ENTRY DotOperationFusion_TransposeFusion {
@@ -301,7 +302,7 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
 }
 
 TEST_F(HloMatchersTest, ConstantMatcher) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule Constant
 
 ENTRY main {

@@ -166,7 +166,7 @@ std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilder<>* b) {
   return result;
 }
 
-string ForLoop::GetQualifiedName(absl::string_view name) {
+std::string ForLoop::GetQualifiedName(absl::string_view name) {
   return llvm_ir::IrName(prefix_, llvm_ir::IrName(name, suffix_));
 }
 

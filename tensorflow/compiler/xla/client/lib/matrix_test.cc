@@ -61,16 +61,16 @@ class MatrixTest : public ClientLibraryTestBase {
 
 XLA_TEST_F(MatrixTest, Triangle) {
   XlaBuilder builder(TestName());
-  Array3D<int32> input(2, 3, 4);
+  Array3D<int32_t> input(2, 3, 4);
   input.FillIota(0);
 
   XlaOp a;
-  auto a_data = CreateR3Parameter<int32>(input, 0, "a", &builder, &a);
+  auto a_data = CreateR3Parameter<int32_t>(input, 0, "a", &builder, &a);
   LowerTriangle(a);
-  Array3D<int32> expected({{{0, 0, 0, 0}, {4, 5, 0, 0}, {8, 9, 10, 0}},
-                           {{12, 0, 0, 0}, {16, 17, 0, 0}, {20, 21, 22, 0}}});
+  Array3D<int32_t> expected({{{0, 0, 0, 0}, {4, 5, 0, 0}, {8, 9, 10, 0}},
+                             {{12, 0, 0, 0}, {16, 17, 0, 0}, {20, 21, 22, 0}}});
 
-  ComputeAndCompareR3<int32>(&builder, expected, {a_data.get()});
+  ComputeAndCompareR3<int32_t>(&builder, expected, {a_data.get()});
 }
 
 XLA_TEST_F(MatrixTest, Symmetrize) {
@@ -156,7 +156,7 @@ void MatrixTest::TestSetMatrixDiagonal() {
 }
 
 XLA_TEST_F(MatrixTest, SetMatrixDiagonal_S32) {
-  TestSetMatrixDiagonal<int32>();
+  TestSetMatrixDiagonal<int32_t>();
 }
 XLA_TEST_F(MatrixTest, SetMatrixDiagonal_S64) {
   TestSetMatrixDiagonal<int64_t>();
@@ -165,7 +165,7 @@ XLA_TEST_F(MatrixTest, SetMatrixDiagonal_F32) {
   TestSetMatrixDiagonal<float>();
 }
 
-XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S32) { TestMatrixDiagonal<int32>(); }
+XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S32) { TestMatrixDiagonal<int32_t>(); }
 
 XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S64) { TestMatrixDiagonal<int64_t>(); }
 
@@ -197,7 +197,7 @@ void MatrixTest::TestMatrixDiagonal4D() {
 }
 
 XLA_TEST_F(MatrixTest, GetMatrixDiagonal4D_S32) {
-  TestMatrixDiagonal4D<int32>();
+  TestMatrixDiagonal4D<int32_t>();
 }
 
 XLA_TEST_F(MatrixTest, GetMatrixDiagonal4D_S64) {
@@ -236,7 +236,7 @@ XLA_TEST_F(MatrixTest, RowBatchDot) {
   auto index_data = CreateR0Parameter<int>(1, 2, "index", &builder, &index);
 
   auto l_index = DynamicSliceInMinorDims(
-      a, {index, ConstantR0<int32>(&builder, 0)}, {1, n});
+      a, {index, ConstantR0<int32_t>(&builder, 0)}, {1, n});
   BatchDot(l_index, TransposeInMinorDims(row));
 
   ComputeAndCompareR3<float>(&builder, {{{33}}, {{292}}},
@@ -257,7 +257,7 @@ XLA_TEST_F(MatrixTest, Einsum) {
   auto index_data = CreateR0Parameter<int>(1, 2, "index", &builder, &index);
 
   auto l_index = DynamicSliceInMinorDims(
-      a, {index, ConstantR0<int32>(&builder, 0)}, {1, n});
+      a, {index, ConstantR0<int32_t>(&builder, 0)}, {1, n});
   Einsum(l_index, row, "abc,adc->abd");
 
   ComputeAndCompareR3<float>(&builder, {{{33}}, {{292}}},
@@ -280,7 +280,7 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
     return absl::StrCat(x, ",", y, "->", o);
   };
 
-  std::vector<std::vector<string>> good_test_cases = {
+  std::vector<std::vector<std::string>> good_test_cases = {
       {"ab", "bc", "ac"},
       {"Bab", "Bbc", "Bac"},
       {"ab", "cd", "dcba"},
@@ -310,7 +310,7 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
     }
   }
 
-  std::vector<string> einsum_strings_that_fail_parsing = {
+  std::vector<std::string> einsum_strings_that_fail_parsing = {
       "", "a", "ab->ba", "ab,bc,cd->ad", "a...b...,bc->a...c",
   };
   for (auto test_case : einsum_strings_that_fail_parsing) {

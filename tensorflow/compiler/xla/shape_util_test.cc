@@ -690,13 +690,12 @@ TEST(ShapeUtilTest, ReshapeIsBitcast_3x4_6x2) {
       //
       // The input and the output have the same underlying data only if they
       // are both row-major.
-      EXPECT_EQ(
-          ShapeUtil::ReshapeIsBitcast(
-              ShapeUtil::MakeShapeWithLayout(
-                  F32, {3, 4}, AsInt64Slice(input_layout.minor_to_major())),
-              ShapeUtil::MakeShapeWithLayout(
-                  F32, {6, 2}, AsInt64Slice(output_layout.minor_to_major()))),
-          input_is_row_major && output_is_row_major);
+      EXPECT_EQ(ShapeUtil::ReshapeIsBitcast(
+                    ShapeUtil::MakeShapeWithLayout(
+                        F32, {3, 4}, input_layout.minor_to_major()),
+                    ShapeUtil::MakeShapeWithLayout(
+                        F32, {6, 2}, output_layout.minor_to_major())),
+                input_is_row_major && output_is_row_major);
     }
   }
 }

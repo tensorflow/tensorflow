@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-HloProfileIndexMap::HloProfileIndexMap(const HloModule& module,
-                                       absl::Span<const string> extra_metrics) {
+HloProfileIndexMap::HloProfileIndexMap(
+    const HloModule& module, absl::Span<const std::string> extra_metrics) {
   size_t current_profile_index = 0;
   for (xla::HloComputation* computation : module.MakeComputationPostOrder()) {
     InsertOrDie(&computation_to_profile_idx_, computation,
@@ -42,7 +42,7 @@ HloProfileIndexMap::HloProfileIndexMap(const HloModule& module,
                   current_profile_index++);
     }
   }
-  for (const string& key : extra_metrics) {
+  for (const std::string& key : extra_metrics) {
     InsertOrDie(&extra_metric_to_profile_idx_, key, current_profile_index++);
   }
 }
@@ -50,7 +50,7 @@ HloProfileIndexMap::HloProfileIndexMap(const HloModule& module,
 std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
     const HloCostAnalysis& cost_analysis,
-    const string& entry_computation_name) {
+    const std::string& entry_computation_name) {
   using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
   using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
 
@@ -132,20 +132,22 @@ HloExecutionProfile::HloExecutionProfile(
           /*value=*/0) {}
 
 void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
-                                           uint64 cycles_taken) {
+                                           uint64_t cycles_taken) {
   SetCyclesTakenBy(hlo_profile_index_map_.GetProfileIndexFor(*hlo),
                    cycles_taken);
 }
 
-void HloExecutionProfile::SetCyclesTakenBy(size_t index, uint64 cycles_taken) {
+void HloExecutionProfile::SetCyclesTakenBy(size_t index,
+                                           uint64_t cycles_taken) {
   profile_counters_[index] = cycles_taken;
 }
 
-uint64 HloExecutionProfile::GetCyclesTakenBy(const HloInstruction& hlo) const {
+uint64_t HloExecutionProfile::GetCyclesTakenBy(
+    const HloInstruction& hlo) const {
   return GetCyclesTakenBy(hlo_profile_index_map_.GetProfileIndexFor(hlo));
 }
 
-uint64 HloExecutionProfile::GetCyclesTakenBy(size_t index) const {
+uint64_t HloExecutionProfile::GetCyclesTakenBy(size_t index) const {
   return profile_counters_[index];
 }
 

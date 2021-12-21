@@ -35,7 +35,7 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk(ThunkInfo thunk_info,
                           const BufferAllocation::Slice& source_buffer,
                           const BufferAllocation::Slice& destination_buffer,
-                          uint64 mem_size);
+                          uint64_t mem_size);
 
   DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
@@ -51,7 +51,7 @@ class DeviceToDeviceCopyThunk : public Thunk {
  private:
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
-  const uint64 mem_size_;
+  const uint64_t mem_size_;
 };
 
 }  // namespace gpu

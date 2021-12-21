@@ -465,7 +465,7 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
   return Shape(response.shape());
 }
 
-StatusOr<string> Client::ExecutionStatsAsString(
+StatusOr<std::string> Client::ExecutionStatsAsString(
     const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,

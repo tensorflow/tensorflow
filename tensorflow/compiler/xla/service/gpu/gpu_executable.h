@@ -62,7 +62,7 @@ class GpuExecutable : public Executable {
 
   struct ConstantInfo {
     std::string symbol_name;
-    std::vector<uint8> content;
+    std::vector<uint8_t> content;
     int allocation_index = -1;
   };
 
@@ -80,7 +80,7 @@ class GpuExecutable : public Executable {
 
   struct Params {
     std::string asm_text;
-    std::vector<uint8> binary;
+    std::vector<uint8_t> binary;
     GpuVersion gpu_version;
     // The GpuExecutable will either execute Thunks or a whole-program BEF
     // depending on which is supplied.
@@ -125,21 +125,21 @@ class GpuExecutable : public Executable {
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
   // This should be called after set_ir_module_string.
-  const string& ir_module_string() const { return ir_module_string_; }
+  const std::string& ir_module_string() const { return ir_module_string_; }
 
   // This should be called before ExecuteOnStream.
-  void set_ir_module_string(const string& ir_module_string) {
+  void set_ir_module_string(const std::string& ir_module_string) {
     ir_module_string_ = ir_module_string;
   }
 
   // Returns the compiled code for the computation. The compiled code is PTX in
   // Cuda and unused empty string in ROCm.
-  const string& text() const { return text_; }
+  const std::string& text() const { return text_; }
 
   // Returns the binary stored in this GpuExecutable. The binary is cubin in
   // Cuda, and HSA code object in ROCm. It may be empty, in which case
   // compilation is left up to the GPU driver.
-  const std::vector<uint8>& binary() const { return binary_; }
+  const std::vector<uint8_t>& binary() const { return binary_; }
 
   // ExecuteAsyncOnStream will fail if the compute capability of the stream
   // doesn't match the compute capability passed to this object's constructor.
@@ -208,16 +208,16 @@ class GpuExecutable : public Executable {
   // false positives.
   //
   // This string should be modified only before ExecuteOnStream.
-  string ir_module_string_;
+  std::string ir_module_string_;
 
   // The compiled code for the computation.
-  const string text_;
+  const std::string text_;
 
   // The GPU machine code for the computation, targeting GPUs at
   // compute_capability_.
   //
   // May be empty, in which case we leave compilation up to the GPU driver.
-  const std::vector<uint8> binary_;
+  const std::vector<uint8_t> binary_;
 
   // The GPU version for compute compatibility check.
   GpuVersion gpu_version_;

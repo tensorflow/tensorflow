@@ -99,9 +99,9 @@ StatusOr<ExecutionOutput> MlirGpuTestBase::RunMlirModule(
   return std::move(output);
 }
 
-StatusOr<std::vector<std::vector<uint8>>>
+StatusOr<std::vector<std::vector<uint8_t>>>
 MlirGpuTestBase::RunMlirModuleWithHostBuffers(
-    mlir::ModuleOp module, std::vector<absl::Span<uint8>> arguments) {
+    mlir::ModuleOp module, std::vector<absl::Span<uint8_t>> arguments) {
   auto* allocator = backend_->memory_allocator();
   std::vector<se::OwningDeviceMemory> owning_memory;
   owning_memory.reserve(arguments.size());
@@ -123,7 +123,7 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
   TF_ASSIGN_OR_RETURN(ExecutionOutput output,
                       RunMlirModule(module, stream.get(), args));
 
-  std::vector<std::vector<uint8>> host_outputs;
+  std::vector<std::vector<uint8_t>> host_outputs;
   for (const auto& result : output.Result().buffers().leaves()) {
     host_outputs.emplace_back();
     host_outputs.back().resize(result.second.size());
@@ -153,9 +153,9 @@ StatusOr<mlir::OwningModuleRef> MlirGpuTestBase::ParseMlirModule(
   return module;
 }
 
-StatusOr<std::vector<std::vector<uint8>>>
+StatusOr<std::vector<std::vector<uint8_t>>>
 MlirGpuTestBase::RunMlirTextWithHostBuffers(
-    absl::string_view module_text, std::vector<absl::Span<uint8>> arguments) {
+    absl::string_view module_text, std::vector<absl::Span<uint8_t>> arguments) {
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
                       ParseMlirModule(module_text, context));

@@ -38,7 +38,7 @@ class ShardingMetadata : public DomainMetadata {
 
   size_t Hash() const override;
 
-  string ToString() const override;
+  std::string ToString() const override;
 
   const HloSharding* sharding() const { return sharding_.get(); }
 

@@ -104,7 +104,84 @@ mlir::Location GenerateInstructionLocation(const HloInstruction* instruction,
        mlir::FileLineColLoc::get(func_builder->getContext(), source_file,
                                  instruction->metadata().source_line(), 0)});
 }
+
+// Clean up the GetTupleElementOp, created during the flattening of
+// tuple arguments and return values, if eligible for folding. Removal of
+// get-tuple-element can transitively make the defining TupleOp dead to be
+// removed subsequently.
+void CleanUpTupleOps(mlir::Block* block, mlir::OpBuilder* builder) {
+  bool changed = true;
+  llvm::SmallVector<Value> folded_results;
+
+  while (changed) {
+    changed = false;
+    for (Operation& op : llvm::make_early_inc_range(block->getOperations())) {
+      if (llvm::isa<mlir::mhlo::GetTupleElementOp>(op)) {
+        folded_results.clear();
+        if (failed(builder->tryFold(&op, folded_results))) continue;
+        op.replaceAllUsesWith(folded_results);
+        op.erase();
+        changed = true;
+      } else if (llvm::isa<mlir::mhlo::TupleOp>(op) &&
+                 mlir::isOpTriviallyDead(&op)) {
+        op.erase();
+        changed = true;
+      }
+    }
+  }
+}
+
 }  // namespace
+
+void HloFunctionImporter::FlattenTupleType(
+    Type type, llvm::SmallVectorImpl<Type>& flattened_types) {
+  auto tuple_type = type.dyn_cast<mlir::TupleType>();
+  if (!tuple_type) {
+    flattened_types.push_back(type);
+    return;
+  }
+
+  for (auto child_type : tuple_type.getTypes()) {
+    FlattenTupleType(child_type, flattened_types);
+  }
+}
+
+void HloFunctionImporter::FlattenTupleValue(
+    mlir::OpBuilder* func_builder, mlir::Location loc, Value value,
+    llvm::SmallVectorImpl<Value>& flattened_values) {
+  auto tuple_type = value.getType().dyn_cast<mlir::TupleType>();
+  if (!tuple_type) {
+    flattened_values.push_back(value);
+    return;
+  }
+
+  int flattenIdx = 0;
+  for (auto child_type : tuple_type.getTypes()) {
+    auto sub_value = func_builder->create<mlir::mhlo::GetTupleElementOp>(
+        loc, child_type, value, func_builder->getI32IntegerAttr(flattenIdx++));
+    FlattenTupleValue(func_builder, loc, sub_value, flattened_values);
+  }
+}
+
+Value HloFunctionImporter::CreateTupleValue(
+    mlir::OpBuilder* func_builder, mlir::Location loc,
+    llvm::MutableArrayRef<Value>& flatten_values, Type type) {
+  auto tuple_type = type.dyn_cast<mlir::TupleType>();
+  if (!tuple_type) {
+    assert(!flatten_values.empty());
+    auto retval = flatten_values.front();
+    flatten_values = flatten_values.drop_front();
+    return retval;
+  }
+
+  llvm::SmallVector<mlir::Value> flatten_sub_values;
+  for (auto child_type : tuple_type.getTypes())
+    flatten_sub_values.push_back(
+        CreateTupleValue(func_builder, loc, flatten_values, child_type));
+
+  return func_builder->create<mlir::mhlo::TupleOp>(loc, flatten_sub_values)
+      .getResult();
+}
 
 Status HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation, mlir::ModuleOp module,
@@ -116,10 +193,10 @@ Status HloFunctionImporter::ImportAsFunc(
 
 Status HloFunctionImporter::ImportAsRegion(
     const xla::HloComputation& computation, mlir::Region* region,
-    mlir::Builder* builder) {
+    mlir::Builder* builder, bool flatten_region_arg_tuple) {
   HloFunctionImporter importer(region->getParentOfType<mlir::ModuleOp>(), {},
                                builder);
-  return importer.ImportAsRegion(computation, region);
+  return importer.ImportAsRegion(computation, region, flatten_region_arg_tuple);
 }
 
 StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
@@ -149,22 +226,34 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
   imported = function;
 
   mlir::Block* block = function.addEntryBlock();
-  TF_RETURN_IF_ERROR(ImportInstructions(computation, block));
+  TF_RETURN_IF_ERROR(ImportInstructions(computation, block,
+                                        /*flatten_region_arg_tuple=*/false));
 
   return function;
 }
 
 tensorflow::Status HloFunctionImporter::ImportAsRegion(
-    const HloComputation& computation, mlir::Region* region) {
+    const HloComputation& computation, mlir::Region* region,
+    bool flatten_region_arg_tuple) {
   // TODO(hinsu): Store computation name as an attribute for round-trip.
   auto* block = new mlir::Block;
   region->push_back(block);
 
   llvm::SmallVector<Type, 4> args;
   TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
-  block->addArguments(args);
 
-  return ImportInstructions(computation, block);
+  // Flatten the tuple-typed arguments.
+  if (flatten_region_arg_tuple) {
+    for (auto arg : args) {
+      llvm::SmallVector<Type> flattened_arg_types;
+      FlattenTupleType(arg, flattened_arg_types);
+      block->addArguments(flattened_arg_types);
+    }
+  } else {
+    block->addArguments(args);
+  }
+
+  return ImportInstructions(computation, block, flatten_region_arg_tuple);
 }
 
 StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
@@ -172,9 +261,6 @@ StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
     const llvm::SmallVectorImpl<Value>& arguments, mlir::OpBuilder* builder) {
   // Setup the input parameters.
   const int num_parameters = computation.num_parameters();
-
-  if (arguments.size() != num_parameters)
-    return InvalidArgument("Caller vs callee argument sizes do not match");
 
   for (int i = 0; i < num_parameters; i++) {
     auto hlo_parameter = computation.parameter_instruction(i);
@@ -196,21 +282,78 @@ StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
 }
 
 Status HloFunctionImporter::ImportInstructions(
-    const HloComputation& computation, mlir::Block* block) {
+    const HloComputation& computation, mlir::Block* block,
+    bool flatten_region_arg_tuple) {
   llvm::SmallVector<Value, 4> arguments(block->args_begin(), block->args_end());
   mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(block);
-  TF_ASSIGN_OR_RETURN(Value result,
-                      ImportInstructionsImpl(computation, arguments, &builder));
 
   // TODO(suderman): Add location tracking details.
   mlir::Location loc = builder.getUnknownLoc();
+
+  Value result;
+  if (!llvm::isa<FuncOp>(block->getParentOp()) && flatten_region_arg_tuple) {
+    // TODO(sdasgup): The check is relevant only for importing WhileOp. Should
+    // be removed to support the import of others like If/Case.
+    assert(computation.num_parameters() == 1);
+
+    // 'effective_arguments' stores the mhlo value corresponding to each
+    // computation parameter. The value could be a BlockArgument, if the
+    // corresponding computation parameter is non-tuple typed, or a TupleOp,
+    // otherwise.
+    llvm::SmallVector<Value> effective_arguments;
+
+    llvm::SmallVector<Type> computation_arg_types;
+    TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(),
+                                    &computation_arg_types));
+
+    auto orig_tuple_arg_type =
+        computation_arg_types[0].dyn_cast<mlir::TupleType>();
+
+    // If the computation-parameter type is non-tuple, no action is needed.
+    // For each tuple-typed computation parameter, create a mhlo::TupleOp
+    // value in the region body, using the already flattened values in
+    // 'arguments'. For example: With computation parameters: [tuple<T1>,
+    // tuple<T2, T4>] We have, 'arguments' = [T1 arg1, T2 arg2, T3 arg3] and
+    // we need to create two tuples tuples, one using arg1, and the other
+    // using arg2 and arg3.
+    if (!orig_tuple_arg_type) {
+      effective_arguments.push_back(arguments[0]);
+    } else {
+      llvm::SmallVector<Type> flattened_arg_type;
+      FlattenTupleType(orig_tuple_arg_type, flattened_arg_type);
+
+      llvm::MutableArrayRef<Value> sub_args(
+          arguments.begin(), arguments.begin() + flattened_arg_type.size());
+
+      auto tupleVal =
+          CreateTupleValue(&builder, loc, sub_args, orig_tuple_arg_type);
+      effective_arguments.push_back(tupleVal);
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        result,
+        ImportInstructionsImpl(computation, effective_arguments, &builder));
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        result, ImportInstructionsImpl(computation, arguments, &builder));
+  }
 
   // Create terminator op depending on the parent op of this region.
   if (llvm::isa<FuncOp>(block->getParentOp())) {
     builder.create<mlir::ReturnOp>(loc, result);
   } else {
-    builder.create<mlir::mhlo::ReturnOp>(loc, result);
+    if (flatten_region_arg_tuple) {
+      // Flatten tuples in results of this region.
+      llvm::SmallVector<Value> flattened_return_operands;
+      FlattenTupleValue(&builder, loc, result, flattened_return_operands);
+      builder.create<mlir::mhlo::ReturnOp>(loc, flattened_return_operands);
+    } else {
+      builder.create<mlir::mhlo::ReturnOp>(loc, result);
+    }
   }
+
+  CleanUpTupleOps(block, &builder);
+
   return tensorflow::Status::OK();
 }
 
@@ -768,13 +911,34 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return op.getOperation();
     }
     case HloOpcode::kWhile: {
+      llvm::SmallVector<Value> flattened_operands;
+      llvm::SmallVector<Type> flattened_operand_types;
+      FlattenTupleType(operands[0].getType(), flattened_operand_types);
+      FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
+
       auto op = func_builder->create<mlir::mhlo::WhileOp>(
-          loc, operands[0].getType(), operands[0]);
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*instruction->while_condition(), &op.cond()));
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*instruction->while_body(), &op.body()));
-      return op.getOperation();
+          loc, flattened_operand_types, flattened_operands);
+
+      TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->while_condition(),
+                                        &op.cond(),
+                                        /*flatten_region_arg_tuple=*/true));
+      TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->while_body(), &op.body(),
+                                        /*flatten_region_arg_tuple=*/true));
+      auto* operation = op.getOperation();
+
+      if (operands[0].getType().isa<mlir::TupleType>()) {
+        llvm::SmallVector<Value> flattened_results = operation->getResults();
+        llvm::MutableArrayRef<mlir::Value> flattened_results_ref(
+            flattened_results);
+        auto result = CreateTupleValue(func_builder, loc, flattened_results_ref,
+                                       operands[0].getType());
+        auto defining_tuple_op = result.getDefiningOp<mlir::mhlo::TupleOp>();
+        assert(defining_tuple_op && "builder didn't return the right type");
+        auto tupleOp = defining_tuple_op.getOperation();
+        return tupleOp;
+      }
+
+      return operation;
     }
     case HloOpcode::kGetTupleElement: {
       attributes.push_back(builder_->getNamedAttr(

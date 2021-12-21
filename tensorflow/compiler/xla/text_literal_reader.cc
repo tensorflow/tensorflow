@@ -60,7 +60,7 @@ TextLiteralReader::TextLiteralReader(tensorflow::RandomAccessFile* file)
 StatusOr<Literal> TextLiteralReader::ReadAllLines() {
   tensorflow::io::RandomAccessInputStream stream(file_.get());
   tensorflow::io::BufferedInputStream buf(&stream, 65536);
-  string shape_string;
+  std::string shape_string;
   Status s = buf.ReadLine(&shape_string);
   if (!s.ok()) {
     return s;
@@ -80,7 +80,7 @@ StatusOr<Literal> TextLiteralReader::ReadAllLines() {
   std::vector<absl::string_view> pieces;
   std::vector<absl::string_view> coordinates;
   std::vector<int64_t> coordinate_values;
-  string line;
+  std::string line;
   while (buf.ReadLine(&line).ok()) {
     pieces = absl::StrSplit(line, ':');
     absl::string_view coordinates_string =
@@ -105,7 +105,7 @@ StatusOr<Literal> TextLiteralReader::ReadAllLines() {
       int64_t coordinate_value;
       if (!absl::SimpleAtoi(piece, &coordinate_value)) {
         return InvalidArgument(
-            "could not parse coordinate member as int64: \"%s\"",
+            "could not parse coordinate member as int64_t: \"%s\"",
             std::string(piece));
       }
       coordinate_values.push_back(coordinate_value);

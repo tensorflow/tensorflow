@@ -46,7 +46,7 @@ class PlatformUtil {
 
   // Returns the platform according to the given name. Returns error if there is
   // no such platform.
-  static StatusOr<se::Platform*> GetPlatform(const string& platform_name);
+  static StatusOr<se::Platform*> GetPlatform(const std::string& platform_name);
 
   // Returns a vector of StreamExecutors for the given platform.
   // If populated, only the devices in allowed_devices will have

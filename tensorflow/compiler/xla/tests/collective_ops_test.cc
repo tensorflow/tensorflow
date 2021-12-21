@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -35,8 +37,6 @@ limitations under the License.
 
 namespace xla {
 namespace {
-
-using ::testing::IsSupersetOf;
 
 class CollectiveOpsTest : public HloTestBase {
  public:
@@ -69,7 +69,7 @@ class CollectiveOpsTest : public HloTestBase {
         ROOT out = SHAPE bitcast(copy)
       }
     )";
-    std::vector<string> replica_group_strs;
+    std::vector<std::string> replica_group_strs;
     replica_group_strs.reserve(replica_groups.size());
     for (const auto& g : replica_groups) {
       replica_group_strs.push_back(
@@ -103,7 +103,7 @@ class CollectiveOpsTest : public HloTestBase {
     auto config = GetModuleConfigForTest();
     config.set_replica_count(kNumReplicas);
     auto module = MakeCrsModule(
-        /*shape_str=*/input_value.shape(),
+        /*shape=*/input_value.shape(),
         /*replica_groups=*/{}, config,
         /*op=*/op, /*datatype=*/dtype);
     TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
@@ -187,19 +187,19 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceSingleOutput_float32) {
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int8) {
-  TestAllOpsForReduce<int8>();
+  TestAllOpsForReduce<int8_t>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_uint8) {
-  TestAllOpsForReduce<uint8>();
+  TestAllOpsForReduce<uint8_t>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_uint32) {
-  TestAllOpsForReduce<uint32>();
+  TestAllOpsForReduce<uint32_t>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int32) {
-  TestAllOpsForReduce<int32>();
+  TestAllOpsForReduce<int32_t>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int64) {
@@ -458,7 +458,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   absl::c_iota(input_vec, 0);
   auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
   auto module = MakeCrsModule(
-      /*shape_str=*/input_literal.shape(),
+      /*shape=*/input_literal.shape(),
       /*replica_groups=*/{{0}, {1, 2}, {3}}, config);
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -600,7 +600,7 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
                                             /*use_threads=*/true));
 
   ASSERT_EQ(results.size(), kNumReplicas);
-  for (uint32 i = 0; i < kNumReplicas; ++i) {
+  for (uint32_t i = 0; i < kNumReplicas; ++i) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0(i), results[i]));
   }
 }
@@ -628,14 +628,14 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({11, 11}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
                                      results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({10, 10}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({10, 10}),
                                      results[1]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({12, 12}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({12, 12}),
                                      results[2]));
   // Nothing writes to replica 3, so it is memzero'ed.
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({0, 0}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({0, 0}),
                                      results[3]));
 }
 
@@ -662,13 +662,13 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Degnerate) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({10, 10}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({10, 10}),
                                      results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({11, 11}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
                                      results[1]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({12, 12}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({12, 12}),
                                      results[2]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({13, 13}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({13, 13}),
                                      results[3]));
 }
 
@@ -695,14 +695,14 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_NoDegnerate) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({10, 10}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({10, 10}),
                                      results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({11, 11}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
                                      results[1]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({12, 12}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({12, 12}),
                                      results[2]));
   // Nothing writes to replica 3, so it is memzero'ed.
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({0, 0}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({0, 0}),
                                      results[3]));
 }
 
@@ -729,13 +729,13 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Rotate) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({13, 13}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({13, 13}),
                                      results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({10, 10}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({10, 10}),
                                      results[1]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({11, 11}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
                                      results[2]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({12, 12}),
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({12, 12}),
                                      results[3]));
 }
 
@@ -770,14 +770,14 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_EmptyReplicaGroups) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  LiteralTestUtil::ExpectR1Equal<uint32>({10, 15, 11, 16, 12, 17, 13, 18},
-                                         results[0]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({20, 25, 21, 26, 22, 27, 23, 28},
-                                         results[1]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({30, 35, 31, 36, 32, 37, 33, 38},
-                                         results[2]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({40, 45, 41, 46, 42, 47, 43, 48},
-                                         results[3]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16, 12, 17, 13, 18},
+                                           results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26, 22, 27, 23, 28},
+                                           results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({30, 35, 31, 36, 32, 37, 33, 38},
+                                           results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 45, 41, 46, 42, 47, 43, 48},
+                                           results[3]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllToAll_OrderedReplicaGroups) {
@@ -811,14 +811,14 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_OrderedReplicaGroups) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  LiteralTestUtil::ExpectR1Equal<uint32>({43, 48, 42, 47, 41, 46, 40, 45},
-                                         results[0]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({33, 38, 32, 37, 31, 36, 30, 35},
-                                         results[1]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({23, 28, 22, 27, 21, 26, 20, 25},
-                                         results[2]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({13, 18, 12, 17, 11, 16, 10, 15},
-                                         results[3]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({43, 48, 42, 47, 41, 46, 40, 45},
+                                           results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({33, 38, 32, 37, 31, 36, 30, 35},
+                                           results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({23, 28, 22, 27, 21, 26, 20, 25},
+                                           results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({13, 18, 12, 17, 11, 16, 10, 15},
+                                           results[3]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
@@ -846,10 +846,10 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  LiteralTestUtil::ExpectR1Equal<uint32>({23, 28, 20, 25}, results[0]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({22, 27, 21, 26}, results[1]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({12, 17, 11, 16}, results[2]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({13, 18, 10, 15}, results[3]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({23, 28, 20, 25}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({22, 27, 21, 26}, results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({12, 17, 11, 16}, results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({13, 18, 10, 15}, results[3]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_SplitDimension)) {
@@ -873,14 +873,14 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_SplitDimension)) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  LiteralTestUtil::ExpectR1Equal<uint32>({10, 15, 11, 16, 12, 17, 13, 18},
-                                         results[0]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({20, 25, 21, 26, 22, 27, 23, 28},
-                                         results[1]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({30, 35, 31, 36, 32, 37, 33, 38},
-                                         results[2]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({40, 45, 41, 46, 42, 47, 43, 48},
-                                         results[3]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16, 12, 17, 13, 18},
+                                           results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26, 22, 27, 23, 28},
+                                           results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({30, 35, 31, 36, 32, 37, 33, 38},
+                                           results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 45, 41, 46, 42, 47, 43, 48},
+                                           results[3]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0) {
@@ -906,8 +906,8 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0) {
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   for (const Literal& result : results) {
-    LiteralTestUtil::ExpectR1Equal<uint32>({10, 15, 11, 16, 12, 17, 13, 18},
-                                           result);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16, 12, 17, 13, 18},
+                                             result);
   }
 }
 
@@ -934,8 +934,8 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   for (const Literal& result : results) {
-    LiteralTestUtil::ExpectR1Equal<uint32>({10, 11, 12, 13, 15, 16, 17, 18},
-                                           result);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 11, 12, 13, 15, 16, 17, 18},
+                                             result);
   }
 }
 
@@ -1012,7 +1012,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
     auto rs = results[replica_idx].DecomposeTuple();
-    LiteralTestUtil::ExpectR1Equal<uint32>({0, 1, 0, 1}, rs[0]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 1, 0, 1}, rs[0]);
     LiteralTestUtil::ExpectR1Near<float>({0.0, 1.0, 0.0, 1.0}, rs[1],
                                          ErrorSpec{1e-5, 1e-5});
   }
@@ -1050,8 +1050,8 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter) {
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {}, kNumReplicas,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
-  LiteralTestUtil::ExpectR1Equal<uint32>({11, 13, 15, 17}, results[0]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({19, 21, 23, 25}, results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 13, 15, 17}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
@@ -1088,8 +1088,8 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {}, kNumReplicas,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
-  LiteralTestUtil::ExpectR1Equal<uint32>({11, 13, 19, 21}, results[0]);
-  LiteralTestUtil::ExpectR1Equal<uint32>({15, 17, 23, 25}, results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 13, 19, 21}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 17, 23, 25}, results[1]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceReassociate)) {

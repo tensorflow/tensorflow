@@ -519,11 +519,11 @@ class Array {
   }
 
   // Returns a string representation of the array suitable for debugging.
-  string ToString() const {
+  std::string ToString() const {
     if (sizes_.empty()) {
       return "";
     }
-    std::vector<string> pieces;
+    std::vector<std::string> pieces;
     std::vector<int64_t> index(sizes_.size());
     do {
       // Emit leading spaces and opening square brackets
@@ -562,9 +562,9 @@ class Array {
   }
 
  private:
-  // Converts an initializer_list of type U to a vector of type int64. Used by
-  // the initializer list based constructors to convert the size type into int64
-  // to be passed to the size based constructor.
+  // Converts an initializer_list of type U to a vector of type int64_t. Used by
+  // the initializer list based constructors to convert the size type into
+  // int64_t to be passed to the size based constructor.
   template <typename U>
   static std::vector<int64_t> ToInt64Vector(
       const std::initializer_list<U>& data) {

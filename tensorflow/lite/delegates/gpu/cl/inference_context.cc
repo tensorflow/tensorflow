@@ -111,15 +111,16 @@ bool IsBufferBased(const GpuInfo& gpu_info, const TensorStorageType& type) {
          type == TensorStorageType::IMAGE_BUFFER || image2d_based_buffer;
 }
 
-// Generic add is add that have several runtime inputs and they are not
-// broadcasted, i.e. pointwise add for N tensors where N > 1.
-bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
-                  const std::vector<Value*>& outputs) {
+bool IsAssociativeLinkableOp(const tflite::gpu::Node& node,
+                             const std::vector<tflite::gpu::Value*>& inputs,
+                             const std::vector<tflite::gpu::Value*>& outputs) {
   if (inputs.size() == 1) {
     return false;
   }
-  const OperationType op_type = OperationTypeFromString(node.operation.type);
-  if (op_type != OperationType::ADD) {
+  const tflite::gpu::OperationType op_type =
+      tflite::gpu::OperationTypeFromString(node.operation.type);
+  if (op_type != tflite::gpu::OperationType::ADD &&
+      op_type != tflite::gpu::OperationType::MUL) {
     return false;
   }
 
@@ -336,14 +337,9 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
       auto inputs = graph.FindInputs(node.id);
       auto outputs = graph.FindOutputs(node.id);
       // Reordering of input ids and updating of temporary tensors_usage struct.
-      // This stage is necessary because we are building OperationDef that rely
-      // on order of input ids. But we also should have input id on first
-      // position that potentially can be "linking" tensor and as result
-      // eliminated(unused) We apply it only for ADD operation, because of ADD
-      // associativity and ADD can be linked. In current approach "linking"
-      // tensor can be only latest written tensor(during linear order of
-      // execution) among input tensors.
-      if (IsGenericAdd(node, inputs, outputs)) {
+      // To have better linking we need linking tensor(latest written during
+      // linear execution) on first position.
+      if (IsAssociativeLinkableOp(node, inputs, outputs)) {
         int latest_written_tensor_index = 0;
         int last_usage = tensor_usages[inputs[0]->id];
         for (int j = 1; j < inputs.size(); ++j) {

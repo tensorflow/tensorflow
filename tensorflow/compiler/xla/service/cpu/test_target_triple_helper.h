@@ -18,7 +18,7 @@ limitations under the License.
 
 #if defined(__aarch64__)
 static const char kTargetCpuForHost[] = "aarch64";
-static const char kTargetTripleForHost[] = "aarch64-unknown-linux-gnu",
+static const char kTargetTripleForHost[] = "aarch64-unknown-linux-gnu";
 #elif (defined(__powerpc__) || \
        defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 static const char kTargetCpuForHost[] = "ppc";

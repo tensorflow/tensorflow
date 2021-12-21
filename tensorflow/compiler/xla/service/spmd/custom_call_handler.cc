@@ -41,16 +41,16 @@ namespace spmd {
 
 namespace {
 
-StatusOr<absl::flat_hash_map<string, int64_t>> ParseOpaqueAsAttributes(
+StatusOr<absl::flat_hash_map<std::string, int64_t>> ParseOpaqueAsAttributes(
     const HloInstruction* hlo) {
   absl::string_view opaque = Cast<HloCustomCallInstruction>(hlo)->opaque();
   HloLexer lexer(opaque);
-  absl::flat_hash_map<string, int64_t> result;
+  absl::flat_hash_map<std::string, int64_t> result;
   while (lexer.Lex() != TokKind::kEof) {
     if (lexer.GetKind() != TokKind::kAttributeName) {
       return InvalidArgument("Expects attribute name, %s", opaque);
     }
-    string attr_name = lexer.GetStrVal();
+    std::string attr_name = lexer.GetStrVal();
     if (lexer.Lex() != TokKind::kInt) {
       return InvalidArgument("expects integer attribute value");
     }
@@ -164,7 +164,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
       b_.AddInstruction(HloInstruction::CreateBinary(
           partition_id_s32->shape(), HloOpcode::kMultiply, partition_id_s32,
           b_.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int32>(per_partition_size))))),
+              LiteralUtil::CreateR0<int32_t>(per_partition_size))))),
       {}));
   index_gte = b_.AddInstruction(HloInstruction::CreateBinary(
       index_offset->shape(), HloOpcode::kAdd, index_gte, index_offset));
@@ -352,7 +352,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
           b_.AddInstruction(HloInstruction::CreateBinary(
               shard_offset->shape(), HloOpcode::kSubtract,
               b_.AddInstruction(HloInstruction::CreateConstant(
-                  LiteralUtil::CreateR0<int32>(amount))),
+                  LiteralUtil::CreateR0<int32_t>(amount))),
               shard_offset)),
           {}));
   HloInstruction* pred = b_.AddInstruction(HloInstruction::CreateCompare(
@@ -367,7 +367,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
 
 std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
     HloInstruction* input, int64_t dim, int64_t amount) {
-  string opaque = absl::StrCat("dimension=", dim, ",amount=", amount);
+  std::string opaque = absl::StrCat("dimension=", dim, ",amount=", amount);
   return HloInstruction::CreateCustomCall(input->shape(), {input},
                                           kSPMDOpRotateRight, opaque);
 }

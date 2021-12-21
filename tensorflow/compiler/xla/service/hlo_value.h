@@ -44,7 +44,7 @@ struct HloPosition {
   // Returns the shape at this position.
   const Shape& shape() const;
 
-  string ToString() const;
+  std::string ToString() const;
 
   bool operator==(const HloPosition& other) const {
     return instruction == other.instruction && index == other.index;
@@ -77,7 +77,7 @@ struct HloUse {
   // The shape index within the operand in which the value appears.
   ShapeIndex operand_index;
 
-  string ToString() const;
+  std::string ToString() const;
 
   bool operator==(const HloUse& other) const {
     return instruction == other.instruction &&
@@ -159,11 +159,11 @@ class HloValue : public BufferValue {
   bool operator!=(const HloValue& other) const;
 
   // Return a single-line string representation of the value.
-  string ToShortString() const;
+  std::string ToShortString() const;
 
-  string ToString(int indent) const;
+  std::string ToString(int indent) const;
 
-  string ToString() const override { return ToString(0); }
+  std::string ToString() const override { return ToString(0); }
 
  private:
   // Whether this instruction is a phi value.
@@ -232,7 +232,7 @@ class HloValueSet {
   }
   bool operator!=(const HloValueSet& other) const { return !(*this == other); }
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   // Sorts value_ and removes duplicates. This should be called after adding any
@@ -262,7 +262,7 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
   // singleton.
   bool IsAmbiguous() const;
 
-  string ToString() const;
+  std::string ToString() const;
 };
 
 std::ostream& operator<<(std::ostream& out,

@@ -44,7 +44,7 @@ class FftScratchAllocator : public se::ScratchAllocator {
 
   int64_t TotalAllocatedBytes() { return total_allocated_bytes_; }
 
-  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+  se::port::StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override;
 
  private:

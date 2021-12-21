@@ -230,7 +230,7 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
         if (metadata_size == 0) {
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
-        auto buffer_8 = se::DeviceMemory<uint8>(*buffer);
+        auto buffer_8 = se::DeviceMemory<uint8_t>(*buffer);
         auto metadata_buffer =
             stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
         TF_ASSIGN_OR_RETURN(
@@ -242,7 +242,7 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
 
         // Update shape size from metadata.
         for (int64_t i = 0; i < metadata.element_count(); ++i) {
-          device_sub_shape.mutable_dimensions()[i] = metadata.Get<int32>({i});
+          device_sub_shape.mutable_dimensions()[i] = metadata.Get<int32_t>({i});
         }
         return Status::OK();
       }));

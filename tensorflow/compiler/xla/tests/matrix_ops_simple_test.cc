@@ -155,7 +155,7 @@ class TestLinspaceMaxParametric
   }
 };
 
-string PrintTestLinspaceMaxParam(
+std::string PrintTestLinspaceMaxParam(
     const ::testing::TestParamInfo<TestLinspaceMaxParam>& test_param) {
   const TestLinspaceMaxParam& param = test_param.param;
   return absl::StrCat(param.rows, "r", param.cols, "c");

@@ -1033,6 +1033,9 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase,
   """Test that strided slice's custom gradient produces correct gradients."""
 
   @parameterized.parameters(set((True, context.executing_eagerly())))
+  @test_util.disable_xla(
+      "b/210077724: Auto-clustering with where op isn't supported. Has loose "
+      "output shape bounds")
   def testGradient(self, use_tape):
     with test_util.device(use_gpu=True):
       var = variables.Variable(

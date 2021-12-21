@@ -671,7 +671,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeIntoScalar) {
 }
 
 TEST_F(DynamicDimensionInferenceTest, GatherTest) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherV2
 
 ENTRY main {
@@ -1253,7 +1253,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
   auto input = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {9}), "data_input"));
   auto six = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(6)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(6)));
   // Creates an input of shape [<=9], dynamic size is 6.
   auto dynamic_input =
       builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
@@ -1261,7 +1261,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
   auto dynamic_size = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(S32, {}), "size_param"));
   auto three = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(3)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(3)));
 
   // Reshape [<=9] into [3, <=3]
 
@@ -1282,11 +1282,11 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeOpWithMultipleDynamicDimensions) {
   auto input = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {9, 2}), "data_input"));
   auto six = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(6)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(6)));
   input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       ShapeUtil::MakeShape(F32, {9, 2}, {true, false}), input, six, 0));
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       ShapeUtil::MakeShape(F32, {9, 2}, {true, true}), input, one, 1));
 

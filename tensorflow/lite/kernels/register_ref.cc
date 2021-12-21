@@ -168,6 +168,7 @@ TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();
 TfLiteRegistration* Register_BUCKETIZE();
 TfLiteRegistration* Register_RANDOM_UNIFORM();
 TfLiteRegistration* Register_MULTINOMIAL();
+TfLiteRegistration* Register_GELU();
 TfLiteRegistration* Register_AVERAGE_POOL_3D();
 TfLiteRegistration* Register_MAX_POOL_3D();
 
@@ -492,6 +493,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_RANDOM_STANDARD_NORMAL());
   AddBuiltin(BuiltinOperator_BUCKETIZE, Register_BUCKETIZE());
   AddBuiltin(BuiltinOperator_RANDOM_UNIFORM, Register_RANDOM_UNIFORM());
+  AddBuiltin(BuiltinOperator_GELU, Register_GELU());
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_3D, Register_AVERAGE_POOL_3D());
   AddBuiltin(BuiltinOperator_MAX_POOL_3D, Register_MAX_POOL_3D());
   AddCustom("NumericVerify",

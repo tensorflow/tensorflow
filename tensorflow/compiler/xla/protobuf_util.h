@@ -62,12 +62,14 @@ class ProtobufHashWrapper {
 // If 'full_name' is not null then it is set to the name of the file the
 // protobuf was written to.
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
-                            const string& directory, const string& file_name,
-                            string* full_path = nullptr);
+                            const std::string& directory,
+                            const std::string& file_name,
+                            std::string* full_path = nullptr);
 
 // Registers a function that may either expand a dirpath or forward the original
 // dirpath along as-is.
-void RegisterDirectoryExpander(const std::function<string(string)>& expander);
+void RegisterDirectoryExpander(
+    const std::function<std::string(std::string)>& expander);
 
 }  // namespace protobuf_util
 }  // namespace xla

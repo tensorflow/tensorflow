@@ -270,3 +270,49 @@ func @compare_ne(%lhs : tensor<2xcomplex<f32>>, %rhs: tensor<2xcomplex<f32>>) ->
   // CHECK: return [[OUT]]
   return %0 : tensor<2xi1>
 }
+
+// CHECK-LABEL: @sin
+func @sin(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> (tensor<10xf32>, tensor<10xf32>) {
+  // CHECK-DAG: %[[TWO:.+]] = mhlo.constant dense<2.000000e+00>
+  // CHECK-DAG: %[[SIN:.+]] = "mhlo.sine"(%arg0)
+  // CHECK-DAG: %[[EXP:.+]] = "mhlo.exponential"(%arg1)
+  // CHECK-DAG: %[[NEG:.+]] = "mhlo.negate"(%arg1)
+  // CHECK-DAG: %[[NEXP:.+]] = "mhlo.exponential"(%[[NEG]])
+  // CHECK-DAG: %[[ADD:.+]] = mhlo.add %[[EXP]], %[[NEXP]]
+  // CHECK-DAG: %[[MUL:.+]] = mhlo.multiply %[[SIN]], %[[ADD]]
+  // CHECK-DAG: %[[RDIV:.+]] = mhlo.divide %[[MUL]], %[[TWO]]
+  // CHECK-DAG: %[[COS:.+]] = "mhlo.cosine"(%arg0)
+  // CHECK-DAG: %[[SUB:.+]] = mhlo.subtract %[[EXP]], %[[NEXP]]
+  // CHECK-DAG: %[[IMUL:.+]] = mhlo.multiply %[[COS]], %[[SUB]]
+  // CHECK-DAG: %[[IDIV:.+]] = mhlo.divide %[[IMUL]], %[[TWO]]
+  %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> (tensor<10xcomplex<f32>>)
+  %1 = "mhlo.sine"(%0) : (tensor<10xcomplex<f32>>) -> (tensor<10xcomplex<f32>>)
+  %2 = "mhlo.real"(%1) : (tensor<10xcomplex<f32>>) -> (tensor<10xf32>)
+  %3 = "mhlo.imag"(%1) : (tensor<10xcomplex<f32>>) -> (tensor<10xf32>)
+
+  // CHECK: return %[[RDIV]], %[[IDIV]]
+  return %2, %3 : tensor<10xf32>, tensor<10xf32>
+}
+
+// CHECK-LABEL: @cos
+func @cos(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> (tensor<10xf32>, tensor<10xf32>) {
+  // CHECK-DAG: %[[TWO:.+]] = mhlo.constant dense<2.000000e+00>
+  // CHECK-DAG: %[[COS:.+]] = "mhlo.cosine"(%arg0)
+  // CHECK-DAG: %[[EXP:.+]] = "mhlo.exponential"(%arg1)
+  // CHECK-DAG: %[[NEG:.+]] = "mhlo.negate"(%arg1)
+  // CHECK-DAG: %[[NEXP:.+]] = "mhlo.exponential"(%[[NEG]])
+  // CHECK-DAG: %[[ADD:.+]] = mhlo.add %[[EXP]], %[[NEXP]]
+  // CHECK-DAG: %[[MUL:.+]] = mhlo.multiply %[[COS]], %[[ADD]]
+  // CHECK-DAG: %[[RDIV:.+]] = mhlo.divide %[[MUL]], %[[TWO]]
+  // CHECK-DAG: %[[SIN:.+]] = "mhlo.sine"(%arg0)
+  // CHECK-DAG: %[[SUB:.+]] = mhlo.subtract %[[NEXP]], %[[EXP]]
+  // CHECK-DAG: %[[IMUL:.+]] = mhlo.multiply %[[SIN]], %[[SUB]]
+  // CHECK-DAG: %[[IDIV:.+]] = mhlo.divide %[[IMUL]], %[[TWO]]
+  %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> (tensor<10xcomplex<f32>>)
+  %1 = "mhlo.cosine"(%0) : (tensor<10xcomplex<f32>>) -> (tensor<10xcomplex<f32>>)
+  %2 = "mhlo.real"(%1) : (tensor<10xcomplex<f32>>) -> (tensor<10xf32>)
+  %3 = "mhlo.imag"(%1) : (tensor<10xcomplex<f32>>) -> (tensor<10xf32>)
+
+  // CHECK: return %[[RDIV]], %[[IDIV]]
+  return %2, %3 : tensor<10xf32>, tensor<10xf32>
+}

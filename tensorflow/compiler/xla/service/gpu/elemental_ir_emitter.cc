@@ -108,7 +108,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
       return Unimplemented("Bad type for device math call: %s",
                            PrimitiveType_Name(output_type));
   }
-  const string& munged_callee =
+  const std::string& munged_callee =
       ObtainDeviceFunctionName(funcid, output_type, b());
   llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
                                      converted_input_types, output_type, name)
@@ -120,11 +120,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
-    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // llvm intrinsics differentiate between half/float/double functions via
   // the suffixes ".f16", ".f32" and ".f64".
-  string munged_callee = callee_name;
+  std::string munged_callee = callee_name;
   switch (output_type) {
     case F16:
       StrAppend(&munged_callee, ".f16");
@@ -143,7 +143,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
-    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
     absl::string_view name) {
   // Binary math functions transform are of type [T] -> T.

@@ -27,8 +27,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Finds convolutions that this pass may be able to transform, namely int8 cudnn
-// forward or forward-bias-activation convolutions
+// Finds convolutions that this pass may be able to transform, namely int8_t
+// cudnn forward or forward-bias-activation convolutions
 //
 // cudnn as of v8.2 supports the following data type combinations for forward
 // and forward-bias-activation convolutions.  We have to make sure we only
@@ -37,7 +37,7 @@ namespace gpu {
 //   in       out
 //   int8x1   int8x1
 //   int8x1   float
-//   int8x1   int32
+//   int8x1   int32_t
 //
 //   int8x4   int8x4
 //   int8x4   float
