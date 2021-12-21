@@ -1,0 +1,33 @@
+From eeed24e766a1cfbcf7f6240662b0ed5ff41a69e0 Mon Sep 17 00:00:00 2001
+From: Krasimir Georgiev <krasimir@google.com>
+Date: Sun, 19 Dec 2021 14:37:05 +0100
+Subject: [PATCH] [Bazel] update build files for
+ https://github.com/llvm/llvm-project/commit/65d7fd0239bf301c5dcaa26ed474200845966136
+
+---
+ utils/bazel/llvm-project-overlay/llvm/BUILD.bazel | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index b44ee1a40945..7c31359fb4ed 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -426,7 +426,6 @@ cc_library(
+     deps = [
+         ":BinaryFormat",
+         ":DebugInfoCodeView",
+-        ":ProfileData",
+         ":Support",
+         ":config",
+         ":ir_headers",
+@@ -840,6 +839,7 @@ cc_library(
+     copts = llvm_copts,
+     deps = [
+         ":Core",
++        ":DebugInfoDWARF",
+         ":Support",
+         ":config",
+     ],
+-- 
+2.34.1.307.g9b7440fafd-goog
+
