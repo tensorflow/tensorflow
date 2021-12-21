@@ -389,9 +389,9 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
 Value RewriteCallOp(OpBuilder& builder, CallOp call,
                     const Optional<StringRef>& new_symbol, Value token) {
   builder.setInsertionPoint(call);
-  auto new_operands = llvm::to_vector<4>(call.getArgOperands());
+  auto new_operands = llvm::to_vector(call.getArgOperands());
   new_operands.push_back(token);
-  auto new_result_types = llvm::to_vector<4>(call.getResultTypes());
+  auto new_result_types = llvm::to_vector(call.getResultTypes());
   new_result_types.push_back(token.getType());
   auto new_call = builder.create<CallOp>(
       call.getLoc(), new_result_types,
@@ -426,7 +426,7 @@ SmallVector<Value> GetValueWithToken(
     OpBuilder& builder, ArrayRef<Value> values, Value token,
     llvm::SmallDenseMap<Value, Value>& rewritten_values, bool flatten_tuple) {
   if (flatten_tuple) {
-    auto operands = llvm::to_vector<4>(values);
+    auto operands = llvm::to_vector(values);
     operands.push_back(token);
     return operands;
   }
@@ -450,7 +450,7 @@ SmallVector<Value> GetValueWithToken(
   // If `value` is an op result and the owner is a `mhlo.tuple`, simply unpack
   // the tuple.
   if (auto tuple_op = value.getDefiningOp<TupleOp>()) {
-    auto tuple_operands = llvm::to_vector<4>(tuple_op.getOperands());
+    auto tuple_operands = llvm::to_vector(tuple_op.getOperands());
     tuple_operands.push_back(token);
     return {create_tuple(tuple_operands)};
   }
@@ -477,14 +477,14 @@ SmallVector<Type> GetTypeWithToken(OpBuilder& builder, ArrayRef<Type> types,
   auto token_type = TokenType::get(builder.getContext());
 
   if (flatten_tuple) {
-    auto result_types = llvm::to_vector<4>(types);
+    auto result_types = llvm::to_vector(types);
     result_types.push_back(token_type);
     return result_types;
   }
 
   auto type = types[0];
   if (auto tuple_type = type.dyn_cast<TupleType>()) {
-    auto result_types = llvm::to_vector<4>(tuple_type.getTypes());
+    auto result_types = llvm::to_vector(tuple_type.getTypes());
     result_types.push_back(token_type);
     return {builder.getTupleType(result_types)};
   }
@@ -567,7 +567,7 @@ Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
   auto new_arg = new_args[new_args.size() - 1];
 
   block.eraseArguments(
-      llvm::to_vector<4>(llvm::seq((unsigned)0, (unsigned)old_args_size)));
+      llvm::to_vector(llvm::seq((unsigned)0, (unsigned)old_args_size)));
 
   if (flatten_tuple) return new_arg;
 
@@ -590,7 +590,7 @@ void RewriteControlFlowTerminator(OpBuilder& builder, Operation* terminator,
   builder.setInsertionPoint(terminator);
   llvm::SmallDenseMap<Value, Value> rewritten_operands;
   auto new_results =
-      GetValueWithToken(builder, llvm::to_vector<4>(terminator->getOperands()),
+      GetValueWithToken(builder, llvm::to_vector(terminator->getOperands()),
                         token, rewritten_operands, flatten_tuple);
   terminator->setOperands(new_results);
 }
@@ -712,13 +712,13 @@ void RewriteRegionWhileOp(OpBuilder& builder, WhileOp region_while,
 
   // Rewrite region operand to have an extra operand `token`.
   auto new_val_operands =
-      GetValueWithToken(builder, llvm::to_vector<4>(region_while.getOperands()),
+      GetValueWithToken(builder, llvm::to_vector(region_while.getOperands()),
                         token, rewritten_operands,
                         /*flatten_tuple=*/true);
 
-  auto new_result_types = GetTypeWithToken(
-      builder, llvm::to_vector<4>(region_while.getResultTypes()),
-      /*flatten_tuple*/ true);
+  auto new_result_types =
+      GetTypeWithToken(builder, llvm::to_vector(region_while.getResultTypes()),
+                       /*flatten_tuple*/ true);
 
   // Create new `mhlo.while` op with extra token operand and result.
   auto new_while = builder.create<WhileOp>(region_while.getLoc(),
@@ -773,9 +773,9 @@ bool ProcessRegionWhileOp(
 // Updates function type based on current function body block arguments and
 // terminator operand types.
 void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
-  auto new_argument_types = llvm::to_vector<4>(func_body.getArgumentTypes());
+  auto new_argument_types = llvm::to_vector(func_body.getArgumentTypes());
   auto new_result_types =
-      llvm::to_vector<4>(func_body.getTerminator()->getOperandTypes());
+      llvm::to_vector(func_body.getTerminator()->getOperandTypes());
   func.setType(FunctionType::get(builder.getContext(), new_argument_types,
                                  new_result_types));
 }
@@ -784,7 +784,7 @@ void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
 // extra `mhlo.token` operand.
 void RewriteFunctionTerminator(OpBuilder& builder, mlir::ReturnOp terminator,
                                Value token) {
-  auto new_results = llvm::to_vector<4>(terminator.getOperands());
+  auto new_results = llvm::to_vector(terminator.getOperands());
   new_results.push_back(token);
   builder.setInsertionPoint(terminator);
   builder.create<mlir::ReturnOp>(terminator.getLoc(), new_results);
