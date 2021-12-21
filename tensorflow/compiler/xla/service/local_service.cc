@@ -120,7 +120,7 @@ LocalService::CompileExecutables(
     if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
       absl::optional<const OpMetadata*> metadata =
           ParameterMetadata(computation, /*parameter_number=*/i);
-      auto metadata_string = [&metadata]() -> string {
+      auto metadata_string = [&metadata]() -> std::string {
         if (!metadata.has_value()) {
           return "";
         }

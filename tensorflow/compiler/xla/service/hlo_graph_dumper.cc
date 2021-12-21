@@ -1830,7 +1830,7 @@ StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
     case RenderedGraphFormat::kHtml:
       return WrapDotInHtml(dot);
     case RenderedGraphFormat::kDot:
-      return string(dot);
+      return std::string(dot);
     case RenderedGraphFormat::kFusionVisualization:
       return WrapFusionExplorer(computation);
   }

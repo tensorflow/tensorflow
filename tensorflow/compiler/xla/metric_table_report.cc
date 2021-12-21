@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/metric_table_report.h"
 
+#include <algorithm>
+#include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
@@ -83,7 +86,7 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
   const int report_size = report.size();
   while (pos < report_size) {
     int64_t end_of_line = report.find('\n', pos);
-    const int64_t _npos = string::npos;
+    const int64_t _npos = std::string::npos;
     if (end_of_line == _npos) {
       end_of_line = report.size();
     }

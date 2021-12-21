@@ -1225,7 +1225,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
         // Their sum is equal to the rank of the tensor.
         CHECK_EQ(rank, dimensions.size() + accum_indices->size());
 
-        auto brace_to_string = [&](std::string brace) -> string {
+        auto brace_to_string = [&](std::string brace) -> std::string {
           // Handle 1D tensor
           if (rank == 1) {
             return brace;
@@ -2169,28 +2169,28 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
       break;
     case U16:
-      *proto->mutable_u16s() = string(
+      *proto->mutable_u16s() = std::string(
           reinterpret_cast<const char*>(data<uint16_t>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_u16s());
       }
       break;
     case S16:
-      *proto->mutable_s16s() = string(
+      *proto->mutable_s16s() = std::string(
           reinterpret_cast<const char*>(data<int16_t>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_s16s());
       }
       break;
     case F16:
-      *proto->mutable_f16s() = string(
+      *proto->mutable_f16s() = std::string(
           reinterpret_cast<const char*>(data<half>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_f16s());
       }
       break;
     case BF16:
-      *proto->mutable_bf16s() = string(
+      *proto->mutable_bf16s() = std::string(
           reinterpret_cast<const char*>(data<bfloat16>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_bf16s());
@@ -2385,8 +2385,8 @@ std::string LiteralBase::GetR1U8AsString() const {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(shape().element_type(), U8);
-  return string(absl::bit_cast<const char*>(data<uint8_t>().data()),
-                ShapeUtil::ElementsIn(shape()));
+  return std::string(absl::bit_cast<const char*>(data<uint8_t>().data()),
+                     ShapeUtil::ElementsIn(shape()));
 }
 
 void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,

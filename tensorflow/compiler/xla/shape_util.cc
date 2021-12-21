@@ -630,7 +630,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return IsScalar(shape) && shape.element_type() == element_type;
 }
 
-/* static */ string ShapeUtil::HumanString(const Shape& shape) {
+/* static */ std::string ShapeUtil::HumanString(const Shape& shape) {
   if (shape.IsTuple()) {
     std::string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
@@ -662,7 +662,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       absl::StrJoin(dim_elements, ","), "]");
 }
 
-/* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
+/* static */ std::string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
   if (shape.IsTuple()) {
     std::string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
@@ -692,7 +692,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return result;
 }
 
-/* static */ string ShapeUtil::HumanString(const ProgramShape& program_shape) {
+/* static */ std::string ShapeUtil::HumanString(
+    const ProgramShape& program_shape) {
   std::vector<std::string> parameters;
   const auto& shape_parameters = program_shape.parameters();
   parameters.reserve(shape_parameters.size());

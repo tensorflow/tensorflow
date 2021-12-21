@@ -2918,7 +2918,7 @@ HloGatherInstruction::HloGatherInstruction(
   absl::c_copy(slice_sizes, std::back_inserter(gather_slice_sizes_));
 }
 
-/*static*/ string HloGatherInstruction::GatherDimensionNumbersToString(
+/*static*/ std::string HloGatherInstruction::GatherDimensionNumbersToString(
     const GatherDimensionNumbers& gather_dimension_numbers) {
   std::string offset_dims =
       StrCat("offset_dims={",
@@ -3015,7 +3015,7 @@ HloScatterInstruction::HloScatterInstruction(
       absl::make_unique<ScatterDimensionNumbers>(scatter_dim_numbers);
 }
 
-/*static*/ string HloScatterInstruction::ScatterDimensionNumbersToString(
+/*static*/ std::string HloScatterInstruction::ScatterDimensionNumbersToString(
     const ScatterDimensionNumbers& scatter_dimension_numbers) {
   std::string update_window_dims =
       StrCat("update_window_dims={",

@@ -483,7 +483,7 @@ StatusOr<std::string> Client::ExecutionStatsAsString(
         ", compute cycles: ", cycle_count, ", performance: ", gflops,
         "gflop/s");
   }
-  return string("[Execution Statistics] not available.");
+  return std::string("[Execution Statistics] not available.");
 }
 
 StatusOr<ChannelHandle> Client::CreateChannelHandleByType(

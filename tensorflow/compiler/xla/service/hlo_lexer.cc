@@ -337,7 +337,7 @@ TokKind HloLexer::LexIdentifier() {
     }
   }
 
-  token_state_.str_val = string(identifier);
+  token_state_.str_val = std::string(identifier);
   return TokKind::kIdent;
 }
 

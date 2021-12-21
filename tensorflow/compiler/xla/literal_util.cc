@@ -592,7 +592,7 @@ Literal ConvertType(LiteralSlice literal) {
   return literal;
 }
 
-/* static */ string LiteralUtil::MultiIndexAsString(
+/* static */ std::string LiteralUtil::MultiIndexAsString(
     absl::Span<const int64_t> multi_index) {
   return StrCat("{", absl::StrJoin(multi_index, ","), "}");
 }

@@ -357,7 +357,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return logical_to_physical;
 }
 
-/* static */ string LayoutUtil::HumanString(const Layout& layout) {
+/* static */ std::string LayoutUtil::HumanString(const Layout& layout) {
   return layout.ToString();
 }
 

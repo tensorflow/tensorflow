@@ -48,20 +48,20 @@ class XlaBuilderTest : public ::testing::Test {
     context_.loadDialect<mlir::mhlo::MhloDialect>();
   }
 
-  string SetupTest() {
+  std::string SetupTest() {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
   // Retuns the MLIR op string representation of the given XlaOp.
-  string GetMlirOpString(XlaOp xla_op) {
-    string str;
+  std::string GetMlirOpString(XlaOp xla_op) {
+    std::string str;
     llvm::raw_string_ostream ostream{str};
     xla_builder_.GetValue(xla_op).print(ostream);
     ostream.flush();
     return str;
   }
 
-  string name_;
+  std::string name_;
   mlir::MLIRContext context_;
   mlir::OwningModuleRef module_;
   mlir::OpBuilder builder_;

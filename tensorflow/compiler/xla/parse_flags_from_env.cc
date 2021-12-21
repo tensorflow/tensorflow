@@ -24,6 +24,7 @@ limitations under the License.
 #include <string.h>
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -75,7 +76,7 @@ static void AppendToEnvArgv(const char* s0, size_t s0len, const char* s1,
     a->argv.push_back(nullptr);
     a->argv_save.push_back(nullptr);
   } else {
-    std::string s = string(s0, s0len) + string(s1, s1len);
+    std::string s = std::string(s0, s0len) + std::string(s1, s1len);
     char* str = strdup(s.c_str());
     a->argv.push_back(str);
     a->argv_save.emplace_back(str);
@@ -84,18 +85,18 @@ static void AppendToEnvArgv(const char* s0, size_t s0len, const char* s1,
 }
 
 // Like s.find_first_of(x, pos), but return s.size() when find_first_of() would
-// return string::npos.  This avoids if-statements elsewhere.
+// return std::string::npos.  This avoids if-statements elsewhere.
 static size_t FindFirstOf(const std::string& s, const char* x, size_t pos) {
   size_t result = s.find_first_of(x, pos);
-  return result == string::npos ? s.size() : result;
+  return result == std::string::npos ? s.size() : result;
 }
 
 // Like s.find_first_not_of(x, pos), but return s.size() when
-// find_first_not_of() would return string::npos.  This avoids if-statements
-// elsewhere.
+// find_first_not_of() would return std::string::npos.  This avoids
+// if-statements elsewhere.
 static size_t FindFirstNotOf(const std::string& s, const char* x, size_t pos) {
   size_t result = s.find_first_not_of(x, pos);
-  return result == string::npos ? s.size() : result;
+  return result == std::string::npos ? s.size() : result;
 }
 
 // Given a string containing flags, parse them into the XLA command line flags.
@@ -192,7 +193,7 @@ static tensorflow::mutex env_argv_mu(tensorflow::LINKER_INITIALIZED);
 bool ParseFlagsFromEnvAndDieIfUnknown(
     absl::string_view envvar, const std::vector<tensorflow::Flag>& flag_list) {
   tensorflow::mutex_lock lock(env_argv_mu);
-  auto* env_argv = &EnvArgvs()[string(envvar)];
+  auto* env_argv = &EnvArgvs()[std::string(envvar)];
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
 
   if (VLOG_IS_ON(1)) {
@@ -244,7 +245,7 @@ void ResetFlagsFromEnvForTesting(absl::string_view envvar, int** pargc,
                                  std::vector<char*>** pargv) {
   tensorflow::mutex_lock lock(env_argv_mu);
   EnvArgvs().erase(std::string(envvar));
-  auto& env_argv = EnvArgvs()[string(envvar)];
+  auto& env_argv = EnvArgvs()[std::string(envvar)];
   *pargc = &env_argv.argc;
   *pargv = &env_argv.argv;
 }

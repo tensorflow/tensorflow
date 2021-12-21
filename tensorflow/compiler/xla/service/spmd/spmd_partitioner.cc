@@ -100,7 +100,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
   entries_.push_back(std::make_pair(max_value, report));
 }
 
-/* static */ string SpmdLogger::ReportBeforePartition(
+/* static */ std::string SpmdLogger::ReportBeforePartition(
     const HloModule& module, int64_t report_instruction_count) {
   std::string report;
   absl::StrAppend(&report,
@@ -121,7 +121,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
   return report;
 }
 
-/* static */ string SpmdLogger::ReportAfterPartition(
+/* static */ std::string SpmdLogger::ReportAfterPartition(
     const HloModule& module, int64_t report_instruction_count) {
   std::string report;
   absl::StrAppend(&report,
@@ -134,7 +134,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
 }
 
 template <typename F>
-/* static */ string SpmdLogger::ReportMemoryUsage(
+/* static */ std::string SpmdLogger::ReportMemoryUsage(
     const HloModule& module, const F& filter,
     int64_t report_instruction_count) {
   std::string report;

@@ -531,7 +531,7 @@ StatusOr<std::string> CompileToPtx(
     if (module->empty() && module->global_empty()) {
       VLOG(2) << "Module '" << module->getName().str()
               << "' is empty. Skipping compilation.";
-      return string();
+      return std::string();
     }
 
     auto compute_capability =

@@ -67,8 +67,8 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 // and any solution to mitigate this would cause issues with the reverse
 // direction. Longterm solution is to add a function attribute to maintain the
 // original HLO naming.
-string SanitizeFunctionName(llvm::StringRef name) {
-  string output(name);
+std::string SanitizeFunctionName(llvm::StringRef name) {
+  std::string output(name);
   llvm::for_each(output, [](char& x) { x = x == '-' ? '_' : x; });
   return output;
 }
@@ -208,7 +208,7 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
   TF_RETURN_IF_ERROR(GetMlirTypes({computation.root_instruction()}, &rets));
   auto func_type = mlir::FunctionType::get(context_, args, rets);
 
-  string computation_name =
+  std::string computation_name =
       computation.parent()->entry_computation() == &computation
           ? "main"
           : SanitizeFunctionName(computation.name());
