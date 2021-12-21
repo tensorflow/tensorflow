@@ -144,10 +144,10 @@ class HloLexer {
   // Returns the current character.
   int PeekCurrentChar() const;
 
-  // Creates StringPiece with the given begin and end. Exits if the begin > end,
+  // Creates string_view with the given begin and end. Exits if the begin > end,
   // or it's out of the range of the current buffer.
-  absl::string_view StringPieceFromPointers(const char* begin,
-                                            const char* end) const;
+  absl::string_view StringViewFromPointers(const char* begin,
+                                           const char* end) const;
 
   // Returns true if the given ptr is dereferenceable within the range of the
   // current buffer.
