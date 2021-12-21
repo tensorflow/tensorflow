@@ -1058,6 +1058,7 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       tensor_property.restricted_value_int16 = {1 / 32768.0f, 0};
       property.inputs = {{0, {}}, {1, {}}, {3, {}}, {4, {}}, {5, {}}};
       property.outputs = {{1, tensor_property}};
+      property.quantize_input_as_activations = true;
       property.version = 2;
       break;
     case BuiltinOperator_ASSIGN_VARIABLE:
