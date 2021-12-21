@@ -42,18 +42,5 @@ index ff64df694048..c9c35b01711c 100644
      "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
      "//conditions:default": native_arch_defines("X86", "x86_64-unknown-linux-gnu"),
  }) + [
-diff --git a/mlir/lib/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.cpp b/mlir/lib/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.cpp
-index 09519aebfbfa..4698669bc8aa 100644
---- a/mlir/lib/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.cpp
-+++ b/mlir/lib/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.cpp
-@@ -80,7 +80,7 @@ public:
-           moduleTranslation.lookupFunction(func.getName());
-       llvmFunc->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-       if (!llvmFunc->hasFnAttribute("amdgpu-flat-work-group-size")) {
--        llvmFunc->addFnAttr("amdgpu-flat-work-group-size", "1, 256");
-+        llvmFunc->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
-       }
-       llvmFunc->addFnAttr("amdgpu-implicitarg-num-bytes", "56");
-     }
 -- 
 2.30.1 (Apple Git-130)
