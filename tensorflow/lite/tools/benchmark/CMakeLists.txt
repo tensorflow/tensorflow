@@ -33,6 +33,7 @@ list(APPEND TFLITE_BENCHMARK_SRCS
   ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
+  ${TFLITE_SOURCE_DIR}/tools/utils.cc
 )
 
 list(APPEND TFLITE_BENCHMARK_LIBS
