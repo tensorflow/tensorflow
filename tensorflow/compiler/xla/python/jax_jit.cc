@@ -311,7 +311,7 @@ struct CacheEntry {
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
   // in CompiledFunction::Call before calling into compiled computation.
   absl::optional<std::vector<bool>> kept_var_bitvec;
-  xla::PjRtDevice* sticky_device;
+  absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> sticky_device;
 
   // Fallback to Python happens:
   // - for trivial computations
@@ -523,7 +523,6 @@ class CompiledFunction {
   //   the `default_device_` which will be used as the targeted device. In
   //   which case, we will always copy input buffers to this device.
   // These fields are protected by the GIL.
-  std::shared_ptr<xla::PyClient> default_pyclient_ = nullptr;
   xla::PjRtDevice* default_device_ = nullptr;
   bool is_committed_;
 };
@@ -555,7 +554,7 @@ CompiledFunction::~CompiledFunction() = default;
 //
 // Returns `Status::OK()` on success. Returning an error should lead to
 // calling the Python fallback.
-xla::Status ComputeSignature(bool jax_enable_x64, xla::PyClient& pyclient,
+xla::Status ComputeSignature(bool jax_enable_x64,
                              xla::PjRtDevice* default_device, bool is_committed,
                              ParsedArgumentsAsBuffers& arguments) {
   tensorflow::profiler::TraceMe traceme("ComputeSignature");
@@ -717,7 +716,8 @@ void CompiledFunction::PopulateCacheEntry(
   cache_entry->out_pytree_def = std::move(out_tree);
 
   cache_entry->sticky_device =
-      py::cast<xla::PjRtDevice*>(executable_handlers_out_tree[2]);
+      py::cast<absl::optional<xla::ClientAndPtr<xla::PjRtDevice>>>(
+          executable_handlers_out_tree[2]);
   auto avals = py::cast<py::list>(executable_handlers_out_tree[3]);
   auto lazy_exprs = py::cast<py::list>(executable_handlers_out_tree[4]);
   CHECK_EQ(avals.size(), lazy_exprs.size());
@@ -765,7 +765,6 @@ void CompiledFunction::TryToPopulateDefaultDevice() {
           device_and_is_committed.attr("default_device"));
       is_committed_ =
           py::cast<bool>(device_and_is_committed.attr("committed_to_device"));
-      default_pyclient_ = default_pydevice.client;
       default_device_ = default_pydevice.contents;
     } catch (const py::cast_error& e) {
       // Pathways, Cloud TPU 2VM, and UPTC runtime.
@@ -822,8 +821,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   arguments.signature.jax_enable_x64 = jax_enable_x64;
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
-  status = ComputeSignature(jax_enable_x64, *default_pyclient_, default_device_,
-                            is_committed_, arguments);
+  status = ComputeSignature(jax_enable_x64, default_device_, is_committed_,
+                            arguments);
   if (!status.ok()) {
     VLOG(2) << "ComputeSignature failed: " << status;
     return py::object(
@@ -913,8 +912,10 @@ xla::StatusOr<py::object> CompiledFunction::Call(
     if (cache_entry->out_lazy_exprs[i].is_none()) {  // No LazyExpr.
       buffer.buf()->SetAval(cache_entry->out_avals[i]);
       buffer.buf()->set_weak_type(cache_entry->out_weak_types[i]);
-      TF_RETURN_IF_ERROR(
-          buffer.buf()->set_sticky_device(cache_entry->sticky_device));
+      if (cache_entry->sticky_device.has_value()) {
+        TF_RETURN_IF_ERROR(buffer.buf()->set_sticky_device(
+            (*cache_entry->sticky_device).get()));
+      }
       flat_device_arrays.push_back(std::move(buffer));
     } else {
       static const auto* xla_module =
@@ -922,9 +923,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
       static const auto* device_array =
           new py::handle(xla_module->attr("_DeviceArray"));
       flat_device_arrays.push_back(
-          (*device_array)(cache_entry->out_avals[i],
-                          py::cast(WrapWithClient(default_pyclient_,
-                                                  cache_entry->sticky_device)),
+          (*device_array)(cache_entry->out_avals[i], cache_entry->sticky_device,
                           cache_entry->out_lazy_exprs[i], std::move(buffer)));
     }
   }
