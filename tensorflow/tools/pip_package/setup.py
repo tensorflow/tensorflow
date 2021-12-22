@@ -92,7 +92,7 @@ REQUIRED_PACKAGES = [
     # They are updated during the release process
     # When updating these, please also update the nightly versions below
     'tensorboard >= 2.7, < 2.8',
-    'tf-estimator-nightly == ==2.8.0.dev2021122109',
+    'tf-estimator-nightly == 2.8.0.dev2021122109',
     'keras >= 2.8.0rc0, < 2.9',
     'tensorflow-io-gcs-filesystem >= 0.23.1',
 ]
