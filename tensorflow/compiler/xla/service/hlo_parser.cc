@@ -258,8 +258,8 @@ class HloParserImpl : public HloParser {
                             const std::string& computation_name);
   bool ParseInstruction(HloComputation::Builder* builder,
                         std::string* root_name);
-  bool ParseInstructionRhs(HloComputation::Builder* builder,
-                           const std::string& name, LocTy name_loc);
+  bool ParseInstructionRhs(HloComputation::Builder* builder, std::string name,
+                           LocTy name_loc, bool allow_attributes = true);
   bool ParseControlPredecessors(HloInstruction* instruction);
   bool ParseLiteral(Literal* literal);
   bool ParseLiteral(Literal* literal, const Shape& shape);
@@ -291,11 +291,12 @@ class HloParserImpl : public HloParser {
   template <typename LiteralNativeT>
   bool CheckParsedValueIsInRange(LocTy loc, std::complex<double> value);
 
-  bool ParseOperands(std::vector<HloInstruction*>* operands);
+  bool ParseOperands(std::vector<HloInstruction*>* operands,
+                     HloComputation::Builder* builder);
   // Fills parsed operands into 'operands' and expects a certain number of
   // operands.
   bool ParseOperands(std::vector<HloInstruction*>* operands,
-                     const int expected_size);
+                     HloComputation::Builder* builder, const int expected_size);
 
   // Describes the start, limit, and stride on every dimension of the operand
   // being sliced.
@@ -561,6 +562,9 @@ class HloParserImpl : public HloParser {
   std::function<std::pair<HloInstruction*, LocTy>*(const std::string& name,
                                                    const Shape& shape)>
       create_missing_instruction_;
+
+  // Used to generate names for anonymous instructions.
+  NameUniquer name_uniquer_{/*separator=*/"."};
 };
 
 bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64_t>* out) {
@@ -1037,8 +1041,8 @@ bool HloParserImpl::ParseInstruction(HloComputation::Builder* builder,
 }
 
 bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
-                                        const std::string& name,
-                                        LocTy name_loc) {
+                                        std::string name, LocTy name_loc,
+                                        bool allow_attributes) {
   Shape shape;
   HloOpcode opcode;
   std::vector<HloInstruction*> operands;
@@ -1091,6 +1095,12 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         *shape = std::move(inferred).ValueOrDie();
         return true;
       };
+
+  const auto parse_attributes = [&] {
+    if (!allow_attributes) return true;
+    return ParseAttributes(attrs);
+  };
+
   HloInstruction* instruction;
   switch (opcode) {
     case HloOpcode::kParameter: {
@@ -1105,7 +1115,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         return false;
       }
       if (!ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
-          !ParseAttributes(attrs)) {
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1118,7 +1128,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                       "expects '(' before constant literal") ||
           !ParseLiteral(&literal, shape) ||
           !ParseToken(TokKind::kRparen, "expects ')' after constant literal") ||
-          !ParseAttributes(attrs)) {
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1129,8 +1139,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64_t> iota_dimension;
       attrs["iota_dimension"] = {/*required=*/true, AttrTy::kInt64,
                                  &iota_dimension};
-      if (!ParseOperands(&operands, /*expected_size=*/0) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/0) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1167,8 +1177,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh: {
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1199,8 +1209,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical: {
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1219,8 +1229,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kClamp:
     case HloOpcode::kSelect:
     case HloOpcode::kTupleSelect: {
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/3) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1237,8 +1247,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     // Other supported ops.
     case HloOpcode::kConvert: {
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1246,8 +1256,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kBitcastConvert: {
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1271,7 +1281,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &constrain_layout};
       attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
                                         &use_global_device_ids};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       std::vector<ReplicaGroup> replica_groups;
@@ -1315,7 +1325,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                                &dimensions};
       }
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       std::vector<ReplicaGroup> replica_groups;
@@ -1355,7 +1365,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<bool> constrain_layout;
       attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
                                    &constrain_layout};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
+      if (!ParseOperands(&operands, builder) || !parse_attributes() ||
           (dimensions && dimensions->size() != 1)) {
         return false;
       }
@@ -1383,7 +1393,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<std::vector<int64_t>>> slice_sizes;
       attrs["slice_sizes"] = {/*required=*/false, AttrTy::kBracedInt64ListList,
                               &slice_sizes};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       std::vector<std::pair<int64_t, int64_t>> pairs(source_targets->size());
@@ -1446,8 +1456,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<bool> is_cross_program_prefetch = false;
       attrs["is_cross_program_prefetch"] = {/*required=*/false, AttrTy::kBool,
                                             &is_cross_program_prefetch};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateCopyStart(
@@ -1455,16 +1465,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kReplicaId: {
-      if (!ParseOperands(&operands, /*expected_size=*/0) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/0) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
       break;
     }
     case HloOpcode::kPartitionId: {
-      if (!ParseOperands(&operands, /*expected_size=*/0) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/0) ||
+          !parse_attributes()) {
         return false;
       }
       instruction =
@@ -1472,7 +1482,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kDynamicReshape: {
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       instruction =
@@ -1485,8 +1495,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64_t> inferred_dimension;
       attrs["inferred_dimension"] = {/*required=*/false, AttrTy::kInt64,
                                      &inferred_dimension};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReshape(
@@ -1494,7 +1504,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kAfterAll: {
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       if (operands.empty()) {
@@ -1506,8 +1516,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kAddDependency: {
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1523,7 +1533,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
+      if (!ParseOperands(&operands, builder) || !parse_attributes() ||
           dimensions->size() != 1) {
         return false;
       }
@@ -1545,7 +1555,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kTuple: {
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1572,8 +1582,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["condition"] = {/*required=*/true, AttrTy::kHloComputation,
                             &condition};
       attrs["body"] = {/*required=*/true, AttrTy::kHloComputation, &body};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1596,8 +1606,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       // If the is_host_transfer attribute is not present then default to false.
@@ -1612,8 +1622,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (dynamic_cast<const HloChannelInstruction*>(operands[0]) == nullptr) {
@@ -1633,8 +1643,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateSend(
@@ -1648,8 +1658,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (dynamic_cast<const HloChannelInstruction*>(operands[0]) == nullptr) {
@@ -1665,8 +1675,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kGetTupleElement: {
       optional<int64_t> index;
       attrs["index"] = {/*required=*/true, AttrTy::kInt64, &index};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1685,7 +1695,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1711,7 +1721,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       if (!window) {
@@ -1756,8 +1766,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
       if (!window) {
@@ -1799,8 +1809,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["fft_type"] = {/*required=*/true, AttrTy::kFftType, &fft_type};
       attrs["fft_length"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &fft_length};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1817,9 +1827,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kTriangularSolve: {
       TriangularSolveOptions options;
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributesAsProtoMessage(
-              /*non_proto_attrs=*/attrs, &options)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          (allow_attributes && !ParseAttributesAsProtoMessage(
+                                   /*non_proto_attrs=*/attrs, &options))) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1841,8 +1851,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
       attrs["type"] = {/*required=*/false, AttrTy::kComparisonType, &type};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1859,9 +1869,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kCholesky: {
       CholeskyOptions options;
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributesAsProtoMessage(
-              /*non_proto_attrs=*/attrs, &options)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          (allow_attributes && !ParseAttributesAsProtoMessage(
+                                   /*non_proto_attrs=*/attrs, &options))) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1879,8 +1889,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64_t>> broadcast_dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &broadcast_dimensions};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1899,7 +1909,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
+      if (!ParseOperands(&operands, builder) || !parse_attributes() ||
           dimensions->size() != 1) {
         return false;
       }
@@ -1927,7 +1937,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -1957,7 +1967,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64_t>> dimensions_to_reduce;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions_to_reduce};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       if (operands.size() % 2) {
@@ -1992,8 +2002,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2015,8 +2025,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["scatter"] = {/*required=*/true, AttrTy::kHloComputation, &scatter};
       optional<Window> window;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/3) ||
+          !parse_attributes()) {
         return false;
       }
       if (!window) {
@@ -2041,8 +2051,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kSlice: {
       optional<SliceRanges> slice_ranges;
       attrs["slice"] = {/*required=*/true, AttrTy::kSliceRanges, &slice_ranges};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateSlice(
@@ -2055,7 +2065,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["dynamic_slice_sizes"] = {
           /*required=*/true, AttrTy::kBracedInt64List, &dynamic_slice_sizes};
       LocTy loc = lexer_.GetLoc();
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       if (operands.empty()) {
@@ -2073,7 +2083,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kDynamicUpdateSlice: {
       LocTy loc = lexer_.GetLoc();
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       if (operands.size() < 2) {
@@ -2093,8 +2103,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2115,8 +2125,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64_t> feature_index;
       attrs["feature_index"] = {/*required=*/true, AttrTy::kInt64,
                                 &feature_index};
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/3) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2140,8 +2150,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64_t> feature_index;
       attrs["feature_index"] = {/*required=*/true, AttrTy::kInt64,
                                 &feature_index};
-      if (!ParseOperands(&operands, /*expected_size=*/5) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/5) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2167,8 +2177,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64_t> feature_index;
       attrs["feature_index"] = {/*required=*/true, AttrTy::kInt64,
                                 &feature_index};
-      if (!ParseOperands(&operands, /*expected_size=*/5) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/5) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2190,8 +2200,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kPad: {
       optional<PaddingConfig> padding;
       attrs["padding"] = {/*required=*/true, AttrTy::kPaddingConfig, &padding};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2212,7 +2222,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                         &fusion_computation};
       optional<HloInstruction::FusionKind> fusion_kind;
       attrs["kind"] = {/*required=*/true, AttrTy::kFusionKind, &fusion_kind};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateFusion(
@@ -2222,8 +2232,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kInfeed: {
       optional<std::string> config;
       attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       // We need to know the infeed data shape to construct the infeed
@@ -2246,8 +2256,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
       attrs["outfeed_shape"] = {/*required=*/false, AttrTy::kShape,
                                 &outfeed_shape};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
       HloInstruction* const outfeed_input = operands[0];
@@ -2262,7 +2272,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<RandomDistribution> distribution;
       attrs["distribution"] = {/*required=*/true, AttrTy::kDistribution,
                                &distribution};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -2272,8 +2282,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kRngGetAndUpdateState: {
       optional<int64_t> delta;
       attrs["delta"] = {/*required=*/true, AttrTy::kInt64, &delta};
-      if (!ParseOperands(&operands, /*expected_size=*/0) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/0) ||
+          !parse_attributes()) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -2284,7 +2294,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<RandomAlgorithm> algorithm;
       attrs["algorithm"] = {/*required=*/true, AttrTy::kRandomAlgorithm,
                             &algorithm};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
       instruction =
@@ -2299,8 +2309,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                 &exponent_bits};
       attrs["mantissa_bits"] = {/*required=*/true, AttrTy::kInt64,
                                 &mantissa_bits};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       instruction =
@@ -2313,7 +2323,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<HloComputation*> true_computation;
       optional<HloComputation*> false_computation;
       optional<std::vector<HloComputation*>> branch_computations;
-      if (!ParseOperands(&operands)) {
+      if (!ParseOperands(&operands, builder)) {
         return false;
       }
       if (!ShapeUtil::IsScalar(operands[0]->shape())) {
@@ -2335,7 +2345,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                         AttrTy::kBracedHloComputationList,
                                         &branch_computations};
       }
-      if (!ParseAttributes(attrs)) {
+      if (!parse_attributes()) {
         return false;
       }
       if (branch_index_is_bool) {
@@ -2426,7 +2436,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                            &custom_call_schedule};
       attrs["api_version"] = {/*required=*/false, AttrTy::kCustomCallApiVersion,
                               &api_version};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder) || !parse_attributes()) {
         return false;
       }
 
@@ -2551,8 +2561,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
 
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
 
@@ -2615,8 +2625,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["indices_are_sorted"] = {/*required=*/false, AttrTy::kBool,
                                      &indices_are_sorted};
 
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
 
@@ -2665,8 +2675,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["unique_indices"] = {/*required=*/false, AttrTy::kBool,
                                  &unique_indices};
 
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/3) ||
+          !parse_attributes()) {
         return false;
       }
 
@@ -2697,8 +2707,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kDomain: {
       DomainData domain;
       attrs["domain"] = {/*required=*/true, AttrTy::kDomain, &domain};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2720,8 +2730,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2741,8 +2751,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+          !parse_attributes()) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2759,6 +2769,17 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
               shape, operands[0], operands[1], (*dimensions)[0]));
       break;
     }
+  }
+
+  // Generate a unique name if the name is empty.  This is used for nested
+  // instructions (e.g. the `max` in add(max(x, y), z)).
+  //
+  // Otherwise, register the given name with the name uniquer.
+  if (name.empty()) {
+    name = name_uniquer_.GetUniqueName(
+        absl::StrCat(HloOpcodeString(instruction->opcode()), ".anon"));
+  } else {
+    name_uniquer_.GetUniqueName(name);
   }
 
   instruction->SetAndSanitizeName(name);
@@ -3721,7 +3742,9 @@ bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc,
 //   ::= /*empty*/
 //   ::= operand (, operand)*
 // operand ::= (shape)? name
-bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands) {
+//         ::= (shape)? opcode operands
+bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
+                                  HloComputation::Builder* builder) {
   CHECK(operands != nullptr);
   if (!ParseToken(TokKind::kLparen,
                   "expects '(' at the beginning of operands")) {
@@ -3731,47 +3754,80 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands) {
     // empty
   } else {
     do {
-      LocTy loc = lexer_.GetLoc();
-      std::string name;
-      optional<Shape> shape;
-      if (CanBeShape()) {
-        shape.emplace();
-        if (!ParseShape(&shape.value())) {
-          return false;
+      HloLexer lexer_copy = lexer_;
+
+      // Try to parse the operand as a nested instruction.  If that doesn't
+      // work, try again parsing it as regular name.
+      //
+      // Nested instructions can't have attributes because it's ambiguous
+      // whether the comma separates an instruction from its attribute, or
+      // whether the comma separates two instructions.
+      //
+      // Swallow any errors which occur while we try this so that if there are
+      // other unrelated errors in this module, we don't *also* print
+      // superfluous errors about being unable to parse a name as an
+      // instruction.
+      //
+      // TODO(jlebar): To generate better error messages, we shouldn't discard
+      // these errors wholesale, but rather we should notice that a token can't
+      // be a name, then print the parse-as-instruction errors.
+      std::vector<std::string> saved_errors;
+      std::swap(saved_errors, error_);
+      bool is_instruction =
+          ParseInstructionRhs(builder, /*name=*/"", lexer_.GetLoc(),
+                              /*allow_attributes=*/false);
+      error_ = std::move(saved_errors);
+
+      if (is_instruction) {
+        HloInstruction* instr = builder->last_added_instruction();
+        operands->push_back(instr);
+      } else {
+        // Restore lexer state as though the ParseInstructionRhs didn't occur.
+        lexer_ = lexer_copy;
+
+        LocTy loc = lexer_.GetLoc();
+        std::string name;
+        optional<Shape> shape;
+        if (CanBeShape()) {
+          shape.emplace();
+          if (!ParseShape(&shape.value())) {
+            return false;
+          }
         }
-      }
-      if (!ParseName(&name)) {
-        // When parsing a single instruction (as opposed to a whole module), an
-        // HLO may have one or more operands with a shape but no name:
-        //
-        //  foo = add(f32[10], f32[10])
-        //
-        // create_missing_instruction_ is always non-null when parsing a single
-        // instruction, and is responsible for creating kParameter instructions
-        // for these operands.
-        if (shape.has_value() && create_missing_instruction_ != nullptr &&
-            scoped_name_tables_.size() == 1) {
-          name = "";
-        } else {
-          return false;
+        if (!ParseName(&name)) {
+          // When parsing a single instruction (as opposed to a whole module),
+          // an HLO may have one or more operands with a shape but no name:
+          //
+          //  foo = add(f32[10], f32[10])
+          //
+          // create_missing_instruction_ is always non-null when parsing a
+          // single instruction, and is responsible for creating kParameter
+          // instructions for these operands.
+          if (shape.has_value() && create_missing_instruction_ != nullptr &&
+              scoped_name_tables_.size() == 1) {
+            name = "";
+          } else {
+            return false;
+          }
         }
+        std::pair<HloInstruction*, LocTy>* instruction =
+            FindInstruction(name, shape);
+        if (instruction == nullptr) {
+          return Error(loc, StrCat("instruction does not exist: ", name));
+        }
+        operands->push_back(instruction->first);
       }
-      std::pair<HloInstruction*, LocTy>* instruction =
-          FindInstruction(name, shape);
-      if (instruction == nullptr) {
-        return Error(loc, StrCat("instruction does not exist: ", name));
-      }
-      operands->push_back(instruction->first);
     } while (EatIfPresent(TokKind::kComma));
   }
   return ParseToken(TokKind::kRparen, "expects ')' at the end of operands");
 }
 
 bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
+                                  HloComputation::Builder* builder,
                                   const int expected_size) {
   CHECK(operands != nullptr);
   LocTy loc = lexer_.GetLoc();
-  if (!ParseOperands(operands)) {
+  if (!ParseOperands(operands, builder)) {
     return false;
   }
   if (expected_size != operands->size()) {

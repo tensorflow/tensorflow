@@ -164,7 +164,7 @@ class HloLexer {
 
   absl::optional<int64_t> LexNanPayload(absl::string_view& consumable);
 
-  const absl::string_view buf_;
+  absl::string_view buf_;
   const char* current_ptr_;
 
   // Information about the current token.

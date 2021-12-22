@@ -97,6 +97,10 @@ class HloComputation {
       return Status::OK();
     }
 
+    HloInstruction* last_added_instruction() const {
+      return last_added_instruction_;
+    }
+
    private:
     const std::string name_;
     HloInstruction* last_added_instruction_;
