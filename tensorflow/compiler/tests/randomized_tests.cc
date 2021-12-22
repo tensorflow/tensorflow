@@ -397,6 +397,15 @@ class OpTest : public ::testing::Test {
   // Choose arguments for the tf.Concat{V2} ops.
   ConcatArguments ChooseConcatArguments(bool int64_idx_allowed);
 
+  struct EinsumArguments {
+    std::vector<int64_t> lhs_dims;
+    std::vector<int64_t> rhs_dims;
+    DataType type;
+    std::string equation;
+  };
+  // Choose arguments for the tf.{Xla}Einsum ops.
+  EinsumArguments ChooseEinsumArguments();
+
   struct XlaDotArguments {
     std::vector<int64_t> lhs_dims;
     std::vector<int64_t> rhs_dims;
@@ -1011,6 +1020,49 @@ OpTest::ConcatArguments OpTest::ChooseConcatArguments(bool int64_idx_allowed) {
     a.values.push_back(RandomTensor(a.type, false, shape));
   }
 
+  return a;
+}
+
+OpTest::EinsumArguments OpTest::ChooseEinsumArguments() {
+  EinsumArguments a;
+
+  enum EinsumType { matmul, batchmatmul, dot, outer };
+  int op_kind = Choose<int>({matmul, batchmatmul, dot, outer});
+  switch (op_kind) {
+    case matmul:
+    case batchmatmul: {
+      std::vector<int64> dims;
+      if (op_kind == matmul) {
+        a.equation = "ij,jk->ik";
+        dims = RandomDims(2, 2);
+      } else {
+        a.equation = "...ij,...jk->...ik";
+        dims = RandomDims(2);
+      }
+      int64_t ndims = dims.size();
+      int64_t inner_dim = RandomDim();
+      a.lhs_dims = dims;
+      a.rhs_dims = dims;
+      a.lhs_dims[ndims - 1] = inner_dim;
+      a.rhs_dims[ndims - 2] = inner_dim;
+      break;
+    }
+    case dot: {
+      a.equation = "i,i->";
+      std::vector<int64> dims = RandomDims(1, 1);
+      a.lhs_dims = dims;
+      a.rhs_dims = dims;
+      break;
+    }
+    case outer: {
+      a.equation = "i,j->ij";
+      a.lhs_dims = RandomDims(1, 1);
+      a.rhs_dims = RandomDims(1, 1);
+      break;
+    }
+  }
+
+  a.type = Choose<DataType>(kAllXlaTypes);
   return a;
 }
 
@@ -2495,6 +2547,18 @@ TEST_F(OpTest, DynamicStitch) {
       builder.RandomInput(type, dims);
     }
     return ExpectTfAndXlaOutputsAreClose(builder);
+  });
+}
+
+TEST_F(OpTest, Einsum) {
+  Repeatedly([this]() {
+    const EinsumArguments a = ChooseEinsumArguments();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Einsum")
+                                             .RandomInput(a.type, a.lhs_dims)
+                                             .RandomInput(a.type, a.rhs_dims)
+                                             .Attr("equation", a.equation)
+                                             .Attr("T", a.type)
+                                             .Attr("N", 2));
   });
 }
 
@@ -4483,51 +4547,12 @@ TEST_F(OpTest, XlaDotV2) {
 
 TEST_F(OpTest, XlaEinsum) {
   Repeatedly([this]() {
-    std::string equation;
-    std::vector<int64> lhs_dims, rhs_dims;
-
-    enum EinsumType { matmul, batchmatmul, dot, outer };
-    int op_kind = Choose<int>({matmul, batchmatmul, dot, outer});
-    switch (op_kind) {
-      case matmul:
-      case batchmatmul: {
-        std::vector<int64> dims;
-        if (op_kind == matmul) {
-          equation = "ij,jk->ik";
-          dims = RandomDims(2, 2);
-        } else {
-          equation = "...ij,...jk->...ik";
-          dims = RandomDims(2);
-        }
-        int64_t ndims = dims.size();
-        int64_t inner_dim = RandomDim();
-        lhs_dims = dims;
-        rhs_dims = dims;
-        lhs_dims[ndims - 1] = inner_dim;
-        rhs_dims[ndims - 2] = inner_dim;
-        break;
-      }
-      case dot: {
-        equation = "i,i->";
-        std::vector<int64> dims = RandomDims(1, 1);
-        lhs_dims = dims;
-        rhs_dims = dims;
-        break;
-      }
-      case outer: {
-        equation = "i,j->ij";
-        lhs_dims = RandomDims(1, 1);
-        rhs_dims = RandomDims(1, 1);
-        break;
-      }
-    }
-
-    auto type = Choose<DataType>(kAllXlaTypes);
+    const EinsumArguments a = ChooseEinsumArguments();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("XlaEinsum")
-                                             .RandomInput(type, lhs_dims)
-                                             .RandomInput(type, rhs_dims)
-                                             .Attr("equation", equation)
-                                             .Attr("T", type));
+                                             .RandomInput(a.type, a.lhs_dims)
+                                             .RandomInput(a.type, a.rhs_dims)
+                                             .Attr("equation", a.equation)
+                                             .Attr("T", a.type));
   });
 }
 
