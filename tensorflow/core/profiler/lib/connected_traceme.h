@@ -34,6 +34,7 @@ enum class ContextType : int {
   kPjRt,
   kAdaptiveSharedBatchScheduler,
   kTfrtTpuRuntime,
+  kTpuEmbeddingEngine,
 };
 
 /*
