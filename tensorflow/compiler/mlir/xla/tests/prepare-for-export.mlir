@@ -55,3 +55,29 @@ func @while_with_implicit_capture(%arg0 :  tensor<i1>, %arg1 : tensor<5xi32>) ->
   %4 = "mhlo.tuple"(%3#0, %3#1) : (tensor<i1>, tensor<5xi32>) -> tuple<tensor<i1>, tensor<5xi32>>
   return %4 : tuple<tensor<i1>, tensor<5xi32>>
   }
+
+// -----
+
+// Verifies that a value captured multiple times gets all of its uses updated.
+// CHECK-LABEL: @while_with_multiple_capture
+func @while_with_multiple_capture(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK: mhlo.while
+  // CHECK-SAME: (%arg0, %arg0)
+  // CHECK-NEXT: %[[ARG1:.*]]: {{.*}}, %[[ARG2:.*]]: tensor
+  %0 = "mhlo.while"(%arg0) ( {
+  ^bb0(%arg1: tensor<i64>):
+    // CHECK: mhlo.compare
+    // CHECK-SAME: %[[ARG2]], %[[ARG1]]
+    %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  },  {
+  // CHECK: ^bb0(%[[ARG1:.*]]: {{.*}}, %[[ARG2:.*]]: tensor
+  ^bb0(%arg1: tensor<i64>):
+    // CHECK: %[[ADD:.*]] = mhlo.add %[[ARG2]], %[[ARG1]]
+    %2 = mhlo.add %arg0, %arg1 : tensor<i64>
+    // CHECK: mhlo.return
+    // CHECK-SAME: %[[ADD]], %[[ARG2]]
+    "mhlo.return"(%2) : (tensor<i64>) -> ()
+  }) : (tensor<i64>) -> tensor<i64>
+  return %0 : tensor<i64>
+}
