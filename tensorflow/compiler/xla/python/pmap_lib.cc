@@ -368,9 +368,9 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   }
 
   // Get dynamic argument signatures.
-  GlobalJitState& global_state = jax::GetGlobalState();
-  ThreadLocalJitState& tls = jax::GetLocalState();
-  const bool jax_enable_x64 = tls.enable_x64.value_or(global_state.enable_x64);
+  JitState& global_state = jax::GetGlobalState();
+  JitState& tls = jax::GetLocalState();
+  const bool jax_enable_x64 = GetEnableX64();
   arguments.signature.jax_enable_x64 = jax_enable_x64;
   for (py::handle arg : arguments.flat_dynamic_args) {
     auto signature_or_error = xla::PyArgSignatureOfValue(arg, jax_enable_x64);
@@ -382,7 +382,9 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
     arguments.signature.dynamic_arg_signatures.push_back(
         std::move(signature_or_error).ValueOrDie());
   }
-  arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
+  CHECK(global_state.extra_jit_context.has_value());
+  arguments.signature.global_extra_jit_context =
+      *global_state.extra_jit_context;
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
   // Retrieve/Maybe add the executable to the cache.
@@ -530,8 +532,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
       cache_entry.out_pytree_def.Unflatten(flat_sharded_device_arrays);
 
   // If there is a post-hook function, call it with the inputs and the outputs.
-  absl::optional<py::object> post_hook =
-      tls.post_hook.has_value() ? tls.post_hook : global_state.post_hook;
+  absl::optional<py::object> post_hook = GetPostHook();
   if (post_hook) {
     (*post_hook)(this->AsPyHandle(), args, kwargs, out);
   }

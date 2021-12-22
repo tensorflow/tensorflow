@@ -73,23 +73,30 @@ namespace py = pybind11;
 namespace {
 
 // Protected by the GIL.
-GlobalJitState& global_state = *new GlobalJitState();
+JitState& global_state = *new JitState();
 
 // TODO(phawkins): Google style guide forbids thread-local values with
 // non-trivial destructors.
-ABSL_CONST_INIT thread_local ThreadLocalJitState thread_local_state;  // NOLINT
-
-bool JitIsDisabled() {
-  return thread_local_state.disable_jit.value_or(global_state.disable_jit);
-}
+ABSL_CONST_INIT thread_local JitState thread_local_state;  // NOLINT
 
 }  // namespace
 
-GlobalJitState& GetGlobalState() { return global_state; }
-ThreadLocalJitState& GetLocalState() { return thread_local_state; }
+JitState& GetGlobalState() { return global_state; }
+JitState& GetLocalState() { return thread_local_state; }
+
+bool GetDisableJit() {
+  CHECK(global_state.disable_jit.has_value());
+  return thread_local_state.disable_jit.value_or(*global_state.disable_jit);
+}
 
 bool GetEnableX64() {
-  return thread_local_state.enable_x64.value_or(global_state.enable_x64);
+  CHECK(global_state.enable_x64.has_value());
+  return thread_local_state.enable_x64.value_or(*global_state.enable_x64);
+}
+
+absl::optional<pybind11::function> GetPostHook() {
+  return thread_local_state.post_hook.has_value() ? thread_local_state.post_hook
+                                                  : global_state.post_hook;
 }
 
 std::string CallSignature::DebugString() const {
@@ -785,7 +792,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   xla::GlobalPyRefManager()->MaybeCollectGarbage();
 
   auto& tls = thread_local_state;
-  if (tls.disable_jit.value_or(global_state.disable_jit)) {
+  if (GetDisableJit()) {
     return fun_(*py::reinterpret_borrow<py::args>(args),
                 **kwargs.value_or(py::kwargs()));
   }
@@ -818,7 +825,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
                                         **kwargs.value_or(py::kwargs())))[0]);
   }
 
-  bool jax_enable_x64 = tls.enable_x64.value_or(global_state.enable_x64);
+  bool jax_enable_x64 = GetEnableX64();
   arguments.signature.jax_enable_x64 = jax_enable_x64;
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
@@ -830,7 +837,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
                                         **kwargs.value_or(py::kwargs())))[0]);
   }
-  arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
+  CHECK(global_state.extra_jit_context.has_value());
+  arguments.signature.global_extra_jit_context = *global_state.extra_jit_context;
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
   bool inserted = false;
@@ -931,8 +939,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   py::object out = cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
 
   // If there is a post-hook function, call it with the inputs and the outputs.
-  absl::optional<py::object> post_hook =
-      tls.post_hook.has_value() ? tls.post_hook : global_state.post_hook;
+  absl::optional<py::object> post_hook = GetPostHook();
   if (post_hook) {
     (*post_hook)(AsPyHandle(), args,
                  py::cast<py::dict>(kwargs.value_or(py::kwargs())), out);
@@ -1282,23 +1289,12 @@ void BuildJaxjitSubmodule(py::module& m) {
             std::move(donate_argnums), std::move(cache));
       },
       py::is_method(cfun_type));
-  py::class_<GlobalJitState> global_state_(jitlib, "GlobalJitState");
-  global_state_.def_readwrite("disable_jit", &GlobalJitState::disable_jit);
-  global_state_.def_readwrite("enable_x64", &GlobalJitState::enable_x64);
-  global_state_.def_readwrite("extra_jit_context",
-                              &GlobalJitState::extra_jit_context);
-  global_state_.def_readwrite("post_hook", &GlobalJitState::post_hook);
 
-  py::class_<ThreadLocalJitState> thread_local_state_(jitlib,
-                                                      "ThreadLocalJitState");
-  thread_local_state_.def_readwrite("disable_jit",
-                                    &ThreadLocalJitState::disable_jit);
-  thread_local_state_.def_readwrite("enable_x64",
-                                    &ThreadLocalJitState::enable_x64);
-  thread_local_state_.def_readwrite("extra_jit_context",
-                                    &ThreadLocalJitState::extra_jit_context);
-  thread_local_state_.def_readwrite("post_hook",
-                                    &ThreadLocalJitState::post_hook);
+  py::class_<JitState> jit_state_(jitlib, "JitState");
+  jit_state_.def_readwrite("disable_jit", &JitState::disable_jit);
+  jit_state_.def_readwrite("enable_x64", &JitState::enable_x64);
+  jit_state_.def_readwrite("extra_jit_context", &JitState::extra_jit_context);
+  jit_state_.def_readwrite("post_hook", &JitState::post_hook);
 
   jitlib.def(
       "global_state", [&]() { return &global_state; },
@@ -1307,7 +1303,7 @@ void BuildJaxjitSubmodule(py::module& m) {
       "thread_local_state", [&]() { return &thread_local_state; },
       py::return_value_policy::reference);
 
-  jitlib.def("jit_is_disabled", &JitIsDisabled);
+  jitlib.def("jit_is_disabled", &GetDisableJit);
   jitlib.def("get_enable_x64", &GetEnableX64);
 
   // TODO(phawkins): delete the following methods after dropping compatibility
