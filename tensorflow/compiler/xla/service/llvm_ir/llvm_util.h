@@ -135,7 +135,7 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.
 StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
-                                                         int32* shape_size,
+                                                         int32_t* shape_size,
                                                          llvm::IRBuilder<>* b);
 
 // Converts a given literal to an IR Constant. Literals have known constant
@@ -294,7 +294,7 @@ llvm::GlobalVariable* GetOrCreateVariableRngState(llvm::Module* module,
 
 // Adds a delta value to the global state variable and return the old value of
 // the variable.
-llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
                                   llvm::IRBuilder<>* b);
 
 // Gets the LLVM address space that should be used for global variables (e.g.

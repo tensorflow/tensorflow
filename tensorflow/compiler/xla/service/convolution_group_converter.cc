@@ -116,8 +116,8 @@ Shape ExpandedFilterShape(const Shape& shape, int64_t group_count,
 
 // Returns a vector with 'group_count' many groups, where the i-th group
 // consists of 'group_size' times the value i.
-std::vector<int32> GetMaskIds(int64_t group_size, int64_t group_count) {
-  std::vector<int32> values;
+std::vector<int32_t> GetMaskIds(int64_t group_size, int64_t group_count) {
+  std::vector<int32_t> values;
   values.reserve(group_count * group_size);
   for (int i = 0; i < group_count; ++i) {
     for (int j = 0; j < group_size; ++j) {
@@ -178,16 +178,16 @@ HloInstruction* GetExpandedFilterMask(
 
   // Create a 'input_feature' sized linspace and 'output_feature' sized linspace
   // that will be broadcasted into perpendicular dimensions and compared.
-  const std::vector<int32> input_feature_filter_mask =
+  const std::vector<int32_t> input_feature_filter_mask =
       GetMaskIds(group_size, group_count);
-  const std::vector<int32> output_feature_filter_mask =
+  const std::vector<int32_t> output_feature_filter_mask =
       GetMaskIds(output_feature / group_count, group_count);
   auto mask1 = add_instruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<int32>(input_feature_filter_mask)));
+      LiteralUtil::CreateR1<int32_t>(input_feature_filter_mask)));
   auto broadcasted_mask1 = add_instruction(HloInstruction::CreateBroadcast(
       mask_shape, mask1, {kernel_input_feature_dim}));
   auto mask2 = add_instruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<int32>(output_feature_filter_mask)));
+      LiteralUtil::CreateR1<int32_t>(output_feature_filter_mask)));
   auto broadcasted_mask2 = add_instruction(HloInstruction::CreateBroadcast(
       mask_shape, mask2, {kernel_output_feature_dim}));
 

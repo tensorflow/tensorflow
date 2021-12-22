@@ -58,17 +58,17 @@ namespace {
 // An array that is indexed by PrimitiveType, and returns
 // the size of each element of that primitive type, or 0
 // if the PrimitiveType is not a primitive type
-constexpr uint8 primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
+constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     0,                  // PRIMITIVE_TYPE_INVALID = 0,
-    sizeof(int8),       // PRED = 1
-    sizeof(int8),       // S8 = 2
-    sizeof(int16),      // S16 = 3
-    sizeof(int32),      // S32 = 4
+    sizeof(int8_t),     // PRED = 1
+    sizeof(int8_t),     // S8 = 2
+    sizeof(int16_t),    // S16 = 3
+    sizeof(int32_t),    // S32 = 4
     sizeof(int64_t),    // S64 = 5
-    sizeof(uint8),      // U8 = 6
-    sizeof(uint16),     // U16 = 7
-    sizeof(uint32),     // U32 = 8
-    sizeof(uint64),     // U64 = 9
+    sizeof(uint8_t),    // U8 = 6
+    sizeof(uint16_t),   // U16 = 7
+    sizeof(uint32_t),   // U32 = 8
+    sizeof(uint64_t),   // U64 = 9
     sizeof(float) / 2,  // F16 = 10
     sizeof(float),      // F32 = 11
     sizeof(double),     // F64 = 12
@@ -767,23 +767,23 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     PrimitiveType primitive_type) {
   switch (primitive_type) {
     case PRED:
-      return sizeof(int8);
+      return sizeof(int8_t);
     case S8:
-      return sizeof(int8);
+      return sizeof(int8_t);
     case S16:
-      return sizeof(int16);
+      return sizeof(int16_t);
     case S32:
-      return sizeof(int32);
+      return sizeof(int32_t);
     case S64:
       return sizeof(int64_t);
     case U8:
-      return sizeof(uint8);
+      return sizeof(uint8_t);
     case U16:
-      return sizeof(uint16);
+      return sizeof(uint16_t);
     case U32:
-      return sizeof(uint32);
+      return sizeof(uint32_t);
     case U64:
-      return sizeof(uint64);
+      return sizeof(uint64_t);
     case BF16:
       return sizeof(float) / 2;
     case F16:
@@ -923,7 +923,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }();
 
   if (shape_size < 0) {
-    return InvalidArgument("Shape %s size may overflow int64.",
+    return InvalidArgument("Shape %s size may overflow int64_t.",
                            ShapeUtil::HumanString(shape));
   }
 

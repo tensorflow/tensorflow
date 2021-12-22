@@ -1351,7 +1351,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
                                            neqated_quotient, quotient);
     }
   } else {
-    uint64 b_value = c->literal().GetFirstElement<T>();
+    uint64_t b_value = c->literal().GetFirstElement<T>();
     if (absl::has_single_bit(b_value)) {
       return HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, a,
@@ -1376,19 +1376,19 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   switch (divide->shape().element_type()) {
     case S8:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int8>(divide, computation_, simplifier_)) {
+              TryDivideToShift<int8_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
     case S16:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int16>(divide, computation_, simplifier_)) {
+              TryDivideToShift<int16_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
     case S32:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int32>(divide, computation_, simplifier_)) {
+              TryDivideToShift<int32_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
@@ -1400,19 +1400,19 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
       break;
     case U8:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint8>(divide, computation_, simplifier_)) {
+              TryDivideToShift<uint8_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
     case U16:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint16>(divide, computation_, simplifier_)) {
+              TryDivideToShift<uint16_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
     case U32:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint32>(divide, computation_, simplifier_)) {
+              TryDivideToShift<uint32_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
@@ -3709,7 +3709,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
           neqated_quotient, quotient);
     }
   } else {
-    uint64 b_value = c->literal().GetFirstElement<T>();
+    uint64_t b_value = c->literal().GetFirstElement<T>();
     if (absl::has_single_bit(b_value)) {
       HloInstruction* mask_amount = computation->AddInstruction(
           simplifier->CreateConstantWithLayoutUpdated(
@@ -3739,19 +3739,19 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
   switch (remainder->shape().element_type()) {
     case S8:
       if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<int8>(remainder, computation_, simplifier_)) {
+              TryRemainderToAnd<int8_t>(remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
     case S16:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<int16>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<int16_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
     case S32:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<int32>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<int32_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
@@ -3762,20 +3762,20 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
       }
       break;
     case U8:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<uint8>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint8_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
     case U16:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<uint16>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint16_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
     case U32:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<uint32>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint32_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;

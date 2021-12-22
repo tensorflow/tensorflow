@@ -37,23 +37,21 @@ func @while_with_implicit_arg_capture(%arg0: tensor<i64>) -> tensor<i64> {
 // -----
 
 // CHECK-LABEL: @while_with_implicit_capture
-func @while_with_implicit_capture(%arg0 :  tuple<tensor<i1>, tensor<5xi32>>) -> tuple<tensor<i1>, tensor<5xi32>> {
+// func @while_with_implicit_capture(%arg0 :  tuple<tensor<i1>, tensor<5xi32>>) -> tuple<tensor<i1>, tensor<5xi32>> {
+func @while_with_implicit_capture(%arg0 :  tensor<i1>, %arg1 : tensor<5xi32>) -> tuple<tensor<i1>, tensor<5xi32>> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = mhlo.constant dense<false> : tensor<i1>
   // Check that the iota implicit capture is made explicit
   // CHECK: %[[IOTA:.*]] = "mhlo.iota
   %2 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
   // CHECK: mhlo.while{{.*}} %[[IOTA]])
-  %5 = "mhlo.while"(%arg0) ( {
-  ^bb0(%arg1: tuple<tensor<i1>, tensor<5xi32>>):  // no predecessors
-    %6 = "mhlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<i1>, tensor<5xi32>>) -> tensor<i1>
-    "mhlo.return"(%6) : (tensor<i1>) -> ()
+  %3:2 = "mhlo.while"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<i1>, %arg3 : tensor<5xi32>):  // no predecessors
+    "mhlo.return"(%arg2) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg1: tuple<tensor<i1>, tensor<5xi32>>):  // no predecessors
-    %6 = "mhlo.get_tuple_element"(%arg1) {index = 1 : i32} : (tuple<tensor<i1>, tensor<5xi32>>) -> tensor<5xi32>
-    %i1 = "mhlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<i1>, tensor<5xi32>>) -> tensor<i1>
-    %8 = "mhlo.tuple"(%i1, %2) : (tensor<i1>, tensor<5xi32>) -> tuple<tensor<i1>, tensor<5xi32>>
-    "mhlo.return"(%8) : (tuple<tensor<i1>, tensor<5xi32>>) -> ()
-  }) : (tuple<tensor<i1>, tensor<5xi32>>) -> tuple<tensor<i1>, tensor<5xi32>>
-  return %5 : tuple<tensor<i1>, tensor<5xi32>>
+  ^bb0(%arg2: tensor<i1>, %arg3 : tensor<5xi32>):  // no predecessors
+    "mhlo.return"(%arg2, %2) : (tensor<i1>, tensor<5xi32>) -> ()
+  }) : (tensor<i1>, tensor<5xi32>) -> (tensor<i1>, tensor<5xi32>)
+  %4 = "mhlo.tuple"(%3#0, %3#1) : (tensor<i1>, tensor<5xi32>) -> tuple<tensor<i1>, tensor<5xi32>>
+  return %4 : tuple<tensor<i1>, tensor<5xi32>>
   }

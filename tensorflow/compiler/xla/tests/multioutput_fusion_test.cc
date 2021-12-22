@@ -214,13 +214,13 @@ XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
   auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
   auto param = LiteralUtil::MakeTupleOwned(
       LiteralUtil::MakeTupleOwned(
-          LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32>(42)),
+          LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32_t>(42)),
           LiteralUtil::CreateR0<float>(1.0)),
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<float>(3.0),
-                                  LiteralUtil::CreateR0<int32>(4)));
+                                  LiteralUtil::CreateR0<int32_t>(4)));
   Literal result = ExecuteNoHloPasses(std::move(module), {&param});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32>(42)), result));
+      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32_t>(42)), result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {

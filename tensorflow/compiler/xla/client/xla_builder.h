@@ -1620,10 +1620,10 @@ XlaOp ConstantLiteral(XlaBuilder* builder, const LiteralSlice& literal);
 //  Native Type   PrimitiveType
 // -----------------------------
 //   bool           PRED
-//   int32          S32
-//   int64_t          S64
-//   uint32         U32
-//   uint64         U64
+//   int32_t        S32
+//   int64_t        S64
+//   uint32_t       U32
+//   uint64_t       U64
 //   float          F32
 //   double         F64
 //

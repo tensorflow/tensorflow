@@ -2485,15 +2485,15 @@ bool HloInstruction::IdenticalSlowPath(
   return false;
 }
 
-static uint64 HashOperand(const HloInstruction* hlo) {
+static uint64_t HashOperand(const HloInstruction* hlo) {
   return ShapeUtil::Hash(hlo->shape());
 }
 
-uint64 HloInstruction::Hash(
-    const std::function<uint64(const HloInstruction*)>& hash_operand) const {
+uint64_t HloInstruction::Hash(
+    const std::function<uint64_t(const HloInstruction*)>& hash_operand) const {
   using tensorflow::Hash64Combine;
 
-  uint64 hash_value = Hash64Combine(0, static_cast<uint64_t>(opcode()));
+  uint64_t hash_value = Hash64Combine(0, static_cast<uint64_t>(opcode()));
   hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(shape()));
 
   if (!IsCrossModuleAllReduce()) {
@@ -2508,12 +2508,12 @@ uint64 HloInstruction::Hash(
   return hash_value;
 }
 
-uint64 HloInstruction::Hash() const {
+uint64_t HloInstruction::Hash() const {
   // Use HashOperand as an argument to prevent non-termination.
   return Hash(HashOperand);
 }
 
-uint64 HloInstruction::InnerHash() const { return 13; }
+uint64_t HloInstruction::InnerHash() const { return 13; }
 
 void HloInstruction::RemoveUser(HloInstruction* user) {
   auto map_it = user_map_.find(user);
@@ -3949,7 +3949,7 @@ std::string FrontendAttributesToString(
       frontend_attributes.map().begin(), frontend_attributes.map().end());
   absl::c_sort(sorted_attributes);
   // Frontend attribute is a comma-separated list of attribute="value" pairs,
-  // e.g., frontend_attributes={name="value_a",type="int32"}.
+  // e.g., frontend_attributes={name="value_a",type="int32_t"}.
   const auto formatter = [](std::string* out,
                             const std::pair<std::string, std::string>& item) {
     absl::StrAppend(out, item.first, "=\"", item.second, "\"");
@@ -4216,7 +4216,7 @@ Status HloInstruction::set_backend_config(
   // Pass ignore_accuracy_loss = true because estimated_cycles field can be
   // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
   // INT64_MAX, JsonFormat will return an error status, although there is no
-  // accuracy loss for int64.
+  // accuracy loss for int64_t.
   TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(
       proto, &ret, /*ignore_accuracy_loss=*/true));
   return ret;
@@ -4466,11 +4466,11 @@ void HloInstruction::set_tuple_index(int64_t new_tuple_index) {
       new_tuple_index);
 }
 
-int32 HloInstruction::exponent_bits() const {
+int32_t HloInstruction::exponent_bits() const {
   return Cast<HloReducePrecisionInstruction>(this)->exponent_bits();
 }
 
-int32 HloInstruction::mantissa_bits() const {
+int32_t HloInstruction::mantissa_bits() const {
   return Cast<HloReducePrecisionInstruction>(this)->mantissa_bits();
 }
 

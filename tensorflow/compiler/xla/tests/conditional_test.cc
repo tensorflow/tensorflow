@@ -196,8 +196,8 @@ XLA_TEST_P(CaseOpTest, Parameters0) {
     SCOPED_TRACE(bi);
     XlaBuilder builder(TestName());
     XlaOp branch_index;
-    auto branch_index_arg = CreateR0Parameter<int32>(bi, 0, "branch_index_arg",
-                                                     &builder, &branch_index);
+    auto branch_index_arg = CreateR0Parameter<int32_t>(
+        bi, 0, "branch_index_arg", &builder, &branch_index);
     auto operand = Tuple(&builder, {});
 
     std::vector<XlaOp> operands(num_branches, operand);
@@ -239,8 +239,8 @@ XLA_TEST_P(CaseOpTest, Parameters1) {
     SCOPED_TRACE(bi);
     XlaBuilder builder(TestName());
     XlaOp branch_index;
-    auto branch_index_arg = CreateR0Parameter<int32>(bi, 0, "branch_index_arg",
-                                                     &builder, &branch_index);
+    auto branch_index_arg = CreateR0Parameter<int32_t>(
+        bi, 0, "branch_index_arg", &builder, &branch_index);
 
     auto make_branch = [&builder, this](int i) {
       auto sb = builder.CreateSubBuilder(absl::StrCat("branch_", i));
@@ -415,7 +415,7 @@ XLA_TEST_P(CaseOpTest, Parameters2Array) {
     XlaBuilder builder(TestName());
     XlaOp branch_index;
     auto branch_index_arg =
-        CreateR0Parameter<int32>(bi, 0, "pred", &builder, &branch_index);
+        CreateR0Parameter<int32_t>(bi, 0, "pred", &builder, &branch_index);
     auto operand1 = ConstantR1<float>(&builder, {24.0f, 56.0f});
     auto operand2 = ConstantR1<float>(&builder, {10.0f, 11.0f});
     auto operands = Tuple(&builder, {operand1, operand2});
@@ -781,9 +781,9 @@ XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
   {
     // Pred is true case.
     std::vector<Literal> args;
-    args.push_back(
-        LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR0<int32>(123),
-                                          LiteralUtil::CreateR0<int32>(-42)}));
+    args.push_back(LiteralUtil::MakeTupleFromSlices(
+        {LiteralUtil::CreateR0<int32_t>(123),
+         LiteralUtil::CreateR0<int32_t>(-42)}));
     args.push_back(LiteralUtil::CreateR0<bool>(true));
     XlaBuilder builder(TestName() + ".main");
     auto p = Parameter(&builder, 0, tuple2, "p0");
@@ -794,9 +794,9 @@ XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
   {
     // Pred is false case.
     std::vector<Literal> args;
-    args.push_back(
-        LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR0<int32>(123),
-                                          LiteralUtil::CreateR0<int32>(-42)}));
+    args.push_back(LiteralUtil::MakeTupleFromSlices(
+        {LiteralUtil::CreateR0<int32_t>(123),
+         LiteralUtil::CreateR0<int32_t>(-42)}));
     args.push_back(LiteralUtil::CreateR0<bool>(false));
     XlaBuilder builder(TestName() + ".main");
     auto p = Parameter(&builder, 0, tuple2, "p0");

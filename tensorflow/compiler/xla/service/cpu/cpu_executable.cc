@@ -165,7 +165,7 @@ Status CpuExecutable::ExecuteComputeFunction(
     const ExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceMemory const> buffers,
     HloExecutionProfile* hlo_execution_profile) {
-  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
   auto cleanup = absl::MakeCleanup(
@@ -207,7 +207,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
                     &status, profile_counters);
 
-  uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
 
   if (run_options->execution_profile()) {
     const double nanoseconds = (end_micros - start_micros) * 1000.0;
@@ -407,7 +407,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
   }
   // Each dynamic dimension size is represented as a S32.
-  int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*)) + metadata_size;
 }
 

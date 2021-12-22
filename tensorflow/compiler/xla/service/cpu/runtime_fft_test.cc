@@ -21,11 +21,11 @@ TEST(FftTypeTest, MatchesProto) {
   EXPECT_EQ(::xla::FftType_ARRAYSIZE, 4);
   EXPECT_EQ(::tensorflow::xla::FftTypeArraySize(), 4);
   EXPECT_EQ(::xla::FftType::FFT,
-            static_cast<::tensorflow::int32>(::tensorflow::xla::FftType::FFT));
+            static_cast<int32_t>(::tensorflow::xla::FftType::FFT));
   EXPECT_EQ(::xla::FftType::IFFT,
-            static_cast<::tensorflow::int32>(::tensorflow::xla::FftType::IFFT));
+            static_cast<int32_t>(::tensorflow::xla::FftType::IFFT));
   EXPECT_EQ(::xla::FftType::RFFT,
-            static_cast<::tensorflow::int32>(::tensorflow::xla::FftType::RFFT));
-  EXPECT_EQ(::xla::FftType::IRFFT, static_cast<::tensorflow::int32>(
-                                       ::tensorflow::xla::FftType::IRFFT));
+            static_cast<int32_t>(::tensorflow::xla::FftType::RFFT));
+  EXPECT_EQ(::xla::FftType::IRFFT,
+            static_cast<int32_t>(::tensorflow::xla::FftType::IRFFT));
 }

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <unistd.h>
+
 #include <memory>
 
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -62,7 +63,7 @@ TEST_F(InfeedTest, SingleInfeedR0Bool) {
 }
 
 TEST_F(InfeedTest, SingleInfeedR1U32) {
-  TestInfeedRoundTrip(LiteralUtil::CreateR1<uint32>({1, 2, 3}));
+  TestInfeedRoundTrip(LiteralUtil::CreateR1<uint32_t>({1, 2, 3}));
 }
 
 TEST_F(InfeedTest, SingleInfeedR2F32) {
@@ -98,7 +99,7 @@ TEST_F(InfeedTest, SingleInfeedR4S32) {
 
 TEST_F(InfeedTest, SingleInfeedTuple) {
   TestInfeedRoundTrip(LiteralUtil::MakeTupleFromSlices(
-      {LiteralUtil::CreateR1<uint32>({1, 2, 3}),
+      {LiteralUtil::CreateR1<uint32_t>({1, 2, 3}),
        LiteralUtil::CreateR0<bool>(false)}));
 }
 

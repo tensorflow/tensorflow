@@ -268,7 +268,8 @@ class MlirHloBuilder : public XlaBuilder {
       llvm::ArrayRef<mlir::NamedAttribute> attributes = {});
 
   Status ImportComputation(const HloModuleProto& computation,
-                           mlir::Region* region);
+                           mlir::Region* region,
+                           bool flatten_region_arg_tuple = false);
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;

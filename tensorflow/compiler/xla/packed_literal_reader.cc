@@ -62,7 +62,7 @@ StatusOr<Literal> PackedLiteralReader::Read(const Shape& shape,
   int64_t elements = ShapeUtil::ElementsIn(shape);
   absl::Span<const float> field = result.data<float>();
   char* data = absl::bit_cast<char*>(field.data());
-  uint64 bytes = elements * sizeof(float);
+  uint64_t bytes = elements * sizeof(float);
   absl::string_view sp;
   auto s = file_->Read(offset_, bytes, &sp, data);
   offset_ += sp.size();

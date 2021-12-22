@@ -342,8 +342,8 @@ tensorflow::tf_shared_lock LockGpuShared(
 }
 
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
-    absl::string_view kernel_name, uint64 num_args, absl::string_view ptx,
-    absl::Span<const uint8> cubin_data, se::StreamExecutor* stream_exec) {
+    absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec) {
   se::MultiKernelLoaderSpec loader_spec(num_args);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
@@ -414,7 +414,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
       // For float or double, it is between [0,1].
       // For fp16, it ranges between [0, 0.1].
       // For integer types, element is either 0 or 1 for less overflows
-      // especially for int8.
+      // especially for int8_t.
       element = T(std::is_integral<T>::value ? rand_val + 0.5 : rand_val);
     }
     return ret;
@@ -457,9 +457,9 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
     case xla::C128:
       return InitializeTypedBuffer<double>(stream, buffer, rng_state);
     case xla::S8:
-      return InitializeTypedBuffer<int8>(stream, buffer, rng_state);
+      return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
     case xla::S32:
-      return InitializeTypedBuffer<int32>(stream, buffer, rng_state);
+      return InitializeTypedBuffer<int32_t>(stream, buffer, rng_state);
     default:
       LOG(FATAL) << "Unexpected type: "
                  << primitive_util::LowercasePrimitiveTypeName(buffer_type);
@@ -493,9 +493,9 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     case F64:
       return se::dnn::ToDataType<double>::value;
     case S8:
-      return se::dnn::ToDataType<int8>::value;
+      return se::dnn::ToDataType<int8_t>::value;
     case S32:
-      return se::dnn::ToDataType<int32>::value;
+      return se::dnn::ToDataType<int32_t>::value;
     case BF16:
       return se::dnn::ToDataType<Eigen::bfloat16>::value;
     default:

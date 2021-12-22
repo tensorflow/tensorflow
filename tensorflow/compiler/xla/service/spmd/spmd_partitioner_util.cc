@@ -205,7 +205,7 @@ std::vector<HloInstruction*> MakePartitionOffsets(
     absl::Span<const int64_t> dims) {
   CHECK(!shape.IsTuple());
 
-  std::vector<std::vector<int32>> offset_arrays(shape.rank());
+  std::vector<std::vector<int32_t>> offset_arrays(shape.rank());
   for (int64_t i = 0; i < shape.rank(); ++i) {
     offset_arrays[i].resize(sharding.tile_assignment().num_elements());
   }
@@ -224,7 +224,7 @@ std::vector<HloInstruction*> MakePartitionOffsets(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
     } else {
       auto offset_table = b->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<int32>(offset_arrays[i])));
+          LiteralUtil::CreateR1<int32_t>(offset_arrays[i])));
       auto index = b->AddInstruction(HloInstruction::CreateDynamicSlice(
           ShapeUtil::MakeShape(S32, {1}), offset_table, {partition_id}, {1}));
       offsets.push_back(b->AddInstruction(
@@ -684,24 +684,24 @@ HloInstruction* MultiplyAddDivideOffsetCalculation::Calculate(
   auto scalar_shape = ShapeUtil::MakeShape(S32, {});
   if (multiplier_ == 0) {
     return b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(offset_ / divisor_)));
+        LiteralUtil::CreateR0<int32_t>(offset_ / divisor_)));
   }
   HloInstruction* result = shard_ordinal;
   if (multiplier_ != 1) {
     result = b->AddInstruction(HloInstruction::CreateBinary(
         scalar_shape, HloOpcode::kMultiply, shard_ordinal,
         b->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(multiplier_)))));
+            LiteralUtil::CreateR0<int32_t>(multiplier_)))));
   }
   if (offset_ != 0) {
-    auto offset = b->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(offset_)));
+    auto offset = b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<int32_t>(offset_)));
     result = b->AddInstruction(HloInstruction::CreateBinary(
         scalar_shape, HloOpcode::kAdd, result, offset));
   }
   if (divisor_ != 1) {
-    auto divisor = b->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(divisor_)));
+    auto divisor = b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<int32_t>(divisor_)));
     result = b->AddInstruction(HloInstruction::CreateBinary(
         scalar_shape, HloOpcode::kDivide, result, divisor));
   }
@@ -1078,7 +1078,7 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
           b->AddInstruction(HloInstruction::CreateBroadcast(
               index_shape,
               b->AddInstruction(
-                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
                       explicit_left_padding_on_full_shape))),
               {}));
       predicates.push_back(b->AddInstruction(HloInstruction::CreateCompare(
@@ -1090,7 +1090,7 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
           b->AddInstruction(HloInstruction::CreateBroadcast(
               index_shape,
               b->AddInstruction(
-                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
                       base_shape.dimensions(dim) +
                       explicit_left_padding_on_full_shape))),
               {}));
@@ -1162,7 +1162,7 @@ bool IsNanSafeGt(HloComputation* comp) {
     return m::Select(
         m::Lt(param_s32, m::ConstantScalar(0)),
         m::BitcastConvert(
-            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32_t>::max()),
                         param_u32))
             .WithShape(m::Shape().WithElementType(S32)),
         param_s32);
@@ -1178,7 +1178,7 @@ bool IsNanSafeGt(HloComputation* comp) {
     return m::Select(
         m::Lt(param_s32, m::ConstantScalar(0)),
         m::BitcastConvert(
-            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32_t>::max()),
                         param_u32))
             .WithShape(m::Shape().WithElementType(S32)),
         param_s32);
@@ -1542,14 +1542,14 @@ HloInstruction* GetInGroupPartitionId(
     HloInstruction* partition_id,
     const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b) {
   int64_t total_devices = device_groups.size() * device_groups[0].size();
-  std::vector<uint32> in_group_ids(total_devices);
-  for (uint32 i = 0; i < device_groups.size(); ++i) {
-    for (uint32 j = 0; j < device_groups[i].size(); ++j) {
+  std::vector<uint32_t> in_group_ids(total_devices);
+  for (uint32_t i = 0; i < device_groups.size(); ++i) {
+    for (uint32_t j = 0; j < device_groups[i].size(); ++j) {
       in_group_ids[device_groups[i][j]] = j;
     }
   }
   auto id_table = b->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<uint32>(in_group_ids)));
+      LiteralUtil::CreateR1<uint32_t>(in_group_ids)));
   return b->AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeScalarShape(U32),
       b->AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -1664,14 +1664,15 @@ HloInstruction* PerGroupSliceFromReplicated(
     const std::vector<std::vector<int64_t>>& device_groups,
     absl::Span<const int64_t> group_dims,
     absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b) {
-  std::vector<uint32> group_ids(device_groups.size() * device_groups[0].size());
+  std::vector<uint32_t> group_ids(device_groups.size() *
+                                  device_groups[0].size());
   for (int64_t g = 0; g < device_groups.size(); ++g) {
     for (int64_t device : device_groups[g]) {
       group_ids[device] = g;
     }
   }
-  auto group_id_table = b->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint32>(group_ids)));
+  auto group_id_table = b->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<uint32_t>(group_ids)));
   auto group_id = b->AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeScalarShape(U32),
       b->AddInstruction(HloInstruction::CreateDynamicSlice(

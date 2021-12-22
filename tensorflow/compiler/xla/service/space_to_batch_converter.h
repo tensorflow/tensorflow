@@ -38,7 +38,7 @@ struct SpaceToBatchController {
 };
 
 // Represents the different dimension mappings. Can be extended as needed.
-enum class SpaceToBatchDimMap : uint8 {
+enum class SpaceToBatchDimMap : uint8_t {
   kBatch = 0,
   kFeature = 1,
   kSpace0 = 2,

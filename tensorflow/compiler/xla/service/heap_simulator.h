@@ -480,7 +480,7 @@ class ConstrainedGlobalDecreasingSizeBestFitHeap
     : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   explicit ConstrainedGlobalDecreasingSizeBestFitHeap(
-      uint64 size_limit_per_heap, int64_t alignment, Type type = kSpatial)
+      uint64_t size_limit_per_heap, int64_t alignment, Type type = kSpatial)
       : GlobalDecreasingSizeBestFitHeap<HloValue>(alignment, type),
         size_limit_per_heap_(size_limit_per_heap) {}
   ~ConstrainedGlobalDecreasingSizeBestFitHeap() override {}
@@ -488,7 +488,7 @@ class ConstrainedGlobalDecreasingSizeBestFitHeap
   Result Finish() override;
 
  private:
-  uint64 size_limit_per_heap_;
+  uint64_t size_limit_per_heap_;
 };
 
 // A heap algorithm that chooses the best results from other algorithms added to

@@ -71,7 +71,7 @@ class HloModuleGroup {
     }
   }
 
-  uint64 Hash() const;
+  uint64_t Hash() const;
 
   // Serialize the module group to/from a proto.
   HloModuleGroupProto ToProto() const;

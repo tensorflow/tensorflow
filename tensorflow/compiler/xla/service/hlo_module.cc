@@ -817,7 +817,7 @@ HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,
   return new_computation;
 }
 
-uint64 HloModule::RandomNew64() const {
+uint64_t HloModule::RandomNew64() const {
   tensorflow::mutex_lock l(rng_mutex_);
   return rng_();
 }
@@ -830,8 +830,8 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
   return it == computations_in_module.end() ? nullptr : *it;
 }
 
-uint64 HloModule::Hash() const {
-  uint64 result = entry_computation_layout().Hash();
+uint64_t HloModule::Hash() const {
+  uint64_t result = entry_computation_layout().Hash();
   // Use MakeComputationSorted() instead of MakeComputationPostOrder()
   // because naming may affect the order of MakeComputationPostOrder() but not
   // MakeComputationSorted().

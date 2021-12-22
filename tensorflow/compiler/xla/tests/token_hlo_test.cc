@@ -75,7 +75,7 @@ XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
   builder.AddInstruction(
       HloInstruction::CreateParameter(1, ShapeUtil::MakeTokenShape(), "p1"));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(42)));
   module->AddEntryComputation(builder.Build());
 
   Status status =
@@ -186,7 +186,7 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
         HloRunner::CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(true);
     TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
-    EXPECT_EQ(42, result.Get<int32>({}));
+    EXPECT_EQ(42, result.Get<int32_t>({}));
   }
 
   {
@@ -196,7 +196,7 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
         HloRunner::CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(false);
     TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
-    EXPECT_EQ(7, result.Get<int32>({}));
+    EXPECT_EQ(7, result.Get<int32_t>({}));
   }
 }
 

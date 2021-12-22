@@ -105,7 +105,7 @@ StatusOr<Literal> TextLiteralReader::ReadAllLines() {
       int64_t coordinate_value;
       if (!absl::SimpleAtoi(piece, &coordinate_value)) {
         return InvalidArgument(
-            "could not parse coordinate member as int64: \"%s\"",
+            "could not parse coordinate member as int64_t: \"%s\"",
             std::string(piece));
       }
       coordinate_values.push_back(coordinate_value);

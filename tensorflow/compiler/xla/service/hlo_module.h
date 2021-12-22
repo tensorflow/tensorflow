@@ -154,7 +154,7 @@ class HloModule {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO modules,
   // with respect to HloInstruction::Identical() method.
-  uint64 Hash() const;
+  uint64_t Hash() const;
 
   // Gets the computations in this module.
   //
@@ -270,8 +270,8 @@ class HloModule {
       const std::string& outlined_computation_name,
       HloComputation* computation);
 
-  // Returns a randomly generated uint64.
-  uint64 RandomNew64() const;
+  // Returns a randomly generated uint64_t.
+  uint64_t RandomNew64() const;
 
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }

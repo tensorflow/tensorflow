@@ -70,7 +70,7 @@ HloInstruction* MakeCrossReplicaReductions(
     auto constant = b->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.3)));
     Shape shape = ShapeUtil::MakeShape(
-        F32, {static_cast<int32>(size_in_kib * 1024 / sizeof(float))});
+        F32, {static_cast<int32_t>(size_in_kib * 1024 / sizeof(float))});
     auto input =
         b->AddInstruction(HloInstruction::CreateBroadcast(shape, constant, {}));
     inputs->push_back(input);

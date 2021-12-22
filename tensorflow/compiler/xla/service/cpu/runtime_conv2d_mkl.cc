@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_mkl.h"
+
 #include <iostream>
+
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -30,8 +32,8 @@ namespace {
 int ToInt(int64_t input) {
   int output = static_cast<int>(input);
   if (static_cast<int64_t>(output) != input) {
-    std::cerr << "Error occurred in downcasting int64_t to int32: Value "
-              << input << " is out-of-range for type int32. \n";
+    std::cerr << "Error occurred in downcasting int64_t to int32_t: Value "
+              << input << " is out-of-range for type int32_t. \n";
     exit(1);
   }
   return output;
@@ -64,7 +66,7 @@ void MKLConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
   // Create a vector primitive to hold the network.
   std::vector<primitive> net;
 
-  // Since memory::dims takes int for each dimension, we downcast the int64
+  // Since memory::dims takes int for each dimension, we downcast the int64_t
   // values to int using the ToInt function defined above.
   memory::dims conv1_src_dim = {ToInt(input_batch), ToInt(input_channels),
                                 ToInt(input_rows), ToInt(input_cols)};

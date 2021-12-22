@@ -23,10 +23,10 @@ func @tensor.from_elements(%a : f32) -> f32 {
   // ALLOC: %[[MEM:.*]] = memref.alloc() : memref<3xf32>
   // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK: store %[[B]], %[[MEM]][%[[C1]]] : memref<3xf32>
   // CHECK: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
+  // CHECK: store %[[B]], %[[MEM]][%[[C1]]] : memref<3xf32>
   // CHECK: store %[[C]], %[[MEM]][%[[C2]]] : memref<3xf32>
   %b = arith.constant 1.2 : f32
   %c = arith.constant 2.3 : f32

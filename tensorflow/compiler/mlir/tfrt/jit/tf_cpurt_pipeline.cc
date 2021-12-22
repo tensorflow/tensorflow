@@ -137,8 +137,10 @@ void CreateTfCpuRtPipeline(OpPassManager& pm,
   // to resolve broadcasts that can be converted to linalg generic operations.
   pm.addNestedPass<FuncOp>(CreateSymbolicShapeOptimizationPass());
 
-  // Transform HLO operations to Linalg.
+  // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).

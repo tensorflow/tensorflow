@@ -157,6 +157,10 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
     shapes_found.push_back(*found_shape);
     maxRank = std::max(maxRank, found_shape->size());
   }
+  if (maxRank == 0) {
+    return Value(builder->create<tensor::FromElementsOp>(
+        loc, shapes[0].getType(), SmallVector<Value>()));
+  }
 
   SmallVector<const ShapeComponentAnalysis::SymbolicExpr*> joined_dimensions(
       maxRank);

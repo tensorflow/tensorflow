@@ -432,7 +432,7 @@ Service::ExecuteParallelAndRegisterResult(
     for (auto& timer : timers) {
       timer_nanoseconds.push_back(timer->Nanoseconds());
     }
-    uint64 nanoseconds =
+    uint64_t nanoseconds =
         *std::max_element(timer_nanoseconds.begin(), timer_nanoseconds.end());
 
     // Overall execution time (in nanoseconds) from the executor timer.
@@ -1070,7 +1070,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
         if (custom_call->custom_call_target() == "SliceToDynamic") {
           auto result = operands[0]->Clone();
           for (int64_t i = 0; i < result.shape().rank(); ++i) {
-            result.SetDynamicSize(i, operands[1 + i]->Get<int32>({}));
+            result.SetDynamicSize(i, operands[1 + i]->Get<int32_t>({}));
           }
           return result.ToStatic();
         }

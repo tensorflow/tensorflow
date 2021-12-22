@@ -374,7 +374,7 @@ class BufferAssignment {
     return temp_allocation_total_size_;
   }
 
-  uint64 multiheap_size_constraint_per_heap() const {
+  uint64_t multiheap_size_constraint_per_heap() const {
     return multiheap_size_constraint_per_heap_;
   }
 
@@ -562,7 +562,7 @@ class BufferAssignment {
   // The total size of all temporary buffers.
   int64_t temp_allocation_total_size_ = 0;
 
-  uint64 multiheap_size_constraint_per_heap_;
+  uint64_t multiheap_size_constraint_per_heap_;
 
   // Maps Buffers to the index of the BufferAllocation which holds the buffer.
   absl::flat_hash_map<const HloValue*, BufferAllocation::Index>

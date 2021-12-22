@@ -89,7 +89,7 @@ ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
 
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
-    uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros_) / 1000000.0;
 
     TimerStats& stats = *timer_stats_;

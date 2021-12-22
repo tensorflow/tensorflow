@@ -65,7 +65,7 @@ class LiteralUtil {
   // native type. For example:
   //
   //  CreateR1<float>({1.0, 42.0});
-  //  CreateR2<uint32>({{1, 2}, {3, 4}});
+  //  CreateR2<uint32_t>({{1, 2}, {3, 4}});
   //
   // The variants not ending with WithLayout use the default XLA layout for the
   // literal's linear representation in memory.

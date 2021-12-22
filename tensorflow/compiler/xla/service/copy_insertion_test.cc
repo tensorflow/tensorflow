@@ -414,7 +414,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
       const Shape& loop_state_shape) {
     auto builder = HloComputation::Builder(TestName() + ".Condition");
     auto limit_const = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(10)));
     auto loop_state = builder.AddInstruction(
         HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
     auto induction_variable =
@@ -443,7 +443,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
     // Update data GTE(1).
@@ -484,7 +484,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
 
     // add0 = Add(in0, 1)
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -556,7 +556,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
     // add0 = Add(in0, 1)
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
@@ -606,7 +606,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto gte0 = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
         induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         gte0->shape(), HloOpcode::kAdd, gte0, inc));
 
@@ -642,7 +642,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
                                         bool nested = false) {
     auto builder = HloComputation::Builder(TestName() + ".While");
     auto induction_var_init = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
 
     auto data_init = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
@@ -762,7 +762,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     const bool nested =
         ShapeUtil::Equal(loop_state_shape, nested_loop_state_shape_);
     auto induction_var_init = builder->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
     auto condition = module_->AddEmbeddedComputation(
         BuildConditionComputation(loop_state_shape));
     auto body = module_->AddEmbeddedComputation(

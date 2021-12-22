@@ -236,7 +236,7 @@ absl::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   slice.remove_prefix(std::strlen("(0x"));
   CHECK(absl::EndsWith(slice, ")"));
   slice.remove_suffix(std::strlen(")"));
-  uint64 payload_value;
+  uint64_t payload_value;
   if (tensorflow::strings::HexStringToUint64(slice, &payload_value)) {
     if (payload_value <= 0 || payload_value > NanPayloadBitMask<double>()) {
       LOG(ERROR) << "NaN payload out of range: " << payload_value;
@@ -412,7 +412,7 @@ TokKind HloLexer::LexNumberOrPattern() {
     if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
       return TokKind::kInt;
     }
-    uint64 uint64_val;
+    uint64_t uint64_val;
     if (absl::SimpleAtoi(slice, &uint64_val)) {
       token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
       return TokKind::kInt;

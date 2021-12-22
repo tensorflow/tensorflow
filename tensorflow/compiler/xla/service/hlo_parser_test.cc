@@ -298,7 +298,7 @@ ENTRY %DomainParsing (v1: f32[]) -> f32[] {
 
 )"
 },
-// int32 result = 0;
+// int32_t result = 0;
 // while (result < 5) { result = result + 1; }
 {
 "WhileWithScalarS32Result",

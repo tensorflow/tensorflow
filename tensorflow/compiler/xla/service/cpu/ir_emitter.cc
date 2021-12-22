@@ -315,7 +315,7 @@ int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   int64_t byte_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   DCHECK_GE(byte_size, 0);
   // Largest scalar is a complex128 so we don't need to worry about the
-  // int64->int truncation here.
+  // int64_t->int truncation here.
   DCHECK_LE(byte_size, 16);
 
   // Allocations may be 8-byte aligned if part of a small block.
@@ -463,13 +463,13 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
 Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                                     llvm::Value* program_buffer_address) {
   int64_t length = ByteSizeOf(shape);
-  if (length < 0 || length > std::numeric_limits<int32>::max()) {
+  if (length < 0 || length > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument(
         "xfeed (infeed or outfeed) buffer length %d is outside the valid "
         "size range",
         length);
   }
-  int32_t length_32 = static_cast<int32>(length);
+  int32_t length_32 = static_cast<int32_t>(length);
 
   int32_t shape_length;
   TF_ASSIGN_OR_RETURN(
@@ -1227,14 +1227,14 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
        /*replica_groups_size=*/b_.getInt32(replica_groups_size),
 
        /*channel_id_present=*/
-       b_.getInt32(static_cast<int32>(crs->channel_id().has_value())),
+       b_.getInt32(static_cast<int32_t>(crs->channel_id().has_value())),
        /*op_id=*/
        b_.getInt64(crs->channel_id().has_value()
                        ? *crs->channel_id()
                        : crs->GetModule()->unique_id()),
        /*reduction_kind=*/
        b_.getInt32(
-           static_cast<int32>(*MatchReductionComputation(crs->to_apply()))),
+           static_cast<int32_t>(*MatchReductionComputation(crs->to_apply()))),
        /*shape_ptr=*/shape_ptr,
        /*shape_length=*/b_.getInt32(shape_length),
        /*num_buffers=*/b_.getInt32(crs->operand_count()),
@@ -1290,7 +1290,7 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
       runtime::kAllToAllSymbolName,
       {/*run_options=*/GetExecutableRunOptionsArgument(),
        /*channel_id_present=*/
-       b_.getInt32(static_cast<int32>(instruction->channel_id().has_value())),
+       b_.getInt32(static_cast<int32_t>(instruction->channel_id().has_value())),
        /*op_id=*/
        b_.getInt64(instruction->channel_id().has_value()
                        ? *instruction->channel_id()
@@ -1330,7 +1330,7 @@ Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
       runtime::kCollectivePermuteSymbolName,
       {/*run_options=*/GetExecutableRunOptionsArgument(),
        /*channel_id_present=*/
-       b_.getInt32(static_cast<int32>(crs->channel_id().has_value())),
+       b_.getInt32(static_cast<int32_t>(crs->channel_id().has_value())),
        /*op_id=*/
        b_.getInt64(crs->channel_id().has_value()
                        ? *crs->channel_id()
@@ -2219,7 +2219,8 @@ Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
     llvm::LoadInst* dyn_dim_size = Load(source_buffer, "dyn_dim_size");
 
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+        b_.getInt8Ty(), raw_buffer,
+        raw_data_size + dim_index * sizeof(int32_t));
     b_.CreateStore(dyn_dim_size,
                    b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()));
     dynamic_dims.push_back(b_.CreateIntCast(dyn_dim_size, b_.getInt64Ty(),
@@ -2281,7 +2282,8 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
         EmitBufferPointer(dim_size_slice, data_shape);
     const int64_t dim_index = i - 1;
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+        b_.getInt8Ty(), raw_buffer,
+        raw_data_size + dim_index * sizeof(int32_t));
     llvm::Value* dyn_dim_size = b_.CreateLoad(
         b_.getInt32Ty(),
         b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()),
@@ -2733,7 +2735,7 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   TF_RET_CHECK(ShapeUtil::IsScalar(branch_index->shape()) &&
                (branch_index->shape().element_type() == PRED ||
                 branch_index->shape().element_type() == S32))
-      << "Branch index on a conditional must be scalar bool or int32; got: "
+      << "Branch index on a conditional must be scalar bool or int32_t; got: "
       << ShapeUtil::HumanString(branch_index->shape());
 
   for (int b = 0; b < num_branches; ++b) {
@@ -2992,7 +2994,7 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
 
   llvm::Type* int8_ptr_type = b->getInt8Ty()->getPointerTo();
   llvm::Type* void_ptr_type =
-      int8_ptr_type;  // LLVM does not have a void*, we use an int8* instead.
+      int8_ptr_type;  // LLVM does not have a void*, we use an int8_t* instead.
   llvm::FunctionType* fn_type =
       llvm::FunctionType::get(b->getInt64Ty(), {void_ptr_type, int8_ptr_type},
                               /*isVarArg=*/false);
@@ -3024,7 +3026,7 @@ void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
 
   llvm::Type* void_ptr_type =
       b->getInt8Ty()->getPointerTo();  // LLVM does not have a void*, we use an
-                                       // int8* instead.
+                                       // int8_t* instead.
   llvm::FunctionType* fn_type =
       llvm::FunctionType::get(b->getVoidTy(), {void_ptr_type, b->getInt64Ty()},
                               /*isVarArg=*/false);

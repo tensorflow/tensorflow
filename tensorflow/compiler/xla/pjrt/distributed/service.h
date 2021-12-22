@@ -93,13 +93,13 @@ class DistributedRuntimeServiceImpl final
   void HeartbeatLoop();
 
   // Validates a session id number matches the current session id.
-  xla::Status ValidateSessionId(uint64 session_id);
+  xla::Status ValidateSessionId(uint64_t session_id);
 
   // Validates a node id number.
   xla::Status ValidateNodeId(int node_id);
 
   const Options options_;
-  const uint64 session_id_;
+  const uint64_t session_id_;
 
   absl::Mutex mu_;
   enum class State { kInitializing, kRunning, kClosed };
@@ -113,7 +113,7 @@ class DistributedRuntimeServiceImpl final
 
     // A unique ID belonging to the client. Used to identify the client that
     // most recently called Connect() with a particular task id.
-    uint64 client_id = 0;
+    uint64_t client_id = 0;
 
     // When did we last receive a heartbeat from this task?
     absl::Time last_heartbeat = absl::InfinitePast();

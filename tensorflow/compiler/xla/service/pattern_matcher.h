@@ -1887,7 +1887,7 @@ class HloInstructionPattern {
   }
 
   // This does not check that T has the same type as the instruction, so e.g.
-  // IsConstantScalar(1.0) may match a constant of shape int32[].
+  // IsConstantScalar(1.0) may match a constant of shape int32_t[].
   template <typename ScalarTy>
   constexpr auto IsConstantScalar(const ScalarTy& val) const {
     return AppendImpl(

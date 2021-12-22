@@ -3312,9 +3312,34 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// XlaReduceOp
+//===----------------------------------------------------------------------===//
+
+class XlaReduceToXlaVariadicReduceV2
+    : public OpRewritePattern<TF::XlaReduceOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaReduceOp op,
+                                PatternRewriter &rewriter) const override {
+    SmallVector<Value> inputs{op.input()};
+    SmallVector<Value> init_values{op.init_value()};
+    SmallVector<Type> result_types{op.getResult().getType()};
+    rewriter.replaceOpWithNewOp<TF::XlaVariadicReduceV2Op>(
+        op, result_types, inputs, init_values, op.dimensions_to_reduce(),
+        op.reducer());
+    return ::mlir::success();
+  };
+};
+
+void XlaReduceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<XlaReduceToXlaVariadicReduceV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // XlaVariadicReduceOp
 //===----------------------------------------------------------------------===//
-//
 
 static LogicalResult Verify(XlaVariadicReduceOp op) {
   // We rely on V2 for the majority of the checks.
@@ -3353,7 +3378,6 @@ void XlaVariadicReduceOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 // XlaVariadicReduceV2Op
 //===----------------------------------------------------------------------===//
-//
 
 static LogicalResult Verify(XlaVariadicReduceV2Op op) {
   const auto &inputs_ty = op.inputs().getType();
@@ -3362,29 +3386,38 @@ static LogicalResult Verify(XlaVariadicReduceV2Op op) {
 
   const auto &init_values_ty = op.init_values().getType();
   int n_init_values = init_values_ty.size();
-  if (n_init_values != n_inputs)
+  if (n_init_values != n_inputs) {
     return op.emitOpError() << "Number of inputs (" << n_inputs
                             << ") is different than number of init_values ("
                             << n_init_values << ")";
+  }
 
-  if (inputs_ty[0].cast<ShapedType>().hasStaticShape()) {
-    for (int i = 0; i < n_inputs; ++i) {
-      if (inputs_ty[i].cast<ShapedType>().getShape() !=
-          inputs_ty[0].cast<ShapedType>().getShape())
-        return op.emitOpError() << "inputs[" << i << "] has shape ["
-                                << inputs_ty[i].cast<ShapedType>().getShape()
-                                << "] different than the shape of inputs[0]: "
-                                << inputs_ty[0].cast<ShapedType>().getShape();
-      if (init_values_ty[i].cast<ShapedType>().getRank() != 0)
+  auto input_ty_0 = inputs_ty[0].cast<ShapedType>();
+  if (input_ty_0.hasStaticShape()) {
+    for (int i = 1; i < n_inputs; ++i) {
+      auto input_ty_i = inputs_ty[i].cast<ShapedType>();
+      if (input_ty_i.hasStaticShape() &&
+          input_ty_i.getShape() != input_ty_0.getShape()) {
         return op.emitOpError()
-               << "init_values[" << i << "] must be a scalar but got ["
-               << init_values_ty[i].cast<ShapedType>().getShape() << "]";
+               << "inputs[" << i << "] has shape [" << input_ty_i.getShape()
+               << "] different than the shape of inputs[0]: "
+               << input_ty_0.getShape();
+      }
     }
 
-    if (op.dimensions_to_reduce().size() >
-        inputs_ty[0].cast<ShapedType>().getRank())
+    if (op.dimensions_to_reduce().size() > input_ty_0.getRank()) {
       return op.emitOpError()
-             << "Invalid dimensions_to_reduce argument to XlaReduce";
+             << "Invalid dimensions_to_reduce argument to XlaVariadicReduceV2";
+    }
+  }
+
+  for (int i = 0; i < n_inputs; ++i) {
+    auto init_value_ty_i = init_values_ty[i].cast<ShapedType>();
+    if (init_value_ty_i.hasRank() && init_value_ty_i.getRank() != 0) {
+      return op.emitOpError()
+             << "init_values[" << i << "] must be a scalar but got ["
+             << init_value_ty_i.getShape() << "]";
+    }
   }
 
   auto module = op->getParentOfType<mlir::ModuleOp>();
@@ -3406,7 +3439,7 @@ static LogicalResult Verify(XlaVariadicSortOp op) {
   int n_inputs = inputs_ty.size();
   auto input_ty_0 = inputs_ty[0].cast<ShapedType>();
   if (input_ty_0.hasStaticShape()) {
-    for (int i = 0; i < n_inputs; ++i) {
+    for (int i = 1; i < n_inputs; ++i) {
       auto input_ty_i = inputs_ty[i].cast<ShapedType>();
       if (input_ty_i.hasStaticShape() &&
           input_ty_i.getShape() != input_ty_0.getShape()) {

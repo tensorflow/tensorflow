@@ -164,7 +164,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
       b_.AddInstruction(HloInstruction::CreateBinary(
           partition_id_s32->shape(), HloOpcode::kMultiply, partition_id_s32,
           b_.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int32>(per_partition_size))))),
+              LiteralUtil::CreateR0<int32_t>(per_partition_size))))),
       {}));
   index_gte = b_.AddInstruction(HloInstruction::CreateBinary(
       index_offset->shape(), HloOpcode::kAdd, index_gte, index_offset));
@@ -352,7 +352,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
           b_.AddInstruction(HloInstruction::CreateBinary(
               shard_offset->shape(), HloOpcode::kSubtract,
               b_.AddInstruction(HloInstruction::CreateConstant(
-                  LiteralUtil::CreateR0<int32>(amount))),
+                  LiteralUtil::CreateR0<int32_t>(amount))),
               shard_offset)),
           {}));
   HloInstruction* pred = b_.AddInstruction(HloInstruction::CreateCompare(

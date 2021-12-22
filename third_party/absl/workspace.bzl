@@ -16,7 +16,7 @@ def repo():
         sha256 = ABSL_SHA256,
         build_file = "//third_party/absl:com_google_absl.BUILD",
         # TODO(mihaimaruseac): Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved
-        patch_file = "//third_party/absl:com_google_absl_fix_mac_and_nvcc_build.patch",
+        patch_file = ["//third_party/absl:com_google_absl_fix_mac_and_nvcc_build.patch"],
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
         urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),
     )

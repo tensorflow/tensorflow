@@ -113,9 +113,9 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
     int64_t dim = index_map[i];
     int64_t partitions = operand.sharding().tile_assignment().dim(dim);
     if (partitions == 1) {
-      min_indices.push_back(CreateR0WithType<int32>(
+      min_indices.push_back(CreateR0WithType<int32_t>(
           replicated_indices.base_shape().element_type(), 0, b));
-      max_indices.push_back(CreateR0WithType<int32>(
+      max_indices.push_back(CreateR0WithType<int32_t>(
           replicated_indices.base_shape().element_type(),
           operand.base_shape().dimensions(dim), b));
       continue;
@@ -129,9 +129,9 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
           offset));
     }
     min_indices.push_back(offset);
-    auto partition_size_minus_1 =
-        CreateR0WithType<int32>(replicated_indices.base_shape().element_type(),
-                                operand.hlo()->shape().dimensions(dim) - 1, b);
+    auto partition_size_minus_1 = CreateR0WithType<int32_t>(
+        replicated_indices.base_shape().element_type(),
+        operand.hlo()->shape().dimensions(dim) - 1, b);
     max_indices.push_back(b->AddInstruction(HloInstruction::CreateBinary(
         offset->shape(), HloOpcode::kAdd, offset, partition_size_minus_1)));
   }

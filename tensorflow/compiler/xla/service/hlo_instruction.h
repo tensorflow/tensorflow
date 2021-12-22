@@ -1038,7 +1038,7 @@ class HloInstruction {
   // computation, and the initial value for the input of the computations. For
   // example, shape: S32, condition: i -> i < 1000, body: i -> i * 2, init: 1
   // corresponds to the C code below.
-  // int32 i = 1; int32 result = while(i < 1000) { i = i * 2 }
+  // int32_t i = 1; int32_t result = while(i < 1000) { i = i * 2 }
   static std::unique_ptr<HloInstruction> CreateWhile(const Shape& shape,
                                                      HloComputation* condition,
                                                      HloComputation* body,
@@ -1289,11 +1289,11 @@ class HloInstruction {
   // Uses hash_operand function to compute hash values of its operands.
   // At the very top level, hash_operand should be non-recursive to prevent
   // non-termination.
-  uint64 Hash(
-      const std::function<uint64(const HloInstruction*)>& hash_operand) const;
+  uint64_t Hash(
+      const std::function<uint64_t(const HloInstruction*)>& hash_operand) const;
 
   // Calls the above method with non-recursive hash_operand function.
-  uint64 Hash() const;
+  uint64_t Hash() const;
 
   // Returns whether the instruction has a constant operand.
   bool HasConstantOperand() const;
@@ -1930,10 +1930,10 @@ class HloInstruction {
   void set_tuple_index(int64_t new_tuple_index);
 
   // Delegates to HloReducePrecisionInstruction::exponent_bits.
-  int32 exponent_bits() const;
+  int32_t exponent_bits() const;
 
   // Delegates to HloReducePrecisionInstruction::mantissa_bits.
-  int32 mantissa_bits() const;
+  int32_t mantissa_bits() const;
 
   // Delegates to HloInfeedInstruction::infeed_config.
   std::string infeed_config() const;
@@ -2179,7 +2179,7 @@ class HloInstruction {
 
   // Generates a hash value specific to a particular type of an instruction.
   // This function typically considers the inner root instruction.
-  virtual uint64 InnerHash() const;
+  virtual uint64_t InnerHash() const;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(

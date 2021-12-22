@@ -163,7 +163,7 @@ int main(int argc, char* argv[]) {
   // Save name of binary so that it may invoke itself.
   xla::binary_name = argv[0];
   bool recursing = false;
-  xla::int32 int_flag = 1;
+  int32_t int_flag = 1;
   const std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("recursing", &recursing,
                        "Whether the binary is being invoked recursively."),

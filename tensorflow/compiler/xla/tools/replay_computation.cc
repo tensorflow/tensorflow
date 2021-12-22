@@ -363,7 +363,7 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
       tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
 
   std::vector<HloSnapshot> snapshots;
-  uint64 offset = 0;
+  uint64_t offset = 0;
   tensorflow::tstring record;
   while (reader.ReadRecord(&offset, &record).ok()) {
     HloSnapshot snapshot;

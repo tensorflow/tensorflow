@@ -3125,25 +3125,21 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case S8:
-      return SetValueInLiteralHelper<int8>(loc, value, index, literal);
+      return SetValueInLiteralHelper<int8_t>(loc, value, index, literal);
     case S16:
-      return SetValueInLiteralHelper<int16>(loc, value, index, literal);
+      return SetValueInLiteralHelper<int16_t>(loc, value, index, literal);
     case S32:
-      return SetValueInLiteralHelper<int32>(loc, value, index, literal);
+      return SetValueInLiteralHelper<int32_t>(loc, value, index, literal);
     case S64:
       return SetValueInLiteralHelper<int64_t>(loc, value, index, literal);
     case U8:
-      return SetValueInLiteralHelper<tensorflow::uint8>(loc, value, index,
-                                                        literal);
+      return SetValueInLiteralHelper<uint8_t>(loc, value, index, literal);
     case U16:
-      return SetValueInLiteralHelper<tensorflow::uint16>(loc, value, index,
-                                                         literal);
+      return SetValueInLiteralHelper<uint16_t>(loc, value, index, literal);
     case U32:
-      return SetValueInLiteralHelper<tensorflow::uint32>(loc, value, index,
-                                                         literal);
+      return SetValueInLiteralHelper<uint32_t>(loc, value, index, literal);
     case U64:
-      return SetValueInLiteralHelper<tensorflow::uint64>(loc, value, index,
-                                                         literal);
+      return SetValueInLiteralHelper<uint64_t>(loc, value, index, literal);
     case PRED:
       // Bool type literals with rank >= 1 are printed in 0s and 1s.
       return SetValueInLiteralHelper<bool>(loc, static_cast<bool>(value), index,
@@ -3528,13 +3524,13 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         // creating identical constants which could potentially got CSE'ed
         // away. This is a best-effort approach to make sure replaying a HLO
         // gives us same optimized HLO graph.
-        static uint32 data = 0;
-        uint32* raw_data = static_cast<uint32*>(literal->untyped_data());
+        static uint32_t data = 0;
+        uint32_t* raw_data = static_cast<uint32_t*>(literal->untyped_data());
         for (int64_t i = 0; i < literal->size_bytes() / 4; ++i) {
           raw_data[i] = data++;
         }
-        uint8* raw_data_int8 = static_cast<uint8*>(literal->untyped_data());
-        static uint8 data_int8 = 0;
+        uint8_t* raw_data_int8 = static_cast<uint8_t*>(literal->untyped_data());
+        static uint8_t data_int8 = 0;
         for (int64_t i = 0; i < literal->size_bytes() % 4; ++i) {
           raw_data_int8[literal->size_bytes() / 4 + i] = data_int8++;
         }
@@ -3659,8 +3655,8 @@ bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
            std::is_same<ParsedElemT, bool>::value))
         << "Unimplemented checking for ParsedElemT";
 
-    const uint64 unsigned_value = value;
-    const uint64 upper_bound =
+    const uint64_t unsigned_value = value;
+    const uint64_t upper_bound =
         static_cast<uint64_t>(std::numeric_limits<LiteralNativeT>::max());
     if (unsigned_value > upper_bound) {
       // Value is out of range for LiteralNativeT.
@@ -3890,11 +3886,11 @@ bool HloParserImpl::ParseAttributeHelper(
         if (!ParseInt64(&result)) {
           return false;
         }
-        if (result != static_cast<int32>(result)) {
-          return Error(attr_loc, "value out of range for int32");
+        if (result != static_cast<int32_t>(result)) {
+          return Error(attr_loc, "value out of range for int32_t");
         }
-        static_cast<optional<int32>*>(attr_out_ptr)
-            ->emplace(static_cast<int32>(result));
+        static_cast<optional<int32_t>*>(attr_out_ptr)
+            ->emplace(static_cast<int32_t>(result));
         return true;
       }
       case AttrTy::kFloat: {
@@ -4818,7 +4814,7 @@ bool HloParserImpl::ParseTiles(std::vector<Tile>* tiles) {
 // attr_token
 //   ::= 'E' | 'S'
 // attr_value
-//   ::= int64
+//   ::= int64_t
 bool HloParserImpl::ParseLayoutIntAttribute(
     int64_t* attr_value, absl::string_view attr_description) {
   if (!ParseToken(TokKind::kLparen,
@@ -5110,7 +5106,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<std::string> op_type;
   optional<std::string> op_name;
   optional<std::string> source_file;
-  optional<int32> source_line;
+  optional<int32_t> source_line;
   optional<std::vector<int64_t>> profile_type;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};

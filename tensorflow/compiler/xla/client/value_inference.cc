@@ -657,7 +657,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
           handle_to_instruction(operand_handle).ValueOrDie();
       return PostorderDFSNode().AddVisit(
           [operand_proto, dimension]() -> StatusOr<Literal> {
-            return LiteralUtil::CreateR0<int32>(
+            return LiteralUtil::CreateR0<int32_t>(
                 operand_proto->shape().dimensions(dimension));
           });
     }
@@ -827,9 +827,9 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
       return PostorderDFSNode().AddVisit(
           [dimension, operand_proto]() -> StatusOr<Literal> {
             if (operand_proto->shape().is_dynamic_dimension(dimension)) {
-              return LiteralUtil::CreateR0<int32>(0);
+              return LiteralUtil::CreateR0<int32_t>(0);
             } else {
-              return LiteralUtil::CreateR0<int32>(
+              return LiteralUtil::CreateR0<int32_t>(
                   operand_proto->shape().dimensions(dimension));
             }
           });
@@ -921,7 +921,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
               // out later.
               return CreateGarbageLiteral(Shape(root->shape()));
             } else {
-              return LiteralUtil::CreateR0<int32>(
+              return LiteralUtil::CreateR0<int32_t>(
                   operand_proto->shape().dimensions(dimension));
             }
           });

@@ -2441,7 +2441,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   // TODO(b/119580730): Remove this restriction when very large dimension size
   // is needed.
-  if (shape.dimensions(dimension) > std::numeric_limits<int32>::max()) {
+  if (shape.dimensions(dimension) > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument(
         "GetDimensionSize's input shape is %s, the %dth dimension exceeds the "
         "INT_MAX limit.",
@@ -2465,7 +2465,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
   // TODO(b/119580730): Remove this restriction when very large dimension size
   // is needed.
-  if (shape.dimensions(dimension) > std::numeric_limits<int32>::max()) {
+  if (shape.dimensions(dimension) > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument(
         "SetDimensionSize's input shape is %s, the %dth dimension exceeds the "
         "INT_MAX limit.",
@@ -2920,7 +2920,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const Shape> branch_operands) {
   if (!ShapeUtil::Compatible(branch_index, ShapeUtil::MakeShape(PRED, {})) &&
       !ShapeUtil::Compatible(branch_index, ShapeUtil::MakeShape(S32, {}))) {
-    return InvalidArgument("branch_index must be bool or int32; got %s.",
+    return InvalidArgument("branch_index must be bool or int32_t; got %s.",
                            ShapeUtil::HumanString(branch_index));
   }
   if (branch_index.element_type() == PRED) {
