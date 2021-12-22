@@ -19,6 +19,9 @@ package tensorflow
 import (
 	"fmt"
 	"testing"
+
+	corepb "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestContextConfigSetAsync(t *testing.T) {
@@ -54,4 +57,28 @@ func TestContextConfigListDevices(t *testing.T) {
 	if !foundCPUDevice {
 		t.Error("Failed to find CPU device using ListDevices()")
 	}
+}
+
+// This example demonstrates use of the tensorflow.ConfigProto protocol buffer message
+// to set context options.
+func ExampleContextOptions_configProto() {
+	// ConfigProto is a tensorflow.ConfigProto protocol buffer message.
+	m := corepb.ConfigProto{
+		// See ConfigProto documentation for a complete list of options.  The
+		// options set in this example are only intended to demonstrate use.
+		GpuOptions: &corepb.GPUOptions{
+			AllowGrowth: true,
+		},
+		LogDevicePlacement: true,
+	}
+
+	// Marshal ConfigProto m to its binary serialized representation and into byte
+	// slice b.
+	b, err := proto.Marshal(&m)
+	if err != nil {
+		panic(err)
+	}
+
+	// ContextOptions accepts the binary serialized ConfigProto message.
+	_ = ContextOptions{Config: b}
 }
