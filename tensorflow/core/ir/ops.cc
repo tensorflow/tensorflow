@@ -73,39 +73,6 @@ struct TFGraphOpAsmInterface : public OpAsmDialectInterface {
       }
     }
   }
-
-  // This is naming block arguments. The only operation in this dialect with
-  // block is GraphFuncOp, we rely on the arg attributes for computing the
-  // names.
-  void getAsmBlockArgumentNames(Block *block,
-                                OpAsmSetValueNameFn set_name_fn) const final {
-    auto func_op = dyn_cast<GraphFuncOp>(block->getParentOp());
-    if (!func_op) return;
-
-    ArrayRef<BlockArgument> args = func_op.getBody()->getArguments();
-    ControlType control_ty = ControlType::get(func_op.getContext());
-    // Sanity checking: this is verified by the op but this may be called before
-    // the verifier or in some diagnostic/debug context, let's not crash.
-    // We expect the function block operands to come as pair: tensor+control.
-    if (args.size() % 2) return;
-    for (unsigned i = 0, e = args.size(); i < e; i += 2)
-      if (args[i].getType() == control_ty ||
-          args[i + 1].getType() != control_ty)
-        return;
-
-    // Name the values based on the `tfg.name` arg attribute retrieved from the
-    // func_op.
-    ArrayAttr args_attr = func_op.getAllArgAttrs();
-    if (!args_attr || args_attr.size() != args.size()) return;
-    for (int arg_num = 0, e = args.size(); arg_num < e; arg_num += 2) {
-      DictionaryAttr arg_attrs = args_attr[arg_num].dyn_cast<DictionaryAttr>();
-      if (!arg_attrs) continue;
-      if (auto strAttr = arg_attrs.getAs<StringAttr>("tfg.name")) {
-        set_name_fn(args[arg_num], strAttr.getValue());
-        set_name_fn(args[arg_num + 1], (strAttr.getValue() + ".ctl").str());
-      }
-    }
-  }
 };
 
 // Dialect construction: there is one instance per context and it registers its
@@ -705,6 +672,34 @@ GraphFuncOp GraphFuncOp::getCalledFunction(Operation *op,
     if (callee) return callee;
   }
   return symbol_table.lookup<GraphFuncOp>(op->getName().stripDialect());
+}
+
+// This is naming block arguments for GraphFuncOp, we rely on the arg attributes
+// for computing the names.
+void GraphFuncOp::getAsmBlockArgumentNames(Region &region,
+                                           OpAsmSetValueNameFn set_name_fn) {
+  ArrayRef<BlockArgument> args = getBody()->getArguments();
+  ControlType control_ty = ControlType::get(getContext());
+  // Sanity checking: this is verified by the op but this may be called before
+  // the verifier or in some diagnostic/debug context, let's not crash.
+  // We expect the function block operands to come as pair: tensor+control.
+  if (args.size() % 2) return;
+  for (unsigned i = 0, e = args.size(); i < e; i += 2)
+    if (args[i].getType() == control_ty || args[i + 1].getType() != control_ty)
+      return;
+
+  // Name the values based on the `tfg.name` arg attribute retrieved from the
+  // func_op.
+  ArrayAttr args_attr = getAllArgAttrs();
+  if (!args_attr || args_attr.size() != args.size()) return;
+  for (int arg_num = 0, e = args.size(); arg_num < e; arg_num += 2) {
+    DictionaryAttr arg_attrs = args_attr[arg_num].dyn_cast<DictionaryAttr>();
+    if (!arg_attrs) continue;
+    if (auto strAttr = arg_attrs.getAs<StringAttr>("tfg.name")) {
+      set_name_fn(args[arg_num], strAttr.getValue());
+      set_name_fn(args[arg_num + 1], (strAttr.getValue() + ".ctl").str());
+    }
+  }
 }
 
 }  // namespace tfg

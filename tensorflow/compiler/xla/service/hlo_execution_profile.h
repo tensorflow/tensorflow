@@ -113,34 +113,34 @@ class HloExecutionProfile {
                       const HloProfileIndexMap* hlo_profile_index_map);
 
   // Record how many cycles this HLO took to execute.
-  void SetCyclesTakenBy(const HloInstruction* hlo, uint64 cycles_taken);
+  void SetCyclesTakenBy(const HloInstruction* hlo, uint64_t cycles_taken);
 
   // Record how many cycles this HLO took to execute.
-  void SetCyclesTakenBy(size_t index, uint64 cycles_taken);
+  void SetCyclesTakenBy(size_t index, uint64_t cycles_taken);
 
   // Returns how many cycles this HLO took to execute.  Profiling information
   // may not be available for some instructions in which case zero is returned.
-  uint64 GetCyclesTakenBy(const HloInstruction& hlo) const;
+  uint64_t GetCyclesTakenBy(const HloInstruction& hlo) const;
 
   // Returns how many cycles this HLO took to execute.  Profiling information
   // may not be available for some instructions in which case zero is returned.
-  uint64 GetCyclesTakenBy(size_t index) const;
+  uint64_t GetCyclesTakenBy(size_t index) const;
 
   // Return the number of cycles this computation took to execute.
-  uint64 total_cycles_executed(const HloComputation& computation) const {
+  uint64_t total_cycles_executed(const HloComputation& computation) const {
     return profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(
         computation)];
   }
 
   // Record how many cycles a computation took to execute.
   void set_total_cycles_executed(const HloComputation& computation,
-                                 uint64 total_cycles_executed) {
+                                 uint64_t total_cycles_executed) {
     profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(computation)] =
         total_cycles_executed;
   }
 
   // Record extra metric.
-  void set_extra_metrics(const std::string& metric, uint64 value) {
+  void set_extra_metrics(const std::string& metric, uint64_t value) {
     profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(metric)] =
         value;
   }

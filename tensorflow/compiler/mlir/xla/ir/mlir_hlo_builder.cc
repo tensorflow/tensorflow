@@ -305,12 +305,31 @@ StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,
                                               XlaOp init) {
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
-  auto op = builder_.create<mlir::mhlo::WhileOp>(loc_, ty, GetValue(init));
-  TF_RETURN_IF_ERROR(ImportComputation(condition.proto(), &op.cond()));
-  TF_RETURN_IF_ERROR(ImportComputation(body.proto(), &op.body()));
-  // TODO(jpienaar): Support multi-operand while op.
-  if (op.getNumResults() != 1)
-    return Unimplemented("Only single result MHLO WhileOp's can be import.");
+
+  llvm::SmallVector<mlir::Value> flattened_operands;
+  llvm::SmallVector<mlir::Type> flattened_operand_types;
+
+  HloFunctionImporter::FlattenTupleType(ty, flattened_operand_types);
+  HloFunctionImporter::FlattenTupleValue(&builder_, loc_, GetValue(init),
+                                         flattened_operands);
+
+  auto op = builder_.create<mlir::mhlo::WhileOp>(loc_, flattened_operand_types,
+                                                 flattened_operands);
+
+  TF_RETURN_IF_ERROR(ImportComputation(condition.proto(), &op.cond(),
+                                       /*flatten_region_arg_tuple*/ true));
+  TF_RETURN_IF_ERROR(ImportComputation(body.proto(), &op.body(),
+                                       /*flatten_region_arg_tuple*/ true));
+
+  if (ty.isa<mlir::TupleType>()) {
+    llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
+    llvm::MutableArrayRef<mlir::Value> flattened_results_ref(flattened_results);
+    auto result = HloFunctionImporter::CreateTupleValue(
+        &builder_, loc_, flattened_results_ref, ty);
+    auto defining_tuple_op = result.getDefiningOp<mlir::mhlo::TupleOp>();
+    return MakeXlaOp(defining_tuple_op);
+  }
+
   return MakeXlaOp(op.getResult(0));
 }
 
@@ -622,7 +641,8 @@ StatusOr<XlaOp> MlirHloBuilder::CreateOp(
 }
 
 Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
-                                         mlir::Region* region) {
+                                         mlir::Region* region,
+                                         bool flatten_region_arg_tuple) {
   TF_ASSIGN_OR_RETURN(auto module_config,
                       xla::HloModule::CreateModuleConfigFromProto(
                           computation, xla::DebugOptions()));
@@ -630,7 +650,8 @@ Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
                                            computation, module_config));
 
   return HloFunctionImporter::ImportAsRegion(*hlo_module->entry_computation(),
-                                             region, &builder_);
+                                             region, &builder_,
+                                             flatten_region_arg_tuple);
 }
 
 StatusOr<const Shape*> MlirHloBuilder::GetShapePtr(XlaOp op) const {

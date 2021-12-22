@@ -391,12 +391,14 @@ Status DynamicDimensionInferenceVisitor::HandlePad(HloInstruction* hlo) {
         if (padding_config.interior_padding() != 0) {
           // Adjust for interior padding :
           // Size' = max((Size - 1), 0) * interior_padding + Size
-          HloInstruction* one = hlo->parent()->AddInstruction(
-              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
-          HloInstruction* zero = hlo->parent()->AddInstruction(
-              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+          HloInstruction* one =
+              hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::CreateR0<int32_t>(1)));
+          HloInstruction* zero =
+              hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::CreateR0<int32_t>(0)));
           HloInstruction* interior_padding = hlo->parent()->AddInstruction(
-              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
                   padding_config.interior_padding())));
           dynamic_size_adjusted =
               hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
@@ -416,7 +418,7 @@ Status DynamicDimensionInferenceVisitor::HandlePad(HloInstruction* hlo) {
                   dynamic_size_adjusted, dynamic_size));
         }
         HloInstruction* adjustment = hlo->parent()->AddInstruction(
-            HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
                 padding_config.edge_padding_low() +
                 padding_config.edge_padding_high())));
         dynamic_size_adjusted =
@@ -629,7 +631,7 @@ Status DynamicDimensionInferenceVisitor::HandleConcatenate(
   if (!dynamic_concat_dims.empty()) {
     HloInstruction* dim_size_total =
         hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(static_size)));
+            LiteralUtil::CreateR0<int32_t>(static_size)));
     for (HloInstruction* dynamic_dim : dynamic_concat_dims) {
       dim_size_total = hlo->parent()->AddInstruction(
           HloInstruction::CreateBinary(dim_size_total->shape(), HloOpcode::kAdd,
@@ -677,7 +679,7 @@ Status DynamicDimensionInferenceVisitor::HandleGetDimensionSize(
     TF_RET_CHECK(dim < gds->operand(0)->shape().rank());
     int32_t size = gds->operand(0)->shape().dimensions(dim);
     HloInstruction* new_instr = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(size)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(size)));
     TF_RETURN_IF_ERROR(gds->ReplaceAllUsesWith(new_instr));
     parent_->ReplaceAllDynamicDimensionUsesWith(gds, new_instr);
   }
@@ -697,7 +699,7 @@ Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
     //                                                        dimensions={1}
     // The result shape has no dynamic dimension.
     TF_RET_CHECK(size->shape().rank() == 0);
-    if (size->literal().Get<int32>({}) ==
+    if (size->literal().Get<int32_t>({}) ==
         hlo->shape().dimensions(hlo->dimension())) {
       dimension_is_static = true;
     }
@@ -1061,7 +1063,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           const int64_t divisor = input_dim_size / output_dim_size;
           HloInstruction* divisor_hlo =
               hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                  LiteralUtil::CreateR0<int32>(divisor)));
+                  LiteralUtil::CreateR0<int32_t>(divisor)));
 
           HloInstruction* new_dynamic_size =
               hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
@@ -1091,10 +1093,10 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           if (output_dynamic_size == nullptr) {
             output_dynamic_size =
                 hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<int32>(output_dim_size)));
+                    LiteralUtil::CreateR0<int32_t>(output_dim_size)));
           }
           HloInstruction* divisor_hlo = hlo->parent()->AddInstruction(
-              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
                   operand->shape().dimensions(input_dynamic_dimension))));
 
           HloInstruction* new_dynamic_size =
@@ -1433,28 +1435,29 @@ Status DynamicDimensionInferenceVisitor::HandleConditional(
     std::vector<HloInstruction*> hlos_to_add_in_root;
     // There may be some dynamic dimensions coming out of the computation, wire
     // that into the root instruction as additional tuple elements.
-    ShapeUtil::ForEachSubshape(hlo->shape(), [&](const Shape& subshape,
-                                                 const ShapeIndex& index) {
-      if (!subshape.IsArray()) {
-        return;
-      }
-      for (int64_t i = 0; i < subshape.rank(); ++i) {
-        if (dynamic_output_mapping.element(index).contains(i)) {
-          HloInstruction* dynamic_size = parent_->GetDynamicSize(
-              new_branch_computations[branch_index]->root_instruction(), index,
-              i);
-          if (dynamic_size) {
-            hlos_to_add_in_root.push_back(dynamic_size);
-          } else {
-            HloInstruction* constant_size =
-                new_branch_computations[branch_index]->AddInstruction(
-                    HloInstruction::CreateConstant(
-                        LiteralUtil::CreateR0<int32>(subshape.dimensions(i))));
-            hlos_to_add_in_root.push_back(constant_size);
+    ShapeUtil::ForEachSubshape(
+        hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (!subshape.IsArray()) {
+            return;
           }
-        }
-      }
-    });
+          for (int64_t i = 0; i < subshape.rank(); ++i) {
+            if (dynamic_output_mapping.element(index).contains(i)) {
+              HloInstruction* dynamic_size = parent_->GetDynamicSize(
+                  new_branch_computations[branch_index]->root_instruction(),
+                  index, i);
+              if (dynamic_size) {
+                hlos_to_add_in_root.push_back(dynamic_size);
+              } else {
+                HloInstruction* constant_size =
+                    new_branch_computations[branch_index]->AddInstruction(
+                        HloInstruction::CreateConstant(
+                            LiteralUtil::CreateR0<int32_t>(
+                                subshape.dimensions(i))));
+                hlos_to_add_in_root.push_back(constant_size);
+              }
+            }
+          }
+        });
 
     VLOG(2) << "hlos_to_add_in_root:" << hlos_to_add_in_root.size();
     if (!hlos_to_add_in_root.empty()) {

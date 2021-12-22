@@ -83,10 +83,10 @@ Status NcclAllToAllThunk::RunNcclCollective(const ExecuteParams& params,
   if (config_.has_split_dimension) {
     for (size_t i = 0; i < buffers_.size(); ++i) {
       const Buffer& buffer = buffers_[i];
-      const uint8* send_buffer = static_cast<uint8*>(
+      const uint8_t* send_buffer = static_cast<uint8_t*>(
           params.buffer_allocations->GetDeviceAddress(buffer.source_buffer)
               .opaque());
-      uint8* recv_buffer = static_cast<uint8*>(
+      uint8_t* recv_buffer = static_cast<uint8_t*>(
           params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer)
               .opaque());
 
@@ -117,10 +117,10 @@ Status NcclAllToAllThunk::RunNcclCollective(const ExecuteParams& params,
 
     for (size_t i = 0; i < buffers_.size(); ++i) {
       const Buffer& buffer = buffers_[i];
-      const uint8* send_buffer = static_cast<uint8*>(
+      const uint8_t* send_buffer = static_cast<uint8_t*>(
           params.buffer_allocations->GetDeviceAddress(buffer.source_buffer)
               .opaque());
-      uint8* recv_buffer = static_cast<uint8*>(
+      uint8_t* recv_buffer = static_cast<uint8_t*>(
           params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer)
               .opaque());
 

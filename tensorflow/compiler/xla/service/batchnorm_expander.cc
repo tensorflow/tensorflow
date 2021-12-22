@@ -106,7 +106,7 @@ class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
     auto elements_per_feature_s32 = add_instruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
 
     for (int64_t i = 0; i < operand->shape().rank(); ++i) {
       if (i == feature_index) {

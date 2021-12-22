@@ -168,7 +168,7 @@ static Status CheckDataType(xla::PrimitiveType dtype) {
       dtype == xla::PrimitiveType::U64) {
     return InvalidArgument(
         "64-bit data types are not yet supported on the TPU driver API. "
-        "Convert inputs to float32/int32 before using.");
+        "Convert inputs to float32/int32_t before using.");
   }
   return Status::OK();
 }

@@ -559,11 +559,13 @@ class ConvertToHloModule {
 
   // Lower a `mlir::Region` to a `XlaComputation`
   LogicalResult LowerRegionAsComputation(mlir::Region* region,
-                                         xla::XlaComputation* func);
+                                         xla::XlaComputation* func,
+                                         bool ensure_single_arg = false);
 
   // Lower a single `Block` to a `XlaComputation`
   LogicalResult LowerBasicBlockAsFunction(
       Block* block, xla::XlaBuilder* builder, bool is_entry_function,
+      bool ensure_single_arg,
       const std::vector<bool>& entry_args_same_across_replicas,
       llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
       llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
@@ -1293,23 +1295,42 @@ LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
-  // TODO(jpienaar): Support multi-operand while op.
-  if (op.getNumResults() != 1)
-    return op.emitError("nyi: unable to export multi-result While op");
   xla::XlaComputation condition;
   xla::XlaComputation body;
-  auto& value_map = *ctx.values;
-  if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body)) ||
-      failed(ctx.converter->LowerRegionAsComputation(&op.cond(), &condition))) {
+  if (failed(ctx.converter->LowerRegionAsComputation(
+          &op.body(), &body, /*ensure_single_arg*/ true)) ||
+      failed(ctx.converter->LowerRegionAsComputation(
+          &op.cond(), &condition, /*ensure_single_arg*/ true))) {
     return failure();
   }
 
-  xla::XlaOp operand;
-  // TODO(jpienaar): Support multi-operand while op.
-  Value val = op->getResult(0);
-  if (failed(GetXlaOp(op->getOperand(0), value_map, &operand, op)))
-    return failure();
-  value_map[val] = xla::While(condition, body, operand);
+  // In case MHLO's whileOp has multiple operands, create xla::Tuple, using
+  // those operands, to be used as sole operand of xla::While.
+  llvm::SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op, op.getOperands(), ctx, operands))) return failure();
+
+  xla::XlaOp operand = operands[0];
+  if (operands.size() > 1) operand = Tuple(ctx.builder, operands);
+
+  auto whileop = xla::While(condition, body, operand);
+
+  auto& value_map = *ctx.values;
+  auto shape_or = whileop.builder()->GetShape(whileop);
+  if (!shape_or.ok()) {
+    return op.emitError(shape_or.status().ToString());
+  }
+
+  xla::Shape& shape = shape_or.ValueOrDie();
+  if (!shape.IsTuple()) {
+    value_map[op.getResult(0)] = whileop;
+    return success();
+  }
+
+  // MLIR's whileOp supports multiple returns, untuple all the results of XLA's.
+  for (const auto& it : llvm::enumerate(op.getResults())) {
+    value_map[it.value()] = xla::GetTupleElement(whileop, it.index());
+  }
+
   return success();
 }
 
@@ -1773,9 +1794,10 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
 
     ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
   }
-  if (failed(LowerBasicBlockAsFunction(
-          &f.front(), &builder, entry_function, entry_args_same_across_replicas,
-          arg_shardings, ret_shardings, &computation))) {
+  if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
+                                       false, entry_args_same_across_replicas,
+                                       arg_shardings, ret_shardings,
+                                       &computation))) {
     return failure();
   }
   lowered_computation_[f] = std::move(computation);
@@ -1851,6 +1873,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
 
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     Block* block, xla::XlaBuilder* builder, bool is_entry_function,
+    bool ensure_single_arg,
     const std::vector<bool>& entry_args_same_across_replicas,
     llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
     llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
@@ -1886,22 +1909,35 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     }
     builder->ClearSharding();
   } else {
-    for (BlockArgument& arg : block->getArguments()) {
-      auto num = arg.getArgNumber();
-      xla::Shape shape = xla::TypeToShape(arg.getType());
-      if (!arg_shardings.empty() && arg_shardings[num]) {
-        builder->SetSharding(*arg_shardings[num]);
+    if (ensure_single_arg && block->getNumArguments() > 1) {
+      llvm::SmallVector<xla::Shape> arg_shapes;
+      arg_shapes.reserve(block->getNumArguments());
+      for (BlockArgument& arg : block->getArguments())
+        arg_shapes.push_back(xla::TypeToShape(arg.getType()));
+
+      xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
+      auto tuple = xla::Parameter(builder, 0, input_shape, "arg_tuple");
+
+      for (BlockArgument& arg : block->getArguments())
+        lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
+    } else {
+      for (BlockArgument& arg : block->getArguments()) {
+        auto num = arg.getArgNumber();
+        xla::Shape shape = xla::TypeToShape(arg.getType());
+        if (!arg_shardings.empty() && arg_shardings[num]) {
+          builder->SetSharding(*arg_shardings[num]);
+        }
+        if (entry_args_same_across_replicas.empty()) {
+          lowering[arg] =
+              xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
+        } else {
+          lowering[arg] = xla::Parameter(
+              builder, num, shape, absl::StrCat("Arg_", num),
+              std::vector<bool>(entry_args_same_across_replicas[num],
+                                xla::ShapeUtil::GetLeafCount(shape)));
+        }
+        builder->ClearSharding();
       }
-      if (entry_args_same_across_replicas.empty()) {
-        lowering[arg] =
-            xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
-      } else {
-        lowering[arg] = xla::Parameter(
-            builder, num, shape, absl::StrCat("Arg_", num),
-            std::vector<bool>(entry_args_same_across_replicas[num],
-                              xla::ShapeUtil::GetLeafCount(shape)));
-      }
-      builder->ClearSharding();
     }
   }
 
@@ -1924,13 +1960,15 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
 }
 
 LogicalResult ConvertToHloModule::LowerRegionAsComputation(
-    mlir::Region* region, xla::XlaComputation* func) {
+    mlir::Region* region, xla::XlaComputation* func, bool ensure_single_arg) {
   std::unique_ptr<xla::XlaBuilder> builder =
       module_builder_.CreateSubBuilder(absl::StrCat("region_", region_id_++));
-  return LowerBasicBlockAsFunction(
-      &region->front(), builder.get(),
-      /*is_entry_function=*/false, /*entry_args_same_across_replicas=*/{},
-      /*arg_shardings=*/{}, /*ret_shardings=*/{}, func);
+  return LowerBasicBlockAsFunction(&region->front(), builder.get(),
+                                   /*is_entry_function=*/false,
+                                   /*ensure_single_arg*/ ensure_single_arg,
+                                   /*entry_args_same_across_replicas=*/{},
+                                   /*arg_shardings=*/{}, /*ret_shardings=*/{},
+                                   func);
 }
 
 void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,

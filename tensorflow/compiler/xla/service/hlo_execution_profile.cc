@@ -132,20 +132,22 @@ HloExecutionProfile::HloExecutionProfile(
           /*value=*/0) {}
 
 void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
-                                           uint64 cycles_taken) {
+                                           uint64_t cycles_taken) {
   SetCyclesTakenBy(hlo_profile_index_map_.GetProfileIndexFor(*hlo),
                    cycles_taken);
 }
 
-void HloExecutionProfile::SetCyclesTakenBy(size_t index, uint64 cycles_taken) {
+void HloExecutionProfile::SetCyclesTakenBy(size_t index,
+                                           uint64_t cycles_taken) {
   profile_counters_[index] = cycles_taken;
 }
 
-uint64 HloExecutionProfile::GetCyclesTakenBy(const HloInstruction& hlo) const {
+uint64_t HloExecutionProfile::GetCyclesTakenBy(
+    const HloInstruction& hlo) const {
   return GetCyclesTakenBy(hlo_profile_index_map_.GetProfileIndexFor(hlo));
 }
 
-uint64 HloExecutionProfile::GetCyclesTakenBy(size_t index) const {
+uint64_t HloExecutionProfile::GetCyclesTakenBy(size_t index) const {
   return profile_counters_[index];
 }
 

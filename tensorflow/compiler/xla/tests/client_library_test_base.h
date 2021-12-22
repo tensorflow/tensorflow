@@ -81,7 +81,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
     opts->set_xla_gpu_enable_fast_min_max(!disabled);
   }
 
-  void SetSeed(uint64 seed) { execution_options_.set_seed(seed); }
+  void SetSeed(uint64_t seed) { execution_options_.set_seed(seed); }
 
   // Provides mutable access to the execution DebugOptions field; this lets
   // tests tweak the options that will be used to compile/run the graph.
@@ -244,13 +244,13 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // maximum values.
   template <typename NativeT>
   std::vector<NativeT> CreatePseudorandomR1(const int width, NativeT min_value,
-                                            NativeT max_value, uint32 seed);
+                                            NativeT max_value, uint32_t seed);
   template <typename NativeT>
   std::unique_ptr<Array2D<NativeT>> CreatePseudorandomR2(const int rows,
                                                          const int cols,
                                                          NativeT min_value,
                                                          NativeT max_value,
-                                                         uint32 seed);
+                                                         uint32_t seed);
 
   // Creates a (rows x cols) array filled in the following form:
   //
@@ -689,7 +689,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateParameter(
 
 template <typename NativeT>
 std::vector<NativeT> ClientLibraryTestBase::CreatePseudorandomR1(
-    const int width, NativeT min_value, NativeT max_value, uint32 seed) {
+    const int width, NativeT min_value, NativeT max_value, uint32_t seed) {
   std::vector<NativeT> result(width);
   PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int i = 0; i < width; ++i) {
@@ -701,7 +701,7 @@ std::vector<NativeT> ClientLibraryTestBase::CreatePseudorandomR1(
 template <typename NativeT>
 std::unique_ptr<Array2D<NativeT>> ClientLibraryTestBase::CreatePseudorandomR2(
     const int rows, const int cols, NativeT min_value, NativeT max_value,
-    uint32 seed) {
+    uint32_t seed) {
   auto result = absl::make_unique<Array2D<NativeT>>(rows, cols);
   PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int y = 0; y < rows; ++y) {

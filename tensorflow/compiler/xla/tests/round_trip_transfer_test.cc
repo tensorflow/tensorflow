@@ -45,7 +45,7 @@ class RoundTripTransferTest : public ClientLibraryTestBase {
 };
 
 TEST_F(RoundTripTransferTest, R0S32) {
-  RoundTripTest(LiteralUtil::CreateR0<int32>(42));
+  RoundTripTest(LiteralUtil::CreateR0<int32_t>(42));
 }
 
 TEST_F(RoundTripTransferTest, R0F32) {

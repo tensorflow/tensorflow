@@ -50,7 +50,7 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
             platform, PlatformUtil::GetStreamExecutors(platform).ValueOrDie()) {
   }
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
                                             bool retry_on_failure,
                                             int64_t memory_space) override;
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;

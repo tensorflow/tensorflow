@@ -131,7 +131,7 @@ GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   return gcn_arch_name;
 }
 
-StatusOr<std::pair<std::string, std::vector<uint8>>>
+StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                     llvm::Module* llvm_module,
                                     GpuVersion gpu_version,
@@ -147,7 +147,7 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     return Unimplemented("relocatable target binary is not implemented");
   }
 
-  std::vector<uint8> hsaco;
+  std::vector<uint8_t> hsaco;
   {
     XLA_SCOPED_LOGGING_TIMER(
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco");
@@ -156,7 +156,7 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                       rocdl_dir_));
   }
 
-  return std::pair<std::string, std::vector<uint8>>("", std::move(hsaco));
+  return std::pair<std::string, std::vector<uint8_t>>("", std::move(hsaco));
 }
 
 }  // namespace gpu

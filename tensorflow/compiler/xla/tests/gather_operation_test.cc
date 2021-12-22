@@ -59,8 +59,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR1<int32_t>({0, 2});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -81,10 +81,10 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR3<int32>({{{1, 2, 3}, {4, 5, 6}},
-                                    {{7, 8, 9}, {10, 11, 12}},
-                                    {{13, 14, 15}, {16, 17, 18}}});
-  Literal start_indices = LiteralUtil::CreateR1<int32>({1, 0});
+      LiteralUtil::CreateR3<int32_t>({{{1, 2, 3}, {4, 5, 6}},
+                                      {{7, 8, 9}, {10, 11, 12}},
+                                      {{13, 14, 15}, {16, 17, 18}}});
+  Literal start_indices = LiteralUtil::CreateR1<int32_t>({1, 0});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -104,8 +104,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR1<int32_t>({0, 2});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -125,8 +125,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR2<int32_t>({{0, 2}, {2, 1}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -146,9 +146,9 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   Literal start_indices =
-      LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+      LiteralUtil::CreateR3<int32_t>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -168,9 +168,9 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   Literal start_indices =
-      LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+      LiteralUtil::CreateR3<int32_t>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -190,10 +190,10 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR3<int32_t>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                      {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                      {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal start_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -213,10 +213,10 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR3<int32_t>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                      {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                      {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal start_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -236,8 +236,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR1<int32>({1, 1});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR1<int32_t>({1, 1});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -257,8 +257,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR2<int32_t>({{2, 1}, {1, 1}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -277,8 +277,8 @@ ENTRY main {
       slice_sizes={1, 0}
 }
 )";
-  Literal operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
-  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{}, {}, {}});
+  Literal start_indices = LiteralUtil::CreateR1<int32_t>({0, 2});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -302,8 +302,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>(
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR2<int32_t>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483647, 1}, {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }
@@ -334,7 +334,7 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   Literal start_indices = LiteralUtil::CreateR2<int64_t>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {21474836407, 1}, {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
@@ -359,8 +359,8 @@ ENTRY main {
   ROOT result = s32[6]{0} reshape(gather)
 }
 )";
-  Literal operand = LiteralUtil::MakeIdentityR2<int32>(512);
-  Literal start_indices = LiteralUtil::CreateR2<uint8>(
+  Literal operand = LiteralUtil::MakeIdentityR2<int32_t>(512);
+  Literal start_indices = LiteralUtil::CreateR2<uint8_t>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {7, 1}, {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }
@@ -387,8 +387,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<uint32>(
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR2<uint32_t>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483648u, 1}, {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }
@@ -413,14 +413,14 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   Literal start_indices =
-      LiteralUtil::CreateR2<int32>({{2, -1},
-                                    {2, 1},
-                                    {1, 1},
-                                    {-500, 1},
-                                    {static_cast<int32>(-2147483648), 1},
-                                    {1, 2}});
+      LiteralUtil::CreateR2<int32_t>({{2, -1},
+                                      {2, 1},
+                                      {1, 1},
+                                      {-500, 1},
+                                      {static_cast<int32_t>(-2147483648), 1},
+                                      {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -444,14 +444,14 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<uint32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   Literal start_indices =
-      LiteralUtil::CreateR2<int32>({{2, -1},
-                                    {2, 1},
-                                    {1, 1},
-                                    {-500, 1},
-                                    {static_cast<int32>(-2147483648), 1},
-                                    {1, 2}});
+      LiteralUtil::CreateR2<int32_t>({{2, -1},
+                                      {2, 1},
+                                      {1, 1},
+                                      {-500, 1},
+                                      {static_cast<int32_t>(-2147483648), 1},
+                                      {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -470,9 +470,9 @@ ENTRY main {
       slice_sizes={1,3,2}
 }
 )";
-  Literal operand = LiteralUtil::CreateR3<int32>(
+  Literal operand = LiteralUtil::CreateR3<int32_t>(
       {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}});
-  Literal start_indices = LiteralUtil::CreateR0<int32>(1);
+  Literal start_indices = LiteralUtil::CreateR0<int32_t>(1);
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -491,8 +491,8 @@ ENTRY main {
       slice_sizes={1}
 }
 )";
-  Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4});
-  Literal start_indices = LiteralUtil::CreateR0<int32>(1);
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal start_indices = LiteralUtil::CreateR0<int32_t>(1);
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -512,8 +512,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR1<int32>({});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR1<int32_t>({});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -536,8 +536,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR1<int32_t>({0, 2});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -560,8 +560,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR2<int32_t>({{0, 2}, {2, 1}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -584,9 +584,9 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   Literal start_indices =
-      LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+      LiteralUtil::CreateR3<int32_t>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -609,10 +609,10 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR3<int32_t>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                      {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                      {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal start_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -636,10 +636,10 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR3<int32_t>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                      {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                      {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal start_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -662,8 +662,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR1<int32>({1, 1});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR1<int32_t>({1, 1});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -686,8 +686,8 @@ ENTRY main {
 }
 )";
   Literal operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR2<int32_t>({{2, 1}, {1, 1}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -707,7 +707,7 @@ ENTRY main {
 }
 )";
   Literal operand = LiteralUtil::CreateR0<float>(1);
-  Literal start_indices = LiteralUtil::CreateR1<int32>({});
+  Literal start_indices = LiteralUtil::CreateR1<int32_t>({});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -761,14 +761,14 @@ XLA_TEST_F(GatherClientLibraryTest,
   dim_numbers.set_index_vector_dim(1);
   Gather(operand, indices, dim_numbers, {1, 3});
 
-  std::vector<int32> expected = {};
+  std::vector<int32_t> expected = {};
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> operand_arg,
       client_->TransferToServer(
-          LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
+          LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> indices_arg,
-      client_->TransferToServer(LiteralUtil::CreateR1<int32>({0, 2})));
+      client_->TransferToServer(LiteralUtil::CreateR1<int32_t>({0, 2})));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
                           client_->GetDeviceHandles(1));
   xla::ExecutionOptions execution_options = CreateDefaultExecutionOptions();
@@ -784,7 +784,8 @@ XLA_TEST_F(GatherClientLibraryTest,
       client_->ExecuteParallel(computation_instances));
   TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
                           client_->Transfer(*(result_data[0])));
-  LiteralTestUtil::ExpectR2Equal<int32>({{1, 2, 3}, {7, 8, 9}}, result_literal);
+  LiteralTestUtil::ExpectR2Equal<int32_t>({{1, 2, 3}, {7, 8, 9}},
+                                          result_literal);
 }
 }  // namespace
 }  // namespace xla

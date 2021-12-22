@@ -310,8 +310,8 @@ void ParametricDotTest::ComputeAndCompareR2WithError<Eigen::half>(
 }
 
 template <>
-void ParametricDotTest::ComputeAndCompareR2WithError<int32>(
-    XlaBuilder* builder, const Array2D<int32>& expected,
+void ParametricDotTest::ComputeAndCompareR2WithError<int32_t>(
+    XlaBuilder* builder, const Array2D<int32_t>& expected,
     absl::Span<GlobalData* const> arguments) {
   ComputeAndCompareR2(builder, expected, arguments);
 }
@@ -425,7 +425,7 @@ XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX128
 XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
 #endif
-XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32>(); }
+XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32_t>(); }
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
                         ::testing::ValuesIn(CreateDotTestParameters()),
@@ -962,8 +962,8 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto one = ConstantR0<int32>(&builder, 1);
-  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32_t>(&builder, 1);
+  auto zero = ConstantR0<int32_t>(&builder, 0);
   auto dynamic_slice = DynamicSlice(lhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
@@ -990,8 +990,8 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto zero = ConstantR0<int32>(&builder, 0);
-  auto one = ConstantR0<int32>(&builder, 1);
+  auto zero = ConstantR0<int32_t>(&builder, 0);
+  auto one = ConstantR0<int32_t>(&builder, 1);
   auto dynamic_slice = DynamicSlice(rhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
@@ -1020,8 +1020,8 @@ XLA_TEST_F(DotOperationTest,
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto zero = ConstantR0<int32>(&builder, 0);
-  auto one = ConstantR0<int32>(&builder, 1);
+  auto zero = ConstantR0<int32_t>(&builder, 0);
+  auto one = ConstantR0<int32_t>(&builder, 1);
   auto dynamic_slice = DynamicSlice(lhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
@@ -1048,8 +1048,8 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSReverseMM) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto zero = ConstantR0<int32>(&builder, 0);
-  auto one = ConstantR0<int32>(&builder, 1);
+  auto zero = ConstantR0<int32_t>(&builder, 0);
+  auto one = ConstantR0<int32_t>(&builder, 1);
   auto dynamic_slice = DynamicSlice(rhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
@@ -1081,8 +1081,8 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSRows) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto zero = ConstantR0<int32>(&builder, 0);
-  auto one = ConstantR0<int32>(&builder, 1);
+  auto zero = ConstantR0<int32_t>(&builder, 0);
+  auto one = ConstantR0<int32_t>(&builder, 1);
   auto dynamic_slice = DynamicSlice(lhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
@@ -1114,8 +1114,8 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSRows) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto zero = ConstantR0<int32>(&builder, 0);
-  auto one = ConstantR0<int32>(&builder, 1);
+  auto zero = ConstantR0<int32_t>(&builder, 0);
+  auto one = ConstantR0<int32_t>(&builder, 1);
   auto dynamic_slice = DynamicSlice(rhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
@@ -1139,8 +1139,8 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSCols) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto zero = ConstantR0<int32>(&builder, 0);
-  auto one = ConstantR0<int32>(&builder, 1);
+  auto zero = ConstantR0<int32_t>(&builder, 0);
+  auto one = ConstantR0<int32_t>(&builder, 1);
   auto dynamic_slice = DynamicSlice(lhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
@@ -1164,8 +1164,8 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSCols) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto zero = ConstantR0<int32>(&builder, 0);
-  auto one = ConstantR0<int32>(&builder, 1);
+  auto zero = ConstantR0<int32_t>(&builder, 0);
+  auto one = ConstantR0<int32_t>(&builder, 1);
   auto dynamic_slice = DynamicSlice(rhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;

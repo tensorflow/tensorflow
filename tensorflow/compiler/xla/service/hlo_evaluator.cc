@@ -181,18 +181,19 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[PRED] =
       absl::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
   typed_visitors_[U8] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint8>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
   typed_visitors_[U16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint16>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
   typed_visitors_[U32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint32>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
   typed_visitors_[U64] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
-  typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8>>(this);
+  typed_visitors_[S8] =
+      absl::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
   typed_visitors_[S16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int16>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
   typed_visitors_[S32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int32>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
   typed_visitors_[S64] =
       absl::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
   typed_visitors_[F16] =
@@ -457,7 +458,7 @@ Status HloEvaluator::HandleGetDimensionSize(
   const Shape& shape = get_dimension_size->operand(0)->shape();
   Literal output(ShapeUtil::MakeShape(S32, {}));
   output.PopulateWithValue(
-      static_cast<int32>(shape.dimensions(get_dimension_size->dimension())));
+      static_cast<int32_t>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
   return Status::OK();
 }
@@ -472,7 +473,7 @@ Status HloEvaluator::HandleSetDimensionSize(
   const Literal& size_literal =
       GetEvaluatedLiteralFor(set_dimension_size->operand(1));
   result.SetDynamicSize(set_dimension_size->dimension(),
-                        size_literal.Get<int32>({}));
+                        size_literal.Get<int32_t>({}));
   evaluated_[set_dimension_size] = std::move(result);
   return Status::OK();
 }
@@ -754,18 +755,18 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     } break;
     case U8: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint8>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
+                          Compare<uint8_t>(compare->shape(), direction,
+                                           lhs_literal, rhs_literal));
     } break;
     case U16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint16>(compare->shape(), direction,
-                                          lhs_literal, rhs_literal));
+                          Compare<uint16_t>(compare->shape(), direction,
+                                            lhs_literal, rhs_literal));
     } break;
     case U32: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint32>(compare->shape(), direction,
-                                          lhs_literal, rhs_literal));
+                          Compare<uint32_t>(compare->shape(), direction,
+                                            lhs_literal, rhs_literal));
     } break;
     case U64: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
@@ -773,19 +774,19 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
                                             lhs_literal, rhs_literal));
     } break;
     case S8: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<int8>(compare->shape(), direction, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<int8_t>(compare->shape(), direction,
+                                          lhs_literal, rhs_literal));
     } break;
     case S16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int16>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
+                          Compare<int16_t>(compare->shape(), direction,
+                                           lhs_literal, rhs_literal));
     } break;
     case S32: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int32>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
+                          Compare<int32_t>(compare->shape(), direction,
+                                           lhs_literal, rhs_literal));
     } break;
     case S64: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
@@ -1946,7 +1947,7 @@ Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
   // since we ensure that the only user of a kCopyStart is a kCopyDone which
   // consumes the context. Also note that MakeTuple copies its arguments, so
   // this is memory-safe.
-  const Literal context_literal = LiteralUtil::CreateR0<uint32>(0);
+  const Literal context_literal = LiteralUtil::CreateR0<uint32_t>(0);
   evaluated_[copy_start] = LiteralUtil::MakeTuple(
       {&GetEvaluatedLiteralFor(copy_start->operand(0)),
        &GetEvaluatedLiteralFor(copy_start->operand(0)), &context_literal});
@@ -2034,7 +2035,7 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   if (conditional->operand(0)->shape().element_type() == PRED) {
     branch_index = branch_index_literal.Get<bool>({}) ? 0 : 1;
   } else {
-    branch_index = branch_index_literal.Get<int32>({});
+    branch_index = branch_index_literal.Get<int32_t>({});
     if (branch_index < 0 || branch_index >= conditional->branch_count()) {
       branch_index = conditional->branch_count() - 1;
     }
@@ -2148,12 +2149,12 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
                                                     extract_as_scalar);
     }
     case U8: {
-      return ExtractLiteralFromIndexPositions<uint8>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint8_t>(from, indices,
+                                                       extract_as_scalar);
     }
     case S8: {
-      return ExtractLiteralFromIndexPositions<int8>(from, indices,
-                                                    extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int8_t>(from, indices,
+                                                      extract_as_scalar);
     }
     case BF16: {
       return ExtractLiteralFromIndexPositions<bfloat16>(from, indices,
@@ -2164,24 +2165,24 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
                                                            extract_as_scalar);
     }
     case U16: {
-      return ExtractLiteralFromIndexPositions<uint16>(from, indices,
-                                                      extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint16_t>(from, indices,
+                                                        extract_as_scalar);
     }
     case S16: {
-      return ExtractLiteralFromIndexPositions<int16>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int16_t>(from, indices,
+                                                       extract_as_scalar);
     }
     case F32: {
       return ExtractLiteralFromIndexPositions<float>(from, indices,
                                                      extract_as_scalar);
     }
     case U32: {
-      return ExtractLiteralFromIndexPositions<uint32>(from, indices,
-                                                      extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint32_t>(from, indices,
+                                                        extract_as_scalar);
     }
     case S32: {
-      return ExtractLiteralFromIndexPositions<int32>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int32_t>(from, indices,
+                                                       extract_as_scalar);
     }
     case F64: {
       return ExtractLiteralFromIndexPositions<double>(from, indices,
@@ -2668,9 +2669,9 @@ std::unique_ptr<Array2D<std::complex<double>>> HloEvaluator::MatmulArray2D(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulC128);
 }
 
-std::unique_ptr<Array2D<int32>> HloEvaluator::MatmulArray2D(
-    const Array2D<int32>& lhs, const Array2D<int32>& rhs) {
-  return MatmulArray2DImpl<int32>(
+std::unique_ptr<Array2D<int32_t>> HloEvaluator::MatmulArray2D(
+    const Array2D<int32_t>& lhs, const Array2D<int32_t>& rhs) {
+  return MatmulArray2DImpl<int32_t>(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulS32);
 }
 

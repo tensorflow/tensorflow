@@ -409,7 +409,7 @@ struct type_caster<xla::OpMetadata> {
     }
     pybind11::handle source_line = getattr(handle, "source_line");
     if (!source_line.is_none()) {
-      value.set_source_line(source_line.cast<xla::int32>());
+      value.set_source_line(source_line.cast<int32_t>());
     }
     return true;
   }

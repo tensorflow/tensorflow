@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "pybind_ccsharedlib_extension")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
     default_visibility = [
@@ -26,7 +26,7 @@ cc_library(
     ],
 )
 
-pybind_ccsharedlib_extension(
+pybind_extension(
     name = "_pywrap_tac_wrapper",
     srcs = [
         "tac_wrapper_pybind11.cc",
@@ -35,7 +35,6 @@ pybind_ccsharedlib_extension(
     link_in_framework = True,
     module_name = "_pywrap_tac_wrapper",
     static_deps = [
-        # copybara:comment_begin(oss-only)
         "@arm_neon_2_x86_sse//:__subpackages__",
         "@bazel_tools//:__subpackages__",
         "@boringssl//:__subpackages__",
@@ -90,7 +89,6 @@ pybind_ccsharedlib_extension(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
-        # copybara:comment_end
     ],
     deps = [
         ":tac_wrapper_lib",

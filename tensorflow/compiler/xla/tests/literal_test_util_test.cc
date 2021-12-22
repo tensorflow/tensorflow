@@ -33,8 +33,8 @@ namespace {
 
 TEST(LiteralTestUtilTest, ComparesEqualTuplesEqual) {
   Literal literal = LiteralUtil::MakeTupleFromSlices({
-      LiteralUtil::CreateR0<int32>(42),
-      LiteralUtil::CreateR0<int32>(64),
+      LiteralUtil::CreateR0<int32_t>(42),
+      LiteralUtil::CreateR0<int32_t>(64),
   });
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, literal));
 }
@@ -107,12 +107,12 @@ TEST(LiteralTestUtilTest, ComparesUnequalTuplesUnequal) {
   // death assertion.
   auto unequal_things_are_equal = [] {
     Literal lhs = LiteralUtil::MakeTupleFromSlices({
-        LiteralUtil::CreateR0<int32>(42),
-        LiteralUtil::CreateR0<int32>(64),
+        LiteralUtil::CreateR0<int32_t>(42),
+        LiteralUtil::CreateR0<int32_t>(64),
     });
     Literal rhs = LiteralUtil::MakeTupleFromSlices({
-        LiteralUtil::CreateR0<int32>(64),
-        LiteralUtil::CreateR0<int32>(42),
+        LiteralUtil::CreateR0<int32_t>(64),
+        LiteralUtil::CreateR0<int32_t>(42),
     });
     CHECK(LiteralTestUtil::Equal(lhs, rhs)) << "LHS and RHS are unequal";
   };
@@ -168,8 +168,8 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
 }
 
 TEST(LiteralTestUtilTest, NotEqualHasValuesInMessage) {
-  auto expected = LiteralUtil::CreateR1<int32>({1, 2, 3});
-  auto actual = LiteralUtil::CreateR1<int32>({4, 5, 6});
+  auto expected = LiteralUtil::CreateR1<int32_t>({1, 2, 3});
+  auto actual = LiteralUtil::CreateR1<int32_t>({4, 5, 6});
   ::testing::AssertionResult result = LiteralTestUtil::Equal(expected, actual);
   EXPECT_THAT(result.message(),
               ::testing::HasSubstr("Expected literal:\ns32[3] {1, 2, 3}"));

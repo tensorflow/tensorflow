@@ -476,7 +476,7 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
     if (conditional->operand(0)->shape().element_type() == PRED) {
       branch_index = conditional->operand(0)->literal().Get<bool>({}) ? 0 : 1;
     } else {
-      branch_index = conditional->operand(0)->literal().Get<int32>({});
+      branch_index = conditional->operand(0)->literal().Get<int32_t>({});
       if (branch_index < 0 || branch_index >= conditional->branch_count()) {
         branch_index = conditional->branch_count() - 1;
       }

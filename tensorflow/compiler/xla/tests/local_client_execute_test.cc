@@ -856,7 +856,7 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
   test_to_device_and_back(LiteralUtil::CreateR1<float>({1.0, 42.0, 744.4}));
   test_to_device_and_back(
       LiteralUtil::CreateR2<float>({{1.0, 2.0, 3.0}, {44.0, 0.1, -3}}));
-  test_to_device_and_back(LiteralUtil::CreateR2<int32>({{2, 1}, {4444, 56}}));
+  test_to_device_and_back(LiteralUtil::CreateR2<int32_t>({{2, 1}, {4444, 56}}));
 
   // Null shape (empty tuple).
   test_to_device_and_back(LiteralUtil::MakeTuple({}));

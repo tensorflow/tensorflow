@@ -752,9 +752,9 @@ Status DotOpEmitter::EmitCallToRuntime() {
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
-  //          int64_t m, int64_t n, int64_t k, int32 transpose_lhs,
-  //          int32 transpose_rhs);
-  // The two transpose_... parameters are actually booleans, but we use int32
+  //          int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
+  //          int32_t transpose_rhs);
+  // The two transpose_... parameters are actually booleans, but we use int32_t
   // to avoid target-dependent calling convention details.
 
   bool multi_threaded = ShouldUseMultiThreadedEigen(hlo_module_config_);

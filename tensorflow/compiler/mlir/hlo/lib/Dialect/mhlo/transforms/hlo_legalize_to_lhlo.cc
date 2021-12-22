@@ -341,22 +341,6 @@ struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
   }
 };
 
-// TODO(b/175789537) Remove this pattern.
-class HloToLhloTensorStoreOpLegacyConverter
-    : public BaseOpConversion<mlir::memref::TensorStoreOp> {
- public:
-  using BaseOpConversion<mlir::memref::TensorStoreOp>::BaseOpConversion;
-
-  LogicalResult matchAndRewrite(
-      mlir::memref::TensorStoreOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    rewriter.replaceOpWithNewOp<lmhlo::CopyOp>(op, llvm::None,
-                                               adaptor.getOperands().front(),
-                                               adaptor.getOperands().back());
-    return success();
-  }
-};
-
 // Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 // buffers if necessary.
 //
@@ -441,10 +425,6 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
         lmhlo::LmhloDialect, memref::MemRefDialect, shape::ShapeDialect,
         StandardOpsDialect, tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    // Declare tensor_store illegal. bufferization.to_tensor may be used to
-    // reify output shape computation during dialect conversion and will be
-    // handled later.
-    target.addIllegalOp<mlir::memref::TensorStoreOp>();
     // bufferization.to_memref is illegal if it has uses.
     // TODO(b/175670649) Make bufferization.to_memref illegal.
     target.addDynamicallyLegalOp<mlir::bufferization::ToMemrefOp>(
@@ -476,9 +456,6 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 
     populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
                                                       target);
-
-    // TODO(b/175789537) Remove this pattern.
-    patterns.insert<HloToLhloTensorStoreOpLegacyConverter>(&context);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))

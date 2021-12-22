@@ -565,7 +565,7 @@ StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p, XlaOp q,
 StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   XlaBuilder* builder = w.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
-  auto num_dims = static_cast<int32>(shape.rank());
+  auto num_dims = static_cast<int32_t>(shape.rank());
   int64_t n = shape.dimensions(num_dims - 1);
   shape.set_dimensions(num_dims - 2, n);
   auto w_sliced = SliceInMinorDims(w, {0, 0}, {n, n});

@@ -953,16 +953,17 @@ class GroupConnectedBoundaries {
   // of reuses. Assume all instructions can be fused to enable data reuses.
   int64_t ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
     std::vector<int64_t>& curconfig =
-        reuse_config_[static_cast<uint32>(op->opcode())];
+        reuse_config_[static_cast<uint32_t>(op->opcode())];
     // Flip the reuse configuration if tuning the cost model.
     // When flipping, use -10 if flipping to the default reuse model. Other
     // values can be specified if needed to fine-control the decision making.
     int64_t config =
         ((*search_config_) < 0)
-            ? FlipMutation(&curconfig[static_cast<uint32>(user->opcode())], -10,
+            ? FlipMutation(&curconfig[static_cast<uint32_t>(user->opcode())],
+                           -10,
                            HloOpcodeString(op->opcode()) + "->" +
                                HloOpcodeString(user->opcode()))
-            : curconfig[static_cast<uint32>(user->opcode())];
+            : curconfig[static_cast<uint32_t>(user->opcode())];
     VLOG(2) << "ConditionalCodeMotion: Add reuses carried by instr: "
             << op->ToString() << "=>" << user->ToString() << " : " << config
             << "\n";
@@ -1002,19 +1003,20 @@ class GroupConnectedBoundaries {
     }
 
     // Use configuration given from outside (e.g., by autotuner).
-    std::vector<int64_t>& curconfig = move_config_[static_cast<uint32>(opcode)];
+    std::vector<int64_t>& curconfig =
+        move_config_[static_cast<uint32_t>(opcode)];
     auto col = (curconfig.size() == 1) ? 0
                : (instruction->operand_count() > 0)
-                   ? static_cast<uint32>(instruction->operand(0)->opcode())
+                   ? static_cast<uint32_t>(instruction->operand(0)->opcode())
                    : 0;
     VLOG(2) << "column = " << col << "\n";
     VLOG(2) << "config size = " << curconfig.size() << "\n";
     VLOG(2) << "search_config = " << *search_config_ << "\n";
     CHECK(col < curconfig.size());
-    uint32 config = ((*search_config_) > 0)
-                        ? FlipMutation(&curconfig[col], 1,
-                                       "Move-" + HloOpcodeString(opcode))
-                        : curconfig[col];
+    uint32_t config = ((*search_config_) > 0)
+                          ? FlipMutation(&curconfig[col], 1,
+                                         "Move-" + HloOpcodeString(opcode))
+                          : curconfig[col];
     VLOG(2) << "Checking instruction is worth moving: " << config << "\n";
     VLOG(2) << "after checking search_config = " << *search_config_ << "\n";
     return (config != 0);
@@ -1619,7 +1621,7 @@ void ConditionalCodeMotion::SetDefaultMoveConfig() {
   for (int64_t opcode = 0; opcode < row; ++opcode) {
     // To save whether an instruction is preferred to be moved.
     std::vector<int64_t> reuse_vec(col, 0);
-    for (uint32 j = 0; j < col; ++j) {
+    for (uint32_t j = 0; j < col; ++j) {
       reuse_vec[j] = ReusesCarriedBy(static_cast<HloOpcode>(opcode),
                                      static_cast<HloOpcode>(j));
     }
@@ -1638,7 +1640,7 @@ void ConditionalCodeMotion::SetDefaultMoveConfig() {
         // No tuning --- use the default configuration.
         // Use the opcode of first operand to configure default.
         move_vec.reserve(col);
-        for (uint32 j = 0; j < col; ++j) {
+        for (uint32_t j = 0; j < col; ++j) {
           move_vec.push_back(WorthHoisting(static_cast<HloOpcode>(opcode),
                                            static_cast<HloOpcode>(j)));
         }

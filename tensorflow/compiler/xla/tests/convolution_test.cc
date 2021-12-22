@@ -56,7 +56,7 @@ class ConvolutionTest : public ClientLibraryTestBase {
 using TestTypes = ::testing::Types<
 // TODO(b/183565702): Support integer convs on GPU.
 #if !XLA_TEST_BACKEND_GPU
-    int32,
+    int32_t,
 #endif
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
     Eigen::half,

@@ -15,17 +15,15 @@ limitations under the License.
 
 #if defined(ENABLE_MKL) && !defined(INTEL_MKL_DNN_ONLY)
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
+
 #include "third_party/intel_mkl_ml/include/mkl_cblas.h"
 #include "third_party/intel_mkl_ml/include/mkl_service.h"
-
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/core/platform/types.h"
 
 #define EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
 #include "tensorflow/core/platform/dynamic_annotations.h"
-
-using tensorflow::int32;
 
 namespace {
 // BLAS GEMM API for 32-bit Matrix Multiplication.
@@ -34,8 +32,8 @@ namespace {
 // Since XLA MatMul does not used alpha, beta, we set them to 1.0 and 0.0.
 // Matrix lhs, rhs and out are all column-major.
 void MatMulF32(const void* run_options_ptr, float* out, float* lhs, float* rhs,
-               int64_t m, int64_t n, int64_t k, int32 transpose_lhs,
-               int32 transpose_rhs) {
+               int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
+               int32_t transpose_rhs) {
   const float alpha = 1.0f, beta = 0.0f;
   // lda, ldb, and ldc are the leading dimensions of matrices a, b, and c,
   // respectively. For column-major matrices, the leading dimension is the
@@ -57,7 +55,7 @@ void MatMulF32(const void* run_options_ptr, float* out, float* lhs, float* rhs,
 // Matrix lhs, rhs and out are all column-major.
 void MatMulF64(const void* run_options_ptr, double* out, double* lhs,
                double* rhs, int64_t m, int64_t n, int64_t k,
-               int32 transpose_lhs, int32 transpose_rhs) {
+               int32_t transpose_lhs, int32_t transpose_rhs) {
   const float alpha = 1.0f, beta = 0.0f;
   // lda, ldb, and ldc are the leading dimensions of matrices a, b, and c,
   // respectively. For a column-major matrix, the leading dimension is the
@@ -76,7 +74,7 @@ void MatMulF64(const void* run_options_ptr, double* out, double* lhs,
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLMatMulF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs, int64_t m,
-    int64_t n, int64_t k, int32 transpose_lhs, int32 transpose_rhs) {
+    int64_t n, int64_t k, int32_t transpose_lhs, int32_t transpose_rhs) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   // BLAS GEMM MatMul uses OpenMP for parallelization, so we pass the thread
@@ -91,7 +89,8 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLMatMulF32(
 // BLAS GEMM API for 64-bit Matrix Multiplication
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLMatMulF64(
     const void* run_options_ptr, double* out, double* lhs, double* rhs,
-    int64_t m, int64_t n, int64_t k, int32 transpose_lhs, int32 transpose_rhs) {
+    int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
+    int32_t transpose_rhs) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   // BLAS GEMM MatMul uses OpenMP for parallelization, so we pass the thread
@@ -107,8 +106,8 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_MKLSingleThreadedMatMulF32(const void* run_options_ptr,
                                              float* out, float* lhs, float* rhs,
                                              int64_t m, int64_t n, int64_t k,
-                                             int32 transpose_lhs,
-                                             int32 transpose_rhs) {
+                                             int32_t transpose_lhs,
+                                             int32_t transpose_rhs) {
   // Set the thread number to 1 for single threaded execution.
   int prev_num_threads = mkl_set_num_threads_local(1);
   MatMulF32(nullptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
@@ -120,8 +119,8 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_MKLSingleThreadedMatMulF64(const void* run_options_ptr,
                                              double* out, double* lhs,
                                              double* rhs, int64_t m, int64_t n,
-                                             int64_t k, int32 transpose_lhs,
-                                             int32 transpose_rhs) {
+                                             int64_t k, int32_t transpose_lhs,
+                                             int32_t transpose_rhs) {
   // Set the thread number to 1 for single threaded execution.
   int prev_num_threads = mkl_set_num_threads_local(1);
   MatMulF64(nullptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);

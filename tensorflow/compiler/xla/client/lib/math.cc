@@ -145,17 +145,17 @@ XlaOp IsNegZero(XlaOp operand) {
     switch (shape.element_type()) {
       case F64:
         return Eq(BitcastConvertType(operand, U64),
-                  ConstantR0WithType(&b, U64, uint64{1} << 63));
+                  ConstantR0WithType(&b, U64, uint64_t{1} << 63));
       case F32:
         return Eq(BitcastConvertType(operand, U32),
-                  ConstantR0WithType(&b, U32, uint32{1} << 31));
+                  ConstantR0WithType(&b, U32, uint32_t{1} << 31));
       case F16:
       case BF16:
         // Not all XLA backends handle U16 well, so we convert to F32/U32.
         // TODO(jlebar): It would be nice if we could stay in (B)F16/U16 for
         // backends that *do* support it.
         return Eq(BitcastConvertType(ConvertElementType(operand, F32), U32),
-                  ConstantR0WithType(&b, U32, uint32{1} << 31));
+                  ConstantR0WithType(&b, U32, uint32_t{1} << 31));
       default:
         LOG(FATAL) << "Expected real fp type.";
     }

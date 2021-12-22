@@ -709,8 +709,8 @@ LogicalResult reifyGatherShape(Op* op, OpBuilder& builder, ValueRange operands,
   inferGatherShape<Value>(resultRank, getStartIndicesDim, getSliceDim,
                           op->dimension_numbers(), shapeValues);
 
-  Value outputShape =
-      builder.create<tensor::FromElementsOp>(loc, shapeElTy, shapeValues);
+  Value outputShape = builder.create<tensor::FromElementsOp>(
+      loc, RankedTensorType::get({resultRank}, shapeElTy), shapeValues);
   reifiedReturnShapes.push_back(outputShape);
 
   return success();
@@ -1377,7 +1377,10 @@ LogicalResult BroadcastOp::reifyReturnTypeShapes(
   }
 
   reifiedReturnShapes.push_back(builder.create<tensor::FromElementsOp>(
-      loc, builder.getIndexType(), shape_values));
+      loc,
+      RankedTensorType::get({static_cast<int64_t>(shape_values.size())},
+                            builder.getIndexType()),
+      shape_values));
 
   return success();
 }
@@ -2068,7 +2071,10 @@ LogicalResult ConcatenateOp::reifyReturnTypeShapes(
   }
 
   Value output_shape = builder.create<tensor::FromElementsOp>(
-      loc, shape_scalar_type, shape_values);
+      loc,
+      RankedTensorType::get({static_cast<int64_t>(shape_values.size())},
+                            shape_scalar_type),
+      shape_values);
   reifiedReturnShapes.push_back(output_shape);
 
   return success();
@@ -2416,8 +2422,10 @@ LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
   }
 
   reifiedReturnShapes.push_back(builder.create<tensor::FromElementsOp>(
-      loc, shape_scalar_type, shape_values));
-
+      loc,
+      RankedTensorType::get({static_cast<int64_t>(shape_values.size())},
+                            shape_scalar_type),
+      shape_values));
   return success();
 }
 
@@ -3394,7 +3402,10 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
   }
 
   Value output_shape = builder.create<tensor::FromElementsOp>(
-      loc, shape_scalar_type, shape_values);
+      loc,
+      RankedTensorType::get({static_cast<int64_t>(shape_values.size())},
+                            shape_scalar_type),
+      shape_values);
   for (size_t i = 0; i < inputs.size(); ++i) {
     reifiedReturnShapes.push_back(output_shape);
   }
@@ -3825,7 +3836,10 @@ LogicalResult DynamicPadOp::reifyReturnTypeShapes(
   }
 
   reifiedReturnShapes.push_back(builder.create<tensor::FromElementsOp>(
-      loc, shape_scalar_type, shape_values));
+      loc,
+      RankedTensorType::get({static_cast<int64_t>(shape_values.size())},
+                            shape_scalar_type),
+      shape_values));
 
   return success();
 }
@@ -4771,7 +4785,10 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
   }
 
   Value output_shape = builder.create<tensor::FromElementsOp>(
-      loc, shape_scalar_type, shape_values);
+      loc,
+      RankedTensorType::get({static_cast<int64_t>(shape_values.size())},
+                            shape_scalar_type),
+      shape_values);
   reifiedReturnShapes.push_back(output_shape);
 
   return success();

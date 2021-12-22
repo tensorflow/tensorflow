@@ -387,7 +387,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8) {
-  // max(0, clamp(conv(x, w)))); for int8
+  // max(0, clamp(conv(x, w)))); for int8_t
   TestClamp(
       // pre_hlo
       R"(
@@ -423,8 +423,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToFloat) {
-  // convert<float>(conv<int32>(convert<int32>(int8_x),
-  // convert<int32>(int8_w)));
+  // convert<float>(conv<int32_t>(convert<int32_t>(int8_x),
+  // convert<int32_t>(int8_w)));
   TestClamp(
       // pre_hlo
       R"(
@@ -449,7 +449,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToFloat) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
-  // clamp(max(0, conv(x, w)+bias)); for int8
+  // clamp(max(0, conv(x, w)+bias)); for int8_t
   TestClamp(
       // pre_hlo
       R"(
@@ -492,8 +492,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
 
 // Disabled per b/190854862 or nvbugs/3326122.
 TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestFusedConvInt8ToFloat) {
-  // max(0, convert<float>(conv<int32>(int8_x),
-  // conv<int32>(int8_w))+float_bias)); int8 to float via bias.
+  // max(0, convert<float>(conv<int32_t>(int8_x),
+  // conv<int32_t>(int8_w))+float_bias)); int8_t to float via bias.
   TestClamp(
       // pre_hlo
       R"(
@@ -528,7 +528,7 @@ TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestFusedConvInt8ToFloat) {
 TEST_F(CudnnFusedConvRewriterTest,
        TestFusedConvWithScaledInt8SideInputBiasInt8ToInt8) {
   // clamp(max(0, alpha_conv * conv(x, w) + alpha_side *
-  // convert<int32>(int8_side_input) + bias)); for int8
+  // convert<int32_t>(int8_side_input) + bias)); for int8_t
   TestClamp(
       // pre_hlo
       R"(
@@ -581,8 +581,8 @@ TEST_F(CudnnFusedConvRewriterTest,
 TEST_F(CudnnFusedConvRewriterTest,
        TestFusedConvWithScaledFloatSideInputBiasInt8ToInt8) {
   // From:
-  // convert<int8>(clamp(max(0, alpha_conv * conv(x, w) + alpha_side *
-  // float_side_input + bias))); To: convert<int8>(clamp(conv(int8_x, int8_w,
+  // convert<int8_t>(clamp(max(0, alpha_conv * conv(x, w) + alpha_side *
+  // float_side_input + bias))); To: convert<int8_t>(clamp(conv(int8_x, int8_w,
   // float_alpha_side, float_side_input, float_bias)));
   TestClamp(
       // pre_hlo
@@ -687,8 +687,8 @@ TEST_F(CudnnFusedConvRewriterTest,
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8NoClamp) {
-  // Check that integer convolution without clamp to int8 is not allowed.
-  // convert<int8>(custom_call<int32>(int32_x, int32_w,
+  // Check that integer convolution without clamp to int8_t is not allowed.
+  // convert<int8_t>(custom_call<int32_t>(int32_x, int32_w,
   // cudnnConvolutionForward))
   const std::string module_str = absl::StrFormat(R"(
     HloModule Test
@@ -710,8 +710,9 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8NoClamp) {
 
 TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8NoClamp) {
   // Although bias and so on are fused with forward convolution,
-  // it is still not allowed if the output is not clampped/converted to int8
-  // max(0, alpha_conv * conv(x, w) + alpha_side * side_input + bias); for int8
+  // it is still not allowed if the output is not clampped/converted to int8_t
+  // max(0, alpha_conv * conv(x, w) + alpha_side * side_input + bias); for
+  // int8_t
 
   const std::string module_str = absl::StrFormat(R"(
     HloModule Test

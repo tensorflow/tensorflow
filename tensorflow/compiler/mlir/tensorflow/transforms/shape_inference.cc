@@ -1814,16 +1814,23 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
       PropagateConstantFromCallee(call_op, func, module);
       return failure_or_converged;
     }
-  } else if (auto xla_variadic_sort_op = dyn_cast<TF::XlaVariadicSortOp>(op)) {
-    auto comparator =
-        llvm::cast<mlir::FuncOp>(mlir::SymbolTable::lookupSymbolIn(
-            module, xla_variadic_sort_op.comparator()));
+  } else if (isa<TF::XlaVariadicReduceV2Op>(op) ||
+             isa<TF::XlaVariadicSortOp>(op)) {
+    SymbolRefAttr func_sym;
+    if (auto xla_variadic_reduce_v2_op =
+            dyn_cast<TF::XlaVariadicReduceV2Op>(op)) {
+      func_sym = xla_variadic_reduce_v2_op.reducer();
+    } else if (auto xla_variadic_sort_op =
+                   dyn_cast<TF::XlaVariadicSortOp>(op)) {
+      func_sym = xla_variadic_sort_op.comparator();
+    }
+    auto func = llvm::cast<mlir::FuncOp>(
+        mlir::SymbolTable::lookupSymbolIn(module, func_sym));
     mlir::SmallVector<mlir::Type, 2> types;
-    for (auto type : comparator.getType().getInputs()) {
+    for (auto type : func.getType().getInputs()) {
       types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
     }
-    return PropagateShapeToFunctions(module, types, {comparator},
-                                     max_iterations);
+    return PropagateShapeToFunctions(module, types, {func}, max_iterations);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.

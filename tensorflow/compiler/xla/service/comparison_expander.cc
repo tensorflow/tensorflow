@@ -35,13 +35,13 @@ HloInstruction* BitcastConvertFloatingPointToIntegral(
   // values, and -Nan is treated as the smallest value, and Nan is treated as
   // the largest value.
   // If f is a float, and
-  // x = bit_cast<int32>(f);
-  // y = x < 0 ? numeric_limits<int32>::max() - x : x;
-  // then y is ordered as an int32 such that finite values have the obvious
+  // x = bit_cast<int32_t>(f);
+  // y = x < 0 ? numeric_limits<int32_t>::max() - x : x;
+  // then y is ordered as an int32_t such that finite values have the obvious
   // order, -0 is ordered before 0, and -NaN and NaN appear at the beginning
   // and end of the ordering.
   // Note that in order to avoid -x to overflow, we calculate
-  // numeric_limits<int32>::max() - x as unsigned, and then convert back to
+  // numeric_limits<int32_t>::max() - x as unsigned, and then convert back to
   // signed.
   auto signed_value = computation->AddInstruction(
       HloInstruction::CreateBitcastConvert(signed_shape, value));

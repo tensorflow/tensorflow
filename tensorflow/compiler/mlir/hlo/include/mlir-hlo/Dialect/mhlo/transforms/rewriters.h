@@ -77,6 +77,12 @@ void populateHLOToMemrefConversionPattern(
       return true;
     });
 
+// Collection of rewrite patterns for lowering of shape operations from the HLO
+// dialect to the standard dialect.
+void populateHLOShapeOpsToStandardConversionPattern(
+    MLIRContext *context, TypeConverter &type_converter,
+    OwningRewritePatternList *patterns);
+
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
                                           TypeConverter &typeConverter,

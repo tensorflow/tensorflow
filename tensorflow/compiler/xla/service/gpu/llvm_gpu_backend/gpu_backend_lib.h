@@ -50,7 +50,7 @@ namespace amdgpu {
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
 // The contents of the module may be changed.
-StatusOr<std::vector<uint8>> CompileToHsaco(
+StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config,
     const std::string& rocdl_dir_path);

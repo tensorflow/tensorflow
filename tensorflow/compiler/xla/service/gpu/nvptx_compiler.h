@@ -50,15 +50,15 @@ class NVPTXCompiler : public GpuCompiler {
 
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
-  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
+  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
       const HloModule* debug_module) override;
 
  private:
-  StatusOr<std::vector<uint8>> LinkModules(
+  StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
-      std::vector<std::vector<uint8>> modules) override;
+      std::vector<std::vector<uint8_t>> modules) override;
 
   tensorflow::mutex mutex_;
 
@@ -74,7 +74,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8> CompileGpuAsmOrGetCachedResult(
+  std::vector<uint8_t> CompileGpuAsmOrGetCachedResult(
       se::StreamExecutor* stream_exec, const std::string& ptx,
       se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
       bool relocatable);
@@ -122,7 +122,7 @@ class NVPTXCompiler : public GpuCompiler {
   };
   struct CompilationCacheValue {
     bool compilation_done = false;
-    std::vector<uint8> cubin_data;
+    std::vector<uint8_t> cubin_data;
     // mutex and condition variable to serialize compilation completing.
     tensorflow::mutex mutex_;
     tensorflow::condition_variable compilation_done_cv_;

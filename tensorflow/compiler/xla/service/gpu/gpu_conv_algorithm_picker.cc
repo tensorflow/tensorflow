@@ -66,11 +66,11 @@ class ScratchAllocator : public se::ScratchAllocator {
   }
   int64_t TotalAllocatedBytes() { return total_allocated_bytes_; }
 
-  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
+  StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(int64_t byte_size) override;
 
   template <typename T>
   StatusOr<se::DeviceMemory<T>> Allocate(int64_t num_elements) {
-    TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8> bytes,
+    TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8_t> bytes,
                         AllocateBytes(num_elements * sizeof(T)));
     return se::DeviceMemory<T>(bytes);
   }
@@ -82,7 +82,7 @@ class ScratchAllocator : public se::ScratchAllocator {
   int64_t total_allocated_bytes_ = 0;
 };
 
-StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
+StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
@@ -100,7 +100,7 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
 
   se::DeviceMemoryBase buffer_addr = *allocated_buffer;
   allocated_buffers_.push_back(std::move(allocated_buffer));
-  return se::DeviceMemory<uint8>(buffer_addr);
+  return se::DeviceMemory<uint8_t>(buffer_addr);
 }
 
 StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
@@ -962,7 +962,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
           {computation->AddInstruction(HloInstruction::CreateGetTupleElement(
                new_call_shape.tuple_shapes(0), new_call, 0)),
            computation->AddInstruction(HloInstruction::CreateConstant(
-               LiteralUtil::CreateR1<uint8>({})))}));
+               LiteralUtil::CreateR1<uint8_t>({})))}));
 
   TF_RETURN_IF_ERROR(instr->parent()->ReplaceInstruction(instr, new_tuple));
   return true;

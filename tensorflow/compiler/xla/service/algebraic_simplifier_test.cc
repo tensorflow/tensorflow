@@ -369,7 +369,7 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0s32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0s32, HloOpcode::kMultiply, param0, zero));
 
@@ -4976,7 +4976,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantDynamicSlice) {
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 3; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(2 << (i + 1)))));
+        LiteralUtil::CreateR0<int32_t>(2 << (i + 1)))));
   }
   Shape ds_shape = ShapeUtil::MakeShape(F32, {2, 20, 200});
   builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -6209,9 +6209,9 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   int32_t start_col = (spec.lcd == 0) ? spec.s : 0;
   std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_row))),
+          LiteralUtil::CreateR0<int32_t>(start_row))),
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_col)))};
+          LiteralUtil::CreateR0<int32_t>(start_col)))};
   int64_t slice_row_size = (spec.lcd == 0) ? spec.k : 1;
   int64_t slice_col_size = (spec.lcd == 0) ? 1 : spec.k;
   std::vector<int64_t> slice_sizes = {slice_row_size, slice_col_size};
@@ -6290,9 +6290,9 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   int32_t start_col = (spec.rcd == 0) ? spec.s : 0;
   std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_row))),
+          LiteralUtil::CreateR0<int32_t>(start_row))),
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_col)))};
+          LiteralUtil::CreateR0<int32_t>(start_col)))};
   int64_t slice_row_size = (spec.rcd == 0) ? spec.k : 1;
   int64_t slice_col_size = (spec.rcd == 0) ? 1 : spec.k;
   std::vector<int64_t> slice_sizes = {slice_row_size, slice_col_size};

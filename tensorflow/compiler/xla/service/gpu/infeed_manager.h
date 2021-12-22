@@ -44,7 +44,7 @@ namespace gpu {
 
 // Client-side class used to enqueue infeed buffers.
 class InfeedManager
-    : public BlockingXfeedQueue<ShapeTree<se::ScopedDeviceMemory<uint8>>> {
+    : public BlockingXfeedQueue<ShapeTree<se::ScopedDeviceMemory<uint8_t>>> {
  public:
   explicit InfeedManager(se::StreamExecutor* executor);
 

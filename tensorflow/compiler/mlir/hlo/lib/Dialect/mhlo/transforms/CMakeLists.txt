@@ -174,9 +174,28 @@ add_mlir_library(MhloToLinalg
 
   DEPENDS
   MLIRhlo_opsIncGen
-  MLIRlhlo_opsIncGen
   MLIRMhloPassIncGen
-  MLIRLmhloPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  LmhloDialect
+  MhloDialect
+  MhloTypeConversion
+  MLIRComplex
+  MLIRIR
+  MLIRPass
+  MLIRRewrite
+  MLIRTransformUtils
+)
+
+add_mlir_library(MhloShapeOpsToStandard
+  hlo_legalize_shape_ops_to_standard.cc
+
+  DEPENDS
+  MLIRhlo_opsIncGen
+  MLIRMhloPassIncGen
 
   LINK_COMPONENTS
   Core
@@ -200,4 +219,5 @@ target_link_libraries(AllMhloPasses INTERFACE
   MhloToMemrefConversion
   MhloToStandard
   MhloToLinalg
+  MhloShapeOpsToStandard
 )

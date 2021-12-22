@@ -185,7 +185,7 @@ class _CheckpointRestoreCoordinatorDeleter(object):
       log_fn("Detecting that an object or model or tf.train.Checkpoint is being"
              " deleted with unrestored values. See the following logs for the "
              "specific values in question. To silence these warnings, use "
-             "`status.expect_partial()` or `status.assert_consumed()`. See "
+             "`status.expect_partial()`. See "
              "https://www.tensorflow.org/api_docs/python/tf/train/Checkpoint#restore"
              "for details about the status object returned by the restore "
              "function.")
@@ -1290,9 +1290,9 @@ class TrackableSaver(object):
     saver.restore(path)
     ```
 
-    To ensure that loading is complete and no more assignments will take place
-    you can use the `assert_consumed()` method of the status object returned
-    by the `restore` call.
+    To ensure that loading is complete and no more deferred restorations will
+    take place, you can use the `assert_consumed()` method of the status object
+    returned by the `restore` call.
 
     The assert will raise an exception unless every object was matched and all
     checkpointed values have a matching variable object.
@@ -1759,9 +1759,9 @@ class CheckpointV1(tracking.AutoTrackable):
     checkpoint.restore(path)
     ```
 
-    To ensure that loading is complete and no more assignments will take place,
-    you can use the `assert_consumed()` method of the status object returned by
-    `restore`.
+    To ensure that loading is complete and no more deferred restorations will
+    take place, you can use the `assert_consumed()` method of the status object
+    returned by `restore`.
     The assert will raise an exception if any Python objects in the dependency
     graph were not found in the checkpoint, or if any checkpointed values do not
     have a matching Python object:
@@ -2081,7 +2081,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.write("/tmp/ckpt")
 
     # Later, read the checkpoint with read()
-    checkpoint.read("/tmp/ckpt").assert_consumed()
+    checkpoint.read("/tmp/ckpt")
 
     # You can also pass options to write() and read(). For example this
     # runs the IO ops on the localhost:
@@ -2089,7 +2089,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.write("/tmp/ckpt", options=options)
 
     # Later, read the checkpoint with read()
-    checkpoint.read("/tmp/ckpt", options=options).assert_consumed()
+    checkpoint.read("/tmp/ckpt", options=options)
     ```
 
     Args:
@@ -2159,7 +2159,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.save("/tmp/ckpt")
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt").assert_consumed()
+    checkpoint.restore("/tmp/ckpt")
 
     # You can also pass options to save() and restore(). For example this
     # runs the IO ops on the localhost:
@@ -2167,7 +2167,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.save("/tmp/ckpt", options=options)
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt", options=options).assert_consumed()
+    checkpoint.restore("/tmp/ckpt", options=options)
     ```
 
     Args:
@@ -2287,16 +2287,11 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.restore(path, options=options)
     ```
 
-    To ensure that loading is complete and no more assignments will take place,
-    use the `assert_consumed()` method of the status object returned by
-    `restore()`:
+    To ensure that loading is complete and no more deferred restorations will
+    take place, use the `assert_consumed()` method of the status object returned
+    by `restore()`:
 
     ```python
-    checkpoint = tf.train.Checkpoint( ... )
-    checkpoint.restore(path).assert_consumed()
-
-    # You can additionally pass options to restore():
-    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
     checkpoint.restore(path, options=options).assert_consumed()
     ```
 

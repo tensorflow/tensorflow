@@ -55,14 +55,14 @@ struct ShapeTreeNode {
 // Internal representation of an index table entry.
 struct IndexTableEntry {
   // Index of the node in the ShapeTreeNode vector.
-  uint32 index;
+  uint32_t index;
   // Index of the first child in a IndexTableEntry vector. In the index
   // table all children entries for a given node will be placed next to each
   // other. This allows us to use a single field to index them.
-  uint32 children_start;
+  uint32_t children_start;
 #ifndef NDEBUG
   // Number of children, used for bounds checking.
-  uint32 children_count;
+  uint32_t children_count;
 #endif
 };
 

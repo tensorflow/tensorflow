@@ -1063,7 +1063,7 @@ struct Options {
   // This variable is used by the cost analysis in estimating how many times
   // each while loop will execute. Nested loops will be assumed to have
   // executed pow(while_execution_count, nesting_level) times.
-  uint64 xla_tpu_memory_space_assignment_while_execution_count = 5ULL;
+  uint64_t xla_tpu_memory_space_assignment_while_execution_count = 5ULL;
 
   float async_copy_bandwidth_bytes_per_second = 0.0f;
 

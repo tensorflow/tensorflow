@@ -65,7 +65,7 @@ class GpuCompiler : public LLVMCompiler {
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      AotCompilationOptions const& options) override;
 
-  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileToTargetBinary(
+  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileToTargetBinary(
       const HloModuleConfig& module_config,
       std::unique_ptr<llvm::Module> llvm_module,
       se::StreamExecutor* stream_exec, const CompileOptions& options,
@@ -97,7 +97,7 @@ class GpuCompiler : public LLVMCompiler {
 
   // TODO(timshen): Replace `debug_module` with some portable debug information
   // that accommodates both HLO and MLIR.
-  virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
+  virtual StatusOr<std::pair<std::string, std::vector<uint8_t>>>
   CompileTargetBinary(const HloModuleConfig& module_config,
                       llvm::Module* llvm_module, GpuVersion gpu_version,
                       se::StreamExecutor* stream_exec, bool relocatable,
@@ -105,9 +105,9 @@ class GpuCompiler : public LLVMCompiler {
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
-  virtual StatusOr<std::vector<uint8>> LinkModules(
+  virtual StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
-      std::vector<std::vector<uint8>> modules) {
+      std::vector<std::vector<uint8_t>> modules) {
     return Unimplemented("LinkModules is not implemented.");
   }
 

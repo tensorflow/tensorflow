@@ -39,7 +39,7 @@ class AMDGPUCompiler : public GpuCompiler {
 
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
-  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
+  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
       const HloModule* debug_module) override;

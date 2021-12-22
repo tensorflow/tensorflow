@@ -1964,7 +1964,7 @@ bool HloFusionInstruction::IdenticalSlowPath(
                          other.fused_instructions_computation());
 }
 
-uint64 HloFusionInstruction::InnerHash() const {
+uint64_t HloFusionInstruction::InnerHash() const {
   return fused_instructions_computation()->root_instruction()->Hash();
 }
 

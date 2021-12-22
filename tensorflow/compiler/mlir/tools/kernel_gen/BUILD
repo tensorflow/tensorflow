@@ -48,6 +48,7 @@ cc_library(
         ":compile_cache_item_proto_cc",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_legalize_shape_ops_to_standard",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
         "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",

@@ -320,23 +320,23 @@ static optional<int64_t> LiteralAsScalarInt64(const Literal& l) {
   }
   switch (l.shape().element_type()) {
     case S8:
-      return l.GetFirstElement<int8>();
+      return l.GetFirstElement<int8_t>();
     case S16:
-      return l.GetFirstElement<int16>();
+      return l.GetFirstElement<int16_t>();
     case S32:
-      return l.GetFirstElement<int32>();
+      return l.GetFirstElement<int32_t>();
     case S64:
       return l.GetFirstElement<int64_t>();
     case U8:
-      return l.GetFirstElement<uint8>();
+      return l.GetFirstElement<uint8_t>();
     case U16:
-      return l.GetFirstElement<uint16>();
+      return l.GetFirstElement<uint16_t>();
     case U32:
-      return l.GetFirstElement<uint32>();
+      return l.GetFirstElement<uint32_t>();
     case U64: {
-      uint64 v = l.GetFirstElement<uint64_t>();
+      uint64_t v = l.GetFirstElement<uint64_t>();
       if (v > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-        VLOG(2) << "uint64 literal is out of range for int64_t: " << v;
+        VLOG(2) << "uint64_t literal is out of range for int64_t: " << v;
         return nullopt;
       }
       return v;
@@ -351,8 +351,8 @@ static optional<int64_t> LiteralAsScalarInt64(const Literal& l) {
 optional<int64_t> CheckedAdd(int64_t a, int64_t b) {
   // Overflow occurred iff `a` and `b` have the same sign and `a + b` has a
   // different sign, see Hacker's Delignt 2nd Ed. pp 28.
-  uint64 aa = absl::bit_cast<uint64_t>(a);
-  uint64 bb = absl::bit_cast<uint64_t>(b);
+  uint64_t aa = absl::bit_cast<uint64_t>(a);
+  uint64_t bb = absl::bit_cast<uint64_t>(b);
   int64_t result = absl::bit_cast<int64_t>(aa + bb);
   if (a >= 0 == b >= 0 && result >= 0 != a >= 0) {
     return nullopt;
@@ -362,8 +362,8 @@ optional<int64_t> CheckedAdd(int64_t a, int64_t b) {
 
 // Computes a - b, returning nullopt if it overflows.
 optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
-  uint64 aa = absl::bit_cast<uint64_t>(a);
-  uint64 bb = absl::bit_cast<uint64_t>(b);
+  uint64_t aa = absl::bit_cast<uint64_t>(a);
+  uint64_t bb = absl::bit_cast<uint64_t>(b);
   int64_t result = absl::bit_cast<int64_t>(aa - bb);
   // Overflow occurred iff `a` and `b` have different signs and the sign of
   // `a - b` is the same as that of `b`, see Hacker's Delight 2nd Ed. pp 29.

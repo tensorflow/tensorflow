@@ -159,7 +159,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       // take up the right amount of space in memory. LLVM does not have a BF16
       // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
       // we can't map it directly to an LLVM type. We will not map a BF16
-      // addition to an addition on this type (int16) - this is just the type
+      // addition to an addition on this type (int16_t) - this is just the type
       // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
     case F16:
@@ -209,7 +209,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getInt8PtrTy(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
-      // some placeholder type, so use int8*.
+      // some placeholder type, so use int8_t*.
       return llvm::Type::getInt8PtrTy(module->getContext());
     default:
       LOG(FATAL) << "unsupported type " << element_type;
@@ -246,13 +246,13 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
 }
 
 StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
-                                                         int32* shape_size,
+                                                         int32_t* shape_size,
                                                          llvm::IRBuilder<>* b) {
   std::string encoded_shape = shape.SerializeAsString();
-  if (encoded_shape.size() > std::numeric_limits<int32>::max()) {
-    return InternalError("Encoded shape size exceeded int32 size limit.");
+  if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
+    return InternalError("Encoded shape size exceeded int32_t size limit.");
   }
-  *shape_size = static_cast<int32>(encoded_shape.size());
+  *shape_size = static_cast<int32_t>(encoded_shape.size());
   return b->CreateGlobalStringPtr(encoded_shape);
 }
 
@@ -375,7 +375,7 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 // Internal helper that is called from emitted code to log an int64_t value with
 // a tag.
 static void LogS64(const char* tag, int64_t value) {
-  LOG(INFO) << tag << " (int64): " << value;
+  LOG(INFO) << tag << " (int64_t): " << value;
 }
 
 void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
@@ -687,7 +687,7 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
   return state_ptr;
 }
 
-llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
                                   llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
       GetOrCreateVariableForRngState(module, builder);

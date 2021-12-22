@@ -315,19 +315,20 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   switch (output_shape.element_type()) {
     case S32: {
       if (!best_algorithm) {
-        return InternalError("Only extended GEMM is supported for int32");
+        return InternalError("Only extended GEMM is supported for int32_t");
       }
       CHECK_EQ(alpha.imag(), 0);
       if (lhs_shape.element_type() == PrimitiveType::S8 &&
           rhs_shape.element_type() == lhs_shape.element_type()) {
-        return DoGemmWithAlgorithm<int8, int32>(
+        return DoGemmWithAlgorithm<int8_t, int32_t>(
             batch_size, lhs_matrix, rhs_matrix, output_matrix,
-            static_cast<int32>(alpha.real()), static_cast<int32>(beta), stream,
-            *best_algorithm,
+            static_cast<int32_t>(alpha.real()), static_cast<int32_t>(beta),
+            stream, *best_algorithm,
             /*output_profile_result=*/profile_result);
       }
       return InternalError(
-          "For int32 gemm output only int8 input is supported, got input: %s",
+          "For int32_t gemm output only int8_t input is supported, got input: "
+          "%s",
           primitive_util::LowercasePrimitiveTypeName(lhs_shape.element_type()));
     }
     case F16:

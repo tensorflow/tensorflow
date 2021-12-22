@@ -5197,33 +5197,26 @@ func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
   // CHECK: [[SWAPS:%.*]] = "mhlo.rng_uniform"([[RNG_LOWER]], [[RNG_UPPER]], [[RNG_SHAPE]])
 
   // CHECK: [[IV_INIT:%.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK: [[WHILE_INIT:%.*]] = "mhlo.tuple"([[IV_INIT]], [[SWAPS]], [[INDICES]])
 
-  // CHECK: [[WHILE_OUT:%.*]] = "mhlo.while"([[WHILE_INIT]]) ( {
-  // CHECK: ^{{.*}}([[COND_ARG:%.*]]: tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>):
-  // CHECK:   [[IV:%.*]] = "mhlo.get_tuple_element"([[COND_ARG]]) {index = 0 : i32}
+  // CHECK: [[WHILE_OUT:%.*]]:3 = "mhlo.while"([[IV_INIT]], [[SWAPS]], [[INDICES]]) ( {
+  // CHECK: ^{{.*}}([[COND_ARG0:%.*]]: tensor<i32>, [[COND_ARG1:%.*]]: tensor<4xi32>, [[COND_ARG2:%.*]]: tensor<4xi32>):
   // CHECK:   [[LIMIT:%.*]] = mhlo.constant dense<4> : tensor<i32>
-  // CHECK:   [[CMP:%.*]] = "mhlo.compare"([[IV]], [[LIMIT]]) {comparison_direction = "LT"}
+  // CHECK:   [[CMP:%.*]] = "mhlo.compare"([[COND_ARG0]], [[LIMIT]]) {comparison_direction = "LT"}
   // CHECK:   "mhlo.return"([[CMP]])
   // CHECK: },  {
-  // CHECK: ^{{.*}}([[BODY_ARG:%.*]]: tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>):
-  // CHECK:   [[IV:%.*]] = "mhlo.get_tuple_element"([[BODY_ARG]]) {index = 0 : i32}
-  // CHECK:   [[SWAPS:%.*]] = "mhlo.get_tuple_element"([[BODY_ARG]]) {index = 1 : i32}
-  // CHECK:   [[INDICES:%.*]] = "mhlo.get_tuple_element"([[BODY_ARG]]) {index = 2 : i32}
-  // CHECK:   [[SRC_IDX:%.*]] = "mhlo.dynamic-slice"([[INDICES]], [[IV]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
-  // CHECK:   [[SWP_IDX:%.*]] = "mhlo.dynamic-slice"([[SWAPS]], [[IV]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK: ^{{.*}}([[BODY_ARG0:%.*]]: tensor<i32>, [[BODY_ARG1:%.*]]: tensor<4xi32>, [[BODY_ARG2:%.*]]: tensor<4xi32>):
+  // CHECK:   [[SRC_IDX:%.*]] = "mhlo.dynamic-slice"([[BODY_ARG2]], [[BODY_ARG0]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:   [[SWP_IDX:%.*]] = "mhlo.dynamic-slice"([[BODY_ARG1]], [[BODY_ARG0]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
   // CHECK:   [[SWP:%.*]] = "mhlo.reshape"([[SWP_IDX]]) : (tensor<1xi32>) -> tensor<i32>
-  // CHECK:   [[TGT_IDX:%.*]] = "mhlo.dynamic-slice"([[INDICES]], [[SWP]]) {slice_sizes = dense<1> : tensor<i64>}
-  // CHECK:   [[INDICES1:%.*]] = "mhlo.dynamic-update-slice"([[INDICES]], [[TGT_IDX]], [[IV]]) : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
+  // CHECK:   [[TGT_IDX:%.*]] = "mhlo.dynamic-slice"([[BODY_ARG2]], [[SWP]]) {slice_sizes = dense<1> : tensor<i64>}
+  // CHECK:   [[INDICES1:%.*]] = "mhlo.dynamic-update-slice"([[BODY_ARG2]], [[TGT_IDX]], [[BODY_ARG0]]) : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
   // CHECK:   [[INDICES2:%.*]] = "mhlo.dynamic-update-slice"([[INDICES1]], [[SRC_IDX]], [[SWP]]) : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
   // CHECK:   [[ONE:%.*]] = mhlo.constant dense<1> : tensor<i32>
-  // CHECK:   [[NEW_IV:%.*]] = chlo.broadcast_add [[IV]], [[ONE]]
-  // CHECK:   [[NEW_TUPLE:%.*]] = "mhlo.tuple"([[NEW_IV]], [[SWAPS]], [[INDICES2]])
-  // CHECK:   "mhlo.return"([[NEW_TUPLE]])
-  // CHECK: }) : (tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>) -> tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>
+  // CHECK:   [[NEW_IV:%.*]] = chlo.broadcast_add [[BODY_ARG0]], [[ONE]]
+  // CHECK:   "mhlo.return"([[NEW_IV]], [[BODY_ARG1]], [[INDICES2]])
+  // CHECK: }) : (tensor<i32>, tensor<4xi32>, tensor<4xi32>) -> (tensor<i32>, tensor<4xi32>, tensor<4xi32>)
 
-  // CHECK: [[SWAPED_INDICES:%.*]] = "mhlo.get_tuple_element"([[WHILE_OUT]]) {index = 2 : i32} : (tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>) -> tensor<4xi32>
-  // CHECK: [[GATHER:%.*]] = "mhlo.gather"([[INPUT]], [[SWAPED_INDICES]])
+  // CHECK: [[GATHER:%.*]] = "mhlo.gather"([[INPUT]], [[WHILE_OUT]]#2)
   // CHECK-SAME:   dimension_numbers =
   // CHECK-SAME:     offset_dims = [1, 2]
   // CHECK-SAME:     collapsed_slice_dims = [0]

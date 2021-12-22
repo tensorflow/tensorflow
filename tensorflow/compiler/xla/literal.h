@@ -126,15 +126,16 @@ class LiteralBase {
   NativeT Get(absl::Span<const int64_t> multi_index) const;
 
   // Get the dynamic size on dim_index in the literal at the given shape_index.
-  int32 GetDynamicSize(int64_t dim_index, const ShapeIndex& shape_index) const;
-  int32 GetDynamicSize(int64_t dim_index) const;
+  int32_t GetDynamicSize(int64_t dim_index,
+                         const ShapeIndex& shape_index) const;
+  int32_t GetDynamicSize(int64_t dim_index) const;
 
   // Returns the element value at index (0, ..., 0), however many zeroes are
   // required for that index.
   template <typename NativeT>
   NativeT GetFirstElement() const;
 
-  // As above but returns any integer type casted to an int64.
+  // As above but returns any integer type casted to an int64_t.
   absl::optional<int64_t> GetFirstInteger() const;
 
   // As Get(), but determines the correct type and converts the value
@@ -169,7 +170,7 @@ class LiteralBase {
   }
 
   // As Get(), but determines the correct type and converts the value into
-  // int64.  This literal must be an array.
+  // int64_t.  This literal must be an array.
   absl::optional<int64_t> GetIntegralAsS64(
       absl::Span<const int64_t> multi_index) const;
 
@@ -216,7 +217,7 @@ class LiteralBase {
 
   // Returns whether every element in this literal is equal to value.
   //
-  // value is an int8 because we expect this to be called with small
+  // value is an int8_t because we expect this to be called with small
   // compile-time constants (0, -1, etc.) and so that whatever value you pass
   // can be represented exactly by floating-point types as small as 16 bits.
   //
@@ -227,7 +228,7 @@ class LiteralBase {
   // Returns false if this literal is not array-shaped.
   bool IsAll(int8_t value) const;
 
-  // Like IsAll(int8), except we check whether the literal is equal to a
+  // Like IsAll(int8_t), except we check whether the literal is equal to a
   // particular floating-point or complex number.
   //
   // Returns false if this literal is not a floating-point / complex value, or
@@ -394,20 +395,20 @@ class LiteralBase {
     template <typename NativeT>
     void Set(absl::Span<const int64_t> index, NativeT value);
 
-    int32 GetDynamicSize(int64_t dim_index) const;
+    int32_t GetDynamicSize(int64_t dim_index) const;
     void SetDynamicSize(int64_t dim_index, int32_t size);
     // Gets/sets the buffer holding the array data.
     char* buffer() const { return buffer_; }
     void set_buffer(char* buffer) { buffer_ = buffer; }
 
     // Gets/sets the buffer holding dynamic sizes.
-    int32* dynamic_size_buffer() const { return dynamic_size_buffer_; }
-    void set_dynamic_size_buffer(int32* dynamic_size_buffer) {
+    int32_t* dynamic_size_buffer() const { return dynamic_size_buffer_; }
+    void set_dynamic_size_buffer(int32_t* dynamic_size_buffer) {
       dynamic_size_buffer_ = dynamic_size_buffer;
     }
 
     int64_t dynamic_size_buffer_bytes() const {
-      return subshape().dimensions_size() * sizeof(int32);
+      return subshape().dimensions_size() * sizeof(int32_t);
     }
 
     // Gets or sets the subshape of this piece. This reference points to a
@@ -571,7 +572,7 @@ class LiteralBase {
     // For array-shaped pieces, this is the buffer holding the literal data.
     char* buffer_ = nullptr;
 
-    int32* dynamic_size_buffer_ = nullptr;
+    int32_t* dynamic_size_buffer_ = nullptr;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -695,7 +696,7 @@ class MutableLiteralBase : public LiteralBase {
   //   literal.PopulateR2FromArray2D(values);
   //
   //   // Populate with int32s.
-  //   literal.PopulateR2<int32>({{1, 2}, {3, 4}});
+  //   literal.PopulateR2<int32_t>({{1, 2}, {3, 4}});
   //
   // The shape and element type of this literal must match given values. For
   // example, in the call above to literal.PopulateR2(), 'literal' must be a 2x2

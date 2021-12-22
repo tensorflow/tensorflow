@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -31,7 +32,7 @@ using ::testing::HasSubstr;
 XLA_TEST_F(ConstantsTest, ConstantR0WithTypeS32) {
   XlaBuilder builder(TestName());
   ConstantR0WithType(&builder, xla::S32, 4);
-  ComputeAndCompareR0<int32>(&builder, 4, {});
+  ComputeAndCompareR0<int32_t>(&builder, 4, {});
 }
 
 XLA_TEST_F(ConstantsTest, ConstantR0WithTypeS32DoesNotAcceptFloats) {
@@ -52,8 +53,8 @@ XLA_TEST_F(ConstantsTest, ConstantR0WithTypeF32) {
 
 XLA_TEST_F(ConstantsTest, ScalarLikeS32) {
   XlaBuilder builder(TestName());
-  ScalarLike(ConstantR0<int32>(&builder, 42), -3);
-  ComputeAndCompareR0<int32>(&builder, -3, {});
+  ScalarLike(ConstantR0<int32_t>(&builder, 42), -3);
+  ComputeAndCompareR0<int32_t>(&builder, -3, {});
 }
 
 XLA_TEST_F(ConstantsTest, ScalarLikeF32) {
@@ -65,7 +66,7 @@ XLA_TEST_F(ConstantsTest, ScalarLikeF32) {
 XLA_TEST_F(ConstantsTest, ZeroS32) {
   XlaBuilder builder(TestName());
   Zero(&builder, S32);
-  ComputeAndCompareR0<int32>(&builder, 0, {});
+  ComputeAndCompareR0<int32_t>(&builder, 0, {});
 }
 
 XLA_TEST_F(ConstantsTest, ZeroF32) {
@@ -77,7 +78,7 @@ XLA_TEST_F(ConstantsTest, ZeroF32) {
 XLA_TEST_F(ConstantsTest, ZerosS32) {
   XlaBuilder builder(TestName());
   Zeros(&builder, ShapeUtil::MakeShape(S32, {2, 2}));
-  ComputeAndCompareR2<int32>(&builder, {{0, 0}, {0, 0}}, {});
+  ComputeAndCompareR2<int32_t>(&builder, {{0, 0}, {0, 0}}, {});
 }
 
 XLA_TEST_F(ConstantsTest, ZerosLikeF32) {
@@ -89,7 +90,7 @@ XLA_TEST_F(ConstantsTest, ZerosLikeF32) {
 XLA_TEST_F(ConstantsTest, OneS32) {
   XlaBuilder builder(TestName());
   One(&builder, S32);
-  ComputeAndCompareR0<int32>(&builder, 1, {});
+  ComputeAndCompareR0<int32_t>(&builder, 1, {});
 }
 
 XLA_TEST_F(ConstantsTest, OneF32) {
@@ -108,13 +109,15 @@ XLA_TEST_F(ConstantsTest, EpsilonF32) {
 XLA_TEST_F(ConstantsTest, MinFiniteValueS32) {
   XlaBuilder builder(TestName());
   MinFiniteValue(&builder, S32);
-  ComputeAndCompareR0<int32>(&builder, std::numeric_limits<int32>::min(), {});
+  ComputeAndCompareR0<int32_t>(&builder, std::numeric_limits<int32_t>::min(),
+                               {});
 }
 
 XLA_TEST_F(ConstantsTest, MaxFiniteValueS32) {
   XlaBuilder builder(TestName());
   MaxFiniteValue(&builder, S32);
-  ComputeAndCompareR0<int32>(&builder, std::numeric_limits<int32>::max(), {});
+  ComputeAndCompareR0<int32_t>(&builder, std::numeric_limits<int32_t>::max(),
+                               {});
 }
 
 XLA_TEST_F(ConstantsTest, MinFiniteValueF32) {
@@ -132,13 +135,15 @@ XLA_TEST_F(ConstantsTest, MaxFiniteValueF32) {
 XLA_TEST_F(ConstantsTest, MinValueS32) {
   XlaBuilder builder(TestName());
   MinValue(&builder, S32);
-  ComputeAndCompareR0<int32>(&builder, std::numeric_limits<int32>::min(), {});
+  ComputeAndCompareR0<int32_t>(&builder, std::numeric_limits<int32_t>::min(),
+                               {});
 }
 
 XLA_TEST_F(ConstantsTest, MaxValueS32) {
   XlaBuilder builder(TestName());
   MaxValue(&builder, S32);
-  ComputeAndCompareR0<int32>(&builder, std::numeric_limits<int32>::max(), {});
+  ComputeAndCompareR0<int32_t>(&builder, std::numeric_limits<int32_t>::max(),
+                               {});
 }
 
 XLA_TEST_F(ConstantsTest, MinValueF32) {

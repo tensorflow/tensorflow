@@ -476,22 +476,22 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     return abs_err <= spec.abs_err || rel_err <= spec.rel_err;
   }
 
-  // Converts part or all bits in an uint64 to the value of the floating point
+  // Converts part or all bits in an uint64_t to the value of the floating point
   // data type being tested.
   //
   // When trying to exhaustive test for an operation of data type T, we always
   // use an integral I with the same number of bits at T to exhaustive the input
-  // bit patterns for T. This bit pattern is zero extended and stored as uint64.
-  // This function is used to convert such a bit pattern stored as uint64 to
-  // the input value for T.
-  static ComponentNativeT ConvertValue(uint64 bits) {
+  // bit patterns for T. This bit pattern is zero extended and stored as
+  // uint64_t. This function is used to convert such a bit pattern stored as
+  // uint64_t to the input value for T.
+  static ComponentNativeT ConvertValue(uint64_t bits) {
     using I = ComponentIntegralNativeT;
     I used_bits = static_cast<I>(bits);
     return BitCast<ComponentNativeT>(used_bits);
   }
 
   ComponentNativeT ConvertAndReplaceKnownIncorrectValueWith(
-      uint64 bits, int replacement_value = 0) {
+      uint64_t bits, int replacement_value = 0) {
     if (known_incorrect_fn_ && known_incorrect_fn_(bits)) {
       return static_cast<ComponentNativeT>(replacement_value);
     }
@@ -538,10 +538,10 @@ class BitChunks {
  public:
   class iterator
       : public std::iterator<std::input_iterator_tag,  // iterator_category
-                             uint64,                   // value_type
-                             uint64,                   // difference_type
+                             uint64_t,                 // value_type
+                             uint64_t,                 // difference_type
                              const uint64_t*,          // pointer
-                             uint64                    // reference
+                             uint64_t                  // reference
                              > {
    public:
     iterator() {}
@@ -608,7 +608,7 @@ class BitChunks {
     }
 
     const BitChunks* bit_chunks_;
-    uint64 next_bit_chunk_;
+    uint64_t next_bit_chunk_;
   };
 
   iterator begin() const { return iterator(this); }
@@ -617,7 +617,7 @@ class BitChunks {
     return end.MoveToEnd();
   }
 
-  explicit BitChunks(uint64 start = 0, uint64 end = 0, uint64 spacing = 1)
+  explicit BitChunks(uint64_t start = 0, uint64_t end = 0, uint64_t spacing = 1)
       : start_(start), end_(end), spacing_(spacing) {
     CHECK_GE(end_, start_);
     CHECK_NE(spacing, 0) << ToString();
@@ -635,9 +635,9 @@ class BitChunks {
     return absl::StrFormat("(0x%08x, 0x%08x, 0x%08x)", start_, end_, spacing_);
   }
 
-  uint64 start_;
-  uint64 end_;
-  uint64 spacing_;
+  uint64_t start_;
+  uint64_t end_;
+  uint64_t spacing_;
 };
 
 inline string StringifyNum(BitChunks c) { return c.ToString(); }
@@ -658,10 +658,10 @@ class FpValues {
 
   class iterator
       : public std::iterator<std::input_iterator_tag,  // iterator_category
-                             uint64,                   // value_type
-                             uint64,                   // difference_type
+                             uint64_t,                 // value_type
+                             uint64_t,                 // difference_type
                              const uint64_t*,          // pointer
-                             uint64                    // reference
+                             uint64_t                  // reference
                              > {
    public:
     explicit iterator(const FpValues* fp_values) : fp_values_(fp_values) {
@@ -699,8 +699,8 @@ class FpValues {
       return *this;
     }
 
-    uint64 operator*() const {
-      uint64 value = 0;
+    uint64_t operator*() const {
+      uint64_t value = 0;
       for (int i = 0; i < FpValues::kTotalBitChunks; ++i) {
         value = value | (*iters_[i]) << fp_values_->offsets_[i];
       }
@@ -749,7 +749,7 @@ class FpValues {
     for (int i = 0; i < kTotalBitChunks; ++i) {
       int total_bits = offsets[i + 1] - offsets[i];
       if (total_bits < 64) {
-        uint64 bound = 1ull << total_bits;
+        uint64_t bound = 1ull << total_bits;
         CHECK_LT(chunks[i].start_, bound);
         CHECK_LT(chunks[i].end_, bound);
       } else {
@@ -803,12 +803,12 @@ int GetExponentTotalBits() {
 }
 
 template <typename T>
-uint64 GetAllOneMantissa() {
+uint64_t GetAllOneMantissa() {
   return (1ull << GetMantissaTotalBits<T>()) - 1ull;
 }
 
 template <typename T>
-uint64 GetAllOneExponent() {
+uint64_t GetAllOneExponent() {
   return (1ull << GetExponentTotalBits<T>()) - 1ull;
 }
 
@@ -830,7 +830,7 @@ FpValues GetZeros() {
 template <typename T>
 FpValues GetSubnormals(int approx_num_values) {
   int mantissa = GetMantissaTotalBits<T>();
-  uint64 mantissa_spacing = (1ull << mantissa) / (approx_num_values * 2);
+  uint64_t mantissa_spacing = (1ull << mantissa) / (approx_num_values * 2);
   return GetFpValues<T>(
       BitChunks(0x1, GetAllOneMantissa<T>(), mantissa_spacing),
       BitChunks(0, 0, 1), BitChunks(0, 1, 1));
@@ -838,7 +838,7 @@ FpValues GetSubnormals(int approx_num_values) {
 
 template <typename T>
 FpValues GetInfinites() {
-  uint64 all_one_exp = GetAllOneExponent<T>();
+  uint64_t all_one_exp = GetAllOneExponent<T>();
   return GetFpValues<T>(BitChunks(0, 0, 1),
                         BitChunks(all_one_exp, all_one_exp, 1),
                         BitChunks(0, 1, 1));
@@ -847,8 +847,8 @@ FpValues GetInfinites() {
 template <typename T>
 FpValues GetNans(int approx_num_values) {
   int mantissa = GetMantissaTotalBits<T>();
-  uint64 mantissa_spacing = (1ull << mantissa) / (approx_num_values * 2);
-  uint64 all_one_exp = GetAllOneExponent<T>();
+  uint64_t mantissa_spacing = (1ull << mantissa) / (approx_num_values * 2);
+  uint64_t all_one_exp = GetAllOneExponent<T>();
   return GetFpValues<T>(
       BitChunks(0x1, GetAllOneMantissa<T>(), mantissa_spacing),
       BitChunks(all_one_exp, all_one_exp, 1), BitChunks(0, 1, 1));
@@ -869,26 +869,27 @@ FpValues GetNormals(int approx_num_values) {
 // `approx_num_values` floating point values of type `T`, with each FpValues
 // represents about `num_values_per_group` floating point values.
 template <typename T>
-std::vector<FpValues> GetFpValuesWithExponents(uint64 first_exponent,
-                                               uint64 exponent_spacing,
-                                               uint64 num_exponents,
-                                               uint64 approx_num_values,
-                                               uint64 num_values_per_group) {
-  const uint64 num_signs = 2;
-  uint64 approx_num_mantissa = approx_num_values / (num_exponents * num_signs);
-  uint64 num_mantissa_per_group =
+std::vector<FpValues> GetFpValuesWithExponents(uint64_t first_exponent,
+                                               uint64_t exponent_spacing,
+                                               uint64_t num_exponents,
+                                               uint64_t approx_num_values,
+                                               uint64_t num_values_per_group) {
+  const uint64_t num_signs = 2;
+  uint64_t approx_num_mantissa =
+      approx_num_values / (num_exponents * num_signs);
+  uint64_t num_mantissa_per_group =
       num_values_per_group / (num_exponents * num_signs);
   CHECK_GT(approx_num_mantissa, 0);
   CHECK_GT(num_mantissa_per_group, 0);
 
   CHECK_LT(first_exponent + num_exponents - 1ull, GetAllOneExponent<T>());
   int mantissa = GetMantissaTotalBits<T>();
-  uint64 mantissa_spacing = (1ull << mantissa) / approx_num_mantissa;
+  uint64_t mantissa_spacing = (1ull << mantissa) / approx_num_mantissa;
 
   std::vector<FpValues> result;
-  for (uint64 group_start = 0; group_start < GetAllOneMantissa<T>();
+  for (uint64_t group_start = 0; group_start < GetAllOneMantissa<T>();
        group_start += mantissa_spacing * num_mantissa_per_group) {
-    uint64 group_end =
+    uint64_t group_end =
         group_start + (num_mantissa_per_group - 1) * mantissa_spacing;
     if (group_end > GetAllOneMantissa<T>()) {
       group_end = GetAllOneMantissa<T>();
@@ -910,7 +911,7 @@ std::vector<FpValues> GetFpValuesWithExponents(uint64 first_exponent,
 // the hence the peak memory usage of the test.
 template <typename T>
 std::vector<FpValues> GetFpValuesForMagnitudeExtremeNormals(
-    uint64 approx_num_values = 40000, uint64 num_values_per_group = 4000) {
+    uint64_t approx_num_values = 40000, uint64_t num_values_per_group = 4000) {
   std::vector<FpValues> large =
       GetFpValuesWithExponents<T>(GetAllOneExponent<T>() - 5, 1, 5,
                                   approx_num_values / 2, num_values_per_group);

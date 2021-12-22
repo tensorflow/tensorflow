@@ -1022,7 +1022,7 @@ Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     //  - cudnn may use complex conv algorithms that do fewer (or more!) flops
     //    than we calculate.
     //
-    //  - for int8 convs, these aren't *fl*ops, but we fudge it.
+    //  - for int8_t convs, these aren't *fl*ops, but we fudge it.
     current_properties_[kFlopsKey] = GetConvolutionFlops(custom_call);
 
     // conv custom-calls return a tuple (real_output, temp_bytes).  Count just
