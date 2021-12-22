@@ -1,22 +1,5 @@
 # Release 2.8.0
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
-
-# Release 2.8.0
-
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
-# Breaking Changes
-
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-# Known Caveats
-
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
 # Major Features and Improvements
 
 *   `tf.lite`:
@@ -53,15 +36,8 @@
         rank 2 or above by specifying the output shape in the feature config
         or via the build method.
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-
 # Bug Fixes and Other Changes
 
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
 * `tf.data`:
   * The optimization `parallel_batch` now becomes default if not disabled by
     users, which will parallelize copying of batch elements.
