@@ -503,6 +503,7 @@ typedef struct TpuEmbeddingEngine_ExecutePartitioner_Params {
   int32_t struct_size;
   void* priv;
   TpuSerializedProto tpu_embedding_config;
+  const XLA_TpuMeshState* tpu_mesh_state;
   // out
   size_t* common_config_size;
   char** common_config;
@@ -567,6 +568,7 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConfigureCommunication(
 typedef struct TpuEmbeddingEngine_FinalizeConfiguration_Params {
   int32_t struct_size;
   void* priv;
+  const XLA_TpuMeshState* tpu_mesh_state;
 
   size_t host_config_size;
   const TpuSerializedProto* host_config;
