@@ -113,6 +113,9 @@ class OpTestBuilder {
   // As RandomInput but the values are unique.
   OpTestBuilder& RandomUniqueInput(DataType type, std::vector<int64_t> dims);
 
+  // Add variadic input tensors as Placehodler nodes.
+  OpTestBuilder& VariadicInput(const std::vector<Tensor>& tensor);
+
   // Sets an attribute.
   template <class T>
   OpTestBuilder& Attr(absl::string_view attr_name, T&& value);
@@ -190,6 +193,15 @@ OpTestBuilder& OpTestBuilder::RandomUniqueInput(DataType type,
   input.needs_unique_values = true;
   input.dims = std::move(dims);
   inputs_.push_back(input);
+  return *this;
+}
+
+OpTestBuilder& OpTestBuilder::VariadicInput(
+    const std::vector<Tensor>& tensors) {
+  VLOG(1) << "Adding variadic input of length " << tensors.size() << ":";
+  for (auto& t : tensors) {
+    Input(t);
+  }
   return *this;
 }
 
@@ -374,6 +386,16 @@ class OpTest : public ::testing::Test {
   };
   // Choose arguments for the tf.BatchMatMul{V2} ops.
   BatchMatMulArguments ChooseBatchMatMulArguments(bool broadcastable_batch);
+
+  struct ConcatArguments {
+    std::vector<Tensor> values;
+    Tensor axis;
+    int n;
+    DataType type;
+    DataType type_idx;
+  };
+  // Choose arguments for the tf.Concat{V2} ops.
+  ConcatArguments ChooseConcatArguments(bool int64_idx_allowed);
 
   struct XlaDotArguments {
     std::vector<int64_t> lhs_dims;
@@ -963,6 +985,32 @@ OpTest::BatchMatMulArguments OpTest::ChooseBatchMatMulArguments(
 
   a.lhs_dims = lhs_dims;
   a.rhs_dims = rhs_dims;
+  return a;
+}
+
+OpTest::ConcatArguments OpTest::ChooseConcatArguments(bool int64_idx_allowed) {
+  ConcatArguments a;
+
+  std::bernoulli_distribution random_bool;
+  bool use_int64_idx = random_bool(generator());
+
+  a.type = Choose<DataType>(kAllXlaTypes);
+  a.type_idx = use_int64_idx ? DT_INT64 : DT_INT32;
+  a.n = std::uniform_int_distribution<int>(2, 4)(generator());
+
+  std::vector<int64_t> dims = RandomDims(1, 4, 0, 64);
+
+  int axis =
+      std::uniform_int_distribution<int32>(0, dims.size() - 1)(generator());
+  a.axis =
+      use_int64_idx ? test::AsScalar<int64>(axis) : test::AsScalar<int32>(axis);
+
+  for (int i = 0; i < a.n; ++i) {
+    std::vector<int64_t> shape = dims;
+    shape[axis] = RandomDim(0, 64);
+    a.values.push_back(RandomTensor(a.type, false, shape));
+  }
+
   return a;
 }
 
@@ -1885,24 +1933,27 @@ TEST_F(OpTest, Complex) {
 }
 
 TEST_F(OpTest, Concat) {
+  GTEST_SKIP() << "b/201095155";
+  GTEST_SKIP() << "b/197140886";
+  Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
+    ConcatArguments a = ChooseConcatArguments(false);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Concat")
+                                             .Input(a.axis)
+                                             .VariadicInput(a.values)
+                                             .Attr("N", a.n)
+                                             .Attr("T", a.type));
+  });
+}
+
+TEST_F(OpTest, ConcatV2) {
   Repeatedly([this]() {
-    auto type = Choose<DataType>(kAllXlaTypes);
-    int n = std::uniform_int_distribution<int>(2, 5)(generator());
-
-    std::vector<int64_t> dims = RandomDims(1);
-    int concat_dim =
-        std::uniform_int_distribution<int32>(0, dims.size() - 1)(generator());
-
-    OpTestBuilder builder("Concat");
-    builder.Input(test::AsScalar<int32>(concat_dim));
-    builder.Attr("T", type);
-    builder.Attr("N", n);
-    for (int i = 0; i < n; ++i) {
-      std::vector<int64_t> shape = dims;
-      shape[concat_dim] = RandomDim();
-      builder.RandomInput(type, shape);
-    }
-    return ExpectTfAndXlaOutputsAreClose(builder);
+    ConcatArguments a = ChooseConcatArguments(true);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ConcatV2")
+                                             .VariadicInput(a.values)
+                                             .Input(a.axis)
+                                             .Attr("N", a.n)
+                                             .Attr("T", a.type)
+                                             .Attr("Tidx", a.type_idx));
   });
 }
 
