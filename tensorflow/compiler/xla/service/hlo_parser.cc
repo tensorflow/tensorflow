@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -3754,37 +3755,18 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
     // empty
   } else {
     do {
+      // Try to parse the operand as a name with an optional shape.  If that
+      // doesn't work, try again parsing it as a nested instruction.
+      //
+      // (Trying nested instructions second is important here: If you have a
+      // giant HLO dump, it likely doesn't have any nested instructions, but
+      // likely has tons of non-nested operands.  Generating an error is slow --
+      // O(n) as of writing -- so we only want to hit the error branch in the
+      // uncommon case.)
       HloLexer lexer_copy = lexer_;
-
-      // Try to parse the operand as a nested instruction.  If that doesn't
-      // work, try again parsing it as regular name.
-      //
-      // Nested instructions can't have attributes because it's ambiguous
-      // whether the comma separates an instruction from its attribute, or
-      // whether the comma separates two instructions.
-      //
-      // Swallow any errors which occur while we try this so that if there are
-      // other unrelated errors in this module, we don't *also* print
-      // superfluous errors about being unable to parse a name as an
-      // instruction.
-      //
-      // TODO(jlebar): To generate better error messages, we shouldn't discard
-      // these errors wholesale, but rather we should notice that a token can't
-      // be a name, then print the parse-as-instruction errors.
       std::vector<std::string> saved_errors;
       std::swap(saved_errors, error_);
-      bool is_instruction =
-          ParseInstructionRhs(builder, /*name=*/"", lexer_.GetLoc(),
-                              /*allow_attributes=*/false);
-      error_ = std::move(saved_errors);
-
-      if (is_instruction) {
-        HloInstruction* instr = builder->last_added_instruction();
-        operands->push_back(instr);
-      } else {
-        // Restore lexer state as though the ParseInstructionRhs didn't occur.
-        lexer_ = lexer_copy;
-
+      bool is_normal_operand = [&] {
         LocTy loc = lexer_.GetLoc();
         std::string name;
         optional<Shape> shape;
@@ -3815,8 +3797,56 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
         if (instruction == nullptr) {
           return Error(loc, StrCat("instruction does not exist: ", name));
         }
+
+        // If this is a regular named operand, it must be followed by a comma or
+        // a close-paren.  If not, it has to be a named instruction.  Don't
+        // output an error here -- if it fails to parse as a named instruction
+        // too, we'll just use that set of errors.
+        auto next = lexer_.GetKind();
+        if (next != TokKind::kComma && next != TokKind::kRparen) {
+          return false;
+        }
+
         operands->push_back(instruction->first);
+        return true;
+      }();
+
+      if (is_normal_operand) {
+        error_ = std::move(saved_errors);
+        continue;
       }
+
+      // If parsing as a normal operand failed, try parsing as a nested
+      // instruction.
+      std::vector<std::string> normal_operand_errors;
+      std::swap(error_, normal_operand_errors);
+      lexer_ = lexer_copy;
+
+      // Nested instructions can't have attributes because it's ambiguous
+      // whether the comma separates an instruction from its attribute, or
+      // whether the comma separates two instructions.
+      LocTy loc = lexer_.GetLoc();
+      bool is_nested_instruction = ParseInstructionRhs(
+          builder, /*name=*/"", loc, /*allow_attributes=*/false);
+      if (is_nested_instruction) {
+        operands->push_back(builder->last_added_instruction());
+        error_ = std::move(saved_errors);
+        continue;
+      }
+
+      // If neither parsing as a normal operand nor parsing as a nested
+      // instruction worked, fail.  Return both sets of errors.
+      std::vector<std::string> nested_instruction_errors;
+      std::swap(error_, nested_instruction_errors);
+      error_ = std::move(saved_errors);
+      Error(loc,
+            "cannot parse as an instruction name or as a nested instruction:");
+      error_.insert(error_.end(),
+                    std::make_move_iterator(normal_operand_errors.begin()),
+                    std::make_move_iterator(normal_operand_errors.end()));
+      error_.insert(error_.end(),
+                    std::make_move_iterator(nested_instruction_errors.begin()),
+                    std::make_move_iterator(nested_instruction_errors.end()));
     } while (EatIfPresent(TokKind::kComma));
   }
   return ParseToken(TokKind::kRparen, "expects ')' at the end of operands");

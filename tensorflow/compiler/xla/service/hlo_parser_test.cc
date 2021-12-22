@@ -2745,19 +2745,6 @@ ENTRY %CustomCall () -> f32[1] {
       "with that of its root instruction foo, f32[1,2,3]");
 }
 
-TEST_F(HloParserTest, ErrorsAreNotPollutedByNonexistentNestedInstructions) {
-  const std::string original = R"(HloModule test
-
-ENTRY test {
-  p = f32[] parameter(0)
-  ROOT root = add(p, q)
-}
-
-)";
-  auto err = ParseAndReturnUnverifiedModule(original).status().error_message();
-  EXPECT_THAT(err, AllOf(Not(IsEmpty()), Not(HasSubstr("expects opcode"))));
-}
-
 TEST_F(HloParserTest, EntryComputationWithLayout) {
   const std::string original = R"(HloModule layout:
 add_F32.v3 {
