@@ -806,8 +806,8 @@ class GradientTape(object):
   >>> print(dy_dx)
   tf.Tensor(4.0, shape=(), dtype=float32)
   >>> # No gradients will be available as `w` isn't being watched.
-  >>> dz_dw = tape.gradient(z, w)
-  >>> print(dz_dw)
+  >>> dz_dy = tape.gradient(z, w)
+  >>> print(dz_dy)
   None
 
   Note that when using models you should ensure that your variables exist when
