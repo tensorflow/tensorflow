@@ -21,7 +21,9 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -1263,9 +1265,9 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
         } else {
           pieces->push_back(brace_to_string("{"));
           for (int i = 0; i < dimensions[0]; ++i) {
-            std::vector<int64_t> cloned_indices(*accum_indices);
-            cloned_indices.push_back(i);
-            to_string_recursive(dimensions.subspan(1), &cloned_indices);
+            accum_indices->push_back(i);
+            to_string_recursive(dimensions.subspan(1), accum_indices);
+            accum_indices->pop_back();
             if (i < dimensions[0] - 1) {
               pieces->push_back(",");
               pieces->push_back(dimensions.size() > 1 ? "\n" : " ");
