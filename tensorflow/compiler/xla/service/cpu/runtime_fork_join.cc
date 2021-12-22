@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
                                      void*, int64_t*, uint64_t*);

@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 

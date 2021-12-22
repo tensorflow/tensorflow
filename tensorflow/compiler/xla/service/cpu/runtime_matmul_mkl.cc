@@ -19,7 +19,6 @@ limitations under the License.
 #include "third_party/intel_mkl_ml/include/mkl_cblas.h"
 #include "third_party/intel_mkl_ml/include/mkl_service.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/core/platform/types.h"
 
 #define EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
