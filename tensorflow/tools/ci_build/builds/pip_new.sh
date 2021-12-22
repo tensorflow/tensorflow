@@ -299,7 +299,7 @@ check_global_vars
 # Check if in a virtualenv and exit if yes.
 # TODO(rameshsampath): Python 3.10 has pip conflicts when using global env, so build in virtualenv
 # Once confirmed to work, run builds for all python env in a virtualenv
-if [[ "${PY_MAJOR_MINOR_VER}" -ne "3.10" ]]; then
+if [[ "x${PY_MAJOR_MINOR_VER}x" != "x3.10x" ]]; then
   IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
   if [[ "$IN_VENV" == "1" ]]; then
     echo "It appears that we are already in a virtualenv. Deactivating..."
