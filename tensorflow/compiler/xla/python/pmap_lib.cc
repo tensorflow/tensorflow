@@ -382,9 +382,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
     arguments.signature.dynamic_arg_signatures.push_back(
         std::move(signature_or_error).ValueOrDie());
   }
-  CHECK(global_state.extra_jit_context.has_value());
-  arguments.signature.global_extra_jit_context =
-      *global_state.extra_jit_context;
+  arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
   // Retrieve/Maybe add the executable to the cache.

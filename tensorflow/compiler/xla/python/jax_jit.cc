@@ -99,6 +99,15 @@ absl::optional<pybind11::function> GetPostHook() {
                                                   : global_state.post_hook;
 }
 
+static std::string OptionalDebugString(
+    const absl::optional<py::object> optional) {
+  if (optional.has_value()) {
+    return py::cast<std::string>(py::str(optional.value()));
+  } else {
+    return "None";
+  }
+}
+
 std::string CallSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const py::object& o) {
     out->append(py::cast<std::string>(py::str(o)));
@@ -110,13 +119,6 @@ std::string CallSignature::DebugString() const {
                                 const xla::PyArgSignature& s) {
     out->append(s.DebugString());
   };
-  std::string thread_local_extra_jit_context_str;
-  if (thread_local_extra_jit_context.has_value()) {
-    thread_local_extra_jit_context_str =
-        py::cast<std::string>(py::str(thread_local_extra_jit_context.value()));
-  } else {
-    thread_local_extra_jit_context_str = "None";
-  }
   return absl::StrFormat(
       "static args (positional + keyword): %s\nstatic arg keyword names: %s\n"
       "dynamic arg signatures (positional + keyword): %s\n"
@@ -130,9 +132,8 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
-      device, jax_enable_x64,
-      py::cast<std::string>(py::str(global_extra_jit_context)),
-      thread_local_extra_jit_context_str);
+      device, jax_enable_x64, OptionalDebugString(global_extra_jit_context),
+      OptionalDebugString(thread_local_extra_jit_context));
 }
 
 bool CallSignature::operator==(const CallSignature& other) const {
@@ -159,7 +160,10 @@ bool CallSignature::operator==(const CallSignature& other) const {
                      ". The error was:\n", e.what()));
                }
              }) &&
-         global_extra_jit_context.equal(other.global_extra_jit_context) &&
+         (global_extra_jit_context.has_value() ==
+          other.global_extra_jit_context.has_value()) &&
+         (!global_extra_jit_context.has_value() ||
+          global_extra_jit_context->equal(*other.global_extra_jit_context)) &&
          (thread_local_extra_jit_context.has_value() ==
           other.thread_local_extra_jit_context.has_value()) &&
          (!thread_local_extra_jit_context.has_value() ||
@@ -837,8 +841,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
                                         **kwargs.value_or(py::kwargs())))[0]);
   }
-  CHECK(global_state.extra_jit_context.has_value());
-  arguments.signature.global_extra_jit_context = *global_state.extra_jit_context;
+  arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
   bool inserted = false;
