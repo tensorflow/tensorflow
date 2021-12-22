@@ -17,6 +17,7 @@ package_group(
         "//tensorflow/core/tfrt/eager/...",
         "//tensorflow/core/tfrt/experimental/data/...",
         "//tensorflow/core/tfrt/saved_model/...",
+        "//tensorflow/core/tfrt/graph_executor/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/mlir/tfrt_compiler/...",

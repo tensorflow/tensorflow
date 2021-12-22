@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
@@ -121,42 +122,18 @@ class FunctionMetadata {
 class SavedModel {
  public:
   struct Options {
-    explicit Options(const Runtime* rt) : runtime(rt) { DCHECK(runtime); }
+    explicit Options(const Runtime* rt) : graph_execution_options(rt) {}
 
     // If true, the loading of any signature (or signature combination) will be
     // deferred until the first corresponding invocationof running. Otherwise,
     // the individual signatures will be loaded along with the saved model.
     bool enable_lazy_loading = false;
 
-    // If true, when creating an optimized subgraph, Placer and Grappler will
-    // also run on the functions.
-    bool run_placer_grappler_on_functions = false;
-
-    // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
-    // more details. It must not be nullptr;
-    const Runtime* runtime = nullptr;
-
-    // Model metadata used for monitoring and tracing.
-    tensorflow::SessionMetadata model_metadata;
-
-    tensorflow::TfrtCompileOptions compile_options;
+    GraphExecutionOptions graph_execution_options;
   };
 
   // Per-request options.
-  struct RunOptions {
-    absl::optional<std::chrono::system_clock::time_point> deadline;
-
-    // Priority of the request. Larger number means higher priority.
-    int priority = 0;
-
-    // If true, the input specs will be checked before running, and an error
-    // will be raised upon mismatch.
-    bool validate_input_specs = false;
-
-    // The thread pool used for this run. If it is nullptr, a default one set
-    // in the tensorflow::tfrt_stub::Runtime will be used.
-    WorkQueueInterface* work_queue = nullptr;
-  };
+  using RunOptions = GraphExecutionRunOptions;
 
   explicit SavedModel(const Runtime* runtime) : runtime_(runtime) {
     DCHECK(runtime_);
