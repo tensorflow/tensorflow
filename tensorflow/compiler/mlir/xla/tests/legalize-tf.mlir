@@ -5312,23 +5312,21 @@ func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
 
   // CHECK: [[IV_INIT:%.*]] = mhlo.constant dense<0> : tensor<i32>
 
-  // CHECK: [[WHILE_OUT:%.*]]:3 = "mhlo.while"([[IV_INIT]], [[SWAPS]], [[INDICES]]) ( {
-  // CHECK: ^{{.*}}([[COND_ARG0:%.*]]: tensor<i32>, [[COND_ARG1:%.*]]: tensor<4xi32>, [[COND_ARG2:%.*]]: tensor<4xi32>):
+  // CHECK: [[WHILE_OUT:%.*]]:3 = mhlo.while([[ITER_ARG0:.*]] = [[IV_INIT]], [[ITER_ARG1:.*]] = [[SWAPS]], [[ITER_ARG2:.*]] = [[INDICES]])
   // CHECK:   [[LIMIT:%.*]] = mhlo.constant dense<4> : tensor<i32>
-  // CHECK:   [[CMP:%.*]] = "mhlo.compare"([[COND_ARG0]], [[LIMIT]]) {comparison_direction = "LT"}
+  // CHECK:   [[CMP:%.*]] = "mhlo.compare"([[ITER_ARG0]], [[LIMIT]]) {comparison_direction = "LT"}
   // CHECK:   "mhlo.return"([[CMP]])
-  // CHECK: },  {
-  // CHECK: ^{{.*}}([[BODY_ARG0:%.*]]: tensor<i32>, [[BODY_ARG1:%.*]]: tensor<4xi32>, [[BODY_ARG2:%.*]]: tensor<4xi32>):
-  // CHECK:   [[SRC_IDX:%.*]] = "mhlo.dynamic-slice"([[BODY_ARG2]], [[BODY_ARG0]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
-  // CHECK:   [[SWP_IDX:%.*]] = "mhlo.dynamic-slice"([[BODY_ARG1]], [[BODY_ARG0]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK: } do {
+  // CHECK:   [[SRC_IDX:%.*]] = "mhlo.dynamic-slice"([[ITER_ARG2]], [[ITER_ARG0]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:   [[SWP_IDX:%.*]] = "mhlo.dynamic-slice"([[ITER_ARG1]], [[ITER_ARG0]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
   // CHECK:   [[SWP:%.*]] = "mhlo.reshape"([[SWP_IDX]]) : (tensor<1xi32>) -> tensor<i32>
-  // CHECK:   [[TGT_IDX:%.*]] = "mhlo.dynamic-slice"([[BODY_ARG2]], [[SWP]]) {slice_sizes = dense<1> : tensor<i64>}
-  // CHECK:   [[INDICES1:%.*]] = "mhlo.dynamic-update-slice"([[BODY_ARG2]], [[TGT_IDX]], [[BODY_ARG0]]) : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
+  // CHECK:   [[TGT_IDX:%.*]] = "mhlo.dynamic-slice"([[ITER_ARG2]], [[SWP]]) {slice_sizes = dense<1> : tensor<i64>}
+  // CHECK:   [[INDICES1:%.*]] = "mhlo.dynamic-update-slice"([[ITER_ARG2]], [[TGT_IDX]], [[ITER_ARG0]]) : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
   // CHECK:   [[INDICES2:%.*]] = "mhlo.dynamic-update-slice"([[INDICES1]], [[SRC_IDX]], [[SWP]]) : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
   // CHECK:   [[ONE:%.*]] = mhlo.constant dense<1> : tensor<i32>
-  // CHECK:   [[NEW_IV:%.*]] = chlo.broadcast_add [[BODY_ARG0]], [[ONE]]
-  // CHECK:   "mhlo.return"([[NEW_IV]], [[BODY_ARG1]], [[INDICES2]])
-  // CHECK: }) : (tensor<i32>, tensor<4xi32>, tensor<4xi32>) -> (tensor<i32>, tensor<4xi32>, tensor<4xi32>)
+  // CHECK:   [[NEW_IV:%.*]] = chlo.broadcast_add [[ITER_ARG0]], [[ONE]]
+  // CHECK:   "mhlo.return"([[NEW_IV]], [[ITER_ARG1]], [[INDICES2]])
+  // CHECK: }
 
   // CHECK: [[GATHER:%.*]] = "mhlo.gather"([[INPUT]], [[WHILE_OUT]]#2)
   // CHECK-SAME:   dimension_numbers =

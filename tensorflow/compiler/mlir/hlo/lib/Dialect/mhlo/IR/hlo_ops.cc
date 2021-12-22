@@ -5372,6 +5372,70 @@ static LogicalResult verify(WhileOp whileOp) {
   return success();
 }
 
+/// Print a `while` op.
+///
+/// op ::= `mhlo.while` `(` assignment-list `)` `:` types attribute-dict
+///         `cond` region
+///         `do` region
+/// assignment-list ::= assignment | assignment `,` assignment-list
+/// assignment ::= ssa-value `=` ssa-value
+void printWhileOp(WhileOp op, OpAsmPrinter& p) {
+  p << '(';
+  llvm::interleaveComma(
+      llvm::zip(op.getBody()->getArguments(), op->getOperands()), p,
+      [&](auto zip) {
+        p.printOperand(std::get<0>(zip));
+        p << " = ";
+        p.printOperand(std::get<1>(zip));
+      });
+  p << ")";
+  if (op->getNumOperands()) {
+    p << " : ";
+    llvm::interleaveComma(op->getOperandTypes(), p);
+  }
+  p.printOptionalAttrDictWithKeyword(op->getAttrs());
+  p.printNewline();
+  p << " cond";
+  p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
+  p << " do";
+  p.printRegion(op->getRegion(1), /*printEntryBlockArgs=*/false);
+}
+
+ParseResult parseWhileOp(OpAsmParser& parser, OperationState& result) {
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  // Parse the operands of the while: these are of the form:
+  //   %iter_arg = %init_val
+  // where %iter_arg is the name of the block argument in the cond/body blocks
+  // and %init_val is the actual operand.
+  SmallVector<OpAsmParser::OperandType> operands;
+  SmallVector<OpAsmParser::OperandType> iterArgs;
+  if (parser.parseLParen()) return failure();
+  do {
+    if (succeeded(parser.parseOptionalRParen())) break;
+    OpAsmParser::OperandType operand, iterArg;
+    if (parser.parseOperand(iterArg) || parser.parseEqual() ||
+        parser.parseOperand(operand))
+      return failure();
+    iterArgs.push_back(iterArg);
+    operands.push_back(operand);
+    if (succeeded(parser.parseOptionalRParen())) break;
+    parser.parseComma();
+  } while (true);
+  if (!operands.empty()) {
+    if (parser.parseColon() || parser.parseTypeList(result.types))
+      return failure();
+  }
+
+  if (parser.resolveOperands(operands, result.types, loc, result.operands) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
+      parser.parseKeyword("cond") ||
+      parser.parseRegion(*result.addRegion(), iterArgs, result.types) ||
+      parser.parseKeyword("do") ||
+      parser.parseRegion(*result.addRegion(), iterArgs, result.types))
+    return failure();
+  return success();
+}
+
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
 

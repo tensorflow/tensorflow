@@ -14,8 +14,7 @@ func @splat_constants() -> tensor<1x64x224x224xf32> {
 // CHECK-LABEL: @while_with_implicit_arg_capture
 func @while_with_implicit_arg_capture(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while
-  // CHECK-SAME: (%arg0, %arg0)
-  // CHECK-NEXT: %[[ARG1:.*]]: {{.*}}, %[[ARG2:.*]]: tensor
+  // CHECK-SAME: (%[[ARG1:.*]] = %arg0, %[[ARG2:.*]] = %arg0)
   %0 = "mhlo.while"(%arg0) ( {
   ^bb0(%arg1: tensor<i64>):
     // CHECK: mhlo.compare
@@ -23,7 +22,6 @@ func @while_with_implicit_arg_capture(%arg0: tensor<i64>) -> tensor<i64> {
     %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   },  {
-  // CHECK: ^bb0(%[[ARG1:.*]]: {{.*}}, %[[ARG2:.*]]: tensor
   ^bb0(%arg1: tensor<i64>):
     // CHECK: %[[ADD:.*]] = mhlo.add %[[ARG1]], %[[ARG1]]
     %2 = mhlo.add %arg1, %arg1 : tensor<i64>
@@ -62,8 +60,7 @@ func @while_with_implicit_capture(%arg0 :  tensor<i1>, %arg1 : tensor<5xi32>) ->
 // CHECK-LABEL: @while_with_multiple_capture
 func @while_with_multiple_capture(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while
-  // CHECK-SAME: (%arg0, %arg0)
-  // CHECK-NEXT: %[[ARG1:.*]]: {{.*}}, %[[ARG2:.*]]: tensor
+  // CHECK-SAME: (%[[ARG1:.*]] = %arg0, %[[ARG2:.*]] = %arg0)
   %0 = "mhlo.while"(%arg0) ( {
   ^bb0(%arg1: tensor<i64>):
     // CHECK: mhlo.compare
@@ -71,7 +68,6 @@ func @while_with_multiple_capture(%arg0: tensor<i64>) -> tensor<i64> {
     %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   },  {
-  // CHECK: ^bb0(%[[ARG1:.*]]: {{.*}}, %[[ARG2:.*]]: tensor
   ^bb0(%arg1: tensor<i64>):
     // CHECK: %[[ADD:.*]] = mhlo.add %[[ARG2]], %[[ARG1]]
     %2 = mhlo.add %arg0, %arg1 : tensor<i64>

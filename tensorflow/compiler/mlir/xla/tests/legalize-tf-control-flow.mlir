@@ -160,15 +160,12 @@ func @while() -> tensor<i32> {
   // CHECK-DAG: [[VAL1:%.+]] = mhlo.constant dense<-1>
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = mhlo.constant dense<-1> : tensor<i32>
-  // CHECK: [[VAL2:%.+]]:3 = "mhlo.while"([[VAL0]], [[VAL1]], [[VAL0]]) ( {
-  // CHECK: ^bb0([[COND_ARG0:%.+]]: tensor<i32>, [[COND_ARG1:%.+]]: tensor<i32>, [[COND_ARG2:%.+]]: tensor<i32>):
-  // CHECK:   [[VAL3:%.+]] = call @while_cond([[COND_ARG0]], [[COND_ARG1]], [[COND_ARG2]])
+  // CHECK: [[VAL2:%.+]]:3 = mhlo.while([[ITER_ARG0:.*]] = [[VAL0]], [[ITER_ARG1:.*]] =  [[VAL1]], [[ITER_ARG2:.*]] =  [[VAL0]])
+  // CHECK:   [[VAL3:%.+]] = call @while_cond([[ITER_ARG0]], [[ITER_ARG1]], [[ITER_ARG2]])
   // CHECK:   "mhlo.return"([[VAL3]])
-  // CHECK: },  {
-  // CHECK: ^bb0([[BODY_ARG0:%.+]]: tensor<i32>, [[BODY_ARG1:%.+]]: tensor<i32>, [[BODY_ARG2:%.+]]: tensor<i32>):
-  // CHECK:   [[VAL3:%.+]]:3 = call @while_body([[BODY_ARG0]], [[BODY_ARG1]], [[BODY_ARG2]])
+  // CHECK: } do {
+  // CHECK:   [[VAL3:%.+]]:3 = call @while_body([[ITER_ARG0]], [[ITER_ARG1]], [[ITER_ARG2]])
   // CHECK:   "mhlo.return"([[VAL3]]#0, [[VAL3]]#1, [[VAL3]]#2)
-  // CHECK: }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
   // CHECK: return [[VAL2]]#2
   %2:3 = "tf.While"(%0, %1, %0) {body = @while_body, cond = @while_cond, is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
   return %2#2 : tensor<i32>
@@ -192,29 +189,26 @@ func @whileRegion() -> tensor<i32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   // CHECK: [[VAL1:%.+]] = mhlo.constant dense<-1>
   %1 = mhlo.constant dense<-1> : tensor<i32>
-  // CHECK: [[VAL2:%.+]]:3 = "mhlo.while"([[VAL0]], [[VAL1]], [[VAL0]]) ( {
+  // CHECK: [[VAL2:%.+]]:3 = mhlo.while([[ITER_ARG0:.*]] = [[VAL0]], [[ITER_ARG1:.*]] =  [[VAL1]], [[ITER_ARG2:.*]] =  [[VAL0]])
   %2:3 = "tf.WhileRegion"(%0, %1, %0) ( {
-  // CHECK: ^bb0([[COND_ARG0:%.+]]: tensor<i32>, [[COND_ARG1:%.+]]: tensor<i32>, [[COND_ARG2:%.+]]: tensor<i32>):
   ^cond(%carg0: tensor<i32>, %carg1: tensor<i32>, %carg2: tensor<i32>):
     // CHECK: [[VAL3:%.+]] = mhlo.constant dense<10>
     %3 = mhlo.constant dense<10> : tensor<i32>
-    // CHECK: [[VAL4:%.+]] = "mhlo.compare"([[COND_ARG2]], [[VAL3]]) {comparison_direction = "LT"}
+    // CHECK: [[VAL4:%.+]] = "mhlo.compare"([[ITER_ARG2]], [[VAL3]]) {comparison_direction = "LT"}
     %4 = "mhlo.compare"(%carg2, %3) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     // CHECK: "mhlo.return"([[VAL4]])
     "tf.Yield"(%4) : (tensor<i1>) -> ()
   }, {
-  // CHECK: ^bb0([[BODY_ARG0:%.+]]: tensor<i32>, [[BODY_ARG1:%.+]]: tensor<i32>, [[BODY_ARG2:%.+]]: tensor<i32>):
   ^body(%barg0: tensor<i32>, %barg1: tensor<i32>, %barg2: tensor<i32>):
     // CHECK: [[VAL5:%.+]] = mhlo.constant dense<1>
     %5 = mhlo.constant dense<1> : tensor<i32>
-    // CHECK: [[VAL6:%.+]] = mhlo.add [[BODY_ARG2]], [[VAL5]]
+    // CHECK: [[VAL6:%.+]] = mhlo.add [[ITER_ARG2]], [[VAL5]]
     %6 = mhlo.add %barg2, %5 : tensor<i32>
-    // CHECK: [[VAL7:%.+]] = mhlo.add [[BODY_ARG0]], [[VAL5]]
+    // CHECK: [[VAL7:%.+]] = mhlo.add [[ITER_ARG0]], [[VAL5]]
     %7 = mhlo.add %barg0, %5 : tensor<i32>
-    // CHECK: "mhlo.return"([[VAL7]], [[BODY_ARG1]], [[VAL6]])
+    // CHECK: "mhlo.return"([[VAL7]], [[ITER_ARG1]], [[VAL6]])
     "tf.Yield"(%7, %barg1, %6) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
   }) {is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
-  // CHECK: }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
   // CHECK: return [[VAL2]]#2
   return %2#2 : tensor<i32>
 }
@@ -227,25 +221,22 @@ func @whileRegionImplicitInputs(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   // CHECK: [[VAL1:%.+]] = mhlo.constant dense<-1>
   %1 = mhlo.constant dense<-1> : tensor<i32>
-  // CHECK: [[VAL2:%.+]]:3 = "mhlo.while"([[ARG0]], [[VAL0]], [[VAL1]]) ( {
+  // CHECK: [[VAL2:%.+]]:3 = mhlo.while([[ITER_ARG0:.*]] = [[ARG0]], [[ITER_ARG1:.*]] = [[VAL0]], [[ITER_ARG2:.*]] = [[VAL1]])
   %2 = "tf.WhileRegion"(%arg0) ( {
-  // CHECK: ^bb0([[COND_ARG1:%.+]]: tensor<i32>, [[COND_ARG2:%.+]]: tensor<i32>, [[COND_ARG3:%.+]]: tensor<i32>):
   ^cond(%carg0: tensor<i32>):
-    // CHECK: [[VAL3:%.+]] = "mhlo.compare"([[COND_ARG1]], [[COND_ARG2]]) {comparison_direction = "LT"}
+    // CHECK: [[VAL3:%.+]] = "mhlo.compare"([[ITER_ARG0]], [[ITER_ARG1]])
     %3 = "mhlo.compare"(%carg0, %0) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     // CHECK: "mhlo.return"([[VAL3]])
     "tf.Yield"(%3) : (tensor<i1>) -> ()
   }, {
-  // CHECK: ^bb0([[BODY_ARG1:%.+]]: tensor<i32>, [[BODY_ARG2:%.+]]: tensor<i32>, [[BODY_ARG3:%.+]]: tensor<i32>):
   ^body(%barg0: tensor<i32>):
-    // CHECK: [[VAL3:%.+]] = mhlo.add [[BODY_ARG1]], [[BODY_ARG3]]
+    // CHECK: [[VAL3:%.+]] = mhlo.add [[ITER_ARG0]], [[ITER_ARG2]]
     %3 = mhlo.add %barg0, %1 : tensor<i32>
-    // CHECK: [[VAL4:%.+]] = mhlo.add [[BODY_ARG1]], [[VAL3]]
+    // CHECK: [[VAL4:%.+]] = mhlo.add [[ITER_ARG0]], [[VAL3]]
     %4 = mhlo.add %barg0, %3 : tensor<i32>
-    // CHECK: "mhlo.return"([[VAL4]], [[BODY_ARG2]], [[BODY_ARG3]])
+    // CHECK: "mhlo.return"([[VAL4]], [[ITER_ARG1]], [[ITER_ARG2]])
     "tf.Yield"(%4) : (tensor<i32>) -> ()
   }) {is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>) -> tensor<i32>
-  // CHECK: }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
   // CHECK: return [[VAL2]]#0
   return %2 : tensor<i32>
 }
@@ -257,21 +248,18 @@ func @whileRegionMultipleImplicitInputs() {
   %0 = mhlo.constant dense<0> : tensor<i32>
   // CHECK: [[VAL1:%.+]] = mhlo.constant dense<-1>
   %1 = mhlo.constant dense<-1> : tensor<i32>
-  // CHECK: [[VAL2:%.+]]:2 = "mhlo.while"([[VAL0]], [[VAL1]]) ( {
+  // CHECK: [[VAL2:%.+]]:2 = mhlo.while([[ITER_ARG0:.*]] = [[VAL0]], [[ITER_ARG1:.*]] = [[VAL1]])
   "tf.WhileRegion"() ( {
-  // CHECK: ^bb0([[COND_ARG0:%.+]]: tensor<i32>, [[COND_ARG1:%.+]]: tensor<i32>):
-    // CHECK: [[VAL3:%.+]] = "mhlo.compare"([[COND_ARG0]], [[COND_ARG1]]) {comparison_direction = "LT"}
+    // CHECK: [[VAL3:%.+]] = "mhlo.compare"([[ITER_ARG0]], [[ITER_ARG1]]) {comparison_direction = "LT"}
     %2 = "mhlo.compare"(%0, %1) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     // CHECK: "mhlo.return"([[VAL3]])
     "tf.Yield"(%2) : (tensor<i1>) -> ()
   }, {
-  // CHECK: ^bb0([[BODY_ARG0:%.+]]: tensor<i32>, [[BODY_ARG1:%.+]]: tensor<i32>):
-    // CHECK: [[VAL3:%.+]] = mhlo.add [[BODY_ARG0]], [[BODY_ARG1]]
+    // CHECK: [[VAL3:%.+]] = mhlo.add [[ITER_ARG0]], [[ITER_ARG1]]
     %2 = mhlo.add %0, %1 : tensor<i32>
-    // CHECK: "mhlo.return"([[BODY_ARG0]], [[BODY_ARG1]])
+    // CHECK: "mhlo.return"([[ITER_ARG0]], [[ITER_ARG1]])
     "tf.Yield"() : () -> ()
   }) {is_stateless = true, parallel_iterations = 10 : i64} : () -> ()
-  // CHECK: }) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
   // CHECK: return
   return
 }

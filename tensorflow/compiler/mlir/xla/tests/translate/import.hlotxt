@@ -1123,15 +1123,12 @@ add {
 // CHECK-LABEL:  func private @test_while(%arg0: tensor<i64>) -> tensor<i64>
 %test_while (arg0.1: s64[]) -> s64[] {
   %arg0.1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
-  // CHECK-NEXT:  "mhlo.while"(%arg0) ( {
-  // CHECK-NEXT:  ^bb0(%arg1: tensor<i64>):	// no predecessors
-  // CHECK-NEXT:  [[CMP:%.*]] = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  // CHECK-NEXT:  mhlo.while(%[[ITER_ARG:.*]] = %arg0)
+  // CHECK:  [[CMP:%.*]] = "mhlo.compare"(%[[ITER_ARG]], %[[ITER_ARG]]) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
   // CHECK-NEXT:  "mhlo.return"([[CMP]]) : (tensor<i1>) -> ()
-  // CHECK-NEXT:  },  {
-  // CHECK-NEXT:  ^bb0(%arg1: tensor<i64>):	// no predecessors
-  // CHECK-NEXT:  [[ADD:%.*]] = mhlo.add %arg1, %arg1 : tensor<i64>
+
+  // CHECK:  [[ADD:%.*]] = mhlo.add %[[ITER_ARG]], %[[ITER_ARG]] : tensor<i64>
   // CHECK-NEXT:  "mhlo.return"([[ADD]]) : (tensor<i64>) -> ()
-  // CHECK-NEXT:  }) : (tensor<i64>) -> tensor<i64>
   ROOT %while.2 = s64[] while(%arg0.1), body=%loop, condition=%cond
 }
 
