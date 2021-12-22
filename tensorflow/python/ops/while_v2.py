@@ -64,7 +64,8 @@ from tensorflow.python.util import object_identity
 # side-effecting ops, this mode produces unspecified results.
 # Setting it to "stateless_cond" automatically sets this mode to True when
 # the loop condition is free of side-effecting ops.
-glob_stateful_parallelism = "stateless_cond"
+# TODO(b/152548567): Change this to "stateless_cond".
+glob_stateful_parallelism = False
 
 
 def while_loop(cond,
