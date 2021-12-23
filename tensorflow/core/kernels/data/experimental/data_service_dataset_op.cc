@@ -1536,7 +1536,8 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
         GetValidatedCompression(dataset_id, *metadata);
     OP_REQUIRES_OK(ctx, compression.status());
     should_uncompress =
-        should_uncompress && (*compression == DataServiceMetadata::SNAPPY);
+        should_uncompress &&
+        (*compression == DataServiceMetadata::COMPRESSION_SNAPPY);
   }
   DataTypeVector data_service_output_types = output_types_;
   std::vector<PartialTensorShape> data_service_output_shapes = output_shapes_;

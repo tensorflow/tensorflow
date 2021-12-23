@@ -71,9 +71,9 @@ message DataServiceMetadata {
   enum Compression {
     COMPRESSION_UNSPECIFIED = 0;
     // No compression.
-    OFF = 1;
+    COMPRESSION_OFF = 1;
     // Snappy compression as defined in tensorflow/core/platform/snappy.h.
-    SNAPPY = 2;
+    COMPRESSION_SNAPPY = 2;
   }
   Compression compression = 2;
 
