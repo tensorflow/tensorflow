@@ -99,11 +99,10 @@ This release contains contributions from many people at Google, as well as:
 
 # Bug Fixes and Other Changes
 
-*  <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-*  <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-*  <NOTES SHOULD BE GROUPED PER AREA>
-
-*  `tf.data`:
+*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+*   <NOTES SHOULD BE GROUPED PER AREA>
+*   `tf.data`:
 
     *   The optimization `parallel_batch` now becomes default if not disabled by
         users, which will parallelize copying of batch elements.
