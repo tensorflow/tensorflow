@@ -777,8 +777,9 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
 std::string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   // We don't display constants or broadcasts of effective scalar constants
   // within fusions as separate nodes; they're merged into their users.
-  if (instr->opcode() == HloOpcode::kConstant ||
-      IsFusedBroadcastOfConstantEffectiveScalar(instr)) {
+  if ((instr->opcode() == HloOpcode::kConstant ||
+       IsFusedBroadcastOfConstantEffectiveScalar(instr)) &&
+      instr != instr->parent()->root_instruction()) {
     return "";
   }
   // Skip this node if it's merged into its users.
@@ -1027,6 +1028,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kAddDependency:
     case HloOpcode::kTuple:
       return kWhite;
+    case HloOpcode::kConstant:
+      // Constants aren't usually shown as their own nodes, but they'll be
+      // present if e.g. they're the root of a computation.
+      return kWhite;
     case HloOpcode::kBroadcast:
       // De-emphasize nodes which broadcast a scalar within a fusion node --
       // these are essentially free.
@@ -1114,8 +1119,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kCustomCall:
     case HloOpcode::kWhile:
       return kDarkGreen;
-    case HloOpcode::kConstant:
-      LOG(FATAL) << "Constants don't get their own nodes in the graph.";
   }
 }
 
