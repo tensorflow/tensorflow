@@ -62,9 +62,7 @@ cc_test(
 
 pybind_extension(
     name = "_pywrap_signature_def_util_wrapper",
-    srcs = [
-        "signature_def_util_wrapper_pybind11.cc",
-    ],
+    srcs = ["signature_def_util_wrapper_pybind11.cc"],
     module_name = "_pywrap_signature_def_util_wrapper",
     deps = [
         ":signature_def_util",

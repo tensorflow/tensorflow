@@ -620,9 +620,7 @@ cc_test(
 
 pybind_extension(
     name = "_pywrap_string_util",
-    srcs = [
-        "string_util_wrapper.cc",
-    ],
+    srcs = ["string_util_wrapper.cc"],
     hdrs = ["string_util.h"],
     features = ["-use_header_modules"],
     module_name = "_pywrap_string_util",
