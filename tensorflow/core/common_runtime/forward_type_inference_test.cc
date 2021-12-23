@@ -389,5 +389,44 @@ TEST(ForwardTypeInferenceTest, BinaryNodeWithCycleInput) {
               ::testing::HasSubstr("expected identical input types"));
 }
 
+TEST(WeakForwardTypeInferenceTest, ALwaysSucceeds) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  auto cond = ops::Placeholder(root.WithOpName("cond"), DT_BOOL);
+
+  Node* s;
+  TF_ASSERT_OK(NodeBuilder("s", "TestSourceOp", &root.graph()->flib_def())
+                   .Finalize(root.graph(), &s));
+
+  Node* an;
+  TF_ASSERT_OK(NodeBuilder("an", "TestArrayUnaryOp", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(s)})
+                   .Finalize(root.graph(), &an));
+
+  Node* tn;
+  TF_ASSERT_OK(NodeBuilder("tn", "TestTensorUnaryOp", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(s)})
+                   .Finalize(root.graph(), &tn));
+
+  Node* merge;
+  TF_ASSERT_OK(NodeBuilder("merge", "Merge", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(an), NodeBuilder::NodeOut(tn)})
+                   .Finalize(root.graph(), &merge));
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  FunctionLibraryDefinition flib_def(graph->flib_def());
+  GraphOptimizationPassOptions opt_options;
+  SessionOptions session_options;
+  opt_options.session_options = &session_options;
+  opt_options.graph = &graph;
+  opt_options.flib_def = &flib_def;
+  WeakForwardTypeInferencePass pass;
+
+  TF_ASSERT_OK(pass.Run(opt_options));
+}
+
 }  // namespace
 }  // namespace tensorflow
