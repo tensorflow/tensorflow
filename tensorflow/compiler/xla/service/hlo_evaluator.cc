@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -49,8 +51,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
@@ -276,37 +281,46 @@ StatusOr<Literal> HloEvaluator::Evaluate(
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
 
+  const Literal& result =
+      GetEvaluatedLiteralFor(computation.root_instruction());
   if (VLOG_IS_ON(100)) {
     for (const HloInstruction* instr : computation.instructions()) {
       VLOG(100) << instr->name() << " = " << GetEvaluatedLiteralFor(instr);
     }
   }
 
-  return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
+  if (!result.IsKnown()) {
+    return tensorflow::errors::FailedPrecondition(
+        "Failed to evaluate instruction since it depends on infeed or "
+        "parameters to its parent computation.");
+  }
+  return result.Clone();
 }
 
-StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
-  if (instruction->opcode() == HloOpcode::kParameter) {
-    return tensorflow::errors::FailedPrecondition(
-        "Cannot evaluate a parameter.");
-  }
-  if (!hlo_query::AllOperandsAreConstants(*instruction)) {
-    return tensorflow::errors::FailedPrecondition(
-        "Not all operands are constants.");
-  }
-
+StatusOr<Literal> HloEvaluator::Evaluate(
+    HloInstruction* instruction,
+    bool recursively_evaluate_nonconstant_operands) {
   arg_literals_.clear();
   evaluated_.clear();
-
-  TF_RETURN_IF_ERROR(Preprocess(instruction));
-  TF_RETURN_IF_ERROR(instruction->Visit(this));
-  TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return GetEvaluatedLiteralFor(instruction).Clone();
+  enable_partial_evaluation_ = recursively_evaluate_nonconstant_operands;
+  TF_RETURN_IF_ERROR(
+      EvaluateInternal(instruction, /*shape_index=*/{},
+                       recursively_evaluate_nonconstant_operands));
+  const Literal& result = GetEvaluatedLiteralFor(instruction);
+  if (!result.IsKnown()) {
+    return tensorflow::errors::FailedPrecondition(
+        "Failed to evaluate instruction since it depends on infeed or "
+        "parameters to its parent computation.");
+  }
+  enable_partial_evaluation_ = false;
+  return result.Clone();
 }
 
-bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result) {
+bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result,
+                               bool recursively_evaluate_nonconstant_operands) {
   CHECK(result != nullptr);
-  auto result_or = Evaluate(instruction);
+  auto result_or =
+      Evaluate(instruction, recursively_evaluate_nonconstant_operands);
   if (!result_or.ok()) {
     VLOG(1) << "TryEvaluate failed:" << result_or.status();
     return false;
@@ -427,6 +441,61 @@ StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
+Status HloEvaluator::EvaluateInternal(
+    HloInstruction* instruction, const ShapeIndex& shape_index,
+    bool recursively_evaluate_nonconstant_operands) {
+  // Don't need to evaluate this instruction again if it has already been
+  // evaluated.
+  if (IsAlreadyEvaluated(instruction, shape_index)) {
+    return Status::OK();
+  }
+
+  if (!recursively_evaluate_nonconstant_operands) {
+    if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+      return tensorflow::errors::FailedPrecondition(
+          "Not all operands are constants.");
+    }
+  } else {
+    if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+      ShapeIndex new_shape_index = shape_index;
+      new_shape_index.push_front(instruction->tuple_index());
+      TF_RETURN_IF_ERROR(
+          EvaluateInternal(instruction->mutable_operand(0), new_shape_index,
+                           /*recursively_evaluate_nonconstant_operands=*/true));
+    } else if (instruction->opcode() == HloOpcode::kTuple &&
+               !shape_index.empty()) {
+      ShapeIndex new_shape_index = shape_index;
+      int64_t tuple_index = new_shape_index.front();
+      new_shape_index.pop_front();
+      TF_RETURN_IF_ERROR(EvaluateInternal(
+          instruction->mutable_operand(tuple_index), new_shape_index,
+          /*recursively_evaluate_nonconstant_operands=*/true));
+    } else {
+      for (HloInstruction* operand : instruction->operands()) {
+        TF_RETURN_IF_ERROR(EvaluateInternal(
+            operand, /*shape_index=*/{},
+            /*recursively_evaluate_nonconstant_operands=*/true));
+        // Except for the above and following cases, we do not support handling
+        // unknown operands for other HLOs. So mark the result as unknown.
+        if ((!GetEvaluatedLiteralFor(operand).IsKnown() &&
+             instruction->opcode() != HloOpcode::kCopy &&
+             instruction->opcode() != HloOpcode::kCopyStart &&
+             instruction->opcode() != HloOpcode::kCopyDone)) {
+          evaluated_[instruction] =
+              Literal::CreateFromShapeWithUnknownLeafArrays(
+                  instruction->shape());
+          return Status::OK();
+        }
+      }
+    }
+  }
+  visitor_shape_index_ = shape_index;
+  TF_RETURN_IF_ERROR(Preprocess(instruction));
+  TF_RETURN_IF_ERROR(instruction->Visit(this));
+  TF_RETURN_IF_ERROR(Postprocess(instruction));
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
   Literal result(bitcast->shape());
@@ -478,6 +547,17 @@ Status HloEvaluator::HandleSetDimensionSize(
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
+  if (arg_literals_.empty()) {
+    if (!enable_partial_evaluation_) {
+      return tensorflow::errors::FailedPrecondition(
+          "Failed to evaluate instruction since its operands are unknown "
+          "or undetermined and partial evaluation is not enabled.");
+    }
+    evaluated_[parameter] =
+        Literal::CreateFromShapeWithUnknownLeafArrays(parameter->shape());
+    return Status::OK();
+  }
+
   // Nothing to do other than sanity checks. Parameters' values are stored in
   // arg_literals_.
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
@@ -493,6 +573,17 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
       << ShapeUtil::HumanStringWithLayout(input_literal->shape());
 #endif
 
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleInfeed(HloInstruction* infeed) {
+  if (!enable_partial_evaluation_) {
+    return tensorflow::errors::FailedPrecondition(
+        "Failed to evaluate instruction since its operands are unknown "
+        "or undetermined and partial evaluation is not enabled.");
+  }
+  evaluated_[infeed] =
+      Literal::CreateFromShapeWithUnknownLeafArrays(infeed->shape());
   return Status::OK();
 }
 
@@ -832,11 +923,41 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
 
 Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
   std::vector<const Literal*> operand_literals;
-  for (auto operand : tuple->operands()) {
-    operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+  std::vector<Literal> operand_literal_values;
+  if (!visitor_shape_index_.empty()) {
+    // We only need to evaluate tuple at visitor_shape_index_. The other
+    // operands might not have been evaluated, so mark the other operands as
+    // undetermined.
+    int64_t tuple_index = visitor_shape_index_.front();
+    operand_literal_values.resize(tuple->operand_count());
+    for (int operand_index = 0; operand_index < tuple->operand_count();
+         ++operand_index) {
+      if (operand_index == tuple_index) {
+        operand_literals.push_back(
+            &GetEvaluatedLiteralFor(tuple->mutable_operand(operand_index)));
+      } else {
+        operand_literal_values[operand_index] =
+            Literal::CreateFromShapeWithUndeterminedLeafArrays(
+                ShapeUtil::GetSubshape(tuple->shape(), {operand_index}));
+        operand_literals.push_back(&operand_literal_values[operand_index]);
+      }
+    }
+  } else {
+    for (auto operand : tuple->operands()) {
+      operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+    }
   }
 
-  evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
+  if (evaluated_.contains(tuple)) {
+    Literal new_result = LiteralUtil::MakeTuple(operand_literals);
+    CHECK(new_result.IsDetermined(visitor_shape_index_));
+    TF_RETURN_IF_ERROR(
+        evaluated_[tuple].CopyFrom(new_result,
+                                   /*dest_shape_index=*/visitor_shape_index_,
+                                   /*src_shape_index=*/visitor_shape_index_));
+  } else {
+    evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
+  }
   return Status::OK();
 }
 
@@ -1869,7 +1990,9 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
 
 Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
-
+  TF_RET_CHECK(broadcast->shape().element_type() ==
+               operand.shape().element_type())
+      << " broadcast from a different data type is not supported";
   TF_RET_CHECK(broadcast->dimensions().size() == operand.shape().rank())
       << "broadcast dimensions is of size: " << broadcast->dimensions().size()
       << " and rank of operand_to_broadcast is: " << operand.shape().rank();
@@ -1962,7 +2085,6 @@ Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
   }
 
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
-
   evaluated_[copy_done] =
       Literal(ShapeUtil::GetTupleElementShape(operand->shape(), /*index=*/0));
   TF_RETURN_IF_ERROR(evaluated_[copy_done].CopyFrom(operand_tuple_literal,
@@ -2595,6 +2717,16 @@ Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
+  if (!enable_partial_evaluation_) {
+    for (HloInstruction* operand : hlo->mutable_operands()) {
+      if (!IsAlreadyEvaluated(operand) ||
+          !GetEvaluatedLiteralFor(operand).IsKnown()) {
+        return tensorflow::errors::FailedPrecondition(
+            "Failed to evaluate instruction since its operands are unknown "
+            "or undetermined and partial evaluation is not enabled.");
+      }
+    }
+  }
   return ShapeUtil::ValidateShape(hlo->shape());
 }
 

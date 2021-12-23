@@ -2144,5 +2144,56 @@ TEST_F(LiteralUtilTest, IsEqualAt) {
   EXPECT_TRUE(c4.IsEqualAt({}, val_smaller_complex));
 }
 
+TEST_F(LiteralUtilTest, CreateFromShapeWithUnknownLeafArrays) {
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeShape(F32, {4, 4}));
+  EXPECT_FALSE(c1.IsKnown());
+}
+
+TEST_F(LiteralUtilTest, CreatePartiallyKnownTuple) {
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeShape(F32, {4, 4}));
+  Literal c2 = LiteralUtil::CreateR0<int>(10);
+  Literal c3 = LiteralUtil::MakeTuple({&c1, &c2});
+  Literal c4 = LiteralUtil::CreateR0<int>(100);
+  Literal c5 = LiteralUtil::MakeTuple({&c4, &c3});
+  EXPECT_FALSE(c5.IsKnown());
+}
+
+TEST_F(LiteralUtilTest, CopyFromPartiallyKnownTuple) {
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeShape(F32, {4, 4}));
+  Literal c2 = LiteralUtil::CreateR0<int>(10);
+  Literal c3 = LiteralUtil::MakeTuple({&c1, &c2});
+  Literal c4 = LiteralUtil::CreateR0<int>(100);
+  Literal c5 = LiteralUtil::MakeTuple({&c4, &c3});
+  Literal c6 = Literal::CreateFromShape(c5.shape());
+  TF_ASSERT_OK(
+      c6.CopyFrom(c5, /*dest_shape_index=*/{1}, /*src_shape_index=*/{1}));
+  EXPECT_FALSE(c6.IsKnown());
+}
+
+TEST_F(LiteralUtilTest, CopyFromPartiallyKnownTupleUnknownTupleElement) {
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 4}),
+                                 ShapeUtil::MakeShape(F32, {4, 4})}));
+  Literal c2 = LiteralUtil::CreateR0<int>(10);
+  Literal c3 = LiteralUtil::MakeTuple({&c1, &c2});
+  Literal c4 = LiteralUtil::CreateR0<int>(100);
+  Literal c5 = LiteralUtil::MakeTuple({&c4, &c3});
+  Literal c6 = Literal::CreateFromShape(c5.shape());
+  Literal c1_copy = Literal::CreateFromShape(c1.shape());
+  Literal c2_copy = Literal::CreateFromShape(c2.shape());
+  TF_ASSERT_OK(
+      c6.CopyFrom(c5, /*dest_shape_index=*/{1}, /*src_shape_index=*/{1}));
+  TF_ASSERT_OK(c1_copy.CopyFrom(c6, /*dest_shape_index=*/{},
+                                /*src_shape_index=*/{1, 0}));
+  TF_ASSERT_OK(c2_copy.CopyFrom(c6, /*dest_shape_index=*/{},
+                                /*src_shape_index=*/{1, 1}));
+  EXPECT_FALSE(c6.IsKnown());
+  EXPECT_FALSE(c1_copy.IsKnown());
+  EXPECT_TRUE(c2_copy.IsKnown());
+}
+
 }  // namespace
 }  // namespace xla
