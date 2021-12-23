@@ -59,7 +59,8 @@ class CpuTransferManager : public GenericTransferManager {
                            Shape* device_shape) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CpuTransferManager);
+  CpuTransferManager(const CpuTransferManager&) = delete;
+  CpuTransferManager& operator=(const CpuTransferManager&) = delete;
 };
 
 }  // namespace xla

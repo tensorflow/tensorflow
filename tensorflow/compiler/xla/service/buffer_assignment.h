@@ -583,7 +583,8 @@ class BufferAssignment {
 
   Stats stats_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BufferAssignment);
+  BufferAssignment(const BufferAssignment&) = delete;
+  BufferAssignment& operator=(const BufferAssignment&) = delete;
 };
 
 // A class which constructs a buffer assignment.
@@ -715,7 +716,8 @@ class BufferAssigner {
   std::unique_ptr<memory_space_assignment::PresetAssignments>
       preset_assignments_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
+  BufferAssigner(const BufferAssigner&) = delete;
+  BufferAssigner& operator=(const BufferAssigner&) = delete;
 };
 
 }  // namespace xla

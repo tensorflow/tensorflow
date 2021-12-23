@@ -118,7 +118,8 @@ class ComputationPlacer {
   // Map from platform kind to computation placer singleton.
   static std::map<se::Platform::Id, State>* GetPlatformComputationPlacers();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ComputationPlacer);
+  ComputationPlacer(const ComputationPlacer&) = delete;
+  ComputationPlacer& operator=(const ComputationPlacer&) = delete;
 };
 
 }  // namespace xla

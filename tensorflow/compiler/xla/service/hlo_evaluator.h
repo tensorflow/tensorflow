@@ -380,7 +380,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
                                   absl::Span<const Literal*> operands)>
       custom_call_handler_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloEvaluator);
+  HloEvaluator(const HloEvaluator&) = delete;
+  HloEvaluator& operator=(const HloEvaluator&) = delete;
 };
 
 std::unique_ptr<Array2D<float>> MatmulArray2D(const Array2D<float>& lhs,

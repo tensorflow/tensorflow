@@ -147,7 +147,8 @@ class CpuExecutable : public Executable {
   // Entry function name for the computation.
   const std::string entry_function_name_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CpuExecutable);
+  CpuExecutable(const CpuExecutable&) = delete;
+  CpuExecutable& operator=(const CpuExecutable&) = delete;
 };
 
 }  // namespace cpu

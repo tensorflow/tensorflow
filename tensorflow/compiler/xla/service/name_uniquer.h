@@ -80,7 +80,8 @@ class NameUniquer {
   // identifiers and generates new ones.
   absl::flat_hash_map<std::string, SequentialIdGenerator> generated_names_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NameUniquer);
+  NameUniquer(const NameUniquer&) = delete;
+  NameUniquer& operator=(const NameUniquer&) = delete;
 };
 
 }  // namespace xla

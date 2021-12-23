@@ -94,7 +94,8 @@ class ExecutionTracker {
 
   tensorflow::mutex execution_mutex_;  // Guards the execution mapping.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutionTracker);
+  ExecutionTracker(const ExecutionTracker&) = delete;
+  ExecutionTracker& operator=(const ExecutionTracker&) = delete;
 };
 
 }  // namespace xla

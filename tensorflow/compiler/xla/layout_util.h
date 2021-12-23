@@ -196,7 +196,8 @@ class LayoutUtil {
                              absl::Span<const int64_t> indices);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
+  LayoutUtil(const LayoutUtil&) = delete;
+  LayoutUtil& operator=(const LayoutUtil&) = delete;
 };
 
 }  // namespace xla

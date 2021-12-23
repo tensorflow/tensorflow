@@ -271,7 +271,9 @@ class DfsHloVisitorWithDefaultBase
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorWithDefaultBase);
+  DfsHloVisitorWithDefaultBase(const DfsHloVisitorWithDefaultBase&) = delete;
+  DfsHloVisitorWithDefaultBase& operator=(const DfsHloVisitorWithDefaultBase&) =
+      delete;
 };
 
 // Users should use these type aliases which are only two valid instantiations.
@@ -354,7 +356,8 @@ class FunctionVisitorBase
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionVisitorBase);
+  FunctionVisitorBase(const FunctionVisitorBase&) = delete;
+  FunctionVisitorBase& operator=(const FunctionVisitorBase&) = delete;
 
   std::function<Status(HloInstructionPtr)> visitor_func_;
 };

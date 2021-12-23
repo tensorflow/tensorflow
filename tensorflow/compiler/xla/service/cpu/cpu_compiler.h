@@ -170,7 +170,8 @@ class CpuCompiler : public LLVMCompiler {
 
   mutable std::unique_ptr<HloProto> hlo_proto_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
+  CpuCompiler(const CpuCompiler&) = delete;
+  CpuCompiler& operator=(const CpuCompiler&) = delete;
 };
 
 }  // namespace cpu

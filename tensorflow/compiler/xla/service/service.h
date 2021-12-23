@@ -298,7 +298,8 @@ class Service : public ServiceInterface {
   // Backend to compile and execute computations on.
   std::unique_ptr<Backend> execute_backend_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Service);
+  Service(const Service&) = delete;
+  Service& operator=(const Service&) = delete;
 };
 
 }  // namespace xla

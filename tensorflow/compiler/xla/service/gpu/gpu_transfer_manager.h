@@ -43,7 +43,8 @@ class GpuTransferManager : public GenericTransferManager {
                                     MutableBorrowingLiteral literal) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuTransferManager);
+  GpuTransferManager(const GpuTransferManager&) = delete;
+  GpuTransferManager& operator=(const GpuTransferManager&) = delete;
 };
 
 }  // namespace gpu

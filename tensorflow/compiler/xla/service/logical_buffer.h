@@ -58,7 +58,8 @@ class LogicalBuffer : public BufferValue {
 
   // Similar to HLO constructs (HloInstruction, etc), pointers are used for
   // comparison to equality, so disable all copying.
-  TF_DISALLOW_COPY_AND_ASSIGN(LogicalBuffer);
+  LogicalBuffer(const LogicalBuffer&) = delete;
+  LogicalBuffer& operator=(const LogicalBuffer&) = delete;
 };
 
 }  // namespace xla

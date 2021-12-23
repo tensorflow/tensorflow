@@ -58,7 +58,8 @@ class PlatformUtil {
       const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(PlatformUtil);
+  PlatformUtil(const PlatformUtil&) = delete;
+  PlatformUtil& operator=(const PlatformUtil&) = delete;
 };
 
 }  // namespace xla

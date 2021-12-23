@@ -106,7 +106,8 @@ class HloComputation {
     HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(Builder);
+    Builder(const Builder&) = delete;
+    Builder& operator=(const Builder&) = delete;
   };
 
   // Helper class to automatically set the OpMetadata for every instruction
@@ -616,7 +617,8 @@ class HloComputation {
 
   std::vector<HloInstruction*> param_instructions_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloComputation);
+  HloComputation(const HloComputation&) = delete;
+  HloComputation& operator=(const HloComputation&) = delete;
 };
 
 template <typename HloInstructionPtr>

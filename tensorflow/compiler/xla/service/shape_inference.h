@@ -411,7 +411,8 @@ class ShapeInference {
       const Shape& smaller_shape, const Shape& larger_shape,
       absl::Span<const int64_t> broadcast_dimensions);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeInference);
+  ShapeInference(const ShapeInference&) = delete;
+  ShapeInference& operator=(const ShapeInference&) = delete;
 };
 
 }  // namespace xla

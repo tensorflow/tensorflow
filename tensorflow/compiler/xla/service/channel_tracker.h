@@ -86,7 +86,8 @@ class ChannelTracker {
   absl::flat_hash_map<int64_t, Channel> opaque_to_channel_
       TF_GUARDED_BY(channel_mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ChannelTracker);
+  ChannelTracker(const ChannelTracker&) = delete;
+  ChannelTracker& operator=(const ChannelTracker&) = delete;
 };
 
 }  // namespace xla

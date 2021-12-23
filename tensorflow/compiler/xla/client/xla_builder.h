@@ -1572,7 +1572,10 @@ class XlaScopedFrontendAttributesAssignment {
   xla::XlaBuilder* const builder_;
   FrontendAttributes saved_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedFrontendAttributesAssignment);
+  XlaScopedFrontendAttributesAssignment(
+      const XlaScopedFrontendAttributesAssignment&) = delete;
+  XlaScopedFrontendAttributesAssignment& operator=(
+      const XlaScopedFrontendAttributesAssignment&) = delete;
 };
 
 // RAII-style object: sets the current op metadata in builder on construction,
@@ -1590,7 +1593,9 @@ class XlaScopedOpMetadataAssignment {
   xla::XlaBuilder* const builder_;
   OpMetadata saved_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedOpMetadataAssignment);
+  XlaScopedOpMetadataAssignment(const XlaScopedOpMetadataAssignment&) = delete;
+  XlaScopedOpMetadataAssignment& operator=(
+      const XlaScopedOpMetadataAssignment&) = delete;
 };
 
 // Free functions for building XlaOps. The intention is that these will

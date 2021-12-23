@@ -2290,7 +2290,8 @@ class HloInstruction {
   // been marked as dead.
   bool marked_as_dead_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
+  HloInstruction(const HloInstruction&) = delete;
+  HloInstruction& operator=(const HloInstruction&) = delete;
 };
 
 // Explicit instantiations in hlo_instruction.cc.

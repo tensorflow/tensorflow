@@ -145,7 +145,8 @@ class GraphCycles {
 
  private:
   Rep *rep_;  // opaque representation
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphCycles);
+  GraphCycles(const GraphCycles &) = delete;
+  GraphCycles &operator=(const GraphCycles &) = delete;
 };
 
 }  // namespace tensorflow

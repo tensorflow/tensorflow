@@ -648,7 +648,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   bool emit_code_for_msan_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
+  IrEmitter(const IrEmitter&) = delete;
+  IrEmitter& operator=(const IrEmitter&) = delete;
 };
 
 }  // namespace cpu

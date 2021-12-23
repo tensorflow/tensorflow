@@ -892,7 +892,8 @@ class ShapeUtil {
     return status;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);
+  ShapeUtil(const ShapeUtil&) = delete;
+  ShapeUtil& operator=(const ShapeUtil&) = delete;
 };
 
 }  // namespace xla

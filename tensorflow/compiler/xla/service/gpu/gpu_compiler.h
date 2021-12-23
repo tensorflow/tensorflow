@@ -125,7 +125,8 @@ class GpuCompiler : public LLVMCompiler {
   // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
   const int64_t pointer_size_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
+  GpuCompiler(const GpuCompiler&) = delete;
+  GpuCompiler& operator=(const GpuCompiler&) = delete;
 };
 
 GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec);

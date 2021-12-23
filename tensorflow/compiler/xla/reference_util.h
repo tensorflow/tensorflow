@@ -681,7 +681,8 @@ class ReferenceUtil {
   template <typename Array1>
   static void AssertSameSize2D(const Array1& array1) {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ReferenceUtil);
+  ReferenceUtil(const ReferenceUtil&) = delete;
+  ReferenceUtil& operator=(const ReferenceUtil&) = delete;
 };
 
 }  // namespace xla

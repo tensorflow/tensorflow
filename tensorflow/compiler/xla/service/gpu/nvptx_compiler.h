@@ -134,7 +134,8 @@ class NVPTXCompiler : public GpuCompiler {
                       CompilationCacheHash, CompilationCacheEq>
       compilation_cache_ TF_GUARDED_BY(mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NVPTXCompiler);
+  NVPTXCompiler(const NVPTXCompiler&) = delete;
+  NVPTXCompiler& operator=(const NVPTXCompiler&) = delete;
 };
 
 }  // namespace gpu
