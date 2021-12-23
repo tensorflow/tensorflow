@@ -110,7 +110,7 @@ This release contains contributions from many people at Google, as well as:
         that are files. This enables creating hermetic SavedModels when using
         datasets created from files.
 
-*  `tf.lite`:
+*   `tf.lite`:
 
     *   GPU
     *   Adds GPU Delegation support for serialization to Java API. This boosts
@@ -118,34 +118,34 @@ This release contains contributions from many people at Google, as well as:
     *   Deprecated `Interpreter::SetNumThreads`, in favor of
         `InterpreterBuilder::SetNumThreads`.
 
-*  Adds `tf.compat.v1.keras.utils.get_or_create_layer` to aid migration to TF2
+*   Adds `tf.compat.v1.keras.utils.get_or_create_layer` to aid migration to TF2
     by enabling tracking of nested keras models created in TF1-style, when used
     with the `tf.compat.v1.keras.utils.track_tf1_style_variables` decorator.
 
-*  `tf.keras`:
+*   `tf.keras`:
 
-    *  Preprocessing Layers
-    *  Added a `tf.keras.layers.experimental.preprocessing.HashedCrossing`
+    *   Preprocessing Layers
+    *   Added a `tf.keras.layers.experimental.preprocessing.HashedCrossing`
         layer which applies the hashing trick to the concatenation of crossed
         scalar inputs. This provides a stateless way to try adding feature
         crosses of integer or string data to a model.
-    *  Removed `keras.layers.experimental.preprocessing.CategoryCrossing`.
+    *   Removed `keras.layers.experimental.preprocessing.CategoryCrossing`.
         Users should migrate to the `HashedCrossing` layer or use
         `tf.sparse.cross`/`tf.ragged.cross` directly.
-    *  Added additional `standardize` and `split` modes to `TextVectorization`.
+    *   Added additional `standardize` and `split` modes to `TextVectorization`.
         *   `standardize="lower"` will lowercase inputs.
         *   `standardize="string_punctuation"` will remove all puncuation.
         *   `split="character"` will split on every unicode character.
-    *  Added an `output_mode` argument to the `Discretization` and `Hashing`
+    *   Added an `output_mode` argument to the `Discretization` and `Hashing`
         layers with the same semantics as other preprocessing layers. All
         categorical preprocessing layers now support `output_mode`.
-    *  All preprocessing layer output will follow the compute dtype of a
+    *   All preprocessing layer output will follow the compute dtype of a
         `tf.keras.mixed_precision.Policy`, unless constructed with
         `output_mode="int"` in which case output will be `tf.int64`. The output
         type of any preprocessing layer can be controlled individually by
         passing a `dtype` argument to the layer.
     *  `tf.random.Generator` for keras initializers and all RNG code.
-    *  Added 3 new APIs for enable/disable/check the usage of
+    *   Added 3 new APIs for enable/disable/check the usage of
         `tf.random.Generator` in keras backend, which will be the new backend
         for all the RNG in Keras. We plan to switch on the new code path by
         default in tf 2.8, and the behavior change will likely to cause some
@@ -154,22 +154,22 @@ This release contains contributions from many people at Google, as well as:
         legacy behavior if they prefer. In future (eg tf 2.10), we expect to
         totally remove the legacy code path (stateful random Ops), and these 3
         APIs will be removed as well.
-    *  `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
+    *   `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
         `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is
         deprecated and will be removed in a future release.
-    *  `tf.keras.experimental.SidecarEvaluator` is now available as
+    *   `tf.keras.experimental.SidecarEvaluator` is now available as
         `tf.keras.utils.SidecarEvaluator`. The experimental endpoint is
         deprecated and will be removed in a future release.
-    *  Metrics update and collection logic in default `Model.train_step()` is
+    *   Metrics update and collection logic in default `Model.train_step()` is
         now customizable via overriding `Model.compute_metrics()`.
-    * Losses computation logic in default `Model.train_step()` is now
+    *   Losses computation logic in default `Model.train_step()` is now
         customizable via overriding `Model.compute_loss()`.
-    * `jit_compile` added to `Model.compile()` on an opt-in basis to compile
+    *   `jit_compile` added to `Model.compile()` on an opt-in basis to compile
         the model's training step with [XLA](https://www.tensorflow.org/xla).
         Note that `jit_compile=True` may not necessarily work for all models.
 
 *   TF Core:
-    *  Adding a flag `stateful` to `numpy_function`, allowing to give the
+    *   Adding a flag `stateful` to `numpy_function`, allowing to give the
         guarantee to the runtime that the function call is stateless,
         which allows for more optimizations in the graph.
 
@@ -252,31 +252,14 @@ jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
   * Deprecate `tflite::OpResolver::GetDelegates`. The list returned by TfLite's `BuiltinOpResolver::GetDelegates` is now always empty. Instead, recommend using new method `tflite::OpResolver::GetDelegateCreators` in order to achieve lazy initialization on TfLite delegate instances.
 
 * TF Core:
-    *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
-        Previously, when called within `name_scope("")` or `name_scope(None)`
-        contexts, it returned `None`; now it returns the empty string.
-    *   `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
-        isomorphic to GraphDef and will be used to replace GraphDef-based (e.g.,
-        Grappler) optimizations.
-    *   Deprecated and removed `attrs()` function in shape inference. All
-        attributes should be queried by name now (rather than range returned)
-        to enable changing the underlying storage there.
-    *   The following Python symbols were accidentally added in earlier versions
-        of TensorFlow and now are removed. Each symbol has a replacement that
-        should be used instead, but note the replacement's argument names are
-        different.
-        * `tf.quantize_and_dequantize_v4` (accidentally introduced in TensorFlow
-        2.4): Use `tf.quantization.quantize_and_dequantize_v2` instead.
-        * `tf.batch_mat_mul_v3` (accidentally introduced in TensorFlow 2.6): Use
-        `tf.linalg.matmul` instead.
-        * `tf.sparse_segment_sum_grad` (accidentally introduced in TensorFlow
-        2.6): Use `tf.raw_ops.SparseSegmentSumGrad` instead. Directly calling
-        this op is typically not necessary, as it is automatically used when
-        computing the gradient of `tf.sparse.segment_sum`.
-    *   Renaming of tensorflow::int64 to int_64_t in numerous places (the former
-        is an alias for the latter) which could result in needing to regenerate
-        selective op registration headers else execution would fail with
-        unregistered kernels error.
+    *   `tf.Graph.get_name_scope()` now always returns a string, as documented. Previously, when called within `name_scope("")` or `name_scope(None)` contexts, it returned `None`; now it returns the empty string.
+    *   `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is isomorphic to GraphDef and will be used to replace GraphDef-based (e.g., Grappler) optimizations.
+    *   Deprecated and removed `attrs()` function in shape inference. All attributes should be queried by name now (rather than range returned) to enable changing the underlying storage there.
+    *   The following Python symbols were accidentally added in earlier versions of TensorFlow and now are removed. Each symbol has a replacement that should be used instead, but note the replacement's argument names are different.
+        * `tf.quantize_and_dequantize_v4` (accidentally introduced in TensorFlow 2.4): Use `tf.quantization.quantize_and_dequantize_v2` instead.
+        * `tf.batch_mat_mul_v3` (accidentally introduced in TensorFlow 2.6): Use `tf.linalg.matmul` instead.
+        * `tf.sparse_segment_sum_grad` (accidentally introduced in TensorFlow 2.6): Use `tf.raw_ops.SparseSegmentSumGrad` instead. Directly calling this op is typically not necessary, as it is automatically used when computing the gradient of `tf.sparse.segment_sum`.
+    *   Renaming of tensorflow::int64 to int_64_t in numerous places (the former is an alias for the latter) which could result in needing to regenerate selective op registration headers else execution would fail with unregistered kernels error.
 
 * Modular File System Migration:
     *   Support for S3 and HDFS file systems has been migrated to a modular file systems based approach and is now available in https://github.com/tensorflow/io. The `tensorflow-io` python package should be installed for S3 and HDFS support with tensorflow.
@@ -381,18 +364,11 @@ jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
     * Add a new experimental argument `experimental_is_anonymous` to `tf.lookup.StaticHashTable.__init__` to create the table in anonymous mode. In this mode, the table resource can only be accessed via resource handles (not resource names) and will be deleted automatically when all resource handles pointing to it are gone.
 *   `tf.data`:
     *   Introduce the `tf.data.experimental.at` API which provides random access for input pipelines that consist of transformations that support random access. The initial set of transformations that support random access includes: `tf.data.Dataset.from_tensor_slices`,`tf.data.Dataset.shuffle`, `tf.data.Dataset.batch`, `tf.data.Dataset.shard`, `tf.data.Dataset.map`, and `tf.data.Dataset.range`.
-    *   Promote `tf.data.Options.experimental_deterministic` API to `tf.data.Options.deterministic` and deprecate the experimental
-        endpoint.
-    *   Move autotuning options from`tf.data.Options.experimental_optimization.autotune*` to a newly created `tf.data.Options.autotune.*` and remove support for
-        `tf.data.Options.experimental_optimization.autotune_buffers`.
-    *   Add support for user-defined names of tf.data core Python API, which
-        can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
-    *   Promote `tf.data.experimental.sample_from_datasets` API to `tf.data.Dataset.sample_from_datasets` and deprecate the experimental
-        endpoint.
+    *   Promote `tf.data.Options.experimental_deterministic` API to `tf.data.Options.deterministic` and deprecate the experimental endpoint.
+    *   Move autotuning options from`tf.data.Options.experimental_optimization.autotune*` to a newly created `tf.data.Options.autotune.*` and remove support for `tf.data.Options.experimental_optimization.autotune_buffers`.
+    *   Add support for user-defined names of tf.data core Python API, which can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
+    *   Promote `tf.data.experimental.sample_from_datasets` API to `tf.data.Dataset.sample_from_datasets` and deprecate the experimental endpoint.
     *   Added `TF_GPU_ALLOCATOR=cuda_malloc_async` that use cudaMallocAsync from CUDA 11.2. This could become the default in the future.
-    *   Added a flag `stateful` to `numpy_function` to give a
-        guarantee to the runtime that the function is stateless,
-        which in terms allows for more optimizations in the graph.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
     *   The saved_model_cli's `--input_examples` inputs are now restricted to
