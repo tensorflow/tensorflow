@@ -102,6 +102,10 @@ This release contains contributions from many people at Google, as well as:
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
+* TF Core:
+  * Added a flag `stateful` to `numpy_function` to give a
+    guarantee to the runtime that the function is stateless,
+    which in terms allows for more optimizations in the graph.
 * `tf.data`:
 
     *   The optimization `parallel_batch` now becomes default if not disabled by
@@ -234,7 +238,6 @@ This release contains contributions from many people at Google, as well as:
 This release contains contributions from many people at Google, as well as:
 
 jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
-
 
 # Release 2.7.0
 
