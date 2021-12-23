@@ -1585,7 +1585,8 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
        TFL_TCresVTEtIsSameAsOp<0, 1>>,
      TFL_OperandHasRank<0, 1>,
      TFL_OperandHasRankAtLeast<1, 2>,
-     DynamicRangeQuantizedOpInterface
+     DynamicRangeQuantizedOpInterface,
+     QuantizableResult
     ]> {
   let summary = "Embedding lookup operator";
 
