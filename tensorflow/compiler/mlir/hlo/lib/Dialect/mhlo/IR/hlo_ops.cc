@@ -1351,6 +1351,36 @@ static LogicalResult Verify(BroadcastOp op) {
   return success();
 }
 
+OpFoldResult BroadcastOp::fold(ArrayRef<Attribute> attrs) {
+  auto type = getType().cast<RankedTensorType>();
+  auto sizesType = broadcast_sizes().getType();
+  if (sizesType.getNumElements() == 0) {
+    return getOperand();
+  }
+
+  // Constant fold when an operand is a splat tensor attribute.
+  if (!attrs[0] || !type.hasStaticShape()) return {};
+  auto splatOperandAttr = attrs[0].dyn_cast<SplatElementsAttr>();
+  if (!splatOperandAttr) return {};
+
+  // Handle complex type
+  if (type.getElementType().isa<ComplexType>()) {
+    ComplexType complex = type.getElementType().cast<ComplexType>();
+    if (complex.getElementType().isa<FloatType>()) {
+      return DenseElementsAttr::get(
+          type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
+    } else if (complex.getElementType().isa<IntegerType>()) {
+      return DenseElementsAttr::get(
+          type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
+    } else {
+      return {};
+    }
+  }
+
+  return SplatElementsAttr::get(
+      type, splatOperandAttr.getSplatValue<mlir::Attribute>());
+}
+
 LogicalResult BroadcastOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
@@ -1470,9 +1500,21 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
   if (!attrs[0] || !type.hasStaticShape()) return {};
   auto splatOperandAttr = attrs[0].dyn_cast<SplatElementsAttr>();
   if (!splatOperandAttr) return {};
-  // MLIR core bug (https://bugs.llvm.org/show_bug.cgi?id=46588): dense element
-  // attribute iterator not implemented for complex element types.
-  if (type.getElementType().isa<ComplexType>()) return {};
+
+  // Handle complex type
+  if (type.getElementType().isa<ComplexType>()) {
+    ComplexType complex = type.getElementType().cast<ComplexType>();
+    if (complex.getElementType().isa<FloatType>()) {
+      return DenseElementsAttr::get(
+          type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
+    } else if (complex.getElementType().isa<IntegerType>()) {
+      return DenseElementsAttr::get(
+          type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
+    } else {
+      return {};
+    }
+  }
+
   return SplatElementsAttr::get(
       type, splatOperandAttr.getSplatValue<mlir::Attribute>());
 }
