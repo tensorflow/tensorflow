@@ -268,8 +268,7 @@ inline void RequantizeManyInNewRangeReference(const qint32* input,
   const int64_t output_offset_fp =
       output_range == 0.0
           ? 0
-          : static_cast<int64_t>((1 << fp_shift) * (min_output * 255.0) /
-                                 output_range);
+          : std::lround((1 << fp_shift) * (min_output * 255.0) / output_range);
   const int64_t rounding_delta = 1 << (fp_shift - 1);
 
   // Inside this loop we just do minimal adds, multiplies, and shifts, in a way
@@ -714,8 +713,7 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
   const int64_t output_offset_fp =
       output_range == 0.0
           ? 0
-          : static_cast<int64_t>((1 << fp_shift) * (min_output * 255.0) /
-                                 output_range);
+          : std::lround((1 << fp_shift) * (min_output * 255.0) / output_range);
   const int64_t rounding_delta = 1 << (fp_shift - 1);
 
   // Inside this eigen expression we just do minimal adds, multiplies, and
