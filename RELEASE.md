@@ -144,7 +144,7 @@ This release contains contributions from many people at Google, as well as:
         `output_mode="int"` in which case output will be `tf.int64`. The output
         type of any preprocessing layer can be controlled individually by
         passing a `dtype` argument to the layer.
-    *  `tf.random.Generator` for keras initializers and all RNG code.
+    *   `tf.random.Generator` for keras initializers and all RNG code.
     *   Added 3 new APIs for enable/disable/check the usage of
         `tf.random.Generator` in keras backend, which will be the new backend
         for all the RNG in Keras. We plan to switch on the new code path by
@@ -173,7 +173,7 @@ This release contains contributions from many people at Google, as well as:
         guarantee to the runtime that the function call is stateless,
         which allows for more optimizations in the graph.
 
-*  Deterministic Op Functionality
+*   Deterministic Op Functionality
 
     *   Add determinsitic GPU implementations of:
     *   `tf.function(jit_compile=True)`'s that use `Scatter`.
