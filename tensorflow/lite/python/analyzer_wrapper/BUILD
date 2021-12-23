@@ -7,7 +7,9 @@ package(
 
 pybind_extension(
     name = "_pywrap_analyzer_wrapper",
-    srcs = ["analyzer_wrapper.cc"],
+    srcs = [
+        "analyzer_wrapper.cc",
+    ],
     module_name = "_pywrap_analyzer_wrapper",
     deps = [
         ":model_analyzer",
