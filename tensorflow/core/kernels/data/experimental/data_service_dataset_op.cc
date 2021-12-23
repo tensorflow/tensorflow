@@ -1563,6 +1563,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   if (should_uncompress) {
     VLOG(2) << "Inserting a ParallelMap dataset to uncompress tf.data service "
             << "dataset " << dataset_id << ".";
+    dataset->Initialize(/*metadata=*/{});
     captured_uncompress_func.reset();
     OP_REQUIRES_OK(
         ctx, CapturedFunction::Create(ctx, uncompress_fn_,
