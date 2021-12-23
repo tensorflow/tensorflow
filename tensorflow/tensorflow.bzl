@@ -2931,65 +2931,13 @@ def pybind_extension(
         testonly = testonly,
     )
 
-    # TODO(rostam): Add libtensorflow_framework.so to `dynamic_deps`.
+    # TODO(b/146808376): Add libtensorflow_framework.so to `dynamic_deps`.
     # If we are to link to libtensorflow_framework.so, add it as a source.
     if link_in_framework:
         srcs += tf_binary_additional_srcs()
 
-    if not static_deps:
-        cc_binary(
-            name = so_file,
-            srcs = srcs + hdrs,
-            data = data,
-            copts = copts + [
-                "-fno-strict-aliasing",
-                "-fexceptions",
-            ] + select({
-                clean_dep("//tensorflow:windows"): [],
-                "//conditions:default": [
-                    "-fvisibility=hidden",
-                ],
-            }),
-            linkopts = linkopts + _rpath_linkopts(name) + select({
-                clean_dep("//tensorflow:macos"): [
-                    # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
-                    # not being exported.  There should be a better way to deal with this.
-                    "-Wl,-w",
-                    "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
-                ],
-                clean_dep("//tensorflow:windows"): [],
-                "//conditions:default": [
-                    "-Wl,--version-script",
-                    "$(location %s)" % version_script_file,
-                ],
-            }),
-            deps = deps + [
-                exported_symbols_file,
-                version_script_file,
-            ],
-            defines = defines,
-            features = features + ["-use_header_modules"],
-            linkshared = 1,
-            testonly = testonly,
-            licenses = licenses,
-            visibility = visibility,
-            deprecation = deprecation,
-            restricted_to = restricted_to,
-            compatible_with = compatible_with,
-        )
-        native.genrule(
-            name = name + "_pyd_copy",
-            srcs = [so_file],
-            outs = [pyd_file],
-            cmd = "cp $< $@",
-            output_to_bindir = True,
-            visibility = visibility,
-            deprecation = deprecation,
-            restricted_to = restricted_to,
-            compatible_with = compatible_with,
-            testonly = testonly,
-        )
-    else:
+    # TODO(b/146808376): Add `or link_in_framework`
+    if static_deps:
         cc_library_name = so_file + "_cclib"
         cc_library(
             name = cc_library_name,
@@ -3072,6 +3020,59 @@ def pybind_extension(
             compatible_with = compatible_with,
             testonly = testonly,
         )
+    else:
+        cc_binary(
+            name = so_file,
+            srcs = srcs + hdrs,
+            data = data,
+            copts = copts + [
+                "-fno-strict-aliasing",
+                "-fexceptions",
+            ] + select({
+                clean_dep("//tensorflow:windows"): [],
+                "//conditions:default": [
+                    "-fvisibility=hidden",
+                ],
+            }),
+            linkopts = linkopts + _rpath_linkopts(name) + select({
+                clean_dep("//tensorflow:macos"): [
+                    # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
+                    # not being exported.  There should be a better way to deal with this.
+                    "-Wl,-w",
+                    "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+                ],
+                clean_dep("//tensorflow:windows"): [],
+                "//conditions:default": [
+                    "-Wl,--version-script",
+                    "$(location %s)" % version_script_file,
+                ],
+            }),
+            deps = deps + [
+                exported_symbols_file,
+                version_script_file,
+            ],
+            defines = defines,
+            features = features + ["-use_header_modules"],
+            linkshared = 1,
+            testonly = testonly,
+            licenses = licenses,
+            visibility = visibility,
+            deprecation = deprecation,
+            restricted_to = restricted_to,
+            compatible_with = compatible_with,
+        )
+        native.genrule(
+            name = name + "_pyd_copy",
+            srcs = [so_file],
+            outs = [pyd_file],
+            cmd = "cp $< $@",
+            output_to_bindir = True,
+            visibility = visibility,
+            deprecation = deprecation,
+            restricted_to = restricted_to,
+            compatible_with = compatible_with,
+            testonly = testonly,
+        )
 
     native.py_library(
         name = name,
@@ -3094,41 +3095,6 @@ def tf_python_pybind_extension(
         name,
         srcs,
         module_name,
-        features = [],
-        copts = [],
-        hdrs = [],
-        deps = [],
-        defines = [],
-        visibility = None,
-        testonly = None,
-        compatible_with = None):
-    """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
-
-    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
-
-    It is used for targets under //third_party/tensorflow/python that link
-    against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
-    """
-    pybind_extension(
-        name,
-        srcs,
-        module_name,
-        features = features,
-        copts = copts,
-        hdrs = hdrs,
-        deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
-        defines = defines,
-        visibility = visibility,
-        link_in_framework = True,
-        testonly = testonly,
-        compatible_with = compatible_with,
-    )
-
-# buildozer: enable=function-docstring-args
-def tf_python_pybind_ccsharedlib_extension_opensource(
-        name,
-        srcs,
-        module_name,
         hdrs = [],
         static_deps = [],
         deps = [],
@@ -3138,11 +3104,12 @@ def tf_python_pybind_ccsharedlib_extension_opensource(
         features = [],
         testonly = None,
         visibility = None):
-    """A wrapper macro for pybind_extension.
+    """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
+
+    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
 
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
-    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
     """
     pybind_extension(
         name,
