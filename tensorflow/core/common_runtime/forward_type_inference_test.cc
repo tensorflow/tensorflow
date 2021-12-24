@@ -386,10 +386,10 @@ TEST(ForwardTypeInferenceTest, BinaryNodeWithCycleInput) {
   // at least once after both its inputs have been resolved, so the graph always
   // has complete type information.
   EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("expected identical input types"));
+              ::testing::HasSubstr("expected compatible input types"));
 }
 
-TEST(WeakForwardTypeInferenceTest, ALwaysSucceeds) {
+TEST(WeakForwardTypeInferenceTest, AlwaysSucceeds) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope root = Scope::NewRootScope().ExitOnError();
