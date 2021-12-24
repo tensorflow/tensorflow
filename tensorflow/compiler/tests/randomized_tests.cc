@@ -428,6 +428,16 @@ class OpTest : public ::testing::Test {
   // Choose arguments for the tf.Pad{V2} ops.
   PadArguments ChoosePadArguments();
 
+  struct ScatterArguments {
+    DataType type;
+    DataType indices_type;
+    Tensor indices;
+    Tensor updates;
+    std::vector<int64_t> shape;
+  };
+  // Choose arguments for ScatterNd and TensorScatterUpdate.
+  ScatterArguments ChooseScatterArguments();
+
   struct XlaDotArguments {
     std::vector<int64_t> lhs_dims;
     std::vector<int64_t> rhs_dims;
@@ -1152,6 +1162,35 @@ OpTest::PadArguments OpTest::ChoosePadArguments() {
                           TensorShape({static_cast<int64_t>(input_rank), 2})));
 
   a.constant_values = RandomTensor(a.input_type, false, {});
+
+  return a;
+}
+
+OpTest::ScatterArguments OpTest::ChooseScatterArguments() {
+  ScatterArguments a;
+
+  a.type = Choose<DataType>(kAllXlaTypes);
+  a.indices_type = DT_INT32;
+  a.shape = RandomDims(1, kDefaultMaxRank, 1);
+  int rank = a.shape.size();
+  std::uniform_int_distribution<int32> index_len_dist(1, rank);
+  int index_len = index_len_dist(generator());
+  std::vector<int64_t> indices_first = RandomDims(1, kDefaultMaxRank - 1, 1);
+  std::vector<int64_t> indices_shape(indices_first);
+  indices_shape.push_back(index_len);
+  std::vector<int64_t> updates_shape(indices_first);
+  for (int i = 0; i < rank - index_len; ++i) {
+    updates_shape.push_back(a.shape[index_len + i]);
+  }
+  Tensor indices_lo(a.indices_type, TensorShape(indices_shape));
+  test::FillFn<int32>(&indices_lo, [](int i) -> int32 { return 0; });
+  Tensor indices_hi(a.indices_type, TensorShape(indices_shape));
+  test::FillFn<int32>(&indices_hi, [index_len, &a](int i) -> int32 {
+    int idx_dim = i % index_len;
+    return a.shape[idx_dim] - 1;
+  });
+  a.indices = RandomBoundedTensor(a.indices_type, indices_lo, indices_hi);
+  a.updates = RandomTensor(a.type, false, updates_shape);
 
   return a;
 }
@@ -2663,6 +2702,20 @@ TEST_F(OpTest, EluGrad) {
                                              .RandomInput(DT_FLOAT, dims)
                                              .RandomInput(DT_FLOAT, dims)
                                              .Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, ScatterNd) {
+  Repeatedly([this]() {
+    auto a = ChooseScatterArguments();
+    auto shape = test::AsTensor<int32>(
+        std::vector<int32>(a.shape.begin(), a.shape.end()));
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ScatterNd")
+                                             .Input(a.indices)
+                                             .Input(a.updates)
+                                             .Input(shape)
+                                             .Attr("T", a.type)
+                                             .Attr("Tindices", a.indices_type));
   });
 }
 
@@ -4506,6 +4559,20 @@ TEST_F(OpTest, TanhGrad) {
                                              .RandomInput(type, dims)
                                              .RandomInput(type, dims)
                                              .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, TensorScatterUpdate) {
+  GTEST_SKIP() << "b/201095155";
+  GTEST_SKIP() << "b/197140886";
+  Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
+    auto a = ChooseScatterArguments();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("TensorScatterUpdate")
+                                             .RandomInput(a.type, a.shape)
+                                             .Input(a.indices)
+                                             .Input(a.updates)
+                                             .Attr("T", a.type)
+                                             .Attr("Tindices", a.indices_type));
   });
 }
 
