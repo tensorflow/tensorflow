@@ -418,6 +418,16 @@ class OpTest : public ::testing::Test {
   // Choose arguments for the tf.Gather{V2} ops.
   GatherArguments ChooseGatherArguments(bool axis_0);
 
+  struct PadArguments {
+    DataType input_type;
+    DataType paddings_type;
+    std::vector<int64_t> input_shape;
+    Tensor paddings;
+    Tensor constant_values;
+  };
+  // Choose arguments for the tf.Pad{V2} ops.
+  PadArguments ChoosePadArguments();
+
   struct XlaDotArguments {
     std::vector<int64_t> lhs_dims;
     std::vector<int64_t> rhs_dims;
@@ -974,6 +984,20 @@ Tensor OpTest::RandomReductionIndices(int rank) {
   return test::AsTensor<int32>(indices);
 }
 
+// Helper that converts 'values' to an int32 or int64 Tensor.
+static Tensor AsIntTensor(DataType dtype, const std::vector<int64_t>& values) {
+  switch (dtype) {
+    case DT_INT32: {
+      std::vector<int32> values32(values.begin(), values.end());
+      return test::AsTensor<int32>(values32);
+    }
+    case DT_INT64:
+      return test::AsTensor<int64_t>(values);
+    default:
+      LOG(FATAL);
+  }
+}
+
 OpTest::BatchMatMulArguments OpTest::ChooseBatchMatMulArguments(
     bool broadcastable_batch) {
   BatchMatMulArguments a;
@@ -1101,6 +1125,33 @@ OpTest::GatherArguments OpTest::ChooseGatherArguments(bool axis_0) {
   std::vector<int64_t> indices_shape = RandomDims(0, 3, 0, 16);
   a.indices = RandomBoundedTensor<int32>(DT_INT32, 0, a.params_shape[axis] - 1,
                                          false, indices_shape);
+
+  return a;
+}
+
+OpTest::PadArguments OpTest::ChoosePadArguments() {
+  PadArguments a;
+
+  a.input_type = Choose<DataType>(kAllXlaTypes);
+  a.input_shape = RandomDims();
+  int input_rank = a.input_shape.size();
+
+  a.paddings_type = Choose<DataType>({DT_INT32, DT_INT64});
+  std::vector<int64_t> paddings_vec;
+  for (int i = 0; i < input_rank; ++i) {
+    std::uniform_int_distribution<int> pad_distribution(0, a.input_shape[i]);
+    int pad_size = pad_distribution(generator());
+    std::uniform_int_distribution<int> lower_distribution(0, pad_size);
+    int low_pad_size = lower_distribution(generator());
+    paddings_vec.push_back(low_pad_size);
+    paddings_vec.push_back(pad_size - low_pad_size);
+    a.input_shape[i] -= pad_size;
+  }
+  CHECK(
+      a.paddings.CopyFrom(AsIntTensor(a.paddings_type, paddings_vec),
+                          TensorShape({static_cast<int64_t>(input_rank), 2})));
+
+  a.constant_values = RandomTensor(a.input_type, false, {});
 
   return a;
 }
@@ -1435,20 +1486,6 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
   TF_EXPECT_OK(s);
 
   return kOk;
-}
-
-// Helper that converts 'values' to an int32 or int64 Tensor.
-Tensor AsIntTensor(DataType dtype, const std::vector<int64_t>& values) {
-  switch (dtype) {
-    case DT_INT32: {
-      std::vector<int32> values32(values.begin(), values.end());
-      return test::AsTensor<int32>(values32);
-    }
-    case DT_INT64:
-      return test::AsTensor<int64_t>(values);
-    default:
-      LOG(FATAL);
-  }
 }
 
 TEST_F(OpTest, _EagerConst) {
@@ -3470,31 +3507,28 @@ TEST_F(OpTest, Pack) {
 }
 
 TEST_F(OpTest, Pad) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
-    auto type = Choose<DataType>(kAllXlaTypes);
-    std::vector<int64_t> t_dims = RandomDims();
+    auto a = ChoosePadArguments();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Pad")
+            .RandomInput(a.input_type, a.input_shape)
+            .Input(a.paddings)
+            .Attr("T", a.input_type)
+            .Attr("Tpaddings", a.paddings_type));
+  });
+}
 
-    DataType tpaddings = Choose<DataType>({DT_INT32, DT_INT64});
-    std::vector<int64_t> paddings_vec;
-    auto dims_size = t_dims.size();
-    paddings_vec.reserve(dims_size * 2);
-    for (int i = 0; i < dims_size; ++i) {
-      std::uniform_int_distribution<int> pad_distribution(0, t_dims[i]);
-      int pad_size = pad_distribution(generator());
-      std::uniform_int_distribution<int> lower_distribution(0, pad_size);
-      int low_pad_size = lower_distribution(generator());
-      paddings_vec.push_back(low_pad_size);
-      paddings_vec.push_back(pad_size - low_pad_size);
-      t_dims[i] -= pad_size;
-    }
-    Tensor paddings;
-    CHECK(paddings.CopyFrom(AsIntTensor(tpaddings, paddings_vec),
-                            TensorShape({static_cast<int64_t>(dims_size), 2})));
-    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Pad")
-                                             .RandomInput(type, t_dims)
-                                             .Input(paddings)
-                                             .Attr("T", type)
-                                             .Attr("Tpaddings", tpaddings));
+TEST_F(OpTest, PadV2) {
+  Repeatedly([this]() {
+    auto a = ChoosePadArguments();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("PadV2")
+            .RandomInput(a.input_type, a.input_shape)
+            .Input(a.paddings)
+            .Input(a.constant_values)
+            .Attr("T", a.input_type)
+            .Attr("Tpaddings", a.paddings_type));
   });
 }
 
