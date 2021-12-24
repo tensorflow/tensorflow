@@ -94,6 +94,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "serialization_base",
+    srcs = ["serialization_base.cc"],
+    hdrs = ["serialization_base.h"],
+    deps = [
+        ":arguments",
+        ":buffer_desc",
+        ":gpu_object_desc",
+        ":gpu_operation",
+        ":serialization_base_cc_fbs",
+        ":tensor_desc",
+        ":tensor_linear_desc",
+        ":texture2d_desc",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
 flatbuffer_cc_library(
     name = "serialization_base_cc_fbs",
     srcs = ["serialization_base.fbs"],
