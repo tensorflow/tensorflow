@@ -161,6 +161,7 @@ tf_kernel_library(
         ":tpu_op_consts",
         ":tpu_pod_state",
         ":tpu_fingerprint_lookup",
+        "@com_google_absl//absl/cleanup",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
