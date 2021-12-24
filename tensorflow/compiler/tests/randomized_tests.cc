@@ -406,6 +406,18 @@ class OpTest : public ::testing::Test {
   // Choose arguments for the tf.{Xla}Einsum ops.
   EinsumArguments ChooseEinsumArguments();
 
+  struct GatherArguments {
+    int64_t batch_dims;
+    DataType axis_type;
+    DataType indices_type;
+    DataType params_type;
+    std::vector<int64_t> params_shape;
+    Tensor indices;
+    Tensor axis;
+  };
+  // Choose arguments for the tf.Gather{V2} ops.
+  GatherArguments ChooseGatherArguments(bool axis_0);
+
   struct XlaDotArguments {
     std::vector<int64_t> lhs_dims;
     std::vector<int64_t> rhs_dims;
@@ -1063,6 +1075,33 @@ OpTest::EinsumArguments OpTest::ChooseEinsumArguments() {
   }
 
   a.type = Choose<DataType>(kAllXlaTypes);
+  return a;
+}
+
+OpTest::GatherArguments OpTest::ChooseGatherArguments(bool axis_0) {
+  GatherArguments a;
+
+  a.axis_type = DT_INT32;
+  a.indices_type = DT_INT32;
+  a.params_type = Choose<DataType>(kAllXlaTypes);
+
+  // Choose parameters such that
+  // 0 <= batch_dims <= axis < params.rank <= kDefaultMaxRank
+  a.batch_dims = 0;
+  int64_t axis;
+  if (axis_0) {
+    axis = 0;
+  } else {
+    std::uniform_int_distribution<int64_t> axis_distribution(
+        a.batch_dims, kDefaultMaxRank - 1);
+    axis = axis_distribution(generator());
+  }
+  a.axis = test::AsScalar<int32>((int32)axis);
+  a.params_shape = RandomDims(axis + 1, kDefaultMaxRank, 1, 16);
+  std::vector<int64_t> indices_shape = RandomDims(0, 3, 0, 16);
+  a.indices = RandomBoundedTensor<int32>(DT_INT32, 0, a.params_shape[axis] - 1,
+                                         false, indices_shape);
+
   return a;
 }
 
@@ -2706,16 +2745,28 @@ TEST_F(OpTest, FloorMod) {
 
 TEST_F(OpTest, Gather) {
   Repeatedly([this]() {
-    auto params_type = Choose<DataType>(kAllXlaTypes);
-    std::vector<int64_t> params_shape = RandomDims();
-    auto indices_type = Choose<DataType>({DT_INT32, DT_INT64});
-    Tensor indices = RandomTensor(indices_type);
+    GatherArguments a = ChooseGatherArguments(true);
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Gather")
-            .RandomInput(params_type, params_shape)
-            .Input(indices)
-            .Attr("Tparams", params_type)
-            .Attr("Tindices", indices_type));
+            .RandomInput(a.params_type, a.params_shape)
+            .Input(a.indices)
+            .Attr("Tparams", a.params_type)
+            .Attr("Tindices", a.indices_type));
+  });
+}
+
+TEST_F(OpTest, GatherV2) {
+  Repeatedly([this]() {
+    GatherArguments a = ChooseGatherArguments(false);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("GatherV2")
+            .RandomInput(a.params_type, a.params_shape)
+            .Input(a.indices)
+            .Input(a.axis)
+            .Attr("batch_dims", a.batch_dims)
+            .Attr("Taxis", a.axis_type)
+            .Attr("Tindices", a.indices_type)
+            .Attr("Tparams", a.params_type));
   });
 }
 
