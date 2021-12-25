@@ -58,7 +58,7 @@ namespace py = pybind11;
 
 struct Uniquer {
   absl::Mutex mu;
-  NameUniquer name_uniquer ABSL_GUARDED_BY(mu);
+  NameUniquer name_uniquer TF_GUARDED_BY(mu);
 };
 
 Uniquer* GetUniquer() {

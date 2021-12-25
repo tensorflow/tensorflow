@@ -1712,14 +1712,14 @@ std::string WrapDotInHtml(absl::string_view dot) {
 
 tensorflow::mutex url_renderer_mu(tensorflow::LINKER_INITIALIZED);
 std::function<StatusOr<std::string>(absl::string_view)>* url_renderer
-    ABSL_GUARDED_BY(url_renderer_mu) = nullptr;
+    TF_GUARDED_BY(url_renderer_mu) = nullptr;
 
 // Storage for fusion visualization: (module_id, computation_id) -> sequence of
 // dot dumps.
 tensorflow::mutex fusion_visualizer_state_mu(tensorflow::LINKER_INITIALIZED);
-static auto& fusion_visualizer_state
-    ABSL_GUARDED_BY(fusion_visualizer_state_mu) = *new absl::flat_hash_map<
-        std::pair<int64_t, int64_t>, std::vector<std::string>>();
+static auto& fusion_visualizer_state TF_GUARDED_BY(fusion_visualizer_state_mu) =
+    *new absl::flat_hash_map<std::pair<int64_t, int64_t>,
+                             std::vector<std::string>>();
 
 // Generates a key to the fusion visualizer state mapping.
 std::pair<int, int> FusionVisualizerStateKey(
@@ -1732,7 +1732,7 @@ std::pair<int, int> FusionVisualizerStateKey(
 // fusion_visualizer_state and the URL renderer. Precondition: url_renderer !=
 // nullptr.
 StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation)
-    ABSL_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
   CHECK(url_renderer != nullptr);
   tensorflow::mutex_lock lock(fusion_visualizer_state_mu);
   const std::vector<std::string>& dot_graphs =
@@ -1824,7 +1824,7 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation)
 StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
                                       absl::string_view dot,
                                       RenderedGraphFormat format)
-    ABSL_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
   switch (format) {
     case RenderedGraphFormat::kUrl:
       CHECK(url_renderer != nullptr)

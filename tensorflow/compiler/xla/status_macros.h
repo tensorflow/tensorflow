@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 namespace status_macros {
@@ -172,7 +173,7 @@ class StatusAdaptorForMacros {
   StatusAdaptorForMacros(const StatusAdaptorForMacros&) = delete;
   StatusAdaptorForMacros& operator=(const StatusAdaptorForMacros&) = delete;
 
-  explicit operator bool() const { return ABSL_PREDICT_TRUE(status_.ok()); }
+  explicit operator bool() const { return TF_PREDICT_TRUE(status_.ok()); }
 
   Status&& Consume() { return std::move(status_); }
 
@@ -184,7 +185,7 @@ class StatusAdaptorForMacros {
 }  // namespace xla
 
 #define TF_RET_CHECK(condition)                                           \
-  while (ABSL_PREDICT_FALSE(!(condition)))                                \
+  while (TF_PREDICT_FALSE(!(condition)))                                  \
   return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,          \
                                              tensorflow::error::INTERNAL) \
       .with_log_stack_trace()                                             \

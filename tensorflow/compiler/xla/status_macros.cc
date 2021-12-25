@@ -41,7 +41,7 @@ static Status MakeStatus(tensorflow::error::Code code,
 // If log_severity is NUM_SEVERITIES, nothing is logged.
 static void LogError(const Status& status, const char* filename, int line,
                      int log_severity, bool should_log_stack_trace) {
-  if (ABSL_PREDICT_TRUE(log_severity != tensorflow::NUM_SEVERITIES)) {
+  if (TF_PREDICT_TRUE(log_severity != tensorflow::NUM_SEVERITIES)) {
     std::string stack_trace;
     if (should_log_stack_trace) {
       stack_trace = absl::StrCat("\n", tensorflow::CurrentStackTrace());
@@ -77,12 +77,12 @@ static Status MakeError(const char* filename, int line,
                         tensorflow::error::Code code,
                         const std::string& message, bool should_log,
                         int log_severity, bool should_log_stack_trace) {
-  if (ABSL_PREDICT_FALSE(code == tensorflow::error::OK)) {
+  if (TF_PREDICT_FALSE(code == tensorflow::error::OK)) {
     LOG(ERROR) << "Cannot create error with status OK";
     code = tensorflow::error::UNKNOWN;
   }
   const Status status = MakeStatus(code, message);
-  if (ABSL_PREDICT_TRUE(should_log)) {
+  if (TF_PREDICT_TRUE(should_log)) {
     LogError(status, filename, line, log_severity, should_log_stack_trace);
   }
   return status;
@@ -151,7 +151,7 @@ Status MakeErrorStream::Impl::GetStatus() {
   const std::string str = prior_message_handling_ == kAppendToPriorMessage
                               ? absl::StrCat(prior_message_, stream_str)
                               : absl::StrCat(stream_str, prior_message_);
-  if (ABSL_PREDICT_FALSE(str.empty())) {
+  if (TF_PREDICT_FALSE(str.empty())) {
     return MakeError(
         file_, line_, code_,
         absl::StrCat(str, "Error without message at ", file_, ":", line_),

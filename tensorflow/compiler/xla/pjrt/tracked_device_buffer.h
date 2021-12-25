@@ -97,7 +97,7 @@ class BufferSequencingEvent {
   }
 
  private:
-  bool EventHasBeenRecorded() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool EventHasBeenRecorded() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   uint64_t sequence_number() const;
 
   // An event that is triggered when the content of one or more buffers has been
@@ -115,7 +115,7 @@ class BufferSequencingEvent {
   mutable absl::Mutex mu_;
   // A list of all streams for which the buffer's content is known to be defined
   // at the tail of the queue, i.e., for any newly enqueued command.
-  absl::InlinedVector<se::Stream*, 2> streams_defined_on_ ABSL_GUARDED_BY(mu_);
+  absl::InlinedVector<se::Stream*, 2> streams_defined_on_ TF_GUARDED_BY(mu_);
 };
 
 // Class that represents a tuple of device buffers. Like a ScopedShapedBuffer it

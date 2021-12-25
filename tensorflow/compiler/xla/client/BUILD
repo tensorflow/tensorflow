@@ -229,6 +229,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_evaluator",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/platform:errors",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
