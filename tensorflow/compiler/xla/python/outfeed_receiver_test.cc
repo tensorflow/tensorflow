@@ -72,7 +72,7 @@ class Accumulator {
 
  private:
   absl::Mutex mutex_;
-  std::vector<Data> received_ TF_GUARDED_BY(mutex_);
+  std::vector<Data> received_ ABSL_GUARDED_BY(mutex_);
 };
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {

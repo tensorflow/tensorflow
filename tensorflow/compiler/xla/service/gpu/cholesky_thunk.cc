@@ -32,7 +32,7 @@ namespace gpu {
 
 static tensorflow::mutex contexts_mu(tensorflow::LINKER_INITIALIZED);
 static auto contexts =
-    new absl::flat_hash_map<se::Stream*, GpuSolverContext> TF_GUARDED_BY(
+    new absl::flat_hash_map<se::Stream*, GpuSolverContext> ABSL_GUARDED_BY(
         contexts_mu);
 
 CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
@@ -56,9 +56,9 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "type=" << PrimitiveType_Name(type_)
           << " uplo=" << se::blas::UpperLowerString(uplo_)
           << " batch_size=" << batch_size_ << " n=" << n_
-       << " a=" << a_buffer_.ToString()
-       << " workspace=" << workspace_buffer_.ToString()
-       << " info=" << info_buffer_.ToString();
+          << " a=" << a_buffer_.ToString()
+          << " workspace=" << workspace_buffer_.ToString()
+          << " info=" << info_buffer_.ToString();
 
   GpuSolverContext* context;
   {

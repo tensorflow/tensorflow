@@ -16,20 +16,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_topk.h"
 
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <numeric>
 #include <vector>
 
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/macros.h"
+#include "absl/base/dynamic_annotations.h"
 
 template <typename T>
 static void TopK(int64_t batch_size, int64_t input_size, int64_t k,
                  const T* values, T* out_values, int32_t* out_indices) {
   // 'values' is managed by the JIT code, so msan can't tell they are
   // initialized.
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(values,
-                                    input_size * batch_size * sizeof(T));
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(values,
+                                      input_size * batch_size * sizeof(T));
 
   std::vector<int32_t> temp_indices(input_size);
   for (int64_t batch = 0; batch != batch_size; ++batch) {
@@ -67,7 +67,7 @@ static void TopK(int64_t batch_size, int64_t input_size, int64_t k,
   }
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TopKF32(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TopKF32(
     int64_t batch_size, int64_t input_size, int64_t k, const float* values,
     float* out_values, int32_t* out_indices) {
   TopK(batch_size, input_size, k, values, out_values, out_indices);

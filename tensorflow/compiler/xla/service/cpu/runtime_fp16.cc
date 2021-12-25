@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <cstring>
 
-#include "tensorflow/core/platform/macros.h"
+#include "absl/base/attributes.h"
 
 namespace {
 
@@ -60,7 +60,7 @@ class AliasedFloatInt {
 // that the compiler-rt definitions "win", but that isn't essential.
 
 // Algorithm copied from Eigen.
-uint16_t TF_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
+uint16_t ABSL_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
   AliasedFloatInt f = AliasedFloatInt::FromFloat(float_value);
 
   const AliasedFloatInt f32infty = AliasedFloatInt::FromUInt(255 << 23);
@@ -110,7 +110,7 @@ uint16_t TF_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
 }
 
 // Algorithm copied from Eigen.
-float TF_ATTRIBUTE_WEAK __gnu_h2f_ieee(uint16_t h) {
+float ABSL_ATTRIBUTE_WEAK __gnu_h2f_ieee(uint16_t h) {
   const AliasedFloatInt magic = AliasedFloatInt::FromUInt(113 << 23);
   const unsigned int shifted_exp = 0x7c00 << 13;  // exponent mask after shift
   AliasedFloatInt o;
@@ -131,7 +131,7 @@ float TF_ATTRIBUTE_WEAK __gnu_h2f_ieee(uint16_t h) {
   return o.as_float();
 }
 
-uint16_t TF_ATTRIBUTE_WEAK __truncdfhf2(double d) {
+uint16_t ABSL_ATTRIBUTE_WEAK __truncdfhf2(double d) {
   // This does a double rounding step, but it's precise enough for our use
   // cases.
   return __gnu_f2h_ieee(static_cast<float>(d));

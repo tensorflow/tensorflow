@@ -148,9 +148,9 @@ class BefThunk : public Thunk {
   // The module data will be set in the execution context for kernel thunk to
   // use during execution. The resource contexts cache the loaded modules.
   tensorflow::mutex mutex_;
-  absl::optional<GpuModuleData> gpu_module_data_ TF_GUARDED_BY(mutex_);
+  absl::optional<GpuModuleData> gpu_module_data_ ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<CUcontext, std::unique_ptr<tfrt::ResourceContext>>
-      resource_contexts_ TF_GUARDED_BY(mutex_);
+      resource_contexts_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace

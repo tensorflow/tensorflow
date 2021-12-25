@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -53,7 +52,7 @@ class InterpreterExecutable : public InterpreterExecutableBase {
   StatusOr<Literal> Evaluate(const ServiceExecutableRunOptions* run_options,
                              const HloComputation& computation,
                              absl::Span<const Literal> arg_literals) override
-      TF_LOCKS_EXCLUDED(evaluator_lock_);
+      ABSL_LOCKS_EXCLUDED(evaluator_lock_);
 
   // The interpreter interprets executables with an HloEvaluator.
   std::unique_ptr<HloEvaluator> evaluator_ TF_PT_GUARDED_BY(evaluator_lock_);

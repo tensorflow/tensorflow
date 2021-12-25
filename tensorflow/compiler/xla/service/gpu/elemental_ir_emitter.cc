@@ -98,7 +98,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
         }
       }
       output_type = F32;
-      TF_FALLTHROUGH_INTENDED;
+      ABSL_FALLTHROUGH_INTENDED;
     case F32:
       break;
     case F64:

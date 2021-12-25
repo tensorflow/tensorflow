@@ -179,7 +179,7 @@ class Backend {
 
   // Mapping from stream executor to stream pools, used by `BorrowStream` above.
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamPool>>
-      stream_pools_ TF_GUARDED_BY(mu_);
+      stream_pools_ ABSL_GUARDED_BY(mu_);
 
   // The default memory allocator to use.
   // This must be a shared_ptr, as this is passed all the way down to the
