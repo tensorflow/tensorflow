@@ -44,7 +44,7 @@ func @eliminate_redundant_transpose(%arg : tensor<3x4x16x2xf32>) -> tensor<3x2x1
 // -----
 
 // CHECK-LABEL: func @broadcast_transpose
-// CHECK-SMAE: [[ARG:%[a-zA-Z0-9]+]]
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func @broadcast_transpose(%arg0 : tensor<64xf32>) -> tensor<5x64x31x95xf32> {
     %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<64xf32>) -> tensor<5x31x95x64xf32>
     %1 = "mhlo.transpose"(%0) {permutation = dense<[0, 3, 1, 2]> : tensor<4xi64>} : (tensor<5x31x95x64xf32>) -> tensor<5x64x31x95xf32>
