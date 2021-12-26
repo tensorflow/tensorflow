@@ -70,7 +70,7 @@ func @broadcast_transpose_non_dim(%arg0 : tensor<f32>) -> tensor<5x64x31x95xf32>
 // -----
 
 // CHECK-LABEL: func @broadcast_transpose_multi_dim
-// CHECK-SMAE: [[ARG:%[a-zA-Z0-9]+]]
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func @broadcast_transpose_multi_dim(%arg0 : tensor<95x64xf32>) -> tensor<5x64x31x95xf32> {
     %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[2, 3]> : tensor<2xi64>} : (tensor<95x64xf32>) -> tensor<5x31x95x64xf32>
     %1 = "mhlo.transpose"(%0) {permutation = dense<[0, 3, 1, 2]> : tensor<4xi64>} : (tensor<5x31x95x64xf32>) -> tensor<5x64x31x95xf32>
