@@ -27,6 +27,22 @@ func @add_fold_float() -> tensor<4xf64> {
   return %2 : tensor<4xf64>
 }
 
+// CHECK-LABEL: add_zero_int_fold
+func @add_zero_int_fold(%arg0: tensor<2x2xi64>) -> tensor<2x2xi64> {
+  %0 = mhlo.constant dense<0> : tensor<2x2xi64>
+  %1 = "mhlo.add"(%arg0, %0) : (tensor<2x2xi64>, tensor<2x2xi64>) -> tensor<2x2xi64>
+  // CHECK: return %arg0 : tensor<2x2xi64>
+  return %1 : tensor<2x2xi64>
+}
+
+// CHECK-LABEL: add_zero_float_flod
+func @add_zero_float_flod(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %0 = mhlo.constant dense<0.0> : tensor<2x2xf32>
+  %1 = "mhlo.add"(%0, %arg0) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: return %arg0 : tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+}
+
 // CHECK-LABEL: sub_scalar_fold
 func @sub_scalar_fold() -> tensor<4xi64> {
   %0 = mhlo.constant dense<5> : tensor<4xi64>
@@ -44,6 +60,47 @@ func @multiply_scalar_fold() -> tensor<4xi64> {
   %2 = "mhlo.multiply"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
   return %2 : tensor<4xi64>
 }
+
+// CHECK-LABEL: mul_one_int_fold
+func @mul_one_int_fold(%arg0: tensor<2x2xi64>) -> tensor<2x2xi64> {
+  %0 = mhlo.constant dense<1> : tensor<2x2xi64>
+  %1 = "mhlo.multiply"(%arg0, %0) : (tensor<2x2xi64>, tensor<2x2xi64>) -> tensor<2x2xi64>
+  // CHECK: return %arg0 : tensor<2x2xi64>
+  return %1 : tensor<2x2xi64>
+}
+
+// CHECK-LABEL: mul_one_int8_fold
+func @mul_one_int8_fold(%arg0: tensor<2x2xi8>) -> tensor<2x2xi8> {
+  %0 = mhlo.constant dense<1> : tensor<2x2xi8>
+  %1 = "mhlo.multiply"(%arg0, %0) : (tensor<2x2xi8>, tensor<2x2xi8>) -> tensor<2x2xi8>
+  // CHECK: return %arg0 : tensor<2x2xi8>
+  return %1 : tensor<2x2xi8>
+}
+
+// CHECK-LABEL: mul_one_float_flod
+func @mul_one_float_flod(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %0 = mhlo.constant dense<1.0> : tensor<2x2xf32>
+  %1 = "mhlo.multiply"(%0, %arg0) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: return %arg0 : tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+}
+
+// CHECK-LABEL: mul_one_fp16_flod
+func @mul_one_fp16_flod(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
+  %0 = mhlo.constant dense<1.0> : tensor<2x2xf16>
+  %1 = "mhlo.multiply"(%0, %arg0) : (tensor<2x2xf16>, tensor<2x2xf16>) -> tensor<2x2xf16>
+  // CHECK: return %arg0 : tensor<2x2xf16>
+  return %1 : tensor<2x2xf16>
+}
+
+// CHECK-LABEL: mul_one_bf16_flod
+func @mul_one_bf16_flod(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
+  %0 = mhlo.constant dense<1.0> : tensor<2x2xbf16>
+  %1 = "mhlo.multiply"(%0, %arg0) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
+  // CHECK: return %arg0 : tensor<2x2xbf16>
+  return %1 : tensor<2x2xbf16>
+}
+
 
 // CHECK-LABEL: divide_scalar_fold
 func @divide_scalar_fold() -> tensor<4xi64> {
