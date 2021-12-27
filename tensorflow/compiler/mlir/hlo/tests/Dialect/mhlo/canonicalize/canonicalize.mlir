@@ -516,6 +516,13 @@ func @broadcast_in_dim_identity(%arg0: tensor<2x3x4xf32>) -> tensor<2x3x4xf32> {
   return %0 : tensor<2x3x4xf32>
 }
 
+// CHECK-LABEL: func @broadcast_in_dim_equivalent_reshape
+func @broadcast_in_dim_equivalent_reshape(%arg0: tensor<2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+  // CHECK: mhlo.reshape
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>} : (tensor<2x3x4xf32>) -> tensor<1x2x3x4xf32>
+  return %0 : tensor<1x2x3x4xf32>
+}
+
 // CHECK-LABEL: func @broadcast_in_dim_not_identity_because_it_actually_broadcasts
 func @broadcast_in_dim_not_identity_because_it_actually_broadcasts(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
   // CHECK: mhlo.broadcast_in_dim
@@ -523,13 +530,23 @@ func @broadcast_in_dim_not_identity_because_it_actually_broadcasts(%arg0: tensor
   return %0 : tensor<2x2xf32>
 }
 
-// CHECK-LABEL: func @broadcast_in_dim_not_identity_permutation
-func @broadcast_in_dim_not_identity_permutation(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  // CHECK: mhlo.broadcast_in_dim
+// CHECK-LABEL: func @broadcast_in_dim_equivalent_transpose
+func @broadcast_in_dim_equivalent_transpose(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: mhlo.transpose
+  // CHECK-SAME: permutation = dense<[1, 0]>
   %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 0]> : tensor<2xi64>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
+// CHECK-LABEL: func @broadcast_consecutive
+func @broadcast_consecutive(%arg0: tensor<2x3xf32>) -> tensor<2x3x4x5xf32> {
+  // CHECK: mhlo.broadcast_in_dim
+  // CHECK-SAME: broadcast_dimensions = dense<[0, 1]>
+  // CHECK-NEXT: return
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<2x3xf32>) -> tensor<2x3x4xf32>
+  %1 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<2x3x4xf32>) -> tensor<2x3x4x5xf32>
+  return %1 : tensor<2x3x4x5xf32>
+}
 
 // CHECK-LABEL: func @dynamic_broadcast_in_dim_op_not_actually_dynamic
 func @dynamic_broadcast_in_dim_op_not_actually_dynamic(%arg0: tensor<4xf32>, %arg1: tensor<2xi64>) -> tensor<5x4xf32> {
