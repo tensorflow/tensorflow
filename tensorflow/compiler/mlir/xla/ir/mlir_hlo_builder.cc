@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
 
+#include <string>
+#include <utility>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -130,8 +133,8 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
 }
 
 StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
-    const string& call_target_name, absl::Span<const XlaOp> operands,
-    const Shape& shape, const string& opaque,
+    const std::string& call_target_name, absl::Span<const XlaOp> operands,
+    const Shape& shape, const std::string& opaque,
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -525,7 +528,8 @@ StatusOr<XlaOp> MlirHloBuilder::CholeskyInternal(const Shape& shape, XlaOp a,
 }
 
 StatusOr<XlaOp> MlirHloBuilder::InfeedWithTokenInternal(
-    const Shape& infeed_instruction_shape, XlaOp token, const string& config) {
+    const Shape& infeed_instruction_shape, XlaOp token,
+    const std::string& config) {
   TF_ASSIGN_OR_RETURN(mlir::Type result_type,
                       ConvertShapeToType<mlir::RankedTensorType>(
                           infeed_instruction_shape, builder_));
@@ -538,7 +542,7 @@ StatusOr<XlaOp> MlirHloBuilder::InfeedWithTokenInternal(
 
 StatusOr<XlaOp> MlirHloBuilder::OutfeedWithTokenInternal(
     XlaOp operand, XlaOp token, const Shape& shape_with_layout,
-    const string& outfeed_config) {
+    const std::string& outfeed_config) {
   auto token_type = mlir::mhlo::TokenType::get(builder_.getContext());
   return MakeXlaOp(builder_.create<mlir::mhlo::OutfeedOp>(
       loc_, token_type, GetValue(operand), GetValue(token), outfeed_config));

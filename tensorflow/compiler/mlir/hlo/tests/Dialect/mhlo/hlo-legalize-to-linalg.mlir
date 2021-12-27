@@ -2031,6 +2031,34 @@ func @reduce_or(%arg0: tensor<5x4xi1>, %arg1: tensor<i1>) -> tensor<5xi1> {
 
 // -----
 
+func @reduce_or_of_zero_constant() -> tensor<5xi1> {
+  %0 = mhlo.constant dense<false> : tensor<5x4xi1>
+  %1 = mhlo.constant dense<false> : tensor<i1>
+  %2 = "mhlo.reduce"(%0, %1) ({
+  ^bb0(%arg1: tensor<i1>, %arg2 : tensor<i1>):
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
+  return %2 : tensor<5xi1>
+}
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: @reduce_or_of_zero_constant
+// CHECK-DAG: %[[CST:.*]] = arith.constant dense<false> : tensor<5x4xi1>
+// CHECK-DAG: %[[INIT:.*]] = arith.constant dense<false> : tensor<i1>
+// CHECK-DAG: %[[FALSE:.*]] = arith.constant false
+// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
+// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill(%[[FALSE]], %[[INIT_TENSOR]])
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]
+// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
+// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
+// CHECK-NEXT:   %[[EXTRACT:.*]] = tensor.extract %[[INIT]][] : tensor<i1>
+// CHECK-NEXT:   linalg.yield %[[EXTRACT]] : i1
+
+// -----
+
 func @reduce_dim0(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<4xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):

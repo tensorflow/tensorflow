@@ -2871,8 +2871,6 @@ namespace {
 class DelegateContext {
  public:
   struct DelegateData {
-    std::vector<int> input_ids;
-    std::vector<int> output_ids;
     GraphFloat32* graph;
     std::unique_ptr<absl::flat_hash_map<int, int>> quant_conversion_map;
   };
@@ -2881,10 +2879,8 @@ class DelegateContext {
     const auto* delegate_data =
         reinterpret_cast<DelegateData*>(delegate_params->delegate->data_);
     return delegate_data->graph &&
-           BuildModelEnforceIO(context, delegate_params,
-                               delegate_data->input_ids,
-                               delegate_data->output_ids, delegate_data->graph,
-                               delegate_data->quant_conversion_map.get())
+           BuildModel(context, delegate_params, delegate_data->graph,
+                      delegate_data->quant_conversion_map.get())
                .ok();
   }
 };
@@ -2933,8 +2929,7 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
   }
   TfLiteDelegate delegate;
 
-  DelegateContext::DelegateData delegate_data{interpreter->inputs(),
-                                              interpreter->outputs(), graph};
+  DelegateContext::DelegateData delegate_data{graph};
   if (allow_quant_ops) {
     delegate_data.quant_conversion_map =
         absl::make_unique<absl::flat_hash_map<int, int>>();

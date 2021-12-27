@@ -132,6 +132,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -286,6 +287,7 @@ java_proto_library(
 cc_library(
     name = "platform_base",
     hdrs = ["//tensorflow/core/platform:base_hdrs"],
+    compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
     tags = ["avoid_dep"],
     deps = [
@@ -1519,6 +1521,7 @@ cc_library(
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],

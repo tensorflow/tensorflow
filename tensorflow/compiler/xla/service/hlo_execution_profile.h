@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile_data.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 

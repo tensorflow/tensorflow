@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -592,7 +591,7 @@ Literal ConvertType(LiteralSlice literal) {
   return literal;
 }
 
-/* static */ string LiteralUtil::MultiIndexAsString(
+/* static */ std::string LiteralUtil::MultiIndexAsString(
     absl::Span<const int64_t> multi_index) {
   return StrCat("{", absl::StrJoin(multi_index, ","), "}");
 }

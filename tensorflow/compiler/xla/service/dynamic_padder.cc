@@ -344,9 +344,9 @@ HloInstruction* GenerateBinaryMask(
   for (int64_t i = output_dims.size() - 1; i > 0; i--) {
     const int64_t output_dim = output_dims[i];
     HloInstruction* dynamic_size = output_dynamic_dims[output_dim];
-    HloInstruction* static_output_dim_size =
-        comp->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(output_shape.dimensions(output_dim))));
+    HloInstruction* static_output_dim_size = comp->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
+            output_shape.dimensions(output_dim))));
     HloInstruction* broadcasted_static_output_dim_size =
         comp->AddInstruction(HloInstruction::CreateBroadcast(
             mask_input_shape, static_output_dim_size, {}));

@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"

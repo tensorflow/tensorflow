@@ -89,7 +89,7 @@ void prepareWhileOp(WhileOp while_op) {
         cond_region.front().addArgument(input.getType(), input.getLoc());
     Value body_arg =
         body_region.front().addArgument(input.getType(), input.getLoc());
-    for (OpOperand &operand : input.getUses()) {
+    for (OpOperand &operand : llvm::make_early_inc_range(input.getUses())) {
       if (cond_region.isAncestor(operand.getOwner()->getParentRegion()))
         operand.set(cond_arg);
       else if (body_region.isAncestor(operand.getOwner()->getParentRegion()))

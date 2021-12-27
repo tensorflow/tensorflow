@@ -200,7 +200,8 @@ class InstructionFusion : public HloModulePass {
                       absl::flat_hash_set<const HloInstruction*>>
       reused_fusion_operands_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InstructionFusion);
+  InstructionFusion(const InstructionFusion&) = delete;
+  InstructionFusion& operator=(const InstructionFusion&) = delete;
 };
 
 }  // namespace xla

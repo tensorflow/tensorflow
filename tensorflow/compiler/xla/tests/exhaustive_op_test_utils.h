@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <iterator>
+#include <string>
+#include <utility>
 
 #include "tensorflow/compiler/xla/bit_cast.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -640,9 +644,9 @@ class BitChunks {
   uint64_t spacing_;
 };
 
-inline string StringifyNum(BitChunks c) { return c.ToString(); }
+inline std::string StringifyNum(BitChunks c) { return c.ToString(); }
 
-inline string StringifyNum(BitChunks::iterator c) { return c.ToString(); }
+inline std::string StringifyNum(BitChunks::iterator c) { return c.ToString(); }
 
 template <typename T>
 void AppendStringifyNum(std::string* s, T x) {

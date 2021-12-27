@@ -161,8 +161,8 @@ void TFGraphDialect::printCustomTfOp(Operation *op,
   }
 
   // Handles the optional "device" and "name" attribute.
-  ArrayRef<llvm::StringRef> keywords{"_mlir_device", "_mlir_assigned_device",
-                                     "_mlir_name"};
+  std::array<llvm::StringRef, 3> keywords{
+      "_mlir_device", "_mlir_assigned_device", "_mlir_name"};
   for (StringRef keyword : keywords) {
     if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword))
       if (!value_attr.getValue().empty())

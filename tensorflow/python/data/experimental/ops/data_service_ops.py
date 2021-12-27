@@ -155,9 +155,9 @@ def _validate_compression(compression):
 
 def _get_compression_proto(compression):
   if compression == COMPRESSION_AUTO:
-    return data_service_pb2.DataServiceMetadata.SNAPPY
+    return data_service_pb2.DataServiceMetadata.COMPRESSION_SNAPPY
   if compression == COMPRESSION_NONE:
-    return data_service_pb2.DataServiceMetadata.OFF
+    return data_service_pb2.DataServiceMetadata.COMPRESSION_OFF
   raise ValueError(f"Invalid `compression` argument: {compression}. "
                    f"Must be one of {[COMPRESSION_AUTO, COMPRESSION_NONE]}.")
 

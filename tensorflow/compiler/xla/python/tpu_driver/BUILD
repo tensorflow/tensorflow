@@ -104,7 +104,6 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:stringpiece",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

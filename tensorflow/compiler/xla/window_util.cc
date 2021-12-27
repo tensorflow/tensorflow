@@ -62,7 +62,7 @@ PaddingConfig MakeSymmetricPadding(absl::Span<const int64_t> sizes) {
   return config;
 }
 
-/* static */ string ToString(const WindowDimension& dim) {
+/* static */ std::string ToString(const WindowDimension& dim) {
   using absl::StrAppend;
   using absl::StrCat;
   std::string str = StrCat("(size=", dim.size());

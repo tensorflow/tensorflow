@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/str_cat.h"

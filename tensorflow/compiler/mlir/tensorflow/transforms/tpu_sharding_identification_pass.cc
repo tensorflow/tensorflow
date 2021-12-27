@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
@@ -78,6 +79,53 @@ llvm::Optional<llvm::StringRef> GetXlaShardingFromOperand(Value value) {
 bool IsMaximalVariable(Value value) {
   auto read_var = value.getDefiningOp<TF::ReadVariableOp>();
   return read_var && read_var->getParentOfType<tf_device::ReplicateOp>();
+}
+
+// Verify whether the given sharding can be applied to the given (tensor) type.
+// (A bad sharding might mean failing tf.Split ops if the graph later executes
+//  on CPU)
+// If the sharding is incorrect, return failure. If it's good, or if we can't
+// verify it, return success.
+LogicalResult VerifySharding(Type type, StringRef sharding_string) {
+  xla::OpSharding sharding;
+  if (!sharding.ParseFromString(sharding_string.str())) {
+    // Some test cases use \01\02\03 as sharding, to test propagation. Treat
+    // a non-proto sharding as valid, and don't verify further.
+    return success();
+  }
+  if (sharding.type() != xla::OpSharding::OTHER) {
+    // We currently only verify shardings that actually break a tensor apart.
+    return success();
+  }
+  if (RankedTensorType ranked_type = type.dyn_cast<RankedTensorType>()) {
+    if (ranked_type.getRank() < sharding.tile_assignment_dimensions_size()) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// Verify sharding for all arguments and return values.
+LogicalResult VerifyShardings(
+    mlir::FuncOp func,
+    const llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_args,
+    const llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_rets) {
+  Block& function_block = func.front();
+  for (auto sharding_and_arg :
+       llvm::zip(sharding_for_args, function_block.getArguments())) {
+    StringRef sharding = std::get<0>(sharding_and_arg);
+    BlockArgument arg = std::get<1>(sharding_and_arg);
+    if (failed(VerifySharding(arg.getType(), sharding))) return failure();
+  }
+  Operation* terminator = function_block.getTerminator();
+  for (auto sharding_and_retval :
+       llvm::zip(sharding_for_rets, terminator->getOpOperands())) {
+    StringRef sharding = std::get<0>(sharding_and_retval);
+    OpOperand& retval = std::get<1>(sharding_and_retval);
+    if (failed(VerifySharding(retval.get().getType(), sharding)))
+      return failure();
+  }
+  return success();
 }
 
 // Returns XLA sharding from a XlaSharding op connected to an argument value. If
@@ -356,9 +404,11 @@ void IdentifyXlaShardingForTPUComputation(
 
   // XLA SPMD only supports cases where all inputs/outputs exist on every
   // partition (sharded or replicated). If any of the inputs/outputs have
-  // maximal sharding, then fallback to MPMD.
-  if (use_spmd && (absl::c_any_of(sharding_for_args, has_maximal_sharding) ||
-                   absl::c_any_of(sharding_for_rets, has_maximal_sharding))) {
+  // maximal sharding, then fallback to MPMD. Also fall back if any of the
+  // shardings aren't compatible with the rank of their tensor.
+  if ((use_spmd && (absl::c_any_of(sharding_for_args, has_maximal_sharding) ||
+                    absl::c_any_of(sharding_for_rets, has_maximal_sharding))) ||
+      failed(VerifyShardings(func, sharding_for_args, sharding_for_rets))) {
     LOG(WARNING) << "XLA SPMD only supports cases where all inputs/outputs "
                     "exist on every partition (sharded or replicated). If any "
                     "of the inputs/outputs have maximal sharding, then "

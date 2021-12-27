@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_
 
+#include <string>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -23,7 +26,7 @@ limitations under the License.
 
 namespace xla {
 
-using ModuleIdentifier = string;
+using ModuleIdentifier = std::string;
 
 struct XlaModuleDebugInfo {
   ModuleIdentifier module_id;

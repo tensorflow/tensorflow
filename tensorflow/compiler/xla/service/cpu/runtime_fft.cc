@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft_impl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenFft(
     const void* run_options_ptr, void* out, void* operand, int32_t fft_type,

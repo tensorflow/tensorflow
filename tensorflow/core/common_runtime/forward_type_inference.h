@@ -44,6 +44,15 @@ class ForwardTypeInferencePass : public GraphOptimizationPass {
   Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
+// A version of ForwardTypeInferencePass that prints a warning on error, instead
+// of returning error status. This is done because there are a few graphs
+// currently in the wild which don't actually type check.
+// TODO(mdan): Turn this into an error, once all offenders are clean.
+class WeakForwardTypeInferencePass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_FORWARD_TYPE_INFERENCE_H_

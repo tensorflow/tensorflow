@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -149,7 +148,8 @@ class LiteralTestUtil {
       const absl::optional<ErrorSpec>& error) TF_MUST_USE_RESULT;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(LiteralTestUtil);
+  LiteralTestUtil(const LiteralTestUtil&) = delete;
+  LiteralTestUtil& operator=(const LiteralTestUtil&) = delete;
 };
 
 template <typename NativeT>

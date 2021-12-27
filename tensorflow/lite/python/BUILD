@@ -17,6 +17,11 @@ flatbuffer_py_library(
     srcs = ["//tensorflow/lite/schema:schema.fbs"],
 )
 
+flatbuffer_py_library(
+    name = "conversion_metadata_schema_py",
+    srcs = ["//tensorflow/lite/schema:conversion_metadata.fbs"],
+)
+
 py_library(
     name = "interpreter",
     srcs = [
@@ -175,6 +180,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":conversion_metadata_schema_py",
         ":convert",
         ":convert_phase",
         ":convert_saved_model",
@@ -292,6 +298,7 @@ py_library(
     srcs_version = "PY3",
     visibility = internal_visibility_allowlist(),
     deps = [
+        ":conversion_metadata_schema_py",
         ":op_hint",
         ":schema_py",
         ":schema_util",

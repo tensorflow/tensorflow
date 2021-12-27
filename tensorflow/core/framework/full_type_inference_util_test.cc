@@ -93,11 +93,11 @@ TEST(ReplicateInput, Unset) {
   EXPECT_EQ(rt.type_id(), TFT_UNSET);
 }
 
-TEST(ReplicateIdenticalInputs, Single) {
+TEST(Merge, Single) {
   FullTypeDef t;
   t.set_type_id(TFT_ARRAY);
 
-  const auto ret = ReplicateIdenticalInputs()({t});
+  const auto ret = Merge()({t});
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -106,11 +106,11 @@ TEST(ReplicateIdenticalInputs, Single) {
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
 }
 
-TEST(ReplicateIdenticalInputs, Double) {
+TEST(Merge, Double) {
   FullTypeDef t;
   t.set_type_id(TFT_ARRAY);
 
-  const auto ret = ReplicateIdenticalInputs()({t, t});
+  const auto ret = Merge()({t, t});
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -119,65 +119,70 @@ TEST(ReplicateIdenticalInputs, Double) {
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
 }
 
-TEST(ReplicateIdenticalInputs, Unset) {
+TEST(Merge, Unset) {
   FullTypeDef t;
   t.set_type_id(TFT_UNSET);
 
-  const auto ret = ReplicateIdenticalInputs()({t});
+  const auto ret = Merge()({t});
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
   EXPECT_EQ(rt.type_id(), TFT_UNSET);
 }
 
-TEST(ReplicateIdenticalInputs, UnsetComponents) {
+TEST(Merge, UnsetComponents) {
   FullTypeDef t1;
   FullTypeDef t2;
 
-  const auto ret = ReplicateIdenticalInputs()({t1, t2});
+  const auto ret = Merge()({t1, t2});
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
   EXPECT_EQ(rt.type_id(), TFT_UNSET);
 }
 
-TEST(ReplicateIdenticalInputs, UsesPartialInfo_FirstUnknown) {
-  FullTypeDef t1;
-  FullTypeDef t2;
-  t2.set_type_id(TFT_ARRAY);
-
-  const auto ret = ReplicateIdenticalInputs()({t1, t2});
+void ExpectInferredArrayOfTensor(StatusOr<FullTypeDef> ret) {
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_TENSOR);
 }
 
-TEST(ReplicateIdenticalInputs, UsesPartialInfo_SecondUnknown) {
-  FullTypeDef t1;
-  t1.set_type_id(TFT_ARRAY);
-  FullTypeDef t2;
-
-  const auto ret = ReplicateIdenticalInputs()({t1, t2});
-  TF_EXPECT_OK(ret.status());
-
-  const FullTypeDef& rt = ret.ValueOrDie();
-  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
-  ASSERT_EQ(rt.args_size(), 1);
-  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
-}
-
-TEST(ReplicateIdenticalInputs, RejectsMismatched) {
+TEST(Merge, RejectsMismatched) {
   FullTypeDef t1;
   t1.set_type_id(TFT_ARRAY);
   FullTypeDef t2;
   t2.set_type_id(TFT_TENSOR);
 
-  const auto ret = ReplicateIdenticalInputs()({t1, t2});
+  const auto ret = Merge()({t1, t2});
   EXPECT_THAT(ret.status().error_message(),
-              ::testing::HasSubstr("expected identical input types"));
+              ::testing::HasSubstr("expected compatible input types"));
+}
+
+TEST(Merge, UsesPartialInfo) {
+  FullTypeDef t1;
+  FullTypeDef t2;
+  t2.set_type_id(TFT_ARRAY);
+  t2.add_args()->set_type_id(TFT_TENSOR);
+
+  ExpectInferredArrayOfTensor(Merge()({t1, t2}));
+  ExpectInferredArrayOfTensor(Merge()({t2, t1}));
+}
+
+TEST(Merge, SelectsMostSpecificOfSubtypes) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  t1.add_args()->set_type_id(TFT_ANY);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_ARRAY);
+  t2.add_args()->set_type_id(TFT_TENSOR);
+
+  ExpectInferredArrayOfTensor(Merge()({t1, t2}));
+  ExpectInferredArrayOfTensor(Merge()({t2, t1}));
 }
 
 TEST(UnaryContainerCreate, Basic) {

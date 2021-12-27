@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 // Common place for all collective thunks to source nccl/rccl headers.
 // Also, all the RunNcclCollective() functions for various thunks should

@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv_impl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv2DF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs,

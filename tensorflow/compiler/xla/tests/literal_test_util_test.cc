@@ -155,11 +155,11 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
                                             &literal_proto));
     Literal literal =
         Literal::CreateFromProto(literal_proto).ConsumeValueOrDie();
-    if (result.find("expected") != string::npos) {
+    if (result.find("expected") != std::string::npos) {
       EXPECT_EQ("f32[] 2", literal.ToString());
-    } else if (result.find("actual") != string::npos) {
+    } else if (result.find("actual") != std::string::npos) {
       EXPECT_EQ("f32[] 4", literal.ToString());
-    } else if (result.find("mismatches") != string::npos) {
+    } else if (result.find("mismatches") != std::string::npos) {
       EXPECT_EQ("pred[] true", literal.ToString());
     } else {
       FAIL() << "unknown file in temporary directory: " << result;
