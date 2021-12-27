@@ -76,7 +76,7 @@ StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
 
 template <typename T>
 void CopyDenseElementsBy(mlir::DenseElementsAttr data,
-                         std::vector<uint8>* output) {
+                         std::vector<uint8_t>* output) {
   output->resize(data.getNumElements() * sizeof(T));
   int i = 0;
   for (T element : data.getValues<T>()) {
@@ -122,21 +122,21 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     case PrimitiveType::F64:
       return CreateDenseAttrFromLiteral<double>(type, literal);
     case PrimitiveType::S8:
-      return CreateDenseAttrFromLiteral<int8>(type, literal);
+      return CreateDenseAttrFromLiteral<int8_t>(type, literal);
     case PrimitiveType::S16:
-      return CreateDenseAttrFromLiteral<int16>(type, literal);
+      return CreateDenseAttrFromLiteral<int16_t>(type, literal);
     case PrimitiveType::S32:
-      return CreateDenseAttrFromLiteral<int32>(type, literal);
+      return CreateDenseAttrFromLiteral<int32_t>(type, literal);
     case PrimitiveType::S64:
       return CreateDenseAttrFromLiteral<int64_t>(type, literal);
     case PrimitiveType::U8:
-      return CreateDenseAttrFromLiteral<uint8>(type, literal);
+      return CreateDenseAttrFromLiteral<uint8_t>(type, literal);
     case PrimitiveType::U16:
-      return CreateDenseAttrFromLiteral<uint16>(type, literal);
+      return CreateDenseAttrFromLiteral<uint16_t>(type, literal);
     case PrimitiveType::U32:
-      return CreateDenseAttrFromLiteral<uint32>(type, literal);
+      return CreateDenseAttrFromLiteral<uint32_t>(type, literal);
     case PrimitiveType::U64:
-      return CreateDenseAttrFromLiteral<uint64>(type, literal);
+      return CreateDenseAttrFromLiteral<uint64_t>(type, literal);
     case PrimitiveType::C64:
       return CreateDenseAttrFromLiteral<complex64>(type, literal);
     case PrimitiveType::C128:
@@ -148,7 +148,7 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
 }
 
 Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
-                                        std::vector<uint8>* output) {
+                                        std::vector<uint8_t>* output) {
   mlir::Type element_type = data.getType().getElementType();
 
   // TODO(hinsu): Support remaining XLA primitive types.
@@ -157,19 +157,19 @@ Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
     return Status::OK();
   }
   if (element_type.isInteger(8)) {
-    CopyDenseElementsBy<uint8>(data, output);
+    CopyDenseElementsBy<uint8_t>(data, output);
     return Status::OK();
   }
   if (element_type.isInteger(16)) {
-    CopyDenseElementsBy<uint16>(data, output);
+    CopyDenseElementsBy<uint16_t>(data, output);
     return Status::OK();
   }
   if (element_type.isInteger(32)) {
-    CopyDenseElementsBy<uint32>(data, output);
+    CopyDenseElementsBy<uint32_t>(data, output);
     return Status::OK();
   }
   if (element_type.isInteger(64)) {
-    CopyDenseElementsBy<uint64>(data, output);
+    CopyDenseElementsBy<uint64_t>(data, output);
     return Status::OK();
   }
   if (element_type.isBF16()) {

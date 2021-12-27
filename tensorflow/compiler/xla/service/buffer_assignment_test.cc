@@ -75,7 +75,8 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
   // The full set of instructions found (may be duplicates, e.g., kParameter).
   std::vector<const HloInstruction*> instructions_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InstructionListVisitor);
+  InstructionListVisitor(const InstructionListVisitor&) = delete;
+  InstructionListVisitor& operator=(const InstructionListVisitor&) = delete;
 };
 
 const std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {

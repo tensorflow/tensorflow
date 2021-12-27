@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -149,7 +148,8 @@ class AllocationTracker {
   absl::flat_hash_map<int64_t, std::vector<std::unique_ptr<ShapedBuffer>>>
       handle_to_shaped_buffers_ TF_GUARDED_BY(mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AllocationTracker);
+  AllocationTracker(const AllocationTracker&) = delete;
+  AllocationTracker& operator=(const AllocationTracker&) = delete;
 };
 
 }  // namespace xla

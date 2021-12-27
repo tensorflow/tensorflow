@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HUMAN_READABLE_PROFILE_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HUMAN_READABLE_PROFILE_BUILDER_H_
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -49,7 +49,7 @@ class HumanReadableProfileBuilder {
              absl::string_view category, int64_t cycles, int64_t flop_count,
              int64_t transcendental_count, int64_t bytes_accessed,
              float optimal_seconds) {
-    op_infos_.push_back({string(op_name), std::string(short_name),
+    op_infos_.push_back({std::string(op_name), std::string(short_name),
                          std::string(category), cycles, flop_count,
                          transcendental_count, bytes_accessed,
                          optimal_seconds});

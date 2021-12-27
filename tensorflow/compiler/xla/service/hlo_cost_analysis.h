@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -273,7 +272,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // second. Is empty if no rates have been set.
   Properties per_second_rates_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloCostAnalysis);
+  HloCostAnalysis(const HloCostAnalysis&) = delete;
+  HloCostAnalysis& operator=(const HloCostAnalysis&) = delete;
 };
 
 }  // namespace xla

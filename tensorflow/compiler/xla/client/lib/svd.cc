@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -578,10 +579,24 @@ StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   broadcasted_dims.back() = num_dims - 1;
   auto broadcast_to_columns =
       BroadcastInDim(diag, shape.dimensions(), broadcasted_dims);
-  // Compute w_{i,i} * w_{j,j} * epsilon^2 < (w_{i,j})^2
-  return Lt(
-      broadcast_to_rows * broadcast_to_columns * epsilon * epsilon,
-      Square(Select(GetDiagonalMask(w_sliced), ZerosLike(w_sliced), w_sliced)));
+  // Compute tolerance = w_{i,i} * w_{j,j} * epsilon^2
+  // Use at least F32 precision to avoid precision issues with small denormal.
+  XlaOp tolerance;
+  if (builder->GetShape(epsilon)->element_type() == BF16 ||
+      builder->GetShape(epsilon)->element_type() == F16) {
+    auto upscale_eps = ConvertElementType(epsilon, F32);
+    tolerance = ConvertElementType(broadcast_to_rows, F32) *
+                ConvertElementType(broadcast_to_columns, F32) * upscale_eps *
+                upscale_eps;
+    // Convert back into the original precision.
+    tolerance = ConvertElementType(tolerance,
+                                   builder->GetShape(epsilon)->element_type());
+  } else {
+    tolerance = broadcast_to_rows * broadcast_to_columns * epsilon * epsilon;
+  }
+  // tolerance < (w_{i,j})^2
+  return Lt(tolerance, Square(Select(GetDiagonalMask(w_sliced),
+                                     ZerosLike(w_sliced), w_sliced)));
 }
 
 // Main boby of One-sided Jacobi Method.

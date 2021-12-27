@@ -47,8 +47,10 @@ TEST_P(SavedModelTest, BasicV1) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
   options.enable_lazy_loading = GetParam().enable_lazy_loading;
-  options.compile_options.enable_native_ops = GetParam().enable_native_ops;
-  options.compile_options.enable_grappler = GetParam().enable_grappler;
+  options.graph_execution_options.compile_options.enable_native_ops =
+      GetParam().enable_native_ops;
+  options.graph_execution_options.compile_options.enable_grappler =
+      GetParam().enable_grappler;
 
   tensorflow::Status status;
   auto saved_model =
@@ -441,7 +443,7 @@ TEST(SavedModelTest, CustomWorkQueue) {
       std::make_unique<tfrt::tf::RunHandlerThreadWorkQueue>(queue_options));
 
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_native_ops = false;
+  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   tensorflow::Status status;
   auto saved_model =
@@ -479,7 +481,7 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
   auto runtime = tensorflow::tfrt_stub::Runtime::Create();
 
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_native_ops = false;
+  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   tensorflow::Status status;
   auto saved_model =
@@ -581,7 +583,7 @@ TEST(SavedModelTest, RefTypeTensorInput) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -601,9 +603,9 @@ TEST(SavedModelTest, HashTableAssetV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_native_ops = false;
-  options.compile_options.enable_grappler = true;
-  options.compile_options.hoist_invariant_ops = true;
+  options.graph_execution_options.compile_options.enable_native_ops = false;
+  options.graph_execution_options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.hoist_invariant_ops = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -759,8 +761,8 @@ TEST_P(SavedModelPowTest, Pow) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
-  options.run_placer_grappler_on_functions =
+  options.graph_execution_options.compile_options.enable_grappler = true;
+  options.graph_execution_options.run_placer_grappler_on_functions =
       GetParam().run_placer_grappler_on_functions;
 
   tensorflow::Status status;
@@ -794,7 +796,7 @@ TEST(SavedModelPowTest, MapDataset) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -825,7 +827,7 @@ TEST(SavedModelTest, ControlFlowV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -844,7 +846,7 @@ TEST(SavedModelTest, WhileLoopV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -876,7 +878,7 @@ TEST(SavedModelTest, SparseTensorInput) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =

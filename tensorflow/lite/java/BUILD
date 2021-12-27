@@ -201,13 +201,6 @@ android_library_with_tflite(
     ],
 )
 
-# Java library version of :tensorflowlite_api (instead of Android library)
-java_library(
-    name = "tensorflowlite_api_javalib",
-    srcs = [":java_api_srcs"],
-    deps = ["@org_checkerframework_qual"],
-)
-
 # 'tensorflowlite_stable' is the public android_library target for the
 # TF Lite Java APIs, excluding experimental APIs.
 android_library_with_tflite(
@@ -330,6 +323,15 @@ java_library(
     javacopts = JAVACOPTS,
     deps = [
         "//tensorflow/lite/java:tensorflowlite_javalib",
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_library(
+    name = "tensorflowlite_api_javalib",
+    srcs = [":java_api_srcs"],
+    javacopts = JAVACOPTS,
+    deps = [
         "@org_checkerframework_qual",
     ],
 )

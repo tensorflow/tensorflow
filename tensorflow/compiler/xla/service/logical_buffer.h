@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/int_type.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -59,7 +58,8 @@ class LogicalBuffer : public BufferValue {
 
   // Similar to HLO constructs (HloInstruction, etc), pointers are used for
   // comparison to equality, so disable all copying.
-  TF_DISALLOW_COPY_AND_ASSIGN(LogicalBuffer);
+  LogicalBuffer(const LogicalBuffer&) = delete;
+  LogicalBuffer& operator=(const LogicalBuffer&) = delete;
 };
 
 }  // namespace xla

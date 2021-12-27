@@ -1351,6 +1351,36 @@ static LogicalResult Verify(BroadcastOp op) {
   return success();
 }
 
+OpFoldResult BroadcastOp::fold(ArrayRef<Attribute> attrs) {
+  auto type = getType().cast<RankedTensorType>();
+  auto sizesType = broadcast_sizes().getType();
+  if (sizesType.getNumElements() == 0) {
+    return getOperand();
+  }
+
+  // Constant fold when an operand is a splat tensor attribute.
+  if (!attrs[0] || !type.hasStaticShape()) return {};
+  auto splatOperandAttr = attrs[0].dyn_cast<SplatElementsAttr>();
+  if (!splatOperandAttr) return {};
+
+  // Handle complex type
+  if (type.getElementType().isa<ComplexType>()) {
+    ComplexType complex = type.getElementType().cast<ComplexType>();
+    if (complex.getElementType().isa<FloatType>()) {
+      return DenseElementsAttr::get(
+          type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
+    } else if (complex.getElementType().isa<IntegerType>()) {
+      return DenseElementsAttr::get(
+          type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
+    } else {
+      return {};
+    }
+  }
+
+  return SplatElementsAttr::get(
+      type, splatOperandAttr.getSplatValue<mlir::Attribute>());
+}
+
 LogicalResult BroadcastOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
@@ -1470,9 +1500,21 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
   if (!attrs[0] || !type.hasStaticShape()) return {};
   auto splatOperandAttr = attrs[0].dyn_cast<SplatElementsAttr>();
   if (!splatOperandAttr) return {};
-  // MLIR core bug (https://bugs.llvm.org/show_bug.cgi?id=46588): dense element
-  // attribute iterator not implemented for complex element types.
-  if (type.getElementType().isa<ComplexType>()) return {};
+
+  // Handle complex type
+  if (type.getElementType().isa<ComplexType>()) {
+    ComplexType complex = type.getElementType().cast<ComplexType>();
+    if (complex.getElementType().isa<FloatType>()) {
+      return DenseElementsAttr::get(
+          type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
+    } else if (complex.getElementType().isa<IntegerType>()) {
+      return DenseElementsAttr::get(
+          type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
+    } else {
+      return {};
+    }
+  }
+
   return SplatElementsAttr::get(
       type, splatOperandAttr.getSplatValue<mlir::Attribute>());
 }
@@ -2833,9 +2875,7 @@ static bool isEligibleForCompactPrint(ReduceOp op) {
   Operation& innerOp = *block.begin();
 
   // Check E2.
-  if (!innerOp.getDialect() ||
-      !innerOp.getDialect()->getNamespace().equals("mhlo"))
-    return false;
+  if (innerOp.getDialect() != op->getDialect()) return false;
 
   if (innerOp.getNumOperands() != 2 ||
       !innerOp.hasTrait<mlir::OpTrait::OneResult>() ||
@@ -2870,9 +2910,16 @@ static bool isEligibleForCompactPrint(ReduceOp op) {
 }
 
 void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
-  if (op.getNumOperands()) {
-    p << ' ';
-    p.printOperands(op.getOperands());
+  {
+    // Print the pairs of operands under the form:
+    //   (%arg0 init: %arg3), (%arg1 init: %arg4), (%arg2 init: %arg5)
+    StringRef comma = "";
+    int numOperandPairs = op.getNumOperands() / 2;
+    for (int opId : llvm::seq<int>(0, numOperandPairs)) {
+      p << comma << "(" << op.getOperand(opId)
+        << " init: " << op.getOperand(opId + numOperandPairs) << ")";
+      comma = ", ";
+    }
   }
 
   // If the reduce-op is eligible for compact printing, we emit the one-liner:
@@ -2888,32 +2935,132 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
     p << " across dimensions = [";
     llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
     p << "]";
+    p << " : ";
+    p.printFunctionalType(op);
   } else {
-    p << " (";
-    p.printRegion(op.getRegion());
-    p << ")";
-    p.printOptionalAttrDict(op->getAttrs());
+    p << " across dimensions = [";
+    llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
+    p << "]";
+    p.printOptionalAttrDict(op->getAttrs(), {"dimensions"});
+    p << " : ";
+    p.printFunctionalType(op);
+    p.printNewline();
+    p << " reducer";
+    {
+      // Print the pairs of block operands under the form:
+      //   (%arg0_elt, %arg0_acc) (%arg1_elt, %arg1_acc):
+      Block& reducer = op.body().front();
+      int numOperandPairs = op.getNumOperands() / 2;
+      for (int opId : llvm::seq<int>(0, numOperandPairs)) {
+        p << "(";
+        p.printRegionArgument(reducer.getArgument(opId));
+        p << ", ";
+        p.printRegionArgument(reducer.getArgument(opId + numOperandPairs));
+        p << ") ";
+      }
+    }
+    p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
   }
-
-  p << " : ";
-  p.printFunctionalType(op);
 }
 
 ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   Location currLocation = parser.getEncodedSourceLoc(loc);
 
-  // Parse the operands of reduce-op.
+  // Parse the operands of reduce-op, this is a list of pair under the form:
+  //   (%arg0 init: %arg3), (%arg1 init: %arg4), (%arg2 init: %arg5)
+  // Each input to reduce is paired with its init value, even though in memory
+  // they are stored with the input first and the init values after.
   SmallVector<OpAsmParser::OperandType, 2> operands;
-  if (parser.parseOperandList(operands)) return failure();
+  SmallVector<OpAsmParser::OperandType, 2> initOperands;
+  do {
+    parser.parseOptionalComma();
+    if (parser.parseOptionalLParen()) break;
+    OpAsmParser::OperandType operand, initOperand;
+    if (parser.parseOperand(operand) || parser.parseKeyword("init") ||
+        parser.parseColon() || parser.parseOperand(initOperand) ||
+        parser.parseRParen())
+      return failure();
+    operands.push_back(operand);
+    initOperands.push_back(initOperand);
+  } while (true);
+  operands.append(initOperands);
 
-  // Check if we are parsing the pretty-printed version of reduce-op:
+  // Check if we are parsing the compact version of reduce-op:
   //  mhlo.reduce applies <inner-op> across dimensions = [...] : <func-type>
-  // Else fallback to parsing the generic (or "non pretty-printed") version of
-  // reduce-op.
-  if (!succeeded(parser.parseOptionalKeyword("applies")))
-    return parser.parseGenericOperationAfterOpName(
-        result, llvm::makeArrayRef(operands));
+  // else parse the "region-based" variant.
+  if (failed(parser.parseOptionalKeyword("applies"))) {
+    // Parse the inner-op dimensions, reduce-op's function-type and
+    // optional location.
+    SmallVector<int64_t> dimensions;
+    auto parseDim = [&]() -> ParseResult {
+      if (parser.parseInteger(dimensions.emplace_back())) return failure();
+      return success();
+    };
+
+    FunctionType reduceOpFntype;
+    if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
+        parser.parseEqual() ||
+        parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                       parseDim) ||
+        parser.parseOptionalAttrDict(result.attributes) ||
+        parser.parseColon() || parser.parseType(reduceOpFntype) ||
+        parser.parseKeyword("reducer"))
+      return failure();
+    OpBuilder builder(parser.getBuilder().getContext());
+    result.addAttribute("dimensions", GetI64ElementsAttr(dimensions, &builder));
+
+    // Parse the "reducer" region now.
+    SmallVector<OpAsmParser::OperandType, 2> reducerOperands;
+    SmallVector<OpAsmParser::OperandType, 2> reducerInitOperands;
+    SmallVector<Type, 2> reducerTypes;
+    SmallVector<Type, 2> reducerInitTypes;
+    SmallVector<Optional<Location>, 2> reducerLocs;
+    SmallVector<Optional<Location>, 2> reducerInitLocs;
+    auto parseBlockOperand =
+        [&](SmallVectorImpl<OpAsmParser::OperandType>& operands,
+            SmallVectorImpl<Type>& types,
+            SmallVectorImpl<Optional<Location>>& locs) -> ParseResult {
+      OpAsmParser::OperandType operand;
+      Type type;
+      Optional<Location> loc;
+      if (parser.parseRegionArgument(operand) || parser.parseColon() ||
+          parser.parseType(type) || parser.parseOptionalLocationSpecifier(loc))
+        return failure();
+      operands.push_back(operand);
+      types.push_back(type);
+      locs.push_back(loc);
+      return success();
+    };
+    do {
+      if (failed(parser.parseOptionalLParen())) break;
+      if (parseBlockOperand(reducerOperands, reducerTypes, reducerLocs) ||
+          parser.parseComma() ||
+          parseBlockOperand(reducerInitOperands, reducerInitTypes,
+                            reducerInitLocs) ||
+          parser.parseRParen())
+        return failure();
+    } while (true);
+    reducerOperands.append(reducerInitOperands);
+    reducerTypes.append(reducerInitTypes);
+    reducerLocs.append(reducerInitLocs);
+    result.addTypes(reduceOpFntype.getResults());
+
+    // Derive the SSA-values for reduce-op's operands and parse the region, and
+    // the optional trailing location.
+    Optional<Location> trailingLoc;
+    if (parser.resolveOperands(operands, reduceOpFntype.getInputs(), loc,
+                               result.operands) ||
+        parser.parseRegion(*result.addRegion(), reducerOperands, reducerTypes))
+      return failure();
+    // Set the individual block arguments.
+    for (auto argAndLoc :
+         llvm::zip(result.regions.front()->front().getArguments(), reducerLocs))
+      if (std::get<1>(argAndLoc))
+        std::get<0>(argAndLoc).setLoc(std::get<1>(argAndLoc).getValue());
+    result.location = trailingLoc.getValueOr(currLocation);
+    return success();
+  }
 
   // Parse the inner-op name and check if the contract on inner-op
   // mentioned in "isEligibleForCompactPrint::E2" for pretty-priting is met.
@@ -5264,6 +5411,70 @@ static LogicalResult verify(WhileOp whileOp) {
                << " vs " << returnType;
     }
   }
+  return success();
+}
+
+/// Print a `while` op.
+///
+/// op ::= `mhlo.while` `(` assignment-list `)` `:` types attribute-dict
+///         `cond` region
+///         `do` region
+/// assignment-list ::= assignment | assignment `,` assignment-list
+/// assignment ::= ssa-value `=` ssa-value
+void printWhileOp(WhileOp op, OpAsmPrinter& p) {
+  p << '(';
+  llvm::interleaveComma(
+      llvm::zip(op.getBody()->getArguments(), op->getOperands()), p,
+      [&](auto zip) {
+        p.printOperand(std::get<0>(zip));
+        p << " = ";
+        p.printOperand(std::get<1>(zip));
+      });
+  p << ")";
+  if (op->getNumOperands()) {
+    p << " : ";
+    llvm::interleaveComma(op->getOperandTypes(), p);
+  }
+  p.printOptionalAttrDictWithKeyword(op->getAttrs());
+  p.printNewline();
+  p << " cond";
+  p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
+  p << " do";
+  p.printRegion(op->getRegion(1), /*printEntryBlockArgs=*/false);
+}
+
+ParseResult parseWhileOp(OpAsmParser& parser, OperationState& result) {
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  // Parse the operands of the while: these are of the form:
+  //   %iter_arg = %init_val
+  // where %iter_arg is the name of the block argument in the cond/body blocks
+  // and %init_val is the actual operand.
+  SmallVector<OpAsmParser::OperandType> operands;
+  SmallVector<OpAsmParser::OperandType> iterArgs;
+  if (parser.parseLParen()) return failure();
+  do {
+    if (succeeded(parser.parseOptionalRParen())) break;
+    OpAsmParser::OperandType operand, iterArg;
+    if (parser.parseOperand(iterArg) || parser.parseEqual() ||
+        parser.parseOperand(operand))
+      return failure();
+    iterArgs.push_back(iterArg);
+    operands.push_back(operand);
+    if (succeeded(parser.parseOptionalRParen())) break;
+    parser.parseComma();
+  } while (true);
+  if (!operands.empty()) {
+    if (parser.parseColon() || parser.parseTypeList(result.types))
+      return failure();
+  }
+
+  if (parser.resolveOperands(operands, result.types, loc, result.operands) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
+      parser.parseKeyword("cond") ||
+      parser.parseRegion(*result.addRegion(), iterArgs, result.types) ||
+      parser.parseKeyword("do") ||
+      parser.parseRegion(*result.addRegion(), iterArgs, result.types))
+    return failure();
   return success();
 }
 

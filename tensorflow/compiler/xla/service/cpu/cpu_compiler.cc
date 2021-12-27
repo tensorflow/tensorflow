@@ -872,7 +872,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     llvm::SmallVector<char, 40> function_name_vector;
     llvm::Mangler::getNameWithPrefix(
         function_name_vector, entry_function->getName(), (*jit)->data_layout());
-    return string(function_name_vector.begin(), function_name_vector.end());
+    return std::string(function_name_vector.begin(),
+                       function_name_vector.end());
   }();
 
   std::string ir_module_string;

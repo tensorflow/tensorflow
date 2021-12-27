@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CPU_FUNCTION_RUNTIME_H_
 #define TENSORFLOW_COMPILER_XLA_CPU_FUNCTION_RUNTIME_H_
 
-#include <cassert>
+#include <stdint.h>
 
-#include "tensorflow/core/platform/types.h"
+#include <cassert>
+#include <cstdlib>
+#include <utility>
 
 namespace xla {
 namespace cpu_function_runtime {

@@ -154,7 +154,8 @@ class FusionInstructionMerger {
   int num_fail_inefficient_fusion_emitter_ = 0;
   int num_fail_fusion_too_large_ = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FusionInstructionMerger);
+  FusionInstructionMerger(const FusionInstructionMerger&) = delete;
+  FusionInstructionMerger& operator=(const FusionInstructionMerger&) = delete;
 };
 
 Status FusionInstructionMerger::Run() {

@@ -27,14 +27,6 @@ from tensorflow.python.saved_model import save_context
 from tensorflow.python.types import trace
 from tensorflow.python.util import memory
 
-# A temporary flag. Turning this on will allow tf.function to aggressively avoid
-# retracing ResourceVariable inputs. This feature will change tf.function's
-# Variable tracing behavior, hence we want to limit the potential blockers that
-# are not detected by Global TAP.
-# TODO(jiaweix): remove this flag and related args (b/198782192)
-_ENCODE_VARIABLES_BY_RESOURCE_ID = True
-# TODO(b/201533914): Remove this flag and related args
-USE_FULL_TRACE_TYPE = True
 # TODO(b/182990542): Enable and remove flag when stable.
 DELETE_WITH_WEAKREF = False
 
@@ -255,8 +247,7 @@ def make_cache_key(
   signature_context = function_trace_type.SignatureContext(
       include_tensor_ranks_only)
   function_signature = function_trace_type.make_function_signature(
-      args, signature_context, _ENCODE_VARIABLES_BY_RESOURCE_ID,
-      USE_FULL_TRACE_TYPE)
+      args, signature_context)
   return FunctionCacheKey(
       function_signature,
       _make_execution_context()), signature_context.deletion_observer

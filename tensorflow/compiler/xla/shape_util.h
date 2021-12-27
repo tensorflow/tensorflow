@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -893,7 +892,8 @@ class ShapeUtil {
     return status;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);
+  ShapeUtil(const ShapeUtil&) = delete;
+  ShapeUtil& operator=(const ShapeUtil&) = delete;
 };
 
 }  // namespace xla

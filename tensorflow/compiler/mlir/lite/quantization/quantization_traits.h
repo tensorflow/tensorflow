@@ -138,12 +138,6 @@ template <typename ConcreteType>
 class QuantizableResult
     : public QuantizationSpecTraitBase<ConcreteType, QuantizableResult> {};
 
-// This class provides the API for TFL ops that can be dynamic range quantized.
-template <typename ConcreteType>
-class DynamicRangeQuantizableOp
-    : public QuantizationSpecTraitBase<ConcreteType,
-                                       DynamicRangeQuantizableOp> {};
-
 }  // namespace quant
 }  // namespace OpTrait
 }  // namespace mlir

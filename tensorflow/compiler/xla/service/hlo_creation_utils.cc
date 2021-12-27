@@ -597,7 +597,7 @@ HloInstruction* CreateDummyOp(HloComputation::Builder* b, const Shape& shape) {
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     absl::Span<const Shape* const> domain, const Shape& range,
     absl::string_view name) {
-  HloComputation::Builder b{string(name)};
+  HloComputation::Builder b{std::string(name)};
   int64_t param_idx = 0;
   for (const Shape* param_shape : domain) {
     b.AddInstruction(HloInstruction::CreateParameter(

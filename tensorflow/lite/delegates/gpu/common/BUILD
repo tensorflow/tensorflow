@@ -45,6 +45,18 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_model",
+    hdrs = ["gpu_model.h"],
+    deps = [
+        ":model",
+        ":model_hints",
+        ":status",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "kernel_info",
     hdrs = ["kernel_info.h"],
 )

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv_impl.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedConv2DF16(

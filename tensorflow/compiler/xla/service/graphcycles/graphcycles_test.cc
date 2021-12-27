@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/types.h"
 
 // We emulate a GraphCycles object with a node vector and an edge vector.
 // We then compare the two implementations.

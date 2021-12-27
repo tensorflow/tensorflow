@@ -59,7 +59,7 @@ class DummyGenericClass:
 
 def make_function_signature_with_context(inputs):
   return function_trace_type.make_function_signature(
-      inputs, function_trace_type.SignatureContext(), True, True)
+      inputs, function_trace_type.SignatureContext())
 
 
 class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):

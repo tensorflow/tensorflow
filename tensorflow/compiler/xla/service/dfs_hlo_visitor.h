@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -381,7 +380,8 @@ class DfsHloVisitorBase {
  private:
   absl::flat_hash_map<int, VisitState> visit_state_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorBase);
+  DfsHloVisitorBase(const DfsHloVisitorBase&) = delete;
+  DfsHloVisitorBase& operator=(const DfsHloVisitorBase&) = delete;
 };
 
 // Explicit instantiations in dfs_hlo_visitor.cc.

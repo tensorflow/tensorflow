@@ -139,7 +139,8 @@ class ClientLibrary {
   std::unordered_map<se::Platform::Id, std::unique_ptr<CompileOnlyInstance>>
       compile_only_instances_ TF_GUARDED_BY(service_mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ClientLibrary);
+  ClientLibrary(const ClientLibrary&) = delete;
+  ClientLibrary& operator=(const ClientLibrary&) = delete;
 };
 
 }  // namespace xla

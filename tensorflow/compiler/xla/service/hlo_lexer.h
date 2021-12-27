@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -144,10 +143,10 @@ class HloLexer {
   // Returns the current character.
   int PeekCurrentChar() const;
 
-  // Creates StringPiece with the given begin and end. Exits if the begin > end,
+  // Creates string_view with the given begin and end. Exits if the begin > end,
   // or it's out of the range of the current buffer.
-  absl::string_view StringPieceFromPointers(const char* begin,
-                                            const char* end) const;
+  absl::string_view StringViewFromPointers(const char* begin,
+                                           const char* end) const;
 
   // Returns true if the given ptr is dereferenceable within the range of the
   // current buffer.
@@ -164,7 +163,7 @@ class HloLexer {
 
   absl::optional<int64_t> LexNanPayload(absl::string_view& consumable);
 
-  const absl::string_view buf_;
+  absl::string_view buf_;
   const char* current_ptr_;
 
   // Information about the current token.

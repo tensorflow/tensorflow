@@ -173,8 +173,7 @@ struct CanonicalDebugOptions {
 };
 
 static Status WriteStringToFile(tensorflow::Env* env, const std::string& fname,
-                                const tensorflow::StringPiece& data,
-                                bool compressed) {
+                                absl::string_view data, bool compressed) {
   if (!compressed) {
     return tensorflow::WriteStringToFile(env, fname, data);
   }

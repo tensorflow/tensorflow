@@ -2107,7 +2107,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
     // clone of foo.suffix2 is named foo.suffix3 and so on.
     const std::string dot_suffix = "." + suffix;
     size_t index = name().rfind(dot_suffix);
-    if (index == string::npos) {
+    if (index == std::string::npos) {
       // Existing name does not include ".suffix".
       clone->name_ = name() + dot_suffix;
     } else {

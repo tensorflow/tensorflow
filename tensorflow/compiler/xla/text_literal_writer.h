@@ -40,7 +40,8 @@ class TextLiteralWriter {
   static Status WriteToPath(const Literal& literal, absl::string_view path);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TextLiteralWriter);
+  TextLiteralWriter(const TextLiteralWriter&) = delete;
+  TextLiteralWriter& operator=(const TextLiteralWriter&) = delete;
 };
 
 }  // namespace xla

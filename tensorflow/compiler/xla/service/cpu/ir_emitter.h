@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace cpu {
@@ -649,7 +648,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   bool emit_code_for_msan_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
+  IrEmitter(const IrEmitter&) = delete;
+  IrEmitter& operator=(const IrEmitter&) = delete;
 };
 
 }  // namespace cpu

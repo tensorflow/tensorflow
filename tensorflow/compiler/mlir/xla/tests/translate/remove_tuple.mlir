@@ -134,12 +134,12 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %3:4 = "mhlo.while"(%0, %1, %2, %arg0) ( {
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
     %4 = mhlo.constant dense<0> : tensor<i32>
-    %5 = mhlo.reduce %arg1, %4 ( {
+    %5 = "mhlo.reduce"(%arg1, %4) ( {
     ^bb0(%arg5: tensor<i32>, %arg6: tensor<i32>):  // no predecessors
       %8 = mhlo.add %arg5, %arg6 : tensor<i32>
       "mhlo.return"(%8) : (tensor<i32>) -> ()
     }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<1xi32>, tensor<i32>) -> tensor<i32>
-    %6 = mhlo.reduce %arg2, %4 ( {
+    %6 = "mhlo.reduce"(%arg2, %4) ( {
     ^bb0(%arg5: tensor<i32>, %arg6: tensor<i32>):  // no predecessors
       %8 = mhlo.add %arg5, %arg6 : tensor<i32>
       "mhlo.return"(%8) : (tensor<i32>) -> ()
@@ -247,7 +247,7 @@ func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
   ^bb0(%arg1: tensor<3x3xf32>):  // no predecessors
     %2 = mhlo.constant dense<false> : tensor<i1>
     %3 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-    %4 = mhlo.reduce %arg1, %3 ( {
+    %4 = "mhlo.reduce"(%arg1, %3) ( {
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
       %7 = mhlo.constant dense<false> : tensor<i1>
       %8 = mhlo.add %arg2, %arg3 : tensor<f32>

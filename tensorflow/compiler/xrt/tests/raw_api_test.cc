@@ -1126,7 +1126,7 @@ TEST(RawApiTest, DynamicR1Test) {
   xrt::XLAAllocation p1;
   *p1.mutable_value() = FloatVector({1.0f, -1.0f, 2.5f, 1.17f});
   xrt::XLAAllocation p2;
-  *p2.mutable_value() = CreateR0<xla::int32>(2);
+  *p2.mutable_value() = CreateR0<int32_t>(2);
 
   xrt::XLAComputation c;
   auto config = c.mutable_config();
@@ -1182,7 +1182,7 @@ TEST(RawApiTest, DynamicR2Test) {
                                                     {1.2f, -1.6f, 2.8f, 1.24f}})
                             .ToProto();
   xrt::XLAAllocation p2;
-  *p2.mutable_value() = CreateR0<xla::int32>(2);
+  *p2.mutable_value() = CreateR0<int32_t>(2);
 
   xrt::XLAComputation c;
   auto config = c.mutable_config();
@@ -1235,7 +1235,7 @@ TEST(RawApiTest, DynamicR1TupleTest) {
   xrt::XLAAllocation p1;
   *p1.mutable_value() = FloatVector({1.0f, -1.0f, -0.5f, 1.0f});
   xrt::XLAAllocation p2;
-  *p2.mutable_value() = CreateR0<xla::int32>(2);
+  *p2.mutable_value() = CreateR0<int32_t>(2);
 
   xrt::XLAComputation c;
   auto config = c.mutable_config();
@@ -2175,7 +2175,7 @@ TEST(RawApiTest, TestDeviceMemorySwap) {
 
   // Trigger computations on XRT handles to verify the swap-out/swap-in logic,
   // by comparing sequential couple of tensors.
-  auto zero_literal = xla::LiteralUtil::CreateR0<xla::int32>(0);
+  auto zero_literal = xla::LiteralUtil::CreateR0<int32_t>(0);
   for (size_t i = 0; i + 1 < device_handles.size(); ++i) {
     auto exec_op = ops::XRTExecute(
         root, c_equal_handle.handle, e_config,

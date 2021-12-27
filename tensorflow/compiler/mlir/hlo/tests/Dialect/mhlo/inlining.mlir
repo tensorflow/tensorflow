@@ -3,10 +3,9 @@
 // Test case: Basic test of inlining into mhlo.while.
 
 // CHECK-LABEL: func @caller
-// CHECK:   "mhlo.while"{{.*}}( {
-// CHECK:   },  {
+// CHECK:   mhlo.while
 // CHECK:     "mhlo.exponential"
-// CHECK:   })
+
 // CHECK-LABEL: func @callee
 
 func @caller(%arg0: tensor<f32>, %pred: tensor<i1>) -> tensor<f32> {

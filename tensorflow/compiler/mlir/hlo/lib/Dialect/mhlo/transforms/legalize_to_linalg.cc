@@ -1548,7 +1548,14 @@ class ReduceRegionReturnOpConversion
     if (!IsInBodyOfLinalgOps(op)) {
       return failure();
     }
-    rewriter.replaceOpWithNewOp<linalg::YieldOp>(op, adaptor.getOperands());
+    SmallVector<Value, 4> operands(adaptor.getOperands());
+    for (size_t i = 0; i < operands.size(); ++i) {
+      if (operands[i].getType().isa<ShapedType>()) {
+        auto loc = operands[i].getLoc();
+        operands[i] = rewriter.create<tensor::ExtractOp>(loc, operands[i]);
+      }
+    }
+    rewriter.replaceOpWithNewOp<linalg::YieldOp>(op, operands);
     return success();
   }
 };

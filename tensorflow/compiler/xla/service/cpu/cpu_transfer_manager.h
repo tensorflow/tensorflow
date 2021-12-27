@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
@@ -60,7 +59,8 @@ class CpuTransferManager : public GenericTransferManager {
                            Shape* device_shape) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CpuTransferManager);
+  CpuTransferManager(const CpuTransferManager&) = delete;
+  CpuTransferManager& operator=(const CpuTransferManager&) = delete;
 };
 
 }  // namespace xla

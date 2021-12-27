@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
@@ -119,7 +118,8 @@ class ComputationPlacer {
   // Map from platform kind to computation placer singleton.
   static std::map<se::Platform::Id, State>* GetPlatformComputationPlacers();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ComputationPlacer);
+  ComputationPlacer(const ComputationPlacer&) = delete;
+  ComputationPlacer& operator=(const ComputationPlacer&) = delete;
 };
 
 }  // namespace xla

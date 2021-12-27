@@ -313,32 +313,18 @@ _pywrap_utils.RegisterType("DictType", DictType)
 
 def make_function_signature(
     function_args,
-    signature_context: SignatureContext,
-    encode_variables_by_resource_id,
-    use_full_trace_type) -> trace.TraceType:
+    signature_context: SignatureContext) -> trace.TraceType:
   """Returns the trace type specification of a function's arguments.
 
   Args:
     function_args: Tuple/List/Dict structure containing the function arguments
     signature_context: The SignatureContext to be shared during protocol calls.
-    encode_variables_by_resource_id: If Variables should be considered by
-      resource id
-    use_full_trace_type: Uses the TraceType protocol wherever possible.
 
   Returns:
     A TraceType object representing all the given inputs.
   """
 
   try:
-    encoding = pywrap_tfe.TFE_Py_EncodeArg(
-        function_args, signature_context,
-        signature_context.include_tensor_ranks_only,
-        encode_variables_by_resource_id, use_full_trace_type)
-    if use_full_trace_type:
-      return encoding
-    else:
-      # TODO(b/201533914): Drop when use_full_trace_type flag is removed.
-      return GenericType(encoding)
-
+    return pywrap_tfe.TFE_Py_EncodeArg(function_args, signature_context)
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
     raise core._status_to_exception(e) from None  # pylint: disable=protected-access

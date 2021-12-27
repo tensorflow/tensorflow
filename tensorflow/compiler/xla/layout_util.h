@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -197,7 +196,8 @@ class LayoutUtil {
                              absl::Span<const int64_t> indices);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
+  LayoutUtil(const LayoutUtil&) = delete;
+  LayoutUtil& operator=(const LayoutUtil&) = delete;
 };
 
 }  // namespace xla

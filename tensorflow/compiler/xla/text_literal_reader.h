@@ -54,7 +54,8 @@ class TextLiteralReader {
   // Owns the file being read
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TextLiteralReader);
+  TextLiteralReader(const TextLiteralReader&) = delete;
+  TextLiteralReader& operator=(const TextLiteralReader&) = delete;
 };
 
 }  // namespace xla

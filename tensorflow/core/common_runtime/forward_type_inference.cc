@@ -102,7 +102,10 @@ Status ForwardTypeInferencePass::Run(
       }
     }
 
-    TF_ASSIGN_OR_RETURN(const auto& infer_type, reg->fwd_type_fn(input_types));
+    const auto& infer_ret = reg->fwd_type_fn(input_types);
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        infer_ret.status(), "while inferring type of node '", n->name(), "'");
+    const auto& infer_type = *infer_ret;
 
     if (infer_type.type_id() == TFT_UNSET) {
       VLOG(3) << "  " << n->name() << " no new type information";
@@ -216,8 +219,21 @@ Status ForwardTypeInferencePass::Run(
   return Status::OK();
 }
 
+Status WeakForwardTypeInferencePass::Run(
+    const GraphOptimizationPassOptions& options) {
+  ForwardTypeInferencePass pass;
+  const auto& pass_status = pass.Run(options);
+  if (!pass_status.ok()) {
+    LOG_FIRST_N(WARNING, 1)
+        << "Type inference failed. This indicates an "
+           "invalid graph that escaped type checking. Error message: "
+        << pass_status.ToString();
+  }
+  return Status::OK();
+}
+
 // Note: This needs to run last because Placer needs it.
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 99999,
-                      ForwardTypeInferencePass);
+                      WeakForwardTypeInferencePass);
 
 }  // namespace tensorflow

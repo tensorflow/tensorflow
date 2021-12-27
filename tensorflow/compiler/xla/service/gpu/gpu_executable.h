@@ -252,7 +252,8 @@ class GpuExecutable : public Executable {
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
+  GpuExecutable(const GpuExecutable&) = delete;
+  GpuExecutable& operator=(const GpuExecutable&) = delete;
 };
 
 StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

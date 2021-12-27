@@ -452,6 +452,63 @@ func @slice_concat_empty(%arg0: tensor<1x5xf32>, %arg1: tensor<1x5xf32>, %arg2: 
   return %2 : tensor<1x5xf32>
 }
 
+// CHECK-LABEL: func @broadcast_identity
+func @broadcast_identity(%arg0: tensor<2x3x4xf32>) -> tensor<2x3x4xf32> {
+  // CHECK: return %arg0
+  %0 = "mhlo.broadcast"(%arg0) {broadcast_sizes = dense<[]> : tensor<0xi64>} : (tensor<2x3x4xf32>) -> tensor<2x3x4xf32>
+  return %0 : tensor<2x3x4xf32>
+}
+
+// CHECK-LABEL: func @broadcast_dynamic_shape_identity
+func @broadcast_dynamic_shape_identity(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+  // CHECK: return %arg0
+  %0 = "mhlo.broadcast"(%arg0) {broadcast_sizes = dense<[]> : tensor<0xi64>} : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: func @broadcast_dynamic_shape_not_identity
+func @broadcast_dynamic_shape_not_identity(%arg0: tensor<?x?x?xf32>) -> tensor<20x?x?x?xf32> {
+  // CHECK: mhlo.broadcast
+  %0 = "mhlo.broadcast"(%arg0) {broadcast_sizes = dense<[20]> : tensor<1xi64>} : (tensor<?x?x?xf32>) -> tensor<20x?x?x?xf32>
+  return %0 : tensor<20x?x?x?xf32>
+}
+
+// CHECK-LABEL: func @broadcast_constant_fold_0d
+func @broadcast_constant_fold_0d() -> tensor<1x64x224x224xf32> {
+  %cst = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %b = "mhlo.broadcast"(%cst) {broadcast_sizes = dense<[1, 64, 224, 224]> : tensor<4xi64>} : (tensor<f32>) -> tensor<1x64x224x224xf32>
+  return %b : tensor<1x64x224x224xf32>
+}
+// CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<0.000000e+00> : tensor<1x64x224x224xf32>
+// CHECK-NEXT: return %[[CST]] : tensor<1x64x224x224xf32>
+
+// CHECK-LABEL: func @broadcast_constant_fold
+func @broadcast_constant_fold() -> tensor<1x64x4x4xf32> {
+  %cst = mhlo.constant dense<0.000000e+00> : tensor<4x4xf32>
+  %b = "mhlo.broadcast"(%cst) {broadcast_sizes = dense<[1, 64]> : tensor<2xi64>} : (tensor<4x4xf32>) -> tensor<1x64x4x4xf32>
+  return %b : tensor<1x64x4x4xf32>
+}
+// CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<0.000000e+00> : tensor<1x64x4x4xf32>
+// CHECK-NEXT: return %[[CST]] : tensor<1x64x4x4xf32>
+
+// CHECK-LABEL: func @broadcast_constant_fold_not_splat
+func @broadcast_constant_fold_not_splat() -> tensor<1x64x2xf32> {
+  // CHECK: mhlo.constant
+  %cst = mhlo.constant dense<[0.000000e+00, 1.000000e+00]> : tensor<2xf32>
+  // CHECK: mhlo.broadcast
+  %b = "mhlo.broadcast"(%cst) {broadcast_sizes = dense<[1, 64]> : tensor<2xi64>} : (tensor<2xf32>) -> tensor<1x64x2xf32>
+  return %b : tensor<1x64x2xf32>
+}
+
+// CHECK-LABEL: func @broadcast_constant_fold_complex
+func @broadcast_constant_fold_complex() -> tensor<1x64x224x224xcomplex<f32>> {
+  %cst = mhlo.constant dense<(0.000000e+00,1.000000e+00)> : tensor<complex<f32>>
+  %b = "mhlo.broadcast"(%cst) {broadcast_sizes = dense<[1, 64, 224, 224]> : tensor<4xi64>} : (tensor<complex<f32>>) -> tensor<1x64x224x224xcomplex<f32>>
+  return %b : tensor<1x64x224x224xcomplex<f32>>
+}
+// CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<(0.000000e+00,1.000000e+00)> : tensor<1x64x224x224xcomplex<f32>>
+// CHECK-NEXT: return %[[CST]] : tensor<1x64x224x224xcomplex<f32>>
+
 // CHECK-LABEL: func @broadcast_in_dim_identity
 func @broadcast_in_dim_identity(%arg0: tensor<2x3x4xf32>) -> tensor<2x3x4xf32> {
   // CHECK: return %arg0
@@ -549,6 +606,16 @@ func @broadcast_in_dim_constant_fold() -> tensor<1x64x4x4xf32> {
 }
 // CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<0.000000e+00> : tensor<1x64x4x4xf32>
 // CHECK-NEXT: return %[[CST]] : tensor<1x64x4x4xf32>
+
+// CHECK-LABEL: func @broadcast_in_dim_constant_fold_complex
+func @broadcast_in_dim_constant_fold_complex() -> tensor<1x64x224x224xcomplex<f32>> {
+  %cst = mhlo.constant dense<(0.000000e+00,1.000000e+00)> : tensor<complex<f32>>
+  %b = "mhlo.broadcast_in_dim"(%cst) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<complex<f32>>) -> tensor<1x64x224x224xcomplex<f32>>
+  return %b : tensor<1x64x224x224xcomplex<f32>>
+}
+// CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<(0.000000e+00,1.000000e+00)> : tensor<1x64x224x224xcomplex<f32>>
+// CHECK-NEXT: return %[[CST]] : tensor<1x64x224x224xcomplex<f32>>
+
 
 // CHECK-LABEL: @complex_expand_fold
 func @complex_expand_fold(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {

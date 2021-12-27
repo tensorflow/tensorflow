@@ -36,7 +36,7 @@ namespace {
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tensorflow::protobuf::io::ErrorCollector {
  public:
-  void AddError(int line, int column, const string& message) override {}
+  void AddError(int line, int column, const std::string& message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
@@ -55,7 +55,7 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
   HloProto hlo_proto;
-  string content(input.data(), input.size());
+  std::string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
     LOG(ERROR) << "Failed to load proto";
     return nullptr;
@@ -76,7 +76,7 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
 mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
-  string content(input.data(), input.size());
+  std::string content(input.data(), input.size());
 
   auto hlo_module_error = ParseAndReturnUnverifiedModule(content);
   if (!hlo_module_error.ok()) {
