@@ -1519,6 +1519,9 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
       type, splatOperandAttr.getSplatValue<mlir::Attribute>());
 }
 
+// Simplify BroadcastInDim has the following behaviors: replace BroadcastInDim
+// with Reshape or Transpose if they are equivalent or replace
+// BroadcastInDim(BroadcastInDim(X)) with BroadcastInDim(X)
 class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
  public:
   using OpRewritePattern<BroadcastInDimOp>::OpRewritePattern;
@@ -1529,29 +1532,22 @@ class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
     if (!operand_type || !result_type) {
       return failure();
     }
-    auto bs_dim_indices = op.broadcast_dimensions().getValues<APInt>();
-    bool same_total_elements =
-        std::accumulate(std::begin(operand_type.getShape()),
-                        std::end(operand_type.getShape()), 1,
-                        std::multiplies<int64_t>()) ==
-        std::accumulate(std::begin(result_type.getShape()),
-                        std::end(result_type.getShape()), 1,
-                        std::multiplies<int64_t>());
-    // BroadcastInDim equivalent to reshape
-    if (llvm::is_sorted(bs_dim_indices,
-                        [](const auto& lhs, const auto& rhs) {
-                          return lhs.getSExtValue() < rhs.getSExtValue();
-                        }) &&
-        same_total_elements) {
-      rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.operand());
-      return success();
-    }
-    // BroadcastInDim equivalent to transpose
-    if (operand_type.getRank() == result_type.getRank() &&
-        same_total_elements) {
-      rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getType(), op.operand(),
-                                               op.broadcast_dimensions());
-      return success();
+    auto bs_dim_indices = op.broadcast_dimensions().getValues<int64_t>();
+    if (operand_type.hasStaticShape() && result_type.hasStaticShape()) {
+      bool same_total_elements =
+          operand_type.getNumElements() == result_type.getNumElements();
+      // BroadcastInDim equivalent to reshape
+      if (llvm::is_sorted(bs_dim_indices) && same_total_elements) {
+        rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.operand());
+        return success();
+      }
+      // BroadcastInDim equivalent to transpose
+      if (operand_type.getRank() == result_type.getRank() &&
+          same_total_elements) {
+        rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getType(), op.operand(),
+                                                 op.broadcast_dimensions());
+        return success();
+      }
     }
     // eliminate redundant BroadcastInDim
     if (auto broadcast_in_dim_op = llvm::dyn_cast_or_null<BroadcastInDimOp>(
@@ -1561,7 +1557,8 @@ class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
               .mapValues(
                   op.broadcast_dimensions().DenseElementsAttr::getElementType(),
                   [&bs_dim_indices](const APInt& dim) -> APInt {
-                    return bs_dim_indices[dim.getSExtValue()];
+                    return APInt(dim.getBitWidth(),
+                                 bs_dim_indices[dim.getSExtValue()], true);
                   })
               .cast<DenseIntElementsAttr>();
       rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
