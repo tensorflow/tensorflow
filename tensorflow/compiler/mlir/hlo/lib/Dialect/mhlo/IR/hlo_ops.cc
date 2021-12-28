@@ -1369,7 +1369,8 @@ OpFoldResult BroadcastOp::fold(ArrayRef<Attribute> attrs) {
     if (complex.getElementType().isa<FloatType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
-    } else if (complex.getElementType().isa<IntegerType>()) {
+    }
+    if (complex.getElementType().isa<IntegerType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
     } else {
@@ -1507,7 +1508,8 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
     if (complex.getElementType().isa<FloatType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
-    } else if (complex.getElementType().isa<IntegerType>()) {
+    }
+    if (complex.getElementType().isa<IntegerType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
     } else {
@@ -1742,7 +1744,8 @@ Type CreateRealType(Type type) {
 
   if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
     return RankedTensorType::get(ranked_type.getShape(), element_ty);
-  } else if (type.dyn_cast<UnrankedTensorType>()) {
+  }
+  if (type.dyn_cast<UnrankedTensorType>()) {
     return UnrankedTensorType::get(element_ty);
   }
 
@@ -3100,11 +3103,9 @@ ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
     return failure();
 
   if (!reduceOpFntype || reduceOpFntype.getInputs().empty()) {
-    if (!reduceOpFntype)
-      return parser.emitError(loc, "expected function type");
-    else
-      return parser.emitError(loc,
-                              "input types missing in reduce-op function type");
+    if (!reduceOpFntype) return parser.emitError(loc, "expected function type");
+    return parser.emitError(loc,
+                            "input types missing in reduce-op function type");
   }
 
   // If location of reduce-op is explicitly provided, then use it; Else use
@@ -4569,7 +4570,8 @@ OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
   if (etype.isa<IntegerType>()) {
     return FoldSlice<DenseElementsAttr::IntElementIterator, APInt>(
         this, elements.value_begin<APInt>());
-  } else if (etype.isa<FloatType>()) {
+  }
+  if (etype.isa<FloatType>()) {
     return FoldSlice<DenseElementsAttr::FloatElementIterator, APFloat>(
         this, elements.value_begin<APFloat>());
   }
