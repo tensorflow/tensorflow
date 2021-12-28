@@ -603,8 +603,7 @@ void UserangeAnalysis::dump(raw_ostream &os) {
       if (right.getDefiningOp())
         return operationIds[left.getDefiningOp()] <
                operationIds[right.getDefiningOp()];
-      else
-        return true;
+      return true;
     }
     if (right.getDefiningOp()) return false;
     return operationIds[&left.getParentBlock()->front()] <
