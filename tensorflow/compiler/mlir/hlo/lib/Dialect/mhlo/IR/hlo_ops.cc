@@ -5824,6 +5824,7 @@ char NonSpatialDimToString(NonSpatialDim dim) {
     case KOFeature:
       return 'o';
   }
+  llvm_unreachable("Unknown NonSpatialDim");
 }
 }  // namespace
 
