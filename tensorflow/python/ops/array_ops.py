@@ -1422,7 +1422,7 @@ def stack(values, axis=0, name="stack"):
     try:
       # If the input is a constant list, it can be converted to a constant op
       return ops.convert_to_tensor(values, name=name)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, NotImplementedError):
       pass  # Input list contains non-constant tensors
 
   value_shape = ops.convert_to_tensor(values[0], name=name)._shape_tuple()  # pylint: disable=protected-access

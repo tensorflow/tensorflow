@@ -287,7 +287,7 @@ class VariableTrackingTest(test_util.TensorFlowTestCase):
 
     m = module.Module()
     m.a = CompositeVariable([variables.Variable(1.), variables.Variable(2.)])
-    self.assertAllEqual(m.variables, m.a._variables)
+    self.assertEqual(list(m.variables), list(m.a._variables))
 
 
 class ModuleTrackingTest(test_util.TensorFlowTestCase):
