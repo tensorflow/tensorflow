@@ -596,7 +596,7 @@ static void inferGatherShape(
   // can't be larger than the highest collapsed dimension. So go through those
   // and populate the leading dimensions of adjustedSliceSizes. The trailing
   // dimensions can just be adjusted by an offset.
-  auto maxCollapsedDimIt =
+  const auto* maxCollapsedDimIt =
       std::max_element(collapsedSliceDims.begin(), collapsedSliceDims.end());
   int64_t maxCollapsedDim = -1;
   if (maxCollapsedDimIt != collapsedSliceDims.end())
@@ -622,13 +622,14 @@ static void inferGatherShape(
     if (!llvm::is_contained(offsetDims, dim)) batchDims.push_back(dim);
 
   for (int i = 0; i < resultRank; ++i) {
-    auto offsetDimsIt = std::find(offsetDims.begin(), offsetDims.end(), i);
+    const auto* offsetDimsIt =
+        std::find(offsetDims.begin(), offsetDims.end(), i);
     if (offsetDimsIt != offsetDims.end()) {
       auto index = std::distance(offsetDims.begin(), offsetDimsIt);
       shape.push_back(getAdjustedSliceDim(index));
       continue;
     }
-    auto batchDimsIt = std::find(batchDims.begin(), batchDims.end(), i);
+    auto* batchDimsIt = std::find(batchDims.begin(), batchDims.end(), i);
     assert(batchDimsIt != batchDims.end());
     auto index = std::distance(batchDims.begin(), batchDimsIt);
     // This can never run into the special case where start_indices gets
@@ -3540,7 +3541,7 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
 
   for (const auto& element : llvm::enumerate(operand_type.getShape())) {
     int64_t idx = element.index();
-    auto it = std::find(dimensions.begin(), dimensions.end(), idx);
+    auto* it = std::find(dimensions.begin(), dimensions.end(), idx);
     if (it != dimensions.end()) {
       continue;
     }
@@ -4927,7 +4928,7 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
 
   for (const auto& element : llvm::enumerate(operand_type.getShape())) {
     int64_t idx = element.index();
-    auto it = std::find(permutation.begin(), permutation.end(), idx);
+    auto* it = std::find(permutation.begin(), permutation.end(), idx);
     Value value_dim = to_shape_scalar_type(
         builder.createOrFold<tensor::DimOp>(loc, operand, element.index()));
     shape_values[std::distance(permutation.begin(), it)] = value_dim;
