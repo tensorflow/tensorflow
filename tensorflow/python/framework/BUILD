@@ -1717,6 +1717,7 @@ tf_py_test(
         ":test_ops",
         ":test_ops_2",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:gradients",

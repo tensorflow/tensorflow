@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.client import session
@@ -31,7 +32,6 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
-from tensorflow.python.eager import function_trace_type
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
@@ -476,7 +476,7 @@ class TensorTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   def testEqualTypes(self, shape_relaxation):
-    signature_context = function_trace_type.SignatureContext(shape_relaxation)
+    signature_context = trace_type.SignatureContext(shape_relaxation)
     type_1 = ops.TensorType(signature_context,
                             tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
                             None)
@@ -491,7 +491,7 @@ class TensorTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   def testDtypeMismatch(self, shape_relaxation):
-    signature_context = function_trace_type.SignatureContext(shape_relaxation)
+    signature_context = trace_type.SignatureContext(shape_relaxation)
     type_1 = ops.TensorType(signature_context,
                             tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
                             None)
@@ -504,7 +504,7 @@ class TensorTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   def testSubtypeOfShapeless(self, shape_relaxation):
-    signature_context = function_trace_type.SignatureContext(shape_relaxation)
+    signature_context = trace_type.SignatureContext(shape_relaxation)
     type_1 = ops.TensorType(signature_context, tensor_shape.TensorShape(None),
                             dtypes.float32, None)
     type_2 = ops.TensorType(signature_context,
@@ -515,7 +515,7 @@ class TensorTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertTrue(type_2.is_subtype_of(type_1))
 
   def testSubtypeOfDimlessShape(self):
-    signature_context = function_trace_type.SignatureContext(False)
+    signature_context = trace_type.SignatureContext(False)
     type_1 = ops.TensorType(signature_context,
                             tensor_shape.TensorShape([None, None, None]),
                             dtypes.float32, None)
