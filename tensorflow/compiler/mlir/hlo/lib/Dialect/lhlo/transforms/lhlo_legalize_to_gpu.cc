@@ -156,7 +156,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       mapping.map(reduce_op.body().getArgument(1), rhs);
       mapping.map(reduce_op.body().getArgument(2), accumulator);
       for (auto& nested : reduce_op.body().front().without_terminator()) {
-        auto clone = rewriter.clone(nested, mapping);
+        auto* clone = rewriter.clone(nested, mapping);
         for (auto pair : llvm::zip(nested.getResults(), clone->getResults())) {
           mapping.map(std::get<0>(pair), std::get<1>(pair));
         }
