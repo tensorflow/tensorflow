@@ -245,8 +245,7 @@ FusionPattern::FusionPattern(SmallVectorImpl<Operation*>& op_list)
 // Returns true if two fusion patterns can be merged into one bigger fusion
 // pattern.
 bool FusionPattern::isMergeable(FusionPattern& other) {
-  if (!this->isFusible() || !other.isFusible()) return false;
-  return true;
+  return this->isFusible() && other.isFusible();
 }
 
 // Merges two fusion patterns and returns the merged pattern. The original
