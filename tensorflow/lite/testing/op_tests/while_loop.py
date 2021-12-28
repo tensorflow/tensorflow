@@ -76,7 +76,7 @@ def make_while_tests(options):
             increment_value], [counter, value, result_increment_value]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    numpy_type = zip_test_utils.TF_TYPE_INFO[parameters["dtype"]][0]
+    numpy_type = zip_test_utils.MAP_TF_TO_NUMPY_TYPE[parameters["dtype"]]
     input_values = [
         np.array([parameters["num_iterations"]], dtype=np.int32),
         np.array(parameters["increment_value"], dtype=numpy_type)

@@ -15,10 +15,11 @@
 """Test configs for strided_slice operators."""
 import numpy as np
 import tensorflow.compat.v1 as tf
+
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
+from tensorflow.lite.testing.zip_test_utils import MAP_TF_TO_NUMPY_TYPE
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
-from tensorflow.lite.testing.zip_test_utils import TF_TYPE_INFO
 
 
 def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
@@ -78,7 +79,7 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
         parameters["input_shape"],
         min_value=-1,
         max_value=1)
-    index_type = TF_TYPE_INFO[parameters["index_type"]][0]
+    index_type = MAP_TF_TO_NUMPY_TYPE[parameters["index_type"]]
     values = [input_values]
     if not parameters["constant_indices"]:
       begin_values = np.array(parameters["begin"]).astype(index_type)
