@@ -320,7 +320,7 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
 }
 
 LogicalResult WhileOp::moveOutOfLoop(ArrayRef<Operation*> ops) {
-  for (auto op : ops) op->moveBefore(*this);
+  for (auto* op : ops) op->moveBefore(*this);
   return success();
 }
 
