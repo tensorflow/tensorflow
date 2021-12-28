@@ -533,7 +533,7 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
     // Populate type conversions.
     MLIRContext* ctx = m.getContext();
     LLVMTypeConverter type_converter(ctx);
-    type_converter.addConversion([&](RalExecutionContextType type) {
+    type_converter.addConversion([&](RalExecutionContextType /*type*/) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
 
