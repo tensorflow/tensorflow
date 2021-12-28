@@ -351,8 +351,8 @@ void FusionPattern::calculateOperandsAndResults() {
 
 // Supports using EquivalenceClasses for Value
 bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs) {
-  auto lhs_value = lhs.getValue().getAsOpaquePointer();
-  auto rhs_value = rhs.getValue().getAsOpaquePointer();
+  auto* lhs_value = lhs.getValue().getAsOpaquePointer();
+  auto* rhs_value = rhs.getValue().getAsOpaquePointer();
   return lhs_value < rhs_value;
 }
 
