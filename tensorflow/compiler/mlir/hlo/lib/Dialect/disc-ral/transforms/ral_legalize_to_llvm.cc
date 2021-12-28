@@ -61,7 +61,8 @@ LogicalResult getTypeEncoding(MLIRContext* ctx, Type t, StrT& out) {
     out.append(
         Twine("m").concat(Twine(memref_type.getRank()).concat("d")).str());
     return getTypeEncoding(ctx, memref_type.getElementType(), out);
-  } else if (auto int_type = t.dyn_cast<IntegerType>()) {
+  }
+  if (auto int_type = t.dyn_cast<IntegerType>()) {
     out.append(Twine("i").concat(Twine(int_type.getWidth())).str());
   } else if (auto fp_type = t.dyn_cast<FloatType>()) {
     out.append(Twine("f").concat(Twine(fp_type.getWidth())).str());
