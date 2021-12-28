@@ -49,7 +49,7 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
     arg_bufs.push_back(
         b->create<memref::AllocOp>(loc, arg_type.cast<MemRefType>()));
   }
-  for (auto operand : llvm::enumerate(operands)) {
+  for (const auto& operand : llvm::enumerate(operands)) {
     b->create<memref::StoreOp>(loc, operand.value(), arg_bufs[operand.index()]);
   }
   // Clone the ops from `lhlo_block`.
@@ -151,7 +151,7 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
   ArrayRef<int64_t> shape =
       shaped_value.getType().cast<ShapedType>().getShape();
   SmallVector<Value, 2> lower, upper, step;
-  for (auto dim : llvm::enumerate(shape)) {
+  for (const auto& dim : llvm::enumerate(shape)) {
     upper.push_back(
         GetStaticOrDynamicDim(loc, shaped_value, dim.index(), dim.value(), b));
     lower.push_back(zero);
@@ -244,7 +244,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     SmallVector<Value, 2> parallel_lower, parallel_upper, parallel_step;
     SmallVector<Value, 2> reduce_lower, reduce_upper, reduce_step;
     auto operand_shape = operand.getType().cast<MemRefType>().getShape();
-    for (auto dim : llvm::enumerate(operand_shape)) {
+    for (const auto& dim : llvm::enumerate(operand_shape)) {
       const bool is_reducing_dim = reducing_dims.count(dim.index());
 
       Value ub = GetStaticOrDynamicDim(loc, operand, dim.index(), dim.value(),
