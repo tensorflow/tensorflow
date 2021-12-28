@@ -1686,6 +1686,40 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
   }
 };
 
+/// Extract element values from `attr` and store them in `arrayValues`.
+static void getValuesFromIntAttribute(DenseIntElementsAttr attr,
+                                      SmallVector<int64_t, 4>& arrayValues) {
+  for (auto val : attr.getValues<int64_t>()) arrayValues.push_back(val);
+}
+
+/// Apply padding values stored in `pad` to `input`.
+static Value applyPad(Location loc, Value input, ArrayRef<int64_t> pad,
+                      Attribute padAttr, OpBuilder& rewriter) {
+  auto inputTy = input.getType().cast<ShapedType>();
+  Type inputETy = inputTy.getElementType();
+  ArrayRef<int64_t> inputShape = inputTy.getShape();
+
+  assert((inputShape.size() * 2) == pad.size() &&
+         "There should be 2 padding values per dimension, i.e low and high.");
+
+  SmallVector<int64_t> paddedShape;
+  SmallVector<OpFoldResult> lowIndices;
+  SmallVector<OpFoldResult> highIndices;
+  for (int i : llvm::seq<int>(0, inputShape.size())) {
+    int64_t lowPad = pad[i * 2];
+    int64_t highPad = pad[i * 2 + 1];
+    paddedShape.push_back(inputShape[i] + highPad + lowPad);
+    lowIndices.push_back(rewriter.getIndexAttr(lowPad));
+    highIndices.push_back(rewriter.getIndexAttr(highPad));
+  }
+
+  Value padValue = rewriter.create<arith::ConstantOp>(loc, padAttr);
+
+  return linalg::PadTensorOp::createPadScalarOp(
+      RankedTensorType::get(paddedShape, inputETy), input, padValue, lowIndices,
+      highIndices, /*nofold=*/false, loc, rewriter);
+}
+
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
 /// convolution cases. The op must have canonical dimension numbers. Depthwise
 /// convolution and pointwise convolution are not handled in the conversion.
@@ -1703,12 +1737,6 @@ struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
     Value filter = adaptor.rhs();
     auto result_type = op.getResult().getType().cast<ShapedType>();
     int64_t rank = result_type.getRank();
-
-    // Check if padding is zero.
-    DenseIntElementsAttr padding = op.paddingAttr();
-    if (padding && !isSplatValue(*op.padding(), 0)) {
-      return rewriter.notifyMatchFailure(op, "expected no padding");
-    }
 
     // The output shape is N spatial_dims F.
     SmallVector<Value, 8> dyn_sizes;
@@ -1736,6 +1764,21 @@ struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
     // TODO(ataei): Only support dilated kernel right now. We need to consider
     // input dilation for deconvolution cases.
     Attribute dilations = op.rhs_dilationAttr();
+
+    // Check if padding is zero or not. If it is not zero, we should pad the
+    // input.
+    DenseIntElementsAttr padding = op.paddingAttr();
+    if (padding && !isSplatValue(*op.padding(), 0)) {
+      SmallVector<int64_t, 4> pad(2, 0);
+
+      // Store the padding values in a vector.
+      getValuesFromIntAttribute(padding, pad);
+      pad.resize(pad.size() + 2, 0);
+      // Pad the given input using `zeroAttr` according to the low and high
+      // values in the `pad`.
+      input = applyPad(loc, input, pad, zero_attr, rewriter);
+    }
+
     switch (rank) {
       case 3: {
         res = rewriter.create<linalg::Conv1DNwcWcfOp>(
