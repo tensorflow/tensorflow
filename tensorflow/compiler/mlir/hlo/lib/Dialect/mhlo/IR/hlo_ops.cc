@@ -569,7 +569,7 @@ static LogicalResult verifyStaticGather(
   }
 
   if (operandShape.hasRank()) {
-    for (auto it : llvm::enumerate(sliceSizes.getValues<int64_t>())) {
+    for (const auto& it : llvm::enumerate(sliceSizes.getValues<int64_t>())) {
       if (operandShape.isDynamicDim(it.index())) continue;
       auto operandDimSize = operandShape.getDimSize(it.index());
       auto sliceDimSize = it.value();
@@ -1185,7 +1185,7 @@ static LogicalResult Verify(TupleOp op) {
     return op.emitOpError(
         "number of operands to tuple expected to match number of types in "
         "resultant tuple type");
-  for (auto it : llvm::enumerate(
+  for (const auto& it : llvm::enumerate(
            llvm::zip_first(op.getOperandTypes(), opType.getTypes()))) {
     if (std::get<0>(it.value()) != std::get<1>(it.value()))
       return op.emitOpError("has return type mismatch at ")
@@ -1213,7 +1213,8 @@ struct UnpackRepackSameTuple : public OpRewritePattern<TupleOp> {
     Value tuple_predecessor = first_element_op.getOperand();
     if (tuple_predecessor.getType() != op.getType()) return failure();
 
-    for (auto element_and_idx : llvm::enumerate(op.val().drop_front(1))) {
+    for (const auto& element_and_idx :
+         llvm::enumerate(op.val().drop_front(1))) {
       auto element_op =
           element_and_idx.value().getDefiningOp<GetTupleElementOp>();
       if (!element_op ||
@@ -1928,7 +1929,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
       continue;
     }
 
-    for (auto it : llvm::enumerate(shaped_ty.getShape())) {
+    for (const auto& it : llvm::enumerate(shaped_ty.getShape())) {
       // If a dimension is not dynamic, the output shape should match.
       if (ShapedType::isDynamic(out_shape[it.index()])) {
         out_shape[it.index()] = it.value();
@@ -2631,7 +2632,7 @@ static LogicalResult Verify(MapOp op) {
   auto operand_type = op.operands()[0].getType().cast<TensorType>();
   auto operand_elem_ty = operand_type.getElementType();
 
-  for (auto indexed_arg : llvm::enumerate(computation_args)) {
+  for (const auto& indexed_arg : llvm::enumerate(computation_args)) {
     auto arg_type = indexed_arg.value().getType().dyn_cast<TensorType>();
     if (!arg_type || arg_type.getRank() != 0)
       return op.emitOpError()
@@ -2672,7 +2673,8 @@ static LogicalResult Verify(MapOp op) {
   // Checks that the requested map dimension numbers are monotonically
   // increasing.
   DenseIntElementsAttr dimensions = op.dimensions();
-  for (auto indexedValue : llvm::enumerate(dimensions.getValues<int64_t>())) {
+  for (const auto& indexedValue :
+       llvm::enumerate(dimensions.getValues<int64_t>())) {
     if (indexedValue.value() != indexedValue.index())
       return op.emitOpError() << "requires monotonically increasing dimension "
                                  "numbers, but got: "
@@ -4728,7 +4730,7 @@ static LogicalResult Verify(SortOp op) {
     return op.emitOpError("comparator block should have ")
            << 2 * num_operands << " arguments";
 
-  for (auto indexed_operand : llvm::enumerate(operands)) {
+  for (const auto& indexed_operand : llvm::enumerate(operands)) {
     int index = indexed_operand.index();
     Type element_type =
         indexed_operand.value().getType().cast<ShapedType>().getElementType();
@@ -4762,7 +4764,7 @@ static LogicalResult SortDropEmptyUseArgs(SortOp op,
 
   SmallVector<Value> new_operands;
   SmallVector<unsigned> erased_block_args;
-  for (auto en : llvm::enumerate(op.operands())) {
+  for (const auto& en : llvm::enumerate(op.operands())) {
     if (erased_args.contains(en.index())) {
       erased_block_args.push_back(en.index() * 2);
       erased_block_args.push_back(en.index() * 2 + 1);
@@ -4823,7 +4825,7 @@ void SortOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 //===----------------------------------------------------------------------===//
 
 OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
-  for (auto it : llvm::enumerate(permutation().getValues<APInt>())) {
+  for (const auto& it : llvm::enumerate(permutation().getValues<APInt>())) {
     if (it.index() != it.value()) {
       return {};
     }
