@@ -56,7 +56,7 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
   BlockAndValueMapping mapping;
   mapping.map(lhlo_block->getArguments(), arg_bufs);
   for (auto& nested : lhlo_block->without_terminator()) {
-    auto clone = b->clone(nested, mapping);
+    auto* clone = b->clone(nested, mapping);
     mapping.map(nested.getResults(), clone->getResults());
   }
   return b->create<memref::LoadOp>(loc, arg_bufs.back());
