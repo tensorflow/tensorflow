@@ -398,7 +398,7 @@ class FusionPlanner {
     bool check_same_shape = (to->fused_pattern().isKInputFusion() &&
                              from->fused_pattern().isKInputFusion());
     auto get_effective_shape = [&](Value v) {
-      auto result_op = FindLastWriter(v);
+      auto* result_op = FindLastWriter(v);
       assert(result_op);
       // effective shape of reduce op is its operand's shape.
       return isa<lmhlo::ReduceOp>(result_op) ? result_op->getOperand(0) : v;
