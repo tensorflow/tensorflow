@@ -286,7 +286,7 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
     auto return_op = cast<mhlo::ReturnOp>(entry_block.getTerminator());
     if (auto tuple_ty =
             return_op.results().front().getType().dyn_cast<TupleType>()) {
-      auto tuple_op = return_op.getODSOperands(0).front().getDefiningOp();
+      auto* tuple_op = return_op.getODSOperands(0).front().getDefiningOp();
       return_op.getOperation()->dropAllReferences();
       rewriter.eraseOp(tuple_op);
       return_op.getOperation()->setOperands(tuple_op->getOperands());
