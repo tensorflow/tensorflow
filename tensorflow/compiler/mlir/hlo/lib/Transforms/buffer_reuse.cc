@@ -66,7 +66,7 @@ class BufferReuse : BufferPlacementTransformationBase {
         // Insert itemB into the right place of the potReuseVector. The order of
         // the vector is defined via the program order of the first use of each
         // item.
-        auto insertionPoint = potReuseVector.begin();
+        auto *insertionPoint = potReuseVector.begin();
         while (insertionPoint != potReuseVector.end()) {
           if (userange.getFirstUseIndex(itemB) <
               userange.getFirstUseIndex(*insertionPoint))
