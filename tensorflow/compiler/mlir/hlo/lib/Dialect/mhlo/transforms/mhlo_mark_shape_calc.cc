@@ -237,7 +237,7 @@ void MarkShapeCalc::markI64ReturnedCpuScalarOps(
   if (!result_attrs) return;
   auto returned_ops = return_op->getOperands();
   assert(returned_ops.size() == result_attrs.size());
-  for (auto output : llvm::enumerate(returned_ops)) {
+  for (const auto& output : llvm::enumerate(returned_ops)) {
     Operation* op = output.value().getDefiningOp();
     if (!op || !isMhloDialect(op)) continue;
     int idx = output.index();
