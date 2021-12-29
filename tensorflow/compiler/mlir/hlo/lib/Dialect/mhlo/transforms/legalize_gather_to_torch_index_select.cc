@@ -79,14 +79,15 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
           gather, "offset_dims.size not operand rank minus index_vector_dim");
     }
 
-    for (auto it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
+    for (const auto &it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
       if ((it.index() + index_vector_dim) != it.value()) {
         return rewriter.notifyMatchFailure(
             gather, "offset_dims != [index_vector_dim, result.rank)");
       }
     }
 
-    for (auto it : llvm::enumerate(gather.slice_sizes().getValues<APInt>())) {
+    for (const auto &it :
+         llvm::enumerate(gather.slice_sizes().getValues<APInt>())) {
       // First shape value must be 1.
       if (it.index() == 0) {
         if (it.value().getSExtValue() != 1) {
