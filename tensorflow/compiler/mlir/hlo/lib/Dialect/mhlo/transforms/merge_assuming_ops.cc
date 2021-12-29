@@ -134,7 +134,7 @@ LogicalResult MoveIntoAssumingOpMatchAndRewrite(Operation *op,
   // will later use their copies, as we copy the assuming op and its body.
   SmallVector<Value, 8> new_operands_unmapped =
       llvm::to_vector<8>(llvm::map_range(op->getOperands(), [&](Value v) {
-        for (auto result : llvm::enumerate(assuming_op->getResults())) {
+        for (const auto &result : llvm::enumerate(assuming_op->getResults())) {
           if (result.value() == v) return yield_op->getOperand(result.index());
         }
         return v;
