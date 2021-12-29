@@ -663,7 +663,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, result_ty ? *result_ty : TypeRange{}, inputs, output, maps,
         GetNParallelLoopsAttrs(nloops),
-        [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
+        [&](OpBuilder& nested_builder, Location /*nested_loc*/,
+            ValueRange args) {
           Type inner_result_ty = getElementTypeOrSelf(output);
           Value inner_result = mhlo::MhloOpToStdScalarOp::map<OpTy>(
               op, inner_result_ty,
@@ -687,8 +688,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<MhloOp> {
   using OpConversionPattern<MhloOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      MhloOp mhlo_op, typename MhloOp::Adaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
+      MhloOp mhlo_op, ConversionPatternRewriter& rewriter) const final {
     auto loc = mhlo_op.getLoc();
     auto arg_type =
         mhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
@@ -742,7 +742,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
         ValueRange{GetInitTensorFor(rewriter, loc, result_type, op,
                                     adaptor.getOperands())},
         indexing_maps, GetNParallelLoopsAttrs(nloops),
-        [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
+        [&](OpBuilder& nested_builder, Location /*nested_loc*/,
+            ValueRange args) {
           nested_builder.create<linalg::YieldOp>(loc, *args.begin());
         },
         PruneAttributeList(op));
@@ -881,7 +882,8 @@ class HloDynamicBroadcastInDimConverter
                             rewriter.getContext()),
              rewriter.getMultiDimIdentityMap(nloops)}),
         GetNParallelLoopsAttrs(nloops),
-        [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
+        [&](OpBuilder& nested_builder, Location /*nested_loc*/,
+            ValueRange args) {
           nested_builder.create<linalg::YieldOp>(loc, *args.begin());
         },
         PruneAttributeList(op));
@@ -1024,7 +1026,8 @@ class IotaConverter : public OpConversionPattern<OpTy> {
                                     adaptor.getOperands())},
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         GetNParallelLoopsAttrs(nloops),
-        [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
+        [&](OpBuilder& nested_builder, Location nested_loc,
+            ValueRange /*args*/) {
           Value index_op = nested_builder.create<linalg::IndexOp>(
               nested_loc, iota_op.iota_dimension());
           Value cast_op = nested_builder.create<arith::IndexCastOp>(
@@ -1138,7 +1141,7 @@ class ConstConverterTensor : public OpConversionPattern<mhlo::ConstOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConstOp const_op, OpAdaptor adaptor,
+      mhlo::ConstOp const_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     auto value_attr = const_op.value().cast<DenseElementsAttr>();
     auto type =
