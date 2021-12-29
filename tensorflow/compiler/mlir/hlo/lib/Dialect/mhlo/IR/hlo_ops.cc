@@ -1523,6 +1523,61 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
       type, splatOperandAttr.getSplatValue<mlir::Attribute>());
 }
 
+// Simplify BroadcastInDim has the following behaviors: replace BroadcastInDim
+// with Reshape or Transpose if they are equivalent or replace
+// BroadcastInDim(BroadcastInDim(X)) with BroadcastInDim(X)
+class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
+ public:
+  using OpRewritePattern<BroadcastInDimOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(BroadcastInDimOp op,
+                                PatternRewriter& rewriter) const override {
+    auto operand_type = op.operand().getType().dyn_cast<RankedTensorType>();
+    auto result_type = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!operand_type || !result_type) {
+      return failure();
+    }
+    auto bs_dim_indices = op.broadcast_dimensions().getValues<int64_t>();
+    if (operand_type.hasStaticShape() && result_type.hasStaticShape()) {
+      bool same_total_elements =
+          operand_type.getNumElements() == result_type.getNumElements();
+      // BroadcastInDim equivalent to reshape
+      if (llvm::is_sorted(bs_dim_indices) && same_total_elements) {
+        rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.operand());
+        return success();
+      }
+      // BroadcastInDim equivalent to transpose
+      if (operand_type.getRank() == result_type.getRank() &&
+          same_total_elements) {
+        rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getType(), op.operand(),
+                                                 op.broadcast_dimensions());
+        return success();
+      }
+    }
+    // eliminate redundant BroadcastInDim
+    if (auto broadcast_in_dim_op = llvm::dyn_cast_or_null<BroadcastInDimOp>(
+            op.operand().getDefiningOp())) {
+      auto new_indices =
+          broadcast_in_dim_op.broadcast_dimensions()
+              .mapValues(
+                  op.broadcast_dimensions().DenseElementsAttr::getElementType(),
+                  [&bs_dim_indices](const APInt& dim) -> APInt {
+                    return APInt(dim.getBitWidth(),
+                                 bs_dim_indices[dim.getSExtValue()], true);
+                  })
+              .cast<DenseIntElementsAttr>();
+      rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+          op, op.getType(), broadcast_in_dim_op.operand(), new_indices);
+      return success();
+    }
+    return failure();
+  }
+};
+
+void BroadcastInDimOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<BroadcastInDimSimplifier>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
