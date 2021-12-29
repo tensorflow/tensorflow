@@ -41,7 +41,7 @@ class BufferReuse : BufferPlacementTransformationBase {
         userange(op, allocs, aliases) {}
 
   /// Reuses already allocated buffers to save allocation operations.
-  void reuse(Operation *operation) {
+  void reuse() {
     // Create a list of values that can potentially be replaced for each value
     // in the useRangeMap. The potentialReuseMap maps each value to the
     // respective list.
@@ -286,7 +286,7 @@ struct BufferReusePass : BufferReuseBase<BufferReusePass> {
     // Reuse allocated buffer instead of new allocation.
     Operation *funcOp = getFunction();
     BufferReuse optimizer(funcOp);
-    optimizer.reuse(funcOp);
+    optimizer.reuse();
   }
 };
 
