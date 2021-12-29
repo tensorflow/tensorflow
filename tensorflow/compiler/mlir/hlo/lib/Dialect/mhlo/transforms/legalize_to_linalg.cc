@@ -216,11 +216,11 @@ static bool HasCanonicalDimensionNumbers(
     return false;
   }
 
-  auto input_spatial_dim =
+  const auto* input_spatial_dim =
       dimension_numbers.getInputSpatialDimensions().begin();
-  auto kernel_spatial_dim =
+  const auto* kernel_spatial_dim =
       dimension_numbers.getKernelSpatialDimensions().begin();
-  auto output_spatial_dim =
+  const auto* output_spatial_dim =
       dimension_numbers.getOutputSpatialDimensions().begin();
   // Check spatial dims are ordered correctly.
   for (int i = 0; i < input_spatial_rank; ++i) {
@@ -349,7 +349,7 @@ SmallVector<Value, 2> ExtractDynamicEinsumSizes(
   SmallVector<Value, 2> dyn_sizes;
   for (const std::string& dim_ind : output_loop_vec) {
     Value dim_size;
-    auto dim_ind_it =
+    const auto* dim_ind_it =
         std::find(lhs_loop_vec.begin(), lhs_loop_vec.end(), dim_ind);
     if (dim_ind_it != lhs_loop_vec.end()) {
       // Query from lhs vars.
@@ -1492,7 +1492,7 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
 };
 
 bool IsInBodyOfLinalgOps(Operation* op) {
-  auto parent_op = op->getParentRegion()->getParentOp();
+  auto* parent_op = op->getParentRegion()->getParentOp();
   return parent_op->getDialect() ==
          parent_op->getContext()->getLoadedDialect<linalg::LinalgDialect>();
 }
