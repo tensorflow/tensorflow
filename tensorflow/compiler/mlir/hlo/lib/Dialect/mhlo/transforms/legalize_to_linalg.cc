@@ -902,7 +902,7 @@ class TransposeConverter
     auto nloops = result_type.getRank();
     SmallVector<AffineExpr, 2> input_exprs;
     input_exprs.resize(result_type.getRank());
-    for (auto permutation : llvm::enumerate(op.permutation())) {
+    for (const auto& permutation : llvm::enumerate(op.permutation())) {
       input_exprs[permutation.value().getZExtValue()] =
           b->getAffineDimExpr(permutation.index());
     }
