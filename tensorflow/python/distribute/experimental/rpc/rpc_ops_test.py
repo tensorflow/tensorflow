@@ -138,7 +138,7 @@ class RpcOpsTest(test.TestCase):
     self.assertEqual(client1.multiply.__doc__,
                      "RPC Call for multiply method to server " + address)
 
-  def test_rpc_ops_wrapper(self):
+  def test_rpc_ops_call_method(self):
 
     @eager_def_function.function(input_signature=[
         tensor_spec.TensorSpec([], dtypes.int32),
@@ -195,13 +195,60 @@ class RpcOpsTest(test.TestCase):
     self.assertAllEqual(mul_or.is_ok(), True)
     self.assertAllEqual(mul_or.get_value(), 6)
 
-    # Test without output_spec
-    mul_or = client1.multiply(a, b)
+  def test_rpc_ops_non_blocking_convenience_methods(self):
+    @eager_def_function.function(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.int32),
+        tensor_spec.TensorSpec([], dtypes.int32)
+    ])
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    port = portpicker.pick_unused_port()
+    address = "localhost:{}".format(port)
+    server_resource = rpc_ops.GrpcServer(address)
+
+    # Register TF function
+    server_resource.register("multiply", _remote_fn)
+
+    server_resource.start()
+    a = variables.Variable(2, dtype=dtypes.int32)
+    b = variables.Variable(3, dtype=dtypes.int32)
+
+    client = rpc_ops.GrpcClient(address, list_registered_methods=True)
+
+    mul_or = client.multiply(a, b)
     self.assertAllEqual(mul_or.is_ok(), True)
     self.assertAllEqual(mul_or.get_value(), 6)
 
-    self.assertEqual(client1.multiply.__doc__,
+    self.assertEqual(client.multiply.__doc__,
                      "RPC Call for multiply method to server " + address)
+
+  def test_rpc_ops_blocking_convenience_methods(self):
+    @eager_def_function.function(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.int32),
+        tensor_spec.TensorSpec([], dtypes.int32)
+    ])
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    port = portpicker.pick_unused_port()
+    address = "localhost:{}".format(port)
+    server_resource = rpc_ops.GrpcServer(address)
+
+    # Register TF function
+    server_resource.register("multiply", _remote_fn)
+
+    server_resource.start()
+
+    client = rpc_ops.GrpcClient(address, list_registered_methods=True)
+
+    a = variables.Variable(2, dtype=dtypes.int32)
+    b = variables.Variable(3, dtype=dtypes.int32)
+    self.assertAllEqual(client.multiply_blocking(a, b), 6)
+
+    self.assertEqual(
+        client.multiply_blocking.__doc__,
+        "RPC Call for multiply method to server " + address)
 
   def test_output_specs(self):
 
@@ -646,6 +693,11 @@ class RpcOpsTest(test.TestCase):
     self.assertAllEqual(result_or.is_ok(), False)
     error_code, _ = result_or.get_error()
     self.assertAllEqual(error_code, errors.INVALID_ARGUMENT)
+
+    del server
+    with self.assertRaises(errors.DeadlineExceededError):
+      _ = client.assign_add_blocking(
+          variables.Variable(2, dtype=dtypes.int64), timeout_in_ms=1)
 
   def test_captured_inputs(self):
     v = variables.Variable(initial_value=0, dtype=dtypes.int64)
