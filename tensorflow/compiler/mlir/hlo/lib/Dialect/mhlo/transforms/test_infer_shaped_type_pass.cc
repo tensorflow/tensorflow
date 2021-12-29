@@ -33,7 +33,7 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 1) return failure();
-    auto defining_op = op->getOperand(0).getDefiningOp();
+    auto *defining_op = op->getOperand(0).getDefiningOp();
     auto defining_op_int =
         llvm::dyn_cast_or_null<InferShapedTypeOpInterface>(defining_op);
     if (!defining_op_int) return failure();
@@ -49,7 +49,7 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
     OperationState state(op->getLoc(), "mhlo_test.return_type_components",
                          op->getOperands(), op->getResultTypes(),
                          op->getAttrs());
-    auto new_op = rewriter.createOperation(state);
+    auto *new_op = rewriter.createOperation(state);
     for (auto it : llvm::enumerate(components)) {
       if (it.value().hasRank()) {
         new_op->setAttr((StringRef("dims") + Twine(it.index())).str(),
