@@ -62,7 +62,7 @@ void ReplaceTerminators(Region* region, Block* target_block, Location loc,
 void LowerIfOp(mlir::mhlo::IfOp if_op) {
   Operation* op_inst = if_op.getOperation();
   mlir::OpBuilder builder(if_op);
-  auto orig_block = op_inst->getBlock();
+  auto* orig_block = op_inst->getBlock();
   auto* tail_block = orig_block->splitBlock(op_inst);
   auto loc = if_op.getLoc();
 
@@ -154,7 +154,7 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   // block for regions nested inside of a operations (MLIR ReturnOp cannot be
   // nested within an non-function region).
   for (auto& block : while_op.cond()) {
-    auto new_block = mapper.lookup(&block);
+    auto* new_block = mapper.lookup(&block);
 
     auto return_op = dyn_cast<mhlo::ReturnOp>(new_block->getTerminator());
     if (!return_op) continue;
@@ -184,7 +184,7 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   //     <inlined body block>
   //     br ^cond(%0) // Branch.
   for (auto& block : while_op.body()) {
-    auto new_block = mapper.lookup(&block);
+    auto* new_block = mapper.lookup(&block);
     auto return_op = dyn_cast<mlir::mhlo::ReturnOp>(new_block->getTerminator());
     if (!return_op) continue;
     builder.setInsertionPointToEnd(new_block);
