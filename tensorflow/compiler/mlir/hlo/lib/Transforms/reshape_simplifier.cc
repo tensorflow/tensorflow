@@ -193,7 +193,7 @@ struct RemoveRedundantCstrReshapable final
     //     factor, i.e. if the symbolic factors based on the dynamic shape are
     //     not a subset of the factors based on the number of elements.
     int64_t concreteProductDynShape = 1;
-    for (auto dim : *dynShapeDims) {
+    for (const auto &dim : *dynShapeDims) {
       SmallVector<Symbol> partialSymbolicFactorsDynShape;
       if (!IsSimpleProduct(
               dim,
