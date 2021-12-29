@@ -105,6 +105,7 @@ cc_test(
         "//tensorflow/lite:testdata/string_input_model.bin",
     ],
     tags = [
+        "no-msan",  # TODO(b/212573912)
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
