@@ -31,7 +31,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
         userange_(op, allocs, aliases),
         dominators_(op) {}
 
-  void removeCopy(Operation *op) {
+  void removeCopy() {
     // A set with the copy Operations to process.
     llvm::SetVector<Operation *> toProcess;
     fillProcessSet(toProcess);
@@ -82,8 +82,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
           getOrInsert(copyTarget, updatedUsepositions, lambdaUsePosUpdate);
 
       // Check if the currentOp dominates all uses of the copyTarget.
-      if (!checkDominance(currentOp, copyTarget, targetUsePosList, toErase))
-        continue;
+      if (!checkDominance(currentOp, targetUsePosList, toErase)) continue;
 
       // Merge the Useranges.
       UseInterval::intervalMerge(sourceInterval, targetInterval);
@@ -178,7 +177,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
 
   /// Check if all uses of the target Value are dominated by given Operation.
   /// Note: The target has always at least one use which is the copy operation.
-  bool checkDominance(Operation *useOp, Value v,
+  bool checkDominance(Operation *useOp,
                       const UserangeAnalysis::UsePositionList &usePosList,
                       SmallPtrSet<Operation *, 16> &ignoreSet) {
     Block *useBlock = useOp->getBlock();
@@ -216,7 +215,7 @@ struct CopyRemovalPass : public CopyRemovalBase<CopyRemovalPass> {
   void runOnFunction() override {
     Operation *funcOp = getFunction();
     CopyRemoval removal(funcOp);
-    removal.removeCopy(funcOp);
+    removal.removeCopy();
   }
 };
 
