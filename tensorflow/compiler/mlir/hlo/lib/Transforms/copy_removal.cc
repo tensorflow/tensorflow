@@ -99,7 +99,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
       toErase.insert(currentOp);
     }
     // Erase the copy operations.
-    for (auto eraseOp : toErase) eraseOp->erase();
+    for (auto *eraseOp : toErase) eraseOp->erase();
 
     // Erase all allocs without uses.
     for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
@@ -161,7 +161,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
   /// Insert the original userange intervals of the operation in the map.
   UseInterval::Vector &insertUserangeInterval(
       Value v, DenseMap<Value, UseInterval::Vector> &updateMap) {
-    auto original = userange_.getUserangeInterval(v).getValue();
+    const auto *original = userange_.getUserangeInterval(v).getValue();
     auto &entry = updateMap[v];
     entry = *original;
     return entry;
@@ -170,7 +170,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
   /// Insert the original use positions of the operation in the map.
   UserangeAnalysis::UsePositionList &insertUserangePositions(
       Value v, DenseMap<Value, UserangeAnalysis::UsePositionList> &updateMap) {
-    auto original = userange_.getUserangePositions(v).getValue();
+    const auto *original = userange_.getUserangePositions(v).getValue();
     auto &entry = updateMap[v];
     entry = *original;
     return entry;
