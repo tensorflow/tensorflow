@@ -100,7 +100,7 @@ Value ProcessDotArg(Value arg, Location loc,
 
   // Compute the outer dimension orderings.
   llvm::SmallVector<int64_t, 5> outer_dims;
-  for (auto it : llvm::enumerate(is_outer_dim)) {
+  for (const auto &it : llvm::enumerate(is_outer_dim)) {
     if (it.value()) {
       outer_dims.push_back(it.index());
     }
