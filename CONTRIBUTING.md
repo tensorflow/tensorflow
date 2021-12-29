@@ -210,7 +210,7 @@ There are two ways to run TensorFlow unit tests.
     bazel test ${flags} tensorflow/python/kernel_tests:softmax_op_test
     ```
 
-    For a single/parametrized test e.g. `test_capture_variables` in
+    For a single/parameterized test e.g. `test_capture_variables` in
     `tensorflow/python/saved_model/load_test.py`:
 
     (Requires `python>=3.7`)
@@ -225,7 +225,7 @@ There are two ways to run TensorFlow unit tests.
     test to timeout but it could be useful when you need to execute a single
     test or more in general your filtered/selected tests have a very low
     execution time and the sharding
-    [could create an overhead on the test esecution](https://github.com/bazelbuild/bazel/issues/2113#issuecomment-264054799).
+    [could create an overhead on the test execution](https://github.com/bazelbuild/bazel/issues/2113#issuecomment-264054799).
 
 2.  Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 
