@@ -85,8 +85,8 @@ class ValueWrapper {
 };
 
 bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs) {
-  auto lhs_value = lhs.getValue().getAsOpaquePointer();
-  auto rhs_value = rhs.getValue().getAsOpaquePointer();
+  auto* lhs_value = lhs.getValue().getAsOpaquePointer();
+  auto* rhs_value = rhs.getValue().getAsOpaquePointer();
   return lhs_value < rhs_value;
 }
 
@@ -564,7 +564,7 @@ struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
           // fused op's consumer or consumer's consumer
           bool is_consumer = llvm::any_of(
               cur_op.getOperands(), [&fused_set, &consumers_set](Value v) {
-                auto op = v.getDefiningOp();
+                auto* op = v.getDefiningOp();
                 return fused_set.contains(op) || consumers_set.contains(op);
               });
           if (is_consumer) {
@@ -573,7 +573,7 @@ struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
           }
         }
       }
-      for (auto op : llvm::reverse(consumers_vec)) {
+      for (auto* op : llvm::reverse(consumers_vec)) {
         op->moveAfter(pattern.back());
       }
 
