@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <mutex>  // NOLINT
 #include <unordered_map>
+#include <utility>
 
 #include "ral/ral_logging.h"
 
@@ -42,7 +43,7 @@ FunctionRegistry& FunctionRegistry::Global() {
 bool FunctionRegistry::Register(const std::string& name, ral_func_t func) {
   DISC_VLOG(2) << "register function " << name << " to the registry";
   std::lock_guard<std::mutex> lock(impl_->mu);
-  auto it = impl_->funcs.emplace(name, func);
+  auto it = impl_->funcs.emplace(name, std::move(func));
   assert(it.second && "duplicated key is not allowed");
   return it.second;
 }
