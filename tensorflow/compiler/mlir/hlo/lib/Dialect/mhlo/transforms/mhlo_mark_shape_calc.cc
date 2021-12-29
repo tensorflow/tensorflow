@@ -167,7 +167,7 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
 
     // Skip the Op that is already marked shape Op
     auto attr = op->getAttrOfType<BoolAttr>(kDiscShapeCalcAttr);
-    if ((attr != nullptr) && (attr.getValue() == true)) return;
+    if ((attr != nullptr) && (attr.getValue())) return;
 
     if (isa<mhlo::GetDimensionSizeOp, mhlo::PrintOp>(op)) {
       op->setAttr(kDiscShapeCalcAttr, true_attr_);
