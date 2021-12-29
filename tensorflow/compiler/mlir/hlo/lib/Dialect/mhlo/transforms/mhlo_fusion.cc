@@ -92,7 +92,7 @@ bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs) {
 
 bool IsMhlo(Operation* op) {
   Dialect* dialect = op->getDialect();
-  return dialect && isa<MhloDialect>(dialect);
+  return isa_and_nonnull<MhloDialect>(dialect);
 }
 
 bool IsFusibleWithOperand(Operation* op) {
@@ -107,7 +107,7 @@ bool IsFusibleWithConsumer(Operation* op) {
 
 Value InferEffectiveWorkloadShape(Value v) {
   Operation* op = v.getDefiningOp();
-  return op && isa<ReduceOp>(op) ? op->getOperand(0) : v;
+  return isa_and_nonnull<ReduceOp>(op) ? op->getOperand(0) : v;
 }
 
 bool IsFusible(Operation* op) {
