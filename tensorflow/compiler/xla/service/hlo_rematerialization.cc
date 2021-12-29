@@ -1583,9 +1583,16 @@ StatusOr<int64_t> RematerializeInstructions(
       if (!memory_tracker->IsPlaced(user.user->instruction)) {
         VLOG(2) << "  Replacing use of " << best->name() << " in "
                 << user.user->instruction->name() << " with " << remat->name();
-        const int64_t op_idx = user.operand_number;
         HloInstruction* remat_use = remat;
-        if (user.index) {
+        HloInstruction* const user_operand =
+            user.user->instruction->mutable_operand(user.operand_number);
+        if (remat_use == user_operand) {
+          continue;
+        }
+        // If the output of a multi-output fusion node is forwarded to one of
+        // its users as is, all the element buffers are also treated as uses
+        // by that user, which need to be skipped.
+        if (user.index && remat_use->shape() != user_operand->shape()) {
           auto cached_gte = gte_cache.find(*user.index);
           if (cached_gte == gte_cache.end()) {
             remat_use = computation->AddInstruction(
@@ -1599,14 +1606,13 @@ StatusOr<int64_t> RematerializeInstructions(
             remat_use = cached_gte->second;
           }
         }
-        if (user.user->instruction->operand(op_idx)->shape() !=
-            remat_use->shape()) {
-          remat_use = computation->AddInstruction(HloInstruction::CreateBitcast(
-              user.user->instruction->operand(op_idx)->shape(), remat_use));
+        if (user_operand->shape() != remat_use->shape()) {
+          remat_use = computation->AddInstruction(
+              HloInstruction::CreateBitcast(user_operand->shape(), remat_use));
           indirect_users.push_back(instruction_list->CreateItem(remat_use));
         }
-        TF_RETURN_IF_ERROR(
-            user.user->instruction->ReplaceOperandWith(op_idx, remat_use));
+        TF_RETURN_IF_ERROR(user.user->instruction->ReplaceOperandWith(
+            user.operand_number, remat_use));
       }
     }
 
