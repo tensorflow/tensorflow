@@ -84,7 +84,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
         ":tensorrt_lib",
-        "@local_config_tensorrt//plugin:nvinfer_plugin_nms",
+        "//third_party/tensorrt/plugin:nvinfer_plugin_nms",
     ]),
 )
 
@@ -592,6 +592,10 @@ tf_cuda_library(
         "convert/ops/slice_ops.h",
         "convert/trt_optimization_pass.h",
     ],
+    copts = tf_copts() + select({
+        "@local_config_tensorrt//:use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":common_utils",
         ":logger_registry",
@@ -631,7 +635,10 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
-    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
+    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps() + select({
+        "@local_config_tensorrt//:use_efficient_nms_plugin": ["//third_party/tensorrt/plugin:nvinfer_plugin_nms"],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,
 )
 

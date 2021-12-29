@@ -6241,7 +6241,6 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         node_def.name());
   }
   const int num_classes = scores_dims.d[2];
-  const int num_boxes = boxes_dims.d[1];
   bool box_check = boxes_dims.d[2] == 1 || boxes_dims.d[2] == num_classes;
   if (!box_check) {
     return errors::InvalidArgument(
