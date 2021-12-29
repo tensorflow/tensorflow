@@ -221,7 +221,7 @@ struct MergeRankSpecializationClusterOpsPattern
     // Map operands and copy operations of the preceding cluster into the new
     // body.
     BlockAndValueMapping bvm;
-    for (auto it : llvm::enumerate(preceding_body->getArguments()))
+    for (const auto &it : llvm::enumerate(preceding_body->getArguments()))
       bvm.map(it.value(), new_body->getArgument(it.index()));
     for (Operation &nested_op : preceding_body->without_terminator())
       rewriter.clone(nested_op, bvm);
