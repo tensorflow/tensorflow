@@ -32,7 +32,7 @@ struct FunctionRegistry::Impl {
 
 FunctionRegistry::FunctionRegistry() : impl_(new FunctionRegistry::Impl) {}
 
-FunctionRegistry::~FunctionRegistry() {}
+FunctionRegistry::~FunctionRegistry() = default;
 
 FunctionRegistry& FunctionRegistry::Global() {
   static FunctionRegistry registry;  // NOLINT
