@@ -72,7 +72,7 @@ using FusionPlan = std::vector<FusionPattern>;
 // To support using EquivalenceClasses for Value
 class ValueWrapper {
  public:
-  explicit ValueWrapper(Value value) : value_(std::move(value)) {}
+  explicit ValueWrapper(Value value) : value_(value) {}
 
   Value getValue() const { return value_; }
 
