@@ -50,7 +50,7 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
                          op->getOperands(), op->getResultTypes(),
                          op->getAttrs());
     auto *new_op = rewriter.createOperation(state);
-    for (auto it : llvm::enumerate(components)) {
+    for (const auto &it : llvm::enumerate(components)) {
       if (it.value().hasRank()) {
         new_op->setAttr((StringRef("dims") + Twine(it.index())).str(),
                         rewriter.getI64ArrayAttr(it.value().getDims()));
