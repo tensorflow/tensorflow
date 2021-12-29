@@ -5538,6 +5538,67 @@ ParseResult parseWhileOp(OpAsmParser& parser, OperationState& result) {
   return success();
 }
 
+static LogicalResult whileCanonicalization(WhileOp whileOp,
+                                           PatternRewriter& rewriter) {
+  // Turn loop invariant values into implicit capture.
+  // Check if there is at least one value is forwarded from one iteration to the
+  // next, or one of the yielded value is an implicit capture already. Otherwise
+  // there is nothing to do here.
+  Block* cond = whileOp.getBody(0);
+  Block* body = whileOp.getBody(1);
+  auto bodyReturnOp = cast<ReturnOp>(body->getTerminator());
+  if (!llvm::any_of(llvm::zip(whileOp->getOperands(), body->getArguments(),
+                              bodyReturnOp->getOperands()),
+                    [&](auto zip) {
+                      return (std::get<0>(zip) == std::get<2>(zip) ||
+                              std::get<1>(zip) == std::get<2>(zip));
+                    }))
+    return rewriter.notifyMatchFailure(whileOp, "no loop invariant found");
+
+  SmallVector<Value> newOperands, resultsToReplace;
+  SmallVector<unsigned> invariantArgIdxs;
+  for (const auto& enumeratedOperands : llvm::enumerate(llvm::zip(
+           whileOp.getOperands(), cond->getArguments(), body->getArguments(),
+           bodyReturnOp->getOperands(), whileOp->getResults()))) {
+    const auto& operands = enumeratedOperands.value();
+    Value whileOperand = std::get<0>(operands);
+    BlockArgument condBlockArg = std::get<1>(operands);
+    BlockArgument bodyBlockArg = std::get<2>(operands);
+    Value bodyReturnOperand = std::get<3>(operands);
+    Value whileResult = std::get<4>(operands);
+
+    bool forwarded = (whileOperand == bodyReturnOperand ||
+                      bodyBlockArg == bodyReturnOperand);
+    if (forwarded) {
+      invariantArgIdxs.push_back(enumeratedOperands.index());
+      condBlockArg.replaceAllUsesWith(whileOperand);
+      bodyBlockArg.replaceAllUsesWith(whileOperand);
+      whileResult.replaceAllUsesWith(whileOperand);
+      continue;
+    }
+    newOperands.push_back(whileOperand);
+    resultsToReplace.push_back(whileResult);
+  }
+  cond->eraseArguments(invariantArgIdxs);
+  body->eraseArguments(invariantArgIdxs);
+  for (int idx : llvm::reverse(invariantArgIdxs))
+    bodyReturnOp->eraseOperand(idx);
+
+  WhileOp newWhileOp = rewriter.create<WhileOp>(
+      whileOp.getLoc(), bodyReturnOp->getOperandTypes(), newOperands);
+  newWhileOp.getBodyRegion(0).takeBody(whileOp.getBodyRegion(0));
+  newWhileOp.getBodyRegion(1).takeBody(whileOp.getBodyRegion(1));
+  for (auto results : llvm::zip(resultsToReplace, newWhileOp->getResults()))
+    std::get<0>(results).replaceAllUsesWith(std::get<1>(results));
+  rewriter.eraseOp(whileOp);
+  return success();
+}
+
+void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                          MLIRContext* context) {
+  results.add(&whileCanonicalization);
+}
+
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
 
