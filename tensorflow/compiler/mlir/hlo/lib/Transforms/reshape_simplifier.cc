@@ -66,7 +66,7 @@ struct ReshapeToExpandShape final
     if (!isExpandShape(shapeComponentAnalysis, op)) return failure();
     auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
     SmallVector<ReassociationExprs> reassociations(output_shape->size());
-    auto it = reassociations.begin();
+    auto *it = reassociations.begin();
     int64_t runningIndex = 0;
     for (const auto &dim : *output_shape) {
       it->push_back(rewriter.getAffineDimExpr(runningIndex++));
@@ -204,7 +204,7 @@ struct RemoveRedundantCstrReshapable final
         return failure();
       }
       for (const Symbol &symDynShape : partialSymbolicFactorsDynShape) {
-        auto it = llvm::find(remainingSymbolicFactorsNumElems, symDynShape);
+        auto *it = llvm::find(remainingSymbolicFactorsNumElems, symDynShape);
         if (it == remainingSymbolicFactorsNumElems.end()) return failure();
         remainingSymbolicFactorsNumElems.erase(it);
       }
@@ -285,7 +285,7 @@ struct TurnDynamicReshapeIntoCollapseShape final
         // Eliminate the common symbolic factors. Fail if we cannot consume a
         // symbolic factor of the operand shape.
         for (const Symbol &symArgShapeDim : symbolicFactorsArgShapeDim) {
-          auto it =
+          auto *it =
               llvm::find(remainingSymbolicFactorsShapeDim, symArgShapeDim);
           if (it == remainingSymbolicFactorsShapeDim.end()) return failure();
           remainingSymbolicFactorsShapeDim.erase(it);
