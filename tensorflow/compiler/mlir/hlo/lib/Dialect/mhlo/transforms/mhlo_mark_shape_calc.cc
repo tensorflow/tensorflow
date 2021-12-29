@@ -231,7 +231,7 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
 void MarkShapeCalc::markI64ReturnedCpuScalarOps(
     FuncOp func, llvm::DenseSet<Operation*>& shape_calc_ops) {
   assert(func.getName() == "main");
-  auto return_op = func.front().getTerminator();
+  auto* return_op = func.front().getTerminator();
   if (!isa<mlir::ReturnOp>(return_op)) return;
   auto result_attrs = func.getAllResultAttrs();
   if (!result_attrs) return;
@@ -270,7 +270,7 @@ void MarkShapeCalc::markShapeCalculationOps(
       auto iter = kShapeCalcOperandMap.find(op_type_id);
       if (iter != kShapeCalcOperandMap.end()) {
         for (auto operand_idx : iter->second) {
-          auto operand = op.getOperand(operand_idx).getDefiningOp();
+          auto* operand = op.getOperand(operand_idx).getDefiningOp();
           if (operand == nullptr || !isMhloDialect(operand)) continue;
           shape_calc_ops.insert(operand);
         }
