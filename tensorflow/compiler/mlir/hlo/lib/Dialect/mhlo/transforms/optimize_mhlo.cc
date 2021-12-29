@@ -88,7 +88,7 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
       return rewriter.notifyMatchFailure(gather,
                                          "offset_dims.size != operand.rank");
     }
-    for (auto it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
+    for (const auto& it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
       if (it.index() != it.value()) {
         return rewriter.notifyMatchFailure(gather,
                                            "offset_dims != [0, result.rank)");
@@ -100,7 +100,7 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
                                          "slices_size.size > result.rank");
     }
 
-    for (auto it : llvm::enumerate(result_ty.getShape())) {
+    for (const auto& it : llvm::enumerate(result_ty.getShape())) {
       if (gather.slice_sizes().getValues<int64_t>()[it.index() + 1] !=
           it.value()) {
         return failure();
