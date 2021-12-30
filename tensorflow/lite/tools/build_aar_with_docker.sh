@@ -91,6 +91,7 @@ if [ ! -d /tensorflow_src ]; then
   exit 0
 else
   # Running inside docker container, download the SDK first.
+  sdkmanager --licenses
   sdkmanager \
     "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
     "platform-tools" \
