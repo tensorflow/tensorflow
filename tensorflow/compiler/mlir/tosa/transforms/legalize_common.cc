@@ -2251,6 +2251,9 @@ llvm::Optional<Value> convertStridedSliceOp(
     a1_begin[i] = begin[i];
     a1_size[i] = end[i] - begin[i];
 
+    // Shrink axis mask means we know the size is 1.
+    if (shrink_axis_mask & (1 << i)) a1_size[i] = 1;
+
     a2_shape[i * 2 + 0] = a1_size[i] / abs(strides[i]);
     a2_shape[i * 2 + 1] = abs(strides[i]);
 
