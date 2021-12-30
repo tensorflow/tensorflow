@@ -259,7 +259,10 @@ void ExtractAliases(FuncOp func, llvm::SmallVectorImpl<int>& aliases) {
   aliases.resize(func.getNumResults(), -1);
   for (int i = 0; i < func.getNumArguments(); i++) {
     if (auto v = func.getArgAttrOfType<mlir::IntegerAttr>(i, kAliasingAttr)) {
-      aliases[v.getInt()] = i;
+      int retval_index = v.getInt();
+      if (retval_index >= 0 && retval_index < aliases.size()) {
+        aliases[retval_index] = i;
+      }
     }
   }
 }
@@ -279,9 +282,9 @@ llvm::Optional<StringRef> GetXlaShardingFromAlias(
 }
 
 // Returns XLA sharding from XlaSharding op connected to a result value.
-// XlaSharding op may be direct user of inputs but it may also be followed by an
-// Identity op and, in the case where bfloat16 type is used, Cast op may be
-// added right after the input.
+// XlaSharding op may be directly connected to output but it may also be
+// followed by Identity or simple arithmetic ops. In case where bfloat16 type is
+// used, we might see a Cast op.
 //
 // TODO(hongjunchoi): Add logic to parse XlaSharding op inside control flow (If,
 // Case, While) ops and Caller argument values.
@@ -289,16 +292,37 @@ llvm::Optional<StringRef> GetXlaShardingFromAlias(
 // inputs.
 llvm::Optional<StringRef> GetXlaShardingFromRetval(Value value) {
   llvm::SmallPtrSet<Value, 4> visited_values;
-  Value value_to_visit = value;
-  while (value_to_visit) {
-    if (!visited_values.insert(value_to_visit).second) return llvm::None;
+  llvm::SmallVector<Value, 4> values_to_visit;
+  values_to_visit.push_back(value);
+
+  while (!values_to_visit.empty()) {
+    Value value_to_visit = values_to_visit.pop_back_val();
+
+    if (!visited_values.insert(value_to_visit).second) {
+      continue;
+    }
 
     Operation* def = value_to_visit.getDefiningOp();
+    if (!def) {
+      continue;
+    }
+
     if (auto sharding = llvm::dyn_cast_or_null<TF::XlaShardingOp>(def))
       return sharding._XlaSharding();
 
-    if (llvm::isa_and_nonnull<TF::IdentityOp, TF::CastOp>(def)) {
-      value_to_visit = def->getOperand(0);
+    if (  // Cast, real/imag, etc.
+        def->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>() ||
+        // Exp, ceil, etc.
+        def->hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
+        // Identity
+        def->hasTrait<mlir::OpTrait::TF::OperandsSameAsResultsTypeOrRef>() ||
+        // AddV2, Sub, etc.
+        (def->hasTrait<
+             mlir::OpTrait::TF::SameOperandsAndResultElementTypeResolveRef>() &&
+         def->hasTrait<mlir::OpTrait::TF::CwiseBinary>())) {
+      for (auto operand : def->getOperands()) {
+        values_to_visit.push_back(operand);
+      }
       continue;
     }
 
@@ -307,10 +331,9 @@ llvm::Optional<StringRef> GetXlaShardingFromRetval(Value value) {
       if (!func) continue;
       value_to_visit = func.front().getTerminator()->getOperand(
           value_to_visit.cast<OpResult>().getResultNumber());
+      values_to_visit.push_back(value_to_visit);
       continue;
     }
-
-    break;
   }
 
   return llvm::None;
