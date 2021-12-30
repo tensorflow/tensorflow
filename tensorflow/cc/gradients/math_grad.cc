@@ -1210,7 +1210,7 @@ Status SelectGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,
                   std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
-    return errors::InvalidArgument("Select requires 2 arguments");
+    return errors::InvalidArgument("Select requires 3 arguments");
   }
   if (grad_inputs.size() != 1) {
     return errors::InvalidArgument("Select grad requires 1 grad input");
@@ -1224,6 +1224,49 @@ Status SelectGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Select", SelectGrad);
+
+Status SelectV2Grad(const Scope& scope, const Operation& op,
+                    const std::vector<Output>& grad_inputs,
+                    std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 3) {
+    return errors::InvalidArgument("Select requires 3 arguments");
+  }
+
+  if (grad_inputs.size() != 1) {
+    return errors::InvalidArgument("Select grad requires 1 grad input");
+  }
+
+  auto c = op.input(0);
+  auto x = op.input(1);
+  auto y = op.input(2);
+
+  auto zeros = ZerosLike(scope, grad_inputs[0]);
+  auto gx = Where3(scope, c, grad_inputs[0], zeros);
+  auto x_shape = Shape(scope, x);
+  auto output_shape = Shape(scope, op.output(0));
+
+  // Reduce away broadcasted leading dims.
+  auto reduce_x = internal::BroadcastGradientArgs(scope, x_shape, output_shape);
+  auto gx_sum =
+      ReduceSum(scope, gx, /*axis=*/reduce_x.r0, ReduceSum::KeepDims(true));
+  auto gx_sum_reshape = Reshape(scope, gx_sum, x_shape);
+
+  auto gy = Where3(scope, c, zeros, grad_inputs[0]);
+  auto y_shape = Shape(scope, y);
+
+  // Reduce away broadcasted leading dims.
+  auto reduce_y = internal::BroadcastGradientArgs(scope, y_shape, output_shape);
+  auto gy_sum =
+      ReduceSum(scope, gy, /*axis=*/reduce_y.r0, ReduceSum::KeepDims(true));
+  auto gy_sum_reshape = Reshape(scope, gy_sum, y_shape);
+
+  grad_outputs->push_back(NoGradient());  // Condition
+  grad_outputs->push_back(gx_sum_reshape);
+  grad_outputs->push_back(gy_sum_reshape);
+  return scope.status();
+}
+
+REGISTER_GRADIENT_OP("SelectV2", SelectV2Grad);
 
 }  // anonymous namespace
 }  // namespace ops
