@@ -37,7 +37,8 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Run tests
 # Pass PYENV_VERSION since we're using pyenv. See b/182399580
-bazel test \
+# TODO(b/212470799): Figure out why this is extremely slow / hangs.
+bazel test --rules -j 4\
   --config=release_cpu_macos \
   --action_env PYENV_VERSION="${PY_VERSION}" \
   --build_tag_filters="${tag_filters}" \
