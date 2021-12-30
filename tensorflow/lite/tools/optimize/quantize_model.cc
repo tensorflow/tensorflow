@@ -275,10 +275,27 @@ std::unordered_set<string> PopulateRealValueOpSet(
 TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
                           const TensorT* weight_tensor, TensorT* bias_tensor,
                           bool is_per_channel, int channel_dim_index,
-                          const TensorType& activations_type,
+                          const TensorType& bias_type,
                           ErrorReporter* error_reporter) {
   if (bias_tensor->shape.size() != 1) {
     TF_LITE_REPORT_ERROR(error_reporter, "Expected bias tensor shape to be 1.");
+    return kTfLiteError;
+  }
+
+  if (input_tensor->type == tflite::TensorType_INT8 &&
+      bias_type != tflite::TensorType_INT32) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
+        "Expected bias type to be TensorType_INT32 for Int8Quant.");
+    return kTfLiteError;
+  }
+
+  if (input_tensor->type == tflite::TensorType_INT16 &&
+      bias_type != tflite::TensorType_INT32 &&
+      bias_type != tflite::TensorType_INT64) {
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Expected bias type to be TensorType_INT32 or "
+                         "TensorType_INT64 for Int16Quant.");
     return kTfLiteError;
   }
 
@@ -307,7 +324,7 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
                            weight_scales.size());
       return kTfLiteError;
     }
-    if (activations_type == tflite::TensorType_INT16) {
+    if (bias_type == tflite::TensorType_INT64) {
       return utils::SymmetricPerChannelBiasQuantize<std::int64_t>(
           model, bias_tensor, input_tensor->quantization->scale[0],
           weight_scales.data(), channel_dim_size, error_reporter);
@@ -324,7 +341,7 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
           weight_scales.size());
       return kTfLiteError;
     }
-    if (activations_type == tflite::TensorType_INT16) {
+    if (bias_type == tflite::TensorType_INT64) {
       return utils::SymmetricPerLayerBiasQuantize<std::int64_t>(
           model, bias_tensor,
           input_tensor->quantization->scale[0] * weight_scales[0],
@@ -1524,6 +1541,7 @@ TfLiteStatus QuantizeBiases(ModelT* model,
                             const std::unordered_set<string>& operator_names,
                             const std::unordered_set<string>& real_value_op_set,
                             const TensorType& activations_type,
+                            const TensorType& bias_type,
                             bool disable_per_channel,
                             ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
@@ -1572,7 +1590,7 @@ TfLiteStatus QuantizeBiases(ModelT* model,
             TF_LITE_ENSURE_STATUS(QuantizeBias(
                 model, input_tensor, weight_tensor, bias_tensor,
                 weight_property.per_axis, weight_property.per_axis_index,
-                activations_type, error_reporter));
+                bias_type, error_reporter));
           }
         } else {
           // If bias is already quantized, make sure it is quantized to 32 bit.
@@ -1882,6 +1900,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const TensorType& output_type, bool allow_float,
                            const std::unordered_set<string>& operator_names,
                            const TensorType& activations_type,
+                           const TensorType& bias_type,
                            bool disable_per_channel,
                            ErrorReporter* error_reporter) {
   auto real_value_op_set =
@@ -1905,8 +1924,8 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                                          real_value_op_set, activations_type,
                                          error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeBiases(model, operator_names, real_value_op_set,
-                                       activations_type, disable_per_channel,
-                                       error_reporter));
+                                       activations_type, bias_type,
+                                       disable_per_channel, error_reporter));
   utils::SetOperatorCodeVersion(model);
   TF_LITE_ENSURE_STATUS(SetInputAndOutputTypes(
       model, input_type, output_type, activations_type, error_reporter));
@@ -1924,21 +1943,11 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const TensorType& output_type, bool allow_float,
                            const std::unordered_set<string>& operator_names,
                            const TensorType& activations_type,
+                           const TensorType& bias_type,
                            ErrorReporter* error_reporter) {
   return QuantizeModel(builder, model, input_type, output_type, allow_float,
                        operator_names, activations_type,
-                       /*disable_per_channel=*/false, error_reporter);
-}
-
-TfLiteStatus QuantizeModelAllOperators(flatbuffers::FlatBufferBuilder* builder,
-                                       ModelT* model,
-                                       const TensorType& input_type,
-                                       const TensorType& output_type,
-                                       bool allow_float,
-                                       const TensorType& activations_type,
-                                       ErrorReporter* error_reporter) {
-  return QuantizeModel(builder, model, input_type, output_type, allow_float,
-                       GetAllOperatorOutputs(model), activations_type,
+                       /*bias_type=*/bias_type,
                        /*disable_per_channel=*/false, error_reporter);
 }
 
@@ -1946,10 +1955,22 @@ TfLiteStatus QuantizeModelAllOperators(
     flatbuffers::FlatBufferBuilder* builder, ModelT* model,
     const TensorType& input_type, const TensorType& output_type,
     bool allow_float, const TensorType& activations_type,
-    bool disable_per_channel, ErrorReporter* error_reporter) {
+    const TensorType& bias_type, ErrorReporter* error_reporter) {
   return QuantizeModel(builder, model, input_type, output_type, allow_float,
                        GetAllOperatorOutputs(model), activations_type,
-                       disable_per_channel, error_reporter);
+                       bias_type,
+                       /*disable_per_channel=*/false, error_reporter);
+}
+
+TfLiteStatus QuantizeModelAllOperators(
+    flatbuffers::FlatBufferBuilder* builder, ModelT* model,
+    const TensorType& input_type, const TensorType& output_type,
+    bool allow_float, const TensorType& activations_type,
+    const TensorType& bias_type, bool disable_per_channel,
+    ErrorReporter* error_reporter) {
+  return QuantizeModel(builder, model, input_type, output_type, allow_float,
+                       GetAllOperatorOutputs(model), activations_type,
+                       bias_type, disable_per_channel, error_reporter);
 }
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
@@ -1957,8 +1978,9 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const TensorType& output_type, bool allow_float,
                            ErrorReporter* error_reporter) {
   return QuantizeModel(builder, model, input_type, output_type, allow_float,
-                       GetAllOperatorOutputs(model), TensorType_INT8,
-                       error_reporter);
+                       GetAllOperatorOutputs(model),
+                       /*activations_type=*/TensorType_INT8,
+                       /*bias_type=*/TensorType_INT32, error_reporter);
 }
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,

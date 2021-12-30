@@ -832,22 +832,16 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           bool has_non_zero_point = input->params.zero_point ||
                                     filter->params.zero_point ||
                                     output->params.zero_point;
-          if (kernel_type == kReference || has_non_zero_point) {
+          if (kernel_type == kReference || has_non_zero_point ||
+              (bias && bias->type == kTfLiteInt64)) {
             FullyConnectedInt16<kernel_type>(data, input, filter, bias, output);
           } else {
-            // Currently, Ruy cannot support int64_t bias. Before Ruy supports
-            // it, it adds bias to Ruy gemm result without bias.
             optimized_integer_ops::FullyConnected(
                 op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
                 GetTensorShape(filter), GetTensorData<int8_t>(filter),
-                RuntimeShape(), nullptr, GetTensorShape(output),
-                GetTensorData<int16_t>(output),
+                GetTensorShape(bias), GetTensorData<int32_t>(bias),
+                GetTensorShape(output), GetTensorData<int16_t>(output),
                 CpuBackendContext::GetFromContext(context));
-            if (bias) {
-              reference_ops::AddBiasToOutput(
-                  op_params, GetTensorData<int64_t>(bias),
-                  GetTensorShape(output), GetTensorData<int16_t>(output));
-            }
           }
         } else if (kernel_type == kReference) {
           reference_ops::FullyConnected(

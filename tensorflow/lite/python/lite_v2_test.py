@@ -2293,6 +2293,62 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertLen(quant_params['zero_points'], expected_num_params)
 
   @parameterized.named_parameters(
+      ('_INT8Quant_INT32Bias', False, False, dtypes.int32, True),
+      ('_INT16Quant_INT64Bias', True, False, dtypes.int64, True),
+      ('_INT8Quant_INT32Bias_Set', False, True, dtypes.int32, True),
+      ('_INT8Quant_INT64Bias_Set', False, True, dtypes.int64, False),
+      ('_INT16Quant_INT32Bias_Set', True, True, dtypes.int32, True),
+      ('_INT16Quant_INT64Bias_Set', True, True, dtypes.int64, True),
+      ('_INT16Quant_FLOAT32Bias_Set', True, True, dtypes.float32, False),
+  )
+  @test_util.run_v2_only
+  def testBiasQuantization(self, is_int16_quantize, explicitly_set_bias,
+                           bias_type, is_valid_bias_type):
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Dense(
+            1024, input_shape=[1024], activation=None, bias_initializer='ones')
+    ])
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'dense_saved_model')
+    save(model, saved_model_dir)
+    k_dense_bias_name = 'dense/bias'
+    quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+
+    if explicitly_set_bias:
+      quantized_converter._experimental_full_integer_quantization_bias_type = bias_type
+
+    if is_int16_quantize:
+      quantized_converter.target_spec.supported_ops = [
+          lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ]
+    else:
+      quantized_converter.target_spec.supported_ops = [
+          lite.OpsSet.TFLITE_BUILTINS_INT8
+      ]
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [np.random.randn(1, 1024).astype(np.float32)]
+
+    quantized_converter.representative_dataset = calibration_gen
+
+    if not is_valid_bias_type:
+      with self.assertRaisesRegex(ValueError, 'Expected bias type to be'):
+        quantized_converter.convert()
+      return
+
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    dense_bias = next((d for d in interpreter.get_tensor_details()
+                       if d['name'] == k_dense_bias_name))
+    self.assertEqual(bias_type, dense_bias['dtype'])
+
+  @parameterized.named_parameters(
       ('_PerChannelMlirDynamicRangeQuant', True, False),
       ('_PerChannelTocoDynamicRangeQuant', False, False),
       ('_PerTensorMlirDynamicRangeQuant', True, True),

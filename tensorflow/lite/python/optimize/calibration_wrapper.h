@@ -84,7 +84,8 @@ class CalibrationWrapper {
 
   // Allows quantizing only the operator that produces the tensor.
   PyObject* QuantizeModel(int input_py_type, int output_py_type,
-                          bool allow_float, int activations_py_type);
+                          bool allow_float, int activations_py_type,
+                          int bias_py_type);
 
   // Allows quantizing only the operator that produces the tensor with name
   // operator_output_name. (This can be used to help debug.).
@@ -96,7 +97,7 @@ class CalibrationWrapper {
   // models but may cause accuracy issues.
   PyObject* QuantizeModel(int input_py_type, int output_py_type,
                           bool allow_float, int activations_py_type,
-                          bool disable_per_channel);
+                          int bias_py_type, bool disable_per_channel);
 
   // Writes the in-memory calibration results to the model flatbuffer. The
   // produced model is as same as the original input model, but the min/max
