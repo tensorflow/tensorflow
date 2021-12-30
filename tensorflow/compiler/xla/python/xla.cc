@@ -159,8 +159,9 @@ PYBIND11_MODULE(xla_extension, m) {
         return device.client->LiveBuffersOnDevice(device.get());
       });
 
-  py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
-      .def("__repr__", [](const CpuDevice& device) {
+  py::class_<TfrtCpuDevice, PjRtDevice, ClientAndPtr<TfrtCpuDevice>>(
+      m, "CpuDevice")
+      .def("__repr__", [](const TfrtCpuDevice& device) {
         return absl::StrFormat("CpuDevice(id=%i)", device.id());
       });
 
