@@ -47,6 +47,10 @@
     *   The "Bug Fixes and Other Changes" section lists more determinism-related
         changes.
 
+*   (Since TF 2.7) Add
+    [PluggableDevice](https://blog.tensorflow.org/2021/06/pluggabledevice-device-plugins-for-TensorFlow.html)
+    support to [TensorFlow Profiler](https://github.com/tensorflow/community/blob/master/rfcs/20210513-pluggable-profiler-for-tensorflow.md).
+
 # Bug Fixes and Other Changes
 
 * `tf.data`:
@@ -175,6 +179,10 @@
         when the global random seed has not yet been set (via
         `tf.random.set_seed`). Throws `RuntimeError` from Python or
         `InvalidArgument` from C++
+
+*   TensorFlow-oneDNN no longer supports
+   [explicit use of oneDNN blocked tensor format](https://github.com/tensorflow/tensorflow/pull/53288), 
+    e.g., setting the environment variable `TF_ENABLE_MKL_NATIVE_FORMAT` will not have any effect.
 
 # Thanks to our Contributors
 
