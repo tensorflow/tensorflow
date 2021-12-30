@@ -494,7 +494,7 @@ Value MaterializeScalarRankSpecializationCase(
       },
       else_builder_fn);
 
-  return if_op.results().front();
+  return if_op.getResults().front();
 }
 
 Value MaterializeEqualShapesRankSpecializationCase(
@@ -549,7 +549,7 @@ Value MaterializeEqualShapesRankSpecializationCase(
       },
       else_builder_fn);
 
-  return if_op.results().front();
+  return if_op.getResults().front();
 }
 
 Value MaterializeTargetRankSpecializationCase(
@@ -627,7 +627,7 @@ Value RecusivelyMaterializeTargetRankSpecializationCases(
                else_builder, loc, op, shapes, max_rank, min_target_rank + 1,
                max_target_rank));
 
-  return if_op.results().front();
+  return if_op.getResults().front();
 }
 
 Value MaterializeGenericRankSpecializationCases(

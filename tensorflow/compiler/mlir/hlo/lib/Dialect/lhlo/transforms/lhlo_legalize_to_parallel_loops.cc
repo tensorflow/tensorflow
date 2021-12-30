@@ -69,7 +69,7 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
 // LHLO ops.
 void ConvertToReductionOperator(Location loc, scf::ReduceOp reduce_op,
                                 Block* lhlo_block, OpBuilder* b) {
-  Block& loop_reduce_op_body = reduce_op.reductionOperator().front();
+  Block& loop_reduce_op_body = reduce_op.getReductionOperator().front();
   OpBuilder::InsertionGuard guard(*b);
   b->setInsertionPointToStart(&loop_reduce_op_body);
   b->create<scf::ReduceReturnOp>(
@@ -456,10 +456,10 @@ class ReduceWindowOpConverter
 
     OpBuilder else_builder =
         elem_or_init.getElseBodyBuilder(rewriter->getListener());
-    else_builder.create<scf::YieldOp>(loc, *window_loop.initVals().begin());
+    else_builder.create<scf::YieldOp>(loc, *window_loop.getInitVals().begin());
 
     return rewriter->create<scf::ReduceOp>(loc,
-                                           *elem_or_init.results().begin());
+                                           *elem_or_init.getResults().begin());
   }
 };
 

@@ -98,9 +98,9 @@ class ConvertIfRegionOp : public OpRewritePattern<IfRegionOp> {
     Region& else_region = op.else_branch();
 
     // Create the `then` and `else` regions of the `scf.if` op.
-    createScfThenOrElse(then_region, scf_if_op.thenRegion(),
+    createScfThenOrElse(then_region, scf_if_op.getThenRegion(),
                         tf_if_region_return_type, rewriter);
-    createScfThenOrElse(else_region, scf_if_op.elseRegion(),
+    createScfThenOrElse(else_region, scf_if_op.getElseRegion(),
                         tf_if_region_return_type, rewriter);
 
     // Replace the `tf.IfRegion` op with the results of the `scf.if` op.
@@ -151,21 +151,22 @@ class ConvertWhileRegionOp : public OpRewritePattern<WhileRegionOp> {
     // a 1-bit signless integer. But, the condition of the `tf.WhileRegion` op
     // is a 0-D tensor of 1-bit signless integers. Thus, we use the
     // `tensor.extract` op to compute the input of `scf.condition`.
-    rewriter.createBlock(&scf_while_op.before());
-    Operation* cond_terminator = createScfCondOrBody(
-        op.cond(), scf_while_op.before(), scf_block_arguments_type, rewriter);
+    rewriter.createBlock(&scf_while_op.getBefore());
+    Operation* cond_terminator =
+        createScfCondOrBody(op.cond(), scf_while_op.getBefore(),
+                            scf_block_arguments_type, rewriter);
     auto scf_condition_input = rewriter.create<tensor::ExtractOp>(
         cond_terminator->getLoc(), cond_terminator->getOperand(0));
     rewriter.replaceOpWithNewOp<scf::ConditionOp>(
         cond_terminator, scf_condition_input.getResult(),
-        scf_while_op.before().front().getArguments());
+        scf_while_op.getBefore().front().getArguments());
 
     // Create the `after` block of the `scf.while` op (with an `scf.yield` op as
     // the terminator). Note that the arguments' type of this block is kept as
     // `opInput`'s type.
-    rewriter.createBlock(&scf_while_op.after());
+    rewriter.createBlock(&scf_while_op.getAfter());
     Operation* body_terminator = createScfCondOrBody(
-        op.body(), scf_while_op.after(), scf_block_arguments_type, rewriter);
+        op.body(), scf_while_op.getAfter(), scf_block_arguments_type, rewriter);
     rewriter.replaceOpWithNewOp<scf::YieldOp>(body_terminator,
                                               body_terminator->getOperands());
 

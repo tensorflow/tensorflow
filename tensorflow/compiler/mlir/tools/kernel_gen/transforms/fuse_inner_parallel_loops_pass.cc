@@ -29,7 +29,7 @@ struct FuseInnerParallelLoopsPass
     : FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
   void runOnFunction() override {
     getFunction().walk([](mlir::scf::ParallelOp op) {
-      mlir::scf::naivelyFuseParallelOps(op.region());
+      mlir::scf::naivelyFuseParallelOps(op.getRegion());
     });
   }
 };

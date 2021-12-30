@@ -54,9 +54,9 @@ class UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
                                 PatternRewriter &rewriter) const override {
     Location loc = for_op.getLoc();
     APInt lower_bound, upper_bound, step;
-    if (!matchPattern(for_op.lowerBound(), m_ConstantInt(&lower_bound)) ||
-        !matchPattern(for_op.upperBound(), m_ConstantInt(&upper_bound)) ||
-        !matchPattern(for_op.step(), m_ConstantInt(&step))) {
+    if (!matchPattern(for_op.getLowerBound(), m_ConstantInt(&lower_bound)) ||
+        !matchPattern(for_op.getUpperBound(), m_ConstantInt(&upper_bound)) ||
+        !matchPattern(for_op.getStep(), m_ConstantInt(&step))) {
       return failure();
     }
     uint64_t trip_count = (upper_bound - lower_bound).sdiv(step).getZExtValue();
@@ -68,10 +68,10 @@ class UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
     BlockAndValueMapping mapping;
     Value iv = for_op.getInductionVar();
     for (auto iter_op :
-         llvm::zip(for_op.getRegionIterArgs(), for_op.initArgs())) {
+         llvm::zip(for_op.getRegionIterArgs(), for_op.getInitArgs())) {
       mapping.map(std::get<0>(iter_op), std::get<1>(iter_op));
     }
-    mapping.map(iv, for_op.lowerBound());
+    mapping.map(iv, for_op.getLowerBound());
     for (auto i = 0; i < trip_count; ++i) {
       if (!iv.use_empty()) {
         // iv' = iv + step * i;
@@ -112,19 +112,20 @@ class SimplifySCFIfOp : public OpRewritePattern<scf::IfOp> {
   LogicalResult matchAndRewrite(scf::IfOp if_op,
                                 PatternRewriter &rewriter) const override {
     // Then branch
-    if (matchPattern(if_op.condition(), m_NonZero())) {
-      return InlineRegion(if_op.getLoc(), rewriter, if_op, &if_op.thenRegion());
+    if (matchPattern(if_op.getCondition(), m_NonZero())) {
+      return InlineRegion(if_op.getLoc(), rewriter, if_op,
+                          &if_op.getThenRegion());
     }
 
     // Else branch
-    if (matchPattern(if_op.condition(), m_Zero())) {
-      if (if_op.elseRegion().empty()) {
+    if (matchPattern(if_op.getCondition(), m_Zero())) {
+      if (if_op.getElseRegion().empty()) {
         // Remove the op
         rewriter.eraseOp(if_op);
         return success();
       } else {
         return InlineRegion(if_op.getLoc(), rewriter, if_op,
-                            &if_op.elseRegion());
+                            &if_op.getElseRegion());
       }
     }
 
