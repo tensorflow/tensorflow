@@ -573,6 +573,7 @@ build:elinux_aarch64 --distinct_host_configuration=true
 build:elinux_armhf --config=elinux
 build:elinux_armhf --cpu=armhf
 build:elinux_armhf --distinct_host_configuration=true
+build:elinux_armhf --copt -mfp16-format=ieee
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # Config-specific options should come above this line.
