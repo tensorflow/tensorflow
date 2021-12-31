@@ -367,6 +367,13 @@ class HloPrintOptions {
   bool print_computation(const HloComputation* comp) const {
     return print_computation_(comp);
   }
+  absl::flat_hash_map<std::string, std::string>& computation_name_map() {
+    return computation_name_map_;
+  }
+  const absl::flat_hash_map<std::string, std::string>& computation_name_map()
+      const {
+    return computation_name_map_;
+  }
 
  private:
   bool print_large_constants_;
@@ -405,6 +412,7 @@ class HloPrintOptions {
   HloComputationPredicate print_computation_ = [](const HloComputation* comp) {
     return true;
   };
+  absl::flat_hash_map<std::string, std::string> computation_name_map_;
 };
 
 // For canonical string output, we need to have a canonical way to rename

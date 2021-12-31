@@ -236,6 +236,24 @@ void HloModule::ReplaceComputations(
   computations_ = std::move(new_computations);
 }
 
+namespace {
+
+// Creates a map from original computation name to fingerprint-based name.
+void PopulateComputationNameFromFingerprint(
+    HloPrintOptions& options,
+    absl::Span<const HloComputation* const> computations_post_order) {
+  for (const auto* computation : computations_post_order) {
+    // Traverse in post order fashion, so a computation that calls other
+    // computations will use fingerprint-based names for its callees.
+    const uint64_t fingerprint =
+        tensorflow::Fingerprint64(computation->ToString(options));
+    options.computation_name_map()[computation->name()] =
+        absl::StrCat("f", fingerprint);
+  }
+}
+
+}  // namespace
+
 std::string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
   // When print_ids() is false, exclude module's name because it includes and
@@ -257,11 +275,17 @@ std::string HloModule::ToString(const HloPrintOptions& options) const {
     s << ", allow_spmd_sharding_propagation_to_output=true";
   }
   s << "\n\n";
-  const auto& computations = options.canonicalize_computations()
+  HloPrintOptions new_options = options;
+  if (options.print_subcomputation_mode() ==
+      HloPrintOptions::PrintSubcomputationMode::kNonSequentialBodies) {
+    PopulateComputationNameFromFingerprint(new_options,
+                                           MakeComputationPostOrder());
+  }
+  const auto& computations = new_options.canonicalize_computations()
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
-    if (!options.print_computation(computation)) {
+    if (!new_options.print_computation(computation)) {
       continue;
     }
     if (computation == entry_computation()) {
@@ -269,10 +293,10 @@ std::string HloModule::ToString(const HloPrintOptions& options) const {
     }
     if (has_schedule() && schedule().is_computation_scheduled(computation)) {
       s << computation->ToString(
-               options, schedule().sequence(computation).instructions())
+               new_options, schedule().sequence(computation).instructions())
         << "\n\n";
     } else {
-      s << computation->ToString(options) << "\n\n";
+      s << computation->ToString(new_options) << "\n\n";
     }
   }
   return s.str();
