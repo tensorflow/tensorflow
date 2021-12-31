@@ -4449,27 +4449,67 @@ struct min<APInt> {
   }
 };
 
-#define BINARY_FOLDER(Op, Func)                                                \
-  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                           \
-    if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
-      return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
-    if (getElementTypeOrSelf(getType()).isa<IntegerType>())                    \
-      return BinaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
-    return {};                                                                 \
+#define BINARY_FOLDER_INTERNAL(Op, Func)                                     \
+  if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
+    return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
+  if (getElementTypeOrSelf(getType()).isa<IntegerType>())                    \
+    return BinaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
+  return {};
+
+#define BINARY_FOLDER(Op, Func)                      \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) { \
+    BINARY_FOLDER_INTERNAL(Op, Func)                 \
   }
 
 // Addition, subtraction and multiplication use the std:: versions of the ops.
 // Due to the other ops behaving differently in signed vs unsigned integers,
 // APInts need a special implementation. Currently, it replicates signed int
 // op behavior.
-BINARY_FOLDER(AddOp, std::plus);
 BINARY_FOLDER(SubOp, std::minus);
-BINARY_FOLDER(MulOp, std::multiplies);
 BINARY_FOLDER(DivOp, divide);
 BINARY_FOLDER(RemOp, remainder);
 BINARY_FOLDER(MaxOp, max);
 BINARY_FOLDER(MinOp, min);
 
+OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
+  if (attrs[0] && attrs[1]) {
+    BINARY_FOLDER_INTERNAL(AddOp, std::plus)
+  }
+  // Handle special case where one operand is 0:  x + 0 => x
+  if (attrs[0] || attrs[1]) {
+    SplatElementsAttr attr = attrs[0] ? attrs[0].dyn_cast<SplatElementsAttr>()
+                                      : attrs[1].dyn_cast<SplatElementsAttr>();
+    if (!attr) return {};
+    Value result = attrs[0] ? rhs() : lhs();
+    if (attr.getElementType().isa<FloatType>()) {
+      if (attr.getSplatValue<APFloat>().isZero()) return result;
+    } else if (attr.getElementType().isa<IntegerType>()) {
+      if (attr.getSplatValue<APInt>().isZero()) return result;
+    }
+  }
+  return {};
+}
+
+OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
+  if (attrs[0] && attrs[1]) {
+    BINARY_FOLDER_INTERNAL(MulOp, std::multiplies);
+  }
+  // Handle special case where one operand is 1: x * 1 => x
+  if (attrs[0] || attrs[1]) {
+    SplatElementsAttr attr = attrs[0] ? attrs[0].dyn_cast<SplatElementsAttr>()
+                                      : attrs[1].dyn_cast<SplatElementsAttr>();
+    if (!attr) return {};
+    Value result = attrs[0] ? rhs() : lhs();
+    if (attr.getElementType().isa<FloatType>()) {
+      if (attr.getSplatValue<APFloat>().convertToDouble() == 1.0) return result;
+    } else if (attr.getElementType().isa<IntegerType>()) {
+      if (attr.getSplatValue<APInt>().getSExtValue() == 1) return result;
+    }
+  }
+  return {};
+}
+
+#undef BINARY_FOLDER_INTERNAL
 #undef BINARY_FOLDER
 
 //===----------------------------------------------------------------------===//
