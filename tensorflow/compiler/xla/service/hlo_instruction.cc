@@ -2800,17 +2800,6 @@ std::string PrintNameInternal(const std::string& name,
                 PrintName(name, options.print_ids()));
 }
 
-std::string PrintComputationNameInternal(std::string name,
-                                         const HloPrintOptions& options) {
-  if (!options.computation_name_map().empty()) {
-    // If the map is initialized, then all computations must be there.
-    auto name_it = options.computation_name_map().find(name);
-    CHECK(name_it != options.computation_name_map().end());
-    name = name_it->second;
-  }
-  return PrintNameInternal(name, options);
-}
-
 void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
   // This set contains HloInstructions from the top of `DFSStack` that might
   // belong to the cycle, i.e. if  DFSStack :=[back,...,child,...,top], then
@@ -3069,37 +3058,33 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                                        : std::vector<std::string>();
 
   const auto subcomputation_mode = options.print_subcomputation_mode();
-  if ((subcomputation_mode ==
-       HloPrintOptions::PrintSubcomputationMode::kNameOnly) ||
-      (subcomputation_mode ==
-           HloPrintOptions::PrintSubcomputationMode::kNonSequentialBodies &&
-       IsSequentialCall(opcode()))) {
+  if (subcomputation_mode ==
+      HloPrintOptions::PrintSubcomputationMode::kNameOnly) {
     if (opcode() == HloOpcode::kWhile) {
       extra.push_back(StrCat(
-          "condition=",
-          PrintComputationNameInternal(while_condition()->name(), options)));
-      extra.push_back(StrCat("body=", PrintComputationNameInternal(
-                                          while_body()->name(), options)));
+          "condition=", PrintNameInternal(while_condition()->name(), options)));
+      extra.push_back(
+          StrCat("body=", PrintNameInternal(while_body()->name(), options)));
     } else if (opcode() == HloOpcode::kSelectAndScatter) {
-      extra.push_back(StrCat(
-          "select=", PrintComputationNameInternal(select()->name(), options)));
-      extra.push_back(StrCat("scatter=", PrintComputationNameInternal(
-                                             scatter()->name(), options)));
+      extra.push_back(
+          StrCat("select=", PrintNameInternal(select()->name(), options)));
+      extra.push_back(
+          StrCat("scatter=", PrintNameInternal(scatter()->name(), options)));
     } else if (opcode() == HloOpcode::kConditional) {
       if (operand(0)->shape().element_type() == PRED) {
-        extra.push_back(StrCat(
-            "true_computation=",
-            PrintComputationNameInternal(true_computation()->name(), options)));
-        extra.push_back(StrCat("false_computation=",
-                               PrintComputationNameInternal(
-                                   false_computation()->name(), options)));
+        extra.push_back(
+            StrCat("true_computation=",
+                   PrintNameInternal(true_computation()->name(), options)));
+        extra.push_back(
+            StrCat("false_computation=",
+                   PrintNameInternal(false_computation()->name(), options)));
       } else {
         extra.push_back(StrCat(
             "branch_computations={",
             StrJoin(branch_computations(), ", ",
                     [&](std::string* out, const HloComputation* computation) {
-                      StrAppend(out, PrintComputationNameInternal(
-                                         computation->name(), options));
+                      StrAppend(
+                          out, PrintNameInternal(computation->name(), options));
                     }),
             "}"));
       }
@@ -3111,16 +3096,16 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
-      extra.push_back(StrCat("to_apply=", PrintComputationNameInternal(
-                                              to_apply()->name(), options)));
+      extra.push_back(
+          StrCat("to_apply=", PrintNameInternal(to_apply()->name(), options)));
     } else if (opcode() == HloOpcode::kCustomCall) {
       if (!called_computations().empty()) {
         extra.push_back(StrCat(
             "called_computations={",
             StrJoin(called_computations(), ", ",
                     [&](std::string* out, const HloComputation* computation) {
-                      StrAppend(out, PrintComputationNameInternal(
-                                         computation->name(), options));
+                      StrAppend(
+                          out, PrintNameInternal(computation->name(), options));
                     }),
             "}"));
       }
@@ -3129,8 +3114,8 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
           "calls=",
           StrJoin(called_computations(), ", ",
                   [&](std::string* out, const HloComputation* computation) {
-                    StrAppend(out, PrintComputationNameInternal(
-                                       computation->name(), options));
+                    StrAppend(out,
+                              PrintNameInternal(computation->name(), options));
                   })));
     }
   } else if ((subcomputation_mode ==
