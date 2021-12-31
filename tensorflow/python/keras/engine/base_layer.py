@@ -2119,7 +2119,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       return self._inbound_nodes[0].input_shapes
     else:
       raise AttributeError('The layer "' + str(self.name) +
-                           ' has multiple inbound nodes, '
+                           '" has multiple inbound nodes, '
                            'with different input shapes. Hence '
                            'the notion of "input shape" is '
                            'ill-defined for the layer. '
