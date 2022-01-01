@@ -169,8 +169,6 @@ class OutputEdgeValidator {
   bool operator()(const Edge* out_edge) const;
 };
 
-int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
-
 // Class to verify if specific TF node is supported by TRT.
 class TrtNodeValidator {
  public:
@@ -477,7 +475,7 @@ class Converter {
 // If validation_only is false converter must not be nullptr.
 Status PrepareTensorForShape(
     Converter* converter, const TRT_TensorOrWeights& input,
-    const nvinfer1::Dims& dims, const bool validation_only,
+    const DimsAdapter& dims, const bool validation_only,
     ITensorProxyPtr* tensor, const NodeDef& node_def,
     absl::optional<int> op_instance = absl::nullopt,
     absl::optional<std::string> origin_node_name = absl::nullopt);
