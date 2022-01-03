@@ -76,8 +76,6 @@ public:
 /// of a buffer, the window id, the number of alligned 64 byte segments and all
 /// userange intervals.
 struct AllocationInfo {
-public:
-  using SizedGap = std::pair<UseInterval, size_t>;
 
 public:
   AllocationInfo(Value alloc, size_t allocUserangeId, size_t firstUse,
@@ -108,11 +106,12 @@ public:
   /// The userange intervals of the buffer.
   const UseInterval::Vector *userangeIntervals;
 
-  /// Compute the gaps of the alloc userange. The maxUserangeId is used to add
-  /// a dummy gap from the last used id to the maxUserangeId. By default the
-  /// maxUserangeId is zero and no gap is added.
-  std::list<SizedGap> computeGaps(size_t maxUserangeId = 0) {
-    std::list<SizedGap> gaps;
+  /// Compute the gaps of the alloc userange with the number of segments. The
+  /// maxUserangeId is used to add a dummy gap from the last used id to the
+  /// maxUserangeId. By default the maxUserangeId is zero and no gap is added.
+  std::list<std::pair<UseInterval, size_t>>
+  computeGaps(size_t maxUserangeId = 0) {
+    std::list<std::pair<UseInterval, size_t>> gaps;
 
     // The previous gap ending, initially set to 0.
     size_t gapEnd = 0;
@@ -392,8 +391,8 @@ public:
 
         // Create a ViewOp with the shape of the old alloc and use the created
         // packed alloc and the constant for the operands.
-        Value viewOp = viewBuilder.create<memref::ViewOp>(
-            loc, shape, newOperands);
+        Value viewOp =
+            viewBuilder.create<memref::ViewOp>(loc, shape, newOperands);
 
         // Replace all old allocs references with the created ViewOp and
         // afterwards remove the old allocs.
