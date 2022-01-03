@@ -4246,16 +4246,13 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       }
       // HLO ops are only defined on tensors, so we cast the divisor from
       // index -> i64 -> tensor<1xi64> -> tensor<i64> -> tensor<reduction type>
-      auto divisor_casted = rewriter.create<arith::IndexCastOp>(
+      Value divisor_casted = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.getI64Type(), divisor_count);
-      auto divisor_tensor = rewriter.create<tensor::FromElementsOp>(
-          loc, ValueRange{divisor_casted});
-      auto divisor_reshaped = rewriter.create<mhlo::ReshapeOp>(
+      Value divisor_tensor = rewriter.create<tensor::FromElementsOp>(
           loc, RankedTensorType::get({}, rewriter.getI64Type()),
-          divisor_tensor);
-      auto divisor = rewriter.create<ConvertOp>(
-          loc, RankedTensorType::get({}, reduce_element_type),
-          divisor_reshaped);
+          divisor_casted);
+      Value divisor = rewriter.create<ConvertOp>(
+          loc, RankedTensorType::get({}, reduce_element_type), divisor_tensor);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
       result = rewriter.create<chlo::BroadcastDivOp>(loc, result, divisor,
                                                      broadcast_dims);
@@ -4270,7 +4267,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // that this is a restricted form of shape manipulation that is just adding
     // unit dims.
     if (op.keep_dims()) {
-      for (auto dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
+      for (auto &dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
         if (dim_is_reduced.value()) {
           auto index_attr = GetI32ElementsAttr(
               {static_cast<int>(dim_is_reduced.index())}, &rewriter);
