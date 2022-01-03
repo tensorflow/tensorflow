@@ -25,15 +25,21 @@ namespace grappler {
 // Optimize the data layout for convolutional models.
 class GenericLayoutOptimizer : public GraphOptimizer {
  public:
-  GenericLayoutOptimizer()
+  GenericLayoutOptimizer(string enforced_layout="")
       : GenericLayoutOptimizer(RewriterConfig::DEFAULT,
-                               RewriterConfig::NO_CONVERSION_ON_CPU) {}
-  explicit GenericLayoutOptimizer(RewriterConfig::Toggle opt_level)
-      : GenericLayoutOptimizer(opt_level,
-                               RewriterConfig::NO_CONVERSION_ON_CPU) {}
+                               RewriterConfig::NO_CONVERSION_ON_CPU,
+                               enforced_layout) {
+  }
   explicit GenericLayoutOptimizer(RewriterConfig::Toggle opt_level,
-                                  RewriterConfig::CpuLayout layout_conversion)
-      : opt_level_(opt_level), cpu_layout_conversion_(layout_conversion) {}
+                                  string enforced_layout="")
+      : GenericLayoutOptimizer(opt_level,
+                               RewriterConfig::NO_CONVERSION_ON_CPU,
+                               enforced_layout) {}
+  explicit GenericLayoutOptimizer(RewriterConfig::Toggle opt_level,
+                                  RewriterConfig::CpuLayout layout_conversion,
+                                  string enforced_layout="")
+      : opt_level_(opt_level), cpu_layout_conversion_(layout_conversion),
+        enforced_layout_(enforced_layout) {}
   ~GenericLayoutOptimizer() override = default;
 
   string name() const override { return "layout"; };
@@ -46,6 +52,7 @@ class GenericLayoutOptimizer : public GraphOptimizer {
  private:
   RewriterConfig::Toggle opt_level_;
   RewriterConfig::CpuLayout cpu_layout_conversion_;
+  const string enforced_layout_;
 };
 
 }  // namespace grappler
