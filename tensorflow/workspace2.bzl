@@ -299,10 +299,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "org_sqlite",
         build_file = "//third_party:sqlite.BUILD",
-        sha256 = "999826fe4c871f18919fdb8ed7ec9dd8217180854dd1fe21eea96aed36186729",
-        strip_prefix = "sqlite-amalgamation-3360000",
+        sha256 = "b65d2b72ce1296bb4314bbca1bede332a0f789b08a17e3e6e2e7ce6e870cde92",
+        strip_prefix = "sqlite-amalgamation-3370100",
         system_build_file = "//third_party/systemlibs:sqlite.BUILD",
-        urls = tf_mirror_urls("https://www.sqlite.org/2021/sqlite-amalgamation-3360000.zip"),
+        urls = tf_mirror_urls("https://www.sqlite.org/2021/sqlite-amalgamation-3370100.zip"),
     )
 
     tf_http_archive(
