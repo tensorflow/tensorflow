@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"
 // TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
+#include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -119,72 +120,8 @@ auto* saved_model_init_time_seconds =
         "/tensorflow/tfrt/saved_model/init_time",
         "Record the initialization time for the savedmodel.", "model_name");
 
-constexpr char kDeadlineExceededMessage[] = "Deadline exceeded.";
-
 tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
   return tensorflow::Tensor(tensorflow::tstring(str));
-}
-
-struct RequestInfo {
-  tfrt::RCReference<tfrt::RequestContext> tfrt_request_context;
-  std::unique_ptr<WorkQueueInterface> request_queue;
-  std::function<void(std::function<void()>)> runner;
-};
-
-StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
-    const SavedModel::RunOptions& run_options,
-    const SessionMetadata& model_metadata, tfrt::HostContext* host,
-    WorkQueueInterface* work_queue, tfrt::ResourceContext* resource_context,
-    const FallbackState& fallback_state) {
-  DCHECK(host);
-  DCHECK(work_queue);
-  // Create request context and prepare deadline tracker.
-  // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
-  // contention.
-  tfrt::RequestContextBuilder request_context_builder(host, resource_context,
-                                                      tfrt::GetUniqueInt());
-
-  // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
-  // directly.
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-
-  // TODO(b/198671794): The per-request queue should be passed through Run()
-  // directly.
-  TF_ASSIGN_OR_RETURN(auto request_queue,
-                      work_queue->InitializeRequest(&request_context_builder,
-                                                    &intra_op_threadpool));
-
-  auto request_info = std::make_unique<RequestInfo>();
-
-  // If a per-request queue is not provided, use the original queue in the
-  // tensorflow::Executor::Args::Runner.
-  auto* inter_op_queue = request_queue ? request_queue.get() : work_queue;
-  request_info->runner = [inter_op_queue](std::function<void()> f) {
-    inter_op_queue->AddTask(std::move(f));
-  };
-
-  request_info->request_queue = std::move(request_queue);
-
-  TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
-      &request_context_builder, &fallback_state.device_manager(),
-      &fallback_state.process_function_library_runtime(), intra_op_threadpool,
-      model_metadata, &request_info->runner));
-
-  TF_RETURN_IF_ERROR(
-      tensorflow::SetUpTfCpuRtRequestContext(&request_context_builder));
-  tfrt::RequestOptions request_options;
-  request_options.priority = run_options.priority;
-  request_context_builder.set_request_options(request_options);
-
-  auto expected_req_ctx = std::move(request_context_builder).build();
-  if (!expected_req_ctx) {
-    return tensorflow::errors::Internal(
-        tfrt::StrCat(expected_req_ctx.takeError()));
-  }
-
-  request_info->tfrt_request_context = std::move(expected_req_ctx.get());
-
-  return request_info;
 }
 
 // Create the tensor for the bound input, which can be a variable or an asset.
@@ -277,7 +214,8 @@ tensorflow::Status RunInitializers(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_fallback_init"));
 
   for (const auto& init : initializers_and_signatures.initializers) {
-    // TODO(b/184771263): Consider using `RunInternal()` instead.
+    // TODO(b/184771263): Consider using `GraphExecutionRunOnFunction()`
+    // instead.
 
     auto* func = bef_file->GetFunction(init);
     assert(func);
@@ -762,8 +700,10 @@ tensorflow::Status SavedModelImpl::Run(
   }
   DCHECK(func);
 
-  return RunInternal(run_options, name, *func, inputs, captures, outputs,
-                     resource_context);
+  return GraphExecutionRunOnFunction(options_.graph_execution_options,
+                                     run_options, name, *func, inputs, captures,
+                                     outputs, resource_context, runtime(),
+                                     *fallback_state_, req_deadline_tracker_);
 }
 
 namespace {
@@ -900,9 +840,11 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
 
   std::vector<tensorflow::Tensor> flat_outputs;
 
-  TF_RETURN_IF_ERROR(RunInternal(run_options, loading_result.name, *func,
-                                 flat_inputs, /*captures=*/{}, &flat_outputs,
-                                 loading_result.resource_context.get()));
+  TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
+      options_.graph_execution_options, run_options, loading_result.name, *func,
+      flat_inputs, /*captures=*/{}, &flat_outputs,
+      loading_result.resource_context.get(), runtime(), *fallback_state_,
+      req_deadline_tracker_));
 
   // The outputs of the compiled function are in the user-specified order,
   // though they are flattened. So we just need to regroup the outputs for each
@@ -1012,9 +954,11 @@ tensorflow::Status SavedModelImpl::RunByTensorNames(
   }
 
   std::vector<tensorflow::Tensor> flat_outputs;
-  TF_RETURN_IF_ERROR(RunInternal(
-      run_options, loading_result.name, *func, flat_inputs,
-      /*captures=*/{}, &flat_outputs, loading_result.resource_context.get()));
+  TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
+      options_.graph_execution_options, run_options, loading_result.name, *func,
+      flat_inputs,
+      /*captures=*/{}, &flat_outputs, loading_result.resource_context.get(),
+      runtime(), *fallback_state_, req_deadline_tracker_));
 
   // Create the outputs from the actual function results, which are sorted
   // according to the output tensor names.
@@ -1202,140 +1146,6 @@ SavedModelImpl::GetOrCreateLoadingResult(
                                    target_node_names.end()};
 
   return LoadJoinedSignature(joined_signature);
-}
-
-tensorflow::Status SavedModelImpl::RunInternal(
-    const RunOptions& run_options, absl::string_view signature_name,
-    const tfrt::Function& func, absl::Span<const tensorflow::Tensor> inputs,
-    absl::Span<const tensorflow::Tensor> captures,
-    std::vector<tensorflow::Tensor>* outputs,
-    tfrt::ResourceContext* resource_context) {
-  auto* host = runtime().core_runtime()->GetHostContext();
-
-  TF_ASSIGN_OR_RETURN(
-      auto request_info,
-      SetUpRequestContext(run_options,
-                          options_.graph_execution_options.model_metadata, host,
-                          run_options.work_queue ? run_options.work_queue
-                                                 : runtime().work_queue(),
-                          resource_context, *fallback_state_));
-
-  tensorflow::profiler::TraceMeProducer traceme(
-      // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
-      [request_id = request_info->tfrt_request_context->id(), signature_name,
-       this] {
-        return tensorflow::profiler::TraceMeEncode(
-            "TfrtModelRun",
-            {{"_r", 1},
-             {"id", request_id},
-             {"signature", signature_name},
-             {"model_id",
-              absl::StrCat(
-                  options_.graph_execution_options.model_metadata.name(),
-                  options_.graph_execution_options.model_metadata.version())}});
-      },
-      tensorflow::profiler::ContextType::kTfrtExecutor,
-      request_info->tfrt_request_context->id());
-
-  // Only configure timer when the deadline is set.
-  if (run_options.deadline.has_value()) {
-    auto deadline = run_options.deadline.value();
-    if (absl::ToChronoTime(absl::Now()) > deadline) {
-      return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
-    }
-    req_deadline_tracker_.CancelRequestOnDeadline(
-        deadline, request_info->tfrt_request_context);
-  }
-
-  tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
-  if (run_options.work_queue) {
-    // TODO(b/198671794): Avoid creating `request_queue` when the `work_queue`
-    // in `run_options` is specified.
-    exec_ctx.set_work_queue(run_options.work_queue);
-  } else if (request_info->request_queue) {
-    exec_ctx.set_work_queue(request_info->request_queue.get());
-  } else {
-    exec_ctx.set_work_queue(runtime().work_queue());
-  }
-
-  llvm::SmallVector<tfrt::AsyncValue*, 4> arguments;
-  auto cleanup = tensorflow::gtl::MakeCleanup([&]() {
-    for (auto* argument : arguments) argument->DropRef();
-  });
-
-  // The first argument is a chain for side-effects. Since SavedModel::Run()
-  // only returns when side-effects are visible, we can use a ready chain here.
-  arguments.push_back(tfrt::GetReadyChain().release());
-
-  for (const auto& input : inputs) {
-    arguments.push_back(
-        tfrt::MakeAvailableAsyncValueRef<FallbackTensor>(input).release());
-  }
-
-  DCHECK(captures.empty()) << "signature should have no captures, which is "
-                              "guaranteed by the compiler";
-
-  if (arguments.size() != func.argument_types().size())
-    return tensorflow::errors::Internal("incorrect number of inputs.");
-
-  llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 4> chain_and_results;
-  chain_and_results.resize(func.result_types().size());
-
-  // Hand over the execution to thread pool.
-  std::array<tfrt::RCReference<tfrt::AsyncValue>, 1> executed = {
-      EnqueueWork(exec_ctx, [&]() -> tfrt::Chain {
-        func.Execute(exec_ctx, arguments, chain_and_results);
-        return {};
-      })};
-
-  // Wait for the function execution before checking chain and results.
-  exec_ctx.work_queue().Await(executed);
-
-  // Wait for all results including the side-effect chain. This ensures that all
-  // side-effects are visible when SavedModel::Run() returns.
-  exec_ctx.work_queue().Await(chain_and_results);
-
-  DCHECK(!chain_and_results.empty());
-
-  tfrt::RCReference<tfrt::AsyncValue>& chain = chain_and_results[0];
-  auto results = llvm::drop_begin(chain_and_results, 1);
-
-  tensorflow::StatusGroup status_group;
-
-  if (chain->IsError()) {
-    status_group.Update(CreateTfErrorStatus(chain->GetError()));
-  }
-
-  for (tfrt::RCReference<tfrt::AsyncValue>& result : results) {
-    DCHECK(result->IsAvailable());
-
-    if (result->IsError()) {
-      status_group.Update(CreateTfErrorStatus(result->GetError()));
-      outputs->push_back(tensorflow::Tensor());
-      continue;
-    }
-
-    // The result must be a host tensor. This is guaranteed as the compiler
-    // will insert necessary device transfer operations in the graph.
-    DCHECK(result->IsType<FallbackTensor>());
-    const auto& host_tensor = result->get<FallbackTensor>().tensor();
-    // Make a copy of tensor here as the different result AsyncValues might
-    // point to the same underlying tensor.
-    outputs->push_back(host_tensor);
-  }
-
-  // TODO(b/171926578): Explicitly clear the context data. Remove it after the
-  // b/171926578 is fixed.
-  exec_ctx.request_ctx()->ClearData();
-
-  // Check if error is due to cancellation.
-  // TODO(tfrt-devs): report cancellation reason from runtime.
-  if (request_info->tfrt_request_context->IsCancelled()) {
-    // Currently a request can only be cancelled by an expired timer.
-    return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
-  }
-
-  return status_group.as_summary_status();
 }
 
 }  // namespace tfrt_stub

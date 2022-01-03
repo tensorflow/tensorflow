@@ -1203,9 +1203,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });
-  m.def("TFE_Py_EncodeArg", [](const py::handle& o, const py::handle& ctx) {
-    return tensorflow::PyoOrThrow(TFE_Py_EncodeArg(o.ptr(), ctx.ptr()));
-  });
   m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());

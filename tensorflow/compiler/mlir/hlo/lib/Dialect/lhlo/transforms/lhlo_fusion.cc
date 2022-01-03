@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/fusion_utils.h"
 #include "mlir-hlo/utils/cycle_detector.h"
@@ -101,8 +103,8 @@ class FusionPlanner {
     for (Operation& op : *block) {
       op_list_.push_back(&op);
     }
-    shape_analysis_.reset(new ShapeConstraintAnalysis(op_list_));
-    cycle_detector_.reset(new GraphCycles(op_list_.size()));
+    shape_analysis_ = std::make_unique<ShapeConstraintAnalysis>(op_list_);
+    cycle_detector_ = std::make_unique<GraphCycles>(op_list_.size());
     BuildNodeMap();
   }
 
@@ -398,7 +400,7 @@ class FusionPlanner {
     bool check_same_shape = (to->fused_pattern().isKInputFusion() &&
                              from->fused_pattern().isKInputFusion());
     auto get_effective_shape = [&](Value v) {
-      auto result_op = FindLastWriter(v);
+      auto* result_op = FindLastWriter(v);
       assert(result_op);
       // effective shape of reduce op is its operand's shape.
       return isa<lmhlo::ReduceOp>(result_op) ? result_op->getOperand(0) : v;

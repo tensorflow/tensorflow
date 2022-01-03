@@ -188,8 +188,9 @@ bool IsIm2ColRequired(const TfLiteTensor* input, TfLiteConvParams* params,
 
   // Special case for Hybrid, as it supports only non-dilated im2col currently
   const bool is_hybrid_non_dilated = is_hybrid && need_non_dilated_im2col;
-  const bool is_quantized =
-      input->type == kTfLiteUInt8 || input->type == kTfLiteInt8;
+  const bool is_quantized = input->type == kTfLiteUInt8 ||
+                            input->type == kTfLiteInt8 ||
+                            input->type == kTfLiteInt16;
 
   switch (kernel_type) {
     case kReference:
@@ -383,7 +384,8 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
     } else if (input_type == kTfLiteInt16) {
-      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt64);
+      TF_LITE_ENSURE(context, (bias->type == kTfLiteInt32) ||
+                                  (bias->type == kTfLiteInt64));
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
     } else {
       TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input_type);
@@ -782,20 +784,48 @@ void EvalQuantizedPerChannel16x8(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  switch (kernel_type) {
-    case kGenericOptimized:
-    case kMultithreadOptimized:
-    case kCblasOptimized:
-    case kReference: {
-      reference_integer_ops::ConvPerChannel(
-          op_params, data->per_channel_output_multiplier.data(),
-          data->per_channel_output_shift.data(), GetTensorShape(input),
-          GetTensorData<int16>(input), GetTensorShape(filter),
-          GetTensorData<int8>(filter), GetTensorShape(bias),
-          GetTensorData<std::int64_t>(bias), GetTensorShape(output),
-          GetTensorData<int16>(output));
-      break;
-    }
+  KernelType effective_kernel_type = kernel_type;
+  // We have to fallback to reference execution path when im2col is needed but
+  // disabled because to-be-allocated temporary im2col tensor is too large.
+  // See b/178743262 for the detailed motivation.
+  if (data->im2col_oversized) {
+    effective_kernel_type = kReference;
+  }
+
+  // To prevent 32bit accum overflow for 16x8 quantization, it enables the
+  // optimized path only when zero_point is 0.
+  bool has_non_zero_point = input->params.zero_point ||
+                            filter->params.zero_point ||
+                            output->params.zero_point;
+
+  // Fallback to reference kernel when bias_type is int64 as
+  // there is no optimized kernel for int64 bias yet.
+  if (bias && bias->type == kTfLiteInt64) {
+    reference_integer_ops::ConvPerChannel(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int16>(input), GetTensorShape(filter),
+        GetTensorData<int8>(filter), GetTensorShape(bias),
+        GetTensorData<std::int64_t>(bias), GetTensorShape(output),
+        GetTensorData<int16>(output));
+  } else if (effective_kernel_type == kReference || has_non_zero_point) {
+    reference_integer_ops::ConvPerChannel(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int16>(input), GetTensorShape(filter),
+        GetTensorData<int8>(filter), GetTensorShape(bias),
+        GetTensorData<std::int32_t>(bias), GetTensorShape(output),
+        GetTensorData<int16>(output));
+  } else {
+    optimized_integer_ops::ConvPerChannel(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int16_t>(input), GetTensorShape(filter),
+        GetTensorData<int8_t>(filter), GetTensorShape(bias),
+        GetTensorData<std::int32_t>(bias), GetTensorShape(output),
+        GetTensorData<int16_t>(output), GetTensorShape(im2col),
+        GetTensorData<int16_t>(im2col),
+        CpuBackendContext::GetFromContext(context));
   }
 }
 

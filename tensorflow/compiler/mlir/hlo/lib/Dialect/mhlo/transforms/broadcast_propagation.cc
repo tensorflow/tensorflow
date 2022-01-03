@@ -223,8 +223,7 @@ void PropagateBroadcasts(DynamicBroadcastInDimOp root,
         Operation *b_op = b.target_value.getDefiningOp();
         bool b_same_block = (b_op != nullptr) && b_op->getBlock() == the_block;
         if (a_same_block && b_same_block) return a_op->isBeforeInBlock(b_op);
-        if (!a_same_block) return true;
-        return false;
+        return !a_same_block;
       });
   for (auto it : bcast_intents_ordered) {
     Operation *producer_op = it.target_value.getDefiningOp();

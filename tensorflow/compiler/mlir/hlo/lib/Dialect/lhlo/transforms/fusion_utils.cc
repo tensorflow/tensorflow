@@ -245,8 +245,7 @@ FusionPattern::FusionPattern(SmallVectorImpl<Operation*>& op_list)
 // Returns true if two fusion patterns can be merged into one bigger fusion
 // pattern.
 bool FusionPattern::isMergeable(FusionPattern& other) {
-  if (!this->isFusible() || !other.isFusible()) return false;
-  return true;
+  return this->isFusible() && other.isFusible();
 }
 
 // Merges two fusion patterns and returns the merged pattern. The original
@@ -351,8 +350,8 @@ void FusionPattern::calculateOperandsAndResults() {
 
 // Supports using EquivalenceClasses for Value
 bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs) {
-  auto lhs_value = lhs.getValue().getAsOpaquePointer();
-  auto rhs_value = rhs.getValue().getAsOpaquePointer();
+  auto* lhs_value = lhs.getValue().getAsOpaquePointer();
+  auto* rhs_value = rhs.getValue().getAsOpaquePointer();
   return lhs_value < rhs_value;
 }
 

@@ -1405,7 +1405,7 @@ absl::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
           sharding_index += 1;
         } else {
           sharding_index +=
-              instruction.shape().tuple_shapes(i).tuple_shapes_size();
+              ShapeUtil::GetLeafCount(instruction.shape().tuple_shapes(i));
         }
       }
       if (user.shape().IsArray()) {

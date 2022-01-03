@@ -289,14 +289,12 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
         CloneAndAppendInitTensorToTiledLoop(rewriter, fill, tiled_loop);
     FuseFill(rewriter, tiled_op, fill, loop_output_bb_arg, cloned_output_bb_arg,
              extract_output_slice, insert_output_slice);
-    if (mlir::failed(CombineReducedTileWithOutput(
-            rewriter, tiled_op, tiled_op_result, extract_output_slice,
-            insert_output_slice)))
-      return failure();
-
-    // Update the results.
+    // We have already modified the loop above, so we need to update the
+    // results.
     CreateLoopWithUpdatedResults(rewriter, tiled_loop);
-    return success();
+    return CombineReducedTileWithOutput(rewriter, tiled_op, tiled_op_result,
+                                        extract_output_slice,
+                                        insert_output_slice);
   }
 };
 

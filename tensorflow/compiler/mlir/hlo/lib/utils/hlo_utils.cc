@@ -60,7 +60,8 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   if (auto float_ty = ty.dyn_cast<FloatType>()) {
     APFloat value(float_ty.getFloatSemantics(), raw_value);
     return DenseElementsAttr::get(scalar_ty, value);
-  } else if (auto int_ty = ty.dyn_cast<IntegerType>()) {
+  }
+  if (auto int_ty = ty.dyn_cast<IntegerType>()) {
     APInt value(int_ty.getWidth(), static_cast<int64_t>(raw_value), true);
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
@@ -126,7 +127,8 @@ DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
   if (auto float_ty = ty.dyn_cast<FloatType>()) {
     return DenseElementsAttr::get(scalar_ty,
                                   GetScalarLimitOfFloatType(float_ty, limit));
-  } else if (auto integer_ty = ty.dyn_cast<IntegerType>()) {
+  }
+  if (auto integer_ty = ty.dyn_cast<IntegerType>()) {
     return DenseElementsAttr::get(
         scalar_ty, GetScalarLimitOfIntegerType(integer_ty, limit));
   }

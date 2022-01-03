@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
 #include <ostream>
-#include <string>
 #include <utility>
 
 #include "llvm/ADT/None.h"
@@ -86,7 +85,6 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   specs.convert_legacy_fed_inputs = true;
   specs.graph_as_function = false;
   specs.upgrade_legacy = true;
-  specs.unconditionally_use_set_output_shapes = true;
   internal::WarningUnusedFlags(model_flags, toco_flags);
 
   // Register all custom ops, including user-specified custom ops.

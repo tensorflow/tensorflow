@@ -224,7 +224,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     strides.reserve(result_rank);
 
     DenseMap<int, int> output_to_input_dim;
-    for (auto dim : llvm::enumerate(op.broadcast_dimensions())) {
+    for (const auto& dim : llvm::enumerate(op.broadcast_dimensions())) {
       output_to_input_dim[dim.value().getSExtValue()] = dim.index();
     }
     for (int i = 0; i < result_rank; ++i) {

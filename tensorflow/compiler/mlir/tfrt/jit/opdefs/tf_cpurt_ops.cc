@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
@@ -32,12 +33,40 @@ namespace mlir {
 namespace tf_cpurt {
 
 //===----------------------------------------------------------------------===//
+// CpuRuntimeDialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Operations in the `tf_cpurt` dialect are always safe to inline because they
+// are pure compute operations.
+struct CpuRuntimeInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  bool isLegalToInline(Operation*, Operation*, bool) const final {
+    assert(false && "tf_cpurt doesn't have callable operations");
+    return true;
+  }
+
+  bool isLegalToInline(Region*, Region*, bool,
+                       BlockAndValueMapping&) const final {
+    return true;
+  }
+
+  bool isLegalToInline(Operation*, Region*, bool,
+                       BlockAndValueMapping&) const final {
+    return true;
+  }
+};
+}  // namespace
+
+//===----------------------------------------------------------------------===//
 // CpuRuntimeDialect Dialect
 //===----------------------------------------------------------------------===//
 
 CpuRuntimeDialect::CpuRuntimeDialect(mlir::MLIRContext* context)
     : Dialect(/*name*/ "tf_cpurt", context,
               mlir::TypeID::get<CpuRuntimeDialect>()) {
+  addInterfaces<CpuRuntimeInlinerInterface>();
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tfrt/tf_cpurt_ops.cc.inc"

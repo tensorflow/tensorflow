@@ -27,6 +27,22 @@ func @add_fold_float() -> tensor<4xf64> {
   return %2 : tensor<4xf64>
 }
 
+// CHECK-LABEL: add_zero_int_fold
+func @add_zero_int_fold(%arg0: tensor<2x2xi64>) -> tensor<2x2xi64> {
+  %0 = mhlo.constant dense<0> : tensor<2x2xi64>
+  %1 = "mhlo.add"(%arg0, %0) : (tensor<2x2xi64>, tensor<2x2xi64>) -> tensor<2x2xi64>
+  // CHECK: return %arg0 : tensor<2x2xi64>
+  return %1 : tensor<2x2xi64>
+}
+
+// CHECK-LABEL: add_zero_float_flod
+func @add_zero_float_flod(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %0 = mhlo.constant dense<0.0> : tensor<2x2xf32>
+  %1 = "mhlo.add"(%0, %arg0) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: return %arg0 : tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+}
+
 // CHECK-LABEL: sub_scalar_fold
 func @sub_scalar_fold() -> tensor<4xi64> {
   %0 = mhlo.constant dense<5> : tensor<4xi64>
@@ -44,6 +60,47 @@ func @multiply_scalar_fold() -> tensor<4xi64> {
   %2 = "mhlo.multiply"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
   return %2 : tensor<4xi64>
 }
+
+// CHECK-LABEL: mul_one_int_fold
+func @mul_one_int_fold(%arg0: tensor<2x2xi64>) -> tensor<2x2xi64> {
+  %0 = mhlo.constant dense<1> : tensor<2x2xi64>
+  %1 = "mhlo.multiply"(%arg0, %0) : (tensor<2x2xi64>, tensor<2x2xi64>) -> tensor<2x2xi64>
+  // CHECK: return %arg0 : tensor<2x2xi64>
+  return %1 : tensor<2x2xi64>
+}
+
+// CHECK-LABEL: mul_one_int8_fold
+func @mul_one_int8_fold(%arg0: tensor<2x2xi8>) -> tensor<2x2xi8> {
+  %0 = mhlo.constant dense<1> : tensor<2x2xi8>
+  %1 = "mhlo.multiply"(%arg0, %0) : (tensor<2x2xi8>, tensor<2x2xi8>) -> tensor<2x2xi8>
+  // CHECK: return %arg0 : tensor<2x2xi8>
+  return %1 : tensor<2x2xi8>
+}
+
+// CHECK-LABEL: mul_one_float_flod
+func @mul_one_float_flod(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %0 = mhlo.constant dense<1.0> : tensor<2x2xf32>
+  %1 = "mhlo.multiply"(%0, %arg0) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: return %arg0 : tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+}
+
+// CHECK-LABEL: mul_one_fp16_flod
+func @mul_one_fp16_flod(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
+  %0 = mhlo.constant dense<1.0> : tensor<2x2xf16>
+  %1 = "mhlo.multiply"(%0, %arg0) : (tensor<2x2xf16>, tensor<2x2xf16>) -> tensor<2x2xf16>
+  // CHECK: return %arg0 : tensor<2x2xf16>
+  return %1 : tensor<2x2xf16>
+}
+
+// CHECK-LABEL: mul_one_bf16_flod
+func @mul_one_bf16_flod(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
+  %0 = mhlo.constant dense<1.0> : tensor<2x2xbf16>
+  %1 = "mhlo.multiply"(%0, %arg0) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
+  // CHECK: return %arg0 : tensor<2x2xbf16>
+  return %1 : tensor<2x2xbf16>
+}
+
 
 // CHECK-LABEL: divide_scalar_fold
 func @divide_scalar_fold() -> tensor<4xi64> {
@@ -516,6 +573,13 @@ func @broadcast_in_dim_identity(%arg0: tensor<2x3x4xf32>) -> tensor<2x3x4xf32> {
   return %0 : tensor<2x3x4xf32>
 }
 
+// CHECK-LABEL: func @broadcast_in_dim_equivalent_reshape
+func @broadcast_in_dim_equivalent_reshape(%arg0: tensor<2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+  // CHECK: mhlo.reshape
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>} : (tensor<2x3x4xf32>) -> tensor<1x2x3x4xf32>
+  return %0 : tensor<1x2x3x4xf32>
+}
+
 // CHECK-LABEL: func @broadcast_in_dim_not_identity_because_it_actually_broadcasts
 func @broadcast_in_dim_not_identity_because_it_actually_broadcasts(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
   // CHECK: mhlo.broadcast_in_dim
@@ -523,13 +587,23 @@ func @broadcast_in_dim_not_identity_because_it_actually_broadcasts(%arg0: tensor
   return %0 : tensor<2x2xf32>
 }
 
-// CHECK-LABEL: func @broadcast_in_dim_not_identity_permutation
-func @broadcast_in_dim_not_identity_permutation(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  // CHECK: mhlo.broadcast_in_dim
+// CHECK-LABEL: func @broadcast_in_dim_equivalent_transpose
+func @broadcast_in_dim_equivalent_transpose(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: mhlo.transpose
+  // CHECK-SAME: permutation = dense<[1, 0]>
   %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 0]> : tensor<2xi64>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
+// CHECK-LABEL: func @broadcast_consecutive
+func @broadcast_consecutive(%arg0: tensor<2x3xf32>) -> tensor<2x3x4x5xf32> {
+  // CHECK: mhlo.broadcast_in_dim
+  // CHECK-SAME: broadcast_dimensions = dense<[0, 1]>
+  // CHECK-NEXT: return
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<2x3xf32>) -> tensor<2x3x4xf32>
+  %1 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<2x3x4xf32>) -> tensor<2x3x4x5xf32>
+  return %1 : tensor<2x3x4x5xf32>
+}
 
 // CHECK-LABEL: func @dynamic_broadcast_in_dim_op_not_actually_dynamic
 func @dynamic_broadcast_in_dim_op_not_actually_dynamic(%arg0: tensor<4xf32>, %arg1: tensor<2xi64>) -> tensor<5x4xf32> {

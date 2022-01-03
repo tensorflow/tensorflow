@@ -15,8 +15,17 @@
 
 # Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.keras`:
+
+  *   Added `tf.keras.optimizers.experimental.Optimizer`. The reworked
+      optimizer gives more control over different phases of optimizer calls,
+      and is easier to customize. We provide Adam, SGD, Adadelta, AdaGrad and
+      RMSprop optimizers based on `tf.keras.optimizers.experimental.Optimizer`.
+      Generally the new optimizers work in the same way as the old ones,
+      but support new constructor arguments. In the future,
+      the symbols `tf.keras.optimizers.Optimizer`/`Adam`/etc will point
+      to the new optimizers, and the previous generation of optimizers will
+      be moved to `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
 
 # Bug Fixes and Other Changes
 
@@ -92,7 +101,6 @@ This release contains contributions from many people at Google, as well as:
 
     *   The "Bug Fixes and Other Changes" section lists more determinism-related
         changes.
-
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
