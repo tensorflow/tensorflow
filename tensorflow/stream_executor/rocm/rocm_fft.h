@@ -22,14 +22,8 @@ limitations under the License.
 
 #if TENSORFLOW_USE_ROCM
 
-<<<<<<< HEAD
-#include "rocm/rocm_config.h"
-
-#include "rocm/include/hipfft/hipfft.h"
-=======
 #include "rocm/include/hipfft/hipfft.h"
 #include "rocm/rocm_config.h"
->>>>>>> google_upstream/master
 
 #endif
 
