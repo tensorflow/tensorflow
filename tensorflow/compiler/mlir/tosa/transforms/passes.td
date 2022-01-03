@@ -22,9 +22,18 @@ def TosaLegalizeTFPass : FunctionPass<"tosa-legalize-tf"> {
 }
 
 def TosaLegalizeTFLPass : FunctionPass<"tosa-legalize-tfl"> {
-  let summary = "Legalize from TensorFlow Lite to TOSA";
-  let constructor = "createLegalizeTFLPass({})";
+  let summary = "Legalize from TensorFlow Lite to TOSA. Options allow selective disabling/enabling of rewrites";
+  let constructor = "createLegalizeTFLPass()";
+
   let dependentDialects = ["TosaDialect"];
+  let options = [
+    ListOption<"disabledPatterns", "disable-patterns", "std::string", 
+               "Labels of patterns that should be filtered out during application",
+               "llvm::cl::MiscFlags::CommaSeparated">,
+    ListOption<"enabledPatterns", "enable-patterns", "std::string",
+               "Labels of patterns that should be used during application, all other patterns are filtered out",
+               "llvm::cl::MiscFlags::CommaSeparated">,
+  ];
 }
 
 def TosaLegalizeTFTFLPass : FunctionPass<"tosa-legalize-tf-tfl"> {

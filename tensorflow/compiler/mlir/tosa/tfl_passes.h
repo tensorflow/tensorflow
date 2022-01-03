@@ -23,7 +23,15 @@ namespace mlir {
 namespace tosa {
 
 struct TOSATFLLegalizationPipelineOptions
-    : public PassPipelineOptions<TOSATFLLegalizationPipelineOptions> {};
+    : public PassPipelineOptions<TOSATFLLegalizationPipelineOptions> {
+      ArrayRef<std::string> disabledPatterns;
+      ArrayRef<std::string> enabledPatterns;
+      TOSATFLLegalizationPipelineOptions()
+      {
+        disabledPatterns = llvm::None;
+        enabledPatterns = llvm::None;
+      }
+};
 
 // Legalizes TFL (TensorFlow lite) dialect(s) to Tosa.
 void createTFLtoTOSALegalizationPipeline(

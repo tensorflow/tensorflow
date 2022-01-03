@@ -34,10 +34,9 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"
-#include "mlir/Dialect/Traits.h"
-#include "mlir/IR/Matchers.h"
-#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Dialect/Traits.h" // from @llvm-project
+#include "mlir/IR/Matchers.h" // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h" // from @llvm-project
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
@@ -57,10 +56,15 @@ namespace {
 // Performs lowering to TOSA dialect.
 class LegalizeTFL : public TosaLegalizeTFLPassBase<LegalizeTFL> {
  public:
-  explicit LegalizeTFL(std::unordered_set<std::string> &legalization_disable) {this->legalization_disable = legalization_disable;}
-  void runOnFunction() override;
+   LegalizeTFL() = default;
+   explicit LegalizeTFL(ArrayRef<std::string> disabledPatterns, ArrayRef<std::string> enabledPatterns) {
+     this->disabledPatterns = disabledPatterns;
+     this->enabledPatterns = enabledPatterns;
+   }
+   void runOnFunction() override;
+   LogicalResult initialize(MLIRContext *context) override;
  private:
-  std::unordered_set<std::string> legalization_disable;
+   FrozenRewritePatternSet frozen_patterns;
 };
 
 #include "tensorflow/compiler/mlir/tosa/transforms/tfl_legalize_patterns.inc"
@@ -3231,12 +3235,15 @@ LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
   return success();
 }
 
-void LegalizeTFL::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  populateLegalizeTFLPatterns(&getContext(), patterns, legalization_disable);
+LogicalResult LegalizeTFL::initialize(MLIRContext *context) {
+  OwningRewritePatternList patterns(context);
+  mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
+  frozen_patterns = FrozenRewritePatternSet(std::move(patterns), this->disabledPatterns, this->enabledPatterns);
+  return success();
+}
 
-  auto func = getFunction();
-  if (ApplyPatternsWithShapeResolution(func, std::move(patterns)).failed()) {
+void LegalizeTFL::runOnFunction() {
+  if (ApplyPatternsWithShapeResolution(getFunction(), this->frozen_patterns).failed()) {
     signalPassFailure();
   }
 }
@@ -3244,15 +3251,10 @@ void LegalizeTFL::runOnFunction() {
 }  // namespace
 
 void populateLegalizeTFLPatterns(MLIRContext* ctx,
-                                 RewritePatternSet& patterns,
-                                 std::unordered_set<std::string> legalization_disable) {
-  //  0. If there is no entry for the Op in the legalization_disable set
-  //     than we add the rewrite.
-  //  1. If there is an entry for the Op in the legalization_disable set
-  //     than we skip adding the rewrite
-  #define DEF_PATTERN_INSERT(PAT)                                              \
-    if (legalization_disable.find(#PAT) == legalization_disable.end())         \
-      patterns.insert<Convert##PAT##Op>(ctx);
+                                 RewritePatternSet& patterns) {
+
+  #define DEF_PATTERN_INSERT(PAT)             \
+    patterns.addWithLabel<Convert##PAT##Op>({#PAT}, ctx);
 
   DEF_PATTERN_INSERT(TFLAbs);
   DEF_PATTERN_INSERT(TFLCeil);
@@ -3359,8 +3361,9 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass(
-  std::unordered_set<std::string> legalization_disable) {
-  return std::make_unique<LegalizeTFL>(legalization_disable);
+  ArrayRef<std::string> disabledPatterns,
+  ArrayRef<std::string> enabledPatterns) {
+  return std::make_unique<LegalizeTFL>(disabledPatterns, enabledPatterns);
 }
 
 }  // namespace tosa
