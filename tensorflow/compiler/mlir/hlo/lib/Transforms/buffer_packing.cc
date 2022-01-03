@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"
-#include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Operation.h"
