@@ -646,6 +646,21 @@ class DistributedTable(lookup_ops.StaticHashTable):
           spec,
           default_value=self._coordinator_instance.resource_handle)
 
+  @property
+  def is_distributed_table(self):
+    return True
+
+  def __tf_experimental_restore_capture__(
+      self, concrete_function, internal_capture):
+    closure, spec = self.resource_handle_call_time_value()
+    concrete_function.graph.replace_capture_with_deferred_capture(
+        self._coordinator_instance.resource_handle,
+        closure,
+        spec,
+        default_value=self._coordinator_instance.resource_handle,
+        placeholder=internal_capture)
+    return concrete_function.graph.deferred_external_captures[-1]
+
 
 _local_resource_restore_context = threading.local()
 

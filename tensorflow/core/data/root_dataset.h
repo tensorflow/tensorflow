@@ -43,6 +43,7 @@ class RootDataset : public DatasetBase {
   const std::vector<PartialTensorShape>& output_shapes() const override;
 
   int64_t CardinalityInternal() const override;
+  int64_t CardinalityInternal(CardinalityOptions options) const override;
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override;
   Status CheckExternalState() const override;

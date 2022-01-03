@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace interpreter {
@@ -62,7 +61,8 @@ class InterpreterExecutable : public InterpreterExecutableBase {
 
  private:
   absl::optional<DynamicDimensionInference> dynamic_dimension_inference_;
-  TF_DISALLOW_COPY_AND_ASSIGN(InterpreterExecutable);
+  InterpreterExecutable(const InterpreterExecutable&) = delete;
+  InterpreterExecutable& operator=(const InterpreterExecutable&) = delete;
 };
 
 }  // namespace interpreter

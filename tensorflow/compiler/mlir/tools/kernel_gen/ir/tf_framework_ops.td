@@ -38,6 +38,8 @@ def TFFramework_Dialect : Dialect {
     static constexpr StringRef kTFEntryAttrName = "tf_entry";
     static constexpr size_t kAllocationAlignment = 16;
   }];
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,

@@ -269,6 +269,12 @@ Status PopulateQuantizationSpecs(
       quant_specs->inference_type = tensorflow::DT_QINT8;
       quant_specs->inference_input_type = tensorflow::DT_QINT8;
     }
+  } else {
+    // These flags are incompatible with post_training_quantize() as only
+    // QAT models can provide required ranges.
+    quant_specs->disable_infer_tensor_range =
+        toco_flags.disable_infer_tensor_range();
+    quant_specs->use_fake_quant_num_bits = toco_flags.use_fake_quant_num_bits();
   }
 
   // Add information about half-precision support if fp16 quantization applies.

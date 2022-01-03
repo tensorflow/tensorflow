@@ -268,6 +268,7 @@ class CwiseBinaryOpClusteringPolicy : public DefaultClusteringPolicy {
         "tf.RealDiv",
         "tf.SquaredDifference",
         "tf.Sub",
+        "tf.TruncateDiv",
         "tf.Xdivy",
         "tf.Xlogy",
     };
@@ -612,6 +613,9 @@ class ShapeOpClusteringPolicy : public TensorflowOpClusteringPolicy<ShapeOp> {
   LogicalResult MatchAndUpdateConstraints(
       ShapeOp op, const ValuesConstraintSet& results,
       ValuesConstraintSet& operands) const final {
+    // Unranked inputs aren't supported by CPURT.
+    operands.Insert(op.input(), ValueConstraint::kRank);
+
     // Check constraint on the result value.
     auto result_constraint = results.GetConstraint(op.getResult());
     if (!result_constraint.hasValue()) return success();

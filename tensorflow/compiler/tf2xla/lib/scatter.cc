@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -39,8 +40,7 @@ StatusOr<xla::XlaOp> XlaScatter(
   TF_ASSIGN_OR_RETURN(xla::Shape buffer_shape, builder->GetShape(buffer));
   TF_ASSIGN_OR_RETURN(xla::Shape updates_shape, builder->GetShape(updates));
   TF_ASSIGN_OR_RETURN(xla::Shape indices_shape, builder->GetShape(indices));
-  absl::Span<const int64_t> indices_dims =
-      xla::AsInt64Slice(indices_shape.dimensions());
+  absl::Span<const int64_t> indices_dims = indices_shape.dimensions();
 
   // If the indices are N-dimensional, the minor dimension of indices contains
   // the indices to update. Otherwise the indices are all scalars.

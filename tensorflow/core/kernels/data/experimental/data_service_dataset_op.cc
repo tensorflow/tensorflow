@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -111,6 +112,41 @@ bool IsColocatedTask(const TaskInfo& task) {
     return absl::AsciiStrToUpper(worker_tag) == kColocatedWorkerTag;
   });
 }
+
+StatusOr<DataServiceMetadata> GetDataServiceMetadata(const int64_t dataset_id,
+                                                     const tstring& address,
+                                                     const tstring& protocol) {
+  DataServiceDispatcherClient client(address, protocol);
+  DataServiceMetadata metadata;
+  absl::Time deadline =
+      absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
+
+  Status status = grpc_util::Retry(
+      [&]() { return client.GetDataServiceMetadata(dataset_id, metadata); },
+      absl::Substitute("Get data service metadata for dataset $0, "
+                       "with dispatcher at $1.",
+                       dataset_id, std::string(address)),
+      absl::ToUnixMicros(deadline));
+  if (errors::IsNotFound(status)) {
+    return errors::NotFound(
+        "Dataset id ", dataset_id,
+        " not found. It must be registered with `register_dataset` before "
+        "calling `from_dataset_id`.");
+  }
+  return metadata;
+}
+
+StatusOr<DataServiceMetadata::Compression> GetValidatedCompression(
+    int64_t dataset_id, const DataServiceMetadata& metadata) {
+  if (metadata.compression() == DataServiceMetadata::COMPRESSION_UNSPECIFIED) {
+    return errors::Internal(absl::Substitute(
+        "Got invalid compression $0 for dataset $1. A proper compression "
+        "should be registered in `register_dataset`.",
+        DataServiceMetadata::Compression_Name(metadata.compression()),
+        dataset_id));
+  }
+  return metadata.compression();
+}
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -128,6 +164,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           absl::optional<int64_t> num_consumers,
           int64_t max_outstanding_requests, int64_t task_refresh_interval_ms,
           const TargetWorkers target_workers,
+          const DataServiceMetadata& metadata,
           IterationCounter* iteration_counter, bool owns_resource,
           ResourceHandle iteration_counter_handle,
           std::unique_ptr<CapturedFunction> captured_uncompress_func,
@@ -147,6 +184,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         max_outstanding_requests_(max_outstanding_requests),
         task_refresh_interval_ms_(task_refresh_interval_ms),
         target_workers_(target_workers),
+        metadata_(metadata),
         iteration_counter_(iteration_counter),
         owns_resource_(owns_resource),
         iteration_counter_handle_(iteration_counter_handle),
@@ -189,6 +227,25 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     if (is_coordinated_read_) {
       // Coordinated reads require the dataset to be infinite.
       return kInfiniteCardinality;
+    }
+
+    if (metadata_.cardinality() == 0) {
+      return 0;
+    }
+
+    if (metadata_.cardinality() == kInfiniteCardinality) {
+      // Sharding may cause an infinite dataset to be empty. For example, in
+      // `range(10).batch(10, drop_remainder=True).repeat()`, inserting `shard`
+      // before `batch` will cause the dataset to be empty.
+      // This case is rare, and there is significant performance hit for dynamic
+      // sharding if it reports unknown cardinality, so it is reasonable to
+      // report infinite cardinality. For DATA sharding, it is ok to report
+      // infinite cardinality since it inserts `shard` after `repeat`.
+      if (processing_mode_.sharding_policy() == ProcessingModeDef::OFF ||
+          processing_mode_.sharding_policy() == ProcessingModeDef::DYNAMIC ||
+          processing_mode_.sharding_policy() == ProcessingModeDef::DATA) {
+        return kInfiniteCardinality;
+      }
     }
     return kUnknownCardinality;
   }
@@ -1312,6 +1369,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const int64_t max_outstanding_requests_;
   const int64_t task_refresh_interval_ms_;
   const TargetWorkers target_workers_;
+  const DataServiceMetadata metadata_;
   IterationCounter* const iteration_counter_;  // Owned
   const bool owns_resource_;
   const ResourceHandle iteration_counter_handle_;
@@ -1468,12 +1526,22 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       errors::InvalidArgument(kMaxOutstandingRequests, " must be positive or ",
                               model::kAutotune));
 
-  StatusOr<bool> should_uncompress =
-      ShouldUncompress(dataset_id, address, protocol);
-  OP_REQUIRES_OK(ctx, should_uncompress.status());
+  StatusOr<DataServiceMetadata> metadata =
+      GetDataServiceMetadata(dataset_id, address, protocol);
+  OP_REQUIRES_OK(ctx, metadata.status());
+
+  bool should_uncompress = op_version_ >= 3 && uncompress_;
+  if (should_uncompress) {
+    StatusOr<DataServiceMetadata::Compression> compression =
+        GetValidatedCompression(dataset_id, *metadata);
+    OP_REQUIRES_OK(ctx, compression.status());
+    should_uncompress =
+        should_uncompress &&
+        (*compression == DataServiceMetadata::COMPRESSION_SNAPPY);
+  }
   DataTypeVector data_service_output_types = output_types_;
   std::vector<PartialTensorShape> data_service_output_shapes = output_shapes_;
-  if (*should_uncompress) {
+  if (should_uncompress) {
     data_service_output_types = {DT_VARIANT};
     data_service_output_shapes = {TensorShape({})};
   }
@@ -1489,61 +1557,28 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       ctx, op_version_, dataset_id, processing_mode, address, protocol,
       data_transfer_protocol_, job_name, consumer_index, num_consumers,
       max_outstanding_requests, task_refresh_interval_hint_ms_, target_workers_,
-      iteration_counter, owns_resource, iteration_counter_handle,
+      *metadata, iteration_counter, owns_resource, iteration_counter_handle,
       std::move(captured_uncompress_func), data_service_output_types,
       data_service_output_shapes);
-  if (*should_uncompress) {
+  if (should_uncompress) {
     VLOG(2) << "Inserting a ParallelMap dataset to uncompress tf.data service "
             << "dataset " << dataset_id << ".";
+    dataset->Initialize(/*metadata=*/{});
     captured_uncompress_func.reset();
     OP_REQUIRES_OK(
         ctx, CapturedFunction::Create(ctx, uncompress_fn_,
                                       /*captured_inputs=*/std::vector<Tensor>{},
                                       &captured_uncompress_func));
+
+    // Release the ownership of `dataset` and transfer it to the ParallelMap
+    // dataset for uncompression.
+    core::ScopedUnref unref(dataset);
     dataset = MakeDataServiceUncompressDataset(
                   /*input=*/dataset, std::move(captured_uncompress_func),
                   output_types_, output_shapes_)
                   .release();
   }
   *output = dataset;
-}
-
-StatusOr<bool> DataServiceDatasetOp::ShouldUncompress(
-    int64_t dataset_id, const tstring& address, const tstring& protocol) const {
-  if (op_version_ < 3 || !uncompress_) {
-    return false;
-  }
-
-  DataServiceDispatcherClient client(address, protocol);
-  DataServiceMetadata data_service_metadata;
-  absl::Time deadline =
-      absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
-
-  Status status = grpc_util::Retry(
-      [&]() {
-        return client.GetDataServiceMetadata(dataset_id, data_service_metadata);
-      },
-      absl::Substitute("Get data service metadata for dataset $0, "
-                       "with dispatcher at $1.",
-                       dataset_id, std::string(address)),
-      absl::ToUnixMicros(deadline));
-  if (errors::IsNotFound(status)) {
-    return errors::NotFound(
-        "Dataset id ", dataset_id,
-        " not found. It must be registered `register_dataset` before calling "
-        "`from_dataset_id`.");
-  }
-
-  if (data_service_metadata.compression() ==
-      DataServiceMetadata::COMPRESSION_UNSPECIFIED) {
-    return errors::Internal(absl::Substitute(
-        "Got invalid compression $0 for dataset $1. A proper compression "
-        "should be registered in `register_dataset`.",
-        DataServiceMetadata::Compression_Name(
-            data_service_metadata.compression()),
-        dataset_id));
-  }
-  return data_service_metadata.compression() == DataServiceMetadata::SNAPPY;
 }
 
 REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV1).Device(DEVICE_CPU),

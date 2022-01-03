@@ -215,7 +215,7 @@ void SelectTranspose(const TransposeAttributes& attr,
 std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
     const GpuInfo& gpu_info, const Padding2D& padding,
     const OperationDef& op_def) {
-  if (gpu_info.IsApple()) {
+  if (gpu_info.IsApple() || gpu_info.IsAMD()) {
     Winograd4x4To36 operation = CreateWinograd4x4To36(op_def, padding);
     return absl::make_unique<Winograd4x4To36>(std::move(operation));
   }
@@ -226,7 +226,7 @@ std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
 std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
     const GpuInfo& gpu_info, const OperationDef& op_def,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
-  if (gpu_info.IsApple()) {
+  if (gpu_info.IsApple() || gpu_info.IsAMD()) {
     Winograd36To4x4 operation = CreateWinograd36To4x4(op_def, biases);
     return absl::make_unique<Winograd36To4x4>(std::move(operation));
   }

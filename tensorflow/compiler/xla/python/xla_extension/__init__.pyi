@@ -241,7 +241,11 @@ class OpSharding_Type(enum.IntEnum):
 class OpSharding:
   Type: typing.Type[OpSharding_Type]
   type: OpSharding_Type
-  replicate_on_last_dim: bool
+  replicate_on_last_tile_dim: bool
+  tile_assignment_dimensions: Sequence[int]
+  tile_assignment_devices: Sequence[int]
+  tuple_shardings: Sequence[OpSharding]
+  def SerializeToString(self) -> bytes: ...
 
 class ChannelHandle_ChannelType(enum.IntEnum):
   CHANNEL_TYPE_INVALID: int

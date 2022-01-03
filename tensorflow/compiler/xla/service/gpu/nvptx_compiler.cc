@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <fstream>
+#include <string>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "llvm/IRReader/IRReader.h"
@@ -134,6 +136,9 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::F16,
                                             /*pad_to_multiple_of=*/8);
   }
+  // Padding a gemm operand that's a constant results in pad(constant).  Run
+  // constant-folding to simplify this into a new constant.
+  pre_pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
@@ -180,7 +185,7 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
-  for (const string& full_filename :
+  for (const std::string& full_filename :
        module_config.debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
@@ -222,7 +227,7 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
   auto xla_gpu_llvm_ir_file =
       module->config().debug_options().xla_gpu_llvm_ir_file();
   auto matched_filename = absl::c_find_if(
-      xla_gpu_llvm_ir_file, [prefix](const string& full_filename) {
+      xla_gpu_llvm_ir_file, [prefix](const std::string& full_filename) {
         // To ease comparing many LLVM versions, accept different suffixes then
         // the original filename.
         return absl::StartsWith(tensorflow::io::Basename(full_filename),
@@ -295,8 +300,8 @@ void WarnIfBadDriverJITVersion() {
 }
 
 NVPTXCompiler::NVPTXCompiler()
-    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::kTargetTriple,
-                  nvptx::kDataLayout) {}
+    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::TargetTriple(),
+                  nvptx::DataLayout()) {}
 
 HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
   return &CanShareBufferHint;
@@ -306,7 +311,7 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   return stream_exec->GetDeviceDescription().cuda_compute_capability();
 }
 
-StatusOr<std::pair<std::string, std::vector<uint8>>>
+StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
@@ -335,7 +340,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     selected_module = llvm_module;
   }
 
-  string ptx;
+  std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     XLA_SCOPED_LOGGING_TIMER(
@@ -344,16 +349,16 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                                  module_config, libdevice_dir));
   }
 
-  std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
+  std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, absl::get<se::CudaComputeCapability>(gpu_version),
       module_config, relocatable);
 
-  return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
-                                                    std::move(cubin));
+  return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
+                                                      std::move(cubin));
 }
 
-std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const string& ptx,
+std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
+    se::StreamExecutor* stream_exec, const std::string& ptx,
     se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
     bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
@@ -363,7 +368,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   decltype(compilation_cache_.begin()) iter;
   // Pointers into compilation_cache_ where the ptx and (optional) cubin are
   // stored.
-  const string* cache_ptx = nullptr;
+  const std::string* cache_ptx = nullptr;
   CompilationCacheValue* cache_value = nullptr;
 
   {
@@ -389,7 +394,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
         }
-        StatusOr<std::vector<uint8>> maybe_cubin = se::CompileGpuAsm(
+        StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
             stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
@@ -459,8 +464,9 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->cubin_data;
 }
 
-StatusOr<std::vector<uint8>> NVPTXCompiler::LinkModules(
-    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8>> modules) {
+StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
+    se::StreamExecutor* stream_exec,
+    std::vector<std::vector<uint8_t>> modules) {
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
   for (auto& module : modules) {

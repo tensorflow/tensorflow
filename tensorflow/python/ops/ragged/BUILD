@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
@@ -1196,9 +1197,10 @@ py_test(
 
 py_test(
     name = "ragged_shape_test",
-    size = "large",
+    size = "medium",
     srcs = ["ragged_shape_test.py"],
     python_version = "PY3",
+    shard_count = 8,
     srcs_version = "PY3",
     deps = [
         ":ragged",  # fixdeps: keep
@@ -1430,6 +1432,41 @@ py_test(
         ":ragged_tensor",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_split_op_test",
+    srcs = ["ragged_split_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_tensor",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "ragged_factory_ops_test",
+    size = "small",
+    srcs = ["ragged_factory_ops_test.py"],
+    deps = [
+        ":ragged_functional_ops",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
     ],
 )

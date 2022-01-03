@@ -105,6 +105,26 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_embedding_shape_util",
+    srcs = [
+        "tpu_embedding_shape_util.cc",
+    ],
+    hdrs = [
+        "tpu_embedding_shape_util.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "tpu_embedding_config_ops",
     srcs = [
         "tpu_embedding_config_ops.cc",

@@ -31,7 +31,8 @@ namespace convert {
 
 class Converter;
 
-// Specifies the possible roles of each op input.
+// Specifies the expected type taken by a TRT_TensorOrWeights input during op
+// conversion.
 enum class TrtInputArg { kTensor = 1, kWeight = 2, kBoth = 3 };
 
 // Parameters for each op converter.
@@ -42,7 +43,7 @@ struct OpConverterParams {
                     std::vector<TRT_TensorOrWeights>* outputs,
                     TrtWeightStore* weight_store,
                     TrtPrecisionMode precision_mode, bool use_calibration,
-                    bool use_implicit_batch);
+                    bool use_implicit_batch, bool use_explicit_precision);
 
   // Constructor used for conversion.
   OpConverterParams(Converter* converter, const NodeDef& node_def,
@@ -59,6 +60,7 @@ struct OpConverterParams {
   const TrtPrecisionMode precision_mode;
   const bool use_calibration;
   const bool use_implicit_batch;
+  const bool use_explicit_precision;
 };
 
 // Operation converter function specification.
@@ -93,6 +95,11 @@ class OpConverterBase {
 
   // Validate data type of the given NodeDef against allowed types.
   Status ValidateNodeDefDataType() {
+    // If the attribute name is empty, we should skip this check.
+    if (absl::string_view(Impl::NodeDefDataTypeAttributeName()).empty()) {
+      return Status::OK();
+    }
+
     // Get the NodeDef data type.
     auto dtype = GetAttrValue<DataType>(Impl::NodeDefDataTypeAttributeName());
     if (!dtype.ok()) {

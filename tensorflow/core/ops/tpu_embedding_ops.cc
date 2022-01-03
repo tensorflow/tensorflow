@@ -206,4 +206,18 @@ REGISTER_OP("EnqueueTPUEmbeddingArbitraryTensorBatch")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("DynamicEnqueueTPUEmbeddingArbitraryTensorBatch")
+    .Input("sample_indices_or_row_lengths: N * T1")
+    .Input("embedding_indices: N * T2")
+    .Input("aggregation_weights: N * T3")
+    .Input("mode_override: string")
+    .Input("device_ordinal: int32")
+    .Attr("T1: {int32,int64} = DT_INT32")
+    .Attr("T2: {int32,int64} = DT_INT32")
+    .Attr("T3: {float32,float64} = DT_FLOAT")
+    .Attr("N: int >= 1")
+    .Attr("combiners: list(string) = []")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // namespace tensorflow

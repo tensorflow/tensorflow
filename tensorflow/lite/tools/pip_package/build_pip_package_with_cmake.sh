@@ -76,6 +76,7 @@ case "${TENSORFLOW_TARGET}" in
       -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR=armv7 \
+      -DTFLITE_ENABLE_XNNPACK=OFF \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   rpi0)
@@ -142,21 +143,24 @@ chmod u+w "${BUILD_DIR}/tflite_runtime/_pywrap_tensorflow_interpreter_wrapper${L
 cd "${BUILD_DIR}"
 case "${TENSORFLOW_TARGET}" in
   armhf)
-    ${PYTHON} setup.py bdist --plat-name=linux-armv7l \
-                       bdist_wheel --plat-name=linux-armv7l
+    WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-armv7l}"
+    ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                       bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     ;;
   rpi0)
-    ${PYTHON} setup.py bdist --plat-name=linux_armv6l \
-                       bdist_wheel --plat-name=linux-armv6l
+    WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-armv6l}"
+    ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                       bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     ;;
   aarch64)
-    ${PYTHON} setup.py bdist --plat-name=linux-aarch64 \
-                       bdist_wheel --plat-name=linux-aarch64
+    WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-aarch64}"
+    ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                       bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     ;;
   *)
-    if [[ -n "${TENSORFLOW_TARGET}" ]] && [[ -n "${TENSORFLOW_TARGET_ARCH}" ]]; then
-      ${PYTHON} setup.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
-                         bdist_wheel --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH}
+    if [[ -n "${WHEEL_PLATFORM_NAME}" ]]; then
+      ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                         bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     else
       ${PYTHON} setup.py bdist bdist_wheel
     fi

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_framework_c_interface.h"
 
+#include <cstddef>
 #include <string>
 #include <utility>
 
@@ -256,12 +257,16 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
 
   // Determine the unique architecture for the current GPU, if any.
   SmallVector<std::string, 1> architectures;
+#if defined(GOOGLE_CUDA)
   stream_executor::CudaComputeCapability cc =
       ctx->op_device_context()->stream()->GetCudaComputeCapability();
-#if defined(GOOGLE_CUDA)
   architectures.push_back(absl::StrCat("sm_", cc.major, cc.minor));
 #elif defined(TENSORFLOW_USE_ROCM)
-  architectures.push_back(absl::StrCat("gfx", cc.major, cc.minor));
+  architectures.push_back(ctx->op_device_context()
+                              ->stream()
+                              ->parent()
+                              ->GetDeviceDescription()
+                              .rocm_amdgpu_gcn_arch_name());
 #endif
 
   // Construct `SmallVector`s from arguments.
@@ -286,7 +291,18 @@ extern "C" void _mlir_ciface_tf_jit_execute(void* op_kernel_ctx, void* callable,
                                             void* result, int64_t num_args,
                                             void* args_ptr) {
   // JIT compilation must have failed earlier if there is no callable ptr.
-  if (callable == nullptr) return;
+  // Return some empty memory descriptor to prevent a crash.
+  if (callable == nullptr) {
+    auto* desc = static_cast<::UnrankedMemRefType<void>*>(result);
+    desc->rank = 0;
+    auto* inner_desc = static_cast<StridedMemRefType<int8_t, 0>*>(
+        malloc(sizeof(StridedMemRefType<int8_t, 0>)));
+    inner_desc->basePtr = nullptr;
+    inner_desc->data = nullptr;
+    inner_desc->offset = 0;
+    desc->descriptor = inner_desc;
+    return;
+  }
 
   // Build the argument array according to `ExecutionEngine`'s calling
   // convention.

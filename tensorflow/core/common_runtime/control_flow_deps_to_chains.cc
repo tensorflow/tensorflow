@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/control_flow_deps_to_chains.h"
+
+#include <algorithm>
 #include <cstdint>
+#include <string>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -23,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -47,8 +51,12 @@ Status ControlFlowDepsToChainsPass::Run(
   }
 
   for (Node* n : g->nodes()) {
-    if (n == nullptr) continue;
-    if (!n->IsWhileNode()) continue;
+    if (n == nullptr) {
+      continue;
+    }
+    if (!n->IsWhileNode()) {
+      continue;
+    }
 
     // TODO(mdan): This breaks encapsulation of Node/Graph. Is there any needed?
     // TODO(mdan): Consolidate this with AddWhileInputHack.
@@ -62,10 +70,22 @@ Status ControlFlowDepsToChainsPass::Run(
 
     // Look for required annotations.
 
-    if (attrs.find("_stateful_parallelism") == attrs.end()) continue;
-    if (!attrs.at("_stateful_parallelism").b()) continue;
+    if (attrs.find("_stateful_parallelism") == attrs.end()) {
+      continue;
+    }
+    if (!attrs.at("_stateful_parallelism").b()) {
+      continue;
+    }
+    if (attrs.find("parallel_iterations") != attrs.end()) {
+      if (attrs.at("parallel_iterations").i() < 2) {
+        continue;  // Loops which are already sequential are more efficient
+                   // without chains.
+      }
+    }
     // TODO(mdan): We don't really need this attribute.
-    if (attrs.find("_num_original_outputs") == attrs.end()) continue;
+    if (attrs.find("_num_original_outputs") == attrs.end()) {
+      continue;
+    }
     int body_barrier_loc = -1;
     std::map<string, int> node_index;
     for (int i = 0, s = body_graph->node_def_size(); i < s; i++) {
@@ -77,7 +97,9 @@ Status ControlFlowDepsToChainsPass::Run(
         }
       }
     }
-    if (body_barrier_loc < 0) continue;
+    if (body_barrier_loc < 0) {
+      continue;
+    }
     bool ok_for_lowering = true;
     for (int i = 0; i < body_graph->control_ret_size(); i++) {
       const auto& control_node = body_graph->node_def(
@@ -88,13 +110,17 @@ Status ControlFlowDepsToChainsPass::Run(
         break;
       }
     }
-    if (!ok_for_lowering) continue;
+    if (!ok_for_lowering) {
+      continue;
+    }
 
     int num_loop_vars = body_graph->signature().input_arg_size();
     int num_new_chains = body_graph->control_ret_size();
     int num_node_inputs = while_node->input_size();
 
-    if (!num_new_chains) continue;  // Nothing to do for stateless loops.
+    if (!num_new_chains) {
+      continue;  // Nothing to do for stateless loops.
+    }
 
     // Add extra loop vars to the while node.
 
@@ -193,7 +219,7 @@ Status ControlFlowDepsToChainsPass::Run(
       modified_body.mutable_ret()->insert(
           {c_ret_name, strings::StrCat(c_out_name, ":output:0")});
       AttrValue attr_val;
-      attr_val.mutable_list()->mutable_shape();
+      attr_val.mutable_list()->add_shape();
       FunctionDef_ArgAttrs arg_attrs;
       arg_attrs.mutable_attr()->insert({"_output_shapes", attr_val});
       modified_body.mutable_arg_attr()->insert(
@@ -260,7 +286,7 @@ Status ControlFlowDepsToChainsPass::Run(
 
       // TODO(mdan): Return values on the cond function? Most likely a bug.
       AttrValue attr_val;
-      attr_val.mutable_list()->mutable_shape();
+      attr_val.mutable_list()->add_shape();
       FunctionDef_ArgAttrs arg_attrs;
       arg_attrs.mutable_attr()->insert({"_output_shapes", attr_val});
       modified_cond.mutable_arg_attr()->insert(

@@ -1548,6 +1548,28 @@ class PerChannelQuantizedConvolutionOpModel
   }
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
+TEST_P(ConvolutionOpTest, AsymmetricPerchannelQuantization) {
+  EXPECT_DEATH(PerChannelQuantizedConvolutionOpModel m(
+                   GetRegistration(),
+                   {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+                   {TensorType_INT8,
+                    // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+                    {2, 2, 2, 2},
+                    0,
+                    0,
+                    0,
+                    0,
+                    /*per_channel_quantization=*/true,
+                    /*per_channel_quantization_scales=*/{1},
+                    /*per_channel_quantization_offsets=*/{1},
+                    /*channel_index=*/0},
+                   {TensorType_INT8, {}, -63.5, 64, 0.5, -1},
+                   /*stride_width=*/1, /*stride_height=*/1),
+               "Cannot allocate tensors");
+}
+#endif
+
 TEST_P(ConvolutionOpTest, SimplePerTensorTest) {
   PerChannelQuantizedConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},

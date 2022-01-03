@@ -170,8 +170,8 @@ void dump_model_summary(std::stringstream& out_stream,
                         const ::tflite::Model* model) {
   auto* subgraphs = model->subgraphs();
   out_stream
-      << "Your TFLite model has ‘" << subgraphs->Length()
-      << "’ subgraph(s). In the subgraph description below,\nT# represents the "
+      << "Your TFLite model has '" << subgraphs->Length()
+      << "' subgraph(s). In the subgraph description below,\nT# represents the "
          "Tensor numbers. ";
   if (subgraphs->Length() > 0 && subgraphs->Get(0)->operators()->Length() > 0) {
     const Operator* first_op = subgraphs->Get(0)->operators()->Get(0);

@@ -2564,6 +2564,53 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
                              }));
 }
 
+class GeluOpModel : public SingleOpModel {
+ public:
+  GeluOpModel(const TensorData& input, bool approximate) {
+    input_ = AddInput(input);
+    output_ = AddOutput(input);
+    SetBuiltinOp(BuiltinOperator_GELU, BuiltinOptions_GeluOptions,
+                 CreateGeluOptions(builder_, approximate).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor(input_, data);
+  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int input_;
+  int output_;
+};
+
+TEST(FloatActivationsOpTest, Gelu) {
+  GeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/false);
+
+  m.SetInput({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 0.0f, 0.841345f, 2.99595f,           // Row 1
+                                 0.841345f, -0.158655f, -0.0455003f,  // Row 2
+                             })));
+}
+
+TEST(FloatActivationsOpTest, GeluApproximate) {
+  GeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/true);
+
+  m.SetInput({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 0.0f, 0.841192f, 2.99636f,           // Row 1
+                                 0.841192f, -0.158808f, -0.0454023f,  // Row 2
+                             })));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     TanhOpTest, TanhOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kTanhKernelMap)));

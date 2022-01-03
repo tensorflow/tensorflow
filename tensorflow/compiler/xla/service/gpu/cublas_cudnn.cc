@@ -78,7 +78,7 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
   return InternalError("Unexpected call target: %s", target);
 }
 
-string CudnnConvKindToString(CudnnConvKind kind) {
+std::string CudnnConvKindToString(CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kForward:
       return "forward";

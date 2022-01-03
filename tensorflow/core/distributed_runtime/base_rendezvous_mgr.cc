@@ -117,6 +117,13 @@ void BaseRendezvousMgr::Cleanup(int64_t step_id) {
   }
 }
 
+void BaseRendezvousMgr::CleanupAll() {
+  mutex_lock l(mu_);
+  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
+    iter->second->Unref();
+  }
+}
+
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
                                            int64_t step_id)
     : env_(env),
@@ -407,28 +414,28 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
   bool already_cancelled = false;
   InactiveCallback callback = [] {};
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     if (!status_.ok()) {
       call->StartAbort(status_);
       return;
     }
-    if (cm != nullptr) {
-      auto token = cm->get_cancellation_token();
-      already_cancelled = !cm->RegisterCallback(token, [this, call] {
-        {
-          mutex_lock l(mu_);
-          if (active_.find(call) == active_.end()) return;
-          call->StartAbort(
-              errors::Cancelled("RecvFromRemoteAsync is cancelled."));
-        }
-      });
-      callback = [cm, token] { cm->TryDeregisterCallback(token); };
-    }
-    if (already_cancelled) {
+  }
+  if (cm != nullptr) {
+    auto token = cm->get_cancellation_token();
+    already_cancelled = !cm->RegisterCallback(token, [this, call] {
+      {
+        tf_shared_lock l(mu_);
+        if (active_.find(call) == active_.end()) return;
+      }
       call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
-    } else {
-      CHECK(active_.emplace(call, callback).second);
-    }
+    });
+    callback = [cm, token] { cm->TryDeregisterCallback(token); };
+  }
+  if (already_cancelled) {
+    call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+  } else {
+    mutex_lock l(mu_);
+    CHECK(active_.emplace(call, callback).second);  // Crash OK.
   }
 }
 

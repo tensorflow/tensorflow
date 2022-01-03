@@ -151,6 +151,7 @@ def make_convolution_dimension_numbers(
 
 
 class PrecisionConfig:
+  Precision = _xla.PrecisionConfig_Precision
   operand_precision: List[_xla.PrecisionConfig_Precision]
 
 

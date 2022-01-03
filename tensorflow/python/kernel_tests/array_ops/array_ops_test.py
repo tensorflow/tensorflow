@@ -576,10 +576,16 @@ class StridedSliceChecker(object):
       except (AttributeError, TypeError, ValueError):
         return x
 
+    def casts_to_bool_nparray(x):
+      try:
+        return np.asarray(x).dtype == bool
+      except NotImplementedError:
+        return False
+
     if isinstance(spec, bool) or \
       (isinstance(spec, ops.Tensor) and spec.dtype == dtypes.bool) or \
       (isinstance(spec, np.ndarray) and spec.dtype == bool) or \
-      (isinstance(spec, (list, tuple)) and np.asarray(spec).dtype == bool):
+      (isinstance(spec, (list, tuple)) and casts_to_bool_nparray(spec)):
       tensor = self.test.evaluate(op)
       np_spec = eval_if_tensor(spec)
       self.test.assertAllEqual(self.x_np[np_spec], tensor)
@@ -1033,6 +1039,9 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase,
   """Test that strided slice's custom gradient produces correct gradients."""
 
   @parameterized.parameters(set((True, context.executing_eagerly())))
+  @test_util.disable_xla(
+      "b/210077724: Auto-clustering with where op isn't supported. Has loose "
+      "output shape bounds")
   def testGradient(self, use_tape):
     with test_util.device(use_gpu=True):
       var = variables.Variable(
@@ -1580,6 +1589,20 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
           dims = constant_op.constant([3, 0], dtype=dtype)
           self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
 
+  def testUnravelIndexIntegerOverflow(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"Input dims product is causing integer overflow"):
+          indices = constant_op.constant(-0x100000, dtype=dtype)
+          if dtype == dtypes.int32:
+            value = 0x10000000
+          else:
+            value = 0x7FFFFFFFFFFFFFFF
+          dims = constant_op.constant([value, value], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
 
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
 
@@ -1703,6 +1726,21 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
             range_given=True)
       output_grad = gradient_checker_v2.compute_gradient(f, [input_tensor])
       self.assertAllClose(output_grad[0], np.zeros([1, 4, 4]))
+
+  def testOutOfBoundAxis(self):
+    input_tensor = constant_op.constant([1., 1.])
+    input_min = [0]
+    input_max = [1]
+    q_input, _, _ = array_ops.quantize(input_tensor, 0, 1, dtypes.qint32)
+    error = (errors.InvalidArgumentError, ValueError)
+    with self.assertRaisesRegex(error,
+                                r".*Axis must be less than input dimension.*"):
+      self.evaluate(
+          gen_array_ops.dequantize(
+              input=q_input,
+              min_range=input_min,
+              max_range=input_max,
+              axis=2**31 - 1))
 
 
 @test_util.run_all_in_graph_and_eager_modes

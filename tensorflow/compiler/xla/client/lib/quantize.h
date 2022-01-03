@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_QUANTIZE_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_QUANTIZE_H_
 
+#include <algorithm>
 #include <limits>
 #include <numeric>
 #include <vector>
@@ -28,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/bfloat16.h"
 
 namespace xla {
-
-constexpr int64_t kBitsOfByte = 8;
 
 // Represents the range used for quantization
 struct QuantizedRange {
@@ -47,16 +46,16 @@ struct QuantizedRange {
 };
 
 template <typename T>
-inline std::vector<uint32> PackToUint32(absl::Span<const T> input) {
-  const int64_t kElementsPerPack = sizeof(uint32) / sizeof(T);
+inline std::vector<uint32_t> PackToUint32(absl::Span<const T> input) {
+  const int64_t kElementsPerPack = sizeof(uint32_t) / sizeof(T);
   const int64_t input_size = input.size();
   const int64_t output_size = CeilOfRatio(input_size, kElementsPerPack);
 
-  std::vector<uint32> output_vec;
-  constexpr int64_t kShiftBits = sizeof(T) / sizeof(uint8) * kBitsOfByte;
+  std::vector<uint32_t> output_vec;
+  constexpr int64_t kShiftBits = sizeof(T) / sizeof(uint8_t) * CHAR_BIT;
 
   for (int64_t i = 0; i < output_size; i++) {
-    uint32 result = 0;
+    uint32_t result = 0;
     for (int64_t p = 0; p < kElementsPerPack; p++) {
       int64_t index = i * kElementsPerPack + p;
       if (index < input_size) {
@@ -70,8 +69,8 @@ inline std::vector<uint32> PackToUint32(absl::Span<const T> input) {
   return output_vec;
 }
 
-// Dequantize the quantized input of packed uint32 to bfloat16.
-// Only uint8 or uint16 is supported for the original unpacked input.
+// Dequantize the quantized input of packed uint32_t to bfloat16.
+// Only uint8_t or uint16_t is supported for the original unpacked input.
 // Returns a tensor of shape [d0,..., dn * unpack_size] if
 // input shape is [d0, ..., dn], where unpack_size = sizeof(unit32) / sizeof(T).
 // If transpose_output is true, will return a tensor of shape
@@ -90,7 +89,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
             : (static_cast<float>(std::numeric_limits<T>::max()) -
                std::numeric_limits<T>::min() + 1) /
                   2.0f;
-    const int64_t unpack_size = sizeof(uint32) / sizeof(T);
+    const int64_t unpack_size = sizeof(uint32_t) / sizeof(T);
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(input));
 
     auto element_type = shape.element_type();
@@ -107,17 +106,17 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
     // Highest significant bytes needs to shift more bytes than lower
     // significant bytes.
     XlaOp shift_bytes =
-        xla::ConstantR0<uint32>(builder, unpack_size - 1) - iota_r1;
+        xla::ConstantR0<uint32_t>(builder, unpack_size - 1) - iota_r1;
 
-    const int bytes_of_type = sizeof(T) / sizeof(uint8);
-    std::vector<uint32> shift_vec(unpack_size, kBitsOfByte * bytes_of_type);
+    const int bytes_of_type = sizeof(T) / sizeof(uint8_t);
+    std::vector<uint32_t> shift_vec(unpack_size, CHAR_BIT * bytes_of_type);
     XlaOp shift_bits =
-        shift_bytes * xla::ConstantR1<uint32>(builder, shift_vec);
+        shift_bytes * xla::ConstantR1<uint32_t>(builder, shift_vec);
 
     // Make bit_mask for different data type T.
-    uint32 bit_mask = 0x00000000;
+    uint32_t bit_mask = 0x00000000;
     for (int i = 0; i < bytes_of_type; i++) {
-      bit_mask <<= kBitsOfByte;
+      bit_mask <<= CHAR_BIT;
       bit_mask |= 0x000000ff;
     }
 
@@ -132,7 +131,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
         broadcast_input, Transpose(Broadcast(shift_bits, shape.dimensions()),
                                    shift_transpose_dimensions));
     XlaOp unpack_input =
-        And(shifted_input, xla::ConstantR0<uint32>(builder, bit_mask));
+        And(shifted_input, xla::ConstantR0<uint32_t>(builder, bit_mask));
 
     XlaOp result;
 

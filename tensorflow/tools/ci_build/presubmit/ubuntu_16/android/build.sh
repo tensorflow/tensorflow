@@ -29,7 +29,7 @@ function run_build () {
   export NDK_HOME=$ANDROID_NDK_HOME
   export ANDROID_SDK_HOME="/opt/android-sdk/current"
   export ANDROID_API_LEVEL="23"
-  export ANDROID_BUILD_TOOLS_VERSION="28.0.0"
+  export ANDROID_BUILD_TOOLS_VERSION="30.0.0"
 
   ANDROID_OUT=android.out
   ANDROID_OUT_TARGET=gen_android_out

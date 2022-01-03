@@ -75,6 +75,7 @@ float ActivationFunction(float x) {
 inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
                          const float* bias_data, int array_size,
                          float* array_data) {
+  if (bias_size == 0) return;
   // Note: see b/132215220: in May 2019 we thought it would be OK to replace
   // this with the Eigen one-liner:
   //   return (array.colwise() + bias).cwiseMin(clamp_max).cwiseMin(clamp_max).
@@ -138,6 +139,100 @@ inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
 #endif
 }
 
+// Single-rounding MultiplyByQuantizedMultiplier
+#if TFLITE_SINGLE_ROUNDING
+inline int32_t MultiplyByQuantizedMultiplier(int32_t x,
+                                             int32_t quantized_multiplier,
+                                             int shift) {
+  TFLITE_DCHECK(quantized_multiplier >= 0);
+  TFLITE_DCHECK(shift >= -31 && shift <= 30);
+
+  const int64_t total_shift = 31 - shift;
+  const int64_t round = static_cast<int64_t>(1) << (total_shift - 1);
+  int64_t result = x * static_cast<int64_t>(quantized_multiplier) + round;
+  result = result >> total_shift;
+
+  TFLITE_DCHECK(result >= std::numeric_limits<int32_t>::min() &&
+                result <= std::numeric_limits<int32_t>::max());
+  return static_cast<int32_t>(result);
+}
+
+inline int32_t MultiplyByQuantizedMultiplierSmallerThanOneExp(
+    int32_t x, int32_t quantized_multiplier, int shift) {
+  TFLITE_DCHECK_LE(shift, 0);
+  return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
+}
+
+inline int32_t MultiplyByQuantizedMultiplierGreaterThanOne(
+    int32_t x, int32_t quantized_multiplier, int shift) {
+  TFLITE_DCHECK_GE(shift, 0);
+  return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
+}
+
+inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
+                                             int32_t quantized_multiplier,
+                                             int shift) {
+  // Inputs:
+  // - quantized_multiplier has fixed point at bit 31
+  // - shift is -31 to +7 (negative for right shift)
+  //
+  // Assumptions: The following input ranges are assumed
+  // - quantize_scale>=0  (the usual range is (1<<30) to (1>>31)-1)
+  // - scaling is chosen so final scaled result fits in int32_t
+  // - input x is in the range -(1<<47) <= x < (1<<47)
+  TFLITE_DCHECK(quantized_multiplier >= 0);
+  TFLITE_DCHECK(shift >= -31 && shift < 8);
+  TFLITE_DCHECK(x >= -(static_cast<int64_t>(1) << 47) &&
+                x < (static_cast<int64_t>(1) << 47));
+
+  const int32_t reduced_multiplier =
+      (quantized_multiplier < 0x7FFF0000)
+          ? ((quantized_multiplier + (1 << 15)) >> 16)
+          : 0x7FFF;
+  const int64_t total_shift = 15 - shift;
+  const int64_t round = static_cast<int64_t>(1) << (total_shift - 1);
+  int64_t result = x * static_cast<int64_t>(reduced_multiplier) + round;
+  result = result >> total_shift;
+
+  TFLITE_DCHECK(result >= std::numeric_limits<int32_t>::min() &&
+                result <= std::numeric_limits<int32_t>::max());
+  return static_cast<int32_t>(result);
+}
+
+#ifdef USE_NEON
+inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
+    int32x4x4_t input_val, int32_t quantized_multiplier, int shift) {
+  TFLITE_DCHECK(quantized_multiplier >= 0);
+
+  const int right_shift = std::min(-1, shift);
+  const int left_shift = shift - right_shift;
+
+  const int32x4_t multiplier_dup = vdupq_n_s32(quantized_multiplier);
+  const int32x4_t left_shift_dup = vdupq_n_s32(left_shift);
+  const int32x4_t right_shift_dup = vdupq_n_s32(right_shift);
+
+  int32x4x4_t result;
+  result.val[0] = vrshlq_s32(
+      vqdmulhq_s32(vshlq_s32(input_val.val[0], left_shift_dup), multiplier_dup),
+      right_shift_dup);
+
+  result.val[1] = vrshlq_s32(
+      vqdmulhq_s32(vshlq_s32(input_val.val[1], left_shift_dup), multiplier_dup),
+      right_shift_dup);
+
+  result.val[2] = vrshlq_s32(
+      vqdmulhq_s32(vshlq_s32(input_val.val[2], left_shift_dup), multiplier_dup),
+      right_shift_dup);
+
+  result.val[3] = vrshlq_s32(
+      vqdmulhq_s32(vshlq_s32(input_val.val[3], left_shift_dup), multiplier_dup),
+      right_shift_dup);
+
+  return result;
+}
+#endif  // USE_NEON
+// Double-rounding MultiplyByQuantizedMultiplier
+#else
 inline int32_t MultiplyByQuantizedMultiplierSmallerThanOneExp(
     int32_t x, int32_t quantized_multiplier, int left_shift) {
   using gemmlowp::RoundingDivideByPOT;
@@ -224,7 +319,8 @@ inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
 
   return result;
 }
-#endif
+#endif  // USE_NEON
+#endif  // TFLITE_SINGLE_ROUNDING
 
 template <typename T>
 int CountLeadingZeros(T integer_input) {

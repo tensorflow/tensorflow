@@ -54,7 +54,8 @@ class CompilationCache {
       TF_GUARDED_BY(mutex_);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CompilationCache);
+  CompilationCache(const CompilationCache&) = delete;
+  CompilationCache& operator=(const CompilationCache&) = delete;
 };
 
 }  // namespace xla

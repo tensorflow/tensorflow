@@ -152,7 +152,8 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
 StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
-    absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context,
+    bool unconditionally_use_set_output_shapes) {
   tensorflow::SavedModelV2Bundle bundle;
   auto load_status = tensorflow::SavedModelV2Bundle::Load(
       std::string(saved_model_dir.data(), saved_model_dir.length()), &bundle);
@@ -162,7 +163,10 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphToMlirImport(
     return load_status;
   }
 
-  auto module_or = ConvertSavedModelToMlir(&bundle, context, exported_names);
+  auto module_or = ConvertSavedModelToMlir(
+      &bundle, context, exported_names, /*add_default_attributes=*/true,
+      /*unconditionally_use_set_output_shapes=*/
+      unconditionally_use_set_output_shapes);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel import failed: " << module_or.status();
   }

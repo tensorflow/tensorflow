@@ -160,10 +160,10 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
-    HloComputation* computation, const string& function_name_prefix,
+    HloComputation* computation, const std::string& function_name_prefix,
     bool is_top_level_computation,
     absl::Span<HloInstruction* const> instruction_order) {
-  string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
+  std::string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
   VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
   num_dynamic_loop_bounds_ = 0;
@@ -178,9 +178,11 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
         assignment_.GetUniqueTopLevelSlice(computation->root_instruction()));
   }
 
+  bool has_thread_local_param = false;
   for (const HloInstruction* param : computation->parameter_instructions()) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice param_slice,
                         assignment_.GetUniqueTopLevelSlice(param));
+    has_thread_local_param |= param_slice.allocation()->is_thread_local();
     computation_parameter_allocations_[param_slice.allocation()->index()] =
         param->parameter_number();
   }
@@ -202,10 +204,15 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   // IR insert point.
 
   // Function epilogue: copying the value over to either the return register,
-  // or values pointing from the return register.
+  // or values pointing from the return register. If we have an allocation for
+  // the result, we can cue on whether it is thread_local. If it is a constant,
+  // we use the function parameters' allocations to identify a thread_local
+  // function.
   const BufferAllocation* root_allocation =
       computation_root_allocation_.allocation();
-  if (root_allocation && root_allocation->is_thread_local()) {
+  if (root_allocation &&
+      (root_allocation->is_thread_local() ||
+       (root_allocation->is_constant() && has_thread_local_param))) {
     EmitThreadLocalFunctionEpilogue(computation);
   }
 
@@ -216,7 +223,7 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   return ir_function;
 }
 
-void IrEmitter::InitializeIrFunction(const string& function_name) {
+void IrEmitter::InitializeIrFunction(const std::string& function_name) {
   // Functions with local linkage get an inlining bonus.  Because we know
   // a-priori that embedded functions (non-entry functions) will not have its
   // name resolved, give it local linkage.
@@ -308,7 +315,7 @@ int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   int64_t byte_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   DCHECK_GE(byte_size, 0);
   // Largest scalar is a complex128 so we don't need to worry about the
-  // int64->int truncation here.
+  // int64_t->int truncation here.
   DCHECK_LE(byte_size, 16);
 
   // Allocations may be 8-byte aligned if part of a small block.
@@ -456,13 +463,13 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
 Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                                     llvm::Value* program_buffer_address) {
   int64_t length = ByteSizeOf(shape);
-  if (length < 0 || length > std::numeric_limits<int32>::max()) {
+  if (length < 0 || length > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument(
         "xfeed (infeed or outfeed) buffer length %d is outside the valid "
         "size range",
         length);
   }
-  int32_t length_32 = static_cast<int32>(length);
+  int32_t length_32 = static_cast<int32_t>(length);
 
   int32_t shape_length;
   TF_ASSIGN_OR_RETURN(
@@ -967,64 +974,88 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       bool multi_threaded =
           hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
       bool use_mkl_dnn =
-          hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
+          hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn() &&
+          convolution->feature_group_count() == 1;
+
+      auto valid_num_dims = [](absl::Span<const int64_t> xs) {
+        return xs.size() >= 2 && xs.size() <= 3;
+      };
+      TF_RET_CHECK(valid_num_dims(input_dims)) << input_dims.size();
+      TF_RET_CHECK(valid_num_dims(kernel_dims));
+      TF_RET_CHECK(valid_num_dims(output_dims));
+      TF_RET_CHECK(valid_num_dims(strides));
+      TF_RET_CHECK(padding.size() >= 2 && padding.size() <= 3);
+      TF_RET_CHECK(valid_num_dims(base_dilation));
+      TF_RET_CHECK(valid_num_dims(window_dilation));
 
       // TODO(b/78639006) Singlethread MKL conv2d is not implemented due to the
       // potential race condition by setting the omp_num_threads.
-      const char* fn_name =
-          primitive_type == F16
-              ? (multi_threaded
-                     ? runtime::kEigenConvF16SymbolName
-                     : runtime::kEigenSingleThreadedConvF16SymbolName)
-              : (multi_threaded
-                     ? (use_mkl_dnn ? runtime::kMKLConvF32SymbolName
-                                    : runtime::kEigenConvF32SymbolName)
-                     : runtime::kEigenSingleThreadedConvF32SymbolName);
+      const char* fn_name;
+      if (input_dims.size() == 2) {
+        fn_name =
+            primitive_type == F16
+                ? (multi_threaded
+                       ? runtime::kEigenConv2DF16SymbolName
+                       : runtime::kEigenSingleThreadedConv2DF16SymbolName)
+                : (multi_threaded
+                       ? (use_mkl_dnn ? runtime::kMKLConv2DF32SymbolName
+                                      : runtime::kEigenConv2DF32SymbolName)
+                       : runtime::kEigenSingleThreadedConv2DF32SymbolName);
+      } else if (input_dims.size() == 3) {
+        fn_name =
+            primitive_type == F16
+                ? (multi_threaded
+                       ? runtime::kEigenConv3DF16SymbolName
+                       : runtime::kEigenSingleThreadedConv3DF16SymbolName)
+                : (multi_threaded
+                       ? runtime::kEigenConv3DF32SymbolName
+                       : runtime::kEigenSingleThreadedConv3DF32SymbolName);
+      } else {
+        LOG(FATAL) << "Invalid number of dimensions " << input_dims.size();
+      }
       if (!multi_threaded && use_mkl_dnn) {
         LOG(WARNING) << "Using Eigen instead of MKL-DNN for single-threaded "
-                        "conv2d function.";
+                        "convolution.";
       }
-      TF_RET_CHECK(input_dims.size() == 2);
-      TF_RET_CHECK(kernel_dims.size() == 2);
-      TF_RET_CHECK(output_dims.size() == 2);
-      TF_RET_CHECK(strides.size() == 2);
-      TF_RET_CHECK(padding.size() == 2);
-      TF_RET_CHECK(base_dilation.size() == 2);
-      TF_RET_CHECK(window_dilation.size() == 2);
-      EmitCallToFunc(fn_name,
-                     {
-                         GetExecutableRunOptionsArgument(),
-                         BitCast(GetEmittedValueFor(convolution), ir_ptr_type),
-                         BitCast(lhs_address, ir_ptr_type),
-                         BitCast(rhs_address, ir_ptr_type),
-                         b_.getInt64(input_batch),
-                         b_.getInt64(input_dims[0]),
-                         b_.getInt64(input_dims[1]),
-                         b_.getInt64(input_channels),
-                         b_.getInt64(kernel_dims[0]),
-                         b_.getInt64(kernel_dims[1]),
-                         b_.getInt64(kernel_channels),
-                         b_.getInt64(kernel_filters),
-                         b_.getInt64(output_dims[0]),
-                         b_.getInt64(output_dims[1]),
-                         b_.getInt64(strides[0]),
-                         b_.getInt64(strides[1]),
-                         b_.getInt64(padding[0].first),
-                         b_.getInt64(padding[0].second),
-                         b_.getInt64(padding[1].first),
-                         b_.getInt64(padding[1].second),
-                         b_.getInt64(base_dilation[0]),
-                         b_.getInt64(base_dilation[1]),
-                         b_.getInt64(window_dilation[0]),
-                         b_.getInt64(window_dilation[1]),
-                     },
-                     b_.getVoidTy(), /*does_not_throw=*/true,
+      std::vector<llvm::Value*> args = {
+          GetExecutableRunOptionsArgument(),
+          BitCast(GetEmittedValueFor(convolution), ir_ptr_type),
+          BitCast(lhs_address, ir_ptr_type),
+          BitCast(rhs_address, ir_ptr_type),
+          b_.getInt64(input_batch),
+      };
+      for (int64_t d : input_dims) {
+        args.push_back(b_.getInt64(d));
+      }
+      args.push_back(b_.getInt64(input_channels));
+      for (int64_t d : kernel_dims) {
+        args.push_back(b_.getInt64(d));
+      }
+      args.push_back(b_.getInt64(kernel_channels));
+      args.push_back(b_.getInt64(kernel_filters));
+      for (int64_t d : output_dims) {
+        args.push_back(b_.getInt64(d));
+      }
+      for (int64_t d : strides) {
+        args.push_back(b_.getInt64(d));
+      }
+      for (const auto& p : padding) {
+        args.push_back(b_.getInt64(p.first));
+        args.push_back(b_.getInt64(p.second));
+      }
+      for (int64_t d : base_dilation) {
+        args.push_back(b_.getInt64(d));
+      }
+      for (int64_t d : window_dilation) {
+        args.push_back(b_.getInt64(d));
+      }
+      args.push_back(b_.getInt64(convolution->feature_group_count()));
+      EmitCallToFunc(fn_name, args, b_.getVoidTy(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
 
       return Status::OK();
     }
   }
-
   // This is a completely un-optimized version of convolution just to
   // have an early version that works. E.g. the input index and
   // padding calculation is not hoisted out of the inner loop.
@@ -1196,14 +1227,14 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
        /*replica_groups_size=*/b_.getInt32(replica_groups_size),
 
        /*channel_id_present=*/
-       b_.getInt32(static_cast<int32>(crs->channel_id().has_value())),
+       b_.getInt32(static_cast<int32_t>(crs->channel_id().has_value())),
        /*op_id=*/
        b_.getInt64(crs->channel_id().has_value()
                        ? *crs->channel_id()
                        : crs->GetModule()->unique_id()),
        /*reduction_kind=*/
        b_.getInt32(
-           static_cast<int32>(*MatchReductionComputation(crs->to_apply()))),
+           static_cast<int32_t>(*MatchReductionComputation(crs->to_apply()))),
        /*shape_ptr=*/shape_ptr,
        /*shape_length=*/b_.getInt32(shape_length),
        /*num_buffers=*/b_.getInt32(crs->operand_count()),
@@ -1259,7 +1290,7 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
       runtime::kAllToAllSymbolName,
       {/*run_options=*/GetExecutableRunOptionsArgument(),
        /*channel_id_present=*/
-       b_.getInt32(static_cast<int32>(instruction->channel_id().has_value())),
+       b_.getInt32(static_cast<int32_t>(instruction->channel_id().has_value())),
        /*op_id=*/
        b_.getInt64(instruction->channel_id().has_value()
                        ? *instruction->channel_id()
@@ -1299,7 +1330,7 @@ Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
       runtime::kCollectivePermuteSymbolName,
       {/*run_options=*/GetExecutableRunOptionsArgument(),
        /*channel_id_present=*/
-       b_.getInt32(static_cast<int32>(crs->channel_id().has_value())),
+       b_.getInt32(static_cast<int32_t>(crs->channel_id().has_value())),
        /*op_id=*/
        b_.getInt64(crs->channel_id().has_value()
                        ? *crs->channel_id()
@@ -1381,7 +1412,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
 }
 
 IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
-    HloComputation* function, string* failure_reason) const {
+    HloComputation* function, std::string* failure_reason) const {
   CHECK_EQ(function->num_parameters(), 2);
 
   auto root_instruction = function->root_instruction();
@@ -1648,7 +1679,7 @@ void IrEmitter::EmitShardedVectorStore(
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
     absl::Span<const int64_t> dimensions, HloComputation* function,
-    string* failure_reason) {
+    std::string* failure_reason) {
   if (!reduce->shape().IsArray()) {
     *failure_reason = "vectorization of variadic reduce not implemented";
     return false;
@@ -1816,7 +1847,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   absl::Span<const int64_t> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
-    string vectorization_failure_reason;
+    std::string vectorization_failure_reason;
     TF_ASSIGN_OR_RETURN(
         bool vectorization_successful,
         EmitVectorizedReduce(reduce, arg, init_value, dimensions, function,
@@ -2185,10 +2216,11 @@ Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
   for (int64_t i = 1; i < hlo->operand_count(); ++i) {
     const int64_t dim_index = i - 1;
     llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(i));
-    llvm::LoadInst* dyn_dim_size = b_.CreateLoad(source_buffer, "dyn_dim_size");
+    llvm::LoadInst* dyn_dim_size = Load(source_buffer, "dyn_dim_size");
 
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+        b_.getInt8Ty(), raw_buffer,
+        raw_data_size + dim_index * sizeof(int32_t));
     b_.CreateStore(dyn_dim_size,
                    b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()));
     dynamic_dims.push_back(b_.CreateIntCast(dyn_dim_size, b_.getInt64Ty(),
@@ -2250,8 +2282,10 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
         EmitBufferPointer(dim_size_slice, data_shape);
     const int64_t dim_index = i - 1;
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+        b_.getInt8Ty(), raw_buffer,
+        raw_data_size + dim_index * sizeof(int32_t));
     llvm::Value* dyn_dim_size = b_.CreateLoad(
+        b_.getInt32Ty(),
         b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()),
         "dyn_dim_size");
     b_.CreateStore(dyn_dim_size,
@@ -2494,7 +2528,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 
 StatusOr<bool> IrEmitter::EmitFastConcatenate(
     HloInstruction* concatenate, absl::Span<HloInstruction* const> operands,
-    string* failure_reason) {
+    std::string* failure_reason) {
   if (ShouldEmitParallelLoopFor(*concatenate)) {
     *failure_reason =
         "cannot generate memcpy-based concat for the parallel CPU backend";
@@ -2680,7 +2714,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
 
 Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
   absl::Span<HloInstruction* const> operands(concatenate->operands());
-  string failure_reason;
+  std::string failure_reason;
   TF_ASSIGN_OR_RETURN(
       bool successful,
       EmitFastConcatenate(concatenate, operands, &failure_reason));
@@ -2701,7 +2735,7 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   TF_RET_CHECK(ShapeUtil::IsScalar(branch_index->shape()) &&
                (branch_index->shape().element_type() == PRED ||
                 branch_index->shape().element_type() == S32))
-      << "Branch index on a conditional must be scalar bool or int32; got: "
+      << "Branch index on a conditional must be scalar bool or int32_t; got: "
       << ShapeUtil::HumanString(branch_index->shape());
 
   for (int b = 0; b < num_branches; ++b) {
@@ -2879,7 +2913,7 @@ llvm::Value* IrEmitter::GetProfileCounterCommon(
   }
 
   int64_t prof_counter_idx = it->second;
-  string counter_name = IrName("prof_counter", hlo.name());
+  std::string counter_name = IrName("prof_counter", hlo.name());
   return GEP(GetProfileCountersArgument(), b_.getInt64(prof_counter_idx),
              counter_name);
 }
@@ -2902,7 +2936,8 @@ void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
                                                      llvm::Value* cycle_start) {
   auto* cycle_diff = b->CreateSub(cycle_end, cycle_start);
   llvm::LoadInst* old_cycle_count =
-      b->CreateLoad(prof_counter, "old_cycle_count");
+      b->CreateLoad(prof_counter->getType()->getPointerElementType(),
+                    prof_counter, "old_cycle_count");
   auto* new_cycle_count =
       b->CreateAdd(cycle_diff, old_cycle_count, "new_cycle_count");
   b->CreateStore(new_cycle_count, prof_counter);
@@ -2959,7 +2994,7 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
 
   llvm::Type* int8_ptr_type = b->getInt8Ty()->getPointerTo();
   llvm::Type* void_ptr_type =
-      int8_ptr_type;  // LLVM does not have a void*, we use an int8* instead.
+      int8_ptr_type;  // LLVM does not have a void*, we use an int8_t* instead.
   llvm::FunctionType* fn_type =
       llvm::FunctionType::get(b->getInt64Ty(), {void_ptr_type, int8_ptr_type},
                               /*isVarArg=*/false);
@@ -2991,7 +3026,7 @@ void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
 
   llvm::Type* void_ptr_type =
       b->getInt8Ty()->getPointerTo();  // LLVM does not have a void*, we use an
-                                       // int8* instead.
+                                       // int8_t* instead.
   llvm::FunctionType* fn_type =
       llvm::FunctionType::get(b->getVoidTy(), {void_ptr_type, b->getInt64Ty()},
                               /*isVarArg=*/false);

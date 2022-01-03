@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "fp16.h"  // from @FP16
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -38,6 +39,19 @@ void DequantizeInt8(const int8_t *packed_s8_data, float *unpacked_fp32_data,
   op_params.scale = scale;
   optimized_ops::Dequantize(op_params, tensor_shape, packed_s8_data,
                             tensor_shape, unpacked_fp32_data);
+}
+
+void PerChannelDequantizeInt8(const int8_t* packed_s8_data,
+                              float* unpacked_fp32_data,
+                              const RuntimeShape& tensor_shape,
+                              const int32_t* zero_points, const float* scales,
+                              int32_t quantized_dimension) {
+  PerChannelDequantizationParams op_params;
+  op_params.zero_point = zero_points;
+  op_params.scale = scales;
+  op_params.quantized_dimension = quantized_dimension;
+  reference_ops::PerChannelDequantize(op_params, tensor_shape, packed_s8_data,
+                                      tensor_shape, unpacked_fp32_data);
 }
 
 }  // namespace xnnpack

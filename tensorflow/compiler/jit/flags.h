@@ -167,7 +167,8 @@ const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
-void ResetMlirCommonFlags();
+
+void ResetJitCompilerFlags();
 
 const CpuRtFlags& GetCpuRtFlags();
 

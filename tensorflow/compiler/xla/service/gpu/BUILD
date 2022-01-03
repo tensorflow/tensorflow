@@ -543,30 +543,6 @@ tf_cuda_library(
 
 # First level of nested select. NCCL requires both if_cuda and if_nccl.
 filegroup(
-    name = "nccl_test_utils_src",
-    srcs = if_nccl(
-        ["nccl_test_utils.cc"],
-        ["nccl_test_utils_dummy.cc"],
-    ),
-)
-
-tf_cuda_library(
-    name = "nccl_test_utils",
-    srcs = if_cuda_or_rocm(
-        [":nccl_test_utils_src"],
-        ["nccl_test_utils_dummy.cc"],
-    ),
-    hdrs = ["nccl_test_utils.h"],
-    deps = [
-        "@com_google_absl//absl/container:flat_hash_set",
-        "//tensorflow/compiler/xla/service:global_device_id",
-    ] + if_nccl([
-        ":virtual_nccl_utils",
-    ]),
-)
-
-# First level of nested select. NCCL requires both if_cuda and if_nccl.
-filegroup(
     name = "nccl_utils_srcs",
     srcs = if_nccl(["nccl_utils.cc"]),
 )
@@ -583,11 +559,9 @@ tf_cuda_library(
     hdrs = if_cuda_or_rocm([":nccl_utils_hdrs"]),
     deps = if_cuda_or_rocm([
         ":gpu_executable_run_options",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "//tensorflow/compiler/xla:refcounting_hash_map",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -595,8 +569,6 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/gpu:gpu_types_header",
-        "//tensorflow/stream_executor/lib",
     ]) + if_nccl([
         ":virtual_nccl",
         ":virtual_rccl",
@@ -778,6 +750,7 @@ cc_library(
         ":stream_assignment",
         ":stream_executor_util",
         ":thunk",
+        "@com_google_absl//absl/cleanup",
         "@llvm-project//mlir:IR",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
@@ -797,6 +770,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
@@ -858,6 +832,7 @@ cc_library(
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
+            "@tf_runtime//backends/gpu:gpu_executor",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_opdefs",
             "@tf_runtime//backends/gpu:gpu_passes",
@@ -865,6 +840,7 @@ cc_library(
         ],
         ":is_bef_executable_enabled": [
             ":xlir_kernels",
+            "@llvm-project//llvm:Support",
             "//tensorflow/core/tfrt/runtime:work_queue_interface",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
@@ -875,6 +851,7 @@ cc_library(
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
             "@tf_runtime//:tensor_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_executor",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_passes",
             "@tf_runtime//backends/gpu:gpu_types",
@@ -928,7 +905,6 @@ tf_cc_test(
     srcs = ["ir_emission_utils_test.cc"],
     deps = [
         ":ir_emission_utils",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -1651,6 +1627,7 @@ cc_library(
         ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
+        ":gpu_conv_rewriter",
         ":gpu_copy_insertion",
         ":gpu_device_info",
         ":gpu_executable",
@@ -2584,18 +2561,18 @@ test_suite(
         # Disabled: Repeated Kernel BefThunk invocations prolong test duration.
         # E.g., it takes ~1300s for 256x128 matrix.
         # "//tensorflow/compiler/xla/client/lib:svd_test_gpu",
+        "//tensorflow/compiler/xla/service/gpu:cudnn_fused_conv_rewriter_test",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gemm_broadcast_folding_rewrite_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_copy_test",
         "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
         "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
-        # TODO(b/187959015): Enable when complex number types are supported.
-        #"//tensorflow/compiler/xla/tests:cholesky_test_gpu",
-        # TODO(b/187959015): Enable when complex number types are supported.
-        #"//tensorflow/compiler/xla/tests:dot_operation_test_gpu",
+        "//tensorflow/compiler/xla/tests:cholesky_test_gpu",
+        "//tensorflow/compiler/xla/tests:convolution_test_gpu",
+        "//tensorflow/compiler/xla/tests:dot_operation_test_gpu",
         "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
-        # TODO(b/187959015): Enable when complex number types are supported.
-        # "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
+        "//tensorflow/compiler/xla/tests:scatter_test_gpu",
+        "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
         "//tensorflow/compiler/xla/tests:while_test_gpu",
     ],
 )
@@ -2603,6 +2580,7 @@ test_suite(
 test_suite(
     name = "bef_executable_tests",
     tests = [
+        "//tensorflow/compiler/xla/service/gpu:cudnn_fused_conv_rewriter_test",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
         "//tensorflow/compiler/xla/service/gpu/tests:add_preds.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:all_reduce.hlo.test",
@@ -2646,9 +2624,14 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:reduction_vectorization_sm_all.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:reduction_vectorization_test",
         "//tensorflow/compiler/xla/service/gpu/tests:scatter.hlo.test",
+        "//tensorflow/compiler/xla/service/gpu/tests:slice_to_dynamic.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:sorting.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:sorting_test",
         "//tensorflow/compiler/xla/service/gpu/tests:tree_reduction_rewriter_test",
+        "//tensorflow/compiler/xla/tests:cholesky_test_gpu",
+        "//tensorflow/compiler/xla/tests:convolution_test_gpu",
         "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
+        "//tensorflow/compiler/xla/tests:scatter_test_gpu",
+        "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
     ],
 )

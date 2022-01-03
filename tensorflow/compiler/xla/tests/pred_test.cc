@@ -86,7 +86,7 @@ TEST_F(PredTest, ConstantR1Pred) {
 TEST_F(PredTest, ConstantR2Pred) {
   XlaBuilder builder(TestName());
   ConstantR2<bool>(&builder, {{false, true, true}, {true, false, false}});
-  const string expected = R"(pred[2,3] {
+  const std::string expected = R"(pred[2,3] {
   { 0, 1, 1 },
   { 1, 0, 0 }
 })";

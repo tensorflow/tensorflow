@@ -8,7 +8,6 @@ tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/compiler/mlir/hlo/WORKSPACE
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h
 tensorflow/core/platform/default/build_config/BUILD
-tensorflow/core/platform/default/experimental_cc_shared_library.bzl
 tensorflow/core/tfrt/tpu/tpu_resources.h
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h
 tensorflow/go/BUILD
@@ -117,7 +116,6 @@ third_party/clang_toolchain/download_clang.bzl
 third_party/codegen.BUILD
 third_party/common.bzl
 third_party/compute_library/BUILD
-third_party/compute_library/LICENSE
 third_party/coremltools.BUILD
 third_party/cub.BUILD
 third_party/curl.BUILD
@@ -273,9 +271,11 @@ third_party/tensorrt/BUILD
 third_party/tensorrt/BUILD.tpl
 third_party/tensorrt/LICENSE
 third_party/tensorrt/build_defs.bzl.tpl
+third_party/tensorrt/plugin/BUILD
 third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl
 third_party/tensorrt/tensorrt/tensorrt_config.py.tpl
 third_party/tensorrt/tensorrt_configure.bzl
+third_party/tensorrt/workspace.bzl
 third_party/termcolor.BUILD
 third_party/tf_toolchains.BUILD
 third_party/tflite_mobilenet.BUILD

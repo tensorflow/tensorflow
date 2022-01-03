@@ -390,6 +390,22 @@ container.}], [TF_DatasetIteratorAlloc]>:$handle,
   );
 }
 
+def TF_AnonymousIteratorV3Op : TF_Op<"AnonymousIteratorV3", [TF_UniqueResourceAllocation]> {
+  let summary = "A container for an iterator resource.";
+
+  let arguments = (ins
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, [{A handle to the iterator that can be passed to a "MakeIterator" or
+"IteratorGetNext" op. In contrast to Iterator, AnonymousIterator prevents
+resource sharing by name, and does not keep a reference to the resource
+container.}], [TF_DatasetIteratorAlloc]>:$handle
+  );
+}
+
 def TF_AnonymousMemoryCacheOp : TF_Op<"AnonymousMemoryCache", [TF_UniqueResourceAllocation]> {
   let summary = "";
 
@@ -4065,7 +4081,7 @@ This operation creates a tensor of `shape` and `dtype`.
   let hasFolder = 1;
 }
 
-def TF_EnqueueTPUEmbeddingArbitraryTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingArbitraryTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingArbitraryTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingArbitraryTensorBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
   }];
@@ -4117,7 +4133,7 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
   TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 An op that enqueues a list of input batch tensors to TPUEmbedding.
   }];
@@ -4141,7 +4157,7 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_EnqueueTPUEmbeddingIntegerBatchOp : TF_Op<"EnqueueTPUEmbeddingIntegerBatch", [TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingIntegerBatchOp : TF_Op<"EnqueueTPUEmbeddingIntegerBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 An op that enqueues a list of input batch tensors to TPUEmbedding.
   }];
@@ -4162,7 +4178,7 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_EnqueueTPUEmbeddingRaggedTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingRaggedTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingRaggedTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingRaggedTensorBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
   let summary = "Eases the porting of code that uses tf.nn.embedding_lookup().";
 
   let description = [{
@@ -4207,7 +4223,7 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
   TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_EnqueueTPUEmbeddingSparseBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingSparseBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 An op that enqueues TPUEmbedding input indices from a SparseTensor.
   }];
@@ -4250,7 +4266,7 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
   TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_EnqueueTPUEmbeddingSparseTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
+def TF_EnqueueTPUEmbeddingSparseTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseTensorBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
   }];
@@ -6948,7 +6964,7 @@ idx ==> [1, 3, 5]
   TF_DerivedResultTypeAttr out_idx = TF_DerivedResultTypeAttr<1>;
 }
 
-def TF_LoadTPUEmbeddingADAMParametersOp : TF_Op<"LoadTPUEmbeddingADAMParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingADAMParametersOp : TF_Op<"LoadTPUEmbeddingADAMParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load ADAM embedding parameters.";
 
   let description = [{
@@ -6974,7 +6990,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingADAMParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingADAMParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -6993,7 +7009,7 @@ def TF_LoadTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingA
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdadeltaParametersOp : TF_Op<"LoadTPUEmbeddingAdadeltaParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingAdadeltaParametersOp : TF_Op<"LoadTPUEmbeddingAdadeltaParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load Adadelta embedding parameters.";
 
   let description = [{
@@ -7019,7 +7035,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdadeltaParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdadeltaParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7038,7 +7054,7 @@ def TF_LoadTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbedd
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdagradParametersOp : TF_Op<"LoadTPUEmbeddingAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingAdagradParametersOp : TF_Op<"LoadTPUEmbeddingAdagradParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load Adagrad embedding parameters.";
 
   let description = [{
@@ -7063,7 +7079,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdagradParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7081,7 +7097,7 @@ def TF_LoadTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddi
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingCenteredRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingCenteredRMSPropParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load centered RMSProp embedding parameters.";
 
   let description = [{
@@ -7108,7 +7124,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingFTRLParametersOp : TF_Op<"LoadTPUEmbeddingFTRLParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingFTRLParametersOp : TF_Op<"LoadTPUEmbeddingFTRLParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load FTRL embedding parameters.";
 
   let description = [{
@@ -7134,7 +7150,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingFTRLParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingFTRLParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7153,7 +7169,7 @@ def TF_LoadTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingF
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"LoadTPUEmbeddingMDLAdagradLightParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"LoadTPUEmbeddingMDLAdagradLightParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load MDL Adagrad Light embedding parameters.";
 
   let description = [{
@@ -7180,7 +7196,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingMomentumParametersOp : TF_Op<"LoadTPUEmbeddingMomentumParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingMomentumParametersOp : TF_Op<"LoadTPUEmbeddingMomentumParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load Momentum embedding parameters.";
 
   let description = [{
@@ -7205,7 +7221,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingMomentumParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingMomentumParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7223,7 +7239,7 @@ def TF_LoadTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbedd
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalAdagradParametersOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingProximalAdagradParametersOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load proximal Adagrad embedding parameters.";
 
   let description = [{
@@ -7248,7 +7264,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7266,7 +7282,7 @@ def TF_LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"LoadTP
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProximalYogiParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProximalYogiParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7284,7 +7300,7 @@ def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProxima
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalYogiParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalYogiParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7303,7 +7319,7 @@ def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEm
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingRMSPropParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load RMSProp embedding parameters.";
 
   let description = [{
@@ -7329,7 +7345,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingRMSPropParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingRMSPropParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -7348,7 +7364,7 @@ def TF_LoadTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddi
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Load SGD embedding parameters.";
 
   let description = [{
@@ -7372,7 +7388,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -8717,15 +8733,15 @@ tf.matmul(a, x)
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>, [{Shape is `[..., M, M]`.}]>:$matrix,
-    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>, [{Shape is `[..., M, K]`.}]>:$rhs,
+    Arg<TF_FpOrComplexTensor, [{Shape is `[..., M, M]`.}]>:$matrix,
+    Arg<TF_FpOrComplexTensor, [{Shape is `[..., M, K]`.}]>:$rhs,
 
     DefaultValuedAttr<BoolAttr, "true">:$lower,
     DefaultValuedAttr<BoolAttr, "false">:$adjoint
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>, [{Shape is `[..., M, K]`.}]>:$output
+    Res<TF_FpOrComplexTensor, [{Shape is `[..., M, K]`.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -10843,6 +10859,170 @@ tensor.}]>:$input_max,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_QuantizeV2Op : TF_Op<"QuantizeV2", [NoSideEffect]> {
+  let summary = [{
+Quantize the 'input' tensor of type float to 'output' tensor of type 'T'.
+  }];
+
+  let description = [{
+[min_range, max_range] are scalar floats that specify the range for
+the 'input' data. The 'mode' attribute controls exactly which calculations are
+used to convert the float values to their quantized equivalents.  The
+'round_mode' attribute controls which rounding tie-breaking algorithm is used
+when rounding float values to their quantized equivalents.
+
+In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
+
+```
+out[i] = (in[i] - min_range) * range(T) / (max_range - min_range)
+if T == qint8: out[i] -= (range(T) + 1) / 2.0
+```
+
+here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
+
+*MIN_COMBINED Mode Example*
+
+Assume the input is type float and has a possible range of [0.0, 6.0] and the
+output type is quint8 ([0, 255]). The min_range and max_range values should be
+specified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each
+value of the input by 255/6 and cast to quint8.
+
+If the output type was qint8 ([-128, 127]), the operation will additionally
+subtract each value by 128 prior to casting, so that the range of values aligns
+with the range of qint8.
+
+If the mode is 'MIN_FIRST', then this approach is used:
+
+```
+num_discrete_values = 1 << (# of bits in T)
+range_adjust = num_discrete_values / (num_discrete_values - 1)
+range = (range_max - range_min) * range_adjust
+range_scale = num_discrete_values / range
+quantized = round(input * range_scale) - round(range_min * range_scale) +
+  numeric_limits<T>::min()
+quantized = max(quantized, numeric_limits<T>::min())
+quantized = min(quantized, numeric_limits<T>::max())
+```
+
+The biggest difference between this and MIN_COMBINED is that the minimum range
+is rounded first, before it's subtracted from the rounded value. With
+MIN_COMBINED, a small bias is introduced where repeated iterations of quantizing
+and dequantizing will introduce a larger and larger error.
+
+*SCALED mode Example*
+
+`SCALED` mode matches the quantization approach used in
+`QuantizeAndDequantize{V2|V3}`.
+
+If the mode is `SCALED`, the quantization is performed by multiplying each
+input value by a scaling_factor.
+The scaling_factor is determined from `min_range` and `max_range` to be as large
+as possible such that the range from `min_range` to `max_range` is representable
+within values of type T.
+
+```c++
+
+  const int min_T = std::numeric_limits<T>::min();
+  const int max_T = std::numeric_limits<T>::max();
+  const float max_float = std::numeric_limits<float>::max();
+
+  const float scale_factor_from_min_side =
+      (min_T * min_range > 0) ? min_T / min_range : max_float;
+  const float scale_factor_from_max_side =
+      (max_T * max_range > 0) ? max_T / max_range : max_float;
+
+  const float scale_factor = std::min(scale_factor_from_min_side,
+                                      scale_factor_from_max_side);
+```
+
+We next use the scale_factor to adjust min_range and max_range as follows:
+
+```c++
+      min_range = min_T / scale_factor;
+      max_range = max_T / scale_factor;
+```
+
+
+e.g. if T = qint8, and initially min_range = -10, and max_range = 9, we would
+compare -128/-10.0 = 12.8 to 127/9.0 = 14.11, and set scaling_factor = 12.8
+In this case, min_range would remain -10, but max_range would be adjusted to
+127 / 12.8 = 9.921875
+
+So we will quantize input values in the range (-10, 9.921875) to (-128, 127).
+
+The input tensor can now be quantized by clipping values to the range
+`min_range` to `max_range`, then multiplying by scale_factor as follows:
+
+```c++
+result = round(min(max_range, max(min_range, input)) * scale_factor)
+```
+
+The adjusted `min_range` and `max_range` are returned as outputs 2 and 3 of
+this operation. These outputs should be used as the range for any further
+calculations.
+
+
+*narrow_range (bool) attribute*
+
+If true, we do not use the minimum quantized value.
+i.e. for int8 the quantized output, it would be restricted to the range
+-127..127 instead of the full -128..127 range.
+This is provided for compatibility with certain inference backends.
+(Only applies to SCALED mode)
+
+
+*axis (int) attribute*
+
+An optional `axis` attribute can specify a dimension index of the input tensor,
+such that quantization ranges will be calculated and applied separately for each
+slice of the tensor along that dimension. This is useful for per-channel
+quantization.
+
+If axis is specified, min_range and max_range
+
+if `axis`=None, per-tensor quantization is performed as normal.
+
+
+*ensure_minimum_range (float) attribute*
+
+Ensures the minimum quantization range is at least this value.
+The legacy default value for this is 0.01, but it is strongly suggested to
+set it to 0 for new uses.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$input,
+    Arg<TF_Float32Tensor, [{The minimum value of the quantization range. This value may be adjusted by the
+op depending on other parameters. The adjusted value is written to `output_min`.
+If the `axis` attribute is specified, this must be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.}]>:$min_range,
+    Arg<TF_Float32Tensor, [{The maximum value of the quantization range. This value may be adjusted by the
+op depending on other parameters. The adjusted value is written to `output_max`.
+If the `axis` attribute is specified, this must be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.}]>:$max_range,
+
+    DefaultValuedAttr<TF_AnyStrAttrOf<["MIN_COMBINED", "MIN_FIRST", "SCALED"]>, "\"MIN_COMBINED\"">:$mode,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["HALF_AWAY_FROM_ZERO", "HALF_TO_EVEN"]>, "\"HALF_AWAY_FROM_ZERO\"">:$round_mode,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    DefaultValuedAttr<I64Attr, "-1">:$axis,
+    DefaultValuedAttr<F32Attr, "0.01f">:$ensure_minimum_range
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8]>, [{The quantized data produced from the float input.}]>:$output,
+    Res<TF_Float32Tensor, [{The final quantization range minimum, used to clip input values before scaling
+and rounding them to quantized values.
+If the `axis` attribute is specified, this will be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.}]>:$output_min,
+    Res<TF_Float32Tensor, [{The final quantization range maximum, used to clip input values before scaling
+and rounding them to quantized values.
+If the `axis` attribute is specified, this will be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.}]>:$output_max
+  );
+
+  TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_QueueDequeueV2Op : TF_Op<"QueueDequeueV2", []> {
   let summary = "Dequeues a tuple of one or more tensors from the given queue.";
 
@@ -11548,7 +11728,7 @@ def TF_RecvOp : TF_Op<"Recv", []> {
   TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", [TF_TPUEmbeddingSideEffect]> {
+def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "An op that receives embedding activations on the TPU.";
 
   let description = [{
@@ -12939,7 +13119,7 @@ checkpoint directly.}]>:$tensors
   TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_RetrieveTPUEmbeddingADAMParametersOp : TF_Op<"RetrieveTPUEmbeddingADAMParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingADAMParametersOp : TF_Op<"RetrieveTPUEmbeddingADAMParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve ADAM embedding parameters.";
 
   let description = [{
@@ -12964,7 +13144,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingADAMParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingADAMParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -12983,7 +13163,7 @@ def TF_RetrieveTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEm
   );
 }
 
-def TF_RetrieveTPUEmbeddingAdadeltaParametersOp : TF_Op<"RetrieveTPUEmbeddingAdadeltaParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingAdadeltaParametersOp : TF_Op<"RetrieveTPUEmbeddingAdadeltaParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve Adadelta embedding parameters.";
 
   let description = [{
@@ -13008,7 +13188,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -13027,7 +13207,7 @@ def TF_RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"RetrieveT
   );
 }
 
-def TF_RetrieveTPUEmbeddingAdagradParametersOp : TF_Op<"RetrieveTPUEmbeddingAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingAdagradParametersOp : TF_Op<"RetrieveTPUEmbeddingAdagradParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve Adagrad embedding parameters.";
 
   let description = [{
@@ -13051,7 +13231,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingAdagradParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -13069,7 +13249,7 @@ def TF_RetrieveTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTP
   );
 }
 
-def TF_RetrieveTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"RetrieveTPUEmbeddingCenteredRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"RetrieveTPUEmbeddingCenteredRMSPropParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve centered RMSProp embedding parameters.";
 
   let description = [{
@@ -13095,7 +13275,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingFTRLParametersOp : TF_Op<"RetrieveTPUEmbeddingFTRLParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingFTRLParametersOp : TF_Op<"RetrieveTPUEmbeddingFTRLParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve FTRL embedding parameters.";
 
   let description = [{
@@ -13120,7 +13300,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingFTRLParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingFTRLParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -13139,7 +13319,7 @@ def TF_RetrieveTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEm
   );
 }
 
-def TF_RetrieveTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"RetrieveTPUEmbeddingMDLAdagradLightParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"RetrieveTPUEmbeddingMDLAdagradLightParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve MDL Adagrad Light embedding parameters.";
 
   let description = [{
@@ -13165,7 +13345,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingMomentumParametersOp : TF_Op<"RetrieveTPUEmbeddingMomentumParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingMomentumParametersOp : TF_Op<"RetrieveTPUEmbeddingMomentumParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve Momentum embedding parameters.";
 
   let description = [{
@@ -13189,7 +13369,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingMomentumParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingMomentumParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -13207,7 +13387,7 @@ def TF_RetrieveTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"RetrieveT
   );
 }
 
-def TF_RetrieveTPUEmbeddingProximalAdagradParametersOp : TF_Op<"RetrieveTPUEmbeddingProximalAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingProximalAdagradParametersOp : TF_Op<"RetrieveTPUEmbeddingProximalAdagradParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve proximal Adagrad embedding parameters.";
 
   let description = [{
@@ -13231,7 +13411,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -13249,7 +13429,7 @@ def TF_RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"Re
   );
 }
 
-def TF_RetrieveTPUEmbeddingProximalYogiParametersOp : TF_Op<"RetrieveTPUEmbeddingProximalYogiParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingProximalYogiParametersOp : TF_Op<"RetrieveTPUEmbeddingProximalYogiParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -13267,7 +13447,7 @@ def TF_RetrieveTPUEmbeddingProximalYogiParametersOp : TF_Op<"RetrieveTPUEmbeddin
   );
 }
 
-def TF_RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -13286,7 +13466,7 @@ def TF_RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"Retri
   );
 }
 
-def TF_RetrieveTPUEmbeddingRMSPropParametersOp : TF_Op<"RetrieveTPUEmbeddingRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingRMSPropParametersOp : TF_Op<"RetrieveTPUEmbeddingRMSPropParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve RMSProp embedding parameters.";
 
   let description = [{
@@ -13311,7 +13491,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingRMSPropParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingRMSPropParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -13330,7 +13510,7 @@ def TF_RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"RetrieveTP
   );
 }
 
-def TF_RetrieveTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"RetrieveTPUEmbeddingStochasticGradientDescentParameters", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"RetrieveTPUEmbeddingStochasticGradientDescentParameters", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Retrieve SGD embedding parameters.";
 
   let description = [{
@@ -13353,7 +13533,7 @@ used to retrieve updated parameters before saving a checkpoint.
   );
 }
 
-def TF_RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
+def TF_RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -14407,7 +14587,7 @@ def TF_SendOp : TF_Op<"Send", []> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
+def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "Performs gradient updates of embedding tables.";
 
   let arguments = (ins
@@ -17361,6 +17541,37 @@ is taken.}]>:$count,
   );
 }
 
+def TF_TakeWhileDatasetOp : TF_Op<"TakeWhileDataset", []> {
+  let summary = [{
+Creates a dataset that stops iteration when predicate` is false.
+  }];
+
+  let description = [{
+The `predicate` function must return a scalar boolean and accept the
+following arguments:
+
+* One tensor for each component of an element of `input_dataset`.
+* One tensor for each value in `other_arguments`.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Arg<Variadic<TF_Tensor>, [{A list of tensors, typically values that were captured when
+building a closure for `predicate`.}]>:$other_arguments,
+
+    SymbolRefAttr:$predicate,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
 def TF_TanOp : TF_Op<"Tan", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes tan of x element-wise.";
 
@@ -19229,16 +19440,17 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the input tensor}]>:$lhs,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the kernel tensor}]>:$rhs,
-    Arg<TF_I32OrI64Tensor, [{the inter-window strides}]>:$window_strides,
-    Arg<TF_I32OrI64Tensor, [{the padding to apply at the start and end of each input dimensions}]>:$padding,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{input tensor}]>:$lhs,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{kernel tensor}]>:$rhs,
+    Arg<TF_I32OrI64Tensor, [{inter-window strides}]>:$window_strides,
+    Arg<TF_I32OrI64Tensor, [{padding to apply at the start and end of each input dimensions}]>:$padding,
     Arg<TF_I32OrI64Tensor, [{dilation to apply between input elements}]>:$lhs_dilation,
     Arg<TF_I32OrI64Tensor, [{dilation to apply between kernel elements}]>:$rhs_dilation,
     Arg<TF_I32OrI64Tensor, [{number of feature groups for grouped convolution.}]>:$feature_group_count,
 
     StrAttr:$dimension_numbers,
-    StrAttr:$precision_config
+    StrAttr:$precision_config,
+    DefaultValuedAttr<I64Attr, "1">:$batch_group_count
   );
 
   let results = (outs
@@ -19502,6 +19714,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#reduce .
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_XlaReduceScatterOp : TF_Op<"XlaReduceScatter", [NoSideEffect]> {
@@ -19820,6 +20034,10 @@ XlaVariadicReduceV2 is a version that supports heterogeneous operands.
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_XlaVariadicReduceV2Op : TF_Op<"XlaVariadicReduceV2", [AttrSizedOperandSegments, NoSideEffect]> {
@@ -19846,6 +20064,8 @@ operands of different dtypes, and improved shape inference.
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_XlaVariadicSortOp : TF_Op<"XlaVariadicSort", [NoSideEffect]> {
@@ -19872,6 +20092,9 @@ is_stable attributes.
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_Xlog1pyOp : TF_Op<"Xlog1py", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
@@ -20167,7 +20390,7 @@ def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {
   TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", [TF_TPUEmbeddingSideEffect]> {
+def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "An op that receives embeddng activations on the TPU.";
 
   let description = [{
@@ -20219,7 +20442,7 @@ of the embedding lookup operation.
   );
 }
 
-def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
+def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "An op that performs gradient updates of embedding tables.";
 
   let description = [{

@@ -204,6 +204,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:thread_annotations",

@@ -17,7 +17,8 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
 
 #include "tensorflow/stream_executor/dnn.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/stream_executor/stream.h"
+// #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace stream_executor {
 namespace dnn {
@@ -76,12 +77,11 @@ class LazyOpRunner {
   //
   // The result is owned by LazyOpRunner.
   port::StatusOr<const OpRunner<typename Op::Signature>*> GetOrCreateRunner(
-      typename Op::Config config, StreamExecutor* stream_executor) {
+      typename Op::Config config, Stream* stream) {
     absl::MutexLock lock(&mu_);
     if (!runner_) {
-      SE_ASSIGN_OR_RETURN(runner_,
-                          Op::RunnerFromAlgorithmDesc(desc_, std::move(config),
-                                                      stream_executor));
+      SE_ASSIGN_OR_RETURN(runner_, Op::RunnerFromAlgorithmDesc(
+                                       desc_, std::move(config), stream));
     }
     return runner_.get();
   }
@@ -129,8 +129,8 @@ struct ConvOp {
 
   static port::StatusOr<std::unique_ptr<const OpRunner<ConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
-                          StreamExecutor* stream_executor) {
-    return stream_executor->ConvolveRunnerFromDesc(
+                          Stream* stream) {
+    return stream->ConvolveRunnerFromDesc(
         desc, config.kind, config.input_type, config.output_type,
         config.input_descriptor, config.filter_descriptor,
         config.output_descriptor, config.convolution_descriptor);
@@ -155,8 +155,8 @@ struct FusedConvOp {
 
   static port::StatusOr<std::unique_ptr<const OpRunner<FusedConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
-                          StreamExecutor* stream_executor) {
-    return stream_executor->FusedConvolveRunnerFromDesc(
+                          Stream* stream) {
+    return stream->FusedConvolveRunnerFromDesc(
         desc, config.kind, config.input_type, config.bias_type,
         config.output_type, config.conv_scale, config.side_input_scale,
         config.input_descriptor, config.filter_descriptor,

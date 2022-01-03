@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
-#include "mlir/Transforms/Bufferize.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
@@ -90,7 +90,7 @@ TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
     tensorflow::CreateTfCpuRtPipeline(pm, opts);
   };
   opts.specialization = specialization;
-  opts.type_converter = mlir::BufferizeTypeConverter();
+  opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
 
   // Instantiate new JitExecutable from the MLIR source.
   llvm::Expected<JitExecutable> jit_executable =

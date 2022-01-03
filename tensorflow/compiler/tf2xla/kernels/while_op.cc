@@ -350,6 +350,9 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   XlaCompiler::CompilationResult body;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
                                                 arguments, &body));
+  OP_REQUIRES_OK(
+      ctx, ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
+               body));
 
   // We must use a static shape for parameters to an XLA compilation. However,
   // we may not know the shape of a resource if it is first

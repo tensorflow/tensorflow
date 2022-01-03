@@ -99,7 +99,9 @@ struct EngineInfo {
         maximum_cached_engines(0),
         precision_mode(TrtPrecisionMode::FP32),
         use_calibration(true),
-        allow_build_at_runtime(true) {}
+
+        allow_build_at_runtime(true),
+        use_explicit_precision(false) {}
 
   string engine_name;
   string device;
@@ -118,6 +120,7 @@ struct EngineInfo {
   TrtPrecisionMode precision_mode;
   bool use_calibration;
   bool allow_build_at_runtime;
+  bool use_explicit_precision;
 };
 
 // Constructs a graphdef from the segment in the given graph and stores it to
@@ -154,7 +157,8 @@ Status ConvertGraphDefToEngine(
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
-    TrtShapeOptimizationProfile* profiles, absl::string_view engine_name);
+    TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
+    bool use_explicit_precision);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -175,7 +179,7 @@ class TrtNodeValidator {
   // data type information of a tensor for validation purpose.
   TrtNodeValidator(const grappler::GraphProperties& graph_properties,
                    TrtPrecisionMode precision_mode, bool use_calibration,
-                   bool use_implicit_batch);
+                   bool use_implicit_batch, bool use_explicit_precision);
 
   // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
   // to TRT subgraph and later converted into TRT engine.
@@ -215,6 +219,8 @@ class TrtNodeValidator {
 
   const bool use_implicit_batch_;
 
+  const bool use_explicit_precision_;
+
   friend class ValidatorTest;
   friend class OpConverterTest;
 };
@@ -238,7 +244,7 @@ class Converter {
   static StatusOr<std::unique_ptr<Converter>> Create(
       TrtPrecisionMode precision_mode, bool use_calibration,
       nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
-      absl::string_view engine_name);
+      absl::string_view engine_name, bool use_explicit_precision = false);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -390,10 +396,12 @@ class Converter {
     return trt_tensors_;
   }
 
+  bool UseExplicitPrecision() const { return use_explicit_precision_; }
+
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
             nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
-            absl::string_view engine_name);
+            absl::string_view engine_name, bool use_explicit_precision);
 
   Status Init(nvinfer1::ILogger* trt_logger);
 
@@ -453,6 +461,9 @@ class Converter {
   // The name of the TRTEngineOp node.
   absl::string_view engine_name_;
 
+  // Indicates whether to use explicit precision in TensorRT (Q/DQ support).
+  bool use_explicit_precision_;
+
   friend class ConverterTest;
   friend class OpConverterTest;
 };
@@ -488,16 +499,6 @@ const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
 // Map of all supported BinaryOperations
 const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
 BinaryOperationMap();
-
-// Returns true if the node is a quantize and dequantize Op.
-bool IsQuantizeAndDequantizeOp(const Node*);
-
-constexpr std::array<const char*, 4> kQuantizationOpNames = {
-    "QuantizeAndDequantizeV2",
-    "QuantizeAndDequantizeV3",
-    "FakeQuantWithMinMaxVars",
-    "FakeQuantWithMinMaxArgs",
-};
 
 constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
     kBinaryOperations = {{

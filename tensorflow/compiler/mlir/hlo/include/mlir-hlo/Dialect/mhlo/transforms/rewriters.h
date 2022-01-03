@@ -21,10 +21,12 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Transforms/Bufferize.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
+namespace bufferization {
+class BufferizeTypeConverter;
+}
 namespace mhlo {
 
 class RemoveSignTypeConverter;
@@ -55,13 +57,13 @@ void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
 // Collection of rewrite patterns for lowering all mhlo ops to their
 // lmhlo counterparts.
 void populateDynamicHLOToLHLOConversionPattern(
-    MLIRContext *context, BufferizeTypeConverter *converter,
+    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
     OwningRewritePatternList *patterns);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
-void populateHLOToLHLOConversionPattern(MLIRContext *context,
-                                        BufferizeTypeConverter *converter,
-                                        OwningRewritePatternList *patterns);
+void populateHLOToLHLOConversionPattern(
+    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
+    OwningRewritePatternList *patterns);
 
 // Collection of rewrite patterns for lowering of HLO to memref dialect.
 // These patterns generally assume that the HLO operation are aliasing their
@@ -69,11 +71,17 @@ void populateHLOToLHLOConversionPattern(MLIRContext *context,
 // inserted when the lowering would otherwise lead to a memref with a
 // non-identity map.
 void populateHLOToMemrefConversionPattern(
-    BufferizeTypeConverter *converter, RemoveSignTypeConverter *sign_converter,
-    OwningRewritePatternList *patterns,
+    bufferization::BufferizeTypeConverter *converter,
+    RemoveSignTypeConverter *sign_converter, OwningRewritePatternList *patterns,
     std::function<bool(Operation *)> enforce_identity_map = [](Operation *) {
       return true;
     });
+
+// Collection of rewrite patterns for lowering of shape operations from the HLO
+// dialect to the standard dialect.
+void populateHLOShapeOpsToStandardConversionPattern(
+    MLIRContext *context, TypeConverter &type_converter,
+    OwningRewritePatternList *patterns);
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
@@ -114,8 +122,8 @@ void PopulateTrigonometricToApproximationPatterns(
 // Populate patterns to move dynamic broadcasts up over element-wise operations
 // and broadcast the operands rather than the result. This will eventually allow
 // for larger fusions.
-void PopulateBroadcastsPropagationPatterns(MLIRContext *context,
-                                           OwningRewritePatternList *patterns);
+void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
+                                      OwningRewritePatternList *patterns);
 
 /// Populate rank specialization clustering and lowering patterns.
 void PopulateRankSpecializationClusterPatterns(

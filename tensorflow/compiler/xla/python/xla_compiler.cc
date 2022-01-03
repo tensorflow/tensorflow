@@ -215,7 +215,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
 
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
-      .def(py::init([](const string& s) {
+      .def(py::init([](const std::string& s) {
         return absl::make_unique<Shape>(ValueOrThrow(ParseShape(s)));
       }))
       .def_static(
@@ -471,7 +471,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   m.def(
       "hlo_module_cost_analysis",
       [](PyClient* client,
-         const HloModule& module) -> StatusOr<std::map<string, float>> {
+         const HloModule& module) -> StatusOr<std::map<std::string, float>> {
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
@@ -703,7 +703,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("replicate_on_last_tile_dim",
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
-      .def("__repr__", &xla::OpSharding::DebugString);
+      .def("__repr__", &xla::OpSharding::DebugString)
+      .def("SerializeToString", [](const OpSharding& sharding) {
+        return py::bytes(sharding.SerializeAsString());
+      });
   DefRepeatedProperty(op_sharding, "tile_assignment_dimensions",
                       &xla::OpSharding::mutable_tile_assignment_dimensions);
   DefRepeatedProperty(op_sharding, "tile_assignment_devices",

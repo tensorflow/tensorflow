@@ -133,6 +133,14 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
   }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    if (preserve_cardinality_) {
+      return input_->Cardinality(options);
+    } else {
+      return kUnknownCardinality;
+    }
+  }
+
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));

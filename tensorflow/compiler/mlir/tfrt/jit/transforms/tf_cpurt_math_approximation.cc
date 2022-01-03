@@ -189,7 +189,7 @@ struct EigenExpApproximation : public OpRewritePattern<math::ExpOp> {
 
 LogicalResult EigenExpApproximation::matchAndRewrite(
     math::ExpOp op, PatternRewriter &rewriter) const {
-  auto shape = vectorShape(op.operand().getType(), isF32);
+  auto shape = vectorShape(op.getOperand().getType(), isF32);
   if (!shape.hasValue())
     return rewriter.notifyMatchFailure(op, "unsupported operand type");
   ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
@@ -221,7 +221,7 @@ LogicalResult EigenExpApproximation::matchAndRewrite(
   Value cstCephesExpP4 = bcast(f32Cst(builder, 1.6666665459E-1f));
   Value cstCephesExpP5 = bcast(f32Cst(builder, 5.0000001201E-1f));
 
-  Value x = clamp(builder, op.operand(), cstExpLo, cstExpHi);
+  Value x = clamp(builder, op.getOperand(), cstExpLo, cstExpHi);
   Value m = floor(fma(x, cstCephesLog2E, cstHalf));
 
   Value cstCephesExpC1 = bcast(f32Cst(builder, -0.693359375f));
@@ -239,7 +239,7 @@ LogicalResult EigenExpApproximation::matchAndRewrite(
   y1 = fma(y1, r, cstCephesExpP5);
   y = fma(y, r3, y1);
   y = fma(y, r2, y2);
-  Value ret = max(builder, ldexp(builder, y, m), op.operand());
+  Value ret = max(builder, ldexp(builder, y, m), op.getOperand());
   rewriter.replaceOp(op, ret);
   return mlir::success();
 }

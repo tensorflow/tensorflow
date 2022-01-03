@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -53,7 +54,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
@@ -75,6 +75,7 @@ namespace kernel_gen {
 namespace {
 
 using mlir::Value;
+using mlir::memref::RankOp;
 using mlir::scf::ParallelOp;
 
 constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
@@ -98,10 +99,10 @@ bool IsSmallAlloc(Value alloc) {
     if (type.getRank() <= kMaxRankOfAllocatedMemRef) {
       for (Value alloc_arg : alloc.getDefiningOp()->getOperands()) {
         if (auto select = alloc_arg.getDefiningOp<mlir::SelectOp>()) {
-          if (!select.getTrueValue().getDefiningOp<mlir::RankOp>() ||
-              !select.getFalseValue().getDefiningOp<mlir::RankOp>())
+          if (!select.getTrueValue().getDefiningOp<RankOp>() ||
+              !select.getFalseValue().getDefiningOp<RankOp>())
             return false;
-        } else if (!alloc_arg.getDefiningOp<mlir::RankOp>()) {
+        } else if (!alloc_arg.getDefiningOp<RankOp>()) {
           return false;
         }
       }
@@ -236,11 +237,13 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateShapeSimplification());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
-  // Transform HLO operations to LinAlg.
+  // Transform HLO operations to LinAlg and standard.
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
@@ -355,7 +358,8 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
   // Free all temporaries,
-  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      ::mlir::bufferization::createBufferDeallocationPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Apply the mapping and go to GPU. We cannot do this earlier due to missing
@@ -372,7 +376,9 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addNestedPass<::mlir::FuncOp>(mlir::createForLoopSpecializationPass());
   // Take launches to launches with kernels.
   if (!cpu_codegen) {
-    pm.addPass(::mlir::createGpuKernelOutliningPass());
+    const std::string gpuDataLayoutSpec =
+        "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
+    pm.addPass(mlir::createGpuKernelOutliningPass(gpuDataLayoutSpec));
   }
 
   pm.addPass(::mlir::createLowerAffinePass());

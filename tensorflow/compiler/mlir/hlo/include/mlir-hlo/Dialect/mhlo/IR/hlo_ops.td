@@ -22,6 +22,7 @@ include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
 include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td"
@@ -882,7 +883,8 @@ def HLO_CaseOp: HLO_Op<"case", [
 def HLO_WhileOp: HLO_Op<"while", [
       RecursiveSideEffects,
       HLO_PairwiseSameOperandAndResultType,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      OpAsmOpInterface
     ]> {
   let summary = "While operator";
   let description = [{
@@ -891,14 +893,31 @@ def HLO_WhileOp: HLO_Op<"while", [
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
-  let arguments = (ins Variadic<HLO_TensorOrTuple>:$arg);
+  let arguments = (ins Variadic<HLO_TensorOrToken>:$arg);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let results = (outs Variadic<HLO_TensorOrTuple>);
+  let results = (outs Variadic<HLO_TensorOrToken>);
 
+  let extraClassDeclaration = [{
+    // Method of OpAsmOpInterface used during custom printing to name the block
+    // arguments in the nested regions. We name both the condition and the body
+    // regions entry arguments the same way, with a `iterArg` prefix. Since the
+    // two regions are side-by-side they will have the same name, which allows
+    // us to print them once and share it for the two regions, and still be able
+    // to parse them back.
+    void getAsmBlockArgumentNames(Region &region, OpAsmSetValueNameFn setNameFn) {
+      for (BlockArgument arg : region.getArguments())
+        setNameFn(arg, "iterArg");
+    }
+  }];
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+  let hasCanonicalizer = 1;
+  let verifier = [{ return mhlo::verify(*this); }];
+  let printer = [{ return ::mlir::mhlo::printWhileOp(*this, p); }];
+  let parser = [{ return ::mlir::mhlo::parseWhileOp(parser, result); }];
+
 }
 
 def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
@@ -1006,7 +1025,8 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
 
-  // TODO(hinsu): Implement custom printer and parser.
+  let printer = [{ return ::mlir::mhlo::printReduceOp(*this, p); }];
+  let parser = [{ return ::mlir::mhlo::parseReduceOp(parser, result); }];
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -1247,6 +1267,8 @@ def HLO_BroadcastOp : HLO_ShapedInterfaceOp<"broadcast",
   );
 
   let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
@@ -1276,6 +1298,7 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let results = (outs HLO_StaticShapeTensor);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
   // Only handles a static subset of the legacy format.
   let hasCustomHLOConverter = 1;
 }
@@ -1490,6 +1513,13 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     `call_target_name` should be short as it may be used in labels.
     `backend_config` can encode arbitrarily large amounts of information.
 
+    `has_side_effect` must be true if the custom call has side-effects.
+    `api_version` specifies the version of the API used by the custom call
+    function.
+
+    A custom call may apply functions within the scope of the parent module.
+    They can be referenced using `called_computations` attribute.
+
     A custom call can also have layout constraints on operands and results which
     can be specified as optional `operand_layouts` and `result_layouts`
     attributes. The layout attribute is an array of rank-1 index tensors and the
@@ -1516,6 +1546,7 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
                       "CustomCallApiVersion::API_VERSION_ORIGINAL">:
                       $api_version,
+    DefaultValuedAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$operand_layouts,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts
   );
@@ -1941,6 +1972,7 @@ def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
@@ -2043,7 +2075,7 @@ def HLO_ReturnOp : HLO_Op<"return", [NoSideEffect, Terminator]> {
   }];
 
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$results
+    Variadic<HLO_TensorOrTokenOrTuple >:$results
   );
 
   // Disable conversion operator for return op as the op is not an actual XLA
@@ -2316,7 +2348,7 @@ def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather",
   }];
 }
 
-def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp {
+def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]> {
   let summary = "Dynamic Convolution operator";
   let description = [{
     The dynamic shape version of ConvOp. Computes a convolution with dynamic padding.

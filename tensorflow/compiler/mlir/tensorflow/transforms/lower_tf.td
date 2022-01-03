@@ -215,6 +215,14 @@ def LowerDivNoNanOp : BinaryNoNanPat<TF_DivNoNanOp, TF_DivOp>;
 def LowerMulNoNanOp : BinaryNoNanPat<TF_MulNoNanOp, TF_MulOp>;
 
 //===----------------------------------------------------------------------===//
+// TruncateDiv op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerTruncateDivOp : Pat<
+  (TF_TruncateDivOp $lhs, $rhs),
+  (TF_DivOp $lhs, $rhs)>;
+
+//===----------------------------------------------------------------------===//
 // Fill op patterns.
 //===----------------------------------------------------------------------===//
 

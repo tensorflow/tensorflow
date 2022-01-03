@@ -59,7 +59,8 @@ load_context = LazyLoader(
 )
 
 
-@tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
+@tf_export("distribute.experimental.ParameterServerStrategy",
+           "distribute.ParameterServerStrategy", v1=[])
 class ParameterServerStrategyV2(distribute_lib.Strategy):
   """An multi-worker tf.distribute strategy with parameter servers.
 

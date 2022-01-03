@@ -42,9 +42,9 @@ load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
+load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 
 # Import external repository rules.
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
@@ -80,6 +80,7 @@ def _initialize_third_party():
     ruy()
     sobol_data()
     vulkan_headers()
+    tensorrt()
 
 # Toolchains & platforms required by Tensorflow to build.
 def _tf_toolchains():
@@ -134,9 +135,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "aa775069fcc7086ce691ab57d6c124187e607117ef1ca33f441354a78dfbfe02",
-        strip_prefix = "XNNPACK-b4cde5aebb7676fc85825dab737a6d0dc60a0e23",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/b4cde5aebb7676fc85825dab737a6d0dc60a0e23.zip"),
+        sha256 = "3afae11087e3e1e31ebb9a9152b8fa9f410d49734fd942bbba3cfc02f4809cf4",
+        strip_prefix = "XNNPACK-322055148b47dccb76bc03ad010f16c1e3a94817",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/322055148b47dccb76bc03ad010f16c1e3a94817.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -157,7 +158,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
-        patch_file = "//third_party:cudnn_frontend_header_fix.patch",
+        patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
         sha256 = "fdf4234e9c9c481b3b3a80ad404bc278e6ecb761c5574beb4d3a2cde4a9002ad",
         strip_prefix = "cudnn-frontend-73210a930333eaf66b42b01693bce7b70719c354",
         urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/73210a930333eaf66b42b01693bce7b70719c354.zip"),
@@ -174,26 +175,26 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "930a2327c4fe4018a604f67ca3c0ebea01436aad7ce1f4e01d088732bd19d16f",
-        strip_prefix = "oneDNN-2.4.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.4.1.tar.gz"),
+        sha256 = "a86951e569509c670c09f3e4a31fe6b01811e5c1d15cc2374f8b5554b45b4271",
+        strip_prefix = "oneDNN-2.5-rc",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.5-rc.tar.gz"),
     )
 
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        sha256 = "a7f2a4d80d5406d156dfc1d7b27d10b0af5ed061cf0b6197d3d12cddc6790fcb",
-        strip_prefix = "oneDNN-2.4",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.4.tar.gz"),
+        sha256 = "d7a47caeb28d2c67dc8fa0d0f338b11fbf25b473a608f04cfed913aea88815a9",
+        strip_prefix = "oneDNN-2.5",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.5.tar.gz"),
     )
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "1c62d41be62c14c8ff196d6aaa9f9efe0597b82a923350d922e8cde217dd1d86",
-        strip_prefix = "ComputeLibrary-21.08",
+        sha256 = "8322ed2e135999569082a95e7fbb2fa87786ffb1c67935b3ef71e00b53f2c887",
+        strip_prefix = "ComputeLibrary-21.11",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = "//third_party/compute_library:compute_library.patch",
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v21.08.tar.gz"),
+        patch_file = ["//third_party/compute_library:compute_library.patch"],
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v21.11.tar.gz"),
     )
 
     tf_http_archive(
@@ -234,9 +235,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "libxsmm_archive",
         build_file = "//third_party:libxsmm.BUILD",
-        sha256 = "9c0af4509ea341d1ee2c6c19fc6f19289318c3bd4b17844efeb9e7f9691abf76",
-        strip_prefix = "libxsmm-1.14",
-        urls = tf_mirror_urls("https://github.com/hfp/libxsmm/archive/1.14.tar.gz"),
+        sha256 = "e491ccadebc5cdcd1fc08b5b4509a0aba4e2c096f53d7880062a66b82a0baf84",
+        strip_prefix = "libxsmm-1.16.3",
+        urls = tf_mirror_urls("https://github.com/hfp/libxsmm/archive/1.16.3.tar.gz"),
     )
 
     tf_http_archive(
@@ -288,7 +289,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "png",
         build_file = "//third_party:png.BUILD",
-        patch_file = "//third_party:png_fix_rpi.patch",
+        patch_file = ["//third_party:png_fix_rpi.patch"],
         sha256 = "ca74a0dace179a8422187671aee97dd3892b53e168627145271cad5b5ac81307",
         strip_prefix = "libpng-1.6.37",
         system_build_file = "//third_party/systemlibs:png.BUILD",
@@ -307,7 +308,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "gif",
         build_file = "//third_party:gif.BUILD",
-        patch_file = "//third_party:gif_fix_strtok_r.patch",
+        patch_file = ["//third_party:gif_fix_strtok_r.patch"],
         sha256 = "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd",
         strip_prefix = "giflib-5.2.1",
         system_build_file = "//third_party/systemlibs:gif.BUILD",
@@ -453,7 +454,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_protobuf",
-        patch_file = "//third_party/protobuf:protobuf.patch",
+        patch_file = ["//third_party/protobuf:protobuf.patch"],
         sha256 = "cfcba2df10feec52a84208693937c17a4b5df7775e1635c1e3baffc487b24c9b",
         strip_prefix = "protobuf-3.9.2",
         system_build_file = "//third_party/systemlibs:protobuf.BUILD",
@@ -501,7 +502,7 @@ def _tf_repositories():
         sha256 = "b956598d8cbe168b5ee717b5dafa56563eb5201a947856a6688bbeac9cac4e1f",
         strip_prefix = "grpc-b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
-        patch_file = "//third_party/grpc:generate_cc_env_fix.patch",
+        patch_file = ["//third_party/grpc:generate_cc_env_fix.patch"],
         system_link_files = {
             "//third_party/systemlibs:BUILD": "bazel/BUILD",
             "//third_party/systemlibs:grpc.BUILD": "src/compiler/BUILD",
@@ -589,7 +590,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
-        patch_file = "//third_party/nccl:archive.patch",
+        patch_file = ["//third_party/nccl:archive.patch"],
         sha256 = "3ae89ddb2956fff081e406a94ff54ae5e52359f5d645ce977c7eba09b3b782e6",
         strip_prefix = "nccl-2.8.3-1",
         urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.8.3-1.tar.gz"),
@@ -799,40 +800,38 @@ def _tf_repositories():
     # https://github.com/bazelbuild/rules_apple/releases
     tf_http_archive(
         name = "build_bazel_rules_apple",
-        sha256 = "ee9e6073aeb5a65c100cb9c44b0017c937706a4ae03176e14a7e78620a198079",
-        strip_prefix = "rules_apple-5131f3d46794bf227d296c82f30c2499c9de3c5b",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_apple/archive/5131f3d46794bf227d296c82f30c2499c9de3c5b.tar.gz"),
+        sha256 = "0052d452af7742c8f3a4e0929763388a66403de363775db7e90adecb2ba4944b",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_apple/releases/download/0.31.3/rules_apple.0.31.3.tar.gz"),
     )
 
     # https://github.com/bazelbuild/rules_swift/releases
     tf_http_archive(
         name = "build_bazel_rules_swift",
-        sha256 = "d0833bc6dad817a367936a5f902a0c11318160b5e80a20ece35fb85a5675c886",
-        strip_prefix = "rules_swift-3eeeb53cebda55b349d64c9fc144e18c5f7c0eb8",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/archive/3eeeb53cebda55b349d64c9fc144e18c5f7c0eb8.tar.gz"),
+        sha256 = "8407fa0fd04a7ce1d6bb95e90b216404466f809eda459c23cb57b5fa1ef9d639",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/releases/download/0.21.0/rules_swift.0.21.0.tar.gz"),
     )
 
     # https://github.com/bazelbuild/apple_support/releases
     tf_http_archive(
         name = "build_bazel_apple_support",
-        sha256 = "ad8ae80e93612b8151019367a3d1604d7a51c14480dae1254e10252007e8260c",
-        strip_prefix = "apple_support-501b4afb27745c4813a88ffa28acd901408014e4",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/archive/501b4afb27745c4813a88ffa28acd901408014e4.tar.gz"),
+        sha256 = "741366f79d900c11e11d8efd6cc6c66a31bfb2451178b58e0b5edc6f1db17b35",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/0.10.0/apple_support.0.10.0.tar.gz"),
     )
 
     # https://github.com/apple/swift-protobuf/releases
     tf_http_archive(
         name = "com_github_apple_swift_swift_protobuf",
-        strip_prefix = "swift-protobuf-1.6.0/",
-        sha256 = "4ccf6e5ea558e8287bf6331f9f6e52b3c321fca5f1d181d03680f415c32a6bba",
-        urls = tf_mirror_urls("https://github.com/apple/swift-protobuf/archive/1.6.0.zip"),
+        strip_prefix = "swift-protobuf-1.18.0/",
+        sha256 = "6b96d07bfbfa1334909eeb1430c69a93af71c961695b0a5f3536d087a58d8e41",
+        urls = tf_mirror_urls("https://github.com/apple/swift-protobuf/archive/1.18.0.zip"),
     )
 
     # https://github.com/google/xctestrunner/releases
-    http_file(
+    tf_http_archive(
         name = "xctestrunner",
-        executable = 1,
-        urls = tf_mirror_urls("https://github.com/google/xctestrunner/releases/download/0.2.9/ios_test_runner.par"),
+        strip_prefix = "xctestrunner-0.2.15",
+        sha256 = "b789cf18037c8c28d17365f14925f83b93b1f7dabcabb80333ae4331cf0bcb2f",
+        urls = tf_mirror_urls("https://github.com/google/xctestrunner/archive/refs/tags/0.2.15.tar.gz"),
     )
 
     tf_http_archive(
@@ -849,7 +848,7 @@ def _tf_repositories():
         sha256 = "90b705137b69ee3b5fc655eaca66d0dc9862ea1759226f7ccd3098425ae69571",
         strip_prefix = "pybind11-2.6.0",
         build_file = "//third_party:pybind11.BUILD",
-        patch_file = "//third_party:pybind11.patch",
+        patch_file = ["//third_party:pybind11.patch"],
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
     )
 

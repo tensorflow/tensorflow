@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 
-#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
@@ -26,7 +25,7 @@ class CoordinationServiceAgent;
 
 class CoordinationServiceRpcHandler {
  public:
-  explicit CoordinationServiceRpcHandler(const WorkerEnv* env) : env_(env) {}
+  explicit CoordinationServiceRpcHandler() {}
 
   void SetAgentInstance(CoordinationServiceAgent* agent);
 
@@ -61,7 +60,6 @@ class CoordinationServiceRpcHandler {
                            StatusCallback done);
 
  private:
-  const WorkerEnv* env_;
   const int64_t leader_incarnation_id_ = random::New64();
   CoordinationServiceAgent* agent_;
 };

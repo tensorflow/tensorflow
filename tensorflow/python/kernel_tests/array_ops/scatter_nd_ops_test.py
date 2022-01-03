@@ -471,7 +471,6 @@ class StatefulScatterNdDeterminismTest(StatefulScatterNdTest):
     super().tearDown()
     config.disable_op_determinism()
 
-  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
   def testDeterminism(self):
     ref = variables.Variable(array_ops.zeros([1]))
     indices = array_ops.zeros([100000, 1], dtypes.int32)
@@ -815,7 +814,6 @@ class ScatterNdDeterminismTest(ScatterNdTest):
     super().tearDown()
     config.disable_op_determinism()
 
-  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
   def testDeterminism(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)

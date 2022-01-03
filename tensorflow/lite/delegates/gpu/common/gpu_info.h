@@ -206,6 +206,10 @@ enum class MaliGpu {
   kG77,
   kG68,
   kG78,
+  kG310,
+  kG510,
+  kG610,
+  kG710,
 };
 
 struct MaliInfo {
@@ -223,6 +227,7 @@ struct MaliInfo {
   bool IsBifrost() const;
   bool IsValhallGen1() const;
   bool IsValhallGen2() const;
+  bool IsValhallGen3() const;
   bool IsValhall() const;
 };
 
@@ -250,6 +255,8 @@ struct OpenGlInfo {
   int max_compute_work_group_size_x;
   int max_compute_work_group_size_y;
   int max_compute_work_group_size_z;
+
+  bool SupportsExplicitFp16() const;
 };
 
 struct VulkanInfo {
@@ -261,8 +268,14 @@ struct VulkanInfo {
 
   int max_per_stage_descriptor_sampled_images = 0;
   uint32_t max_compute_work_group_invocations;
+  uint32_t max_image_dimension_1d;
   uint32_t max_image_dimension_2d;
+  uint32_t max_image_dimension_3d;
   uint32_t max_image_array_layers;
+  uint64_t max_texel_buffer_elements;
+  uint64_t max_uniform_buffer_range;
+  uint64_t max_storage_buffer_range;
+  uint64_t max_push_constants_size;
 
   uint32_t subgroup_size = 0;
   bool supports_subgroup_arithmetic = false;
@@ -271,6 +284,8 @@ struct VulkanInfo {
   int max_compute_work_group_size_x;
   int max_compute_work_group_size_y;
   int max_compute_work_group_size_z;
+
+  bool SupportsExplicitFp16() const;
 };
 
 enum class OpenClVersion {
@@ -376,6 +391,7 @@ struct GpuInfo {
   bool IsIntel() const;
 
   bool IsGlsl() const;
+  bool IsGlslSupportsExplicitFp16() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;

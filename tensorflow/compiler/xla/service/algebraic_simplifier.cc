@@ -64,7 +64,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
@@ -73,12 +72,26 @@ namespace {
 
 namespace m = match;
 
+// Unwraps broadcasts hunting for a constant.  If we find one, checks if the
+// constant contains only the given value.
 bool IsAll(const HloInstruction* op, int8_t value) {
   switch (op->opcode()) {
     case HloOpcode::kBroadcast:
       return IsAll(op->operand(0), value);
     case HloOpcode::kConstant:
       return op->literal().IsAll(value);
+    default:
+      return false;
+  }
+}
+
+bool IsAll(const HloInstruction* op, const Literal& scalar) {
+  CHECK(ShapeUtil::IsScalar(scalar.shape()));
+  switch (op->opcode()) {
+    case HloOpcode::kBroadcast:
+      return IsAll(op->operand(0), scalar);
+    case HloOpcode::kConstant:
+      return op->literal().IsAll(scalar);
     default:
       return false;
   }
@@ -1306,7 +1319,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
 
   if (ShapeUtil::ElementIsSigned(divide->shape())) {
     int64_t b_value = c->literal().GetFirstElement<T>();
-    if (b_value > 0 && IsPowerOfTwo(static_cast<uint64_t>(b_value))) {
+    if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
       HloInstruction* zero_like_a = MakeScalarLike(a, 0);
 
@@ -1337,8 +1350,8 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
                                            neqated_quotient, quotient);
     }
   } else {
-    uint64 b_value = c->literal().GetFirstElement<T>();
-    if (IsPowerOfTwo(b_value)) {
+    uint64_t b_value = c->literal().GetFirstElement<T>();
+    if (absl::has_single_bit(b_value)) {
       return HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, a,
           MakeScalarLike(a, tensorflow::Log2Floor64(b_value)));
@@ -1362,19 +1375,19 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   switch (divide->shape().element_type()) {
     case S8:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int8>(divide, computation_, simplifier_)) {
+              TryDivideToShift<int8_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
     case S16:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int16>(divide, computation_, simplifier_)) {
+              TryDivideToShift<int16_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
     case S32:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int32>(divide, computation_, simplifier_)) {
+              TryDivideToShift<int32_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
@@ -1386,19 +1399,19 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
       break;
     case U8:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint8>(divide, computation_, simplifier_)) {
+              TryDivideToShift<uint8_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
     case U16:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint16>(divide, computation_, simplifier_)) {
+              TryDivideToShift<uint16_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
     case U32:
       if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint32>(divide, computation_, simplifier_)) {
+              TryDivideToShift<uint32_t>(divide, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(divide, std::move(shift));
       }
       break;
@@ -2101,7 +2114,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
              return (b != a + 1);
            }) == dims.end();
   };
-  if (!is_iota(AsInt64Slice(lhs_contracting_dims))) {
+  if (!is_iota(lhs_contracting_dims)) {
     return nullptr;
   }
   lhs = lhs->mutable_operand(0);
@@ -2123,7 +2136,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   }
   CHECK(IsPermutation(permutation));
   auto new_lhs_contracting_dims =
-      ComposePermutations(AsInt64Slice(lhs_contracting_dims), permutation);
+      ComposePermutations(lhs_contracting_dims, permutation);
   lhs_contracting_dims.Clear();
   for (auto dim : new_lhs_contracting_dims) {
     lhs_contracting_dims.Add(dim);
@@ -2182,8 +2195,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   rhs = rhs_reshape;
 
   // Rhs reshape "unsquishes" the single rhs contracting dim into multiple dims.
-  rhs_contracting_dims.Resize(lhs_contracting_dims.size(),
-                              rhs_contracting_dims[0]);
+  rhs_contracting_dims.Resize(lhs_contracting_dims.size(), 0);
   absl::c_iota(rhs_contracting_dims, rhs_contracting_dims[0]);
 
   // Invert transpose. First compute the shape.
@@ -2260,15 +2272,15 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
       dnums.lhs_contracting_dimensions_size() == 0) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            lhs, AsInt64Slice(dnums.lhs_batch_dimensions()),
-                            AsInt64Slice(dnums.lhs_contracting_dimensions())));
+                            lhs, dnums.lhs_batch_dimensions(),
+                            dnums.lhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_lhs->shape())) {
       new_lhs = MakeConvertToHlo(new_lhs, dot->shape().element_type());
     }
     TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            rhs, AsInt64Slice(dnums.rhs_batch_dimensions()),
-                            AsInt64Slice(dnums.rhs_contracting_dimensions())));
+                            rhs, dnums.rhs_batch_dimensions(),
+                            dnums.rhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_rhs->shape())) {
       new_rhs = MakeConvertToHlo(new_rhs, dot->shape().element_type());
     }
@@ -2304,16 +2316,16 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         rhs->shape().rank()))) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            lhs, AsInt64Slice(dnums.lhs_batch_dimensions()),
-                            AsInt64Slice(dnums.lhs_contracting_dimensions())));
+                            lhs, dnums.lhs_batch_dimensions(),
+                            dnums.lhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_lhs->shape())) {
       new_lhs = MakeConvertToHlo(new_lhs, dot->shape().element_type());
     }
 
     TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
-                            rhs, AsInt64Slice(dnums.rhs_batch_dimensions()),
-                            AsInt64Slice(dnums.rhs_contracting_dimensions())));
+                            rhs, dnums.rhs_batch_dimensions(),
+                            dnums.rhs_contracting_dimensions()));
     if (!ShapeUtil::SameElementType(dot->shape(), new_rhs->shape())) {
       new_rhs = MakeConvertToHlo(new_rhs, dot->shape().element_type());
     }
@@ -2518,6 +2530,20 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(maximum, m::Maximum(m::Op(&lhs), m::Op(&rhs))));
 
+  // max(x, -inf) -> x
+  PrimitiveType ty = maximum->shape().element_type();
+  if (primitive_util::IsIntegralType(ty) ||
+      (primitive_util::IsFloatingPointType(ty) &&
+       options_.minmax_propagate_nan())) {
+    Literal min_val = LiteralUtil::MinValue(ty);
+    if (IsAll(lhs, min_val)) {
+      return ReplaceInstruction(maximum, rhs);
+    }
+    if (IsAll(rhs, min_val)) {
+      return ReplaceInstruction(maximum, lhs);
+    }
+  }
+
   HloInstruction* clamp_upper_bound_bcast;
   HloInstruction* clamp_lower_bound_bcast;
   HloInstruction* to_clamp;
@@ -2557,6 +2583,20 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
 Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(minimum, m::Minimum(m::Op(&lhs), m::Op(&rhs))));
+
+  // min(x, inf) -> x
+  PrimitiveType ty = minimum->shape().element_type();
+  if (primitive_util::IsIntegralType(ty) ||
+      (primitive_util::IsFloatingPointType(ty) &&
+       options_.minmax_propagate_nan())) {
+    Literal max_val = LiteralUtil::MaxValue(ty);
+    if (IsAll(lhs, max_val)) {
+      return ReplaceInstruction(minimum, rhs);
+    }
+    if (IsAll(rhs, max_val)) {
+      return ReplaceInstruction(minimum, lhs);
+    }
+  }
 
   HloInstruction* clamp_upper_bound_bcast;
   HloInstruction* clamp_lower_bound_bcast;
@@ -3635,7 +3675,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
 
   if (ShapeUtil::ElementIsSigned(remainder->shape())) {
     int64_t b_value = c->literal().GetFirstElement<T>();
-    if (b_value > 0 && IsPowerOfTwo(static_cast<uint64_t>(b_value))) {
+    if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
       HloInstruction* zero_like_a = BroadcastZeros(
           computation, a->shape().element_type(), a->shape().dimensions());
@@ -3667,8 +3707,8 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
           neqated_quotient, quotient);
     }
   } else {
-    uint64 b_value = c->literal().GetFirstElement<T>();
-    if (IsPowerOfTwo(b_value)) {
+    uint64_t b_value = c->literal().GetFirstElement<T>();
+    if (absl::has_single_bit(b_value)) {
       HloInstruction* mask_amount = computation->AddInstruction(
           simplifier->CreateConstantWithLayoutUpdated(
               LiteralUtil::CreateR0<T>(b_value - 1)));
@@ -3697,19 +3737,19 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
   switch (remainder->shape().element_type()) {
     case S8:
       if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<int8>(remainder, computation_, simplifier_)) {
+              TryRemainderToAnd<int8_t>(remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
     case S16:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<int16>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<int16_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
     case S32:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<int32>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<int32_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
@@ -3720,20 +3760,20 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
       }
       break;
     case U8:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<uint8>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint8_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
     case U16:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<uint16>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint16_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
     case U32:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<uint32>(remainder, computation_, simplifier_)) {
+      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint32_t>(
+              remainder, computation_, simplifier_)) {
         return ReplaceWithNewInstruction(remainder, std::move(shift));
       }
       break;
@@ -5020,8 +5060,55 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
     return Status::OK();
   }
   auto operand = reduce_window->mutable_operand(0);
+  auto init_value = reduce_window->mutable_operand(1);
   auto function = reduce_window->to_apply();
   const Window& window = reduce_window->window();
+
+  // reduce-window with a 1x1x..x1 window and no dilation etc can be replaced
+  // with a trivial elementwise operation, plus a pad op if necessary.
+  //
+  // We cowardly refuse to consider this optimization when the reduce-window
+  // subcomputation is anything other than a simple add/min/max.  Supporting
+  // more complex subcomputations is possible, but is tantamount to implementing
+  // jax.vmap()!
+  if (absl::c_all_of(window.dimensions(),
+                     [](const WindowDimension& dim) {
+                       return dim.size() == 1 &&             //
+                              dim.stride() == 1 &&           //
+                              dim.window_dilation() == 1 &&  //
+                              dim.base_dilation() == 1 &&    //
+                              !dim.window_reversal();
+                     }) &&
+      Match(function->root_instruction(),
+            m::AnyOf<HloInstruction>(
+                m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1)),
+                m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1))))) {
+    const HloInstruction* nested_root = function->root_instruction();
+    absl::InlinedVector<int64_t, 8> broadcast_dims(
+        nested_root->shape().dimensions_size());
+    absl::c_iota(broadcast_dims, 0);
+    TF_ASSIGN_OR_RETURN(
+        auto new_op, MakeBinaryHlo(nested_root->opcode(), operand,
+                                   MakeBroadcastHlo(init_value, broadcast_dims,
+                                                    operand->shape())));
+
+    if (absl::c_any_of(window.dimensions(), [](const WindowDimension& dim) {
+          return dim.padding_low() > 0 || dim.padding_high() > 0;
+        })) {
+      PaddingConfig padding_config;
+      for (const WindowDimension& window_dim : window.dimensions()) {
+        auto& padding_dim = *padding_config.add_dimensions();
+        padding_dim.set_edge_padding_low(window_dim.padding_low());
+        padding_dim.set_edge_padding_high(window_dim.padding_high());
+        padding_dim.set_interior_padding(0);
+      }
+      TF_ASSIGN_OR_RETURN(new_op,
+                          MakePadHlo(new_op, init_value, padding_config));
+    }
+
+    return ReplaceInstruction(reduce_window, new_op);
+  }
 
   if (options_.enable_window_reduce_to_reduce_replacement()) {
     // A reduce window can be expressed as a reduce and a reshape if all
@@ -5809,6 +5896,13 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
           precision_config,
           /*preferred_element_type=*/convolution->shape().element_type()));
 
+  // If we're running on GPU we need to check that we can actually lower the
+  // conv with the given reverse_dims (either none, or rank 2 and all)
+  if (!options_.ConvIsLowerable(new_convolution)) {
+    TF_RETURN_IF_ERROR(kernel->parent()->RemoveInstruction(new_convolution));
+    return false;
+  }
+
   convolution->SetupDerivedInstruction(new_convolution);
   TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, new_convolution));
 
@@ -5883,6 +5977,10 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     return false;
   }
 
+  if (convolution->feature_group_count() != 1 ||
+      convolution->batch_group_count() != 1) {
+    return false;
+  }
   auto add_bitcast = [&](Shape shape, HloInstruction* operand) {
     std::vector<int64_t> dims(operand->shape().dimensions_size());
     std::iota(dims.begin(), dims.end(), 0);

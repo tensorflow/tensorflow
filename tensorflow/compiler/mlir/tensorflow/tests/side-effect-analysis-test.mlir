@@ -1494,9 +1494,9 @@ func @side_effecting_ops_with_different_resources_and_allocations(
 
 // -----
 
-// Tests that we treat different op instances with `TPUEmbeddingSideEffect` as
-// independent.
-func @embedding_effect_ops(
+// Tests that we create a dependency for op instances with
+// `TPUEmbeddingSideEffect` with same device ordinal.
+func @embedding_effect_same_device(
   // expected-remark@above {{ID: 7}}
   %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
@@ -1504,10 +1504,42 @@ func @embedding_effect_ops(
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
-        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we treat different op instances with `TPUEmbeddingSideEffect` as
+// independent if they have different device ordinals.
+func @embedding_effect_different_devices(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<!tf_type.string>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {2}}}
-        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 2} : (tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {2}}}
         tf_executor.yield
@@ -1561,6 +1593,42 @@ func @mixed_embedding_and_unknown_effects(
 
 // -----
 
+// Tests that we don't create dependencies between ops `EnqueueTPUEmbedding`
+ // ops and other embedding ops that don't have a device ordinal.
+func @mixed_embedding_and_unknown_effects(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<8xf32>,
+  %arg2: tensor<8xf32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 6}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {5}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {3}}}
+        "tf.LoadTPUEmbeddingAdagradParameters"(%arg1, %arg2) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table1"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {3}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2], device_ordinal = 2} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Successors: {3}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {0,1,2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Sinks: {6}}}
+}
+
+// -----
+
 // Tests that we create a dependency between two ops with the same op-based
 // write effect.
 func @same_op_based_write_effect(
@@ -1602,13 +1670,13 @@ func @different_op_based_side_effects(
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
-        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {3}}}
         %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {3}}}
-        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2], device_ordinal = 5} : (tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 2}}
         // expected-remark@above {{Successors: {3}}}
         tf_executor.yield
@@ -1700,10 +1768,7 @@ func @send_recv_effect(
 // -----
 
 // Tests that we create a dependency between ops with
-// `TF_TPUCompileExecuteSideEffect`. Note that this test also shows a case where
-// we could improve pruning of control dependencies (see b/201013649): The
-// dependency between the first `tf.TPUExecute` and the `tf_executor.yield` is
-// redundant.
+// `TF_TPUCompileExecuteSideEffect`.
 func @tpu_compile_execute_effect(
   // expected-remark@above {{ID: 7}}
   %arg0: tensor<!tf_type.string>,
@@ -1715,14 +1780,14 @@ func @tpu_compile_execute_effect(
         // expected-remark@above {{Successors: {4}}}
         "tf.TPUExecute"(%arg0, %arg0) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 0}}
-        // expected-remark@above {{Successors: {1,2}}}
+        // expected-remark@above {{Successors: {1}}}
         "tf.TPUExecute"(%arg1, %arg1) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Predecessors: {0}}}
         // expected-remark@above {{Successors: {2}}}
         tf_executor.yield
         // expected-remark@above {{ID: 2}}
-        // expected-remark@above {{Predecessors: {0,1}}}
+        // expected-remark@above {{Predecessors: {1}}}
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 4}}

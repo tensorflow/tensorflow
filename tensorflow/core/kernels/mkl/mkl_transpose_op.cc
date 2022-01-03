@@ -19,13 +19,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-using mkldnn::stream;
+using dnnl::stream;
 
 namespace tensorflow {
 
@@ -45,7 +45,7 @@ namespace tensorflow {
 // REQUIRES: perm is a permutation.
 
 namespace {
-// MKL-DNN based Transpose implementation
+// oneDNN based Transpose implementation
 template <typename T>
 Status MKLTransposeND(OpKernelContext* ctx, const Tensor& in, Tensor* out,
                       const gtl::ArraySlice<int32>& perm);
@@ -60,7 +60,7 @@ static inline memory::dims ReorderStrides(const memory::dims& strides,
   return reordered_strides;
 }
 
-// Transpose of N-dimensional tensor using MKL-DNN
+// Transpose of N-dimensional tensor using oneDNN
 template <typename T>
 Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
                       Tensor* out_tensor, const gtl::ArraySlice<int32>& perm) {
@@ -90,12 +90,12 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     out.SetUsrMemDataHandle(out_tensor, transpose_stream);
     net.push_back(*(prim->GetPrimitive()));
     std::vector<MemoryArgsMap> net_args;
-    net_args.push_back({{MKLDNN_ARG_FROM, *in.GetUsrMem()},
-                        {MKLDNN_ARG_TO, *out.GetUsrMem()}});
+    net_args.push_back(
+        {{DNNL_ARG_FROM, *in.GetUsrMem()}, {DNNL_ARG_TO, *out.GetUsrMem()}});
     execute_primitives(net, transpose_stream, net_args);
 
     return Status::OK();
-  } catch (mkldnn::error& e) {
+  } catch (dnnl::error& e) {
     string error_msg = "Status: " + std::to_string(e.status) +
                        ", message: " + std::string(e.message) + ", in file " +
                        std::string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -108,9 +108,9 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
 Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                       gtl::ArraySlice<int32> perm,
                                       Tensor* out) {
-  // MKL-DNN has limit on the maximum number of dimensions in a tensor.
+  // oneDNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
-  if (in.dims() <= MKLDNN_MAX_NDIMS) {
+  if (in.dims() <= DNNL_MAX_NDIMS) {
     switch (in.dtype()) {
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);
@@ -118,13 +118,13 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
       case DT_BFLOAT16:
         return MKLTransposeND<bfloat16>(ctx, in, out, perm);
         break;
-      // TODO(nhasabni): support other types such as INT8.
+      // TODO(intel-tf): support other types such as INT8.
       default:
         break;
     }
   }
 
-  // Fallback to eigen if transpose parameters not supported by MKL or MKL-DNN
+  // Fallback to eigen if transpose parameters not supported by oneDNN
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
                                    out);
@@ -134,9 +134,9 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                                const Tensor& in,
                                                gtl::ArraySlice<int32> perm,
                                                Tensor* out) {
-  // MKL-DNN has limit on the maximum number of dimensions in a tensor.
+  // oneDNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
-  if (in.dims() <= MKLDNN_MAX_NDIMS) {
+  if (in.dims() <= DNNL_MAX_NDIMS) {
     switch (in.dtype()) {
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);
@@ -144,13 +144,13 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
       case DT_BFLOAT16:
         return MKLTransposeND<bfloat16>(ctx, in, out, perm);
         break;
-      // TODO(nhasabni): support other types such as INT8.
+      // TODO(intel-tf): support other types such as INT8.
       default:
         break;
     }
   }
 
-  // Fallback to eigen if transpose parameters not supported by MKL or MKL-DNN
+  // Fallback to eigen if transpose parameters not supported by oneDNN
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<CPUDevice>(), in,
                                             perm, out);

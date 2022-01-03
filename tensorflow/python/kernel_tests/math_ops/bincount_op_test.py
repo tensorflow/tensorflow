@@ -344,6 +344,14 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             gen_math_ops.dense_bincount(
                 input=[[[1, 2, 3], [0, 3, 2]]], weights=[], size=10))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_size_is_not_scalar(self):  # b/206619828
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "Shape must be rank 0 but is rank 1"):
+      self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=[0], size=[1, 1], weights=[3], binary_output=False))
+
 
 class SparseBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
@@ -511,6 +519,19 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
                 weights=[],
                 binary_output=True)))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_size_is_not_scalar(self):  # b/206619828
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "Shape must be rank 0 but is rank 1"):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0], [1]],
+              values=[0, 0],
+              dense_shape=[1, 1],
+              size=[1, 1],
+              weights=[0, 0],
+              binary_output=False))
+
 
 class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
@@ -649,6 +670,19 @@ class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                 weights=[],
                 size=size,
                 binary_output=True)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_size_is_not_scalar(self):  # b/206619828
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "Shape must be rank 0 but is rank 1"):
+      self.evaluate(
+          gen_math_ops.ragged_bincount(
+              splits=[0, 0, 1],
+              values=[1],
+              size=[1, 1],
+              weights=[0, 0, 0],
+              binary_output=False,
+              name=None))
 
 
 if __name__ == "__main__":

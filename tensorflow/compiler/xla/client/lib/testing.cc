@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -50,7 +49,7 @@ XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
   if (shape.IsArray()) {
     return Broadcast(
         ConstantLiteral(builder, LiteralUtil::One(shape.element_type())),
-        AsInt64Slice(shape.dimensions()));
+        shape.dimensions());
   }
   std::vector<XlaOp> parts;
   const auto& tuple_shapes = shape.tuple_shapes();

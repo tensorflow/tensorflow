@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -95,7 +94,8 @@ class ExecutionTracker {
 
   tensorflow::mutex execution_mutex_;  // Guards the execution mapping.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutionTracker);
+  ExecutionTracker(const ExecutionTracker&) = delete;
+  ExecutionTracker& operator=(const ExecutionTracker&) = delete;
 };
 
 }  // namespace xla

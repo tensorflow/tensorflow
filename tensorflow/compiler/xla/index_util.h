@@ -81,7 +81,8 @@ class IndexUtil {
                             absl::Span<const int64_t> rhs);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(IndexUtil);
+  IndexUtil(const IndexUtil&) = delete;
+  IndexUtil& operator=(const IndexUtil&) = delete;
 };
 
 }  // namespace xla

@@ -24,6 +24,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -222,7 +224,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     strides.reserve(result_rank);
 
     DenseMap<int, int> output_to_input_dim;
-    for (auto dim : llvm::enumerate(op.broadcast_dimensions())) {
+    for (const auto& dim : llvm::enumerate(op.broadcast_dimensions())) {
       output_to_input_dim[dim.value().getSExtValue()] = dim.index();
     }
     for (int i = 0; i < result_rank; ++i) {
@@ -305,7 +307,8 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
 struct HloLegalizeToMemrefPass
     : public HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<memref::MemRefDialect, tensor::TensorDialect>();
+    registry.insert<bufferization::BufferizationDialect, memref::MemRefDialect,
+                    tensor::TensorDialect>();
   }
 
  public:
@@ -314,14 +317,15 @@ struct HloLegalizeToMemrefPass
     OwningRewritePatternList patterns(&context);
     ConversionTarget target(context);
 
-    BufferizeTypeConverter converter;
+    bufferization::BufferizeTypeConverter converter;
     RemoveSignTypeConverter sign_converter;
 
     populateHLOToMemrefConversionPattern(&converter, &sign_converter,
                                          &patterns);
 
     target.addIllegalOp<DynamicReshapeOp, DynamicBroadcastInDimOp>();
-    target.addLegalDialect<arith::ArithmeticDialect, BuiltinDialect,
+    target.addLegalDialect<arith::ArithmeticDialect,
+                           bufferization::BufferizationDialect, BuiltinDialect,
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect>();
 
@@ -334,8 +338,8 @@ struct HloLegalizeToMemrefPass
 }  // namespace
 
 void populateHLOToMemrefConversionPattern(
-    BufferizeTypeConverter* converter, RemoveSignTypeConverter* sign_converter,
-    OwningRewritePatternList* patterns,
+    bufferization::BufferizeTypeConverter* converter,
+    RemoveSignTypeConverter* sign_converter, OwningRewritePatternList* patterns,
     std::function<bool(Operation*)> enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
   patterns->insert<HloToMemrefDynamicBroadcastInDimOpConverter>(

@@ -77,6 +77,10 @@ struct TPUCompileExecute
   StringRef getName() final { return "<TPUCompileExecute>"; }
 };
 
+struct MustExecute : public ::mlir::SideEffects::Resource::Base<MustExecute> {
+  StringRef getName() final { return "<MustExecute>"; }
+};
+
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir

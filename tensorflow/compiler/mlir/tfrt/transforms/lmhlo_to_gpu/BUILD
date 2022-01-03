@@ -47,14 +47,16 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:__pkg__",
     ],
     deps = [
+        ":lmhlo_to_gpu",
+        ":lmhlo_to_gpu_binary",
         ":lmhlo_to_tfrt_gpu",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
-        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
-        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@tf_runtime//backends/gpu:gpu_passes",
+        "@tf_runtime//backends/gpu:gpu_wrapper",
     ],
 )
 

@@ -216,13 +216,12 @@ def value_container(val):
 
 def is_distributed_variable(v):
   """Determine if a variable is ds variable or TPU mirrored variable."""
-  return isinstance(v, values_lib.DistributedVariable)
+  return getattr(v, "is_distributed_variable", False)
 
 
 def is_distributed_table(v):
   """Determine if an object is a DistributedTable."""
-  return v.__class__.__name__ in ("DistributedTable",
-                                  "RestoredDistributedTable")
+  return getattr(v, "is_distributed_table", False)
 
 
 def _validate_colocate_extended(v, extended):

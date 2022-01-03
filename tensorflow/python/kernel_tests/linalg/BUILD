@@ -679,6 +679,8 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
+    # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -697,6 +699,8 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
+    # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/tpu_executable.h"
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/core/tpu/tpu_executor_api.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
@@ -162,7 +163,7 @@ absl::string_view TpuExecutable::fingerprint() const {
 
 StatusOr<std::string> TpuExecutable::Serialize() const {
   SE_ExecutableSerializationHandle* handle = nullptr;
-  auto cleanup = xla::MakeCleanup([&handle]() {
+  auto cleanup = absl::MakeCleanup([&handle]() {
     ExecutorApiFn()->TpuExecutableSerialize_FreeHandleFn(handle);
   });
   StatusHelper status;
@@ -201,7 +202,7 @@ StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
   XLA_HloModule c_module =
       ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executable);
   auto cleanup_c_module =
-      xla::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
+      absl::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       ApiConverter::FromC(c_module));
   return absl::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));

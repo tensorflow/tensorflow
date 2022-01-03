@@ -32,8 +32,6 @@ cudaDataType_t MlirTypeToCudaDataType(mlir::Type type) {
 }
 
 cublasComputeType_t MlirTypeToCublasComputeType(mlir::Type type) {
-  if (auto complexType = type.dyn_cast<mlir::ComplexType>())
-    return MlirTypeToCublasComputeType(complexType.getElementType());
   if (type.isF16()) return CUBLAS_COMPUTE_16F;
   if (type.isF32()) return CUBLAS_COMPUTE_32F;
   if (type.isF64()) return CUBLAS_COMPUTE_64F;

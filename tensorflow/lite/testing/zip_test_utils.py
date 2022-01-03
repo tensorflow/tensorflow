@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utils for make_zip tests."""
-import collections
 import functools
 import itertools
 import operator
@@ -72,17 +71,18 @@ def get_test_function(test_function_name):
 
 RANDOM_SEED = 342
 
-TF_TYPE_INFO = {
-    tf.float32: (np.float32, "FLOAT"),
-    tf.float16: (np.float16, "FLOAT"),
-    tf.float64: (np.float64, "FLOAT64"),
-    tf.int32: (np.int32, "INT32"),
-    tf.uint32: (np.uint32, "UINT32"),
-    tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
-    tf.int16: (np.int16, "QUANTIZED_INT16"),
-    tf.int64: (np.int64, "INT64"),
-    tf.bool: (np.bool_, "BOOL"),
-    tf.string: (np.string_, "STRING"),
+MAP_TF_TO_NUMPY_TYPE = {
+    tf.float32: np.float32,
+    tf.float16: np.float16,
+    tf.float64: np.float64,
+    tf.int32: np.int32,
+    tf.uint32: np.uint32,
+    tf.uint8: np.uint8,
+    tf.int8: np.int8,
+    tf.int16: np.int16,
+    tf.int64: np.int64,
+    tf.bool: np.bool_,
+    tf.string: np.string_,
 }
 
 
@@ -107,8 +107,8 @@ class ExtraConvertOptions(object):
 def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
   """Build tensor data spreading the range [min_value, max_value)."""
 
-  if dtype in TF_TYPE_INFO:
-    dtype = TF_TYPE_INFO[dtype][0]
+  if dtype in MAP_TF_TO_NUMPY_TYPE:
+    dtype = MAP_TF_TO_NUMPY_TYPE[dtype]
 
   if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random_sample(shape) + min_value
@@ -116,7 +116,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     real = (max_value - min_value) * np.random.random_sample(shape) + min_value
     imag = (max_value - min_value) * np.random.random_sample(shape) + min_value
     value = real + imag * 1j
-  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int64, tf.int16):
+  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)
@@ -131,8 +131,8 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
 def create_scalar_data(dtype, min_value=-100, max_value=100):
   """Build scalar tensor data range from min_value to max_value exclusively."""
 
-  if dtype in TF_TYPE_INFO:
-    dtype = TF_TYPE_INFO[dtype][0]
+  if dtype in MAP_TF_TO_NUMPY_TYPE:
+    dtype = MAP_TF_TO_NUMPY_TYPE[dtype]
 
   if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random() + min_value
@@ -201,6 +201,36 @@ def write_examples(fp, examples):
       write_tensor(fp, name, value)
 
 
+class TextFormatWriter(object):
+  """Utility class for writing ProtoBuf like messages."""
+
+  def __init__(self, fp, name=None, parent=None):
+    self.fp = fp
+    self.indent = parent.indent if parent else 0
+    self.name = name
+
+  def __enter__(self):
+    if self.name:
+      self.write(self.name + " {")
+      self.indent += 2
+    return self
+
+  def __exit__(self, *exc_info):
+    if self.name:
+      self.indent -= 2
+      self.write("}")
+    return True
+
+  def write(self, data):
+    self.fp.write(" " * self.indent + data + "\n")
+
+  def write_field(self, key, val):
+    self.write(key + ": \"" + val + "\"")
+
+  def sub_message(self, name):
+    return TextFormatWriter(self.fp, name, self)
+
+
 def write_test_cases(fp, model_name, examples):
   """Given a dictionary of `examples`, write a text format representation.
 
@@ -211,25 +241,47 @@ def write_test_cases(fp, model_name, examples):
     fp: File-like object to write to.
     model_name: Filename where the model was written to, relative to filename.
     examples: Example dictionary consisting of keys "inputs" and "outputs"
+
+  Raises:
+    RuntimeError: Example dictionary does not have input / output names.
   """
 
-  fp.write("load_model: %s\n" % os.path.basename(model_name))
+  writer = TextFormatWriter(fp)
+  writer.write_field("load_model", os.path.basename(model_name))
   for example in examples:
-    fp.write("reshape {\n")
-    for _, value in example["inputs"].items():
-      if value is not None:
-        fp.write("  input: \"" + ",".join(map(str, value.shape)) + "\"\n")
-    fp.write("}\n")
+    inputs = []
+    for name in example["inputs"].keys():
+      if name:
+        inputs.append(name)
+    outputs = []
+    for name in example["outputs"].keys():
+      if name:
+        outputs.append(name)
+    if not (inputs and outputs):
+      raise RuntimeError("Empty input / output names.")
 
-    fp.write("invoke {\n")
-    for _, value in example["inputs"].items():
-      if value is not None:
-        fp.write("  input: \"" + format_result(value) + "\"\n")
-    for _, value in example["outputs"].items():
-      fp.write("  output: \"" + format_result(value) + "\"\n")
-      fp.write("  output_shape: \"" +
-               ",".join([str(dim) for dim in value.shape]) + "\"\n")
-    fp.write("}\n")
+    # Reshape message
+    with writer.sub_message("reshape") as reshape:
+      for name, value in example["inputs"].items():
+        with reshape.sub_message("input") as input_msg:
+          input_msg.write_field("key", name)
+          input_msg.write_field("value", ",".join(map(str, value.shape)))
+
+    # Invoke message
+    with writer.sub_message("invoke") as invoke:
+      for name, value in example["inputs"].items():
+        with invoke.sub_message("input") as input_msg:
+          input_msg.write_field("key", name)
+          input_msg.write_field("value", format_result(value))
+      # Expectations
+      for name, value in example["outputs"].items():
+        with invoke.sub_message("output") as output_msg:
+          output_msg.write_field("key", name)
+          output_msg.write_field("value", format_result(value))
+        with invoke.sub_message("output_shape") as output_shape:
+          output_shape.write_field("key", name)
+          output_shape.write_field("value",
+                                   ",".join([str(dim) for dim in value.shape]))
 
 
 def get_input_shapes_map(input_tensors):
@@ -508,14 +560,6 @@ def make_zip_of_tests(options,
           report["tflite_converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
 
-          # Sorts the lists to make the order of input/output the same as order
-          # of the signature names.
-          # TODO(b/192473002): Remove sorting after TFLiteDriver can run with
-          # signatures.
-          inputs = sorted(inputs, key=lambda x: _normalize_input_name(x.name))
-          outputs = sorted(
-              outputs, key=lambda x: _normalize_output_name(x.name))
-
           # Builds a saved model with the default signature key.
           input_names, tensor_info_inputs = _get_tensor_info(
               inputs, "input_", _normalize_input_name)
@@ -576,12 +620,6 @@ def make_zip_of_tests(options,
           zipinfo = zipfile.ZipInfo(zip_path_label + ".bin")
           archive.writestr(zipinfo, tflite_model_binary, zipfile.ZIP_DEFLATED)
 
-          # TODO(b/192473002): Remove sorting after TFLiteDriver can run with
-          # signatures.
-          baseline_input_map = collections.OrderedDict(
-              sorted(baseline_input_map.items()))
-          baseline_output_map = collections.OrderedDict(
-              sorted(baseline_output_map.items()))
           example = {
               "inputs": baseline_input_map,
               "outputs": baseline_output_map

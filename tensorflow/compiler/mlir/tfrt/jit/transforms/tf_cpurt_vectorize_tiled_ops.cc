@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -30,8 +30,8 @@ using mlir::failure;
 using mlir::success;
 using mlir::arith::ConstantIndexOp;
 using mlir::linalg::CodegenStrategy;
-using mlir::linalg::TensorExpandShapeOp;
 using mlir::linalg::TiledLoopOp;
+using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
 
 // Rewrite `vector.transfer_read(linalg.expand_shape)` as
@@ -43,7 +43,7 @@ struct TransferReadOfOneDimExpandShape
   mlir::LogicalResult matchAndRewrite(
       TransferReadOp vector_read,
       mlir::PatternRewriter &rewriter) const override {
-    auto expand = vector_read.source().getDefiningOp<TensorExpandShapeOp>();
+    auto expand = vector_read.source().getDefiningOp<ExpandShapeOp>();
     if (!expand) return failure();
 
     auto expand_src = expand.src();
@@ -60,8 +60,9 @@ struct TransferReadOfOneDimExpandShape
         vector_read.getLoc(),
         mlir::VectorType::get(expand_src_type.getShape(),
                               expand_src_type.getElementType()),
-        expand_src, mlir::ValueRange{zero}, map, vector_read.padding(),
-        rewriter.getBoolArrayAttr({true}));
+        expand_src, mlir::ValueRange{zero}, mlir::AffineMapAttr::get(map),
+        vector_read.padding(),
+        /*mask=*/mlir::Value(), rewriter.getBoolArrayAttr({true}));
     rewriter.replaceOpWithNewOp<mlir::vector::ShapeCastOp>(
         vector_read, vector_read.getType(), new_read);
     return success();

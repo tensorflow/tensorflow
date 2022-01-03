@@ -232,24 +232,24 @@ MAIN_FUNCTION($0) {
   c += R"(
 
   FLT4 bias_val = args.biases.Read(Z);
-  for (int y = 0; y < 4 && tile_y + y < args.dst_tensor.Height(); ++y) {
+  for (int y = 0; y < 4; ++y) {
     FLT4 t0 = I[y][1] + I[y][2];
     FLT4 t1 = I[y][3] + I[y][4];
-    if (tile_x < args.dst_tensor.Width()) {
+    if (tile_x < args.dst_tensor.Width() && tile_y + y < args.dst_tensor.Height()) {
       FLT4 value = I[y][0] + t0 + t1 + bias_val;
       args.dst_tensor.Write(value, tile_x, tile_y + y, Z);
     }
     FLT4 t2 = I[y][1] - I[y][2];
     FLT4 t3 = I[y][3] - I[y][4];
-    if (tile_x + 1 < args.dst_tensor.Width()) {
+    if (tile_x + 1 < args.dst_tensor.Width() && tile_y + y < args.dst_tensor.Height()) {
       FLT4 value = t2 * At[7] + t3 * At[9] + bias_val;
       args.dst_tensor.Write(value, tile_x + 1, tile_y + y, Z);
     }
-    if (tile_x + 2 < args.dst_tensor.Width()) {
+    if (tile_x + 2 < args.dst_tensor.Width() && tile_y + y < args.dst_tensor.Height()) {
       FLT4 value = t0 * At[13] + t1 * At[15] + bias_val;
       args.dst_tensor.Write(value, tile_x + 2, tile_y + y, Z);
     }
-    if (tile_x + 3 < args.dst_tensor.Width()) {
+    if (tile_x + 3 < args.dst_tensor.Width() && tile_y + y < args.dst_tensor.Height()) {
       FLT4 value = t2 * At[19] + t3 * At[21] + I[y][5] + bias_val;
       args.dst_tensor.Write(value, tile_x + 3, tile_y + y, Z);
     }

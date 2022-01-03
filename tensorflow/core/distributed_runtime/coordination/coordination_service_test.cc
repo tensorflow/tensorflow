@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
@@ -146,7 +149,7 @@ TEST_F(CoordinationServiceTest, TestStandaloneService) {
   client_cache->AddWorker("/job:worker/replica:0/task:1", &wi1);
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, &worker_env_, server_def,
+          kCoordinationServiceType, worker_env_.env, server_def,
           std::move(client_cache));
 
   absl::Notification register0;
@@ -220,7 +223,7 @@ TEST_F(CoordinationServiceTest, TestCoordinatedJobs) {
   client_cache->AddWorker("/job:evaluator/replica:0/task:0", &ei);
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, &worker_env_, server_def,
+          kCoordinationServiceType, worker_env_.env, server_def,
           std::move(client_cache));
 
   absl::Notification register_chief;
@@ -281,7 +284,7 @@ TEST_F(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
   coord_config->set_heartbeat_timeout_in_ms(kHeartbeatTimeoutMs);
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, &worker_env_, server_def,
+          kCoordinationServiceType, worker_env_.env, server_def,
           std::move(client_cache));
 
   absl::Notification register0;
@@ -317,7 +320,7 @@ TEST_F(CoordinationServiceTest, TestWorkerRestart) {
   client_cache->AddWorker("/job:worker/replica:0/task:1", &wi1);
   std::unique_ptr<CoordinationServiceInterface> coord_service;
   coord_service = CoordinationServiceInterface::EnableCoordinationService(
-      kCoordinationServiceType, &worker_env_, server_def,
+      kCoordinationServiceType, worker_env_.env, server_def,
       std::move(client_cache));
 
   absl::Notification register0;
@@ -351,7 +354,7 @@ TEST_F(CoordinationServiceTest, TestSetGetValues) {
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service;
   coord_service = CoordinationServiceInterface::EnableCoordinationService(
-      kCoordinationServiceType, &worker_env_, server_def,
+      kCoordinationServiceType, worker_env_.env, server_def,
       std::move(client_cache));
 
   // Simple key

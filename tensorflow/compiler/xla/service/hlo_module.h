@@ -65,7 +65,7 @@ class HloModule {
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
   // cache. A default configuration is created for this module.
-  explicit HloModule(const string& name, HloModuleConfig config);
+  explicit HloModule(const std::string& name, HloModuleConfig config);
   virtual ~HloModule() {}
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -105,13 +105,13 @@ class HloModule {
       const absl::flat_hash_map<HloComputation*, HloComputation*>&
           replacements);
 
-  const string& name() const { return name_; }
-  void set_name(string name) { name_ = std::move(name); }
+  const std::string& name() const { return name_; }
+  void set_name(std::string name) { name_ = std::move(name); }
 
   // Returns a deep copy of this module including all computations.
-  std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
+  std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
   std::unique_ptr<HloModule> Clone(const HloModuleConfig& config,
-                                   const string& suffix = "clone") const;
+                                   const std::string& suffix = "clone") const;
 
   // Performs a deep clone of the computation, by recursively cloning all
   // the called computations as well. If the clone context is specified, it
@@ -154,7 +154,7 @@ class HloModule {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO modules,
   // with respect to HloInstruction::Identical() method.
-  uint64 Hash() const;
+  uint64_t Hash() const;
 
   // Gets the computations in this module.
   //
@@ -238,8 +238,8 @@ class HloModule {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  string ToString() const { return ToString(HloPrintOptions()); }
-  string ToString(const HloPrintOptions& options) const;
+  std::string ToString() const { return ToString(HloPrintOptions()); }
+  std::string ToString(const HloPrintOptions& options) const;
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
@@ -267,10 +267,11 @@ class HloModule {
   // instructions and topologically sorts them.
   HloInstruction* OutlineExpressionFromComputation(
       absl::Span<HloInstruction* const> instructions_to_outline,
-      const string& outlined_computation_name, HloComputation* computation);
+      const std::string& outlined_computation_name,
+      HloComputation* computation);
 
-  // Returns a randomly generated uint64.
-  uint64 RandomNew64() const;
+  // Returns a randomly generated uint64_t.
+  uint64_t RandomNew64() const;
 
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
@@ -395,6 +396,10 @@ class HloModule {
 
   absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
+  void set_autofdo_profile(const void* profile) { autofdo_profile_ = profile; }
+
+  const void* autofdo_profile() const { return autofdo_profile_; }
+
   void add_profile_info(HloModuleProto::ProfileType profile_type,
                         double relative_speedup) {
     HloModuleProto::ProfileInfo profile_info;
@@ -412,7 +417,7 @@ class HloModule {
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
 
-  string name_;
+  std::string name_;
   HloModuleConfig config_;
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
@@ -464,8 +469,11 @@ class HloModule {
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
 
-  // a fingerprint to search autofdo profile entry.
+  // A fingerprint to search an AutofdoProfile entry.
   std::string autofdo_fingerprint_;
+
+  // An AutofdoProfile instance pointer.
+  const void* autofdo_profile_ = nullptr;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.

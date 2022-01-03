@@ -71,9 +71,9 @@ class XlaDevice : public LocalDevice {
     se::Platform* platform() const;
     xla::LocalClient* client() const;
     const DeviceType& jit_device_type() const;
-    const XlaHelpers::ShapeRepresentationFn& default_shape_representation_fn()
-        const {
-      return shape_determination_fns_.at(0).shape_representation_fn;
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns&
+    default_shape_determination_fns() const {
+      return shape_determination_fns_.at(0);
     }
     const PaddedShapeFn& padded_shape_fn() const { return padded_shape_fn_; }
 
@@ -166,6 +166,11 @@ class XlaDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override TF_LOCKS_EXCLUDED(mu_);
 
+  Status MakeTensorFromProto(XlaDeviceContext* device_context,
+                             const TensorProto& tensor_proto,
+                             const AllocatorAttributes alloc_attrs,
+                             Tensor* tensor);
+
   const Metadata& metadata() { return xla_metadata_; }
 
   // Ensures the DeviceContext associated with this XlaDevice is created and
@@ -211,11 +216,6 @@ class XlaDevice : public LocalDevice {
   // shape_representation_fns.
   StatusOr<std::vector<XlaDeviceContext*>> GetDeviceContextLocked()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  Status MakeTensorFromProto(XlaDeviceContext* device_context,
-                             const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor);
 
   // Handles error when RefreshStatus sees !status.ok().
   Status HandleDeviceError();

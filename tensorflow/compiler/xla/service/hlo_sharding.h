@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -122,7 +121,7 @@ class HloSharding {
 
   // Note that this string canonically has outer curly braces, e.g.
   // "{replicated}".
-  string ToString(bool include_metadata = false) const;
+  std::string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
   Status Validate(const Shape& shape, int64_t num_devices) const;

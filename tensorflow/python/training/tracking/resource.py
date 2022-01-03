@@ -273,3 +273,49 @@ class TrackableResource(CapturableResource):
       resource_tracker.add_resource(self)
     super(TrackableResource, self).__init__(device=device)
 
+
+# TODO(b/124205571,b/124092991): Solve destruction of resources.
+class RestoredResource(TrackableResource):
+  """Restored SavedResource."""
+
+  def __init__(self, device=""):
+    super(RestoredResource, self).__init__(device=device)
+
+  def _create_resource(self):
+    raise RuntimeError()
+
+  def _initialize(self):
+    raise RuntimeError()
+
+  # _list_functions_for_serialization expects Function objects, but unlike
+  # _create_resource and _initialize, _destroy_resource didn't always exist in
+  # older TrackableResource implementations, so this default stub must be a
+  # Function.
+  @def_function.function
+  def _destroy_resource(self):
+    raise RuntimeError()
+
+  def _list_functions_for_serialization(self, unused_serialization_cache):
+    # Overwrite this method to avoid the implementation of
+    # base class to re-wrap the polymorphic functions into
+    # another layer of `tf.function`.
+    functions = {
+        "_create_resource": self._create_resource,
+        "_initialize": self._initialize,
+        "_destroy_resource": self._destroy_resource,
+    }
+    return functions
+
+  @classmethod
+  def _deserialize_from_proto(cls, object_proto, dependencies, **unused_kwargs):
+    obj = cls(device=object_proto.resource.device)
+    resource_creator = dependencies.get("_create_resource")
+    if resource_creator is not None:
+      obj._create_resource = resource_creator  # pylint: disable=protected-access
+    return obj
+
+  def _add_trackable_child(self, name, value):
+    setattr(self, name, value)
+    if (isinstance(value, base.Trackable) and
+        not isinstance(value, def_function.Function)):
+      self._track_trackable(value, name)

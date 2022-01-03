@@ -31,8 +31,10 @@ TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
       on_delete_callback_(std::move(on_delete_callback)) {
   if (is_tuple) {
     size_t index_table_byte_size = buffers_.size() * sizeof(void*);
+    // We assume tuple table allocations will not fail.
     tuple_index_table_ =
-        MaybeOwningCpuMemory::AllocateShared(index_table_byte_size);
+        MaybeOwningCpuMemory::AllocateShared(index_table_byte_size)
+            .ValueOrDie();
     uintptr_t* index_table =
         reinterpret_cast<uintptr_t*>(tuple_index_table_->data());
     for (int i = 0; i < buffers_.size(); ++i) {

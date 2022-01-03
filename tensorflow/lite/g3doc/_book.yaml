@@ -94,14 +94,14 @@ upper_tabs:
           path: /lite/convert/metadata_writer_tutorial
       - title: "Sample models"
         path: /lite/guide/hosted_models
-      - title: "API updates"
-        path: /lite/convert/api_updates
       - title: "Model Analyzer"
         path: /lite/guide/model_analyzer
         status: experimental
       - title: "Authoring tool"
         path: /lite/guide/authoring
         status: experimental
+      - title: "Release notes"
+        path: /lite/convert/api_updates
 
       - heading: "Create a model"
       - title: "TensorFlow Lite Model Maker"

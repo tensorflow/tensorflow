@@ -1761,6 +1761,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerSquaredDifferenceOpOnRealTensors,
       LowerSquaredDifferenceOpOneComplexTensors,
       LowerTanhGradOp,
+      LowerTruncateDivOp,
       LowerXdivyOp,
       LowerXlog1pyOp,
       LowerXlogyOp>(context);

@@ -1288,29 +1288,42 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresentAfterCloning) {
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, SimpleGraphAllowsSync) {
-  auto pflr_safe = metrics::TestDelta("pflr_sync_safety", "safe");
-  TestInstantiateSimpleFunction(this, MakeOptions("CPU:0", {}, {}));
-  EXPECT_GT(pflr_safe.Get(), 0);
+  auto async_safe =
+      metrics::TestDelta("subgraph_async_summary", "safe_for_sync");
+  FunctionLibraryRuntime::InstantiateOptions opts =
+      MakeOptions("CPU:0", {}, {});
+  opts.allow_small_function_optimizations = true;
+  TestInstantiateSimpleFunction(this, opts);
+  EXPECT_GT(async_safe.Get(), 0);
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, UnsafeOpRequiresAsync) {
-  auto pflr_safe = metrics::TestDelta("pflr_sync_safety", "safe");
-  auto pflr_unsafe_op = metrics::TestDelta("pflr_sync_safety", "unsafe_op");
-  TestControlFlow(this, MakeOptions("CPU:0", {"CPU:0"}, {"CPU:0"}));
-  EXPECT_EQ(pflr_safe.Get(), 0);
-  EXPECT_GT(pflr_unsafe_op.Get(), 0);
+  auto async_safe =
+      metrics::TestDelta("subgraph_async_summary", "safe_for_sync");
+  auto async_unsafe_op =
+      metrics::TestDelta("subgraph_async_summary", "unsafe_op");
+  FunctionLibraryRuntime::InstantiateOptions opts =
+      MakeOptions("CPU:0", {"CPU:0"}, {"CPU:0"});
+  opts.allow_small_function_optimizations = true;
+  TestControlFlow(this, opts);
+  EXPECT_EQ(async_safe.Get(), 0);
+  EXPECT_GT(async_unsafe_op.Get(), 0);
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, PartitionedGraphRequiresAsync) {
   if (gpu_device_ == nullptr) {
     GTEST_SKIP() << "No GPUs available";
   }
-  auto pflr_safe = metrics::TestDelta("pflr_sync_safety", "safe");
-  auto pflr_unsafe_partitioned =
-      metrics::TestDelta("pflr_sync_safety", "partitioned");
-  TestTwoDeviceMult(this, MakeOptions("CPU:0", {"CPU:0"}, {"CPU:0", "GPU:0"}));
-  EXPECT_EQ(pflr_safe.Get(), 0);
-  EXPECT_GT(pflr_unsafe_partitioned.Get(), 0);
+  auto async_send_only =
+      metrics::TestDelta("subgraph_async_summary", "send_only");
+  auto async_recv_only =
+      metrics::TestDelta("subgraph_async_summary", "recv_only");
+  FunctionLibraryRuntime::InstantiateOptions opts =
+      MakeOptions("CPU:0", {"CPU:0"}, {"CPU:0", "GPU:0"});
+  opts.allow_small_function_optimizations = true;
+  TestTwoDeviceMult(this, opts);
+  EXPECT_GT(async_send_only.Get(), 0);
+  EXPECT_GT(async_recv_only.Get(), 0);
 }
 
 }  // anonymous namespace

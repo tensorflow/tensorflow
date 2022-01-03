@@ -22,7 +22,9 @@ namespace tensorflow {
 
 // Runs the lowering pipeline to convert the given LMHLO module to a TFRT
 // module, including the device code.
-Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module);
+Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
+                                       mlir::StringRef entry_function_name,
+                                       llvm::ArrayRef<int64_t> buffer_sizes);
 
 }  // namespace tensorflow
 

@@ -55,7 +55,8 @@ class GlobalData {
   GlobalDataHandle handle_;   // Handle being wrapped.
   ServiceInterface* parent_;  // Service used to unregister handle_.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GlobalData);
+  GlobalData(const GlobalData&) = delete;
+  GlobalData& operator=(const GlobalData&) = delete;
 };
 
 }  // namespace xla

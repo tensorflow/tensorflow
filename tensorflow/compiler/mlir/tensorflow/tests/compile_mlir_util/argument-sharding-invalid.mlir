@@ -6,4 +6,4 @@ module attributes {tf.versions = {producer = 179 : i32}} {
   }
 }
 
-// CHECK: failed to parse argument sharding 0 'bad_sharding'
+// CHECK: failed to parse sharding 'bad_sharding'

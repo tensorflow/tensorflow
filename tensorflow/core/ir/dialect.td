@@ -69,36 +69,40 @@ def TFGraphDialect : Dialect {
   }];
 
   let extraClassDeclaration = [{
-    Identifier getNameAttrIdentifier() { return *name_key_; }
+    Identifier getNameAttrIdentifier() const { return name_key_; }
     static constexpr StringRef getNameAttrKey() { return "_mlir_name"; }
 
-    Identifier getDeviceAttrIdentifier() { return *device_key_; }
+    Identifier getDeviceAttrIdentifier() const { return device_key_; }
     static constexpr StringRef getDeviceAttrKey() { return "_mlir_device"; }
 
-    Identifier getAssignedDeviceAttrIdentifier() {
-      return *assigned_device_key_;
+    Identifier getAssignedDeviceAttrIdentifier() const {
+      return assigned_device_key_;
     }
     static constexpr StringRef getAssignedDeviceAttrKey() {
       return "_mlir_assigned_device";
     }
 
     // Cached accessor for the control type.
-    ControlType getControlType() { return control_ty_; }
+    ControlType getControlType() const { return control_ty_; }
+
+    // Print an operation that belongs to this dialect if unregistered.
+    void printCustomTfOp(Operation *op, OpAsmPrinter &printer) const;
 
     // Returns the hook to parse an operation belonging to this dialect, even
     // if unregistered.
     Optional<ParseOpHook> getParseOperationHook(StringRef opName) const
       override;
 
-    // Print an operation that belongs to this dialect if unregistered.
+    // Returns the took to print an operation belonging to this dialect, even
+    // if unregistered.
     llvm::unique_function<void(Operation *, OpAsmPrinter &)>
     getOperationPrinter(Operation *op) const override;
 
   private:
     // Cached identifier for efficiency purpose.
-    llvm::Optional<Identifier> name_key_;
-    llvm::Optional<Identifier> device_key_;
-    llvm::Optional<Identifier> assigned_device_key_;
+    Identifier name_key_;
+    Identifier device_key_;
+    Identifier assigned_device_key_;
     ControlType control_ty_;
   }];
 

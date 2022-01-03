@@ -364,6 +364,13 @@ func @transpose_value_constraint(%arg0 : tensor<?x?xf32>, %arg1 : tensor<2xi32>)
 // tf.Shape
 // -------------------------------------------------------------------------- //
 
+// CHECK-LABEL: func @shape_no_constraint
+func @shape_no_constraint(%arg0 : tensor<?x?xf32>) -> tensor<2xi32> {
+  // expected-remark@below {{operand #0 constrained to: rank}}
+  %0 = "tf.Shape"(%arg0) : (tensor<?x?xf32>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+}
+
 // CHECK-LABEL: func @shape_shape_constraints
 func @shape_shape_constraints(%arg0 : tensor<?x?xf32>)
     -> (tensor<2xi32> { tf.constraint = "shape" }) {

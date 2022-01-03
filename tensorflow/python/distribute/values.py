@@ -1074,6 +1074,15 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       if self._policy._is_mirrored():  # pylint: disable=protected-access
         self._policy._write_object_proto(self, proto, options)  # pylint: disable=protected-access
 
+  @property
+  def is_distributed_variable(self):
+    return True
+
+  def __tf_experimental_restore_capture__(
+      self, concrete_function, internal_capture):
+    concrete_function.graph.capture_distributed_variable(self, internal_capture)
+    return self
+
 
 # We extend from `saveable_object.SaveableObject` instead of
 # `saveable_object_util.ResourceVariableSaveable` since we need to read the

@@ -11,7 +11,6 @@ load(
     "gen_zip_test",
     "gen_zipped_test_file",
     "generated_test_models_all",
-    "merged_test_models",
 )
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -30,18 +29,26 @@ package(
 )
 
 exports_files([
+    "build_def.bzl",
     "generated_examples_zip_test.cc",
     "tflite_diff_example_test.cc",
     "init_tensorflow.h",
     "init_tensorflow.cc",
 ])
 
+_test_size_override = {
+    # copybara:comment_begin(oss-only)
+    "merged_models_with-flex_6": "large",
+    "merged_models_with-flex_9": "large",
+    # copybara:comment_end
+}
+
 [gen_zip_test(
     name = "zip_test_%s%s" % (
         test_name,
         delegate_suffix(delegate),
     ),
-    size = "medium",
+    size = _test_size_override.get(test_name, "medium"),
     srcs = ["generated_examples_zip_test.cc"],
     args = args + select({
         "//tensorflow:android": [],
@@ -74,7 +81,7 @@ exports_files([
     )],
     # copybara:comment_end
     delegate = delegate,
-    shard_count = 20,
+    shard_count = 30,
     tags = tags + [
         "gen_zip_test",
         "tflite_not_portable_intentional",
@@ -101,7 +108,7 @@ exports_files([
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, delegate, test_name, tags, args in generated_test_models_all() + merged_test_models()]
+) for conversion_mode, delegate, test_name, tags, args in generated_test_models_all()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -260,6 +267,8 @@ cc_library(
         ":split",
         ":test_runner",
         "@com_google_absl//absl/strings",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
@@ -376,6 +385,7 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite:string_util",
     ] + select({

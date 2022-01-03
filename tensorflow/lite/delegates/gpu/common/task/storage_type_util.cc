@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -80,7 +82,8 @@ absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
       }
     }
     case TensorStorageType::TEXTURE_3D: {
-      if (gpu_info.opencl_info.cl_version < OpenClVersion::kCl1_2 &&
+      if (gpu_info.IsApiOpenCl() &&
+          gpu_info.opencl_info.cl_version < OpenClVersion::kCl1_2 &&
           slices == 1) {
         return absl::InternalError(
             "clCreateImage3D (that used in CL 1.0/1.1) can not create image "
@@ -110,11 +113,11 @@ absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
     }
     case TensorStorageType::TEXTURE_ARRAY: {
       // Bug on some Adreno. b/131099086
-      if (slices == 1 && gpu_info.IsAdreno() &&
+      if (gpu_info.IsApiOpenCl() && slices == 1 && gpu_info.IsAdreno() &&
           !gpu_info.adreno_info.support_one_layer_texture_array) {
         return absl::InternalError(
-            "Image2DArray with layer = 1 works incorrect on some Adreno. Can "
-            "not be created.");
+            "Image2DArray with layer = 1 works incorrect on some Adreno in "
+            "OpenCL. Can not be created.");
       }
       const int image_width = shape.w * shape.b;
       const int image_height = shape.h;

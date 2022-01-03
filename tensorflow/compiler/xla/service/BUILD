@@ -127,6 +127,7 @@ cc_library(
         ":hlo_pass",
         ":hlo_query",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -311,6 +312,8 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -400,6 +403,7 @@ cc_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -1175,6 +1179,7 @@ cc_library(
 
 cc_library(
     name = "cpu_plugin",
+    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -4140,7 +4145,10 @@ cc_library(
 cc_library(
     name = "copy_insertion",
     srcs = ["copy_insertion.cc"],
-    hdrs = ["copy_insertion.h"],
+    hdrs = [
+        "compile_time_cap.h",
+        "copy_insertion.h",
+    ],
     deps = [
         ":dump",
         ":hlo",
@@ -4155,7 +4163,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -4298,6 +4305,7 @@ cc_library(
         ":tuple_util",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/lib/math:math_util",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 
@@ -4432,6 +4440,7 @@ cc_library(
         ":hlo_dce",
         ":hlo_memory_scheduler",
         ":hlo_ordering",
+        ":hlo_query",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -4993,9 +5002,12 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
+        "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/stream_executor:stream_header",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -5436,7 +5448,10 @@ tf_cc_test(
 cc_library(
     name = "while_loop_invariant_code_motion",
     srcs = ["while_loop_invariant_code_motion.cc"],
-    hdrs = ["while_loop_invariant_code_motion.h"],
+    hdrs = [
+        "compile_time_cap.h",
+        "while_loop_invariant_code_motion.h",
+    ],
     deps = [
         ":hlo",
         ":hlo_dce",
@@ -5451,6 +5466,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
     ],
 )
 
