@@ -291,6 +291,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Returns the expected engines to build, implemented by subclass."""
     raise NotImplementedError()
 
+  def ExpectedConnections(self, run_params):
+    """Returns the expected edges or None to skip the check."""
+    return None
+
   def ExpectedMaxBatchSizes(self, run_params):
     """Returns the expected maximum batch sizes of the build engines."""
     return None
@@ -576,7 +580,14 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _MayRemoveGraphSequenceNumber(self, name):
     return self._RemoveGraphSequenceNumberImpl(name, False)
 
-  def _VerifyConnections(self, expected_engines, original_gdef, converted_gdef):
+  def _VerifyConnections(
+      self,
+      expected_engines,
+      expected_input_map,
+      original_gdef,
+      converted_gdef
+  ):
+    """Checks that the converted graph contains the expected connections."""
     old_to_new_node_map = {
         self._ToString(node.name): self._ToString(node.name)
         for node in original_gdef.node
@@ -584,9 +595,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     for engine_name, node_names in expected_engines.items():
       for node_name in node_names:
         old_to_new_node_map[node_name] = engine_name
-    name_to_node_map = {
-        self._ToString(node.name): node for node in original_gdef.node
-    }
 
     def _InputName(inp):
       inp = self._ToString(inp)
@@ -598,90 +606,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       if len(parts) > 1 and parts[-1].isdigit():
         inp = inp[:-len(parts[-1]) - 1]
       return (prefix, inp)
-
-    # Compute the expected mapping from each node to its input nodes.
-    expected_input_map = {}
-    removed_const_nodes = set([
-        self._ToString(node.name)
-        for node in original_gdef.node
-        if node.op == "Const"
-    ])
-    for node in original_gdef.node:
-      name_str = self._ToString(node.name)
-      target_node_name = old_to_new_node_map[name_str]
-      is_engine_op = (target_node_name != name_str)
-      if target_node_name not in expected_input_map:
-        expected_input_map[target_node_name] = set()
-      input_set = expected_input_map[target_node_name]
-      for inp in node.input:
-        (prefix, inp_name) = _InputName(inp)
-        mapped_input = old_to_new_node_map[inp_name]
-        # Add the input only if it's outside the segment (note that it could be
-        # in a different engine).
-        if not is_engine_op or (mapped_input != target_node_name and
-                                name_to_node_map[inp_name].op != "Const"):
-          input_set.add(prefix + mapped_input)
-          if mapped_input in removed_const_nodes:
-            removed_const_nodes.remove(mapped_input)
-    # Remove const nodes that have no outputs.
-    expected_input_map = {
-        k: v
-        for k, v in expected_input_map.items()
-        if k not in removed_const_nodes
-    }
-
-    def dependency_optimization(input_map):
-      """Transitive reduction of the control dependencies."""
-      # 1. Topological sort.
-      working_edges = copy.deepcopy(input_map)
-      # Populate a set with all the nodes wiithout incoming edges.
-      working_set = {
-        name for name in working_edges if len(working_edges[name]) == 0}
-      sorted_nodes = []
-      while working_set:
-        # Take a node from the set and add it to the sorted list.
-        node0 = working_set.pop()
-        sorted_nodes.append(node0)
-        # Remove outgoing edges and add nodes to the set if they have no
-        # incoming edge remaining.
-        for node1 in list(working_edges.keys()):
-          for edge_name in (node0, "^" + node0):
-            if edge_name in working_edges[node1]:
-              working_edges[node1].remove(edge_name)
-              if not working_edges[node1]:
-                working_set.add(node1)
-      if sum(len(edges) for edges in working_edges.values()):
-        raise ValueError("Input map doesn't represent a DAG!")
-
-      # 2. Transitive reduction.
-      for i in range(len(sorted_nodes) - 1):
-        dep_name = "^" + sorted_nodes[i]
-        # Identify nodes which have a control edge from the current one.
-        targets = [
-          j for j in range(i + 1, len(sorted_nodes))
-          if dep_name in input_map[sorted_nodes[j]]]
-        if not targets:
-          continue
-        # Compute max path lengths until the last target node.
-        path_lengths = {sorted_nodes[i]: 0}
-        for j in range(i + 1, targets[-1] + 1):
-          j_name = sorted_nodes[j]
-          length = None
-          for edge_name in input_map[j_name]:
-            _, name = _InputName(edge_name)
-            if name in path_lengths and \
-              (length is None or path_lengths[name] >= length):
-              length = path_lengths[name] + 1
-          if length is not None:
-            path_lengths[j_name] = length
-        # Remove the control dependency of targets if there is a path of
-        # length strictly greater than 1 from the current node.
-        for j in targets:
-          j_name = sorted_nodes[j]
-          if path_lengths[j_name] > 1:
-            input_map[j_name].remove(dep_name)
-
-    dependency_optimization(expected_input_map)
 
     # Compute the actual mapping from each node to its input nodes. If a cast
     # op doesn't exist in the original graph, we replace the use of the cast op
@@ -901,8 +825,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(0, num_engines)
     else:
       self.assertEqual(num_engines, len(expected_engines))
-      if isinstance(expected_engines, dict):
-        self._VerifyConnections(expected_engines, original_gdef, gdef_to_verify)
+      expected_connections = self.ExpectedConnections(run_params)
+      if expected_connections is not None:
+        self._VerifyConnections(
+            expected_engines,
+            expected_connections,
+            original_gdef,
+            gdef_to_verify)
       self._VerifyMaxBatchSizeAnnotations(
           expected_engines=expected_engines,
           original_gdef=original_gdef,

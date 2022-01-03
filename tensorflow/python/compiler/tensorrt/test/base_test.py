@@ -195,6 +195,18 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
         "TRTEngineOp_1": ["add2", "add3", "mul1"]
     }
 
+  def ExpectedConnections(self, run_params):
+    """Returns the expected edges."""
+    return {
+        "input_0": set(),
+        "c": set(),
+        "incompatible": {"input_0", "c"},
+        "TRTEngineOp_0": {"incompatible"},
+        "incompatible1": {"TRTEngineOp_0"},
+        "TRTEngineOp_1": {"incompatible1"},
+        "output_0": {"TRTEngineOp_1"},
+    }
+
 
 class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
@@ -256,17 +268,19 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
     c1 = constant_op.constant(1.0, name="c1")
     c2 = constant_op.constant(2.0, name="c2")
     d1 = self.trt_incompatible_op(inp, name="d1")
+    d2 = self.trt_incompatible_binary_op(inp, inp, name="d2")
     with ops.control_dependencies([d1]):
       add = math_ops.add(inp, c1, name="add")
     mul = math_ops.mul(add, add, name="mul")
     add1 = math_ops.add(mul, mul, name="add1")
     edge = self.trt_incompatible_op(add1, name="incompatible")
-    with ops.control_dependencies([d1, add1]):
+    with ops.control_dependencies([d1, d2, add1]):
       add2 = math_ops.add(edge, c2, name="add2")
     mul1 = math_ops.mul(add2, add2, name="mul1")
     add3 = math_ops.add(mul1, mul1, name="add3")
-    inc = self.trt_incompatible_binary_op(d1, add3, name="incompatible1")
-    return array_ops.squeeze(inc, name="output_0")
+    inc1 = self.trt_incompatible_binary_op(d1, add3, name="incompatible1")
+    inc2 = self.trt_incompatible_binary_op(d2, inc1, name="incompatible2")
+    return array_ops.squeeze(inc2, name="output_0")
 
   def GetParams(self):
     shapes = [[2, 32, 32, 3]]
@@ -280,6 +294,19 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
         "TRTEngineOp_1": ["c2", "add2", "add3", "mul1"]
     }
 
+  def ExpectedConnections(self, run_params):
+    """Returns the expected edges."""
+    return {
+        "input_0": set(),
+        "d1": {"input_0"},
+        "d2": {"input_0"},
+        "TRTEngineOp_0": {"input_0", "^d1"},
+        "incompatible": {"TRTEngineOp_0"},
+        "TRTEngineOp_1": {"incompatible", "^d2"},
+        "incompatible1": {"TRTEngineOp_1", "d1"},
+        "incompatible2": {"incompatible1", "d2"},
+        "output_0": {"incompatible2"},
+    }
 
 if __name__ == "__main__":
   test.main()
