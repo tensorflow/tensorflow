@@ -113,7 +113,7 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
                                           shape_large.end());
 
   // Update according to the broadcast dimensions.
-  for (auto index_pair : llvm::enumerate(broadcast_dimensions)) {
+  for (const auto& index_pair : llvm::enumerate(broadcast_dimensions)) {
     auto old_value = out_shape[index_pair.value()];
     auto new_value = shape_small[index_pair.index()];
     if (old_value != -1 && (new_value == -1 || new_value > old_value)) {

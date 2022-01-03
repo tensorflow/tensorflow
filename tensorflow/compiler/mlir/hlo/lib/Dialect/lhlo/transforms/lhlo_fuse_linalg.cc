@@ -84,7 +84,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
                                          result_buffers.end());
     while (!worklist.empty()) {
       Value result = worklist.pop_back_val();
-      auto definingOp = result.getDefiningOp();
+      auto* definingOp = result.getDefiningOp();
       if (!definingOp) {
         continue;
       }
@@ -178,9 +178,9 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
         auto info = fuseProducerOfBuffer(b, *inputOperand, graph);
         if (failed(info)) continue;
-        auto originalOp = info->originalProducer.getOperation();
+        auto* originalOp = info->originalProducer.getOperation();
         erase_set.insert(originalOp);
-        auto originalOpInLinalgOpsVector =
+        auto* originalOpInLinalgOpsVector =
             std::find_if(linalg_ops.begin(), linalg_ops.end(),
                          [&](const Operation* op) { return op == originalOp; });
         *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();

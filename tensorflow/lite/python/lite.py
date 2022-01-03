@@ -239,7 +239,8 @@ class QuantizationMode(object):
                graph_def,
                disable_per_channel=False,
                experimental_new_dynamic_range_quantizer=False,
-               experimental_low_bit_qat=False):
+               experimental_low_bit_qat=False,
+               full_integer_quantization_bias_type=None):
     self._optimizations = optimizations
     for deprecated_optimization in [
         Optimize.OPTIMIZE_FOR_SIZE, Optimize.OPTIMIZE_FOR_LATENCY
@@ -261,6 +262,9 @@ class QuantizationMode(object):
     # Allow training with lower than 8 bit weights to be converted
     # to constants with trained scale.
     self._experimental_low_bit_qat = experimental_low_bit_qat
+
+    self._full_integer_quantization_bias_type = full_integer_quantization_bias_type
+    self._validate_full_integer_quantization_bias_type()
 
   # TODO(b/162537905): Refactor the following quantization functions -
   # re-organize and refactor for better readability.
@@ -349,6 +353,17 @@ class QuantizationMode(object):
     else:
       return _dtypes.float32
 
+  def bias_type(self):
+    if self._full_integer_quantization_bias_type:
+      return self._full_integer_quantization_bias_type
+
+    if self.activations_type() == _dtypes.int16:
+      return _dtypes.int64
+    elif self.activations_type() == _dtypes.int8:
+      return _dtypes.int32
+    else:
+      return _dtypes.float32
+
   def converter_flags(self, inference_ty=None, inference_input_ty=None):
     """Flags to the converter."""
 
@@ -421,6 +436,28 @@ class QuantizationMode(object):
       # TODO(b/162537905): Relax this check for QAT.
       raise ValueError("representative_dataset is required when specifying "
                        "TFLITE_BUILTINS_INT8 or INT8 supported types.")
+
+  def _validate_full_integer_quantization_bias_type(self):
+    """Validates bias type for full interger quantization."""
+    bias_type = self._full_integer_quantization_bias_type
+    if not bias_type:
+      return
+
+    if self.activations_type() == _dtypes.float32:
+      raise ValueError(
+          "`full_integer_quantization_bias_type` is only supported for full integer quantization."
+      )
+
+    if self.activations_type() == _dtypes.int8 and bias_type != _dtypes.int32:
+      raise ValueError(
+          f"Expected bias type to be `dtypes.int32` for Int8Quant. "
+          f"Current setting bias type: {bias_type}")
+
+    if self.activations_type(
+    ) == _dtypes.int16 and bias_type != _dtypes.int32 and bias_type != _dtypes.int64:
+      raise ValueError(
+          f"Expected bias type to be `dtypes.int32` or `dtypes.int64` for "
+          f"Int16Quant. Current setting bias type: {bias_type}")
 
   def _is_int8_target_required(self):
     return (OpsSet.TFLITE_BUILTINS_INT8 in set(
@@ -502,6 +539,9 @@ class TFLiteConverterBase(object):
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
     self._experimental_tf_quantization_mode = None
+    # If unset, bias:int32 is by default except 16x8 quant.
+    # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
+    self._experimental_full_integer_quantization_bias_type = None
     # Initializes conversion metadata.
     self.exclude_conversion_metadata = False
     self._metadata = conversion_metdata_fb.ConversionMetadataT()
@@ -545,7 +585,7 @@ class TFLiteConverterBase(object):
     return _get_grappler_config(optimizers)
 
   def _quantize(self, result, input_type, output_type, activations_type,
-                allow_float):
+                bias_type, allow_float):
     """Quantize the model."""
     # pylint: disable=protected-access
     custom_op_registerers_by_name = [
@@ -583,8 +623,12 @@ class TFLiteConverterBase(object):
           output_data_type=output_type)
     else:
       return calibrate_quantize.calibrate_and_quantize(
-          self.representative_dataset.input_gen, input_type, output_type,
-          allow_float, activations_type,
+          self.representative_dataset.input_gen,
+          input_type,
+          output_type,
+          allow_float,
+          activations_type,
+          bias_type,
           disable_per_channel=self._experimental_disable_per_channel)
 
   def _is_unknown_shapes_allowed(self):
@@ -712,7 +756,8 @@ class TFLiteConverterBase(object):
         self.optimizations, self.target_spec, self.representative_dataset,
         graph_def, self._experimental_disable_per_channel,
         self._experimental_new_dynamic_range_quantizer,
-        self._experimental_low_bit_qat)
+        self._experimental_low_bit_qat,
+        self._experimental_full_integer_quantization_bias_type)
     converter_kwargs.update({
         "tf_version":
             self._metadata.environment.tensorflowVersion,
@@ -808,9 +853,10 @@ class TFLiteConverterBase(object):
         q_in_type = in_type if in_type and quant_io else _dtypes.float32
         q_out_type = out_type if out_type and quant_io else _dtypes.float32
         q_activations_type = quant_mode.activations_type()
+        q_bias_type = quant_mode.bias_type()
         q_allow_float = quant_mode.is_allow_float()
-        model = self._quantize(
-            model, q_in_type, q_out_type, q_activations_type, q_allow_float)
+        model = self._quantize(model, q_in_type, q_out_type, q_activations_type,
+                               q_bias_type, q_allow_float)
 
       m_in_type = in_type if in_type else _dtypes.float32
       m_out_type = out_type if out_type else _dtypes.float32
@@ -953,7 +999,8 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         self.optimizations, self.target_spec, self.representative_dataset,
         graph_def, self._experimental_disable_per_channel,
         self._experimental_new_dynamic_range_quantizer,
-        self._experimental_low_bit_qat)
+        self._experimental_low_bit_qat,
+        self._experimental_full_integer_quantization_bias_type)
     self._validate_inference_input_output_types(self._quant_mode)
 
     if not self._is_unknown_shapes_allowed():
@@ -1024,7 +1071,8 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         self.optimizations, self.target_spec, self.representative_dataset,
         graph_def, self._experimental_disable_per_channel,
         self._experimental_new_dynamic_range_quantizer,
-        self._experimental_low_bit_qat)
+        self._experimental_low_bit_qat,
+        self._experimental_full_integer_quantization_bias_type)
     self._validate_inference_input_output_types(quant_mode)
     converter_kwargs = {
         "enable_tflite_resource_variables":
@@ -1979,7 +2027,8 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         self.optimizations, self.target_spec, self.representative_dataset,
         self._graph_def, self._experimental_disable_per_channel,
         self._experimental_new_dynamic_range_quantizer,
-        self._experimental_low_bit_qat)
+        self._experimental_low_bit_qat,
+        self._experimental_full_integer_quantization_bias_type)
 
     optimized_graph = self._optimize_tf_model(self._graph_def,
                                               self._input_tensors,

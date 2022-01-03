@@ -54,7 +54,7 @@ class SinkConstantsToControlFlowPass
     llvm::DenseMap<Value, Operation*> sunk_constant;
     visitUsedValuesDefinedAbove({*region}, [&](OpOperand* use) {
       Value constant = use->get();
-      auto op = constant.getDefiningOp();
+      auto* op = constant.getDefiningOp();
       if (!op || !op->hasTrait<mlir::OpTrait::ConstantLike>()) return;
       auto map_entry = sunk_constant.try_emplace(constant, nullptr);
       if (!map_entry.second) {

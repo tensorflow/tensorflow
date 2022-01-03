@@ -74,7 +74,7 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
             SmallVectorImpl<int64_t> &contracting_dims,
             SmallVectorImpl<int64_t> &batching_dims) {
           llvm::SmallDenseSet<char> others_set(others.begin(), others.end());
-          for (auto en : llvm::enumerate(tokens)) {
+          for (const auto &en : llvm::enumerate(tokens)) {
             if (!result_tokens.contains(en.value())) {
               contracting_dims.emplace_back(en.index());
             }

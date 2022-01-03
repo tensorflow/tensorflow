@@ -1130,6 +1130,7 @@ def enable_eager_op_as_function(fn):
   return wrapper
 
 
+@tf_export("test.with_eager_op_as_function")
 def with_eager_op_as_function(cls=None, only_as_function=False):
   """Adds methods that call original methods with eager_op_as_function enabled.
 

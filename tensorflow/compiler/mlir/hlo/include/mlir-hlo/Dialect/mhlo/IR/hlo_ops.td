@@ -913,6 +913,7 @@ def HLO_WhileOp: HLO_Op<"while", [
   }];
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+  let hasCanonicalizer = 1;
   let verifier = [{ return mhlo::verify(*this); }];
   let printer = [{ return ::mlir::mhlo::printWhileOp(*this, p); }];
   let parser = [{ return ::mlir::mhlo::parseWhileOp(parser, result); }];
@@ -1297,6 +1298,7 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let results = (outs HLO_StaticShapeTensor);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
   // Only handles a static subset of the legacy format.
   let hasCustomHLOConverter = 1;
 }

@@ -569,7 +569,7 @@ static LogicalResult verifyStaticGather(
   }
 
   if (operandShape.hasRank()) {
-    for (auto it : llvm::enumerate(sliceSizes.getValues<int64_t>())) {
+    for (const auto& it : llvm::enumerate(sliceSizes.getValues<int64_t>())) {
       if (operandShape.isDynamicDim(it.index())) continue;
       auto operandDimSize = operandShape.getDimSize(it.index());
       auto sliceDimSize = it.value();
@@ -596,7 +596,7 @@ static void inferGatherShape(
   // can't be larger than the highest collapsed dimension. So go through those
   // and populate the leading dimensions of adjustedSliceSizes. The trailing
   // dimensions can just be adjusted by an offset.
-  auto maxCollapsedDimIt =
+  const auto* maxCollapsedDimIt =
       std::max_element(collapsedSliceDims.begin(), collapsedSliceDims.end());
   int64_t maxCollapsedDim = -1;
   if (maxCollapsedDimIt != collapsedSliceDims.end())
@@ -622,13 +622,14 @@ static void inferGatherShape(
     if (!llvm::is_contained(offsetDims, dim)) batchDims.push_back(dim);
 
   for (int i = 0; i < resultRank; ++i) {
-    auto offsetDimsIt = std::find(offsetDims.begin(), offsetDims.end(), i);
+    const auto* offsetDimsIt =
+        std::find(offsetDims.begin(), offsetDims.end(), i);
     if (offsetDimsIt != offsetDims.end()) {
       auto index = std::distance(offsetDims.begin(), offsetDimsIt);
       shape.push_back(getAdjustedSliceDim(index));
       continue;
     }
-    auto batchDimsIt = std::find(batchDims.begin(), batchDims.end(), i);
+    auto* batchDimsIt = std::find(batchDims.begin(), batchDims.end(), i);
     assert(batchDimsIt != batchDims.end());
     auto index = std::distance(batchDims.begin(), batchDimsIt);
     // This can never run into the special case where start_indices gets
@@ -1184,7 +1185,7 @@ static LogicalResult Verify(TupleOp op) {
     return op.emitOpError(
         "number of operands to tuple expected to match number of types in "
         "resultant tuple type");
-  for (auto it : llvm::enumerate(
+  for (const auto& it : llvm::enumerate(
            llvm::zip_first(op.getOperandTypes(), opType.getTypes()))) {
     if (std::get<0>(it.value()) != std::get<1>(it.value()))
       return op.emitOpError("has return type mismatch at ")
@@ -1212,7 +1213,8 @@ struct UnpackRepackSameTuple : public OpRewritePattern<TupleOp> {
     Value tuple_predecessor = first_element_op.getOperand();
     if (tuple_predecessor.getType() != op.getType()) return failure();
 
-    for (auto element_and_idx : llvm::enumerate(op.val().drop_front(1))) {
+    for (const auto& element_and_idx :
+         llvm::enumerate(op.val().drop_front(1))) {
       auto element_op =
           element_and_idx.value().getDefiningOp<GetTupleElementOp>();
       if (!element_op ||
@@ -1369,7 +1371,8 @@ OpFoldResult BroadcastOp::fold(ArrayRef<Attribute> attrs) {
     if (complex.getElementType().isa<FloatType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
-    } else if (complex.getElementType().isa<IntegerType>()) {
+    }
+    if (complex.getElementType().isa<IntegerType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
     } else {
@@ -1507,7 +1510,8 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
     if (complex.getElementType().isa<FloatType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
-    } else if (complex.getElementType().isa<IntegerType>()) {
+    }
+    if (complex.getElementType().isa<IntegerType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
     } else {
@@ -1517,6 +1521,61 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
 
   return SplatElementsAttr::get(
       type, splatOperandAttr.getSplatValue<mlir::Attribute>());
+}
+
+// Simplify BroadcastInDim has the following behaviors: replace BroadcastInDim
+// with Reshape or Transpose if they are equivalent or replace
+// BroadcastInDim(BroadcastInDim(X)) with BroadcastInDim(X)
+class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
+ public:
+  using OpRewritePattern<BroadcastInDimOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(BroadcastInDimOp op,
+                                PatternRewriter& rewriter) const override {
+    auto operand_type = op.operand().getType().dyn_cast<RankedTensorType>();
+    auto result_type = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!operand_type || !result_type) {
+      return failure();
+    }
+    auto bs_dim_indices = op.broadcast_dimensions().getValues<int64_t>();
+    if (operand_type.hasStaticShape() && result_type.hasStaticShape()) {
+      bool same_total_elements =
+          operand_type.getNumElements() == result_type.getNumElements();
+      // BroadcastInDim equivalent to reshape
+      if (llvm::is_sorted(bs_dim_indices) && same_total_elements) {
+        rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.operand());
+        return success();
+      }
+      // BroadcastInDim equivalent to transpose
+      if (operand_type.getRank() == result_type.getRank() &&
+          same_total_elements) {
+        rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getType(), op.operand(),
+                                                 op.broadcast_dimensions());
+        return success();
+      }
+    }
+    // eliminate redundant BroadcastInDim
+    if (auto broadcast_in_dim_op = llvm::dyn_cast_or_null<BroadcastInDimOp>(
+            op.operand().getDefiningOp())) {
+      auto new_indices =
+          broadcast_in_dim_op.broadcast_dimensions()
+              .mapValues(
+                  op.broadcast_dimensions().DenseElementsAttr::getElementType(),
+                  [&bs_dim_indices](const APInt& dim) -> APInt {
+                    return APInt(dim.getBitWidth(),
+                                 bs_dim_indices[dim.getSExtValue()], true);
+                  })
+              .cast<DenseIntElementsAttr>();
+      rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+          op, op.getType(), broadcast_in_dim_op.operand(), new_indices);
+      return success();
+    }
+    return failure();
+  }
+};
+
+void BroadcastInDimOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<BroadcastInDimSimplifier>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1742,7 +1801,8 @@ Type CreateRealType(Type type) {
 
   if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
     return RankedTensorType::get(ranked_type.getShape(), element_ty);
-  } else if (type.dyn_cast<UnrankedTensorType>()) {
+  }
+  if (type.dyn_cast<UnrankedTensorType>()) {
     return UnrankedTensorType::get(element_ty);
   }
 
@@ -1924,7 +1984,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
       continue;
     }
 
-    for (auto it : llvm::enumerate(shaped_ty.getShape())) {
+    for (const auto& it : llvm::enumerate(shaped_ty.getShape())) {
       // If a dimension is not dynamic, the output shape should match.
       if (ShapedType::isDynamic(out_shape[it.index()])) {
         out_shape[it.index()] = it.value();
@@ -2627,7 +2687,7 @@ static LogicalResult Verify(MapOp op) {
   auto operand_type = op.operands()[0].getType().cast<TensorType>();
   auto operand_elem_ty = operand_type.getElementType();
 
-  for (auto indexed_arg : llvm::enumerate(computation_args)) {
+  for (const auto& indexed_arg : llvm::enumerate(computation_args)) {
     auto arg_type = indexed_arg.value().getType().dyn_cast<TensorType>();
     if (!arg_type || arg_type.getRank() != 0)
       return op.emitOpError()
@@ -2668,7 +2728,8 @@ static LogicalResult Verify(MapOp op) {
   // Checks that the requested map dimension numbers are monotonically
   // increasing.
   DenseIntElementsAttr dimensions = op.dimensions();
-  for (auto indexedValue : llvm::enumerate(dimensions.getValues<int64_t>())) {
+  for (const auto& indexedValue :
+       llvm::enumerate(dimensions.getValues<int64_t>())) {
     if (indexedValue.value() != indexedValue.index())
       return op.emitOpError() << "requires monotonically increasing dimension "
                                  "numbers, but got: "
@@ -3100,11 +3161,9 @@ ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
     return failure();
 
   if (!reduceOpFntype || reduceOpFntype.getInputs().empty()) {
-    if (!reduceOpFntype)
-      return parser.emitError(loc, "expected function type");
-    else
-      return parser.emitError(loc,
-                              "input types missing in reduce-op function type");
+    if (!reduceOpFntype) return parser.emitError(loc, "expected function type");
+    return parser.emitError(loc,
+                            "input types missing in reduce-op function type");
   }
 
   // If location of reduce-op is explicitly provided, then use it; Else use
@@ -3539,7 +3598,7 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
 
   for (const auto& element : llvm::enumerate(operand_type.getShape())) {
     int64_t idx = element.index();
-    auto it = std::find(dimensions.begin(), dimensions.end(), idx);
+    auto* it = std::find(dimensions.begin(), dimensions.end(), idx);
     if (it != dimensions.end()) {
       continue;
     }
@@ -4390,27 +4449,67 @@ struct min<APInt> {
   }
 };
 
-#define BINARY_FOLDER(Op, Func)                                                \
-  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                           \
-    if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
-      return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
-    if (getElementTypeOrSelf(getType()).isa<IntegerType>())                    \
-      return BinaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
-    return {};                                                                 \
+#define BINARY_FOLDER_INTERNAL(Op, Func)                                     \
+  if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
+    return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
+  if (getElementTypeOrSelf(getType()).isa<IntegerType>())                    \
+    return BinaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
+  return {};
+
+#define BINARY_FOLDER(Op, Func)                      \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) { \
+    BINARY_FOLDER_INTERNAL(Op, Func)                 \
   }
 
 // Addition, subtraction and multiplication use the std:: versions of the ops.
 // Due to the other ops behaving differently in signed vs unsigned integers,
 // APInts need a special implementation. Currently, it replicates signed int
 // op behavior.
-BINARY_FOLDER(AddOp, std::plus);
 BINARY_FOLDER(SubOp, std::minus);
-BINARY_FOLDER(MulOp, std::multiplies);
 BINARY_FOLDER(DivOp, divide);
 BINARY_FOLDER(RemOp, remainder);
 BINARY_FOLDER(MaxOp, max);
 BINARY_FOLDER(MinOp, min);
 
+OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
+  if (attrs[0] && attrs[1]) {
+    BINARY_FOLDER_INTERNAL(AddOp, std::plus)
+  }
+  // Handle special case where one operand is 0:  x + 0 => x
+  if (attrs[0] || attrs[1]) {
+    SplatElementsAttr attr = attrs[0] ? attrs[0].dyn_cast<SplatElementsAttr>()
+                                      : attrs[1].dyn_cast<SplatElementsAttr>();
+    if (!attr) return {};
+    Value result = attrs[0] ? rhs() : lhs();
+    if (attr.getElementType().isa<FloatType>()) {
+      if (attr.getSplatValue<APFloat>().isZero()) return result;
+    } else if (attr.getElementType().isa<IntegerType>()) {
+      if (attr.getSplatValue<APInt>().isZero()) return result;
+    }
+  }
+  return {};
+}
+
+OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
+  if (attrs[0] && attrs[1]) {
+    BINARY_FOLDER_INTERNAL(MulOp, std::multiplies);
+  }
+  // Handle special case where one operand is 1: x * 1 => x
+  if (attrs[0] || attrs[1]) {
+    SplatElementsAttr attr = attrs[0] ? attrs[0].dyn_cast<SplatElementsAttr>()
+                                      : attrs[1].dyn_cast<SplatElementsAttr>();
+    if (!attr) return {};
+    Value result = attrs[0] ? rhs() : lhs();
+    if (attr.getElementType().isa<FloatType>()) {
+      if (attr.getSplatValue<APFloat>().convertToDouble() == 1.0) return result;
+    } else if (attr.getElementType().isa<IntegerType>()) {
+      if (attr.getSplatValue<APInt>().getSExtValue() == 1) return result;
+    }
+  }
+  return {};
+}
+
+#undef BINARY_FOLDER_INTERNAL
 #undef BINARY_FOLDER
 
 //===----------------------------------------------------------------------===//
@@ -4569,7 +4668,8 @@ OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
   if (etype.isa<IntegerType>()) {
     return FoldSlice<DenseElementsAttr::IntElementIterator, APInt>(
         this, elements.value_begin<APInt>());
-  } else if (etype.isa<FloatType>()) {
+  }
+  if (etype.isa<FloatType>()) {
     return FoldSlice<DenseElementsAttr::FloatElementIterator, APFloat>(
         this, elements.value_begin<APFloat>());
   }
@@ -4725,7 +4825,7 @@ static LogicalResult Verify(SortOp op) {
     return op.emitOpError("comparator block should have ")
            << 2 * num_operands << " arguments";
 
-  for (auto indexed_operand : llvm::enumerate(operands)) {
+  for (const auto& indexed_operand : llvm::enumerate(operands)) {
     int index = indexed_operand.index();
     Type element_type =
         indexed_operand.value().getType().cast<ShapedType>().getElementType();
@@ -4759,7 +4859,7 @@ static LogicalResult SortDropEmptyUseArgs(SortOp op,
 
   SmallVector<Value> new_operands;
   SmallVector<unsigned> erased_block_args;
-  for (auto en : llvm::enumerate(op.operands())) {
+  for (const auto& en : llvm::enumerate(op.operands())) {
     if (erased_args.contains(en.index())) {
       erased_block_args.push_back(en.index() * 2);
       erased_block_args.push_back(en.index() * 2 + 1);
@@ -4820,7 +4920,7 @@ void SortOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 //===----------------------------------------------------------------------===//
 
 OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
-  for (auto it : llvm::enumerate(permutation().getValues<APInt>())) {
+  for (const auto& it : llvm::enumerate(permutation().getValues<APInt>())) {
     if (it.index() != it.value()) {
       return {};
     }
@@ -4925,7 +5025,7 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
 
   for (const auto& element : llvm::enumerate(operand_type.getShape())) {
     int64_t idx = element.index();
-    auto it = std::find(permutation.begin(), permutation.end(), idx);
+    auto* it = std::find(permutation.begin(), permutation.end(), idx);
     Value value_dim = to_shape_scalar_type(
         builder.createOrFold<tensor::DimOp>(loc, operand, element.index()));
     shape_values[std::distance(permutation.begin(), it)] = value_dim;
@@ -5478,6 +5578,67 @@ ParseResult parseWhileOp(OpAsmParser& parser, OperationState& result) {
   return success();
 }
 
+static LogicalResult whileCanonicalization(WhileOp whileOp,
+                                           PatternRewriter& rewriter) {
+  // Turn loop invariant values into implicit capture.
+  // Check if there is at least one value is forwarded from one iteration to the
+  // next, or one of the yielded value is an implicit capture already. Otherwise
+  // there is nothing to do here.
+  Block* cond = whileOp.getBody(0);
+  Block* body = whileOp.getBody(1);
+  auto bodyReturnOp = cast<ReturnOp>(body->getTerminator());
+  if (!llvm::any_of(llvm::zip(whileOp->getOperands(), body->getArguments(),
+                              bodyReturnOp->getOperands()),
+                    [&](auto zip) {
+                      return (std::get<0>(zip) == std::get<2>(zip) ||
+                              std::get<1>(zip) == std::get<2>(zip));
+                    }))
+    return rewriter.notifyMatchFailure(whileOp, "no loop invariant found");
+
+  SmallVector<Value> newOperands, resultsToReplace;
+  SmallVector<unsigned> invariantArgIdxs;
+  for (const auto& enumeratedOperands : llvm::enumerate(llvm::zip(
+           whileOp.getOperands(), cond->getArguments(), body->getArguments(),
+           bodyReturnOp->getOperands(), whileOp->getResults()))) {
+    const auto& operands = enumeratedOperands.value();
+    Value whileOperand = std::get<0>(operands);
+    BlockArgument condBlockArg = std::get<1>(operands);
+    BlockArgument bodyBlockArg = std::get<2>(operands);
+    Value bodyReturnOperand = std::get<3>(operands);
+    Value whileResult = std::get<4>(operands);
+
+    bool forwarded = (whileOperand == bodyReturnOperand ||
+                      bodyBlockArg == bodyReturnOperand);
+    if (forwarded) {
+      invariantArgIdxs.push_back(enumeratedOperands.index());
+      condBlockArg.replaceAllUsesWith(whileOperand);
+      bodyBlockArg.replaceAllUsesWith(whileOperand);
+      whileResult.replaceAllUsesWith(whileOperand);
+      continue;
+    }
+    newOperands.push_back(whileOperand);
+    resultsToReplace.push_back(whileResult);
+  }
+  cond->eraseArguments(invariantArgIdxs);
+  body->eraseArguments(invariantArgIdxs);
+  for (int idx : llvm::reverse(invariantArgIdxs))
+    bodyReturnOp->eraseOperand(idx);
+
+  WhileOp newWhileOp = rewriter.create<WhileOp>(
+      whileOp.getLoc(), bodyReturnOp->getOperandTypes(), newOperands);
+  newWhileOp.getBodyRegion(0).takeBody(whileOp.getBodyRegion(0));
+  newWhileOp.getBodyRegion(1).takeBody(whileOp.getBodyRegion(1));
+  for (auto results : llvm::zip(resultsToReplace, newWhileOp->getResults()))
+    std::get<0>(results).replaceAllUsesWith(std::get<1>(results));
+  rewriter.eraseOp(whileOp);
+  return success();
+}
+
+void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                          MLIRContext* context) {
+  results.add(&whileCanonicalization);
+}
+
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
 
@@ -5824,6 +5985,7 @@ char NonSpatialDimToString(NonSpatialDim dim) {
     case KOFeature:
       return 'o';
   }
+  llvm_unreachable("Unknown NonSpatialDim");
 }
 }  // namespace
 

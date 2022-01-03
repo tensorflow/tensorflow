@@ -67,6 +67,10 @@
 #                                  automatically handle adding/removing of _cpu
 #                                  suffix depending on what project name was
 #                                  passed. Only work for MacOS
+#   AUDITWHEEL_TARGET_PLAT:    Manylinux platform tag that is to be used for
+#                              tagging the linux wheel files. By default, it is
+#                              set to `manylinux2010` . For manylinux2014
+#                              builds, change to `manylinux2014`.
 #
 # To-be-deprecated variable(s).
 #   GIT_TAG_OVERRIDE:    Values for `--git_tag_override`. This flag gets passed
@@ -256,12 +260,14 @@ DEFAULT_PROJECT_NAME="tensorflow"
 DEFAULT_PIP_TEST_ROOT="pip_test"
 DEFAULT_BUILD_BOTH_GPU_PACKAGES=0
 DEFAULT_BUILD_BOTH_CPU_PACKAGES=0
+DEFAULT_AUDITWHEEL_TARGET_PLAT="manylinux2010"
 # Take in optional global variables
 PIP_TESTS=${TF_PIP_TESTS:-$DEFAULT_PIP_TESTS}
 PROJECT_NAME=${TF_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}
 PIP_TEST_ROOT=${TF_PIP_TEST_ROOT:-$DEFAULT_PIP_TEST_ROOT}
 BUILD_BOTH_GPU_PACKAGES=${TF_BUILD_BOTH_GPU_PACKAGES:-$DEFAULT_BUILD_BOTH_GPU_PACKAGES}
 BUILD_BOTH_CPU_PACKAGES=${TF_BUILD_BOTH_CPU_PACKAGES:-$DEFAULT_BUILD_BOTH_CPU_PACKAGES}
+AUDITWHEEL_TARGET_PLAT=${TF_AUDITWHEEL_TARGET_PLAT:-$DEFAULT_AUDITWHEEL_TARGET_PLAT}
 
 # Override breaking change in setuptools v60 (https://github.com/pypa/setuptools/pull/2896)
 SETUPTOOLS_USE_DISTUTILS=stdlib
@@ -741,23 +747,24 @@ if [[ ${OS_TYPE} == "ubuntu" ]] && \
   if [[ $PY_MAJOR_MINOR_VER -ne "3.10" ]]; then
     set +e
     pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
-    pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-    sudo pip3 install auditwheel==2.0.0 || \
-      sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+    # For tagging wheels as manylinux2014, auditwheel needs to >= 3.0.0
+    pip3 install auditwheel==3.3.1 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==3.3.1
+    sudo pip3 install auditwheel==3.3.1 || \
+      sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==3.3.1
     set -e
   fi
   auditwheel --version
 
   for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
-    # Repair the wheels for cpu manylinux2010
+    # Repair the wheels for cpu manylinux2010/manylinux2014
     echo "auditwheel repairing ${WHL_PATH}"
-    auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
+    auditwheel repair --plat ${AUDITWHEEL_TARGET_PLAT}_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
 
     WHL_BASE_NAME=$(basename "${WHL_PATH}")
-    AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
+    AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/${AUDITWHEEL_TARGET_PLAT}}")
     if [[ -f ${AUDITED_WHL_NAME} ]]; then
       WHL_PATH=${AUDITED_WHL_NAME}
-      echo "Repaired manylinux2010 wheel file at: ${WHL_PATH}"
+      echo "Repaired ${AUDITWHEEL_TARGET_PLAT} wheel file at: ${WHL_PATH}"
     else
       die "WARNING: Cannot find repaired wheel."
     fi

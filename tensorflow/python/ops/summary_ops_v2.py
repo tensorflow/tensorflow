@@ -177,6 +177,27 @@ def record_if(condition):
     _summary_state.is_recording = old
 
 
+def has_default_writer_when_recording():
+  """Returns a boolean indicating whether a default summary writer exists.
+
+  Note that summary recording is turned on.
+
+  Given that a summary writer is set, this fuction checks the
+  ctx.summary_recording_distribution_strategy, which may be a callable (if so
+  its value is extracted by calling them and the resolved value must be Truthy,
+  Falsy, or `None`). This value is controlled by DistributionStrategy
+  (tf.distribute.ReplicaContext).
+  """
+  with record_if(True):
+    if _summary_state.writer is None:
+      return False
+
+    resolve = lambda x: x() if callable(x) else x
+    cond_distributed = resolve(
+        _summary_state.is_recording_distribution_strategy)
+    return cond_distributed
+
+
 # TODO(apassos) consider how to handle local step here.
 def record_summaries_every_n_global_steps(n, global_step=None):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""

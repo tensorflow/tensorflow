@@ -51,7 +51,7 @@ struct ComputeReshapeShapeConversion
       mhlo::ComputeReshapeShapeOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto ctx = op->getContext();
+    auto* ctx = op->getContext();
     Value neg_one = rewriter.create<arith::ConstantIndexOp>(loc, -1);
     auto index_type = rewriter.getIndexType();
     auto num_elements = adaptor.getOperands()[0];
@@ -117,7 +117,7 @@ struct CstrReshapableConversion
       mhlo::CstrReshapableOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto ctx = op->getContext();
+    auto* ctx = op->getContext();
     Value neg_one = rewriter.create<arith::ConstantIndexOp>(loc, -1);
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
@@ -136,7 +136,7 @@ struct CstrReshapableConversion
         loc, new_shape, llvm::makeArrayRef({one, zero, zero}));
     {
       PatternRewriter::InsertionGuard g(rewriter);
-      auto body = reduction.getBody();
+      auto* body = reduction.getBody();
       rewriter.setInsertionPointToEnd(body);
       Value extent = body->getArgument(1);
       Value is_dynamic = rewriter.create<arith::CmpIOp>(

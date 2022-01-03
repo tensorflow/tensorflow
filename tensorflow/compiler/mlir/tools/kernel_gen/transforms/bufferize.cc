@@ -357,7 +357,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
           b.create<scf::YieldOp>(l,
                                  ValueRange{all_ones, number_of_leading_ones});
         });
-    return leading_ones_loop.results()[1];
+    return leading_ones_loop.getResults()[1];
   }
 
   Value RemoveLeadingOnesFrom1DMemref(ImplicitLocOpBuilder &lb,

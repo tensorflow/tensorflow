@@ -260,7 +260,7 @@ class LhloLegalizeRootsToParallelLoops
       auto fusion_op = cast<FusionOp>(fusion);
       FusionPattern fusion_pattern(fusion_op);
       auto root_ops = fusion_pattern.getRootOps();
-      auto fused_block = &(fusion_op.region().front());
+      auto* fused_block = &(fusion_op.region().front());
       SmallVector<Operation*, 4> op_list;
       fused_block->walk(
           [&](LmhloOp op) { op_list.push_back(op.getOperation()); });
@@ -283,7 +283,7 @@ class LhloLegalizeRootsToParallelLoops
       //    requirement on the schedule.
       // TODO(disc): the support of row reduction and 'pure atomic' reduction
       auto fusion_type = fusion_pattern.getFusionType();
-      auto dominant_op = fusion_pattern.getDominantOp();
+      auto* dominant_op = fusion_pattern.getDominantOp();
       switch (fusion_type) {
         case FusionType::kRowReduction:
           dominant_op->emitError() << "Unsupported kRowReduction Schedule";

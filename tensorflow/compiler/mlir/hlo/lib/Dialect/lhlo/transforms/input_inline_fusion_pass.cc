@@ -128,7 +128,7 @@ class InputInlineFusionPattern : public RewritePattern {
     SmallVector<LoadOp, 4> load_ops;
     parallel_op->walk([&](LoadOp load_op) { load_ops.push_back(load_op); });
     for (auto load_op : load_ops) {
-      auto lhlo_op = getFusibleOperation(load_op);
+      auto* lhlo_op = getFusibleOperation(load_op);
       if (!lhlo_op) continue;
       // 1, in case of:
       //      A = ...
@@ -200,7 +200,7 @@ bool InputInlineFusionPattern::checkIfFusible(
   assert(isa<LmhloOp>(producer) && "Unexpected producer in checkIfFusible");
   auto producer_result_memref = cast<LmhloOp>(producer).getResultBuffer();
   can_remove_producer = true;
-  auto lhlo_dialect = user->getContext()->getLoadedDialect("lmhlo");
+  auto* lhlo_dialect = user->getContext()->getLoadedDialect("lmhlo");
   for (auto* memref_user : producer_result_memref.getUsers()) {
     if ((memref_user->getDialect() == lhlo_dialect) &&
         (memref_user != producer)) {
@@ -352,7 +352,7 @@ void InputInlineFusion::runOnFunction() {
       signalPassFailure();
     });
   });
-  for (auto op : to_be_removed) {
+  for (auto* op : to_be_removed) {
     op->erase();
   }
 }

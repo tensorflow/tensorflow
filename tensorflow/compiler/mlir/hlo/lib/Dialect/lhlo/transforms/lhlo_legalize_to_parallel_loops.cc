@@ -49,14 +49,14 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
     arg_bufs.push_back(
         b->create<memref::AllocOp>(loc, arg_type.cast<MemRefType>()));
   }
-  for (auto operand : llvm::enumerate(operands)) {
+  for (const auto& operand : llvm::enumerate(operands)) {
     b->create<memref::StoreOp>(loc, operand.value(), arg_bufs[operand.index()]);
   }
   // Clone the ops from `lhlo_block`.
   BlockAndValueMapping mapping;
   mapping.map(lhlo_block->getArguments(), arg_bufs);
   for (auto& nested : lhlo_block->without_terminator()) {
-    auto clone = b->clone(nested, mapping);
+    auto* clone = b->clone(nested, mapping);
     mapping.map(nested.getResults(), clone->getResults());
   }
   return b->create<memref::LoadOp>(loc, arg_bufs.back());
@@ -69,7 +69,7 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
 // LHLO ops.
 void ConvertToReductionOperator(Location loc, scf::ReduceOp reduce_op,
                                 Block* lhlo_block, OpBuilder* b) {
-  Block& loop_reduce_op_body = reduce_op.reductionOperator().front();
+  Block& loop_reduce_op_body = reduce_op.getReductionOperator().front();
   OpBuilder::InsertionGuard guard(*b);
   b->setInsertionPointToStart(&loop_reduce_op_body);
   b->create<scf::ReduceReturnOp>(
@@ -151,7 +151,7 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
   ArrayRef<int64_t> shape =
       shaped_value.getType().cast<ShapedType>().getShape();
   SmallVector<Value, 2> lower, upper, step;
-  for (auto dim : llvm::enumerate(shape)) {
+  for (const auto& dim : llvm::enumerate(shape)) {
     upper.push_back(
         GetStaticOrDynamicDim(loc, shaped_value, dim.index(), dim.value(), b));
     lower.push_back(zero);
@@ -198,7 +198,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
   using OpConversionPattern<lmhlo::ReduceOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::ReduceOp reduce_op, OpAdaptor adaptor,
+      lmhlo::ReduceOp reduce_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
     if (reduce_op.out().size() != 1) return failure();
@@ -244,7 +244,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     SmallVector<Value, 2> parallel_lower, parallel_upper, parallel_step;
     SmallVector<Value, 2> reduce_lower, reduce_upper, reduce_step;
     auto operand_shape = operand.getType().cast<MemRefType>().getShape();
-    for (auto dim : llvm::enumerate(operand_shape)) {
+    for (const auto& dim : llvm::enumerate(operand_shape)) {
       const bool is_reducing_dim = reducing_dims.count(dim.index());
 
       Value ub = GetStaticOrDynamicDim(loc, operand, dim.index(), dim.value(),
@@ -369,7 +369,7 @@ class ReduceWindowOpConverter
   using OpConversionPattern<lmhlo::ReduceWindowOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::ReduceWindowOp reduce_window_op, OpAdaptor adaptor,
+      lmhlo::ReduceWindowOp reduce_window_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
     if (reduce_window_op.out().size() != 1) return failure();
@@ -456,10 +456,10 @@ class ReduceWindowOpConverter
 
     OpBuilder else_builder =
         elem_or_init.getElseBodyBuilder(rewriter->getListener());
-    else_builder.create<scf::YieldOp>(loc, *window_loop.initVals().begin());
+    else_builder.create<scf::YieldOp>(loc, *window_loop.getInitVals().begin());
 
     return rewriter->create<scf::ReduceOp>(loc,
-                                           *elem_or_init.results().begin());
+                                           *elem_or_init.getResults().begin());
   }
 };
 
@@ -496,7 +496,7 @@ class SelectAndScatterOpConverter
   using OpConversionPattern<lmhlo::SelectAndScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::SelectAndScatterOp s_and_s_op, OpAdaptor adaptor,
+      lmhlo::SelectAndScatterOp s_and_s_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = s_and_s_op.getLoc();
     InitializeOutput(s_and_s_op, &rewriter);

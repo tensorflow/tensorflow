@@ -15,10 +15,10 @@
 """Cache to manage concrete functions and their signatures."""
 
 import collections
-from typing import Sequence, Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
+from tensorflow.core.function import trace_type
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function_trace_type
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -177,7 +177,7 @@ class FunctionCache:
     return True
 
   def add(self, key: FunctionCacheKey,
-          deletion_observer: function_trace_type.WeakrefDeletionObserver,
+          deletion_observer: trace_type.WeakrefDeletionObserver,
           concrete):
     """Adds a new concrete function alongside its key.
 
@@ -242,11 +242,11 @@ class _FunctionGarbageCollector(object):
 def make_cache_key(
     args,
     include_tensor_ranks_only: bool = False
-) -> Tuple[FunctionCacheKey, function_trace_type.WeakrefDeletionObserver]:
+) -> Tuple[FunctionCacheKey, trace_type.WeakrefDeletionObserver]:
   """Computes the cache key given the function arguments."""
-  signature_context = function_trace_type.SignatureContext(
+  signature_context = trace_type.SignatureContext(
       include_tensor_ranks_only)
-  function_signature = function_trace_type.make_function_signature(
+  function_signature = trace_type.make_function_signature(
       args, signature_context)
   return FunctionCacheKey(
       function_signature,

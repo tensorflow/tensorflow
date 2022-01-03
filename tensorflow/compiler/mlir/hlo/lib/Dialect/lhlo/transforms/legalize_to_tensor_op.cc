@@ -81,7 +81,7 @@ struct LegalizeToTensorOpPass
   // `mhlo-legalize-to-lmhlo`.
   void runOnFunction() override {
     auto func = getFunction();
-    auto context = &getContext();
+    auto* context = &getContext();
     OwningRewritePatternList patterns(context);
     patterns.insert<ForwardShapeOfOp, ForwardExtractOp>(context);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {

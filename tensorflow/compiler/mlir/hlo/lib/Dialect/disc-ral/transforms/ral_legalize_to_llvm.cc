@@ -61,7 +61,8 @@ LogicalResult getTypeEncoding(MLIRContext* ctx, Type t, StrT& out) {
     out.append(
         Twine("m").concat(Twine(memref_type.getRank()).concat("d")).str());
     return getTypeEncoding(ctx, memref_type.getElementType(), out);
-  } else if (auto int_type = t.dyn_cast<IntegerType>()) {
+  }
+  if (auto int_type = t.dyn_cast<IntegerType>()) {
     out.append(Twine("i").concat(Twine(int_type.getWidth())).str());
   } else if (auto fp_type = t.dyn_cast<FloatType>()) {
     out.append(Twine("f").concat(Twine(fp_type.getWidth())).str());
@@ -292,7 +293,7 @@ Value DispatchOpToLLVMPattern::rewriteInsOutsOfDispatchOp(
   Value array_ptr = rewriter.create<LLVM::AllocaOp>(
       loc, llvm_pointer_pointer_type, array_size, /*alignment=*/0);
 
-  for (auto en : llvm::enumerate(argument_types)) {
+  for (const auto& en : llvm::enumerate(argument_types)) {
     Value index = rewriter.create<LLVM::ConstantOp>(
         loc, llvm_int32_type, rewriter.getI32IntegerAttr(en.index()));
     Value field_ptr = rewriter.create<LLVM::GEPOp>(
@@ -423,7 +424,7 @@ Value ConvertLaunchFuncOpToRalCallPattern::generateParamsArray(
       loc, llvm_pointer_pointer_type, array_size, /*alignment=*/0);
   Value zero = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type,
                                                 builder.getI32IntegerAttr(0));
-  for (auto en : llvm::enumerate(arguments)) {
+  for (const auto& en : llvm::enumerate(arguments)) {
     Value index = builder.create<LLVM::ConstantOp>(
         loc, llvm_int32_type, builder.getI32IntegerAttr(en.index()));
     Value field_ptr = builder.create<LLVM::GEPOp>(
@@ -532,7 +533,7 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
     // Populate type conversions.
     MLIRContext* ctx = m.getContext();
     LLVMTypeConverter type_converter(ctx);
-    type_converter.addConversion([&](RalExecutionContextType type) {
+    type_converter.addConversion([&](RalExecutionContextType /*type*/) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
 
