@@ -15,7 +15,6 @@
 """Utilities to test TF-TensorRT integration."""
 
 import collections
-import copy
 import errno
 import gc
 import itertools
@@ -292,8 +291,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     raise NotImplementedError()
 
   def ExpectedConnections(self, run_params):
-    """Returns the expected edges or None to skip the check."""
-    return None
+    """Returns the expected edges or an empty dict to skip the check."""
+    return {}
 
   def ExpectedMaxBatchSizes(self, run_params):
     """Returns the expected maximum batch sizes of the build engines."""
@@ -826,7 +825,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     else:
       self.assertEqual(num_engines, len(expected_engines))
       expected_connections = self.ExpectedConnections(run_params)
-      if expected_connections is not None:
+      if expected_connections:
         self._VerifyConnections(
             expected_engines,
             expected_connections,
