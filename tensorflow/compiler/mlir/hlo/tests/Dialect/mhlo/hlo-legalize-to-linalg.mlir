@@ -572,8 +572,8 @@ func @broadcast(%arg: tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32> {
 // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
 // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK: %[[C4_0:.*]] = arith.constant 4 : index
-// CHECK: %[[C1_1:.*]] = arith.constant 1 : index
+// CHECK-DAG: %[[C4_0:.*]] = arith.constant 4 : index
+// CHECK-DAG: %[[C1_1:.*]] = arith.constant 1 : index
 // CHECK: %[[DIM:.*]] = tensor.dim %{{.*}}, %[[C1_1]] : tensor<4x?x16xf32>
 // CHECK-DAG: %[[C2_2:.*]] = arith.constant 2 : index
 // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : index
@@ -2651,7 +2651,7 @@ func @linalg.conv_2D_padding_test1(%arg0: tensor<1x33x1x1xf16>, %arg1: tensor<40
 }
 // CHECK-NEXT: %[[INIT:.*]] = linalg.init_tensor [400, 1024, 1024, 1] : tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
-// CHECK-NEXT: %[[FILL:.*]] = linalg.fill(%[[ZERO]], %[[INIT]]) : f16, tensor<400x1024x1024x1xf16> -> tensor<400x1024x1024x1xf16> 
+// CHECK-NEXT: %[[FILL:.*]] = linalg.fill(%[[ZERO]], %[[INIT]]) : f16, tensor<400x1024x1024x1xf16> -> tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[PAD:.*]] = linalg.pad_tensor %[[INPUT]] low[0, 0, 16, 0] high[0, 0, 16, 0]  {
 // CHECK-NEXT: ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):  // no predecessors
@@ -2671,7 +2671,7 @@ func @linalg.conv_2D_padding_test2(%arg0: tensor<1x33x1x1xf16>, %arg1: tensor<40
 }
 // CHECK-NEXT: %[[INIT:.*]] = linalg.init_tensor [400, 1024, 1024, 1] : tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
-// CHECK-NEXT: %[[FILL:.*]] = linalg.fill(%[[ZERO]], %[[INIT]]) : f16, tensor<400x1024x1024x1xf16> -> tensor<400x1024x1024x1xf16> 
+// CHECK-NEXT: %[[FILL:.*]] = linalg.fill(%[[ZERO]], %[[INIT]]) : f16, tensor<400x1024x1024x1xf16> -> tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[PAD:.*]] = linalg.pad_tensor %[[INPUT]] low[0, 8, 16, 0] high[0, 8, 16, 0]  {
 // CHECK-NEXT: ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):  // no predecessors
@@ -3725,8 +3725,8 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 // CHECK-DAG:       %[[VAL_5:.*]] = builtin.unrealized_conversion_cast %[[VAL_2]] : tensor<?x?xui32> to tensor<?x?xi32>
 // CHECK-DAG:       %[[VAL_4:.*]] = builtin.unrealized_conversion_cast %[[VAL_1]] : tensor<?x?xui32> to tensor<?x?xi32>
 // CHECK-DAG:       %[[VAL_3:.*]] = builtin.unrealized_conversion_cast %[[VAL_0]] : tensor<?x?xui32> to tensor<?x?xi32>
-// CHECK:           %[[VAL_6:.*]] = arith.constant 0 : index
-// CHECK:           %[[VAL_7:.*]] = arith.constant 0 : index
+// CHECK-DAG:       %[[VAL_6:.*]] = arith.constant 0 : index
+// CHECK-DAG:       %[[VAL_7:.*]] = arith.constant 0 : index
 // CHECK:           %[[VAL_8:.*]] = tensor.dim %[[VAL_3]], %[[VAL_7]] : tensor<?x?xi32>
 // CHECK:           %[[VAL_9:.*]] = arith.constant 1 : index
 // CHECK:           %[[VAL_10:.*]] = tensor.dim %[[VAL_3]], %[[VAL_9]] : tensor<?x?xi32>

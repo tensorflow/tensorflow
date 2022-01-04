@@ -9,23 +9,23 @@
 // CHECK-SAME:                   %[[VAL_0:.*]]: f32) -> f32 {
 // EXP-NOT: math.exp
 // NOOP: math.exp
-// CHECK:  %[[CST_ONE:.*]] = arith.constant 1.000000e+00 : f32
-// CHECK:  %[[CST_CEPHES_EXP_P5:.*]] = arith.constant 5.000000e-01 : f32
-// CHECK:  %[[CST_EXP_HI:.*]] = arith.constant 8.872300e+01 : f32
-// CHECK:  %[[CST_EXP_LO:.*]] = arith.constant -8.872300e+01 : f32
-// CHECK:  %[[CST_CEPHES_LOG2E:.*]] = arith.constant 1.44269502 : f32
-// CHECK:  %[[CST_CEPHES_EXP_P0:.*]] = arith.constant 1.98756912E-4 : f32
-// CHECK:  %[[CST_CEPHES_EXP_P1:.*]] = arith.constant 0.00139819994 : f32
-// CHECK:  %[[CST_CEPHES_EXP_P2:.*]] = arith.constant 0.00833345205 : f32
-// CHECK:  %[[CST_CEPHES_EXP_P3:.*]] = arith.constant 0.0416657962 : f32
-// CHECK:  %[[CST_CEPHES_EXP_P4:.*]] = arith.constant 0.166666657 : f32
-// CHECK:  %[[CST_CEPHES_EXP_C1:.*]] = arith.constant -0.693359375 : f32
-// CHECK:  %[[CST_CEPHES_EXP_C2:.*]] = arith.constant 2.12194442E-4 : f32
-// CHECK:  %[[CST_MANT_BITS:.*]] = arith.constant 23 : i32
-// CHECK:  %[[CST_MAX_EXPONENT:.*]] = arith.constant 2.780000e+02 : f32
-// CHECK:  %[[CST_MIN_EXPONENT:.*]] = arith.constant -2.780000e+02 : f32
-// CHECK:  %[[CST_BIAS:.*]] = arith.constant 127 : i32
-// CHECK:  %[[CST_TWO:.*]] = arith.constant 2 : i32
+// CHECK-DAG:  %[[CST_ONE:.*]] = arith.constant 1.000000e+00 : f32
+// CHECK-DAG:  %[[CST_CEPHES_EXP_P5:.*]] = arith.constant 5.000000e-01 : f32
+// CHECK-DAG:  %[[CST_EXP_HI:.*]] = arith.constant 8.872300e+01 : f32
+// CHECK-DAG:  %[[CST_EXP_LO:.*]] = arith.constant -8.872300e+01 : f32
+// CHECK-DAG:  %[[CST_CEPHES_LOG2E:.*]] = arith.constant 1.44269502 : f32
+// CHECK-DAG:  %[[CST_CEPHES_EXP_P0:.*]] = arith.constant 1.98756912E-4 : f32
+// CHECK-DAG:  %[[CST_CEPHES_EXP_P1:.*]] = arith.constant 0.00139819994 : f32
+// CHECK-DAG:  %[[CST_CEPHES_EXP_P2:.*]] = arith.constant 0.00833345205 : f32
+// CHECK-DAG:  %[[CST_CEPHES_EXP_P3:.*]] = arith.constant 0.0416657962 : f32
+// CHECK-DAG:  %[[CST_CEPHES_EXP_P4:.*]] = arith.constant 0.166666657 : f32
+// CHECK-DAG:  %[[CST_CEPHES_EXP_C1:.*]] = arith.constant -0.693359375 : f32
+// CHECK-DAG:  %[[CST_CEPHES_EXP_C2:.*]] = arith.constant 2.12194442E-4 : f32
+// CHECK-DAG:  %[[CST_MANT_BITS:.*]] = arith.constant 23 : i32
+// CHECK-DAG:  %[[CST_MAX_EXPONENT:.*]] = arith.constant 2.780000e+02 : f32
+// CHECK-DAG:  %[[CST_MIN_EXPONENT:.*]] = arith.constant -2.780000e+02 : f32
+// CHECK-DAG:  %[[CST_BIAS:.*]] = arith.constant 127 : i32
+// CHECK-DAG:  %[[CST_TWO:.*]] = arith.constant 2 : i32
 // CHECK:  %[[VAL_18:.*]] = arith.cmpf olt, %[[VAL_0]], %[[CST_EXP_HI]] : f32
 // CHECK:  %[[VAL_19:.*]] = select %[[VAL_18]], %[[VAL_0]], %[[CST_EXP_HI]] : f32
 // CHECK:  %[[VAL_20:.*]] = arith.cmpf ogt, %[[VAL_19]], %[[CST_EXP_LO]] : f32

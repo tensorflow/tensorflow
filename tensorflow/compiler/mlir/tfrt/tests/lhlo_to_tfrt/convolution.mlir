@@ -154,8 +154,8 @@ func @conv_backwardfilter(%input : memref<4x256x3x3xf16>, %d_output: memref<256x
 // CHECK: func @get_conv_forward_fused_plan(
 // CHECK-SAME:   %arg0: !tfrt_gpu.dnn.handle
 // CHECK-SAME: ) -> !tfrt_gpu.dnn.convolution_plan
-// CHECK: [[ALPHA:%[0-9]+]] = tfrt.constant.f64 1.000000e+00
-// CHECK: [[ALPHA2:%[0-9]+]] = tfrt.constant.f64 0.000000e+00
+// CHECK-DAG: [[ALPHA:%[0-9]+]] = tfrt.constant.f64 1.000000e+00
+// CHECK-DAG: [[ALPHA2:%[0-9]+]] = tfrt.constant.f64 0.000000e+00
 // CHECK: [[CONV_PLAN:%[0-9]+]] = tfrt_gpu.dnn.build_fused_convolution %arg0,
 // CHECK-SAME: CUDNN_DATA_HALF, CUDNN_DATA_HALF, CUDNN_DATA_HALF, [1, 17, 9, 9],
 // CHECK-SAME: [1377, 81, 9, 1], [1, 32, 9, 9], [2592, 81, 9, 1],
@@ -208,8 +208,8 @@ func @conv_forward_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x
 // CHECK: func @get_conv_forward_fused_with_side_input_plan(
 // CHECK-SAME:   %arg0: !tfrt_gpu.dnn.handle
 // CHECK-SAME: ) -> !tfrt_gpu.dnn.convolution_plan
-// CHECK: [[ALPHA:%[0-9]+]] = tfrt.constant.f64 1.000000e+00
-// CHECK: [[ALPHA2:%[0-9]+]] = tfrt.constant.f64 1.000000e+00
+// CHECK-DAG: [[ALPHA:%[0-9]+]] = tfrt.constant.f64 1.000000e+00
+// CHECK-DAG: [[ALPHA2:%[0-9]+]] = tfrt.constant.f64 1.000000e+00
 // CHECK: [[CONV_PLAN:%[0-9]+]] = tfrt_gpu.dnn.build_fused_convolution %arg0,
 // CHECK-SAME: CUDNN_DATA_HALF, CUDNN_DATA_HALF, CUDNN_DATA_HALF, [1, 17, 9, 9],
 // CHECK-SAME: [1377, 81, 9, 1], [1, 32, 9, 9], [2592, 81, 9, 1],

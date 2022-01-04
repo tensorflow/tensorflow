@@ -17,12 +17,12 @@
 // CHECK: func @fusion(%arg0: memref<4096xf32>) {
 func @fusion(%arg0: memref<4096xf32>) {
 
-    // CHECK: %[[bx:.*]] = arith.constant 4 : index
-    // CHECK: %[[by:.*]] = arith.constant 1 : index
-    // CHECK: %[[bz:.*]] = arith.constant 1 : index
-    // CHECK: %[[tx:.*]] = arith.constant 256 : index
-    // CHECK: %[[ty:.*]] = arith.constant 1 : index
-    // CHECK: %[[tz:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[bx:.*]] = arith.constant 4 : index
+    // CHECK-DAG: %[[by:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[bz:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[tx:.*]] = arith.constant 256 : index
+    // CHECK-DAG: %[[ty:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[tz:.*]] = arith.constant 1 : index
     // CHECK: gpu.launch_func @[[gpu_module]]::@[[kernel]]
     // CHECK-SAME: blocks in (%[[bx]], %[[by]], %[[bz]])
     // CHECK-SAME: threads in (%[[tx]], %[[ty]], %[[tz]])
@@ -66,12 +66,12 @@ func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
     %zero = memref.get_global @zero : memref<f32>
     %ones = memref.get_global @ones : memref<8xf32>
 
-    // CHECK: %[[bx:.*]] = arith.constant 1 : index
-    // CHECK: %[[by:.*]] = arith.constant 1 : index
-    // CHECK: %[[bz:.*]] = arith.constant 1 : index
-    // CHECK: %[[tx:.*]] = arith.constant 2 : index
-    // CHECK: %[[ty:.*]] = arith.constant 1 : index
-    // CHECK: %[[tz:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[bx:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[by:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[bz:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[tx:.*]] = arith.constant 2 : index
+    // CHECK-DAG: %[[ty:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[tz:.*]] = arith.constant 1 : index
     // CHECK: gpu.launch_func @[[gpu_module]]::@[[kernel]]
     // CHECK-SAME: blocks in (%[[bx]], %[[by]], %[[bz]])
     // CHECK-SAME: threads in (%[[tx]], %[[ty]], %[[tz]])

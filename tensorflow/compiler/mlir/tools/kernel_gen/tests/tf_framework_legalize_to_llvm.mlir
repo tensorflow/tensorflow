@@ -190,9 +190,9 @@ func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK: %[[C4:.*]] = llvm.mlir.constant(4 : i64)
   // CHECK: llvm.store %[[C4]], %[[PTR]]
 
-  // CHECK: %[[MAX_RANK:.*]] = llvm.mlir.constant(3 : i64)
-  // CHECK: %[[ENABLE_FTZ:.*]] = llvm.mlir.constant(false)
-  // CHECK: %[[CPU_CODEGEN:.*]] = llvm.mlir.constant(false)
+  // CHECK-DAG: %[[MAX_RANK:.*]] = llvm.mlir.constant(3 : i64)
+  // CHECK-DAG: %[[ENABLE_FTZ:.*]] = llvm.mlir.constant(false)
+  // CHECK-DAG: %[[CPU_CODEGEN:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[RES:.*]] = llvm.call @_mlir_ciface_tf_jit_compile
   // CHECK-SAME: %[[CTX]], %[[CODE_PTR]],
   // CHECK-SAME: %[[NUM_TILE_SIZES]], %[[TILE_SIZES]],
