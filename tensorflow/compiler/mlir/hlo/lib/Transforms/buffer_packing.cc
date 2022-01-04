@@ -366,8 +366,9 @@ public:
       // Find alloc position operation.
       mlir::OpBuilder packBuilder(&(block->front()));
       auto location = block->front().getLoc();
-      auto memrefType = MemRefType::get({packedBuffer.numSegments},
-                                        packBuilder.getIntegerType(8));
+      auto memrefType =
+          MemRefType::get({static_cast<long long>(packedBuffer.numSegments)},
+                          packBuilder.getIntegerType(8));
       Value targetBuffer =
           packBuilder.create<memref::AllocOp>(location, memrefType);
 
