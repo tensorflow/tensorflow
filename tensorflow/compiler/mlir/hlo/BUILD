@@ -1769,6 +1769,7 @@ cc_library(
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
         ":broadcast_propagation",
+        ":buffer_packing",
         ":buffer_reuse",
         ":chlo_legalize_to_hlo",
         ":copy_removal",
@@ -1794,7 +1795,6 @@ cc_library(
         ":lhlo_legalize_to_parallel_loops",
         ":merge_assuming_ops",
         ":mhlo_canonicalize_reduction",
-        ":buffer_packing",
         ":mhlo_flatten_tuple",
         ":mhlo_fusion",
         ":mhlo_mark_shape_calc",
@@ -1882,6 +1882,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
     ],
 )
+
 cc_library(
     name = "buffer_packing",
     srcs = ["lib/Transforms/buffer_packing.cc"],
@@ -1893,11 +1894,11 @@ cc_library(
     deps = [
         ":hlo",
         ":transforms_pass_inc_gen",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
 )
