@@ -974,6 +974,7 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_dce",
+        ":hlo_domain_isolator",
         ":hlo_pass",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
@@ -4767,10 +4768,12 @@ cc_library(
     hdrs = ["hlo_domain_isolator.h"],
     deps = [
         ":hlo",
+        ":hlo_domain_remover",
         ":hlo_graph_dumper",
         ":hlo_pass",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 
@@ -4793,6 +4796,7 @@ tf_cc_test(
     name = "hlo_domain_test",
     srcs = ["hlo_domain_test.cc"],
     deps = [
+        ":call_inliner",
         ":hlo",
         ":hlo_domain_isolator",
         ":hlo_domain_remover",

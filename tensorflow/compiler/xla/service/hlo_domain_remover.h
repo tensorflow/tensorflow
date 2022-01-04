@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_DOMAIN_REMOVER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -42,6 +43,11 @@ class HloDomainRemover : public HloModulePass {
       : kind_(kind), normalizer_(std::move(normalizer)) {}
 
   absl::string_view name() const override { return "domain_remover"; }
+
+  // Remove domains of a given kind which are used as users of a specific
+  // instruction.
+  static StatusOr<int64_t> RemoveExitDomains(HloInstruction* instruction,
+                                             absl::string_view domain_kind);
 
   StatusOr<bool> Run(HloModule* module) override;
 

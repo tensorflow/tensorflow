@@ -36,8 +36,11 @@ class CallInliner : public HloModulePass {
 
   // If single_call_site is true, only functions with a single call site will be
   // inlined.
-  explicit CallInliner(bool single_call_site = false)
-      : single_call_site_(single_call_site) {}
+  // If update_domain is true, the exit domains could be updated for calls which
+  // are being inlined if necessary.
+  explicit CallInliner(bool single_call_site = false,
+                       bool update_domain = false)
+      : single_call_site_(single_call_site), update_domain_(update_domain) {}
   ~CallInliner() override = default;
   absl::string_view name() const override { return "CallInliner"; }
 
@@ -45,6 +48,7 @@ class CallInliner : public HloModulePass {
 
  private:
   bool single_call_site_;
+  bool update_domain_;
 };
 
 }  // namespace xla
