@@ -335,9 +335,6 @@ struct TFT64BitIndexerPattern : public RewritePattern {
   bool index_64bit_;
 };
 
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
-
 struct IndexSizerPass
     : public IndexSizerPassBase<IndexSizerPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
