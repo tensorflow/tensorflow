@@ -367,7 +367,7 @@ public:
       mlir::OpBuilder packBuilder(&(block->front()));
       auto location = block->front().getLoc();
       auto memrefType =
-          MemRefType::get({static_cast<long long>(packedBuffer.numSegments)},
+          MemRefType::get({static_cast<int64_t>(packedBuffer.numSegments)},
                           packBuilder.getIntegerType(8));
       Value targetBuffer =
           packBuilder.create<memref::AllocOp>(location, memrefType);
