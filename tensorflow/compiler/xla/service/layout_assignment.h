@@ -21,12 +21,12 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -610,7 +610,7 @@ class LayoutAssignment : public HloModulePass {
       buffer_sets_cache_;
 
   // The set of BufferLayoutConstraints applied to the computation.
-  std::unordered_map<const LogicalBuffer*, BufferLayoutConstraint>
+  absl::node_hash_map<const LogicalBuffer*, BufferLayoutConstraint>
       buffer_constraints_;
 
   // A vector which holds constraints as they are added. Can be cleared with

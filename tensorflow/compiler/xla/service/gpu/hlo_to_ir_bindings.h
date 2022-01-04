@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_TO_IR_BINDINGS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_TO_IR_BINDINGS_H_
 
-#include <unordered_map>
-
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"

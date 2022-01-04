@@ -20,7 +20,6 @@ limitations under the License.
 #include <ostream>
 #include <set>
 #include <string>
-#include <unordered_set>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -4072,8 +4071,8 @@ std::string ReplicaGroupsToString(
 }
 
 StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const std::string& name) {
-  static std::unordered_map<std::string, RandomAlgorithm>* map = [] {
-    static auto* map = new std::unordered_map<std::string, RandomAlgorithm>;
+  static absl::flat_hash_map<std::string, RandomAlgorithm>* map = [] {
+    static auto* map = new absl::flat_hash_map<std::string, RandomAlgorithm>;
     for (int i = 0; i < RandomAlgorithm_ARRAYSIZE; i++) {
       if (RandomAlgorithm_IsValid(i)) {
         auto value = static_cast<RandomAlgorithm>(i);
@@ -4091,8 +4090,8 @@ StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const std::string& name) {
 
 StatusOr<RandomDistribution> StringToRandomDistribution(
     const std::string& name) {
-  static std::unordered_map<std::string, RandomDistribution>* map = [] {
-    static auto* map = new std::unordered_map<std::string, RandomDistribution>;
+  static absl::flat_hash_map<std::string, RandomDistribution>* map = [] {
+    static auto* map = new absl::flat_hash_map<std::string, RandomDistribution>;
     for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
       if (RandomDistribution_IsValid(i)) {
         auto value = static_cast<RandomDistribution>(i);
@@ -4110,17 +4109,18 @@ StatusOr<RandomDistribution> StringToRandomDistribution(
 
 StatusOr<PrecisionConfig::Precision> StringToPrecision(
     const std::string& name) {
-  static std::unordered_map<std::string, PrecisionConfig::Precision>* map = [] {
-    static auto* map =
-        new std::unordered_map<std::string, PrecisionConfig::Precision>;
-    for (int i = 0; i < PrecisionConfig::Precision_ARRAYSIZE; i++) {
-      if (PrecisionConfig::Precision_IsValid(i)) {
-        auto value = static_cast<PrecisionConfig::Precision>(i);
-        (*map)[PrecisionToString(value)] = value;
-      }
-    }
-    return map;
-  }();
+  static absl::flat_hash_map<std::string, PrecisionConfig::Precision>* map =
+      [] {
+        static auto* map =
+            new absl::flat_hash_map<std::string, PrecisionConfig::Precision>;
+        for (int i = 0; i < PrecisionConfig::Precision_ARRAYSIZE; i++) {
+          if (PrecisionConfig::Precision_IsValid(i)) {
+            auto value = static_cast<PrecisionConfig::Precision>(i);
+            (*map)[PrecisionToString(value)] = value;
+          }
+        }
+        return map;
+      }();
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown distribution");

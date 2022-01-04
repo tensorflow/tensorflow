@@ -1,3 +1,4 @@
+#include "absl/container/flat_hash_map.h"
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -82,7 +83,7 @@ class KernelThunk : public Thunk {
 
   // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
   // values.
-  std::unordered_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
       kernel_cache_ TF_GUARDED_BY(mutex_);
 };
 

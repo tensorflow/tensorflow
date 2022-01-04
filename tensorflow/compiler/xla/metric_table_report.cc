@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
-#include <unordered_map>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -102,7 +102,7 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
 std::vector<MetricTableReport::Category> MetricTableReport::MakeCategories(
     const std::vector<Entry>* entries) {
   // Create the categories using a category_text -> category map.
-  std::unordered_map<std::string, Category> category_map;
+  absl::flat_hash_map<std::string, Category> category_map;
   for (const Entry& entry : *entries) {
     Category& category = category_map[entry.category_text];
     category.metric_sum += entry.metric;

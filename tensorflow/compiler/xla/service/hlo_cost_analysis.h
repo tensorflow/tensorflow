@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -202,7 +203,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
                              const DotDimensionNumbers& dnums);
 
  protected:
-  typedef std::unordered_map<const HloInstruction*, Properties> HloToProperties;
+  typedef absl::flat_hash_map<const HloInstruction*, Properties>
+      HloToProperties;
 
   // An FMA counts as two floating point operations in these analyzes.
   static constexpr int64_t kFmaFlops = 2;

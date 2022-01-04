@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -28,7 +29,7 @@ namespace xla {
 class CallInliner : public HloModulePass {
  public:
   using InlinedInstructionMap =
-      std::unordered_map<HloInstruction*, HloInstruction*>;
+      absl::flat_hash_map<HloInstruction*, HloInstruction*>;
 
   // Inlines one call instruction.  Returns a mapping from the original
   // instructions to their inlined versions.

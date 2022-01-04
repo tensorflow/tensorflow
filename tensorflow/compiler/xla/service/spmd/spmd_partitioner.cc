@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/algorithm/container.h"

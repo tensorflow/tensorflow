@@ -19,8 +19,6 @@ limitations under the License.
 #include <iterator>
 #include <set>
 #include <sstream>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 #include "absl/algorithm/container.h"

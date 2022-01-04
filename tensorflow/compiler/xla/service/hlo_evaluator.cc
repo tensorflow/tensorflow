@@ -332,7 +332,7 @@ bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result,
 
 StatusOr<Literal> HloEvaluator::EvaluateWithSubstitutions(
     const HloInstruction* instruction,
-    const std::unordered_map<const HloInstruction*, const Literal*>&
+    const absl::flat_hash_map<const HloInstruction*, const Literal*>&
         substitutions) {
   std::vector<std::unique_ptr<HloInstruction>> owned_operands;
   for (const HloInstruction* operand : instruction->operands()) {

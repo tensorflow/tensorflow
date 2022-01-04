@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -219,10 +220,10 @@ namespace {
 //
 // Due to Postel's Law considerations, both "opaque" and "opaque_type" map to
 // the xla::OPAQUE_TYPE enumerator.
-const std::unordered_map<std::string, PrimitiveType>&
+const absl::flat_hash_map<std::string, PrimitiveType>&
 GetPrimitiveTypeStringMap() {
-  static std::unordered_map<std::string, PrimitiveType>* name_to_type = [] {
-    static auto* map = new std::unordered_map<std::string, PrimitiveType>;
+  static absl::flat_hash_map<std::string, PrimitiveType>* name_to_type = [] {
+    static auto* map = new absl::flat_hash_map<std::string, PrimitiveType>;
     for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
       if (PrimitiveType_IsValid(i) && i != PRIMITIVE_TYPE_INVALID) {
         auto value = static_cast<PrimitiveType>(i);

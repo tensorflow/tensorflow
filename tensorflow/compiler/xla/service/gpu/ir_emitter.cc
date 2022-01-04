@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 
 #include <string>
-#include <unordered_map>
 #include <utility>
 
 #include "tensorflow/core/platform/logging.h"
