@@ -259,7 +259,7 @@ std::vector<char> QuantizedTransposeConvTester::CreateTfLiteModel() const {
       builder, &tensors, &subgraph_inputs, &subgraph_outputs, &operators);
 
   flatbuffers::Offset<flatbuffers::String> description =
-      builder.CreateString("TransposeConv model");
+      builder.CreateString("Quantized TransposeConv model");
 
   flatbuffers::Offset<Model> model_buffer = CreateModel(
       builder, TFLITE_SCHEMA_VERSION,

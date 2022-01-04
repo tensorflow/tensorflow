@@ -43,7 +43,6 @@ static constexpr StringRef kCInterfaceJITCompile =
 static constexpr StringRef kCInterfaceJITExecute =
     "_mlir_ciface_tf_jit_execute";
 static constexpr StringRef kJITCodeGlobalBaseName = "jit_module_code";
-static constexpr StringRef kJITArchitectureGlobalBaseName = "jit_architecture";
 static constexpr StringRef kErrorMessageGlobalBaseName = "error_message";
 
 /// Base class for patterns converting TF Framework ops to function calls.
@@ -139,20 +138,6 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
               loc, element_ty,
               rewriter->getIntegerAttr(element_ty,
                                        attr.cast<IntegerAttr>().getInt()));
-        });
-  }
-
-  std::pair<Value, Value> ConvertStrArrayAttrToStackAllocatedArray(
-      Location loc, Type size_ty, llvm::Optional<ArrayAttr> attr,
-      ConversionPatternRewriter *rewriter) const {
-    assert(size_ty.isa<IntegerType>() && "expect integer size type");
-    Type element_ty = LLVM::LLVMPointerType::get(rewriter->getI8Type());
-    return ConvertArrayAttrToStackAllocatedArray(
-        loc, size_ty, element_ty, attr, rewriter, [&](Attribute attr) {
-          std::string zero_terminated =
-              attr.cast<StringAttr>().getValue().str() + '\00';
-          return CreateOrFindGlobalStringConstant(
-              loc, *rewriter, kJITArchitectureGlobalBaseName, zero_terminated);
         });
   }
 };
@@ -314,9 +299,6 @@ class JITCompileFromStrOpConverter
     std::string zero_terminated_code = op.code().str() + '\00';
     Value jit_module_code = CreateOrFindGlobalStringConstant(
         loc, rewriter, kJITCodeGlobalBaseName, zero_terminated_code);
-    std::pair<Value, Value> architectures =
-        ConvertStrArrayAttrToStackAllocatedArray(loc, rewriter.getI64Type(),
-                                                 op.architectures(), &rewriter);
     std::pair<Value, Value> tile_sizes =
         ConvertIntegerArrayAttrToStackAllocatedArray(loc, rewriter.getI64Type(),
                                                      rewriter.getI64Type(),
@@ -334,8 +316,7 @@ class JITCompileFromStrOpConverter
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, getVoidPtrType(), tf_func_ref,
-        llvm::makeArrayRef({adaptor.ctx(), jit_module_code, architectures.first,
-                            architectures.second, tile_sizes.first,
+        llvm::makeArrayRef({adaptor.ctx(), jit_module_code, tile_sizes.first,
                             tile_sizes.second, unroll_factors.first,
                             unroll_factors.second, max_supported_rank,
                             enable_ftz, cpu_codegen}));
@@ -348,15 +329,12 @@ class JITCompileFromStrOpConverter
   Type GetFuncType() const override {
     auto i8_ptr_ty =
         LLVM::LLVMPointerType::get(IntegerType::get(getContext(), 8));
-    auto i8_ptr_ptr_ty = LLVM::LLVMPointerType::get(i8_ptr_ty);
     auto i64_ty = IntegerType::get(getContext(), 64);
     Type i64_ptr_ty = LLVM::LLVMPointerType::get(i64_ty);
     auto i1_ty = IntegerType::get(getContext(), 1);
     return LLVM::LLVMFunctionType::get(
         getVoidPtrType(), {/*void* op_kernel_ctx*/ getVoidPtrType(),
                            /*char* code*/ i8_ptr_ty,
-                           /*int64_t num_architectures*/ i64_ty,
-                           /*int64_t* architectures_ptr*/ i8_ptr_ptr_ty,
                            /*int64_t num_tile_sizes*/ i64_ty,
                            /*int64_t* tile_sizes_ptr*/ i64_ptr_ty,
                            /*int64_t num_unroll_factors*/ i64_ty,

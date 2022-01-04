@@ -128,6 +128,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -282,6 +283,7 @@ java_proto_library(
 cc_library(
     name = "platform_base",
     hdrs = ["//tensorflow/core/platform:base_hdrs"],
+    compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
     tags = ["avoid_dep"],
     deps = [
@@ -683,6 +685,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_identity_op",
         "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",
+        "//tensorflow/core/kernels/mkl:mkl_layer_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_lrn_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
@@ -692,6 +695,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_reshape_op",
         "//tensorflow/core/kernels/mkl:mkl_slice_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
+        "//tensorflow/core/kernels/mkl:mkl_swish_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
@@ -1511,6 +1515,7 @@ cc_library(
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],

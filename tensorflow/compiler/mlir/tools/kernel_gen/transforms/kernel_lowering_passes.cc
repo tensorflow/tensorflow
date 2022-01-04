@@ -55,10 +55,11 @@ class GpuKernelToNVVMPass
     GPUModuleOp m = getOperation();
 
     RewritePatternSet patterns(&getContext());
-    mlir::LowerToLLVMOptions llvm_opts(
-        m.getContext(),
-        DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
+    mlir::LowerToLLVMOptions llvm_opts(m.getContext(), DataLayout(m));
+
+    // TODO(b/213038246): Remove this override once the DLTI spec is fixed.
     llvm_opts.overrideIndexBitwidth(32);
+
     LLVMTypeConverter converter(m.getContext(), llvm_opts);
     arith::populateArithmeticToLLVMConversionPatterns(converter, patterns);
     populateMathToLLVMConversionPatterns(converter, patterns);
@@ -92,7 +93,8 @@ class GpuKernelToROCDLPass
     populateMathToLLVMConversionPatterns(converter, patterns);
     populateMemRefToLLVMConversionPatterns(converter, patterns);
     populateStdToLLVMConversionPatterns(converter, patterns);
-    populateGpuToROCDLConversionPatterns(converter, patterns);
+    populateGpuToROCDLConversionPatterns(converter, patterns,
+                                         gpu::amd::Runtime::Unknown);
     populateComplexToLLVMConversionPatterns(converter, patterns);
     ConversionTarget target(getContext());
     configureGpuToROCDLConversionLegality(target);

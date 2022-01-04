@@ -104,6 +104,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
                     "Failed to parse DataServiceMetadata from string: ",
                     std::string(serialized_metadata_)));
   }
+  metadata.set_cardinality(dataset->Cardinality());
 
   DataServiceDispatcherClient client(address, protocol);
   int64_t dataset_id;

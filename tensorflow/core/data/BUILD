@@ -24,8 +24,6 @@ exports_files([
     "captured_function.h",
     "dataset_utils.cc",
     "dataset_utils.h",
-    "file_utils.cc",
-    "file_utils.h",
     "name_utils.cc",
     "name_utils.h",
     "rewrite_utils.cc",
@@ -40,6 +38,8 @@ exports_files([
     "stats_utils.h",
     "unbounded_thread_pool.cc",
     "unbounded_thread_pool.h",
+    "utils.cc",
+    "utils.h",
 ])
 
 cc_library(
@@ -455,7 +455,10 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "file_utils",
-    srcs = ["file_utils.cc"],
-    hdrs = ["file_utils.h"],
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
 )

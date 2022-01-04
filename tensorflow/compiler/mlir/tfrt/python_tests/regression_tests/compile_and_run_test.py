@@ -22,11 +22,14 @@ from mlir import ir
 import numpy as np
 
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 FLAGS = flags.FLAGS
+flags.DEFINE_integer('input_data_seed', None,
+                     'The random seed to be used for initializing.')
 flags.DEFINE_string(
     'test_file_name', None,
     'The filename of the file containing the MLIR IR that should be tested')
@@ -74,9 +77,10 @@ class CompileAndRunTest(test.TestCase):
     raise Exception(f'unknown scalar type: {mlir_type}')
 
   def test_compile_and_run(self):
-    mlirdir = resource_loader.get_data_files_path()
     filename = FLAGS.test_file_name
-    with open(os.path.join(mlirdir, filename), mode='r') as f:
+    if not os.path.isabs(filename):
+      filename = os.path.join(resource_loader.get_data_files_path(), filename)
+    with gfile.GFile(filename, mode='r') as f:
       mlir_function = f.read()
       arg_attrs = []
       with ir.Context() as ctx:
@@ -97,6 +101,7 @@ class CompileAndRunTest(test.TestCase):
       logging.info(f'compiled {filename} in {end-start:0.4f} seconds')
       if not arg_attrs:
         return
+      np.random.seed(FLAGS.input_data_seed)
       args = []
       for arg_attr in arg_attrs:
         attr_dict = ir.DictAttr(arg_attr)
@@ -124,6 +129,7 @@ class CompileAndRunTest(test.TestCase):
       logging.info(f'executed {filename} in {end-start:0.4f} seconds')
 
 if __name__ == '__main__':
+  flags.mark_flag_as_required('input_data_seed')
   flags.mark_flag_as_required('test_file_name')
   flags.mark_flag_as_required('vectorize')
   test.main()

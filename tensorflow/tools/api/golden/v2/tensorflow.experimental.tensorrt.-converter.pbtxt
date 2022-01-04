@@ -18,4 +18,8 @@ tf_class {
     name: "save"
     argspec: "args=[\'self\', \'output_saved_model_dir\', \'save_gpu_specific_engines\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
+  member_method {
+    name: "summary"
+    argspec: "args=[\'self\', \'line_length\', \'detailed\', \'print_fn\'], varargs=None, keywords=None, defaults=[\'160\', \'True\', \'None\'], "
+  }
 }

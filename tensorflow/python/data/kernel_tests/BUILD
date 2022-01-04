@@ -789,7 +789,7 @@ tf_py_test(
 
 tf_py_test(
     name = "repeat_test",
-    size = "small",
+    size = "medium",
     srcs = ["repeat_test.py"],
     deps = [
         ":checkpoint_test_base",

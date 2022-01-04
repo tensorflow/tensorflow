@@ -82,6 +82,23 @@ StatusOr<TensorShape> GetTensorShapeFromXlaArgument(const XlaArgument& arg) {
   }
 }
 
+Status MaybeRewriteLayoutWithShardedShape(
+    mlir::StringAttr sharding,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* shape) {
+  if (!sharding) return Status::OK();
+
+  xla::OpSharding op_sharding;
+  if (!op_sharding.ParseFromString(sharding.getValue().str()))
+    return errors::InvalidArgument("failed to parse sharding '",
+                                   sharding.getValue().str(), "'");
+  absl::optional<xla::HloSharding> hlo_sharding;
+  TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
+  TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
+      hlo_sharding, /*use_fast_memory=*/false, shape_representation_fn, shape));
+  return Status::OK();
+}
+
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
 Status GetXlaInputShapes(
     mlir::ModuleOp module, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
@@ -113,18 +130,8 @@ Status GetXlaInputShapes(
     // Rewrite layout with sharding, if sharding is set.
     auto sharding =
         main_func.getArgAttrOfType<mlir::StringAttr>(i, "mhlo.sharding");
-    if (!sharding) continue;
-
-    absl::optional<xla::HloSharding> arg_sharding;
-    xla::OpSharding op_sharding;
-    if (!op_sharding.ParseFromString(sharding.getValue().str()))
-      return errors::InvalidArgument("failed to parse argument sharding ", i,
-                                     " '", sharding.getValue().str(), "'");
-
-    TF_ASSIGN_OR_RETURN(arg_sharding, xla::HloSharding::FromProto(op_sharding));
-    TF_RETURN_IF_ERROR(
-        RewriteLayoutWithShardedShape(arg_sharding, /*use_fast_memory=*/false,
-                                      shape_representation_fn, &xla_shape));
+    TF_RETURN_IF_ERROR(MaybeRewriteLayoutWithShardedShape(
+        sharding, shape_representation_fn, &xla_shape));
   }
   if (use_tuple_args) {
     xla_input_shapes->push_back(
@@ -171,6 +178,12 @@ Status GetOutputInfo(
         xla::Shape shape,
         xla::TypeToShape(type_and_idx.value(),
                          shape_representation_fn_no_fast_memory));
+
+    auto sharding = main_func.getResultAttrOfType<mlir::StringAttr>(
+        type_and_idx.index(), "mhlo.sharding");
+    TF_RETURN_IF_ERROR(MaybeRewriteLayoutWithShardedShape(
+        sharding, shape_representation_fn, &shape));
+
     auto tensor_type = type_and_idx.value().dyn_cast<mlir::RankedTensorType>();
     shapes.push_back(shape);
 

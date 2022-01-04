@@ -67,7 +67,8 @@ absl::Status BufferDescriptor::PerformReadSelector(
                      args.size(), " was passed"));
   }
   if (gpu_info.IsGlsl()) {
-    if (element_type == DataType::FLOAT16) {
+    if (element_type == DataType::FLOAT16 &&
+        !gpu_info.IsGlslSupportsExplicitFp16()) {
       if (memory_type == MemoryType::CONSTANT) {
         const std::string arg0 = "(" + args[0] + ")";
         *result =

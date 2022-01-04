@@ -38,7 +38,7 @@ TEST(ProvidedDelegateListTest, AppendCmdlineFlags) {
   ProvidedDelegateList providers(&params);
   providers.AddAllDelegateParams();
 
-  providers.AppendCmdlineFlags(&flags);
+  providers.AppendCmdlineFlags(flags);
   EXPECT_FALSE(flags.empty());
 }
 

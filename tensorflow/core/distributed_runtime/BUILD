@@ -4,7 +4,13 @@
 # processes.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_google",
+    "tf_cc_test",
+    "tf_copts",
+    "tf_cuda_library",
+)
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
@@ -20,7 +26,10 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = if_google(
+        ["//tensorflow:internal"],
+        ["//visibility:public"],
+    ),
     licenses = ["notice"],
 )
 

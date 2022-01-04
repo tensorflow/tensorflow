@@ -86,7 +86,7 @@ class RunHandlerThreadWorkQueue
         " complementary threads)");
   }
 
-  tensorflow::tfrt_stub::StatusOr<
+  tensorflow::StatusOr<
       std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
   InitializeRequest(tfrt::RequestContextBuilder* request_context_builder,
                     tensorflow::thread::ThreadPoolInterface**

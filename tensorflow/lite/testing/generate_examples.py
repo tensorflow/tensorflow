@@ -137,7 +137,6 @@ def main(unused_args):
   options.known_bugs = MLIR_CONVERTER_KNOWN_BUGS
   options.make_forward_compat_test = FLAGS.make_forward_compat_test
   options.no_tests_limit = FLAGS.no_tests_limit
-  options.use_experimental_converter = True
   options.mlir_quantizer = FLAGS.mlir_quantizer
   options.skip_high_dimension_inputs = FLAGS.skip_high_dimension_inputs
 

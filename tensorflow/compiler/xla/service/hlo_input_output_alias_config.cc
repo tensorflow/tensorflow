@@ -94,8 +94,8 @@ StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
 
 const Shape& HloInputOutputAliasConfig::shape() const { return alias_.shape(); }
 
-string HloInputOutputAliasConfig::ToString() const {
-  std::vector<string> pieces;
+std::string HloInputOutputAliasConfig::ToString() const {
+  std::vector<std::string> pieces;
   pieces.push_back("HloInputOutputAliasConfig");
   pieces.push_back(
       absl::StrFormat("  Output shape: %s", alias_.shape().ToString()));
@@ -109,8 +109,8 @@ string HloInputOutputAliasConfig::ToString() const {
   return absl::StrJoin(pieces, "\n");
 }
 
-string HloInputOutputAliasConfig::ToShortString() const {
-  std::vector<string> pieces;
+std::string HloInputOutputAliasConfig::ToShortString() const {
+  std::vector<std::string> pieces;
   for (const auto& p : alias_) {
     const ShapeIndex& index = p.first;
     if (absl::optional<Alias> alias = p.second) {

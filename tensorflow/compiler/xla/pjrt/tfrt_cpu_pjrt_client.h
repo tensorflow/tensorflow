@@ -116,10 +116,10 @@ class TfrtCpuClient final : public PjRtClient {
       int local_hardware_id) const override;
 
   PjRtPlatformId platform_id() const override {
-    return tensorflow::Fingerprint64(kCpuName);
+    return tensorflow::Fingerprint64(CpuName());
   }
 
-  absl::string_view platform_name() const override { return kCpuName; }
+  absl::string_view platform_name() const override { return CpuName(); }
 
   absl::string_view platform_version() const override { return "<unknown>"; }
 

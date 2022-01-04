@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <tuple>
-
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
@@ -37,24 +35,20 @@ namespace stream_executor {
 
 port::StatusOr<std::vector<uint8>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
-  const bool linking_supported = [] {
+  const port::Status linking_supported = [] {
     if (CUDA_VERSION < 11030) {
-      return true;
+      return port::Status::OK();
     }
-    auto version_or_status = gpu::Diagnostician::FindKernelDriverVersion();
-    if (!version_or_status.ok()) {
-      LOG(WARNING) << "Couldn't read CUDA driver version.";
-      return false;
-    }
-    std::tuple<int, int, int> version = *version_or_status;
-    if (CUDA_VERSION < 11040) return version >= std::make_tuple(465, 19, 1);
-    if (CUDA_VERSION < 11050) return version >= std::make_tuple(470, 82, 1);
-    return version >= std::make_tuple(495, 29, 5);
+    int driver_cuda_version;
+    // Get the highest version of CUDA supported by this driver.
+    RETURN_IF_CUDA_ERROR(cuDriverGetVersion(&driver_cuda_version));
+    return driver_cuda_version >= CUDA_VERSION
+               ? port::Status::OK()
+               : tensorflow::errors::Unimplemented(
+                     "CUDA version unsupported by NVIDIA driver version.");
   }();
 
-  if (!linking_supported) {
-    return tensorflow::errors::Unimplemented("Linking is unsupported");
-  }
+  TF_RETURN_IF_ERROR(linking_supported);
 
   gpu::ScopedActivateContext activation(context);
 

@@ -91,6 +91,12 @@ class ProfilingCommandQueue : public CLCommandQueue {
   absl::Status Dispatch(const CLKernel& kernel, const int3& work_groups_count,
                         const int3& work_group_size) override;
 
+  // for better profiling
+  absl::Status DispatchNTimes(const CLKernel& kernel,
+                              const int3& work_groups_count,
+                              const int3& work_group_size, int n,
+                              int flush_period = 0);
+
   // will write index for fastest work_group among work_group_sizes
   absl::Status GetBestWorkGroupIndex(const CLKernel& kernel,
                                      const GpuInfo& gpu_info,
@@ -116,6 +122,7 @@ class ProfilingCommandQueue : public CLCommandQueue {
 
  private:
   std::vector<CLEvent> events_;
+  std::vector<int> number_of_dispatches_;
   std::string current_label_;
 };
 

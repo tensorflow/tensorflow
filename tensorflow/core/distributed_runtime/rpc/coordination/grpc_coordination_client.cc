@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
@@ -186,17 +189,11 @@ class GrpcCoordinationClientCache : public CoordinationClientCache {
 
   std::unique_ptr<CoordinationClient> GetOwnedClient(
       const string& target) override {
-    std::unique_ptr<CoordinationClient> coord_client;
-    mutex_lock l(clients_mu_);
-    auto it = clients_.find(target);
-    if (it == clients_.end()) {
-      SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
-      if (channel == nullptr) {
-        VLOG(2) << "Coordination client for target " << target << " not found.";
-      }
-      coord_client = std::make_unique<GrpcCoordinationClient>(channel, target);
+    SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
+    if (channel == nullptr) {
+      VLOG(2) << "Coordination client for target " << target << " not found.";
     }
-    return coord_client;
+    return std::make_unique<GrpcCoordinationClient>(channel, target);
   }
 
  private:

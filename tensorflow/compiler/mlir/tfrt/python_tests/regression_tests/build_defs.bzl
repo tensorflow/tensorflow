@@ -10,7 +10,11 @@ def _run_regression_test(name, vectorize, data):
     py_strict_test(
         name = name + suffix,
         srcs = ["compile_and_run_test.py"],
-        args = ["--test_file_name=" + name, "--vectorize=" + str(vectorize)],
+        args = [
+            "--input_data_seed=1",
+            "--test_file_name=" + name,
+            "--vectorize=" + str(vectorize),
+        ],
         data = data,
         python_version = "PY3",
         main = "compile_and_run_test.py",

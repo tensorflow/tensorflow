@@ -81,6 +81,17 @@ func @div_no_nan(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: @truncate_div
+// CHECK-SAME: (%[[LHS:.*]]: tensor<*xi32>, %[[RHS:.*]]: tensor<*xi32>)
+func @truncate_div(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)
+    -> tensor<*xi32> {
+  // CHECK: %[[RESULT:.*]] = "tf.Div"(%[[LHS]], %[[RHS]])
+  // CHECK: return %[[RESULT]]
+  %0 = "tf.TruncateDiv"(%arg0, %arg1)
+      : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
 // CHECK-LABEL: func @mul_no_nan
 // CHECK-SAME: (%[[X:.*]]: tensor<2x3xf32>, %[[Y:.*]]: tensor<3xf32>)
 func @mul_no_nan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {

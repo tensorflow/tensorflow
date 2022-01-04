@@ -68,7 +68,7 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   int Slices() const override { return DivideRoundUp(shape_.c, 4); }
   int Batch() const override { return shape_.b; }
 
-  TensorDescriptor GetDescriptor() const { return descriptor_; }
+  TensorDescriptor GetDescriptor() const override { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 

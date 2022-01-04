@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
+#include <string>
 #include <type_traits>
 
 #include "absl/strings/str_replace.h"
@@ -1125,7 +1126,7 @@ inline const HloInstruction* HloOperand(const HloInstruction* instr,
 
 // Pretty-printer for HloInstruction.  Sort of like ToShortString, but with
 // fewer %s and more shapes.
-inline string InstToString(const HloInstruction* inst) {
+inline std::string InstToString(const HloInstruction* inst) {
   return inst->ToString(
       HloPrintOptions().set_print_metadata(false).set_print_percent(false));
 }
@@ -1887,7 +1888,7 @@ class HloInstructionPattern {
   }
 
   // This does not check that T has the same type as the instruction, so e.g.
-  // IsConstantScalar(1.0) may match a constant of shape int32[].
+  // IsConstantScalar(1.0) may match a constant of shape int32_t[].
   template <typename ScalarTy>
   constexpr auto IsConstantScalar(const ScalarTy& val) const {
     return AppendImpl(

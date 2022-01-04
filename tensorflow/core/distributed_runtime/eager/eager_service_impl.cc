@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
@@ -262,6 +266,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 
   // Initialize remote tensor communication based on worker session.
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+  // Set the rendezvous as context-global instance for eager op-by-op execution.
+  r->SetRemoteEagerContextDefault();
 
   std::function<Rendezvous*(const int64_t)> rendezvous_creator =
       [worker_session, this](const int64_t step_id) {
@@ -324,7 +330,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
             &client_cache));
     TF_RETURN_IF_ERROR(
         ctx->GetDistributedManager()->GetCoordinationServiceAgent()->Initialize(
-            env_, request->server_def(), std::move(client_cache),
+            env_->env, env_->device_mgr, request->server_def(),
+            std::move(client_cache),
             /*error_fn=*/[](Status s) {
               LOG(ERROR) << "Coordination agent is set to error: " << s;
             }));
@@ -387,9 +394,9 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
 
-  TF_RETURN_IF_ERROR(env_->session_mgr->UpdateSession(
-      session_name, request->server_def(), request->cluster_device_attributes(),
-      true));
+  TF_RETURN_IF_ERROR(
+      env_->session_mgr->UpdateSession(session_name, request->server_def(),
+                                       request->cluster_device_attributes()));
 
   std::shared_ptr<WorkerSession> worker_session;
   TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(

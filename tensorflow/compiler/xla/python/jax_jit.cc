@@ -73,23 +73,39 @@ namespace py = pybind11;
 namespace {
 
 // Protected by the GIL.
-GlobalJitState& global_state = *new GlobalJitState();
+JitState& global_state = *new JitState();
 
 // TODO(phawkins): Google style guide forbids thread-local values with
 // non-trivial destructors.
-ABSL_CONST_INIT thread_local ThreadLocalJitState thread_local_state;  // NOLINT
-
-bool JitIsDisabled() {
-  return thread_local_state.disable_jit.value_or(global_state.disable_jit);
-}
+ABSL_CONST_INIT thread_local JitState thread_local_state;  // NOLINT
 
 }  // namespace
 
-GlobalJitState& GetGlobalState() { return global_state; }
-ThreadLocalJitState& GetLocalState() { return thread_local_state; }
+JitState& GetGlobalState() { return global_state; }
+JitState& GetLocalState() { return thread_local_state; }
+
+bool GetDisableJit() {
+  CHECK(global_state.disable_jit.has_value());
+  return thread_local_state.disable_jit.value_or(*global_state.disable_jit);
+}
 
 bool GetEnableX64() {
-  return thread_local_state.enable_x64.value_or(global_state.enable_x64);
+  CHECK(global_state.enable_x64.has_value());
+  return thread_local_state.enable_x64.value_or(*global_state.enable_x64);
+}
+
+absl::optional<pybind11::function> GetPostHook() {
+  return thread_local_state.post_hook.has_value() ? thread_local_state.post_hook
+                                                  : global_state.post_hook;
+}
+
+static std::string OptionalDebugString(
+    const absl::optional<py::object> optional) {
+  if (optional.has_value()) {
+    return py::cast<std::string>(py::str(optional.value()));
+  } else {
+    return "None";
+  }
 }
 
 std::string CallSignature::DebugString() const {
@@ -103,13 +119,6 @@ std::string CallSignature::DebugString() const {
                                 const xla::PyArgSignature& s) {
     out->append(s.DebugString());
   };
-  std::string thread_local_extra_jit_context_str;
-  if (thread_local_extra_jit_context.has_value()) {
-    thread_local_extra_jit_context_str =
-        py::cast<std::string>(py::str(thread_local_extra_jit_context.value()));
-  } else {
-    thread_local_extra_jit_context_str = "None";
-  }
   return absl::StrFormat(
       "static args (positional + keyword): %s\nstatic arg keyword names: %s\n"
       "dynamic arg signatures (positional + keyword): %s\n"
@@ -123,9 +132,8 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
-      device, jax_enable_x64,
-      py::cast<std::string>(py::str(global_extra_jit_context)),
-      thread_local_extra_jit_context_str);
+      device, jax_enable_x64, OptionalDebugString(global_extra_jit_context),
+      OptionalDebugString(thread_local_extra_jit_context));
 }
 
 bool CallSignature::operator==(const CallSignature& other) const {
@@ -152,7 +160,10 @@ bool CallSignature::operator==(const CallSignature& other) const {
                      ". The error was:\n", e.what()));
                }
              }) &&
-         global_extra_jit_context.equal(other.global_extra_jit_context) &&
+         (global_extra_jit_context.has_value() ==
+          other.global_extra_jit_context.has_value()) &&
+         (!global_extra_jit_context.has_value() ||
+          global_extra_jit_context->equal(*other.global_extra_jit_context)) &&
          (thread_local_extra_jit_context.has_value() ==
           other.thread_local_extra_jit_context.has_value()) &&
          (!thread_local_extra_jit_context.has_value() ||
@@ -311,7 +322,7 @@ struct CacheEntry {
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
   // in CompiledFunction::Call before calling into compiled computation.
   absl::optional<std::vector<bool>> kept_var_bitvec;
-  xla::PjRtDevice* sticky_device;
+  absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> sticky_device;
 
   // Fallback to Python happens:
   // - for trivial computations
@@ -523,7 +534,6 @@ class CompiledFunction {
   //   the `default_device_` which will be used as the targeted device. In
   //   which case, we will always copy input buffers to this device.
   // These fields are protected by the GIL.
-  std::shared_ptr<xla::PyClient> default_pyclient_ = nullptr;
   xla::PjRtDevice* default_device_ = nullptr;
   bool is_committed_;
 };
@@ -555,7 +565,7 @@ CompiledFunction::~CompiledFunction() = default;
 //
 // Returns `Status::OK()` on success. Returning an error should lead to
 // calling the Python fallback.
-xla::Status ComputeSignature(bool jax_enable_x64, xla::PyClient& pyclient,
+xla::Status ComputeSignature(bool jax_enable_x64,
                              xla::PjRtDevice* default_device, bool is_committed,
                              ParsedArgumentsAsBuffers& arguments) {
   tensorflow::profiler::TraceMe traceme("ComputeSignature");
@@ -717,7 +727,8 @@ void CompiledFunction::PopulateCacheEntry(
   cache_entry->out_pytree_def = std::move(out_tree);
 
   cache_entry->sticky_device =
-      py::cast<xla::PjRtDevice*>(executable_handlers_out_tree[2]);
+      py::cast<absl::optional<xla::ClientAndPtr<xla::PjRtDevice>>>(
+          executable_handlers_out_tree[2]);
   auto avals = py::cast<py::list>(executable_handlers_out_tree[3]);
   auto lazy_exprs = py::cast<py::list>(executable_handlers_out_tree[4]);
   CHECK_EQ(avals.size(), lazy_exprs.size());
@@ -765,7 +776,6 @@ void CompiledFunction::TryToPopulateDefaultDevice() {
           device_and_is_committed.attr("default_device"));
       is_committed_ =
           py::cast<bool>(device_and_is_committed.attr("committed_to_device"));
-      default_pyclient_ = default_pydevice.client;
       default_device_ = default_pydevice.contents;
     } catch (const py::cast_error& e) {
       // Pathways, Cloud TPU 2VM, and UPTC runtime.
@@ -785,7 +795,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   xla::GlobalPyRefManager()->MaybeCollectGarbage();
 
   auto& tls = thread_local_state;
-  if (tls.disable_jit.value_or(global_state.disable_jit)) {
+  if (GetDisableJit()) {
     return fun_(*py::reinterpret_borrow<py::args>(args),
                 **kwargs.value_or(py::kwargs()));
   }
@@ -818,12 +828,12 @@ xla::StatusOr<py::object> CompiledFunction::Call(
                                         **kwargs.value_or(py::kwargs())))[0]);
   }
 
-  bool jax_enable_x64 = tls.enable_x64.value_or(global_state.enable_x64);
+  bool jax_enable_x64 = GetEnableX64();
   arguments.signature.jax_enable_x64 = jax_enable_x64;
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
-  status = ComputeSignature(jax_enable_x64, *default_pyclient_, default_device_,
-                            is_committed_, arguments);
+  status = ComputeSignature(jax_enable_x64, default_device_, is_committed_,
+                            arguments);
   if (!status.ok()) {
     VLOG(2) << "ComputeSignature failed: " << status;
     return py::object(
@@ -913,8 +923,10 @@ xla::StatusOr<py::object> CompiledFunction::Call(
     if (cache_entry->out_lazy_exprs[i].is_none()) {  // No LazyExpr.
       buffer.buf()->SetAval(cache_entry->out_avals[i]);
       buffer.buf()->set_weak_type(cache_entry->out_weak_types[i]);
-      TF_RETURN_IF_ERROR(
-          buffer.buf()->set_sticky_device(cache_entry->sticky_device));
+      if (cache_entry->sticky_device.has_value()) {
+        TF_RETURN_IF_ERROR(buffer.buf()->set_sticky_device(
+            (*cache_entry->sticky_device).get()));
+      }
       flat_device_arrays.push_back(std::move(buffer));
     } else {
       static const auto* xla_module =
@@ -922,17 +934,14 @@ xla::StatusOr<py::object> CompiledFunction::Call(
       static const auto* device_array =
           new py::handle(xla_module->attr("_DeviceArray"));
       flat_device_arrays.push_back(
-          (*device_array)(cache_entry->out_avals[i],
-                          py::cast(WrapWithClient(default_pyclient_,
-                                                  cache_entry->sticky_device)),
+          (*device_array)(cache_entry->out_avals[i], cache_entry->sticky_device,
                           cache_entry->out_lazy_exprs[i], std::move(buffer)));
     }
   }
   py::object out = cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
 
   // If there is a post-hook function, call it with the inputs and the outputs.
-  absl::optional<py::object> post_hook =
-      tls.post_hook.has_value() ? tls.post_hook : global_state.post_hook;
+  absl::optional<py::object> post_hook = GetPostHook();
   if (post_hook) {
     (*post_hook)(AsPyHandle(), args,
                  py::cast<py::dict>(kwargs.value_or(py::kwargs())), out);
@@ -1085,6 +1094,9 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
     PyErr_SetString(PyExc_ValueError, e.what());
     return nullptr;
   } catch (std::invalid_argument& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  } catch (std::runtime_error& e) {
     PyErr_SetString(PyExc_ValueError, e.what());
     return nullptr;
   }
@@ -1279,23 +1291,12 @@ void BuildJaxjitSubmodule(py::module& m) {
             std::move(donate_argnums), std::move(cache));
       },
       py::is_method(cfun_type));
-  py::class_<GlobalJitState> global_state_(jitlib, "GlobalJitState");
-  global_state_.def_readwrite("disable_jit", &GlobalJitState::disable_jit);
-  global_state_.def_readwrite("enable_x64", &GlobalJitState::enable_x64);
-  global_state_.def_readwrite("extra_jit_context",
-                              &GlobalJitState::extra_jit_context);
-  global_state_.def_readwrite("post_hook", &GlobalJitState::post_hook);
 
-  py::class_<ThreadLocalJitState> thread_local_state_(jitlib,
-                                                      "ThreadLocalJitState");
-  thread_local_state_.def_readwrite("disable_jit",
-                                    &ThreadLocalJitState::disable_jit);
-  thread_local_state_.def_readwrite("enable_x64",
-                                    &ThreadLocalJitState::enable_x64);
-  thread_local_state_.def_readwrite("extra_jit_context",
-                                    &ThreadLocalJitState::extra_jit_context);
-  thread_local_state_.def_readwrite("post_hook",
-                                    &ThreadLocalJitState::post_hook);
+  py::class_<JitState> jit_state_(jitlib, "JitState");
+  jit_state_.def_readwrite("disable_jit", &JitState::disable_jit);
+  jit_state_.def_readwrite("enable_x64", &JitState::enable_x64);
+  jit_state_.def_readwrite("extra_jit_context", &JitState::extra_jit_context);
+  jit_state_.def_readwrite("post_hook", &JitState::post_hook);
 
   jitlib.def(
       "global_state", [&]() { return &global_state; },
@@ -1304,7 +1305,7 @@ void BuildJaxjitSubmodule(py::module& m) {
       "thread_local_state", [&]() { return &thread_local_state; },
       py::return_value_policy::reference);
 
-  jitlib.def("jit_is_disabled", &JitIsDisabled);
+  jitlib.def("jit_is_disabled", &GetDisableJit);
   jitlib.def("get_enable_x64", &GetEnableX64);
 
   // TODO(phawkins): delete the following methods after dropping compatibility

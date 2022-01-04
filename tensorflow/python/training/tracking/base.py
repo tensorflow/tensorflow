@@ -15,6 +15,7 @@
 # ==============================================================================
 import abc
 import collections
+import enum
 import weakref
 
 import six
@@ -29,6 +30,7 @@ from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import registration
 from tensorflow.python.training.saving import saveable_object
+from tensorflow.python.types import core as core_types
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
@@ -42,6 +44,12 @@ OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
 # creation (avoiding double assignment when executing eagerly).
 VARIABLE_VALUE_KEY = "VARIABLE_VALUE"
 OBJECT_CONFIG_JSON_KEY = "OBJECT_CONFIG_JSON"
+
+
+@enum.unique
+class SaveType(enum.Enum):
+  SAVEDMODEL = "savedmodel"
+  CHECKPOINT = "checkpoint"
 
 
 @tf_export("__internal__.tracking.TrackableReference", v1=[])
@@ -1361,6 +1369,171 @@ class Trackable(object):
       returned must also be in the `_checkpoint_dependencies` dict.
     """
     return {}
+
+  def _trackable_children(self, save_type=SaveType.CHECKPOINT, **kwargs):
+    """Returns this object's `Trackable` attributes.
+
+    This method is used to build the object graph (or the object hierarchy,
+    in pickling terms) for checkpoint save/restore, and SavedModel export.
+
+    Override this method to define the children of this instance. Please read
+    the implementation restrictions:
+
+    **Rule 1: All children must be instances of `Trackable`.**
+
+    SavedModels and checkpoints do not store the entire python object structure,
+    only the object structure defined by the TensorFlow `Trackable`.
+
+    **Rule 2: [Checkpoint-only] Do not create new objects.**
+
+    When saving to a SavedMdoel, this method is called *exactly once* for each
+    `Trackable` in the object graph. When saving or restoring from a checkpoint,
+    this method may be called *multiple times*. Thus, this method may create
+    new Trackables when `save_type == SaveType.SAVEDMODEL` but not when
+    `save_type == SaveType.CHECKPOINT`.
+
+    When saving to SavedModel, new `Trackable` children can be created to save
+    non-Trackable attributes to the SavedModel. In the example below, `hyper`
+    is a regular python float hyperparameter. To save this value, a new Variable
+    is created to store the value of `hyper`:
+
+    ```
+    def __init__(self):
+      self.hyper = 1e-5
+
+    def _trackable_children(self, save_type, **unused_kwargs):
+      # Correct implementation
+      children = {}
+      if format == 'saved_model':
+        children['hyper'] = tf.Variable(self.hyper)
+      return children
+    ```
+
+    An incorrect implementation of `_trackable_children` is shown below. This
+    function would cause failures when loading the checkpoint, and calling
+    `load_status.assert_consumed()` or
+    `load_status.assert_existing_objects_matched`. If you want a value to be
+    saved in the checkpoint, hyper must be defined as a `tf.Variable` from the
+    start.
+
+    ```
+    def _trackable_children(self, save_type, **unused_kwargs):
+      # Incorrect implementation
+      return {'hyper': tf.Variable(self.hyper)}
+    ```
+
+    **Rule 3: [SavedModel-only] Watch out for un-traced tf.functions.**
+
+    At the begining of `_trackable_children`, always call
+    `get_concrete_function()` for any `tf.function` that has an input signature.
+
+    When `tf.functions` are saved to SavedModel, any `tf.functions` that have an
+    input signature and has never been called is traced at export time in order
+    to copy the op graph into the SavedModel. `tf.functions` that are traced
+    for the first time are allowed to create new state:
+
+
+    ```
+    @tf.function(input_signature=[]):
+    def fn(self);
+      if self.v is None:
+        self.v = tf.Variable(1.)
+      return self.v
+    ```
+
+    A problem occurs when there is a `Trackable` that returns `fn` as one of its
+    children and `self.v` has not been created yet. When `fn` is traced,
+    `self.v` is added to the `Trackable`, but SavedModel does not see this
+    modification since the `Trackable`'s children have already been gathered.
+
+    Therefore, as a precaution, call `get_concrete_function()` at the very
+    start of `_trackable_children` to ensure that the function is traced:
+
+
+    ```
+    def _trackable_children(self):
+      self.fn.get_concrete_function()
+      return {"v": self.v, "fn": self.fn}
+    ```
+
+    Args:
+      save_type: A string, can be 'savedmodel' or 'checkpoint'. Defaults to
+        SaveType.CHECKPOINT.
+      **kwargs: Keyword arguments passed to the object when saving SavedModel or
+        Checkpoints. Possible kwargs include (more may be added later):
+        * cache: An object identity dictionary (a dictionary that uses "is" to
+          match keys, so that unhashable object may be used as keys). An empty
+          cache is created at the start of every SavedModel export, and shared
+          between all `Trackable` subclasses in the same object graph. This
+          object is used for advanced saving functionality.
+
+    Returns:
+      Dictionary mapping names to child trackables.
+    """
+    # TODO(kathywu): Migrate `_checkpoint_dependencies` overrides to
+    # `_trackable_children`.
+    if save_type == SaveType.CHECKPOINT:
+      return {name: ref for name, ref in self._checkpoint_dependencies}
+    elif save_type == SaveType.SAVEDMODEL:
+      cache = kwargs["cache"]
+      return self._get_legacy_saved_model_children(cache)
+    else:
+      raise ValueError("Unexpected format passed to `_trackable_children`. "
+                       f"`save_type={save_type}`")
+
+  def _get_legacy_saved_model_children(self, serialization_cache):
+    """Combines legacy functions into a single dictionary."""
+    # TODO(kathywu): Delete this block once `list_*_from_serialization`
+    # has been removed.
+
+    # Retrieve functions attached to the object.
+    functions = self._list_functions_for_serialization(serialization_cache)
+
+    # Trace concrete functions to force side-effects:
+    #   1. populate the cache for functions that have an input_signature
+    #      and have not been called
+    #   2. force side effects of creation of concrete functions, e.g. create
+    #      variables on first run.
+    for fn in functions.values():
+      if isinstance(fn, core_types.GenericFunction):
+        fn._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+
+    # Retrieve children that are only included when exporting SavedModel.
+    extra_dependencies = self._list_extra_dependencies_for_serialization(
+        serialization_cache)
+
+    children = {}
+    for name, child in self._checkpoint_dependencies:
+      if isinstance(child, (core_types.GenericFunction,
+                            core_types.ConcreteFunction)):
+        # Skip "tracked" functions for now since there may be objects that
+        # automatically track functions that should not be saved.
+        # TODO(kathywu): remove once `_list_functions_for_serialization` has
+        # been fully deprecated.
+        continue
+
+      if name in extra_dependencies and name != "signatures":
+        # Extra dependencies (except for `.signatures`, which is always added
+        # when saving) should not have naming conflicts with dependencies
+        # defined by the user.
+        obj_identifier = self._object_identifier  # pylint: disable=protected-access
+        raise ValueError(
+            f"Error when exporting object {self} with identifier "
+            f"'{obj_identifier}'. The object has an attribute named "
+            f"'{name}', which is reserved. List of all reserved attributes: "
+            f"{list(extra_dependencies.keys())}")
+
+      if name in functions and child is not functions[name]:
+        raise ValueError(
+            "Can't save object because it has multiple children with the same "
+            f"name. Object: {self}, attribute name: {name}, child 1: "
+            f"{child}, child 2: {functions[name]}")
+
+      children[name] = child
+
+    children.update(extra_dependencies)
+    children.update(functions)
+    return children
 
 
 def _queue_children_for_restoration(checkpoint_position, visit_queue):

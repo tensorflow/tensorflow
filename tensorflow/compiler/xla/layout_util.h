@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -160,7 +159,7 @@ class LayoutUtil {
   static std::vector<int64_t> MakeLogicalToPhysical(const Layout& layout);
 
   // Returns a human-readable string that represents the given layout.
-  static string HumanString(const Layout& layout);
+  static std::string HumanString(const Layout& layout);
 
   // Copies the layout from 'src' to 'dst'. Recursively copies layouts of
   // tuples.  'src' and 'dst' need not be compatible but the two shapes must
@@ -188,8 +187,17 @@ class LayoutUtil {
   // Compute a hash for `layout`.
   static size_t Hash(const Layout& layout);
 
+  // Returns the linearized index of the cell at the given indices. The unit
+  // of the offset is in elements of the shape.
+  //
+  // NOTE: this method only uses the top-level tile and disregards the sub-tile
+  // in the layout. This method is also performance critical.
+  static int64_t LinearIndex(const Shape& shape,
+                             absl::Span<const int64_t> indices);
+
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
+  LayoutUtil(const LayoutUtil&) = delete;
+  LayoutUtil& operator=(const LayoutUtil&) = delete;
 };
 
 }  // namespace xla

@@ -425,7 +425,7 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr,
 // big temp buffer versus in other allocations.
 //
 // As a heuristic, we simply cap the number of fusion operands plus outputs at
-// kMaxOperandsAndOutputsPerFusion.  This puts an upper bound on the number of
+// MaxOperandsAndOutputsPerFusion().  This puts an upper bound on the number of
 // parameters to the kernel, working around the correctness problem.
 //
 // This limit is also often good for performance.  In a fusion with many
@@ -468,7 +468,7 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   //    fusion.
   //
   // But because this is a heuristic and our limit
-  // kMaxOperandsAndOutputsPerFusion is a large value (so +/- 1 doesn't make a
+  // MaxOperandsAndOutputsPerFusion() is a large value (so +/- 1 doesn't make a
   // big difference), we ignore this small inaccuracy in favor of simplicity.
   int64_t num_output_buffers = ShapeUtil::SubshapeCount(instr1.shape()) +
                                ShapeUtil::SubshapeCount(instr2.shape());
@@ -482,7 +482,7 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   // number of operands, which can be expensive.
   if (instr1.operand_count() + instr2.operand_count() - 1 +
           num_output_buffers <=
-      kMaxOperandsAndOutputsPerFusion) {
+      MaxOperandsAndOutputsPerFusion()) {
     return false;
   } else {
     VLOG(5) << "Operand count of "
@@ -491,7 +491,7 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
             << " ) = " << instr2.operand_count()
             << " and num_output_buffers = " << num_output_buffers
             << " is bigger than the bound of "
-            << kMaxOperandsAndOutputsPerFusion;
+            << MaxOperandsAndOutputsPerFusion();
   }
 
   // Compute the precise number of operands to the new fusion.
@@ -513,7 +513,8 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   }
 
   // Does the new fusion have more operands and outputs than the max?
-  return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
+  return operands.size() + num_output_buffers >
+         MaxOperandsAndOutputsPerFusion();
 }
 
 bool CreatesNestedLoop(const HloInstruction& producer,

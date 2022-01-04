@@ -177,16 +177,13 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
 //   T trunc_mod = std::fmod(x, y);
 //   return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
 //                                                     : trunc_mod
-//
-// Requires static shaped inputs to create constant splats and computation of
-// broadcast attributes.
 def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
       (HLO_SelectOp
        (HLOClient_BroadcastAndOp
         (HLOClient_BroadcastCompareOp
          (HLOClient_BroadcastRemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
          (HLO_ConstOp:$l_zeros (GetScalarOfType<0> $l)),
-         (BinBroadcastDimensions $l, $rem), HLO_COMPARISON_DIRECTION_NE,
+         (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_NE,
          (HLO_DEFAULT_COMPARISON_TYPE)),
         (HLOClient_BroadcastCompareOp
          (HLOClient_BroadcastCompareOp:$r_cmp $r,
@@ -200,8 +197,13 @@ def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
          (HLO_DEFAULT_COMPARISON_TYPE)),
         (NullDenseIntElementsAttr)),
        (HLOClient_BroadcastAddOp $r,
-        $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
+        $rem, (BinBroadcastDimensions $r, $rem)), $rem),
+      [(TensorOf<[I8, I16, I32, I64, F16, F32, F64]> $l)]>;
 
+// FloorMod of unsigned is just mod.
+def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
+          (HLOClient_BroadcastRemOp $l, $r, (BinBroadcastDimensions $l, $r)),
+          [(UnsignedIntTensor $l)]>;
 
 def Get2DTransposePerm: NativeCodeCall<
   "Get2DTransposePerm($0, &$_builder)">;

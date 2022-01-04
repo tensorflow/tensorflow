@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -202,17 +201,17 @@ XLA_TEST_F(UnaryOpTest, SignAbsTestR2) {
 
 XLA_TEST_F(UnaryOpTest, ConvertElementTypePredToS32) {
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<int32>(&builder, {0, 1});
-  auto rhs = ConstantR1<int32>(&builder, {1, 1});
+  auto lhs = ConstantR1<int32_t>(&builder, {0, 1});
+  auto rhs = ConstantR1<int32_t>(&builder, {1, 1});
   ConvertElementType(Eq(lhs, rhs), S32);
 
-  ComputeAndCompareR1<int32>(&builder, {0, 1}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {0, 1}, {});
 }
 
 XLA_TEST_F(UnaryOpTest, ConvertElementTypePredToF32) {
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<int32>(&builder, {0, 1});
-  auto rhs = ConstantR1<int32>(&builder, {1, 1});
+  auto lhs = ConstantR1<int32_t>(&builder, {0, 1});
+  auto rhs = ConstantR1<int32_t>(&builder, {1, 1});
   ConvertElementType(Eq(lhs, rhs), F32);
 
   ComputeAndCompareR1<float>(&builder, {0.0, 1.0}, {});

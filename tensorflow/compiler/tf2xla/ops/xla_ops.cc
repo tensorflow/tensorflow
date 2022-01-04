@@ -180,6 +180,7 @@ REGISTER_OP("XlaConvV2")
     .Attr("dimension_numbers: string")
     .Attr("precision_config: string")
     .Attr("preferred_element_type: numbertype")
+    .Attr("batch_group_count: int = 1")
     .Output("output: preferred_element_type")
     .SetShapeFn(UnchangedRank)
     .Doc(R"doc(
@@ -187,16 +188,17 @@ Wraps the XLA ConvGeneralDilated operator, documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
 .
 
-lhs: the input tensor
-rhs: the kernel tensor
-window_strides: the inter-window strides
-padding: the padding to apply at the start and end of each input dimensions
+lhs: input tensor
+rhs: kernel tensor
+window_strides: inter-window strides
+padding: padding to apply at the start and end of each input dimensions
 lhs_dilation: dilation to apply between input elements
 rhs_dilation: dilation to apply between kernel elements
 feature_group_count: number of feature groups for grouped convolution.
-dimension_numbers: a serialized xla::ConvolutionDimensionNumbers proto.
-precision_config: a serialized xla::PrecisionConfig proto.
-preferred_element_type: The type of the tensor.
+dimension_numbers: serialized xla::ConvolutionDimensionNumbers proto.
+precision_config: serialized xla::PrecisionConfig proto.
+preferred_element_type: type of the tensor.
+batch_group_count: number of batch groups or grouped filters.
 )doc");
 
 static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {

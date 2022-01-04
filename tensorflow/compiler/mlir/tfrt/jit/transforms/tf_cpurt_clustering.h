@@ -33,6 +33,9 @@ enum class CpurtClusteringTier : uint8_t {
   kMetadata = 0x4,    // shape, reshape, ...
   kReductions = 0x8,  // all, any, min, max, mean, prod, sum
 
+  // Only cwise operations (unary, binary, ternary).
+  kTier0 = kCwise,
+
   // All cwise operations (unary, binary, ternary) plus a tf.Transpose.
   kTier1 = kCwise | kTranspose,
 

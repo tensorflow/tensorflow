@@ -154,8 +154,6 @@ cc_library(
     hdrs = ["types.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core/framework:numeric_types",
-        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )

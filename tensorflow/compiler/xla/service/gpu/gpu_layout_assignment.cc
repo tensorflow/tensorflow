@@ -65,8 +65,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   // Integer convolution must use NHWC or NCHW_VECT_C.
   //
-  // TODO(jlebar): Do non-VECT_C int8 convs still require NHWC with new versions
-  // of cudnn?
+  // TODO(jlebar): Do non-VECT_C int8_t convs still require NHWC with new
+  // versions of cudnn?
   const ConvolutionDimensionNumbers& dnums =
       instr->convolution_dimension_numbers();
   Shape input_shape = instr->operand(0)->shape();
@@ -74,10 +74,10 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   if (primitive_util::IsIntegralType(input_ty)) {
     if (input_ty == S8 && dnums.input_spatial_dimensions_size() == 2 &&
         input_shape.dimensions_size() == 5) {
-      VLOG(2) << "Using NCHW_VECT_C for int8 conv " << instr->ToString();
+      VLOG(2) << "Using NCHW_VECT_C for int8_t conv " << instr->ToString();
       return kAllNCHW_VECT_C;
     }
-    VLOG(2) << "Using NHWC for int8 conv " << instr->ToString();
+    VLOG(2) << "Using NHWC for int8_t conv " << instr->ToString();
     return kAllNHWC;
   }
 

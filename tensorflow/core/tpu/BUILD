@@ -316,6 +316,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_id",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
@@ -339,7 +340,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "@com_google_absl//absl/types:optional",

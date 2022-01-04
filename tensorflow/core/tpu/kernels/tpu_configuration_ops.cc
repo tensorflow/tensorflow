@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -222,7 +223,7 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   size_t tpu_topology_output_size;
   char* tpu_topology_output = nullptr;
   TF_Status* status = TF_NewStatus();
-  auto cleanup = xla::MakeCleanup([&status, &tpu_topology_output]() {
+  auto cleanup = absl::MakeCleanup([&status, &tpu_topology_output]() {
     TF_DeleteStatus(status);
     tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(tpu_topology_output);
   });
@@ -321,7 +322,7 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   TF_Status* status = TF_NewStatus();
   size_t device_id_output_size;
   int32_t* device_id_output = nullptr;
-  auto cleanup = xla::MakeCleanup([&status, &device_id_output]() {
+  auto cleanup = absl::MakeCleanup([&status, &device_id_output]() {
     TF_DeleteStatus(status);
     tpu::OpsApiFn()->TpuConfigurationApi_FreeInt32ArrayFn(device_id_output);
   });
@@ -355,7 +356,7 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
         &cache_size_bytes);
 
     char* server_address_output = nullptr;
-    auto cleanup_server_address = xla::MakeCleanup([&server_address_output]() {
+    auto cleanup_server_address = absl::MakeCleanup([&server_address_output]() {
       tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           server_address_output);
     });

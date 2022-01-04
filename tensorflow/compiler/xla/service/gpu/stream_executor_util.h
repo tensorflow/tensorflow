@@ -84,8 +84,8 @@ tensorflow::tf_shared_lock LockGpuShared(const se::StreamExecutor* stream_exec);
 // The canonical storage for both ptx and cubin_data should outlive
 // the lifetime of the kernel.
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
-    absl::string_view kernel_name, uint64 num_args, absl::string_view ptx,
-    absl::Span<const uint8> cubin_data, se::StreamExecutor* stream_exec);
+    absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec);
 
 // Runs loaded kernel on the stream with the provided arguments.
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,

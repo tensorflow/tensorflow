@@ -82,7 +82,7 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 //   top_k = 1 or aggregate_to_topk = true.
 StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     int64_t input_size, int64_t rank, int64_t top_k, float recall_target,
-    bool aggregate_to_topk);
+    bool aggregate_to_topk, int64_t input_size_override = -1);
 
 }  // namespace xla
 

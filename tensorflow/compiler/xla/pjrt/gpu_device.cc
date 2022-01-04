@@ -527,7 +527,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
   }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<GpuClient>(
-      kGpuName, xla_client, std::move(devices),
+      GpuName(), xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),
       /*should_stage_host_to_device_transfers=*/true,

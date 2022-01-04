@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -46,10 +48,13 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform.h"
 
 #if BEF_EXECUTABLE
+#include "llvm/Support/SourceMgr.h"
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
@@ -107,6 +112,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       binary_(std::move(params.binary)),
       gpu_version_(params.gpu_version),
       thunks_or_bef_(std::move(params.thunks_or_bef)),
+      entry_func_attrs_(params.entry_func_attrs),
       module_name_(params.module_name),
       output_shape_(params.output_shape),
       allocations_(std::move(params.allocations)),
@@ -172,7 +178,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
 namespace {
 
 Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64 start_micros, se::Stream* stream_to_sync);
+                           uint64_t start_micros, se::Stream* stream_to_sync);
 
 Status ExecuteThunks(const std::string& module_name,
                      const ThunkSchedule& thunk_schedule,
@@ -180,7 +186,7 @@ Status ExecuteThunks(const std::string& module_name,
                      const BufferAllocations& buffer_allocations,
                      bool block_host_until_done) {
   XlaDebugInfoManager::Get()->OnModuleStart(module_name);
-  auto cleanup = MakeCleanup(
+  auto cleanup = absl::MakeCleanup(
       [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name); });
 
   se::Stream* main_stream = run_options->stream();
@@ -201,7 +207,7 @@ Status ExecuteThunks(const std::string& module_name,
     sub_streams.back()->ThenWaitFor(main_stream);
   }
 
-  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -258,7 +264,7 @@ Status ExecuteThunks(const std::string& module_name,
 }
 
 Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64 start_micros,
+                           uint64_t start_micros,
                            se::Stream* stream_to_sync = nullptr) {
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
@@ -276,7 +282,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
   // FinishExecution() blocks until main_stream has completed if profiling is
   // enabled; we therefore do not need to defer profile collection onto a
   // stream.
-  uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
 
   if (run_options->run_options().execution_profile()) {
     ExecutionProfile* profile = run_options->run_options().execution_profile();
@@ -455,6 +461,7 @@ static const char kDefaultHostDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
 
 struct CoreRuntimeAndWorkQueue {
+  mlir::MLIRContext* mlir_ctx;
   tfrt::CoreRuntime* core_runtime;
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue;
 };
@@ -462,44 +469,34 @@ struct CoreRuntimeAndWorkQueue {
 // TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc when
 // tensorflow/core/tfrt/runtime is generally available in OSS.
 StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
-  // TODO(hanbinyoon): Make these configurable.
-  int tfrt_num_threads = tensorflow::port::MaxParallelism();
-  int tfrt_num_blocking_threads = 16;
+  static auto runtime_and_queue_or =
+      [&]() -> StatusOr<CoreRuntimeAndWorkQueue> {
+    // TODO(hanbinyoon): Make these configurable.
+    int num_threads = tensorflow::port::MaxParallelism();
+    int num_blocking_threads = 16;
 
-  static StatusOr<CoreRuntimeAndWorkQueue>* runtime_and_queue_or =
-      [&](int num_threads, int num_blocking_threads) {
-        // Create work queue.
-        auto work_queue = tensorflow::tfrt_stub::WrapDefaultWorkQueue(
-            tfrt::CreateMultiThreadedWorkQueue(num_threads,
-                                               num_blocking_threads));
-        if (work_queue == nullptr) {
-          auto status =
-              tensorflow::errors::Internal("Failed to create TFRT work queue.");
-          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
-        }
-        auto* work_queue_ptr = work_queue.get();
+    // Create work queue.
+    auto work_queue = tensorflow::tfrt_stub::WrapDefaultWorkQueue(
+        tfrt::CreateMultiThreadedWorkQueue(num_threads, num_blocking_threads));
+    if (work_queue == nullptr) {
+      return tensorflow::errors::Internal("Failed to create TFRT work queue.");
+    }
+    auto* work_queue_ptr = work_queue.get();
+    auto* mlir_ctx = new mlir::MLIRContext;
 
-        // Create core runtime.
-        auto expected_core_runtime = tfrt::CoreRuntime::Create(
-            [](const tfrt::DecodedDiagnostic& diag) {
-              LOG(ERROR) << diag.message;
-            },
-            tfrt::CreateMallocAllocator(), std::move(work_queue),
-            kDefaultHostDeviceName);
-        if (!expected_core_runtime) {
-          auto error = expected_core_runtime.takeError();
-          auto status =
-              tensorflow::errors::Internal(llvm::toString(std::move(error)));
-          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
-        }
+    // Create core runtime.
+    auto expected_core_runtime = tfrt::CoreRuntime::Create(
+        tfrt::gpu::GetDiagHandler(mlir_ctx), tfrt::CreateMallocAllocator(),
+        std::move(work_queue), kDefaultHostDeviceName);
+    if (!expected_core_runtime) {
+      auto error = expected_core_runtime.takeError();
+      return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+    }
 
-        auto runtime_and_queue = CoreRuntimeAndWorkQueue{
-            expected_core_runtime->release(), work_queue_ptr};
-        return new StatusOr<CoreRuntimeAndWorkQueue>(runtime_and_queue);
-      }(tfrt_num_threads, tfrt_num_blocking_threads);
-
-  TF_RETURN_IF_ERROR(runtime_and_queue_or->status());
-  return runtime_and_queue_or->ValueOrDie();
+    return CoreRuntimeAndWorkQueue{mlir_ctx, expected_core_runtime->release(),
+                                   work_queue_ptr};
+  }();
+  return runtime_and_queue_or;
 }
 
 // TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc when
@@ -540,17 +537,16 @@ tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
 
 static Status ExecuteBef(const std::string& module_name,
                          const tfrt::RCReference<tfrt::BEFFile>& bef_file,
-                         absl::string_view entry_function_name,
                          const ServiceExecutableRunOptions* run_options,
                          const BufferAllocations& buffer_allocations,
                          size_t num_allocations, bool block_host_until_done) {
   XlaDebugInfoManager::Get()->OnModuleStart(module_name);
-  auto cleanup = MakeCleanup(
+  auto cleanup = absl::MakeCleanup(
       [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name); });
 
   se::Stream* main_stream = run_options->stream();
 
-  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -558,12 +554,6 @@ static Status ExecuteBef(const std::string& module_name,
 
   // TODO(hanbinyoon): Expand on the annotation.
   ScopedAnnotation annotation("BefExecution");
-
-  // Signature: (chain, stream, inputs..., outputs...) -> (chain).
-  const tfrt::Function* function = bef_file->GetFunction(entry_function_name);
-  if (!function) {
-    return InternalError("Failed to get '%s' function.", entry_function_name);
-  }
 
   // Create execution context.
   TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
@@ -576,6 +566,19 @@ static Status ExecuteBef(const std::string& module_name,
     return tensorflow::errors::Internal(llvm::toString(std::move(error)));
   }
   tfrt::ExecutionContext exec_ctx(std::move(*expected_req_ctx));
+
+  auto entry_point = tfrt::gpu::GetEntryPoint(*bef_file, exec_ctx);
+  if (!entry_point) {
+    auto error = entry_point.takeError();
+    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+  }
+  absl::string_view entry_function_name(entry_point->function_name);
+
+  // Signature: (chain, stream, inputs..., outputs...) -> (chain).
+  const tfrt::Function* function = bef_file->GetFunction(entry_function_name);
+  if (!function) {
+    return InternalError("Failed to get '%s' function.", entry_function_name);
+  }
 
   // Create owning handles for arguments and add pointer to them to 'args'.
   tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
@@ -600,15 +603,23 @@ static Status ExecuteBef(const std::string& module_name,
   if (function->num_results() != 1)
     return InternalError("Unexpected result count.");
 
+  // Capture errors and augment with source.
+  std::string diag_str;
+  llvm::raw_string_ostream diag_os(diag_str);
+  llvm::SourceMgr src_mgr;
+  mlir::SourceMgrDiagnosticHandler handler(src_mgr, runtime_and_queue.mlir_ctx,
+                                           diag_os);
+
   // Execute the function.
   function->Execute(exec_ctx, args, {result});
 
   // Wait for async execution to complete.
   tfrt::Await(exec_ctx, llvm::makeArrayRef(result));
 
-  // Report error if any.
+  // Report error if any, from handler and result.
+  if (diag_os.tell()) return tensorflow::errors::Internal(diag_os.str());
   if (auto* error = result->GetErrorIfPresent())
-    return tensorflow::errors::Internal(error->message);
+    return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
   return MaybeSyncAndProfile(run_options, start_micros,
                              block_host_until_done ? main_stream : nullptr);
@@ -794,10 +805,8 @@ Status GpuExecutable::ExecuteThunksOrBef(
   }
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
-  return ExecuteBef(module_name_, bef_file,
-                    bef_buffer.get_deleter().entry_function_name, run_options,
-                    buffer_allocations, allocations_.size(),
-                    block_host_until_done);
+  return ExecuteBef(module_name_, bef_file, run_options, buffer_allocations,
+                    allocations_.size(), block_host_until_done);
 #else   // BEF_EXECUTABLE
   if (!absl::holds_alternative<OwnedThunkSchedule>(thunks_or_bef_)) {
     return FailedPrecondition("Expected ThunkSchedule is not supplied.");
@@ -830,6 +839,79 @@ int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
     }
   }
   return size;
+}
+
+Status GpuExecutable::SetUpMlirAllocation(
+    mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
+    std::vector<BufferAllocation>* allocations,
+    absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
+    Shape* output_shape) {
+  for (int i = 0; i < buffer_sizes.size(); i++) {
+    allocations->emplace_back(i, buffer_sizes[i], 0);
+  }
+
+  for (int i = 0; i < func.getNumArguments(); i++) {
+    if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
+      xla::ShapeIndex shape_index;
+      if (auto shape_index_attr =
+              func.getArgAttrOfType<mlir::DenseIntElementsAttr>(
+                  i, "lmhlo.param_shape_index")) {
+        for (const llvm::APInt& element : shape_index_attr) {
+          shape_index.push_back(element.getSExtValue());
+        }
+      }
+      allocations->at(i).set_entry_computation_parameter(
+          param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
+          static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
+    }
+    // TODO(timshen): this information is redundant. This is here only for
+    // smooth migration to LMHLO. Remove it.
+    if (func.getArgAttr(i, "lmhlo.constant_name")) {
+      allocations->at(i).set_constant(true);
+    }
+    if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
+      allocations->at(i).set_maybe_live_out(true);
+
+      // Reconstruct a shape index from output_index.
+      ShapeIndex shape_index;
+      for (const llvm::APInt& element :
+           output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
+        shape_index.push_back(element.getSExtValue());
+      }
+      auto& o = (*output_info)[shape_index];
+      o.allocation_index = i;
+      if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
+        HloInputOutputAliasConfig::AliasKind kind =
+            HloInputOutputAliasConfig::kMayAlias;
+        if (func.getArgAttr(i, "lmhlo.must_alias")) {
+          kind = HloInputOutputAliasConfig::kMustAlias;
+        }
+        o.alias_config.emplace(param_attr.cast<mlir::IntegerAttr>().getInt(),
+                               ShapeIndex{}, kind);
+      }
+      if (func.getArgument(i).use_empty()) {
+        o.passthrough = true;
+      }
+    }
+  }
+  // Expects result_xla_shape as a XLA shape in string form.
+  //
+  // The attribute is necessary, because GpuExecutable/ExecutionOutput supports
+  // tuples / tree-like shapes, while the LMHLO argument list loses the tree
+  // form.
+  //
+  // The string format is necessary since MLIR doesn't support XLA shape with
+  // dynamic_dimension.
+  //
+  // TODO(timshen): now this field is mandatory. Make it optional for
+  // non-GpuExecutable outputs.
+  TF_ASSIGN_OR_RETURN(
+      *output_shape,
+      ParseShape(func->getAttrOfType<mlir::StringAttr>("result_xla_shape")
+                     .getValue()
+                     .str()));
+
+  return Status::OK();
 }
 
 StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

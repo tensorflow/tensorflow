@@ -22,7 +22,7 @@
 #include <iterator>
 #include <string>
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/Sequence.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"

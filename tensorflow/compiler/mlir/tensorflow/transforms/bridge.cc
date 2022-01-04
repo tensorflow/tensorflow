@@ -162,10 +162,10 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPUResourceReadForWritePass());
+  pm.addPass(TFDevice::CreateMarkInputOutputAliasesPass());
   pm.addPass(CreateTPUShardingIdentificationPass());
   pm.addNestedPass<FuncOp>(CreateTPUResourceReadsWritesPartitioningPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
-  pm.addPass(TFDevice::CreateMarkInputOutputAliasesPass());
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());

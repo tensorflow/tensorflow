@@ -161,7 +161,7 @@ void TestFunctionWithPackedInput(const bool remote) {
   TFE_TensorHandle* h1 = TestVariable(ctx, 2.0, task2_name);
   TFE_TensorHandle* h2 = TestVariable(ctx, 3.0, task0_name);
 
-  // Add a sync point in order to make sure that variables have been initialized
+  // Add a sync point to make sure that variables have been initialized
   // before the function execution starts.
   TFE_ContextAsyncWait(ctx, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);

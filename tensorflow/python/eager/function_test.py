@@ -38,7 +38,6 @@ from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
-from tensorflow.python.eager import function_cache
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -280,8 +279,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       z = array_ops.zeros(0)
       v = def_function.function(
           experimental_implements='func')(lambda x, y: x + y + z)
-      a = array_ops.ones((1.0,))
-      b = array_ops.ones((1.0,))
+      a = array_ops.ones((1,))
+      b = array_ops.ones((1,))
       with self.assertRaisesRegex(AssertionError,
                                   'variables are always captured'):
         v(a, b)
@@ -664,15 +663,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    # TODO(b/201533914): Remove this flag.
-    if function_cache.USE_FULL_TRACE_TYPE:
-      expected_error = errors.InvalidArgumentError
-      expected_message = r'could not be represented through the generic tracing'
-    else:
-      expected_error = ValueError
-      expected_message = r'got.*set'
-
-    with self.assertRaisesRegex(expected_error, expected_message):
+    with self.assertRaisesRegex(
+        TypeError,
+        r'could not be represented through the generic tracing'):
       f(set([]))
 
   def testFuncName(self):
@@ -1949,14 +1942,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return 42
 
     def func(foo):
-      del foo
-      return
+      return constant_op.constant([id(foo)])
 
     defined = function.defun(func)
-    defined(Foo())
+    foo_1 = Foo()
+    defined(foo_1)
     self.assertLen(total_function_cache(defined), 1)
 
-    defined(Foo())
+    foo_2 = Foo()
+    defined(foo_2)
     self.assertLen(total_function_cache(defined), 2)
 
   def testCacheTensorDtypeCollision(self):

@@ -78,7 +78,7 @@ XLA_TEST_F(SlicingTest, Simple3dLookup) {
       CreateR3Parameter<float>(BatchedAValsFull(), 0, "a", &builder, &a);
   auto index_data = CreateR0Parameter<int>(1, 1, "index", &builder, &index);
 
-  DynamicSliceInMinorDims(a, {index, xla::ConstantR0<int32>(&builder, 0)},
+  DynamicSliceInMinorDims(a, {index, xla::ConstantR0<int32_t>(&builder, 0)},
                           {1, 4});
 
   ComputeAndCompareR3<float>(&builder, {{{3, 6, 0, 1}}, {{24, 61, 82, 48}}},

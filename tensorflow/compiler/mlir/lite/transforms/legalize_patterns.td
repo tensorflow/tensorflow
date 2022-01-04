@@ -537,3 +537,8 @@ def LegalizeRandomStandardNormal : Pat<
   (TF_RandomStandardNormalOp $shape, $seed, $seed2),
   (TFL_RandomStandardNormalOp $shape, (convertIntAttrTo64Bit $seed),
    (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeMultinomial : Pat<
+  (TF_MultinomialOp $logits, $num_samples, $seed, $seed2),
+  (TFL_MultinomialOp $logits, $num_samples, (convertIntAttrTo64Bit $seed),
+   (convertIntAttrTo64Bit $seed2))>;

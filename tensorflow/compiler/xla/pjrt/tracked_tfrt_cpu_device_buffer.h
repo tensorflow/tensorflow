@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 
+#include <functional>
 #include <memory>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
@@ -48,12 +51,15 @@ class MaybeOwningCpuMemory {
   MaybeOwningCpuMemory& operator=(const MaybeOwningCpuMemory&) = delete;
 
   // Owning.
-  static std::shared_ptr<MaybeOwningCpuMemory> AllocateShared(size_t size) {
+  static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
+      size_t size) {
+    uint8_t* data = static_cast<uint8_t*>(tensorflow::port::AlignedMalloc(
+        size, cpu_function_runtime::MinAlign()));
+    if (!data) {
+      return ResourceExhausted("Out of memory allocating %d bytes.", size);
+    }
     return std::make_shared<MaybeOwningCpuMemory>(
-        OwnedDataPtr{static_cast<uint8_t*>(tensorflow::port::AlignedMalloc(
-                         size, cpu_function_runtime::kMinAlign)),
-                     tensorflow::port::AlignedFree},
-        size);
+        OwnedDataPtr{data, tensorflow::port::AlignedFree}, size);
   }
 
   void* data() const { return buf_; }

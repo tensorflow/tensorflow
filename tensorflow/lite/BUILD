@@ -707,14 +707,9 @@ cc_library(
     # configuration conditions will make TFLite interpreter to apply XNNPACK
     # delegate by default.
     deps = select({
-        "//tensorflow:android": [":tflite_with_xnnpack_enabled"],
-        # XNNPACK delivers significant benefits w/ WASM and is already in use
-        # by most WASM clients.
-        "//tensorflow:emscripten": [":tflite_with_xnnpack_enabled"],
-        "//tensorflow:ios": [":tflite_with_xnnpack_enabled"],
         "//tensorflow:macos": [],
-        "//tensorflow:windows": [":tflite_with_xnnpack_enabled"],
-        "//conditions:default": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [":tflite_with_xnnpack_enabled"],
     }),
 )
 
@@ -1030,6 +1025,7 @@ cc_library(
     copts = tflite_copts_warnings() + tflite_copts(),
     deps = [
         ":kernel_api",
+        ":macros",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -1083,6 +1079,7 @@ cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",

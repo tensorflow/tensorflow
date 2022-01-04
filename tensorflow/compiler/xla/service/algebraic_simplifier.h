@@ -16,24 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <functional>
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
 class AlgebraicSimplifierOptions {
  public:
-  AlgebraicSimplifierOptions() {}
   // Platform dependent callback to determine if a reshape `from_shape` to
   // `to_shape` is a bitcast.
   using ReshapeIsBitcastCallback =
       std::function<bool(const Shape& from_shape, const Shape& to_shape)>;
+  // Platform dependent callback to determine if a set of reverse dimensions is
+  // lowerable
+  using ConvIsLowerableCallback = std::function<bool(HloInstruction* window)>;
+
   explicit AlgebraicSimplifierOptions(
-      ReshapeIsBitcastCallback reshape_is_bitcast_callback)
-      : reshape_is_bitcast_callback_(std::move(reshape_is_bitcast_callback)) {}
+      ReshapeIsBitcastCallback reshape_is_bitcast_callback = {},
+      ConvIsLowerableCallback conv_is_lowerable_callback = {})
+      : reshape_is_bitcast_callback_(std::move(reshape_is_bitcast_callback)),
+        conv_is_lowerable_callback_(std::move(conv_is_lowerable_callback)) {}
 
   // Use the platform specific callback if set. It is not sensible to return
   // true here if the options are not layout sensitive.
@@ -45,6 +53,14 @@ class AlgebraicSimplifierOptions {
       return ShapeUtil::ReshapeIsBitcast(from_shape, to_shape);
     }
     return reshape_is_bitcast_callback_(from_shape, to_shape);
+  }
+
+  // Use the platform specific callback if set. Otherwise, return true.
+  bool ConvIsLowerable(HloInstruction* reverse_dims) const {
+    if (!conv_is_lowerable_callback_) {
+      return true;
+    }
+    return conv_is_lowerable_callback_(reverse_dims);
   }
 
   // If is_layout_sensitive is true, then the simplifier preserves layout during
@@ -125,11 +141,11 @@ class AlgebraicSimplifierOptions {
 
   int64_t very_small_gather_size() const { return very_small_gather_size_; }
 
-  void set_cudnn_batchnorm_forward_training_metadata(const string& c) {
+  void set_cudnn_batchnorm_forward_training_metadata(const std::string& c) {
     metadata_.cudnn_batchnorm_forward_training_metadata = c;
   }
 
-  const string& get_cudnn_batchnorm_forward_training_metadata() const {
+  const std::string& get_cudnn_batchnorm_forward_training_metadata() const {
     return metadata_.cudnn_batchnorm_forward_training_metadata;
   }
 
@@ -162,6 +178,13 @@ class AlgebraicSimplifierOptions {
     return replace_transpose_with_bitcast_;
   }
 
+  // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
+  //
+  // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
+  // true.
+  bool minmax_propagate_nan() const { return minmax_propagate_nan_; }
+  void set_minmax_propagate_nan(bool val) { minmax_propagate_nan_ = val; }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplierOptions that can be later used in an
@@ -172,10 +195,11 @@ class AlgebraicSimplifierOptions {
   // guaranteed to be postive. This property has been used to recursively
   // determine if the operand of an instruction is always positive.
   struct Metadata {
-    string cudnn_batchnorm_forward_training_metadata{""};
+    std::string cudnn_batchnorm_forward_training_metadata{""};
     Metadata() {}
   };
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
+  ConvIsLowerableCallback conv_is_lowerable_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
   bool enable_dot_to_multiply_rewrite_{true};
@@ -189,6 +213,7 @@ class AlgebraicSimplifierOptions {
   bool enable_sink_broadcast_{true};
   bool replace_transpose_with_bitcast_{true};
   int64_t very_small_gather_size_{4};
+  bool minmax_propagate_nan_{true};
   Metadata metadata_;
 };
 

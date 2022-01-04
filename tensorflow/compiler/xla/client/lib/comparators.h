@@ -46,7 +46,7 @@ XlaComputation CreateScalarGtComputation(
 // a vector of comparator functions to compare the operands where the function
 // isn't nullopt with the specified comparator at that location.
 XlaComputation CreateScalarComparisonComputation(
-    const string& name, const std::vector<PrimitiveType>& operand_types,
+    const std::string& name, const std::vector<PrimitiveType>& operand_types,
     const std::vector<
         absl::optional<XlaOp (*)(XlaOp, XlaOp, absl::Span<const int64_t>)>>&
         comparators,

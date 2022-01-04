@@ -1564,6 +1564,13 @@ def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResour
   let results = (outs);
 }
 
+def TF__InternalTestMustExecuteTrait_ : TF_Op<"_InternalTestMustExecuteTrait_", [TF_MustExecute]> {
+  let summary = "Internal op for testing only";
+
+  let arguments = (ins);
+  let results = (outs);
+}
+
 def TF_SetStaticDimensionBoundsOp : TF_Op<"SetStaticDimensionBounds", []> {
   let summary = "Op used to indicate to the compiler and runtime the static bounds of a tensor.";
   let description = [{
@@ -1603,6 +1610,8 @@ tpu_call([w_dyn])
     TF_Tensor:$input,
     TF_I32OrI64Tensor:$static_shape
   );
+
+  let verifier = [{ return Verify(*this); }];
 
   let results = (outs
     TF_Tensor:$output

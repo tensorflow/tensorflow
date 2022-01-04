@@ -12,6 +12,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//learning/brain/mobile/model_optimization/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/mlir/lite/...",
     ],
@@ -60,6 +61,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
+        "@com_google_absl//absl/base:core_headers",
         "@flatbuffers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

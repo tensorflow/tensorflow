@@ -280,6 +280,10 @@ int64_t RootDataset::CardinalityInternal() const {
   return input_->Cardinality();
 }
 
+int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
+  return input_->Cardinality(options);
+}
+
 Status RootDataset::Get(OpKernelContext* ctx, int64 index,
                         std::vector<Tensor>* out_tensors) const {
   std::vector<const DatasetBase*> inputs;

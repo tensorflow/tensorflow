@@ -408,15 +408,19 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
+
+  return returned_dataset->MakeIterator(MakeNestedIteratorContext(ctx), parent,
+                                        iterator_prefix, out_iterator);
+}
+
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strip out any split providers so that they don't apply to sub-iterators.
   if (ctx->split_providers().empty()) {
-    return returned_dataset->MakeIterator(ctx, parent, iterator_prefix,
-                                          out_iterator);
+    return *ctx;
   }
-  // Strip out the split providers so that they don't apply to sub-iterators.
   IteratorContext::Params params(ctx);
   params.split_providers.clear();
-  return returned_dataset->MakeIterator(IteratorContext(std::move(params)),
-                                        parent, iterator_prefix, out_iterator);
+  return IteratorContext(std::move(params));
 }
 
 /* static */

@@ -182,7 +182,7 @@ class HloSchedule {
   // satisfied in the schedule.
   Status Verify() const;
 
-  string ToString() const;
+  std::string ToString() const;
 
   bool empty() const { return sequences_.empty(); }
 

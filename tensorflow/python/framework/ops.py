@@ -292,8 +292,10 @@ class TensorType(trace.TraceType):
     self.name = name
     self.shape_rank = shape.rank
 
-    if self.shape_rank is None or signature_context.include_tensor_ranks_only:
+    if self.shape_rank is None:
       self.shape_dims = None
+    elif signature_context.include_tensor_ranks_only:
+      self.shape_dims = (None,) * self.shape_rank
     else:
       self.shape_dims = tuple(shape.as_list())
 

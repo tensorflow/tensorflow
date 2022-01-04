@@ -118,7 +118,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
   return Status::OK();
 }
 
-/*static*/ float HloCostAnalysis::GetProperty(const string& key,
+/*static*/ float HloCostAnalysis::GetProperty(const std::string& key,
                                               const Properties& properties,
                                               const float default_value) {
   auto key_value = properties.find(key);
@@ -126,7 +126,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
 }
 
 /*static*/ float HloCostAnalysis::GetPropertyForHlo(
-    const HloInstruction& hlo, const string& key,
+    const HloInstruction& hlo, const std::string& key,
     const HloToProperties& hlo_to_properties) {
   auto it = hlo_to_properties.find(&hlo);
   if (it == hlo_to_properties.end()) {
@@ -577,9 +577,17 @@ int64_t HloCostAnalysis::GetConvolutionFlops(
   auto lhs = convolution->operand(0);
   auto rhs = convolution->operand(1);
   Window window = convolution->window();
-  const auto& result_shape = convolution->shape();
   const Shape& lhs_shape = lhs->shape();
   const Shape& rhs_shape = rhs->shape();
+  const Shape& result_shape = [&]() -> const Shape& {
+    // convolution custom-calls return a tuple of (actual_result, temp_buffer).
+    const Shape& shape = convolution->shape();
+    if (gpu::IsCustomCallToDnnConvolution(*convolution) &&
+        convolution->shape().IsTuple()) {
+      return shape.tuple_shapes(0);
+    }
+    return shape;
+  }();
 
   const auto& dnums = convolution->convolution_dimension_numbers();
 
@@ -1000,6 +1008,31 @@ Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     current_properties_[kFlopsKey] =
         GetDotFlops(custom_call->operand(0)->shape(), custom_call->shape(),
                     gemm_config.dot_dimension_numbers());
+    return Status::OK();
+  }
+
+  if (gpu::IsCustomCallToDnnConvolution(*custom_call)) {
+    // As with dots, this flops calculation has the following inaccuracies.
+    //
+    //  - We may have a fused conv which does additional ops (multiplying by a
+    //    scalar `alpha`, adding a bias or side-input, doing a relu, etc).  But
+    //    we can safely ignore this because the overall computation is dominated
+    //    by the convolution itself.
+    //
+    //  - cudnn may use complex conv algorithms that do fewer (or more!) flops
+    //    than we calculate.
+    //
+    //  - for int8_t convs, these aren't *fl*ops, but we fudge it.
+    current_properties_[kFlopsKey] = GetConvolutionFlops(custom_call);
+
+    // conv custom-calls return a tuple (real_output, temp_bytes).  Count just
+    // the real_output in output bytes accessed.  The main purpose of
+    // hlo_cost_analysis is to figure out if ops are running "as fast as
+    // possible", and if we were to include temp memory in here, we'd
+    // essentially be *rewarding* convs that use additional temp memory!
+    if (custom_call->shape().IsTuple()) {
+      SetOutputBytesAccessed(shape_size_(custom_call->shape().tuple_shapes(0)));
+    }
     return Status::OK();
   }
 

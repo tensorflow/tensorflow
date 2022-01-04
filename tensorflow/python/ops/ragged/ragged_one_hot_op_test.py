@@ -29,6 +29,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedOneHotTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
@@ -108,8 +109,9 @@ class RaggedOneHotTest(test_util.TensorFlowTestCase, parameterized.TestCase):
            # Note: the only negative `axis` value supported by
            # array_ops.one_hot is -1.
            message=(r'axis must be >= -1|'  # graph mode
-                    r'Expected axis to be -1 or between .*'),  # eager mode
-           exception=(ValueError, errors.InvalidArgumentError)),
+                    r'(?i)Expected axis.* to be -1 or between.*'),  # eager mode
+           exception=(ValueError, errors.InvalidArgumentError,
+                      errors.UnknownError)),
   ])  # pyformat: disable
   def testErrors(self,
                  indices,

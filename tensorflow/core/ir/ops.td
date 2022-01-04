@@ -120,6 +120,9 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
       return "tfg";
     }
 
+    /// Get a special name to use when printing block arguments.
+    void getAsmBlockArgumentNames(Region &region, OpAsmSetValueNameFn set_name_fn);
+
     //===------------------------------------------------------------------===//
     // CallableOpInterface
     //===------------------------------------------------------------------===//
@@ -188,7 +191,7 @@ def TFGraph_ReturnOp : TFGraph_Op<"return",
 
   // Use the dialect printer/parser like other unregistered op in this dialect.
   let parser = [{ return parseCustomTfOp(parser, result); }];
-  let printer = [{ (void)(*this)->getDialect()->getOperationPrinter(*this)(*this, p); }];
+  let printer = [{ printCustomTfOp(*this, p); }];
 }
 
 

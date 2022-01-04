@@ -205,11 +205,11 @@ std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
     return {};
   }
 
-  absl::flat_hash_set<string> disabled_pass_names(
+  absl::flat_hash_set<std::string> disabled_pass_names(
       debug_options.xla_disable_hlo_passes().begin(),
       debug_options.xla_disable_hlo_passes().end());
 
-  absl::flat_hash_set<string> enabled_pass_names(
+  absl::flat_hash_set<std::string> enabled_pass_names(
       debug_options.xla_enable_hlo_passes_only().begin(),
       debug_options.xla_enable_hlo_passes_only().end());
 

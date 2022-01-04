@@ -232,6 +232,10 @@ auto* test_counters =
 
 }  // namespace
 
+auto* tpu_op_error_counter = monitoring::Counter<2>::New(
+    "/tensorflow/tpu/op_error_count",
+    "Count the tpu related errors by op and error_type.", "op", "error_type");
+
 monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter =
       monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
@@ -489,6 +493,10 @@ void UpdateTfMlirGraphOptimizationPassStateCounter(
       "PassState", "ProcessingState");
 
   metric->GetCell(pass_state, processing_state)->IncrementBy(1);
+}
+
+void UpdateTpuErrorCounter(const string& op, const string& error_type) {
+  tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
 }
 
 }  // namespace metrics

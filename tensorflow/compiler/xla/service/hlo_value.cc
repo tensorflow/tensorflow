@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -45,8 +44,8 @@ const Shape& HloPosition::shape() const {
   return ShapeUtil::GetSubshape(instruction->shape(), index);
 }
 
-string HloPosition::ToString() const {
-  string index_str =
+std::string HloPosition::ToString() const {
+  std::string index_str =
       instruction->shape().IsTuple() ? (" " + index.ToString()) : "";
   return StrCat(instruction->name(), index_str);
 }
@@ -56,10 +55,11 @@ std::ostream& operator<<(std::ostream& out, const HloPosition& position) {
   return out;
 }
 
-string HloUse::ToString() const {
-  string index_str = instruction->operand(operand_number)->shape().IsTuple()
-                         ? (" " + operand_index.ToString())
-                         : "";
+std::string HloUse::ToString() const {
+  std::string index_str =
+      instruction->operand(operand_number)->shape().IsTuple()
+          ? (" " + operand_index.ToString())
+          : "";
   return StrCat(instruction->name(), ", operand ", operand_number, index_str);
 }
 
@@ -87,16 +87,16 @@ bool HloValue::operator!=(const HloValue& other) const {
   return !(*this == other);
 }
 
-string HloValue::ToShortString() const {
+std::string HloValue::ToShortString() const {
   return absl::StrFormat(
       "<%d %s%s%s%s>", id(), instruction()->name(),
       instruction()->shape().IsTuple() ? index().ToString() : "",
       is_phi() ? " (phi)" : "", has_color() ? StrCat(" @", color()) : "");
 }
 
-string HloValue::ToString(int indent) const {
-  string indentation(indent, ' ');
-  string out =
+std::string HloValue::ToString(int indent) const {
+  std::string indentation(indent, ' ');
+  std::string out =
       StrCat(indentation, ToShortString(), "\n", indentation, " positions:\n");
   for (const HloPosition& position : positions()) {
     StrAppend(&out, indentation, "  ", position.ToString(), "\n");
@@ -221,12 +221,12 @@ void HloValueSet::SortAndUniquifyValues() {
                 values_.end());
 }
 
-string HloValueSet::ToString() const {
-  return StrCat(
-      "HloValueSet: ",
-      absl::StrJoin(values_, ", ", [](string* result, const HloValue* value) {
-        result->append(value->ToShortString());
-      }));
+std::string HloValueSet::ToString() const {
+  return StrCat("HloValueSet: ",
+                absl::StrJoin(values_, ", ",
+                              [](std::string* result, const HloValue* value) {
+                                result->append(value->ToShortString());
+                              }));
 }
 
 bool HloValueSet::AssignUnionOf(absl::Span<const HloValueSet* const> inputs) {
@@ -294,8 +294,8 @@ std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-string InstructionValueSet::ToString() const {
-  string out =
+std::string InstructionValueSet::ToString() const {
+  std::string out =
       StrCat("InstructionValueSet(", ShapeUtil::HumanString(shape()), ")\n");
   ForEachElement([&out](const ShapeIndex& index, const HloValueSet& value_set) {
     StrAppend(&out, "  ", index.ToString(), " : ", value_set.ToString(), "\n");

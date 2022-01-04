@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "pybind11/pybind11.h"
@@ -232,7 +234,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       // PjRtClient and can be used to set TpuDevice::client_.
       .def_property_readonly(
           "platform",
-          [](const TpuDevice& device) -> std::string { return kTpuPlatform; })
+          [](const TpuDevice& device) -> std::string { return TpuPlatform(); })
       .def("__repr__", [](const TpuDevice& device) {
         return absl::StrFormat(
             "TpuDevice(id=%i, process_index=%i, coords=(%i,%i,%i), "

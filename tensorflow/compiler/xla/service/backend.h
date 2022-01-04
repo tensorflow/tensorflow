@@ -141,7 +141,7 @@ class Backend {
   }
 
   // Return a string identifier for the given device, eg: "GPU:3".
-  string device_name(int device_ordinal) const {
+  std::string device_name(int device_ordinal) const {
     return absl::StrCat(platform_->Name(), ":", device_ordinal);
   }
 

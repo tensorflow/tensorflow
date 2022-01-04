@@ -52,43 +52,22 @@ def LinalgTrivialCopyRemoval
   }];
 }
 
-def LinalgMatmulSpecialization
-    : FunctionPass<"tf-cpurt-linalg-matmul-specialization"> {
-  let summary = "Specialize linalg.matmul to dot, matvec or vecmat at runtime";
-  let constructor = "tensorflow::CreateLinalgMatmulSpecializationPass()";
-  let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::scf::SCFDialect"
-  ];
-
-  let description = [{
-    Specialize linalg.matmul at runtime to:
-      1. linalg.dot    for vector x vector multiplication
-      2. linalg.matvec for matrix x vector multiplication
-      3. linalg.vecmat for vector x matrix multiplication
-  }];
-}
-
 def CodegenCWise : FunctionPass<"tf-cpurt-codegen-cwise"> {
   let summary = "Tile elementwise ops on tensors";
   let constructor = "tensorflow::CreateCodegenStrategyForCWisePass()";
   let dependentDialects = [
     "mlir::linalg::LinalgDialect",
   ];
+  let options = [
+    Option<"cwise_tile_size", "cwise-tile-size",
+           "int64_t", /*default=*/"8",
+           "Tile size for the innermost dimension of an elementwise op.">,
+  ];
 }
 
 def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
   let summary = "Optimize away padding in tiled loops";
   let constructor = "tensorflow::CreatePeelTiledLoopsPass()";
-  let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
-  ];
-}
-
-def CodegenMatmul : FunctionPass<"tf-cpurt-codegen-matmul"> {
-  let summary = "Tile-promote-vectorize linalg.matmul on buffers";
-  let constructor = "tensorflow::CreateCodegenStrategyForMatMulPass()";
   let dependentDialects = [
     "mlir::linalg::LinalgDialect",
   ];
@@ -106,6 +85,26 @@ def CodegenReduction : FunctionPass<"tf-cpurt-codegen-reduction"> {
   let description = [{
     Matches linalg.generic to understand whether it is a reduction or not.
     After that performs tiling for vectorization and fusion of producers.
+  }];
+
+  let options = [
+    Option<"reduction_1d_tile_size", "reduction-1d-tile-size",
+           "int64_t", /*default=*/"8", "Tile size for a 1D reduction.">,
+    ListOption<"reduction_2d_tile_sizes", "reduction-2d-tile-sizes", "int64_t",
+               "Tile sizes for a 2D reduction.",
+               "llvm::cl::MiscFlags::CommaSeparated">,
+  ];
+}
+
+def FuseFillIntoTiledReduction
+    : FunctionPass<"tf-cpurt-fuse-fill-into-tiled-reduction"> {
+  let summary = "Fuse `linalg.fill` into `linalg.tiled_loop` with a reduction.";
+  let constructor = "tensorflow::CreateFuseFillIntoTiledReductionPass()";
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+
+  let description = [{
+    Fuses `linalg.fill` producers of output tensor arguments into
+    `linalg.tiled_loop`.
   }];
 }
 
@@ -185,12 +184,6 @@ def Clustering : FunctionPass<"tf-cpurt-clustering"> {
                "all operations included in the given clustering tier.",
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
-}
-
-def PadTiledOps : FunctionPass<"tf-cpurt-pad-tiled-ops"> {
-  let summary = "Pad tiled Linalg ops inside `tiled_loop`";
-  let constructor = "tensorflow::CreatePadTiledOpsPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
 def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {

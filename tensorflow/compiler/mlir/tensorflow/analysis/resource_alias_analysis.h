@@ -59,6 +59,13 @@ class ResourceAliasAnalysisInfo {
   // `IsUnknownResource(resource) == false`.
   llvm::SmallSetVector<Value, 8> GetResourceAliases(Value resource) const;
 
+  // Returns true iff given resource is allocated by op with
+  // `UniqueResourceAllocation` trait. This can be utilized for while-loop
+  // parallelization.
+  bool IsUniqueResourceAllocationId(int64_t resource_id) const {
+    return unique_resource_allocation_ids_.contains(resource_id);
+  }
+
  private:
   // Maps resource value to unique ID and vice-versa. Returns true if the
   // mapping has changed.
@@ -100,6 +107,10 @@ class ResourceAliasAnalysisInfo {
 
   // Maps MLIR type IDs for resource types to internal resource type IDs.
   llvm::SmallDenseMap<TypeID, int64_t> type_id_to_internal_type_id_;
+
+  // Contains IDs of all resources that are allocated by ops with
+  // `UniqueResourceAllocation` trait.
+  llvm::SmallDenseSet<int64_t, 32> unique_resource_allocation_ids_;
 
  public:
   // Resource IDs have the following semantics:

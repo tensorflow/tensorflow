@@ -244,10 +244,25 @@ void Node::RunForwardTypeInference() {
   }
 
   const auto infer_type = props_->fwd_type_fn(input_types);
+  if (!infer_type.ok()) {
+    // TODO(mdan): Turn this into an error, once all offenders are clean.
+    LOG(WARNING) << name()
+                 << " failed type inference; this is likely caused by"
+                    " a graph in which inconsistent types went "
+                    "undetected. This will become an error in the "
+                    "future.\nNode information:\n"
+                 << props_->node_def.DebugString()
+                 << "\nType inference error:\n"
+                 << infer_type.status().ToString();
+    props_->node_def.clear_experimental_type();
+    return;
+  }
   const FullTypeDef infer_typedef = infer_type.ValueOrDie();
   if (infer_typedef.type_id() != TFT_UNSET) {
     MaybeCopyOnWrite();
     *(props_->node_def.mutable_experimental_type()) = infer_typedef;
+  } else {
+    props_->node_def.clear_experimental_type();
   }
 }
 
@@ -572,16 +587,14 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
 
   if (op_reg_data->type_ctor != nullptr) {
     VLOG(3) << "AddNode: found type constructor for " << node_def.name();
-    const auto ctor_type =
-        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def);
-    if (!ctor_type.ok()) {
-      *status = errors::InvalidArgument("type error: ",
-                                        ctor_type.status().ToString());
+    Status s =
+        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
+                                  *(node_def.mutable_experimental_type()));
+    if (!s.ok()) {
+      *status = errors::InvalidArgument("type error: ", s.ToString());
+      VLOG(3) << "AddNode: type inference failed for " << node_def.name()
+              << ": " << s;
       return nullptr;
-    }
-    const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();
-    if (ctor_typedef.type_id() != TFT_UNSET) {
-      *(node_def.mutable_experimental_type()) = ctor_typedef;
     }
   } else {
     VLOG(3) << "AddNode: no type constructor for " << node_def.name();

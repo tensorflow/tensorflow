@@ -38,9 +38,6 @@ namespace mhlo {
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 
-/// Lowers MHLO control flow ops to the SCF dialect.
-std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
-
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
@@ -58,6 +55,10 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
 /// Lowers from HLO dialect to Memref dialect allocating/deallocating temporary
 /// buffers if necessary.
 std::unique_ptr<FunctionPass> createLegalizeToMemrefPass();
+
+// Lowers shape operations from HLO dialect to Standard dialect.
+std::unique_ptr<OperationPass<FuncOp>>
+createLegalizeHloShapeOpsToStandardPass();
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
@@ -82,6 +83,13 @@ createLegalizeTrigonometricToApproximationPass();
 // fusions.
 std::unique_ptr<FunctionPass> createBroadcastPropagationPass();
 
+// Move dynamic broadcasts up over element-wise operations and broadcast the
+// operands rather than the result. This will eventually allow for larger
+// fusions.
+// TODO(frgossen): Limit this pass to merging of assuming regions and factor out
+// broadcast propagation into its own pass.
+std::unique_ptr<FunctionPass> createMergeAssumingOpsPass();
+
 /// Rank specialization passes:
 ///   - Find compatible operations and group them together in one rank
 ///     specialization cluster.
@@ -102,52 +110,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
     const std::string& entry_function_name = "main");
 
 }  // namespace mhlo
-
-namespace lmhlo {
-
-// Lowers from LHLO dialect to Affine dialect.
-std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass();
-
-// Lowers from LHLO dialect to Linalg dialect.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass();
-
-// Lowers from LHLO dialect to GPU dialect.
-std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
-
-// Fuses linalg ops obtained after LHLO lowering. To enable fusion,
-// operations are first tiled.
-//
-// When 'use_parallel_loops' is set, the tiling will use scf.parallel
-// operations. Otherwise, scf.for operations are used.
-//
-// 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
-// operation has more dimensions than tile sizes provided, 1 is used as
-// default.
-std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
-    bool use_parallel_loops = false, llvm::ArrayRef<unsigned> tile_sizes = {});
-
-// Lowers from LHLO dialect to parallel loops.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
-
-// Legalizes tensor load ops that are inserted during mhlo to lmhlo conversion.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
-
-// fuse lmhlo ops to kLoop/kInput fusion patterns
-std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
-    int max_num_arguments_per_kernel = 64);
-
-// inline lmhlo.Fusion
-std::unique_ptr<OperationPass<FuncOp>> createLhloFusionInlinerPass();
-
-// Lowers the roots of lmhlo.fusion to parallel loops
-std::unique_ptr<OperationPass<FuncOp>>
-createLhloLegalizeRootsToParallelLoopsPass();
-
-// Input inline fusion pass for fusion codegen
-std::unique_ptr<FunctionPass> createInputInlineFusionPass();
-
-}  // namespace lmhlo
-
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H_

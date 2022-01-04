@@ -206,7 +206,7 @@ Status GatherComputationsByAllocationType(
   return Status::OK();
 }
 
-string BufferAllocation::Slice::ToString() const {
+std::string BufferAllocation::Slice::ToString() const {
   return absl::StrCat("{index:", index(), ", offset:", offset_,
                       ", size:", size_, "}");
 }
@@ -315,8 +315,8 @@ static const HloInstruction* GetOutputInstruction(
   return nullptr;
 }
 
-string BufferAllocation::ToString() const {
-  string output;
+std::string BufferAllocation::ToString() const {
+  std::string output;
   StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
   if (color() != 0) {
     StrAppend(&output, ", color ", color());
@@ -638,8 +638,7 @@ void BufferAssignment::CombineTempAllocations() {
       // The offset of each buffer in the combined allocation is computed from
       // the base offset of the allocation.
       int64_t alignment = color_alignment_(color);
-      const int64_t base =
-          RoundUpToNearest(combined_allocation->size(), alignment);
+      const int64_t base = RoundUpTo(combined_allocation->size(), alignment);
       combined_allocation->set_size(base + temp_allocation.size());
       for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
         const HloValue* value = buffer_offset_size.first;
@@ -726,8 +725,8 @@ Status BufferAssignment::ComputeSummaryStats() {
   return Status::OK();
 }
 
-string BufferAssignment::Stats::ToString() const {
-  string s;
+std::string BufferAssignment::Stats::ToString() const {
+  std::string s;
   StrAppendFormat(&s, "BufferAssignment stats:\n");
   StrAppendFormat(&s, "             parameter allocation: %10s\n",
                   HumanReadableNumBytes(parameter_allocation_bytes));
@@ -755,8 +754,8 @@ string BufferAssignment::Stats::ToString() const {
   return s;
 }
 
-string BufferAssignment::ToString() const {
-  string output;
+std::string BufferAssignment::ToString() const {
+  std::string output;
   absl::StrAppend(&output, "BufferAssignment:\n");
   std::vector<const HloValue*> used_values;
   int64_t total_size = 0;
@@ -804,15 +803,15 @@ std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
   return topk_descending;
 }
 
-string BufferAssignment::ToVerboseString() const {
+std::string BufferAssignment::ToVerboseString() const {
   // TODO(loreno): make this tunable via flag.
   const size_t kMaxBuffersToShow = 15;
-  string output =
+  std::string output =
       absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
 
   std::vector<std::pair<int64_t, const HloValue*>> peak_buffers =
       TopKPeakBuffers(kMaxBuffersToShow, allocations_);
-  std::vector<string> buf_strs;
+  std::vector<std::string> buf_strs;
   for (size_t i = 0; i < std::min(kMaxBuffersToShow, peak_buffers.size());
        ++i) {
     const HloValue* value = peak_buffers[i].second;
@@ -843,8 +842,8 @@ string BufferAssignment::ToVerboseString() const {
   return output;
 }
 
-string BufferAssignment::BufferInfoString() const {
-  string binfo;
+std::string BufferAssignment::BufferInfoString() const {
+  std::string binfo;
   // Columns in buffer information:
   // buffer_id: int. This value can be used to match the allocation in
   // allocation information.

@@ -47,7 +47,7 @@ enum class CudnnConvKind {
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
 
 // Converts a CudnnConvKind value to a string.
-string CudnnConvKindToString(CudnnConvKind kind);
+std::string CudnnConvKindToString(CudnnConvKind kind);
 
 // Matrix multiplication rewritten into a GEMM custom call.
 // All matrix multiplications should be rewritten as such custom calls

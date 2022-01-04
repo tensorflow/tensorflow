@@ -31,7 +31,7 @@ namespace {
 //   for floating point types or
 //   max(0, alpha1 * conv<float>(int8_x, int8_w) + alpha2 *
 //   * side_input + broadcast(bias));
-//   for int8.
+//   for int8_t.
 // Where side_input has the shape of output buffer, and bias is a 1D array with
 // the dimension of number of output features.
 struct ConvWithRelu {
@@ -154,7 +154,7 @@ absl::optional<ConvWithRelu> FindConvWithRelu(HloInstruction* instr) {
     return absl::nullopt;
   }
 
-  // In order to map to cudnnConvolutionBiasActivationForward for int8, the
+  // In order to map to cudnnConvolutionBiasActivationForward for int8_t, the
   // convolution output is float, i.e. conv<float>(int8_x, int8_w)
   if (conv->operand(0)->shape().element_type() == xla::S8) {
     if (conv->shape().tuple_shapes(0).element_type() != xla::F32) {
@@ -304,8 +304,8 @@ struct ConvWithConvertOrClamp {
 };
 
 // The pattern we want to match:
-//   convert<int8>(clamp(broadcast(-128), (get_tuple_element(custom_call(int8_x,
-//   int8_w, ...)), broadcast(127));
+//   convert<int8_t>(clamp(broadcast(-128),
+//   (get_tuple_element(custom_call(int8_x, int8_w, ...)), broadcast(127));
 absl::optional<ConvWithConvertOrClamp> FindConvWithClampAndConvertToInt8(
     HloInstruction* instr) {
   using match::Broadcast;
@@ -358,7 +358,7 @@ Status RewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
 }
 
 Status RewriteForFinalOutput(ConvWithConvertOrClamp match) {
-  // When the matched clamp has a single user, which is convert<int8>, we
+  // When the matched clamp has a single user, which is convert<int8_t>, we
   // will absorb it, if
   // 1. the side_input matches a convert<float>(int8_side_input), or
   // 2. there is no side input
@@ -389,8 +389,8 @@ Status RewriteForFinalOutput(ConvWithConvertOrClamp match) {
   return Status::OK();
 }
 
-// Fuse the clamp/convert pattern with the int8 convolution custom call
-// (either pure or fused) for int8 output
+// Fuse the clamp/convert pattern with the int8_t convolution custom call
+// (either pure or fused) for int8_t output
 StatusOr<bool> RunFuseClamp(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
@@ -406,9 +406,9 @@ StatusOr<bool> RunFuseClamp(HloModule* module) {
       changed = true;
     }
 
-    // Report error for any convolution still having int32 output.
-    // Although int32 output convolution will trigger other sanity check errors
-    // later, we want to give specific error message here.
+    // Report error for any convolution still having int32_t output.
+    // Although int32_t output convolution will trigger other sanity check
+    // errors later, we want to give specific error message here.
     for (auto instr : computation->instructions()) {
       if (auto call = DynCast<HloCustomCallInstruction>(instr)) {
         if ((call->custom_call_target() == kCudnnConvForwardCallTarget ||
@@ -416,9 +416,10 @@ StatusOr<bool> RunFuseClamp(HloModule* module) {
                  kCudnnConvBiasActivationForwardCallTarget) &&
             call->shape().tuple_shapes(0).element_type() == xla::S32) {
           return Unimplemented(
-              "Integer convolutions for CuDNN must have float or int8 output.  "
+              "Integer convolutions for CuDNN must have float or int8_t "
+              "output.  "
               "Use convert to cast output to float or the following pattern to "
-              "int8: "
+              "int8_t: "
               "clamp(broadcast(-128), conv(int8_x, int8_w, ...), "
               "broadcast(127)).");
         }
@@ -429,7 +430,7 @@ StatusOr<bool> RunFuseClamp(HloModule* module) {
 }
 
 // The pattern we want to match:
-//   convert<float>(get_tuple_element<int32>(custom_call()));
+//   convert<float>(get_tuple_element<int32_t>(custom_call()));
 absl::optional<ConvWithConvertOrClamp> FindConvWithConvertToFloat(
     HloInstruction* instr) {
   using match::Convert;
@@ -456,9 +457,8 @@ absl::optional<ConvWithConvertOrClamp> FindConvWithConvertToFloat(
 }
 
 // Transform
-// convert<float>(GetTupleElement<int32>(custom_call<int32>(int8_x, int8_w)))
-// to
-// GetTupleElement<float>(custom_call<int32>(int8_x, int8_w))
+// convert<float>(GetTupleElement<int32_t>(custom_call<int32_t>(int8_x,
+// int8_w))) to GetTupleElement<float>(custom_call<int32_t>(int8_x, int8_w))
 StatusOr<bool> RunFuseConvertToFloat(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {

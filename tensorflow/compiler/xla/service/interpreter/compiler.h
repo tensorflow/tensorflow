@@ -65,7 +65,8 @@ class InterpreterCompiler : public Compiler {
  private:
   Status RunHloOptimization(HloModule* hlo_module);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InterpreterCompiler);
+  InterpreterCompiler(const InterpreterCompiler&) = delete;
+  InterpreterCompiler& operator=(const InterpreterCompiler&) = delete;
 };
 
 }  // namespace interpreter

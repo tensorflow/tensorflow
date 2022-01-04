@@ -360,7 +360,8 @@ std::string TensorDescriptor::Read(
   switch (storage_type) {
     case TensorStorageType::BUFFER:
       if (gpu_info.IsGlsl()) {
-        if (data_type == DataType::FLOAT16) {
+        if (data_type == DataType::FLOAT16 &&
+            !gpu_info.IsGlslSupportsExplicitFp16()) {
           return absl::StrCat("vec4(unpackHalf2x16(buffer[", coords[0],
                               "].x), unpackHalf2x16(buffer[", coords[0],
                               "].y))");
@@ -397,8 +398,13 @@ std::string TensorDescriptor::Read(
         }
         return result;
       } else if (gpu_info.IsGlsl()) {
-        return "texelFetch(image2d, ivec2(" + coords[0] + ", " + coords[1] +
-               "), 0)";
+        std::string result = "texelFetch(image2d, ivec2(" + coords[0] + ", " +
+                             coords[1] + "), 0)";
+        if (data_type == DataType::FLOAT16 &&
+            gpu_info.IsGlslSupportsExplicitFp16()) {
+          result = "f16vec4(" + result + ")";
+        }
+        return result;
       } else {
         return "";
       }
@@ -417,8 +423,13 @@ std::string TensorDescriptor::Read(
         }
         return result;
       } else if (gpu_info.IsGlsl()) {
-        return "texelFetch(image3d, ivec3(" + coords[0] + ", " + coords[1] +
-               ", " + coords[2] + "), 0)";
+        std::string result = "texelFetch(image3d, ivec3(" + coords[0] + ", " +
+                             coords[1] + ", " + coords[2] + "), 0)";
+        if (data_type == DataType::FLOAT16 &&
+            gpu_info.IsGlslSupportsExplicitFp16()) {
+          result = "f16vec4(" + result + ")";
+        }
+        return result;
       } else {
         return "";
       }
@@ -437,8 +448,13 @@ std::string TensorDescriptor::Read(
         }
         return result;
       } else if (gpu_info.IsGlsl()) {
-        return "texelFetch(image2d_array, ivec3(" + coords[0] + ", " +
-               coords[1] + ", " + coords[2] + "), 0)";
+        std::string result = "texelFetch(image2d_array, ivec3(" + coords[0] +
+                             ", " + coords[1] + ", " + coords[2] + "), 0)";
+        if (data_type == DataType::FLOAT16 &&
+            gpu_info.IsGlslSupportsExplicitFp16()) {
+          result = "f16vec4(" + result + ")";
+        }
+        return result;
       } else {
         return "";
       }
@@ -453,7 +469,12 @@ std::string TensorDescriptor::Read(
         }
         return result;
       } else if (gpu_info.IsGlsl()) {
-        return "texelFetch(image_buffer, " + coords[0] + ")";
+        std::string result = "texelFetch(image_buffer, " + coords[0] + ")";
+        if (data_type == DataType::FLOAT16 &&
+            gpu_info.IsGlslSupportsExplicitFp16()) {
+          result = "f16vec4(" + result + ")";
+        }
+        return result;
       } else {
         return "";
       }
@@ -484,7 +505,8 @@ std::string TensorDescriptor::Write(
                                   coords[0]);
         }
       } else if (gpu_info.IsGlsl()) {
-        if (data_type == DataType::FLOAT16) {
+        if (data_type == DataType::FLOAT16 &&
+            !gpu_info.IsGlslSupportsExplicitFp16()) {
           return absl::StrCat("buffer[", coords[0], "] = uvec2(packHalf2x16(",
                               var_name, ".xy), packHalf2x16(", var_name,
                               ".zw))");

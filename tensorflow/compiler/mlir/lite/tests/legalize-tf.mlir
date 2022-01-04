@@ -771,6 +771,20 @@ func @matrix_diag_v2(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 // CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
 }
 
+func @matrix_diag_v2_f32_padding(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  %0 = arith.constant dense<[0]> : tensor<1xi32>
+  %1 = arith.constant dense<[-1]> : tensor<1xi32>
+  %2 = arith.constant dense<[-1]> : tensor<1xi32>
+  %3 = arith.constant dense<[0.0, 0.0]> : tensor<2xf32>
+  %4 = "tf.MatrixDiagV2"(%arg0, %0, %1, %2, %3) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xf32>) -> tensor<8x16x16xf32>
+  return %4 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:   func @matrix_diag_v2_f32_padding(
+// CHECK-SAME:                         [[VAL_5:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+// CHECK:           [[VAL_6:%.*]] = "tfl.matrix_diag"([[VAL_5]]) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+// CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
+}
+
 func @matrix_diag_v3_no_match(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
   // this should have been 0.
   %0 = arith.constant dense<[1]> : tensor<1xi32>
@@ -2238,4 +2252,20 @@ func @random_standard_normal_f32(%arg0: tensor<3xi32>) -> tensor<?x?x?xf32> {
 
 // CHECK-LABEL:random_standard_normal_f32
 // CHECK:  "tfl.random_standard_normal"(%arg0) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
+}
+
+func @multinomial_i64(%arg0: tensor<2xf32>, %arg1: tensor<1xi32>) -> tensor<10xi64> {
+  %0 = "tf.Multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0: i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi64>
+  return %0 : tensor<10xi64>
+
+// CHECK-LABEL:multinomial_i64
+// CHECK: "tfl.multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi64>
+}
+
+func @multinomial_i32(%arg0: tensor<2xf32>, %arg1: tensor<1xi32>) -> tensor<10xi32> {
+  %0 = "tf.Multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0: i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
+
+// CHECK-LABEL:multinomial_i32
+// CHECK: "tfl.multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi32>
 }

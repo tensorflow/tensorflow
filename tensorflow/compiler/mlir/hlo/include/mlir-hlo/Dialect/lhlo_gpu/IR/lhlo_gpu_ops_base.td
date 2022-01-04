@@ -23,6 +23,8 @@ include "mlir/IR/OpBase.td"
 def LHLO_GPU_Dialect : Dialect {
   let name = "lmhlo_gpu";
   let cppNamespace = "::mlir::lmhlo_gpu";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 #endif // LHLO_GPU_OPS_BASE

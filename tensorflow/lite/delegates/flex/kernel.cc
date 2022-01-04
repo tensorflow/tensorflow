@@ -735,7 +735,8 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
 
     if (op_data_->cancellation_manager != nullptr &&
         op_data_->cancellation_manager->IsCancelled()) {
-      TF_LITE_KERNEL_LOG(context, "Client requested cancel during Invoke()");
+      TF_LITE_KERNEL_LOG(context,
+                         "Client requested cancel during DelegateKernel::Eval");
       return kTfLiteError;
     }
 

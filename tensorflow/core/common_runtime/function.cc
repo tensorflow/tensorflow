@@ -417,6 +417,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     FunctionLibraryRuntimeOverlay* overlay_flr = nullptr;
     string executor_type;
     bool allow_small_function_optimizations = false;
+    bool allow_control_flow_sync_execution = false;
 
     ~Item() {
       delete this->func_graph;
@@ -825,6 +826,8 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       item->executor_type = ExecutorType(options, attrs);
       item->allow_small_function_optimizations =
           options.allow_small_function_optimizations;
+      item->allow_control_flow_sync_execution =
+          options.allow_control_flow_sync_execution;
       if (options.lib_def) {
         item->overlay_flr =
             new FunctionLibraryRuntimeOverlay(this, options.lib_def);
@@ -948,6 +951,8 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   LocalExecutorParams params;
   params.device = device_;
   params.function_library = flr;
+  params.allow_control_flow_sync_execution =
+      (*item)->allow_control_flow_sync_execution;
   if (flr == this) {
     params.create_kernel = create_kernel_;
   } else {

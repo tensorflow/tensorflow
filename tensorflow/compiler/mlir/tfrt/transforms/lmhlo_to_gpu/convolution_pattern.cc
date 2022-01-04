@@ -184,7 +184,7 @@ Value CreateBuildFusedConvOp(Value input, Value output, Value bias,
                              const xla::gpu::GpuConvConfig& config,
                              cudnnBackendDescriptorType_t backend_type,
                              ConversionPatternRewriter& rewriter) {
-  se::dnn::BatchDescriptor bias_descriptor;
+  se::dnn::BatchDescriptor bias_descriptor(config.output_descriptor.ndims());
   bias_descriptor.set_count(1)
       .set_height(1)
       .set_width(1)
@@ -210,6 +210,9 @@ Value CreateBuildFusedConvOp(Value input, Value output, Value bias,
             return layout;
         }
       }());
+  if (bias_descriptor.ndims() == 3) {
+    bias_descriptor.set_spatial_dim(se::dnn::DimIndex::Z, 1);
+  }
 
   auto get_element_type = [](Value value) {
     return value.getType().cast<mlir::MemRefType>().getElementType();
@@ -312,10 +315,10 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvForwardOp op, Value handle,
 }
 Value CreateRunConvolutionOp(lmhlo_gpu::ConvForwardOpAdaptor adaptor,
                              mlir::Location loc, Value handle, Value conv_plan,
-                             ConversionPatternRewriter& rewriter) {
+                             Value chain, ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunConvolutionOp>(
       loc, handle, conv_plan, adaptor.input(), adaptor.output(),
-      adaptor.filter(), adaptor.scratch());
+      adaptor.filter(), adaptor.scratch(), chain);
 }
 
 // Specialization for convolution backward input
@@ -334,10 +337,10 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvBackwardInputOp op, Value handle,
 }
 Value CreateRunConvolutionOp(lmhlo_gpu::ConvBackwardInputOpAdaptor adaptor,
                              mlir::Location loc, Value handle, Value conv_plan,
-                             ConversionPatternRewriter& rewriter) {
+                             Value chain, ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunConvolutionOp>(
       loc, handle, conv_plan, adaptor.d_input(), adaptor.d_output(),
-      adaptor.filter(), adaptor.scratch());
+      adaptor.filter(), adaptor.scratch(), chain);
 }
 
 // Specialization for convolution backward filter
@@ -356,10 +359,10 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvBackwardFilterOp op, Value handle,
 }
 Value CreateRunConvolutionOp(lmhlo_gpu::ConvBackwardFilterOpAdaptor adaptor,
                              mlir::Location loc, Value handle, Value conv_plan,
-                             ConversionPatternRewriter& rewriter) {
+                             Value chain, ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunConvolutionOp>(
       loc, handle, conv_plan, adaptor.input(), adaptor.d_output(),
-      adaptor.d_filter(), adaptor.scratch());
+      adaptor.d_filter(), adaptor.scratch(), chain);
 }
 
 // Specialization for convolution forward fused
@@ -386,10 +389,11 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvForwardFusedOp op, Value handle,
 }
 Value CreateRunConvolutionOp(lmhlo_gpu::ConvForwardFusedOpAdaptor adaptor,
                              mlir::Location loc, Value handle, Value conv_plan,
-                             ConversionPatternRewriter& rewriter) {
+                             Value chain, ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunFusedConvolutionOp>(
       loc, handle, conv_plan, adaptor.input(), adaptor.output(),
-      adaptor.filter(), adaptor.output(), adaptor.bias(), adaptor.scratch());
+      adaptor.filter(), adaptor.output(), adaptor.bias(), adaptor.scratch(),
+      chain);
 }
 
 // Specialization for convolution forward fused side input
@@ -420,11 +424,12 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvForwardFusedSideInputOp op, Value handle,
 }
 Value CreateRunConvolutionOp(
     lmhlo_gpu::ConvForwardFusedSideInputOpAdaptor adaptor, mlir::Location loc,
-    Value handle, Value conv_plan, ConversionPatternRewriter& rewriter) {
+    Value handle, Value conv_plan, Value chain,
+    ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunFusedConvolutionOp>(
       loc, handle, conv_plan, adaptor.input(), adaptor.output(),
-      adaptor.filter(), adaptor.side_input(), adaptor.bias(),
-      adaptor.scratch());
+      adaptor.filter(), adaptor.side_input(), adaptor.bias(), adaptor.scratch(),
+      chain);
 }
 
 template <class ConvolutionOpType>
@@ -505,8 +510,8 @@ struct ConvolutionRewritePattern
         op.getLoc(), conv_plan_func.getType().getResults(), handle,
         conv_plan_func.getName());
 
-    Value out_chain = CreateRunConvolutionOp(adaptor, op.getLoc(), handle,
-                                             once_op.getResult(0), rewriter);
+    Value out_chain = CreateRunConvolutionOp(
+        adaptor, op.getLoc(), handle, once_op.getResult(0), chain, rewriter);
     rewriter.eraseOp(op);
     return out_chain;
   }

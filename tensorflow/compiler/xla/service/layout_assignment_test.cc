@@ -60,8 +60,9 @@ class LayoutAssignmentTest : public HloTestBase {
   }
 
   std::vector<int64_t> LayoutOf(HloModule* m, absl::string_view name) {
-    auto minor_to_major =
-        FindInstruction(m, name)->shape().layout().minor_to_major();
+    HloInstruction* instr = FindInstruction(m, name);
+    CHECK(instr != nullptr) << name;
+    auto minor_to_major = instr->shape().layout().minor_to_major();
     return std::vector<int64_t>(minor_to_major.begin(), minor_to_major.end());
   }
 
@@ -374,13 +375,11 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
   *computation_layout.mutable_result_layout() = ShapeLayout(bshape_with_layout);
   AssignLayouts(m.get(), &computation_layout);
 
-  auto log_minor_to_major =
-      AsInt64Slice(log->shape().layout().minor_to_major());
+  auto log_minor_to_major = log->shape().layout().minor_to_major();
   EXPECT_GT(PositionInContainer(log_minor_to_major, 1),
             PositionInContainer(log_minor_to_major, 2));
 
-  auto reshape_minor_to_major =
-      AsInt64Slice(reshape->shape().layout().minor_to_major());
+  auto reshape_minor_to_major = reshape->shape().layout().minor_to_major();
   EXPECT_GT(PositionInContainer(reshape_minor_to_major, 0),
             PositionInContainer(reshape_minor_to_major, 2));
 }
@@ -1120,11 +1119,26 @@ TEST_F(LayoutAssignmentTest, TupleCopyOnLayoutMismatch) {
   EXPECT_THAT(LayoutOf(m.get(), "next_buf"), ElementsAre(1, 0));
 
   AssignLayouts(m.get(), &computation_layout);
+  SCOPED_TRACE(m->ToString());
 
   // Make sure that layout assignment did not magically eliminate the mismatch,
   // in which case the test didn't prove anything.
-  EXPECT_THAT(LayoutOf(m.get(), "ibuf"), ElementsAre(0, 1));
-  EXPECT_THAT(LayoutOf(m.get(), "next_buf"), ElementsAre(1, 0));
+  Layout layout01 = LayoutUtil::MakeLayout({0, 1});
+  const HloInstruction* loop = nullptr;
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(
+                  m::Op(&loop)
+                      .WithOpcode(HloOpcode::kWhile)
+                      .WithOperand(0, m::Tuple(m::Op(), m::Op(),
+                                               m::Copy(m::Op().WithShape(
+                                                   m::Shape().WithLayoutEqualTo(
+                                                       &layout01))))))));
+
+  Layout layout10 = LayoutUtil::MakeLayout({1, 0});
+  EXPECT_THAT(loop->while_body()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Op(), m::Op(),
+                  m::Op().WithShape(m::Shape().WithLayoutEqualTo(&layout10)))));
 }
 
 TEST_F(LayoutAssignmentTest, CustomCallNotLayoutConstrained) {

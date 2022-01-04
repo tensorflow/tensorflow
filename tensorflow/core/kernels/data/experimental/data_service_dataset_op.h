@@ -86,12 +86,6 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
 
  private:
-  // Returns if the dataset should be uncompressed. This method sends an RPC to
-  // get the metadata from the dispatcher. If any error happens, it returns a
-  // non-OK status.
-  StatusOr<bool> ShouldUncompress(int64_t dataset_id, const tstring& address,
-                                  const tstring& protocol) const;
-
   class Dataset;
   int op_version_;
   int64_t task_refresh_interval_hint_ms_;

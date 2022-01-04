@@ -111,6 +111,7 @@ from tensorflow.lite.testing.op_tests.max_pool_with_argmax import make_max_pool_
 from tensorflow.lite.testing.op_tests.maximum import make_maximum_tests
 from tensorflow.lite.testing.op_tests.minimum import make_minimum_tests
 from tensorflow.lite.testing.op_tests.mirror_pad import make_mirror_pad_tests
+from tensorflow.lite.testing.op_tests.multinomial import make_multinomial_tests
 from tensorflow.lite.testing.op_tests.nearest_upsample import make_nearest_upsample_tests
 from tensorflow.lite.testing.op_tests.neg import make_neg_tests
 from tensorflow.lite.testing.op_tests.not_equal import make_not_equal_tests
@@ -190,23 +191,6 @@ from tensorflow.lite.testing.op_tests.zeros_like import make_zeros_like_tests
 
 from tensorflow.lite.testing.zip_test_utils import get_test_function
 
-# A map from regular expression to bug number. Any test failure with label
-# matching the expression will be considered due to the corresponding bug.
-KNOWN_BUGS = {
-    # TODO(b/192473002) investigate if it can be removed for MLIR converter.
-    # TOCO doesn't support scalars as input.
-    # Concat doesn't work with a single input tensor
-    r"concat.*num_tensors=1": "67378344",
-    # Softmax graphs are too complex.
-    r"softmax.*dim=0": "67749831",
-    # BatchToSpaceND only supports 4D tensors.
-    r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
-    # Div will use floordiv.
-    r"div.*int32": "72051395",
-    # Strided slice cannot handle new_axis_mask.
-    r"strided_slice.*spec=\[None": "137470173",
-}
-
 
 class MultiGenState(object):
   """State of multiple set generation process.
@@ -263,7 +247,7 @@ class Options(object):
     self.tflite_convert_function = None
     # A map from regular expression to bug number. Any test failure with label
     # matching the expression will be considered due to the corresponding bug.
-    self.known_bugs = KNOWN_BUGS
+    self.known_bugs = {}
     # Make tests by setting TF forward compatibility horizon to the future.
     self.make_forward_compat_test = False
     # No limitation on the number of tests.
@@ -275,7 +259,6 @@ class Options(object):
     # test sets.
     # TODO(juhoha): Separate the state from the options.
     self.multi_gen_state = None
-    self.use_experimental_converter = False
     self.mlir_quantizer = False
     # The list of ops' name that should exist in the converted model.
     # This feature is currently only supported in MLIR conversion path.

@@ -112,7 +112,8 @@ std::string ThunkSequence::ToString(
     // Write out the thunk kind, padded out to max_thunk_kind_len.
     absl::string_view kind_str = Thunk::KindToString(thunk->kind());
     absl::StrAppend(&result, indent_str, kind_str,
-                    string(max_thunk_kind_len - kind_str.length(), ' '), "\t");
+                    std::string(max_thunk_kind_len - kind_str.length(), ' '),
+                    "\t");
     if (get_thunk_annotation) {
       absl::StrAppend(&result, get_thunk_annotation(thunk.get()));
     }

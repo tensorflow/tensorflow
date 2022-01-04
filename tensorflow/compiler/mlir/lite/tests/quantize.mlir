@@ -373,3 +373,21 @@ func @CheckLegacyQuantizeAdd() -> tensor<1x2x!quant.uniform<i8:f32, 0.0078431372
 
 // LEGACY:  "tfl.pseudo_qconst"() {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.0078431372549019607:-128>>, value = dense<{{\[\[}}-1, 127]]> : tensor<1x2xi8>}
 }
+
+func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
+func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
+
+// CHECK-LABEL: NotQuantizeIf
+func @NotQuantizeIf(%arg0: tensor<i1>,
+                    %arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<4x!quant.uniform<u8:f32, 1.0>>) {
+  %0 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
+  %1 = "tf.If"(%arg0, %0) {then_branch = @testIfThen, else_branch = @testIfElse, is_stateless = false} : (tensor<i1>, tensor<4xf32>) -> tensor<4xf32>
+  %2 = "tfl.quantize"(%1) {qtype = tensor<4x!quant.uniform<u8:f32, 1.0>>} : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 1.0>>
+
+  return %2 : tensor<4x!quant.uniform<u8:f32, 1.0>>
+
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%arg1)
+// CHECK-NEXT: %[[if:.*]] = "tf.If"(%arg0, %[[dq]]
+// CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%[[if]])
+// CHECK-NEXT: return %[[q]]
+}

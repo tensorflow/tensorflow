@@ -144,18 +144,6 @@ class MaybeFusedConvRunner {
     }
   };
 
-  struct GetWorkspaceSizeVisitor {
-    template <typename RunnerPtr>
-    StatusOr<size_t> operator()(const RunnerPtr& runner) {
-      return runner->ToAlgorithmDesc();
-    }
-
-    StatusOr<size_t> operator()(const absl::monostate&) {
-      CHECK(false)
-          << "Internal error: uninitialized runner in GetWorkspaceSize";
-    }
-  };
-
   using Repr = absl::variant<
       absl::monostate,  // To allow GpuConvConfig default ctor
       std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>,
@@ -187,7 +175,7 @@ struct RunConvOptions {
 // the same conv, you can provide an explicitly preallocated scratch buffer of
 // that size, if you like.
 Status RunGpuConv(const GpuConvConfig& conv_config,
-                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  absl::Span<const se::DeviceMemoryBase> operand_buffers,
                   se::DeviceMemoryBase result_buffer,
                   se::DeviceMemoryBase scratch_memory, se::Stream* stream,
                   RunConvOptions = {});
@@ -220,7 +208,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(const GpuConvDescriptor& desc,
 // Implementation details exposed for debugging and log analysis.
 StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& conv_config,
-    absl::Span<se::DeviceMemoryBase> operand_buffers,
+    absl::Span<const se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer);
 
 se::dnn::BatchDescriptor GetBiasDescriptor(const GpuConvConfig& config);

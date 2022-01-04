@@ -62,7 +62,7 @@ void LowerComplexPass::runOnFunction() {
 }  // end namespace mlir
 
 void mlir::mhlo::PopulateComplexLoweringPatterns(
-    MLIRContext* context, OwningRewritePatternList* patterns) {
+    MLIRContext* /*context*/, OwningRewritePatternList* patterns) {
   populateWithGenerated(*patterns);
 }
 

@@ -51,6 +51,12 @@ _DNNL_RUNTIME_OMP = {
     "#cmakedefine01 BUILD_SHUFFLE": "#define BUILD_SHUFFLE 0",
     "#cmakedefine01 BUILD_SOFTMAX": "#define BUILD_SOFTMAX 0",
     "#cmakedefine01 BUILD_SUM": "#define BUILD_SUM 0",
+    "#cmakedefine01 BUILD_PRIMITIVE_CPU_ISA_ALL": "#define BUILD_PRIMITIVE_CPU_ISA_ALL 1",
+    "#cmakedefine01 BUILD_SSE41": "#define BUILD_SSE41 0",
+    "#cmakedefine01 BUILD_AVX2": "#define BUILD_AVX2 0",
+    "#cmakedefine01 BUILD_AVX512": "#define BUILD_AVX512 0",
+    "#cmakedefine01 BUILD_AMX": "#define BUILD_AMX 0",
+    "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
 }
 
 _DNNL_RUNTIME_THREADPOOL = {
@@ -83,6 +89,12 @@ _DNNL_RUNTIME_THREADPOOL = {
     "#cmakedefine01 BUILD_SHUFFLE": "#define BUILD_SHUFFLE 0",
     "#cmakedefine01 BUILD_SOFTMAX": "#define BUILD_SOFTMAX 0",
     "#cmakedefine01 BUILD_SUM": "#define BUILD_SUM 0",
+    "#cmakedefine01 BUILD_PRIMITIVE_CPU_ISA_ALL": "#define BUILD_PRIMITIVE_CPU_ISA_ALL 1",
+    "#cmakedefine01 BUILD_SSE41": "#define BUILD_SSE41 0",
+    "#cmakedefine01 BUILD_AVX2": "#define BUILD_AVX2 0",
+    "#cmakedefine01 BUILD_AVX512": "#define BUILD_AVX512 0",
+    "#cmakedefine01 BUILD_AMX": "#define BUILD_AMX 0",
+    "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
 }
 
 template_rule(
@@ -108,7 +120,7 @@ template_rule(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "2",
-        "@DNNL_VERSION_MINOR@": "4",
+        "@DNNL_VERSION_MINOR@": "5",
         "@DNNL_VERSION_PATCH@": "0",
         "@DNNL_VERSION_HASH@": "N/A",
     },

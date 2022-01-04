@@ -68,7 +68,7 @@ struct HloRenderOptions {
 // unreadable, or both.  To view such graphs, use a tool such as
 // interactive_graphviz, which calls RenderNeighborhoodAround to render subsets
 // of a graph.
-StatusOr<string> RenderGraph(
+StatusOr<std::string> RenderGraph(
     const HloComputation& computation, absl::string_view label,
     const DebugOptions& debug_options, RenderedGraphFormat format,
     const HloExecutionProfile* hlo_execution_profile = nullptr,
@@ -82,7 +82,7 @@ StatusOr<string> RenderGraph(
 //
 // The optional boundary specifies a set of boundary nodes, beyond which nodes
 // will be omitted even if they are within the radius.
-StatusOr<string> RenderNeighborhoodAround(
+StatusOr<std::string> RenderNeighborhoodAround(
     const HloInstruction& node, int radius, RenderedGraphFormat format,
     HloRenderOptions hlo_render_options = {},
     const absl::flat_hash_set<const HloInstruction*>& boundary = {});
@@ -90,11 +90,9 @@ StatusOr<string> RenderNeighborhoodAround(
 // Renders nodes on any of the paths from `from` to `to`.  If there are more
 // than max_nodes on all paths, restricts to the max_nodes nodes on the shortest
 // paths.
-StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
-                                      const HloInstruction& to,
-                                      int64_t max_nodes,
-                                      RenderedGraphFormat format,
-                                      HloRenderOptions hlo_render_options = {});
+StatusOr<std::string> RenderAllPathsFromTo(
+    const HloInstruction& from, const HloInstruction& to, int64_t max_nodes,
+    RenderedGraphFormat format, HloRenderOptions hlo_render_options = {});
 
 // Registers the fusion state of the graph for future visualization using
 // the kFusionVisulization render format.
@@ -108,7 +106,7 @@ Status RegisterFusionState(const HloComputation& computation,
 // There can only be one active renderer, and the last call to this function
 // wins.
 void RegisterGraphToURLRenderer(
-    std::function<StatusOr<string>(absl::string_view dot)> renderer);
+    std::function<StatusOr<std::string>(absl::string_view dot)> renderer);
 
 }  // namespace xla
 

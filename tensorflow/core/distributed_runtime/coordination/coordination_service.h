@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 class DeviceAttributes;
 class ServerDef;
-class WorkerEnv;
+class Env;
 
 // Static registration for coordination service implementations.
 #define REGISTER_COORDINATION_SERVICE(service_type_name, factory_fn)        \
@@ -66,7 +66,7 @@ class CoordinationServiceInterface {
  public:
   using CoordinationServiceFactory =
       std::function<std::unique_ptr<CoordinationServiceInterface>(
-          const WorkerEnv* env, const ServerDef& server_def,
+          Env* env, const ServerDef& server_def,
           std::unique_ptr<CoordinationClientCache> cache)>;
 
   using StatusOrValueCallback =
@@ -82,8 +82,8 @@ class CoordinationServiceInterface {
   }
 
   static std::unique_ptr<CoordinationServiceInterface>
-  EnableCoordinationService(const std::string& service_type,
-                            const WorkerEnv* env, const ServerDef& server_def,
+  EnableCoordinationService(const std::string& service_type, Env* env,
+                            const ServerDef& server_def,
                             std::unique_ptr<CoordinationClientCache> cache) {
     const auto* factories = GetCoordinationServiceFactories();
     auto factories_iter = factories->find(service_type);

@@ -2083,12 +2083,6 @@ tf_xla_py_test(
     name = "repeat_op_test",
     size = "medium",
     srcs = ["repeat_op_test.py"],
-    # Where op doesn't yet support these backends.
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
     enable_mlir_bridge = True,
     shard_count = 5,
     tags = [
@@ -2125,16 +2119,13 @@ tf_xla_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
     enable_mlir_bridge = False,
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",

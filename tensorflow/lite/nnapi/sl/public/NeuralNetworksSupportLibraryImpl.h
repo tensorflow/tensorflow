@@ -166,6 +166,8 @@ typedef struct NnApiSLDriverImpl {
  *
  * This struct must set its implFeatureLevel to {@link
  * ANEURALNETWORKS_FEATURE_LEVEL_5}.
+ *
+ * LINT.IfChange
  */
 typedef struct NnApiSLDriverImplFL5 {
   /**
@@ -1230,6 +1232,7 @@ typedef struct NnApiSLDriverImplFL5 {
       ANeuralNetworksDiagnosticExecutionFinishedCallback executionCallback,
       void* callbackContext);
 } NnApiSLDriverImplFL5;
+// LINT.ThenChange()
 
 #ifdef __cplusplus
 }  // extern "C"

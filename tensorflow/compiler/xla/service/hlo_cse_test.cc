@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -111,9 +110,9 @@ TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
   auto builder = HloComputation::Builder(TestName());
   std::vector<HloInstruction*> constants;
   constants.push_back(builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(42))));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(42))));
   constants.push_back(builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42))));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(42))));
   constants.push_back(builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint64_t>(42.0))));
   constants.push_back(builder.AddInstruction(
@@ -559,12 +558,12 @@ TEST_F(HloCseTest, DoNotCombineRng) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(rng1, rng2));
 
-  uint32 count_before = computation->instruction_count();
+  uint32_t count_before = computation->instruction_count();
 
   HloCSE cse(/*is_layout_sensitive=*/false);
   EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
 
-  uint32 count_after = computation->instruction_count();
+  uint32_t count_after = computation->instruction_count();
   EXPECT_EQ(count_before, count_after);
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(rng1, rng2));
@@ -661,9 +660,9 @@ TEST_F(HloCseTest, ConstantsSameValueInDifferentDomains) {
   // (disjoint in this case) are not collapsed.
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(42)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(42)));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(42)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(42)));
   builder.AddInstruction(
       HloInstruction::CreateIota(ShapeUtil::MakeShape(S32, {42}), 0));
   builder.AddInstruction(

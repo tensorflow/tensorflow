@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
@@ -43,8 +44,9 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 
 Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
-  if (!flags->tf_xla_enable_xla_devices) {
-    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+  if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
+    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
+               "and XLA devices creation not required";
     return Status::OK();
   }
 
@@ -73,7 +75,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
-  if (!flags->tf_xla_enable_xla_devices) {
+  if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
     return Status::OK();
   }

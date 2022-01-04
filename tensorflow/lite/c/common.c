@@ -21,10 +21,10 @@ limitations under the License.
 #include <string.h>
 #endif  // TF_LITE_STATIC_MEMORY
 
-int TfLiteIntArrayGetSizeInBytes(int size) {
+size_t TfLiteIntArrayGetSizeInBytes(int size) {
   static TfLiteIntArray dummy;
 
-  int computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
+  size_t computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
 #if defined(_MSC_VER)
   // Context for why this is needed is in http://b/189926408#comment21
   computed_size -= sizeof(dummy.data[0]);
@@ -51,7 +51,7 @@ int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
 #ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
-  int alloc_size = TfLiteIntArrayGetSizeInBytes(size);
+  size_t alloc_size = TfLiteIntArrayGetSizeInBytes(size);
   if (alloc_size <= 0) return NULL;
   TfLiteIntArray* ret = (TfLiteIntArray*)malloc(alloc_size);
   if (!ret) return ret;
