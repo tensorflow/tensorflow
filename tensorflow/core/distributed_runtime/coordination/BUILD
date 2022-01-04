@@ -7,6 +7,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_oss",
     "tf_cc_test",
     "tf_cuda_library",
 )
@@ -60,6 +61,10 @@ tf_cuda_library(
 tf_cc_test(
     name = "coordination_service_test",
     srcs = ["coordination_service_test.cc"],
+    tags = if_oss([
+        "manual",
+        "no_oss",
+    ]),  # b/169705709, no protobuf matchers in OSS.
     deps = [
         ":coordination_client",
         ":coordination_service",
@@ -71,12 +76,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/common_runtime:device_mgr",
-        "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
-        "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:test_utils",
-        "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/synchronization",
     ],

@@ -107,8 +107,9 @@ class CoordinationServiceInterface {
   virtual void RegisterWorker(const std::string& job_name, int task_id,
                               uint64 incarnation, StatusCallback done) = 0;
 
-  // Wait for all tasks to be up and running. The callback is invoked when all
-  // tasks are up and registered, or some error occurs.
+  // Wait for all tasks to be up and running, and register local device
+  // info. The callback is invoked when all tasks are up and registered, or some
+  // error occurs.
   virtual void WaitForAllTasks(const std::string& job_name, int task_id,
                                std::vector<DeviceAttributes> devices,
                                StatusCallback done) = 0;
@@ -142,6 +143,7 @@ class CoordinationServiceInterface {
 
  private:
   friend class CoordinationServiceRpcHandler;
+  friend class CoordinationServiceTest_ListClusterDevices_Test;
   virtual const std::vector<DeviceAttributes>& ListClusterDevices() = 0;
 
   static std::unordered_map<std::string, CoordinationServiceFactory>*

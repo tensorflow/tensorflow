@@ -21,13 +21,9 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
-#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
@@ -111,32 +107,15 @@ class TestCoordinationClientCache : public CoordinationClientCache {
   std::unordered_map<std::string, CoordinationClient*> clients_;
 };
 
-class CoordinationServiceTest : public ::testing::Test {
- public:
-  CoordinationServiceTest() {
-    worker_env_.env = Env::Default();
-    worker_cache_ = new TestWorkerCache;
-    session_mgr_ = std::make_unique<SessionMgr>(
-        &worker_env_, "/job:worker/replica:0/task:0/device:CPU:0",
-        std::unique_ptr<WorkerCacheInterface>(worker_cache_),
-        [](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
-          *worker_cache = new TestWorkerCache;
-          return Status::OK();
-        });
-    worker_env_.session_mgr = session_mgr_.get();
-    device_mgr_ = std::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
-        "CPU", SessionOptions(), "/job:worker/replica:0/task:0"));
-    worker_env_.device_mgr = device_mgr_.get();
-  }
+// Construct fake device protos.
+DeviceAttributes CreateTestDevice(absl::string_view name) {
+  DeviceAttributes device;
+  device.set_name(name);
+  device.set_device_type("CPU");
+  return device;
+}
 
- protected:
-  WorkerEnv worker_env_;
-  TestWorkerCache* worker_cache_;
-  std::unique_ptr<SessionMgr> session_mgr_;
-  std::unique_ptr<DeviceMgr> device_mgr_;
-};
-
-TEST_F(CoordinationServiceTest, TestStandaloneService) {
+TEST(CoordinationServiceTest, TestStandaloneService) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
   Status status = Status::OK();
   const uint64 w0_incarnation = random::New64();
@@ -149,7 +128,7 @@ TEST_F(CoordinationServiceTest, TestStandaloneService) {
   client_cache->AddWorker("/job:worker/replica:0/task:1", &wi1);
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, worker_env_.env, server_def,
+          kCoordinationServiceType, Env::Default(), server_def,
           std::move(client_cache));
 
   absl::Notification register0;
@@ -190,7 +169,7 @@ TEST_F(CoordinationServiceTest, TestStandaloneService) {
   EXPECT_TRUE(errors::IsAborted(wi0.GetStatus()));
 }
 
-TEST_F(CoordinationServiceTest, TestCoordinatedJobs) {
+TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   ServerDef server_def = GetMultiClientServerDef("chief", 1);
 
   // Add a worker job with 2 tasks
@@ -223,7 +202,7 @@ TEST_F(CoordinationServiceTest, TestCoordinatedJobs) {
   client_cache->AddWorker("/job:evaluator/replica:0/task:0", &ei);
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, worker_env_.env, server_def,
+          kCoordinationServiceType, Env::Default(), server_def,
           std::move(client_cache));
 
   absl::Notification register_chief;
@@ -266,7 +245,7 @@ TEST_F(CoordinationServiceTest, TestCoordinatedJobs) {
   EXPECT_TRUE(errors::IsInvalidArgument(status)) << status;
 }
 
-TEST_F(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
+TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
   ServerDef server_def = GetMultiClientServerDef("worker", 2);
   const uint64 w0_incarnation = random::New64();
   const uint64 w1_incarnation = random::New64();
@@ -284,7 +263,7 @@ TEST_F(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
   coord_config->set_heartbeat_timeout_in_ms(kHeartbeatTimeoutMs);
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, worker_env_.env, server_def,
+          kCoordinationServiceType, Env::Default(), server_def,
           std::move(client_cache));
 
   absl::Notification register0;
@@ -308,7 +287,7 @@ TEST_F(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
       coord_service->RecordHeartbeat("worker", 1, w1_incarnation)));
 }
 
-TEST_F(CoordinationServiceTest, TestWorkerRestart) {
+TEST(CoordinationServiceTest, TestWorkerRestart) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
   const uint64 w0_incarnation = random::New64();
   const uint64 w1_incarnation = random::New64();
@@ -318,10 +297,10 @@ TEST_F(CoordinationServiceTest, TestWorkerRestart) {
   client_cache->AddWorker("/job:worker/replica:0/task:0", &wi0);
   TestCoordinationClient wi1;
   client_cache->AddWorker("/job:worker/replica:0/task:1", &wi1);
-  std::unique_ptr<CoordinationServiceInterface> coord_service;
-  coord_service = CoordinationServiceInterface::EnableCoordinationService(
-      kCoordinationServiceType, worker_env_.env, server_def,
-      std::move(client_cache));
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          std::move(client_cache));
 
   absl::Notification register0;
   coord_service->RegisterWorker("worker", 0, w0_incarnation, [&](Status s) {
@@ -347,15 +326,15 @@ TEST_F(CoordinationServiceTest, TestWorkerRestart) {
   EXPECT_TRUE(errors::IsAborted(wi0.GetStatus())) << wi0.GetStatus();
 }
 
-TEST_F(CoordinationServiceTest, TestSetGetValues) {
+TEST(CoordinationServiceTest, TestSetGetValues) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 1);
   Status status = Status::OK();
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
-  std::unique_ptr<CoordinationServiceInterface> coord_service;
-  coord_service = CoordinationServiceInterface::EnableCoordinationService(
-      kCoordinationServiceType, worker_env_.env, server_def,
-      std::move(client_cache));
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          std::move(client_cache));
 
   // Simple key
   TF_ASSERT_OK(coord_service->InsertKeyValue("key0", "value0"));
@@ -402,4 +381,43 @@ TEST_F(CoordinationServiceTest, TestSetGetValues) {
 }
 
 }  // namespace
+
+// Verify that coordination service can gather each worker's device info and
+// propagate the aggregated cluster device info correctly.
+TEST(CoordinationServiceTest, ListClusterDevices) {
+  const ServerDef& server_def = GetMultiClientServerDef("worker", 3);
+  Status status = Status::OK();
+  auto client_cache = std::make_unique<TestCoordinationClientCache>();
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          std::move(client_cache));
+  absl::Notification n;
+  std::vector<DeviceAttributes> expected_cluster_devices = {
+      CreateTestDevice("worker0_device0"), CreateTestDevice("worker0_device1"),
+      CreateTestDevice("worker1_device0"), CreateTestDevice("worker2_device0")};
+  // Map fake devices to each worker.
+  std::vector<DeviceAttributes> local_devices_0 = {expected_cluster_devices[0],
+                                                   expected_cluster_devices[1]};
+  std::vector<DeviceAttributes> local_devices_1 = {expected_cluster_devices[2]};
+  std::vector<DeviceAttributes> local_devices_2 = {expected_cluster_devices[3]};
+
+  std::vector<DeviceAttributes> cluster_devices;
+  // Each worker sends its device info.
+  coord_service->WaitForAllTasks("worker", 0, local_devices_0,
+                                 [&](Status s) { TF_ASSERT_OK(s); });
+  coord_service->WaitForAllTasks("worker", 1, local_devices_1,
+                                 [&](Status s) { TF_ASSERT_OK(s); });
+  coord_service->WaitForAllTasks("worker", 2, local_devices_2, [&](Status s) {
+    TF_ASSERT_OK(s);
+    // Gather the cluster device info.
+    cluster_devices = coord_service->ListClusterDevices();
+    n.Notify();
+  });
+  n.WaitForNotification();
+
+  EXPECT_THAT(cluster_devices,
+              ::testing::UnorderedPointwise(::testing::EqualsProto(),
+                                            expected_cluster_devices));
+}
 }  // namespace tensorflow
