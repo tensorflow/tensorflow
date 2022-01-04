@@ -158,31 +158,33 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertFalse(config.get_soft_device_placement())
 
-    def test_attr():
+    def mod():
       with ops.device('/device:GPU:0'):
-        return test_ops.test_attr(T=dtypes.float32, name='test_attr')
+        a = constant_op.constant(1.0)
+        b = constant_op.constant(1.0)
+        return math_ops.mod(a, b)
 
     config.set_soft_device_placement(True)
     self.assertEqual(config.get_soft_device_placement(), True)
     self.assertEqual(config.get_soft_device_placement(),
                      context.context().soft_device_placement)
 
-    # Since soft placement is enabled, the test_attr operation should fallback
-    # to CPU with pure eager execution as well as functions
-    test_attr()
-    def_function.function(test_attr)()
+    # Since soft placement is enabled, the mod operation should fallback to CPU
+    # with pure eager execution as well as functions
+    mod()
+    def_function.function(mod)()
 
     config.set_soft_device_placement(False)
     self.assertEqual(config.get_soft_device_placement(), False)
     self.assertEqual(config.get_soft_device_placement(),
                      context.context().soft_device_placement)
 
-    # Since soft placement is disabled, the test_attr operation should fail on
-    # GPU with pure eager execution as well as functions
+    # Since soft placement is disabled, the mod operation should fail on GPU
+    # with pure eager execution as well as functions
     with self.assertRaises(errors.InvalidArgumentError):
-      test_attr()
+      mod()
     with self.assertRaises(errors.InvalidArgumentError):
-      def_function.function(test_attr)()
+      def_function.function(mod)()
 
   @reset_eager
   def testLogDevicePlacement(self):
