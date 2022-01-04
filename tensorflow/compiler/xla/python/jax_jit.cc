@@ -1237,6 +1237,7 @@ void BuildJaxjitSubmodule(py::module& m) {
 
   // Add CompiledFunction to the xla_extension module so it can be pickled.
   m.attr("CompiledFunction") = cfun_type;
+  cfun.attr("__module__") = m.attr("__name__");
 
   cfun.attr("__signature__") =
       property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
