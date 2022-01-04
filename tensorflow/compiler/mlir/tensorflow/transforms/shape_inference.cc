@@ -755,6 +755,17 @@ class ShapeInference {
   // Returns whether either op or function type was changed.
   bool InferShapeForReduceDataset(ReduceDatasetOp op, int64_t max_iterations);
 
+  // Infers the shape for TakeWhileDatasetOp and its associated predicate
+  // function. Returns whether either op or function type was changed.
+  bool InferShapeForTakeWhileDataset(TakeWhileDatasetOp op,
+                                     int64_t max_iterations);
+
+  // Infers shape for dataset ops that have `M` input elements and `N`
+  // arguments, and also propagates the shape to the specified function (called
+  // only when function exists and has single use).
+  bool InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
+                                    int64_t max_iterations);
+
   // Infers the shape of ops that create TensorList. Specifically,
   // TensorListReserveOp, EmptyTensorListOp and TensorListFromTensor ops. It
   // refines the element shape if all tensors written to the list across all
@@ -1017,19 +1028,9 @@ DatasetInput GetDatasetInput(Operation* op) {
                       op->getAttrOfType<ArrayAttr>("output_types")};
 }
 
-bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
-                                             int64_t max_iterations) {
-  // MapDatasetOp's relationship with its associated function is as
-  // follows: first M function params are dictated by the set
-  // output shapes and types, the next N are the last Ninputs from MapDataset
-  // op. The MapDataset op always has N+1 inputs.
-  // TODO(jpienaar): Avoid this lookup.
-  auto module = op->getParentOfType<ModuleOp>();
-  auto f = module.lookupSymbol<FuncOp>(op.f());
-  // Skip if function is not found or more than one caller.
-  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
-
-  int N = op.getNumOperands() - 1;
+bool ShapeInference::InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
+                                                  int64_t max_iterations) {
+  int N = op->getNumOperands() - 1;
   int M = f.getNumArguments() - N;
   DCOMMENT_OP(op, "Inferring shape for with N = " << N << " and M = " << M);
 
@@ -1037,9 +1038,9 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
   SmallVector<Type> input_types(f.getArgumentTypes());
 
   DatasetInput input_elements =
-      GetDatasetInput(op.input_dataset().getDefiningOp());
+      GetDatasetInput(op->getOperand(0).getDefiningOp());
   if (!input_elements) {
-    op.emitWarning("unexpected dataset input; skipping function refinement");
+    op->emitWarning("unexpected dataset input; skipping function refinement");
     return false;
   }
 
@@ -1054,20 +1055,48 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
     *it++ = t;
   }
   // Now the remaining N from operand types.
-  for (auto t : llvm::drop_begin(op.getOperandTypes())) {
+  for (auto t : llvm::drop_begin(op->getOperandTypes())) {
     auto meet = TypeMeet(*it, t);
     changed = changed || (meet != *it);
     *it++ = meet;
   }
   if (!changed) return false;
 
-  FailureOr<bool> res =
-      PropagateShapeToFunctions(module, input_types, {f}, max_iterations);
+  FailureOr<bool> res = PropagateShapeToFunctions(
+      op->getParentOfType<ModuleOp>(), input_types, {f}, max_iterations);
   if (failed(res)) {
-    op.emitOpError("propagating shapes for MapDataset failed");
+    op->emitOpError("propagating shapes failed");
     return false;
   }
   return *res;
+}
+
+bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
+                                             int64_t max_iterations) {
+  // MapDatasetOp's relationship with its associated function is as
+  // follows: first M function params are dictated by the set
+  // output shapes and types, the next N are the last Ninputs from MapDataset
+  // op. The MapDataset op always has N+1 inputs.
+  // TODO(jpienaar): Avoid this lookup.
+  auto module = op->getParentOfType<ModuleOp>();
+  auto f = module.lookupSymbol<FuncOp>(op.f());
+  // Skip if function is not found or more than one caller.
+  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
+  return InferShapeForDatasetOpCommon(op, f, max_iterations);
+}
+
+bool ShapeInference::InferShapeForTakeWhileDataset(TakeWhileDatasetOp op,
+                                                   int64_t max_iterations) {
+  // TakeWhileDatasetOp's relationship with its associated function is as
+  // follows: first M function params are dictated by the set
+  // output shapes and types, the next N are the last Ninputs from
+  // TakeWhileDataset op. The TakeWhileDataset op always has N+1 inputs.
+  // TODO(jpienaar): Avoid this lookup.
+  auto module = op->getParentOfType<ModuleOp>();
+  auto f = module.lookupSymbol<FuncOp>(op.predicate());
+  // Skip if function is not found or more than one caller.
+  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
+  return InferShapeForDatasetOpCommon(op, f, max_iterations);
 }
 
 bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
@@ -1507,6 +1536,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   }
 
   // TODO(jpienaar): Extract function input arg constraint interface.
+  // TODO(jpienaar): Unify the shape propagation to functions using interface.
   if (auto map_dataset_op = dyn_cast<MapDatasetOp>(op)) {
     // TODO(jpienaar): The output type of these ops need to be refined.
     return InferShapeForMapDataset(map_dataset_op, max_iterations);
@@ -1515,6 +1545,11 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   if (auto reduce_dataset_op = dyn_cast<ReduceDatasetOp>(op)) {
     // TODO(jpienaar): The output type of these ops need to be refined.
     return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
+  }
+
+  if (auto takewhile_dataset_op = dyn_cast<TakeWhileDatasetOp>(op)) {
+    // TODO(jpienaar): The output type of these ops need to be refined.
+    return InferShapeForTakeWhileDataset(takewhile_dataset_op, max_iterations);
   }
 
   // Handle TensorList init operations by inferring shape from TensorList write
