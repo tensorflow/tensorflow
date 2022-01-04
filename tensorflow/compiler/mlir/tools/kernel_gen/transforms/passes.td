@@ -61,6 +61,29 @@ def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
   ];
 }
 
+def IndexSizerPass : FunctionPass<"tf-64bit-indexer-invocation"> {
+  let summary = "Pass to rewrite all TF operations to JIT invocations";
+  let constructor = "transforms::Create64BitIndexerInvocationPass()";
+  let options = [
+      ListOption<"architectures_", "architectures", "std::string",
+                 "Target architectures",
+                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+      ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
+                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+      ListOption<"unroll_factors_", "unroll-factors", "int64_t",
+                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore, "
+                 "llvm::cl::MiscFlags::CommaSeparated">,
+      Option<"max_supported_rank_", "max-supported-rank", "int64_t",
+             /*default=*/"", "Max rank that this kernel supports">,
+      Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
+             "Enable the denormal flush to zero mode when generating code">,
+      Option<"index_64bit_", "index_64bit", "bool", /*default=*/"",
+             "Enable the 64 bit indexing for GPU kernels">,
+      Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
+             "CPU codegen (false implies GPU)">,
+  ];
+}
+
 def BufferReusePass : FunctionPass<"buffer-reuse"> {
   let summary = "Pass to find and annotate candidates for buffer reuse.";
   let constructor = "transforms::CreateBufferReusePass()";
