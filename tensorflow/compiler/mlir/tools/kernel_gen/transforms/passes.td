@@ -62,7 +62,9 @@ def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
 }
 
 def IndexSizerPass : FunctionPass<"tf-64bit-indexer-invocation"> {
-  let summary = "Pass to rewrite all TF operations to JIT invocations";
+  let summary = "Pass to rewrite all TF operations to JIT invocations."
+      " This pass creates the dispatch code, however, when the input argument"
+      " size is too large, it only creates the JIT invocation pass.";
   let constructor = "transforms::Create64BitIndexerInvocationPass()";
   let options = [
       ListOption<"architectures_", "architectures", "std::string",

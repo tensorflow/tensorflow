@@ -111,6 +111,11 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
            bool embed_memref_prints, bool print_ptx, bool print_llvmir,
            bool enable_ftz, bool index_64bit, bool cpu_codegen, 
            bool jit_compile) {
+  // 64 bit indexing is not incorporated yet
+  if (index_64bit) {
+    return tensorflow::errors::Unimplemented(
+        "64 Bit indexing for JIT compiled kernels is not supported yet.");
+  }
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
