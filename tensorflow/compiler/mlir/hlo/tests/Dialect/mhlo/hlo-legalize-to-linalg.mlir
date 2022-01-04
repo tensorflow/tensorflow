@@ -838,6 +838,16 @@ func @reshape_2D_1D_dynamic(%arg0: tensor<?x?xi32>) -> tensor<3xi32> {
 // CHECK: return %[[CAST:.*]] : tensor<3xi32>
 
 // -----
+// CHECK-LABEL: func @reshape_2D_1D_semidynamic
+func @reshape_2D_1D_semidynamic(%arg0: tensor<1x?xi32>) -> tensor<1xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<1x?xi32>) -> tensor<1xi32>
+  return %0 : tensor<1xi32>
+}
+// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<1x?xi32> to tensor<1x1xi32>
+// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1]] : tensor<1x1xi32> into tensor<1xi32>
+// CHECK: return %[[COLLAPSE:.*]] : tensor<1xi32>
+
+// -----
 
 // CHECK-LABEL: func @reshape_1D_0D_dynamic
 func @reshape_1D_0D_dynamic(%arg0: tensor<?xi32>) -> tensor<i32> {

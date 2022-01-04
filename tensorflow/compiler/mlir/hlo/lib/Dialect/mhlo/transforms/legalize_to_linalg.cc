@@ -931,7 +931,7 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
 
     result_type = typeConverter->convertType(result_type).cast<ShapedType>();
 
-    if (result_type.getRank() == 0 && !operand_type.hasStaticShape()) {
+    if (result_type.getNumElements() == 1 && !operand_type.hasStaticShape()) {
       // This means all dimensions of the operand need to be 1. We add a cast to
       // cast the dynamic dimensions to 1.
       auto static_type = RankedTensorType::get(
