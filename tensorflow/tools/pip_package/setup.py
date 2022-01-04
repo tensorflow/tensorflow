@@ -59,6 +59,10 @@ if '--project_name' in sys.argv:
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
 
+# Returns standard if a tensorflow-* package is being built, and nightly if a
+# tf_nightly-* package is being built.
+def if_nightly(standard, nightly):
+  return nightly if 'tf_nightly' in project_name else standard
 
 # All versions of TF need these packages. We indicate the widest possible range
 # of package releases possible to be as up-to-date as possible as well as to
@@ -69,12 +73,13 @@ if '--project_name' in sys.argv:
 # NOTE: This assumes that all packages follow SemVer. If a package follows a
 # different versioning scheme (e.g., PVP), we use different bound specifier and
 # comment the versioning scheme.
-# NOTE: Please add test only packages to `TEST_PACKAGES` below.
 REQUIRED_PACKAGES = [
     'absl-py >= 0.4.0',
     'astunparse >= 1.6.0',
     'flatbuffers >= 1.12',
-    'gast >= 0.2.1',
+    # gast versions above 0.4.0 are incompatible with some of TF's tests.
+    # TODO(angerson): File a bug for these incompatible tests and the limitation
+    'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
     'keras_preprocessing >= 1.1.1', # 1.1.0 needs tensorflow==1.7
@@ -87,49 +92,26 @@ REQUIRED_PACKAGES = [
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0',
-    # TensorFlow ecosystem packages that TF exposes API for
-    # These need to be in sync with the existing TF version
-    # They are updated during the release process
-    # When updating these, please also update the nightly versions below
-    'tensorboard >= 2.7, < 2.8',
-    'tensorflow_estimator >= 2.8.0rc0, < 2.9',
-    'keras >= 2.8.0rc0, < 2.9',
     'tensorflow-io-gcs-filesystem >= 0.23.1',
-]
-
-
-# For nightly packages, instead of depending on tensorboard,
-# tensorflow_estimator and keras, we depend on their nightly equivalent.
-# When updating these, make sure to also update the release versions above.
-# NOTE: the nightly versions are one version ahead of the release ones!
-# NOTE: the nightly versions specify alpha/dev!
-if 'tf_nightly' in project_name:
-  for i, pkg in enumerate(REQUIRED_PACKAGES):
-    if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.8.0.a'
-    elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.9.0.dev'
-    elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
-      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.9.0.dev'
-
-
-# grpcio does not build correctly on big-endian machines due to lack of
-# BoringSSL support.
-# See https://github.com/tensorflow/tensorflow/issues/17882.
-if sys.byteorder == 'little':
-  REQUIRED_PACKAGES.append('grpcio >= 1.24.3, < 2.0')
-
-
-# Packages which are only needed for testing code.
-# Please don't add test-only packages to `REQUIRED_PACKAGES`!
-# Follows the same conventions as `REQUIRED_PACKAGES`
-TEST_PACKAGES = [
-    'portpicker >= 1.3.1',
-    'scipy >= 1.5.2',
-    'tblib >= 1.4.0',
-    'dill >= 0.2.9',
-]
-
+    # grpcio does not build correctly on big-endian machines due to lack of
+    # BoringSSL support.
+    # See https://github.com/tensorflow/tensorflow/issues/17882.
+    'grpcio >= 1.24.3, < 2.0' if sys.byteorder == 'little' else None,
+    # TensorFlow exposes the TF API for certain TF ecosystem packages like
+    # keras.  When TF depends on those packages, the package version needs to
+    # match the current TF version. For tf_nightly, we install the nightly
+    # variant of each package instead, which must be one version ahead of the
+    # current release version. These also usually have "alpha" or "dev" in their
+    # version name.
+    # These are all updated during the TF release process.
+    if_nightly('tensorboard >= 2.7, < 2.8',
+               'tb-nightly ~= 2.8.0.a'),
+    if_nightly('tensorflow_estimator >= 2.8.0rc0, < 2.9',
+               'tf-estimator-nightly ~= 2.9.0.dev'),
+    if_nightly('keras >= 2.8.0rc0, < 2.9',
+               'keras-nightly ~= 2.9.0.dev'),
+]))
+REQUIRED_PACKAGES = [ p for p in REQUIRED_PACKAGES if p is not None ]
 
 DOCLINES = __doc__.split('\n')
 if project_name.endswith('-gpu'):
@@ -152,16 +134,14 @@ CONSOLE_SCRIPTS = [
     # is now declared by the tensorboard pip package. If we remove the
     # TensorBoard command, pip will inappropriately remove it during install,
     # even though the command is not removed, just moved to a different wheel.
-    'tensorboard = tensorboard.main:run_main',
+    # We exclude it anyway if building tf_nightly.
+    if_nightly(None, 'tensorboard = tensorboard.main:run_main')
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
     'estimator_ckpt_converter = '
     'tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
 ]
+CONSOLE_SCRIPTS = [ s for s in CONSOLE_SCRIPTS if s is not None ]
 # pylint: enable=line-too-long
-
-# remove the tensorboard console script if building tf_nightly
-if 'tf_nightly' in project_name:
-  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:run_main')
 
 
 class BinaryDistribution(Distribution):
@@ -310,7 +290,6 @@ setup(
     },
     headers=headers,
     install_requires=REQUIRED_PACKAGES,
-    tests_require=REQUIRED_PACKAGES + TEST_PACKAGES,
     # Add in any packaged data.
     include_package_data=True,
     package_data={
