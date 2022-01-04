@@ -1462,6 +1462,7 @@ cc_library(
         "//tensorflow/core/platform:stacktrace",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:stringprintf",
