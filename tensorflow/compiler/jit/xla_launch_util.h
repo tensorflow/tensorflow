@@ -38,6 +38,41 @@ namespace tensorflow {
 // parameter number to values at execution time. If the resource variable is not
 // initialized, the value will not be present.
 using ResourceVarsSnapshot = absl::flat_hash_map<int, absl::optional<Tensor>>;
+// We add a cache, which will cache the output of const type of xla op on the
+// GPU, it avoild host output tensor H2D at every steps.
+class XlaConstOutputCache {
+ public:
+  // output_idx: output index in the output of xla op;output: GPU output tensor;
+  bool FindConstOutput(const int64 output_idx, Tensor* output);
+
+  void SetConstOutput(const int64 output_idx, Tensor* output) {
+    cache_[output_idx] = Tensor(*output);
+  }
+
+  string DebugString() const;
+
+ private:
+  typedef std::map<int64, Tensor> ConstOutputCache;
+  ConstOutputCache cache_;
+};
+
+// The output of the const type of the executable has the same value in each
+// steps, and some executables output const value on CPU, so we have to memcpy
+// from CPU to GPU(H2D).We think this H2D is redundant, so we add
+// XlaConstantOutputResource for every executable to directly cache GPU const
+// output .
+class XlaConstantOutputResource : public ResourceBase {
+ public:
+  XlaConstOutputCache& FindConstOutput(const xla::Executable* exec) {
+    return cache_[exec];
+  }
+
+  virtual string DebugString() const override;
+
+ private:
+  typedef std::map<const xla::Executable*, XlaConstOutputCache> ClusterCache;
+  ClusterCache cache_;
+};
 
 // Information about the state of a variable passed as input to the _XlaCompile
 // and _XlaRun operators.  Unlocks the resource variable and decrements its
@@ -184,7 +219,8 @@ class XlaComputationLaunchContext {
       xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,
       absl::Span<VariableInfo> variable_infos,
       const xla::HloInputOutputAliasConfig& input_output_alias,
-      const std::map<int, const Tensor*>& resource_vars);
+      const std::map<int, const Tensor*>& resource_vars,
+      XlaConstOutputCache& cache);
 
  private:
   xla::LocalClient* client_;

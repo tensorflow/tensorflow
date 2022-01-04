@@ -38,8 +38,11 @@ class XlaCompileOnDemandOp : public OpKernel {
  public:
   explicit XlaCompileOnDemandOp(OpKernelConstruction* ctx)
       : OpKernel(ctx),
-        platform_info_(XlaPlatformInfoFromDevice(ctx->device())) {}
+        platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
+        cache_(nullptr),
+        rm_(nullptr) {}
   void Compute(OpKernelContext* ctx) override;
+  ~XlaCompileOnDemandOp() override;
 
  private:
   XlaCompiler::Argument CreateCompilerArgument(OpKernelContext* ctx, int64_t i);
@@ -55,6 +58,9 @@ class XlaCompileOnDemandOp : public OpKernel {
              const ResourceVarsSnapshot& variable_args);
 
   const XlaPlatformInfo platform_info_;
+  // Cache GPU const output tensor .
+  XlaConstantOutputResource* cache_;
+  ResourceMgr* rm_;
 };
 
 }  // namespace tensorflow
