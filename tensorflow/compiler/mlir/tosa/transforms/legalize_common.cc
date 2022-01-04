@@ -466,7 +466,6 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  Value output;
   if (output_is_qtype) {
     ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
     auto input_lhs_qtype = input_lhs_type.getElementType()
