@@ -311,7 +311,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
     pm.addNestedPass<mlir::FuncOp>(
         std::make_unique<TileLoops>(tile_sizes, unroll_factors));
   }
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());bool index_64bit,
+  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
 }
 
 Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
