@@ -79,7 +79,7 @@ REQUIRED_PACKAGES = [
     'h5py >= 2.9.0',
     'keras_preprocessing >= 1.1.1', # 1.1.0 needs tensorflow==1.7
     'libclang >= 9.0.1',
-    'numpy >= 1.14.5',
+    'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
     'setuptools < 60',  # TODO(b/211495558): Breaking change in v60 on distutils
