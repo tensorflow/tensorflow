@@ -1348,8 +1348,8 @@ def function(func=None,
 
   ## Features
 
-  `func` may use data-dependent control flow, including `if`, `for`, `while`
-  `break`, `continue` and `return` statements:
+  `func` may use data-dependent Python control flow statements, including `if`,
+  `for`, `while` `break`, `continue` and `return`:
 
   >>> @tf.function
   ... def f(x):
@@ -1599,8 +1599,9 @@ def function(func=None,
       inferred input signature.  If input_signature is specified, every input to
       `func` must be a `Tensor`, and `func` cannot accept `**kwargs`.
     autograph: Whether autograph should be applied on `func` before tracing a
-      graph. Data-dependent control flow requires `autograph=True`. For more
-      information, see the [tf.function and AutoGraph guide](
+      graph. Data-dependent Python control flow statements require
+      `autograph=True`. For more information, see the
+      [tf.function and AutoGraph guide](
       https://www.tensorflow.org/guide/function#autograph_transformations).
     jit_compile: If `True`, compiles the function using
       [XLA](https://tensorflow.org/xla). XLA performs compiler optimizations,
