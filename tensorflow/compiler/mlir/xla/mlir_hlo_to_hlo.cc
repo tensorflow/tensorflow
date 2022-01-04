@@ -2041,11 +2041,11 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                /*shape_representation_fn=*/nullptr, options);
 
   ConvertToHloModule::ValueLoweringMap lowering;
-  // In general xla_params is a superset of block arguments. Constant inputs may
-  // have been removed from block arguments.
-  if (xla_params.size() < block.getArguments().size())
+  // xla_params should only include non-constant parameters the block arguments
+  // correspond to.
+  if (xla_params.size() != block.getArguments().size())
     return tensorflow::errors::Internal("xla_params size (", xla_params.size(),
-                                        ") < block arguments size (",
+                                        ") != block arguments size (",
                                         block.getArguments().size(), ")");
   for (BlockArgument& arg : block.getArguments()) {
     auto num = arg.getArgNumber();
