@@ -116,6 +116,7 @@ bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
     case HloOpcode::kReshape:
       return !hoist_reshapes_;
 
+    case HloOpcode::kAfterAll:
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kIota:
