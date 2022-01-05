@@ -79,7 +79,6 @@ tensorflow/tools/def_file_filter/BUILD
 tensorflow/tools/def_file_filter/BUILD.tpl
 tensorflow/tools/def_file_filter/def_file_filter.py.tpl
 tensorflow/tools/def_file_filter/def_file_filter_configure.bzl
-tensorflow/tools/git/BUILD
 tensorflow/tools/lib_package/BUILD
 tensorflow/tools/lib_package/LibTensorFlowTest.java
 tensorflow/tools/lib_package/README.md
