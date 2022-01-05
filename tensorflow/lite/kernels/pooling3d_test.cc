@@ -15,7 +15,9 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -30,8 +32,8 @@ namespace tflite {
 using ::testing::ElementsAreArray;
 
 enum PoolType {
-  kAverage,
-  kMax,
+  kAveragePool,
+  kMaxPool,
 };
 
 template <typename T>
@@ -48,7 +50,7 @@ class BasePoolingOpModel : public SingleOpModel {
     }
     input_ = AddInput(input);
     output_ = AddOutput(output);
-    if (pool_type == kAverage) {
+    if (pool_type == kAveragePool) {
       SetBuiltinOp(BuiltinOperator_AVERAGE_POOL_3D,
                    BuiltinOptions_Pool3DOptions,
                    CreatePool3DOptions(builder_, padding, stride_d, stride_w,
@@ -87,10 +89,21 @@ std::vector<float> BasePoolingOpModel<float>::GetOutput() {
   return ExtractVector<float>(output_);
 }
 
+template <typename T>
+float GetTolerance(float min, float max) {
+  if (std::is_floating_point<T>::value) {
+    return 0.0f;
+  } else {
+    const float kQuantizedStep = (max - min) / (std::numeric_limits<T>::max() -
+                                                std::numeric_limits<T>::min());
+    return kQuantizedStep;
+  }
+}
+
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(AveragePoolingOpTest, InvalidDimSize) {
   EXPECT_DEATH(
-      BasePoolingOpModel<float> m(kAverage,
+      BasePoolingOpModel<float> m(kAveragePool,
                                   /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
                                   /*filter_d=*/2,
                                   /*filter_h=*/2, /*filter_w=*/2,
@@ -102,7 +115,7 @@ TEST(AveragePoolingOpTest, InvalidDimSize) {
 
 TEST(AveragePoolingOpTest, ZeroStride) {
   EXPECT_DEATH(BasePoolingOpModel<float> m(
-                   kAverage,
+                   kAveragePool,
                    /*input=*/{TensorType_FLOAT32, {1, 2, 2, 4, 1}},
                    /*filter_d=*/2,
                    /*filter_h=*/2, /*filter_w=*/2,
@@ -124,110 +137,203 @@ TYPED_TEST_SUITE(AveragePoolingOpTest, DataTypes);
 TYPED_TEST_SUITE(MaxPoolingOpTest, DataTypes);
 
 TYPED_TEST(AveragePoolingOpTest, AveragePool) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TypeParam>::max() /
+      static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
+  const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kAverage,
-      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
+      kAveragePool,
+      /*input=*/
+      {GetTensorType<TypeParam>(),
+       {1, 2, 2, 4, 1},
+       15.9375 * kMin,
+       15.9375 * kMax},
       /*filter_d=*/2,
       /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375});
+      /*output=*/
+      {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax});
   m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
   m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.125, 4.25}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({3.125, 4.25}, kTolerance)));
 }
 
 TYPED_TEST(AveragePoolingOpTest, AveragePoolFilterH1) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TypeParam>::max() /
+      static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
+  const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kAverage,
-      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
+      kAveragePool,
+      /*input=*/
+      {GetTensorType<TypeParam>(),
+       {1, 2, 2, 4, 1},
+       15.9375 * kMin,
+       15.9375 * kMax},
       /*filter_d=*/2,
       /*filter_h=*/1, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375});
+      /*output=*/
+      {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax});
   m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
   m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2.75, 5.75}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({2.75, 5.75}, kTolerance)));
 }
 
 TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingSameStride1) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TypeParam>::max() /
+      static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
+  const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kAverage,
-      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
+      kAveragePool,
+      /*input=*/
+      {GetTensorType<TypeParam>(),
+       {1, 2, 2, 4, 1},
+       15.9375 * kMin,
+       15.9375 * kMax},
       /*filter_d=*/2,
       /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375}, Padding_SAME,
+      /*output=*/
+      {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax},
+      Padding_SAME,
+      /*stride_d=*/1, /*stride_h=*/1,
+      /*stride_w=*/1);
+  m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {2.875, 4.125, 4.5, 4.5, 3.0, 3.25, 3.25, 3.5,
+                                  2.5, 4.0, 5.75, 5.5, 2.5, 2.0, 3.0, 4.0},
+                                 kTolerance)));
+}
+
+TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingValidStride1) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TypeParam>::max() /
+      static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
+  const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
+  BasePoolingOpModel<TypeParam> m(
+      kAveragePool,
+      /*input=*/
+      {GetTensorType<TypeParam>(),
+       {1, 2, 2, 4, 1},
+       15.9375 * kMin,
+       15.9375 * kMax},
+      /*filter_d=*/2,
+      /*filter_h=*/2, /*filter_w=*/2,
+      /*output=*/
+      {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax},
+      Padding_VALID,
+      /*stride_d=*/1, /*stride_h=*/1,
+      /*stride_w=*/1);
+  m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {2.875, 4.125, 4.5}, kTolerance)));
+}
+
+TYPED_TEST(MaxPoolingOpTest, MaxPool) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TypeParam>::max() /
+      static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
+  const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
+  BasePoolingOpModel<TypeParam> m(
+      kMaxPool,
+      /*input=*/
+      {GetTensorType<TypeParam>(),
+       {1, 2, 2, 4, 1},
+       15.9375 * kMin,
+       15.9375 * kMax},
+      /*filter_d=*/2,
+      /*filter_h=*/2, /*filter_w=*/2,
+      /*output=*/
+      {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax});
+  m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({6.0, 10.0}, kTolerance)));
+}
+
+TYPED_TEST(MaxPoolingOpTest, MaxPoolFilterH1) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TypeParam>::max() /
+      static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
+  const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
+  BasePoolingOpModel<TypeParam> m(
+      kMaxPool,
+      /*input=*/
+      {GetTensorType<TypeParam>(),
+       {1, 2, 2, 4, 1},
+       15.9375 * kMin,
+       15.9375 * kMax},
+      /*filter_d=*/2,
+      /*filter_h=*/1, /*filter_w=*/2,
+      /*output=*/
+      {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax});
+  m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({6, 10}, kTolerance)));
+}
+
+TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingSameStride1) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TypeParam>::max() /
+      static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
+  const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
+  BasePoolingOpModel<TypeParam> m(
+      kMaxPool,
+      /*input=*/
+      {GetTensorType<TypeParam>(),
+       {1, 2, 2, 4, 1},
+       15.9375 * kMin,
+       15.9375 * kMax},
+      /*filter_d=*/2,
+      /*filter_h=*/2, /*filter_w=*/2,
+      /*output=*/
+      {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax},
+      Padding_SAME,
+      /*stride_d=*/1, /*stride_h=*/1,
+      /*stride_w=*/1);
+  m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {6, 10, 10, 7, 5, 5, 4, 4, 3, 10, 10, 7, 3, 2, 4, 4}, kTolerance)));
+}
+
+TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingValidStride1) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TypeParam>::max() /
+      static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
+  const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
+  BasePoolingOpModel<TypeParam> m(
+      kMaxPool,
+      /*input=*/
+      {GetTensorType<TypeParam>(),
+       {1, 2, 2, 4, 1},
+       15.9375 * kMin,
+       15.9375 * kMax},
+      /*filter_d=*/2,
+      /*filter_h=*/2, /*filter_w=*/2,
+      /*output=*/
+      {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax},
+      Padding_VALID,
       /*stride_d=*/1, /*stride_h=*/1,
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({2.875, 4.125, 4.5, 4.5, 3.0, 3.25, 3.25, 3.5,
-                                2.5, 4.0, 5.75, 5.5, 2.5, 2.0, 3.0, 4.0}));
-}
-
-TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingValidStride1) {
-  BasePoolingOpModel<TypeParam> m(
-      kAverage,
-      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
-      /*filter_d=*/2,
-      /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375}, Padding_VALID,
-      /*stride_d=*/1, /*stride_h=*/1,
-      /*stride_w=*/1);
-  m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2.875, 4.125, 4.5}));
-}
-
-TYPED_TEST(MaxPoolingOpTest, MaxPool) {
-  BasePoolingOpModel<TypeParam> m(
-      kMax,
-      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
-      /*filter_d=*/2,
-      /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375});
-  m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6.0, 10.0}));
-}
-
-TYPED_TEST(MaxPoolingOpTest, MaxPoolFilterH1) {
-  BasePoolingOpModel<TypeParam> m(
-      kMax,
-      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
-      /*filter_d=*/2,
-      /*filter_h=*/1, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375});
-  m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 10}));
-}
-
-TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingSameStride1) {
-  BasePoolingOpModel<TypeParam> m(
-      kMax,
-      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
-      /*filter_d=*/2,
-      /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375}, Padding_SAME,
-      /*stride_d=*/1, /*stride_h=*/1,
-      /*stride_w=*/1);
-  m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 10, 10, 7, 5, 5, 4, 4, 3, 10,
-                                               10, 7, 3, 2, 4, 4}));
-}
-
-TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingValidStride1) {
-  BasePoolingOpModel<TypeParam> m(
-      kMax,
-      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
-      /*filter_d=*/2,
-      /*filter_h=*/2, /*filter_w=*/2,
-      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375}, Padding_VALID,
-      /*stride_d=*/1, /*stride_h=*/1,
-      /*stride_w=*/1);
-  m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6.0, 10.0, 10.0}));
+              ElementsAreArray(ArrayFloatNear({6.0, 10.0, 10.0}, kTolerance)));
 }
 
 }  // namespace tflite

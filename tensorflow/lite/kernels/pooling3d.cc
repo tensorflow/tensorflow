@@ -94,9 +94,11 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   if (input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_NEAR(context, input->params.scale, output->params.scale,
                         1.0e-6);
-    TFLITE_DCHECK_EQ(input->params.zero_point, output->params.zero_point);
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point,
+                      output->params.zero_point);
     if (input->type == kTfLiteInt16) {
-      TFLITE_DCHECK_EQ(input->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     }
 
     int32_t activation_min, activation_max;
