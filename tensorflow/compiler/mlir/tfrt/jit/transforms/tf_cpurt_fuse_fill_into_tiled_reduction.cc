@@ -33,7 +33,6 @@ namespace {
 using llvm::makeArrayRef;
 using mlir::BlockAndValueMapping;
 using mlir::BlockArgument;
-using mlir::cast;
 using mlir::dyn_cast;
 using mlir::failure;
 using mlir::Identifier;
@@ -42,6 +41,7 @@ using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpBuilder;
 using mlir::Operation;
+using mlir::OpFoldResult;
 using mlir::OpRewritePattern;
 using mlir::PatternRewriter;
 using mlir::SmallVector;
@@ -56,6 +56,16 @@ using mlir::linalg::TiledLoopOp;
 using mlir::linalg::YieldOp;
 using mlir::tensor::ExtractSliceOp;
 using mlir::tensor::InsertSliceOp;
+
+SmallVector<OpFoldResult> GetReductionDimStep(TiledLoopOp tiled_loop) {
+  assert(tiled_loop.getNumLoops() == 2 && "Expected a 2D loop");
+  Value step = tiled_loop.isParallelDimension(0) ? tiled_loop.step().back()
+                                                 : tiled_loop.step().front();
+  if (auto constant = step.getDefiningOp<mlir::arith::ConstantOp>()) {
+    return {constant.getValue()};
+  }
+  return {step};
+}
 
 // Fuses `linalg.fill` into a loop with a tiled reduction.
 // Currently, only 2D case is supported. Fusion into a tiled 1D reduction is
@@ -81,7 +91,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
  private:
   // Add a new output argument to the `tiled_loop`. It will be produced by
-  // `init_tensor` op with the same shape as the first output argument.
+  // `init_tensor` op with the same shape of the tiled output argument.
   //
   // Rewrite
   //
@@ -92,20 +102,23 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
   // into
   //
   //   %init = linalg.init_tensor
-  //** %init_clone = linalg.init_tensor
+  //** %init_tile = linalg.init_tensor [%stride]
   //   %fill = linalg.fill(%cst, %init)
-  //** linalg.tiled_loop outs(%fill, %init_clone)
+  //** linalg.tiled_loop outs(%fill, %init_tile)
   BlockArgument CloneAndAppendInitTensorToTiledLoop(
       PatternRewriter &rewriter, FillOp fill, TiledLoopOp tiled_loop) const {
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPoint(fill);
 
     auto init = fill.output().getDefiningOp<InitTensorOp>();
-    auto init_clone = cast<InitTensorOp>(rewriter.clone(*init));
+
+    Value init_clone = rewriter.create<InitTensorOp>(
+        init.getLoc(), GetReductionDimStep(tiled_loop),
+        init.getType().cast<mlir::RankedTensorType>().getElementType());
     mlir::OpOperand *init_clone_output_operand;
     rewriter.updateRootInPlace(tiled_loop, [&]() {
       init_clone_output_operand =
-          &tiled_loop.appendOutputOperand(rewriter, init_clone.result());
+          &tiled_loop.appendOutputOperand(rewriter, init_clone);
     });
     return tiled_loop.getTiedBlockArgument(*init_clone_output_operand);
   }
@@ -117,9 +130,9 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
   // Rewrite
   //
   // %init = linalg.init_tensor
-  // %init_clone = linalg.init_tensor
+  // %init_tile = linalg.init_tensor [%stride]
   // %fill = linalg.fill(%cst, %init)
-  // linalg.tiled_loop outs(%fill, %init_clone) {
+  // linalg.tiled_loop outs(%fill, %init_tile) {
   //   %extract_output_slice = tensor.extract_slice %fill
   //   %reduce = linalg.generic outs (%extract_output_slice)
   //   %insert_output_slice = tensor.insert_slice %reduce into %fill
@@ -129,42 +142,46 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
   // into
   //
   // %init = linalg.init_tensor
-  // %init_clone = linalg.init_tensor
+  // %init_tile = linalg.init_tensor
   // %fill = linalg.fill(%cst, %init)
-  // linalg.tiled_loop outs(%fill, %init_clone) {
+  // linalg.tiled_loop outs(%fill, %init_tile) {
   //   %extract_output_slice = tensor.extract_slice %fill
   //
-  //** %slice_of_cloned_output = tensor.extract_slice %init
-  //** %fill_of_cloned_output = linalg.fill(%cst, %slice_of_cloned_output)
-  //** %reduce = linalg.generic outs (%fill_of_cloned_output)
-  //** %update_cloned_output = tensor.insert_slice %reduce into %init_clone
+  //** %slice_of_output_tile = tensor.extract_slice %init
+  //** %fill_of_output_tile = linalg.fill(%cst, %slice_of_output_tile)
+  //** %reduce = linalg.generic outs (%fill_of_output_tile)
+  //** %update_output_tile = tensor.insert_slice %reduce into %init_tile
   //
   //   %insert_output_slice = tensor.insert_slice %reduce into %fill
-  //   linalg.yield %insert_output_slice, %update_cloned_output
+  //   linalg.yield %insert_output_slice, %update_output_tile
   // }
   void FuseFill(PatternRewriter &rewriter, LinalgOp tiled_op, FillOp fill,
                 BlockArgument loop_output_bb_arg,
-                BlockArgument cloned_output_bb_arg,
+                BlockArgument output_tile_bb_arg,
                 ExtractSliceOp extract_output_slice,
                 InsertSliceOp insert_output_slice) const {
+    Location loc = tiled_op.getLoc();
+
     OpBuilder::InsertionGuard g(rewriter);
     rewriter.setInsertionPoint(tiled_op);
 
-    BlockAndValueMapping bvm;
-    bvm.map(loop_output_bb_arg, cloned_output_bb_arg);
-    Value slice_of_cloned_output =
-        cast<ExtractSliceOp>(rewriter.clone(*extract_output_slice, bvm));
+    SmallVector<OpFoldResult> offset{rewriter.getIndexAttr(0)};
+    Value slice_of_output_tile = rewriter.create<ExtractSliceOp>(
+        loc, output_tile_bb_arg, offset, extract_output_slice.getMixedSizes(),
+        extract_output_slice.getMixedStrides());
 
-    auto fused_fill = rewriter.create<FillOp>(tiled_op.getLoc(), fill.value(),
-                                              slice_of_cloned_output);
+    auto fused_fill =
+        rewriter.create<FillOp>(loc, fill.value(), slice_of_output_tile);
     rewriter.updateRootInPlace(tiled_op, [&]() {
       tiled_op.getOutputOperand(0)->set(fused_fill.result());
     });
 
-    bvm.map(insert_output_slice.dest(), cloned_output_bb_arg);
     rewriter.setInsertionPointAfter(tiled_op);
-    Value cloned_insert =
-        cast<InsertSliceOp>(rewriter.clone(*insert_output_slice, bvm));
+    Value cloned_insert = rewriter.create<mlir::tensor::InsertSliceOp>(
+        loc, fused_fill.getResult(0), output_tile_bb_arg, offset,
+        extract_output_slice.getMixedSizes(),
+        extract_output_slice.getMixedStrides());
+
     auto yield = tiled_op.getOperation()->getBlock()->getTerminator();
     rewriter.updateRootInPlace(
         yield, [&]() { yield->insertOperands(1, cloned_insert); });
@@ -175,37 +192,37 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
   // Rewrite
   //
   // %init = linalg.init_tensor
-  // %init_clone = linalg.init_tensor
+  // %init_tile = linalg.init_tensor
   // %fill = linalg.fill(%cst, %init)
-  // linalg.tiled_loop outs(%fill, %init_clone) {
+  // linalg.tiled_loop outs(%fill, %init_tile) {
   //   %extract_output_slice = tensor.extract_slice %fill
   //
-  //   %slice_of_cloned_output = tensor.extract_slice %init
-  //   %fill_of_cloned_output = linalg.fill(%cst, %slice_of_cloned_output)
-  //   %reduce = linalg.generic outs (%fill_of_cloned_output)
-  //   %update_cloned_output = tensor.insert_slice %reduce into %init_clone
+  //   %slice_of_output_tile = tensor.extract_slice %init
+  //   %fill_of_output_tile = linalg.fill(%cst, %slice_of_output_tile)
+  //   %reduce = linalg.generic outs (%fill_of_output_tile)
+  //   %update_output_tile = tensor.insert_slice %reduce into %init_tile
   //
   //   %insert_output_slice = tensor.insert_slice %reduce into %fill
-  //   linalg.yield %insert_output_slice, %update_cloned_output
+  //   linalg.yield %insert_output_slice, %update_output_tile
   // }
   //
   // into
   //
   // %init = linalg.init_tensor
-  // %init_clone = linalg.init_tensor
+  // %init_tile = linalg.init_tensor
   // %fill = linalg.fill(%cst, %init)
-  // linalg.tiled_loop outs(%fill, %init_clone) {
+  // linalg.tiled_loop outs(%fill, %init_tile) {
   //   %extract_output_slice = tensor.extract_slice %fill
   //
-  //   %slice_of_cloned_output = tensor.extract_slice %init
-  //   %fill_of_cloned_output = linalg.fill(%cst, %slice_of_cloned_output)
-  //   %reduce = linalg.generic outs (%fill_of_cloned_output)
-  //   %update_cloned_output = tensor.insert_slice %reduce into %init_clone
+  //   %slice_of_output_tile = tensor.extract_slice %init
+  //   %fill_of_output_tile = linalg.fill(%cst, %slice_of_output_tile)
+  //   %reduce = linalg.generic outs (%fill_of_output_tile)
+  //   %update_output_tile = tensor.insert_slice %reduce into %init_tile
   //
   //** %combine = linalg.generic ins (%reduce) outs (%extract_output_slice)
   //** %insert_output_slice = tensor.insert_slice %combine into %fill
   //
-  //   linalg.yield %insert_output_slice, %update_cloned_output
+  //   linalg.yield %insert_output_slice, %update_output_tile
   // }
   LogicalResult CombineReducedTileWithOutput(
       PatternRewriter &rewriter, LinalgOp tiled_op, Value partial_result,
@@ -285,9 +302,9 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
     if (!insert_output_slice) return failure();
 
     // Fuse the output.
-    BlockArgument cloned_output_bb_arg =
+    BlockArgument output_tile_bb_arg =
         CloneAndAppendInitTensorToTiledLoop(rewriter, fill, tiled_loop);
-    FuseFill(rewriter, tiled_op, fill, loop_output_bb_arg, cloned_output_bb_arg,
+    FuseFill(rewriter, tiled_op, fill, loop_output_bb_arg, output_tile_bb_arg,
              extract_output_slice, insert_output_slice);
     // We have already modified the loop above, so we need to update the
     // results.

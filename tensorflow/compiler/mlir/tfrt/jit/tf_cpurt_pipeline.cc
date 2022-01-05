@@ -89,7 +89,6 @@ void AddLinalgTransformations(OpPassManager& pm,
   }
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<FuncOp>(CreateSinkUnusedOutputs());
   pm.addNestedPass<FuncOp>(CreateVectorizeTiledOpsPass());
 }
 

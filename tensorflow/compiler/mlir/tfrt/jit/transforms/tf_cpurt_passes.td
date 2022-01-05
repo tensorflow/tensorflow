@@ -214,9 +214,3 @@ def MathApproximation : FunctionPass<"tf-cpurt-math-approximation"> {
               "llvm::cl::MiscFlags::CommaSeparated">,
   ];
 }
-
-def SinkUnusedOutputs : FunctionPass<"tf-cpurt-sink-unused-outputs"> {
-  let summary = "Sink unused output args of `tiled_loop` into the loop body.";
-  let constructor = "tensorflow::CreateSinkUnusedOutputs()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
-}

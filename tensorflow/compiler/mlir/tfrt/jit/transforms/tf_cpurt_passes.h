@@ -53,9 +53,6 @@ std::unique_ptr<mlir::FunctionPass> CreateFuseFillIntoTiledReductionPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateCpuRtLegalizeI1TypesPass();
 
-// Pass to sink unused outputs of `tiled_loop` into the loop body.
-std::unique_ptr<mlir::FunctionPass> CreateSinkUnusedOutputs();
-
 // Pass to vectorize linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass();
 
