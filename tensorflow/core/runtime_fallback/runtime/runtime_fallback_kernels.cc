@@ -60,6 +60,7 @@ limitations under the License.
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/attribute_utils.h"  // from @tf_runtime
+#include "tfrt/host_context/device.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
@@ -836,7 +837,8 @@ void CoreRTTensorHandleToFallbackTensorInternal(
   auto maybe_convert_runtime_fallback_tensor =
       [&exec_ctx](
           tfrt::AsyncValueRef<Tensor> tensor_avref,
-          const tfrt::Device& device) -> tfrt::AsyncValueRef<tfrt::Tensor> {
+          const tfrt::Device& src_device,
+          const tfrt::Device& dst_device) -> tfrt::AsyncValueRef<tfrt::Tensor> {
     // TODO(tfrt-devs): Remove implicit conversion in this kernel since it will
     // have extra overheads.
     // Convert RuntimeFallbackTensor to KernelFallbackTensor before calling
@@ -846,38 +848,68 @@ void CoreRTTensorHandleToFallbackTensorInternal(
     assert(tensor_avref.IsAvailable());
     assert(!tensor_avref.IsError());
     auto& tensor = tensor_avref.get();
-    if (tensor.IsTensorType(RuntimeFallbackTensor::kTensorType)) {
+    if (!tensor.IsTensorType(DenseHostTensor::kTensorType) ||
+        !src_device.IsDeviceType(tfrt::CpuDevice::kDeviceType) ||
+        !dst_device.IsDeviceType(tfrt::CpuDevice::kDeviceType)) {
       return tfrt::ConvertTensor(exec_ctx, tensor,
-                                 /*src=*/device,
-                                 /*dst=*/device,
+                                 /*src=*/src_device,
+                                 /*dst=*/dst_device,
                                  KernelFallbackTensor::kTensorType);
     }
     return tensor_avref;
   };
 
+  auto dst_device =
+      exec_ctx.host()->GetDeviceManager()->GetDeviceRef<tfrt::Device>(
+          {device.data(), device.size()});
+
   // Retrieve the underlying pointer of tfrt::Tensor. We don't need to do
   // extra ownership management here because KernelFallbackExecuteCompat()
   // will always convert it to tensorflow::Tensor which is itself refcounted.
   for (int i = 0; i < tensorhandle_args.size(); ++i) {
-    auto* av = tensorhandle_args[i];
-    auto& tensor_handle = av->get<tfrt::TensorHandle>();
+    if (!dst_device) {
+      tf_tensor_results[i] = tfrt::MakeErrorAsyncValueRef(
+          tfrt::StrCat("Failed to find device with name ", device));
+      continue;
+    }
+    auto& tensor_handle = tensorhandle_args[i]->get<tfrt::TensorHandle>();
     assert(tensor_handle.IsDeviceAvailable());
     assert(!tensor_handle.IsDeviceError());
+
     auto* tensor_av = tensor_handle.GetAsyncTensor();
     auto tensor_avref = tfrt::AsyncValueRef<Tensor>(FormRef(tensor_av));
-    auto& device = *tensor_handle.GetAvailableDevice();
+
+    auto& src_device = *tensor_handle.GetAvailableDevice();
+    AsyncValueRef<Tensor> knfb_tensor;
     if (!tensor_av->IsAvailable()) {
+      auto ind_av = tfrt::MakeIndirectAsyncValue(exec_ctx.host());
+      knfb_tensor = AsyncValueRef<Tensor>(ind_av.CopyRef());
+      tensor_av->AndThen(
+          [tensor_avref = std::move(tensor_avref), ind_av = std::move(ind_av),
+           &src_device, dst_device = dst_device.CopyRef(),
+           maybe_convert_runtime_fallback_tensor, exec_ctx]() mutable {
+            ind_av->ForwardTo(maybe_convert_runtime_fallback_tensor(
+                std::move(tensor_avref), src_device, *dst_device));
+          });
+    } else {
+      knfb_tensor = maybe_convert_runtime_fallback_tensor(
+          std::move(tensor_avref), src_device, *dst_device);
+    }
+
+    if (!knfb_tensor.IsAvailable()) {
       auto result_ref = tfrt::MakeIndirectAsyncValue(exec_ctx.host());
       tf_tensor_results[i] = result_ref;
-      tensor_av->AndThen([tensor_avref = std::move(tensor_avref),
-                          result_ref = std::move(result_ref), &device,
-                          maybe_convert_runtime_fallback_tensor,
-                          exec_ctx]() mutable {
-        auto converted_tensor_avref = maybe_convert_runtime_fallback_tensor(
-            std::move(tensor_avref), device);
+      auto knfb_tensor_av = knfb_tensor.GetAsyncValue();
+      knfb_tensor_av->AndThen([knfb_tensor = std::move(knfb_tensor),
+                               result_ref = std::move(result_ref),
+                               dst_device = dst_device.CopyRef(),
+                               exec_ctx]() mutable {
+        if (knfb_tensor.IsError()) {
+          result_ref->ForwardTo(std::move(knfb_tensor));
+          return;
+        }
         auto expected_tf_tensor =
-            TFRTTensorToTFTensor(converted_tensor_avref.get(), exec_ctx.host());
-
+            TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host());
         if (!expected_tf_tensor) {
           auto error =
               tfrt::EmitErrorAsync(exec_ctx, expected_tf_tensor.takeError());
@@ -890,11 +922,8 @@ void CoreRTTensorHandleToFallbackTensorInternal(
         }
       });
     } else {
-      auto converted_tensor_avref = maybe_convert_runtime_fallback_tensor(
-          std::move(tensor_avref), device);
-      set_result(
-          tf_tensor_results[i],
-          TFRTTensorToTFTensor(converted_tensor_avref.get(), exec_ctx.host()));
+      set_result(tf_tensor_results[i],
+                 TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host()));
     }
   }
 }
