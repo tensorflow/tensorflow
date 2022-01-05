@@ -491,7 +491,7 @@ absl::Status InferenceContext::InitFromGraph(
                                   env->GetDevicePtr()->GetInfo(), &gpu_model));
 
   flatbuffers::FlatBufferBuilder builder;
-  flatbuffers::Offset<data::GpuModel> gpu_model_fb;
+  flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb;
   if (serialized_model) {
     gpu_model_fb = Encode(gpu_model, &builder);
   }

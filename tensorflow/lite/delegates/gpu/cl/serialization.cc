@@ -36,7 +36,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 flatbuffers::Offset<data::TensorDescWithId> Encode(
     const TensorDescriptor& desc, const ValueId& id,
@@ -189,10 +188,11 @@ absl::Status Decode(const data::GpuModel* fb_gpu_model, GpuModel* gpu_model) {
   return absl::OkStatus();
 }
 
+namespace cl {
 flatbuffers::Offset<data::InferenceContext> Encode(
     const CLDevice& device, const InferenceContext& inference,
     const ProgramCache& program_cache,
-    flatbuffers::Offset<data::GpuModel> gpu_model_fb,
+    flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
     flatbuffers::FlatBufferBuilder* builder) {
   std::vector<flatbuffers::Offset<tflite::gpu::data::Int3>> work_groups_fb;
   for (int i = 0; i < inference.nodes_.size(); ++i) {
