@@ -54,6 +54,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -4954,56 +4955,6 @@ void TransposeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert(EliminateRedundantTranspse);
 }
 
-static LogicalResult Verify(TransposeOp op) {
-  // permutation is an attribute of the op so it has static shape.
-  auto permutationType = op.permutation().getType();
-  auto permutationRank = permutationType.getRank();
-  if (permutationRank != 1) {
-    return op.emitOpError(llvm::formatv(
-        "permutation has rank {0} instead of rank 1", permutationRank));
-  }
-  auto permutationSize = permutationType.getNumElements();
-
-  auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
-  if (operandType) {
-    auto operandRank = operandType.getRank();
-    if (operandRank != permutationSize) {
-      return op.emitOpError(llvm::formatv(
-          "operand rank ({0}) does not match permutation size ({1})",
-          operandRank, permutationSize));
-    }
-  }
-
-  auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (resultType) {
-    auto resultRank = resultType.getRank();
-    if (resultRank != permutationSize) {
-      return op.emitOpError(llvm::formatv(
-          "result rank ({0}) does not match permutation size ({1})", resultRank,
-          permutationSize));
-    }
-  }
-
-  if (!resultType || !operandType) return success();
-
-  auto operandRank = operandType.getRank();
-  SmallVector<int64_t, 4> expectedShape(operandRank);
-  for (int i = 0; i != operandRank; ++i) {
-    auto permutedDim = op.permutation().getValues<IntegerAttr>()[i].getInt();
-    expectedShape[i] = operandType.getDimSize(permutedDim);
-  }
-
-  auto expectedType =
-      RankedTensorType::get(expectedShape, resultType.getElementType());
-  if (failed(verifyCompatibleShape(resultType, expectedType))) {
-    return op.emitOpError(llvm::formatv(
-        "result type {0} is incompatible with the expected type {1}",
-        resultType, expectedType));
-  }
-
-  return success();
-}
-
 LogicalResult TransposeOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
@@ -5038,6 +4989,48 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
       shape_values);
   reifiedReturnShapes.push_back(output_shape);
 
+  return success();
+}
+
+// Method for InferTypeOpInterface: infer the return type from the operand type
+// and the permutation.
+LogicalResult TransposeOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> loc, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnTypes) {
+  auto type = operands[0].getType();
+  auto rankedTy = type.dyn_cast<RankedTensorType>();
+  if (!rankedTy) {
+    auto shapedTy = type.dyn_cast<ShapedType>();
+    if (!shapedTy)
+      return emitOptionalError(loc,
+                               "expected shaped type operand, got: ", type);
+    inferredReturnTypes.emplace_back(shapedTy);
+    return success();
+  }
+  auto permutation = attributes.getAs<DenseIntElementsAttr>("permutation");
+  int64_t rank = rankedTy.getRank();
+  if (!permutation)
+    return emitOptionalError(loc,
+                             "missing permutation attribute on TransposeOp");
+
+  if (permutation.getType().getRank() != 1)
+    return emitOptionalError(loc, "TransposeOp permutation has rank ",
+                             permutation.getType().getRank(),
+                             " instead of rank 1");
+
+  if (permutation.size() != rank)
+    return emitOptionalError(loc, "TransposeOp operand rank ", rank,
+                             " does not match permutation size ",
+                             permutation.size());
+
+  SmallVector<int64_t> resultShape;
+  ArrayRef<int64_t> inputShape = rankedTy.getShape();
+  for (int64_t dim : permutation.getValues<int64_t>()) {
+    if (dim >= rank) return failure();
+    resultShape.push_back(inputShape[dim]);
+  }
+  inferredReturnTypes.emplace_back(resultShape, rankedTy.getElementType());
   return success();
 }
 

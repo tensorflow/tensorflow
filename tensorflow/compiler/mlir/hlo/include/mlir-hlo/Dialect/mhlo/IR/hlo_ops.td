@@ -1956,7 +1956,8 @@ def HLO_TraceOp: HLO_Op<"trace", []> {
 }
 
 def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+      [NoSideEffect, SameOperandsAndResultElementType,
+       InferTensorTypeWithReify]> {
   let summary = "Transpose operator";
   let description = [{
     Permutes the dimensions of `operand` according to the given `permutation`.
@@ -1970,6 +1971,13 @@ def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
     I64ElementsAttr:$permutation
   );
   let results = (outs HLO_Tensor);
+
+  let extraClassDeclaration = [{
+    // Method from  InferTypeOpInterface interface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 
   let hasFolder = 1;
   let hasCanonicalizer = 1;
