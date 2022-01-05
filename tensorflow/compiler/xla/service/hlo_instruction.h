@@ -2008,6 +2008,7 @@ class HloInstruction {
 
   // Delegates to HloCustomCallInstruction::custom_call_target.
   const std::string& custom_call_target() const;
+  void set_custom_call_target(absl::string_view target);
 
   // Delegates to HloPadInstruction::padding_config.
   const PaddingConfig& padding_config() const;

@@ -4586,6 +4586,9 @@ void HloInstruction::set_scatter(HloComputation* computation) {
 const std::string& HloInstruction::custom_call_target() const {
   return Cast<HloCustomCallInstruction>(this)->custom_call_target();
 }
+void HloInstruction::set_custom_call_target(absl::string_view target) {
+  Cast<HloCustomCallInstruction>(this)->set_custom_call_target(target);
+}
 
 const PaddingConfig& HloInstruction::padding_config() const {
   return Cast<HloPadInstruction>(this)->padding_config();
