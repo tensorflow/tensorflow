@@ -12,6 +12,7 @@ tfrt_cc_library(
     srcs = ["tf_cpurt_clustering.cc"],
     hdrs = ["tf_cpurt_clustering.h"],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "@llvm-project//llvm:Support",
