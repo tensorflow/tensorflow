@@ -17,16 +17,18 @@
 
 * `tf.keras`:
 
-  *   Added `tf.keras.optimizers.experimental.Optimizer`. The reworked
-      optimizer gives more control over different phases of optimizer calls,
-      and is easier to customize. We provide Adam, SGD, Adadelta, AdaGrad and
-      RMSprop optimizers based on `tf.keras.optimizers.experimental.Optimizer`.
-      Generally the new optimizers work in the same way as the old ones,
-      but support new constructor arguments. In the future,
-      the symbols `tf.keras.optimizers.Optimizer`/`Adam`/etc will point
-      to the new optimizers, and the previous generation of optimizers will
-      be moved to `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
+  * Added `tf.keras.optimizers.experimental.Optimizer`. The reworked
+    optimizer gives more control over different phases of optimizer calls,
+    and is easier to customize. We provide Adam, SGD, Adadelta, AdaGrad and
+    RMSprop optimizers based on `tf.keras.optimizers.experimental.Optimizer`.
+    Generally the new optimizers work in the same way as the old ones,
+    but support new constructor arguments. In the future,
+    the symbols `tf.keras.optimizers.Optimizer`/`Adam`/etc will point
+    to the new optimizers, and the previous generation of optimizers will
+    be moved to `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
+  * Added L2 unit normalization layer `tf.keras.layers.UnitNormalization`.
 
+  
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
