@@ -61,7 +61,7 @@ if '--project_name' in sys.argv:
 
 # Returns standard if a tensorflow-* package is being built, and nightly if a
 # tf_nightly-* package is being built.
-def if_nightly(standard, nightly):
+def standard_or_nightly(standard, nightly):
   return nightly if 'tf_nightly' in project_name else standard
 
 # All versions of TF need these packages. We indicate the widest possible range
@@ -77,8 +77,7 @@ REQUIRED_PACKAGES = [
     'absl-py >= 0.4.0',
     'astunparse >= 1.6.0',
     'flatbuffers >= 1.12',
-    # gast versions above 0.4.0 are incompatible with some of TF's tests.
-    # TODO(angerson): File a bug for these incompatible tests and the limitation
+    # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
@@ -104,13 +103,13 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    if_nightly('tensorboard >= 2.7, < 2.8',
-               'tb-nightly ~= 2.8.0.a'),
-    if_nightly('tensorflow_estimator >= 2.8.0rc0, < 2.9',
-               'tf-estimator-nightly ~= 2.9.0.dev'),
-    if_nightly('keras >= 2.8.0rc0, < 2.9',
-               'keras-nightly ~= 2.9.0.dev'),
-]))
+    standard_or_nightly('tensorboard >= 2.7, < 2.8',
+                        'tb-nightly ~= 2.8.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.8.0rc0, < 2.9',
+                        'tf-estimator-nightly ~= 2.9.0.dev'),
+    standard_or_nightly('keras >= 2.8.0rc0, < 2.9',
+                        'keras-nightly ~= 2.9.0.dev'),
+]
 REQUIRED_PACKAGES = [ p for p in REQUIRED_PACKAGES if p is not None ]
 
 DOCLINES = __doc__.split('\n')
@@ -135,7 +134,7 @@ CONSOLE_SCRIPTS = [
     # TensorBoard command, pip will inappropriately remove it during install,
     # even though the command is not removed, just moved to a different wheel.
     # We exclude it anyway if building tf_nightly.
-    if_nightly(None, 'tensorboard = tensorboard.main:run_main')
+    standard_or_nightly('tensorboard = tensorboard.main:run_main', None),
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
     'estimator_ckpt_converter = '
     'tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
