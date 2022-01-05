@@ -197,14 +197,15 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
                               llvm::ArrayRef<int64_t> tile_sizes,
                               llvm::ArrayRef<int64_t> unroll_factors,
                               int64_t max_supported_rank, bool enable_ftz,
-                              bool index_64bit, bool cpu_codegen) {
+                              bool index_64bit, bool cpu_codegen,
+                              bool jit_i64_indexed_for_large_tensors) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
           architectures, tile_sizes, unroll_factors, max_supported_rank,
-          enable_ftz, cpu_codegen));
+          enable_ftz, cpu_codegen, jit_i64_indexed_for_large_tensors));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
@@ -497,14 +498,15 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
     bool print_llvmir, bool enable_ftz, bool index_64bit, bool cpu_codegen, 
-    bool jit_compile) {
+    bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
   TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
                       SetupContextAndParseModule(context, tf_code));
 
   if (jit_compile) {
     TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
         module.get(), architectures, tile_sizes, unroll_factors,
-        max_supported_rank, enable_ftz, index_64bit, cpu_codegen));
+        max_supported_rank, enable_ftz, index_64bit, cpu_codegen
+        ,jit_i64_indexed_for_large_tensors));
   } else {
     TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
                                       max_supported_rank, cpu_codegen));

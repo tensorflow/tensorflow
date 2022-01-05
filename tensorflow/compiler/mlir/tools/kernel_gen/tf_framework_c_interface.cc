@@ -179,7 +179,8 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
             max_supported_rank, /*embed_memref_prints=*/false,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
             index_64bit, cpu_codegen,
-            /*jit_compile=*/false);
+            /*jit_compile=*/false,
+            /*jit_i64_indexed_for_large_tensors=*/false);
     if (!status_or_module.ok()) return nullptr;
     module = std::move(status_or_module.ValueOrDie());
 

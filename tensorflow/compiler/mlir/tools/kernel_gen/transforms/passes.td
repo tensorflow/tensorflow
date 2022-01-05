@@ -58,31 +58,8 @@ def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
              "Enable the 64 bit indexing for GPU kernels">,
       Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
              "CPU codegen (false implies GPU)">,
-  ];
-}
-
-def IndexSizerPass : FunctionPass<"tf-64bit-indexer-invocation"> {
-  let summary = "Pass to rewrite all TF operations to JIT invocations."
-      " This pass creates the dispatch code, however, when the input argument"
-      " size is too large, it only creates the JIT invocation pass.";
-  let constructor = "transforms::Create64BitIndexerInvocationPass()";
-  let options = [
-      ListOption<"architectures_", "architectures", "std::string",
-                 "Target architectures",
-                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
-      ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
-                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
-      ListOption<"unroll_factors_", "unroll-factors", "int64_t",
-                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore, "
-                 "llvm::cl::MiscFlags::CommaSeparated">,
-      Option<"max_supported_rank_", "max-supported-rank", "int64_t",
-             /*default=*/"", "Max rank that this kernel supports">,
-      Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
-             "Enable the denormal flush to zero mode when generating code">,
-      Option<"index_64bit_", "index_64bit", "bool", /*default=*/"",
-             "Enable the 64 bit indexing for GPU kernels">,
-      Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
-             "CPU codegen (false implies GPU)">,
+      Option<"jit_i64_indexed_for_large_tensors_", "jit_i64_indexed_for_large_tensors", 
+      "bool", /*default=*/"true", "Enable the AOT JIT kernel gen path">,
   ];
 }
 
