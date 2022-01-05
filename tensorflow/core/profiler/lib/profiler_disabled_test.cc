@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <utility>
 
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/lib/profiler_lock.h"
 
@@ -22,10 +23,9 @@ namespace profiler {
 namespace {
 
 TEST(ProfilerDisabledTest, ProfilerDisabledTest) {
+  setenv("TF_DISABLE_PROFILING", "1", /*overwrite=*/1);
   StatusOr<ProfilerLock> profiler_lock = ProfilerLock::Acquire();
   EXPECT_FALSE(profiler_lock.ok());
-  EXPECT_THAT(profiler_lock.status().error_message(),
-              ::testing::EndsWith("TF_DISABLE_PROFILING."));
 }
 
 }  // namespace

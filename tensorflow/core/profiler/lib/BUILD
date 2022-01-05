@@ -286,9 +286,9 @@ tf_cc_test(
 tf_cc_test(
     name = "profiler_disabled_test",
     srcs = ["profiler_disabled_test.cc"],
-    env = {"TF_DISABLE_PROFILING": "1"},
     deps = [
         ":profiler_lock",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
