@@ -126,7 +126,8 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
 
   auto algo = rewriter.create<tfrt::gpu::BlasGemmAlgoOp>(loc, algorithm);
 
-  auto blas_handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, stream);
+  Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
+  auto handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, context);
 
   auto lhs_op = lhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
   auto rhs_op = rhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
@@ -145,7 +146,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
         rewriter.create<tfrt::compiler::ConstantI32Op>(loc, batch_size);
     return rewriter
         .create<tfrt::gpu::BlasGemmBatchExOp>(
-            loc, chain.getType(), blas_handle, lhs_op, rhs_op, m, n, k,
+            loc, chain.getType(), handle, stream, lhs_op, rhs_op, m, n, k,
             const_alpha, lhs_matrix.data, data_type, lda, lhs_stride,
             rhs_matrix.data, data_type, ldb, rhs_stride, const_beta,
             output_matrix.data, data_type, ldc, output_stride, batch,
@@ -155,7 +156,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
 
   return rewriter
       .create<tfrt::gpu::BlasGemmOp>(
-          loc, chain.getType(), blas_handle, lhs_op, rhs_op, m, n, k,
+          loc, chain.getType(), handle, stream, lhs_op, rhs_op, m, n, k,
           const_alpha, lhs_matrix.data, data_type, lda, rhs_matrix.data,
           data_type, ldb, const_beta, output_matrix.data, data_type, ldc,
           compute_type, algo, chain)
