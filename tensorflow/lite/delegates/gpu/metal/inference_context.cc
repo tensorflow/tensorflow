@@ -191,10 +191,10 @@ absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
   return absl::OkStatus();
 }
 
-absl::Status ReserveGraphTensors(
-    const InferenceContext::CreateInferenceInfo& create_info,
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    TensorReserver* tensor_reserver) {
+absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
+                                 const GpuInfo& gpu_info,
+                                 const GraphFloat32& graph,
+                                 TensorReserver* tensor_reserver) {
   ValueId max_id = 0;
   auto tensors = graph.values();
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
@@ -251,10 +251,11 @@ absl::Status ReserveGraphTensors(
   return absl::OkStatus();
 }
 
-absl::Status ConvertOperations(
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    const InferenceContext::CreateInferenceInfo& create_info,
-    TensorReserver* tensor_reserver, InferenceContext::GpuModel* gpu_model) {
+absl::Status ConvertOperations(const GpuInfo& gpu_info,
+                               const GraphFloat32& graph,
+                               const CreateGpuModelInfo& create_info,
+                               TensorReserver* tensor_reserver,
+                               GpuModel* gpu_model) {
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
   const auto values = graph.values();
   for (auto value : values) {
@@ -358,7 +359,7 @@ absl::Status ConvertOperations(
   return absl::OkStatus();
 }
 
-absl::Status Merge(InferenceContext::GpuModel* gpu_model) {
+absl::Status Merge(GpuModel* gpu_model) {
   std::set<ValueId> ready_tensors;
   for (const auto& input : gpu_model->input_ids_and_refs) {
     ready_tensors.insert(input.first);
@@ -405,8 +406,7 @@ absl::Status Merge(InferenceContext::GpuModel* gpu_model) {
   return absl::OkStatus();
 }
 
-void CopyExternals(const GraphFloat32& graph,
-                   InferenceContext::GpuModel* gpu_model) {
+void CopyExternals(const GraphFloat32& graph, GpuModel* gpu_model) {
   const auto inputs = graph.inputs();
   for (const auto& value : inputs) {
     gpu_model->input_ids_and_refs.push_back({value->id, value->tensor.ref});
@@ -423,10 +423,9 @@ void CopyExternals(const GraphFloat32& graph,
   }
 }
 
-absl::Status GraphToGpuModel(
-    const InferenceContext::CreateInferenceInfo& create_info,
-    const GraphFloat32& graph, const GpuInfo& gpu_info,
-    InferenceContext::GpuModel* gpu_model) {
+absl::Status GraphToGpuModel(const CreateGpuModelInfo& create_info,
+                             const GraphFloat32& graph, const GpuInfo& gpu_info,
+                             GpuModel* gpu_model) {
   TensorReserver tensor_reserver;
   RETURN_IF_ERROR(
       ReserveGraphTensors(create_info, gpu_info, graph, &tensor_reserver));
@@ -444,7 +443,7 @@ absl::Status GraphToGpuModel(
 }  // namespace
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
-    const CreateInferenceInfo& create_info, GraphFloat32* graph,
+    const CreateGpuModelInfo& create_info, GraphFloat32* graph,
     id<MTLDevice> device_id) {
   RETURN_IF_ERROR(RunGraphTransforms(graph));
   RETURN_IF_ERROR(InitFromGraph(create_info, *graph, device_id));
@@ -452,7 +451,7 @@ absl::Status InferenceContext::InitFromGraphWithTransforms(
 }
 
 absl::Status InferenceContext::InitFromGraph(
-    const CreateInferenceInfo& create_info, const GraphFloat32& graph,
+    const CreateGpuModelInfo& create_info, const GraphFloat32& graph,
     id<MTLDevice> device_id) {
   device_ = device_id;
   MetalDevice metal_device(device_id);

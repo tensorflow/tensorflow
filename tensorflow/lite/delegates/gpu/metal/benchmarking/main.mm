@@ -133,7 +133,7 @@ absl::Status TestCorrectnessVsTfliteCPU(const std::unique_ptr<FlatBufferModel>& 
     precision = CalculationsPrecision::F32;
   }
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = precision;
   create_info.storage_type = GetFastestStorageType(gpu_info);
   create_info.hints.Add(ModelHints::kAllowSpecialKernels);
@@ -200,7 +200,7 @@ absl::Status GPUBenchmark(GraphFloat32* graph, int num_tests, int iterations,
     precision = CalculationsPrecision::F32;
   }
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = precision;
   create_info.storage_type = GetFastestStorageType(gpu_info);
   create_info.hints.Add(ModelHints::kAllowSpecialKernels);
