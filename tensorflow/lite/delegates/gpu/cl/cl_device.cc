@@ -139,6 +139,8 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
       GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
   info.opencl_info.opencl_c_version =
       GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
+  info.opencl_info.driver_version =
+      GetDeviceInfo<std::string>(id, CL_DRIVER_VERSION);
   const std::string gpu_description = absl::StrCat(
       info.opencl_info.device_name, " ", info.opencl_info.vendor_name, " ",
       info.opencl_info.opencl_c_version);

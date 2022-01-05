@@ -305,6 +305,7 @@ struct OpenClInfo {
   std::string vendor_name;
   std::string opencl_c_version;
   std::string platform_version;
+  std::string driver_version;
 
   OpenClVersion cl_version;
 
