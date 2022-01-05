@@ -1048,12 +1048,8 @@ LogicalResult ConvertTFAllOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_all_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_all_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceAllOp(
-      rewriter, op, output_type, tf_all_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_all_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1074,12 +1070,8 @@ LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_any_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_any_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceAnyOp(
-      rewriter, op, output_type, tf_any_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_any_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1100,12 +1092,8 @@ LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_max_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_max_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceMaxOp(
-      rewriter, op, output_type, tf_max_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_max_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1126,12 +1114,8 @@ LogicalResult ConvertTFMinOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_min_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_min_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceMinOp(
-      rewriter, op, output_type, tf_min_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_min_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1152,12 +1136,8 @@ LogicalResult ConvertTFMeanOp::matchAndRewrite(
   if (!matchPattern(tf_mean_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_mean_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceMeanOp(
-      rewriter, op, output_type, tf_mean_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_mean_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1178,12 +1158,8 @@ LogicalResult ConvertTFProdOp::matchAndRewrite(
   if (!matchPattern(tf_prod_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_prod_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceProdOp(
-      rewriter, op, output_type, tf_prod_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_prod_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1204,12 +1180,8 @@ LogicalResult ConvertTFSumOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_sum_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_sum_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceSumOp(
-      rewriter, op, output_type, tf_sum_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_sum_op.input(), axes_elems);
 
   if (!result) return failure();
 
