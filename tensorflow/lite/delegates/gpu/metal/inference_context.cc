@@ -894,6 +894,14 @@ uint64_t InferenceContext::GetIntermediateTensorsSize() const {
   return total_memory;
 }
 
+uint64_t InferenceContext::GetConstantTensorsSize() const {
+  uint64_t total_size = 0;
+  for (const auto& node : nodes_) {
+    total_size += node.task.GetGpuOperation().const_args_size_;
+  }
+  return total_size;
+}
+
 void InferenceContext::EncodeWithCommandBuffer(
     id<MTLCommandBuffer> command_buffer) {
   for (int i = 0; i < nodes_.size(); ++i) {

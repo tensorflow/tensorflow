@@ -172,6 +172,7 @@ class InferenceContext {
   // Returns size in bytes for all intermediate(runtime) tensors that owned by
   // this inference context. Do not include constant tensors.
   uint64_t GetIntermediateTensorsSize() const;
+  uint64_t GetConstantTensorsSize() const;
 
   // Can be used only with ids from external_mutable_tensors in create_info
   // Must be called after initialization and before execution
