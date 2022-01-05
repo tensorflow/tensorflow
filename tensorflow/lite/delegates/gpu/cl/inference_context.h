@@ -78,6 +78,7 @@ class InferenceContext {
   absl::Status Profile(ProfilingCommandQueue* queue, ProfilingInfo* result);
   // for profiling and memory statistics
   uint64_t GetSizeOfMemoryAllocatedForIntermediateTensors() const;
+  uint64_t GetConstantTensorsSize() const;
 
   absl::Status SetInputTensor(ValueId id, const TensorFloat32& tensor,
                               CLCommandQueue* queue);

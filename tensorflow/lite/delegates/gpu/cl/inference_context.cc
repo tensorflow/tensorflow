@@ -1180,6 +1180,14 @@ uint64_t InferenceContext::GetSizeOfMemoryAllocatedForIntermediateTensors()
   return total_memory;
 }
 
+uint64_t InferenceContext::GetConstantTensorsSize() const {
+  uint64_t total_size = 0;
+  for (const auto& node : nodes_) {
+    total_size += node.cl_operation.GetGpuOperation().const_args_size_;
+  }
+  return total_size;
+}
+
 Tensor* InferenceContext::GetTensor(ValueId id) {
   if (external_immutable_tensors_.find(id) !=
       external_immutable_tensors_.end()) {
