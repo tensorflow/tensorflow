@@ -46,6 +46,7 @@ cc_library(
 
 cc_library(
     name = "gpu_model",
+    srcs = ["gpu_model.cc"],
     hdrs = ["gpu_model.h"],
     deps = [
         ":model",
@@ -53,6 +54,7 @@ cc_library(
         ":status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

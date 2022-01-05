@@ -103,6 +103,8 @@ struct GpuModel {
   absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
 };
 
+absl::Status MergeNodes(GpuModel* gpu_model);
+
 }  // namespace gpu
 }  // namespace tflite
 
