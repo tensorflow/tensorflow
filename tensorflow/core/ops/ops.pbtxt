@@ -15104,6 +15104,40 @@ op {
   is_stateful: true
 }
 op {
+  name: "EnqueueTPUEmbeddingBatch"
+  input_arg {
+    name: "batch"
+    type: DT_STRING
+    number_attr: "N"
+  }
+  input_arg {
+    name: "mode_override"
+    type: DT_STRING
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "device_ordinal"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "combiners"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "EnqueueTPUEmbeddingIntegerBatch"
   input_arg {
     name: "batch"
@@ -23490,6 +23524,68 @@ op {
       }
     }
   }
+}
+op {
+  name: "LoadAllTPUEmbeddingParameters"
+  input_arg {
+    name: "parameters"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary1"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary2"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary3"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary4"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary5"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary6"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary7"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  attr {
+    name: "NumTables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  is_stateful: true
 }
 op {
   name: "LoadAndRemapMatrix"
@@ -43114,6 +43210,68 @@ op {
     type: "list(type)"
     has_minimum: true
     minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "RetrieveAllTPUEmbeddingParameters"
+  output_arg {
+    name: "parameters"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary1"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary2"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary3"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary4"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary5"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary6"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary7"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  attr {
+    name: "NumTables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
   }
   is_stateful: true
 }
