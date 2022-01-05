@@ -102,6 +102,15 @@ void GpuExecutable::BefBufferDeleter::operator()(uint8_t* ptr) const {
 #endif
 }
 
+void GpuExecutable::GpuContextCacheDeleter::operator()(
+    tfrt::gpu::GpuContextCache* factory) const {
+#if BEF_EXECUTABLE
+  delete factory;
+#else
+  assert(false && "GpuContextCache only supported with BEF_EXECUTABLE");
+#endif
+}
+
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(GpuExecutable::Params params)
@@ -125,6 +134,9 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   XlaDebugInfoManager::Get()->RegisterModule(
       ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
       debug_buffer_assignment_);
+#if BEF_EXECUTABLE
+  gpu_context_cache_.reset(new tfrt::gpu::GpuContextCache);
+#endif
 }
 
 GpuExecutable::~GpuExecutable() {
@@ -499,26 +511,6 @@ StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
   return runtime_and_queue_or;
 }
 
-// TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc when
-// tf_runtime/backends/gpu:gpu_types can be built in OSS.
-StatusOr<std::unique_ptr<tfrt::gpu::BorrowedGpuStream>> CreateGpuStream(
-    stream_executor::Stream* stream) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  auto se_gpu_executor = static_cast<stream_executor::gpu::GpuExecutor*>(
-      stream->parent()->implementation());
-  auto se_gpu_stream =
-      static_cast<stream_executor::gpu::GpuStream*>(stream->implementation());
-  stream_executor::gpu::GpuContextHandle context_handle =
-      stream_executor::gpu::GpuDriver::GetContextHandle(
-          se_gpu_executor->gpu_context());
-  return absl::make_unique<tfrt::gpu::BorrowedGpuStream>(
-      tfrt::gpu::wrapper::Context(context_handle),
-      tfrt::gpu::wrapper::Stream(se_gpu_stream->gpu_stream()));
-#else
-  return tensorflow::errors::Unimplemented("GPU is not configured.");
-#endif
-}
-
 // TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc.
 tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
     stream_executor::DeviceMemoryBase* data) {
@@ -537,14 +529,14 @@ tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
 
 static Status ExecuteBef(const std::string& module_name,
                          const tfrt::RCReference<tfrt::BEFFile>& bef_file,
+                         tfrt::ResourceContext* resource_ctx,
+                         tfrt::AsyncValue* stream,
                          const ServiceExecutableRunOptions* run_options,
                          const BufferAllocations& buffer_allocations,
                          size_t num_allocations, bool block_host_until_done) {
   XlaDebugInfoManager::Get()->OnModuleStart(module_name);
   auto cleanup = absl::MakeCleanup(
       [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name); });
-
-  se::Stream* main_stream = run_options->stream();
 
   uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -557,9 +549,8 @@ static Status ExecuteBef(const std::string& module_name,
 
   // Create execution context.
   TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
-  auto resource_ctx = std::make_unique<tfrt::ResourceContext>();
   tfrt::RequestContextBuilder request_context_builder(
-      runtime_and_queue.core_runtime->GetHostContext(), resource_ctx.get());
+      runtime_and_queue.core_runtime->GetHostContext(), resource_ctx);
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
     auto error = expected_req_ctx.takeError();
@@ -585,10 +576,7 @@ static Status ExecuteBef(const std::string& module_name,
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
-  TF_ASSIGN_OR_RETURN(auto borrowed_stream, CreateGpuStream(main_stream));
-  args.push_back(
-      static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(*borrowed_stream)
-          .GetAsyncValue());
+  args.push_back(stream);
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (size_t i = 0; i < num_allocations; i++) {
     auto input = buffer_allocations.GetDeviceAddress(i);
@@ -621,8 +609,9 @@ static Status ExecuteBef(const std::string& module_name,
   if (auto* error = result->GetErrorIfPresent())
     return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
-  return MaybeSyncAndProfile(run_options, start_micros,
-                             block_host_until_done ? main_stream : nullptr);
+  return MaybeSyncAndProfile(
+      run_options, start_micros,
+      block_host_until_done ? run_options->stream() : nullptr);
 }
 #endif  // BEF_EXECUTABLE
 
@@ -803,9 +792,27 @@ Status GpuExecutable::ExecuteThunksOrBef(
   if (!bef_file) {
     return InternalError("Failed to load BEF file.");
   }
+
+  // Look up or create a cached GpuContext and ResourceContext from CUcontext.
+  // The ResourceContext holds the results of `tfrt.once @...(%context)`.
+  auto gpu_context = [&] {
+    auto context = static_cast<stream_executor::gpu::GpuExecutor*>(
+                       run_options->stream()->parent()->implementation())
+                       ->gpu_context()
+                       ->context();
+    tensorflow::mutex_lock lock(module_handle_mutex_);
+    return gpu_context_cache_->GetOrCreate(context);
+  }();
+  auto stream = static_cast<stream_executor::gpu::GpuStream*>(
+                    run_options->stream()->implementation())
+                    ->gpu_stream();
+  auto borrowed_stream =
+      tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream);
+
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
-  return ExecuteBef(module_name_, bef_file, run_options, buffer_allocations,
+  return ExecuteBef(module_name_, bef_file, gpu_context.second,
+                    borrowed_stream.get(), run_options, buffer_allocations,
                     allocations_.size(), block_host_until_done);
 #else   // BEF_EXECUTABLE
   if (!absl::holds_alternative<OwnedThunkSchedule>(thunks_or_bef_)) {

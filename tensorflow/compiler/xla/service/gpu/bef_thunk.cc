@@ -149,8 +149,7 @@ class BefThunk : public Thunk {
   // use during execution. The resource contexts cache the loaded modules.
   tensorflow::mutex mutex_;
   absl::optional<GpuModuleData> gpu_module_data_ TF_GUARDED_BY(mutex_);
-  absl::flat_hash_map<CUcontext, std::unique_ptr<tfrt::ResourceContext>>
-      resource_contexts_ TF_GUARDED_BY(mutex_);
+  tfrt::gpu::GpuContextCache gpu_context_cache_ TF_GUARDED_BY(mutex_);
 };
 
 }  // namespace
@@ -421,18 +420,6 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
                    std::move(bef_result.first), std::move(bef_result.second)));
 }
 
-// Wrap the GPU stream specified in 'params' (initialized by the StreamExecutor)
-// to be passed to BEF functions as AsyncValueRef<GpuStream>.
-static auto CreateGpuStream(const Thunk::ExecuteParams& params) {
-  auto se_gpu_executor = static_cast<stream_executor::gpu::GpuExecutor*>(
-      params.stream->parent()->implementation());
-  auto se_gpu_stream = static_cast<stream_executor::gpu::GpuStream*>(
-      params.stream->implementation());
-  return tfrt::gpu::BorrowedGpuStream(
-      tfrt::gpu::wrapper::Context(se_gpu_executor->gpu_context()->context()),
-      tfrt::gpu::wrapper::Stream(se_gpu_stream->gpu_stream()));
-}
-
 // Wrap the GPU buffer specified in 'slice' to be passed to BEF functions as
 // AsyncValueRef<GpuBuffer>.
 static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
@@ -469,8 +456,7 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
 }
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
-CreateDefaultExecutionContext(
-    tfrt::ResourceContext* resource_context = nullptr) {
+CreateDefaultExecutionContext(tfrt::ResourceContext* resource_context) {
   return CreateExecutionContext(
       [](tfrt::RequestContextBuilder& request_context_builder) {
         return Status::OK();
@@ -608,7 +594,21 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
                                         "' function.");
   }
 
-  tfrt::gpu::BorrowedGpuStream stream = CreateGpuStream(params);
+  // Look up or create a cached GpuContext and ResourceContext from CUcontext.
+  // The ResourceContext holds the results of `tfrt.once @...(%context)`.
+  auto gpu_context = [&] {
+    auto context = static_cast<stream_executor::gpu::GpuExecutor*>(
+                       params.stream->parent()->implementation())
+                       ->gpu_context()
+                       ->context();
+    tensorflow::mutex_lock lock(mutex_);
+    return gpu_context_cache_.GetOrCreate(context);
+  }();
+  auto stream = static_cast<stream_executor::gpu::GpuStream*>(
+                    params.stream->implementation())
+                    ->gpu_stream();
+  auto borrowed_stream =
+      tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream);
 
   // Create execution context.
   std::unique_ptr<tfrt::ExecutionContext> exec_ctx;
@@ -626,24 +626,13 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 #endif  // XLA_ENABLE_XCCL
   if (!exec_ctx) {
-    if (kind() == Thunk::kKernel || kind() == Thunk::kConvolution) {
+    if (kind() == Thunk::kKernel) {
       tensorflow::mutex_lock lock(mutex_);
-      using AsyncStreamRef = tfrt::AsyncValueRef<tfrt::gpu::GpuStream>;
-      CUcontext context = static_cast<AsyncStreamRef>(stream)->context()->get();
-      auto it = resource_contexts_.find(context);
-      if (it == resource_contexts_.end()) {
-        it = resource_contexts_.emplace_hint(it, context,
-                                             new tfrt::ResourceContext());
-      }
-      if (kind() == Thunk::kKernel) {
-        TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
-                                          gpu_module_data_, it->second.get()));
-      } else {  // kind() == Thunk::kConvolution
-        TF_ASSIGN_OR_RETURN(exec_ctx,
-                            CreateDefaultExecutionContext(it->second.get()));
-      }
+      TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
+                                        gpu_module_data_, gpu_context.second));
     } else {
-      TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
+      TF_ASSIGN_OR_RETURN(exec_ctx,
+                          CreateDefaultExecutionContext(gpu_context.second));
     }
   }
 
@@ -652,8 +641,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
-  args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
-                     .GetAsyncValue());
+  args.push_back(borrowed_stream.get());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (auto& buffer : buffers_) {
     buffers.push_back(CreateGpuBuffer(params, buffer));

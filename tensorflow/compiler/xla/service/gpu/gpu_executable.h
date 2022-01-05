@@ -42,6 +42,12 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
+namespace tfrt {
+namespace gpu {
+class GpuContextCache;
+}
+}  // namespace tfrt
+
 namespace xla {
 namespace gpu {
 
@@ -54,6 +60,9 @@ class GpuExecutable : public Executable {
   struct BefBufferDeleter {
     void operator()(uint8_t* ptr) const;
     size_t size;
+  };
+  struct GpuContextCacheDeleter {
+    void operator()(tfrt::gpu::GpuContextCache* factory) const;
   };
 
  public:
@@ -251,6 +260,9 @@ class GpuExecutable : public Executable {
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
+
+  std::unique_ptr<tfrt::gpu::GpuContextCache, GpuContextCacheDeleter>
+      gpu_context_cache_ TF_GUARDED_BY(module_handle_mutex_);
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
