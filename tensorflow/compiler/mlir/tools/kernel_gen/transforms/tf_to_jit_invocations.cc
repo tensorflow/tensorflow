@@ -50,17 +50,15 @@ namespace {
 constexpr int i32BitLimit = 4294967296;
 using shape::ShapeOfOp;
 
-bool IsUnaryTFOperation(Operation *op) {
-  return op != nullptr &&
-         op->getDialect() ==
-             op->getContext()->getLoadedDialect<TF::TensorFlowDialect>() &&
-             op->getNumOperands() == 1;
-}
-
 bool IsTFOperation(Operation *op) {
   return op != nullptr &&
          op->getDialect() ==
              op->getContext()->getLoadedDialect<TF::TensorFlowDialect>();
+}
+
+bool IsUnaryTFOperation(Operation *op) {
+  return IsTFOperation(op) &&
+             op->getNumOperands() == 1;
 }
 
 struct ModuleParameters {
@@ -284,26 +282,10 @@ struct TFT64BitIndexerPattern : public RewritePattern {
     {
         return failure();
     }
-    SmallVector<Operation *, 16> cluster;
-    llvm::SmallPtrSet<Value, 16> operand_set, result_set;
-    Operation *it = op;
-    while (IsTFOperation(it)) {
-      // Find results that escape the JIT compile region.
-      for (auto &use : it->getUses()) {
-        if (!llvm::is_contained(cluster, use.getOwner()))
-          result_set.insert(use.get());
-      }
-
-      // Update JIT region operands and results.
-      for (Value v : it->getResults()) operand_set.erase(v);
-      for (Value v : it->getOperands()) operand_set.insert(v);
-      cluster.push_back(it);
-      it = it->getPrevNode();
-    }
 
     // Introduce order to the operands and results.
-    auto operands = llvm::to_vector<16>(operand_set);
-    auto results = llvm::to_vector<16>(result_set);
+    auto operands = llvm::to_vector<16>(op->getOperands());
+    auto results = llvm::to_vector<16>(op->getResults());
     auto operand_types = llvm::to_vector<16>(
         llvm::map_range(operands, [](Value v) { return v.getType(); }));
     auto result_types = llvm::to_vector<16>(
@@ -332,7 +314,7 @@ struct TFT64BitIndexerPattern : public RewritePattern {
                         for (auto it : llvm::zip(operands, block->getArguments()))
                           bvm.map(std::get<0>(it), std::get<1>(it));
                         rewriter.setInsertionPointToStart(block);
-                        for (Operation *it : llvm::reverse(cluster)) rewriter.clone(*it, bvm);
+                        rewriter.clone(*op, bvm);
                         auto mapped_results = llvm::to_vector<16>(
                             llvm::map_range(results, [&](Value v) { return bvm.lookup(v); }));
                         rewriter.create<tf_framework::JITCompileYieldOp>(loc, TypeRange{},
