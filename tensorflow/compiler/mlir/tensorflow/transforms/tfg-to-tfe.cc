@@ -88,7 +88,7 @@ static mlir::LogicalResult ReformatOpAttributes(
         parsed_name.has_id = true;
       }
       output.push_back(mlir::NamedAttribute(
-          mlir::Identifier::get("device", context),
+          mlir::StringAttr::get(context, "device"),
           mlir::StringAttr::get(
               context,
               tensorflow::DeviceNameUtils::ParsedNameToString(parsed_name))));

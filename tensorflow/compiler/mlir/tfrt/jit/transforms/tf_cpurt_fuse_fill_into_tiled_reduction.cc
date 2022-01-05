@@ -35,7 +35,6 @@ using mlir::BlockAndValueMapping;
 using mlir::BlockArgument;
 using mlir::dyn_cast;
 using mlir::failure;
-using mlir::Identifier;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;

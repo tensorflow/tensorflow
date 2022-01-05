@@ -1695,7 +1695,7 @@ Status HloToLhloModule(const BufferAssignment& assignment,
                     lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
 
   module->setLoc(mlir::NameLoc::get(
-      mlir::Identifier::get(hlo_module.name(), module.getContext())));
+      mlir::StringAttr::get(module.getContext(), hlo_module.name())));
 
   // Store the HloModule's unique_id in the MLIR module.
   Builder builder(module.getContext());

@@ -36,7 +36,6 @@ using mlir::BlockAndValueMapping;
 using mlir::dyn_cast;
 using mlir::failure;
 using mlir::FailureOr;
-using mlir::Identifier;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -313,7 +312,7 @@ struct CodegenReductionPass
     auto context = func.getContext();
 
     auto filter = LinalgTransformationFilter(
-                      llvm::None, {Identifier::get("tiled", context)})
+                      llvm::None, {mlir::StringAttr::get(context, "tiled")})
                       .addFilter([](Operation *op) {
                         return success(isCanonicalizedReduction(op));
                       });

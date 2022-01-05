@@ -41,7 +41,7 @@ inline void CopyUnderscoredAttributes(Operation *from, Operation *to) {
 // TODO(b/158769932): This should be a general feature instead post some policy
 // discussion.
 inline void CopyDeviceAndUnderscoredAttributes(Operation *from, Operation *to) {
-  auto device = mlir::Identifier::get("device", from->getContext());
+  auto device = mlir::StringAttr::get(from->getContext(), "device");
   CopyAttributes(from, to, [&device](const NamedAttribute &attr) {
     return attr.getName().strref().front() == '_' || attr.getName() == device;
   });
