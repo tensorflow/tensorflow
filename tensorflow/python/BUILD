@@ -3268,6 +3268,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:kernels_experimental",
         "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
