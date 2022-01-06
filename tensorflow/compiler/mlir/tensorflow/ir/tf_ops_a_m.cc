@@ -1643,10 +1643,10 @@ static LogicalResult inferConvReturnTypes(
   const Value filter = op.filter();
   const TensorType input_ty = input.getType().template cast<TensorType>();
   const TensorType filter_ty = filter.getType().template cast<TensorType>();
-  const StringRef paddings = op.padding().getValue();
+  const StringRef paddings = op.padding();
 
   ArrayRef<Attribute> strides = op.strides().getValue();
-  StringRef data_format = op.data_format().getValue();
+  StringRef data_format = op.data_format();
   ArrayRef<Attribute> dilations = op.dilations().getValue();
 
   tensorflow::TensorFormat format;

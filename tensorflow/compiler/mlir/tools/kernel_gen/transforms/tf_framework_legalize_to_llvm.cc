@@ -437,14 +437,14 @@ class ReportErrorOpConverter
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
     auto module = op->getParentOfType<ModuleOp>();
-    Value message_constant = GenerateErrorMessageConstant(
-        loc, module, adaptor.msg().getValue(), rewriter);
+    Value message_constant =
+        GenerateErrorMessageConstant(loc, module, adaptor.msg(), rewriter);
 
     // Insert function call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
     Value error_code = rewriter.create<LLVM::ConstantOp>(
         loc, typeConverter->convertType(rewriter.getI32Type()),
-        adaptor.error_code());
+        adaptor.error_codeAttr());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, llvm::None, tf_func_ref,
         llvm::makeArrayRef({adaptor.ctx(), error_code, message_constant}));
