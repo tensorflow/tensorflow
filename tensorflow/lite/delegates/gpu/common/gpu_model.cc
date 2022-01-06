@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 
 namespace tflite {
 namespace gpu {
@@ -41,6 +43,76 @@ absl::Status MergeGpuNodes(GpuNode* src, GpuNode* dst) {
 }
 
 }  // namespace
+
+bool IsAssociativeLinkableOp(const Node& node,
+                             const std::vector<Value*>& inputs,
+                             const std::vector<Value*>& outputs) {
+  if (inputs.size() == 1) {
+    return false;
+  }
+  const OperationType op_type = OperationTypeFromString(node.operation.type);
+  if (op_type != OperationType::ADD && op_type != OperationType::MUL) {
+    return false;
+  }
+
+  const auto dst_shape = outputs[0]->tensor.shape;
+  for (int i = 0; i < inputs.size(); ++i) {
+    const auto src_shape = inputs[i]->tensor.shape;
+    if (dst_shape.b != src_shape.b && src_shape.b == 1) {
+      return false;
+    }
+    if (dst_shape.h != src_shape.h && src_shape.h == 1) {
+      return false;
+    }
+    if (dst_shape.w != src_shape.w && src_shape.w == 1) {
+      return false;
+    }
+    if (dst_shape.c != src_shape.c && src_shape.c == 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
+                                            const TensorDescriptor& tensor_desc,
+                                            const BHWC& shape,
+                                            DataType data_type) {
+  if (tensor_desc.data_type != data_type) {
+    return absl::InvalidArgumentError(
+        "Global precision and precision of predefined/external tensors must be "
+        "synchronized.");
+  }
+  const bool tensor_supported_layout = tensor_desc.layout == Layout::HWDC ||
+                                       tensor_desc.layout == Layout::BHWDC ||
+                                       tensor_desc.layout == Layout::HWC ||
+                                       tensor_desc.layout == Layout::BHWC;
+  if (!tensor_supported_layout) {
+    return absl::InvalidArgumentError(
+        "Currently no support of this layouts for spatial tensors.");
+  }
+  const bool has_depth =
+      tensor_desc.layout == Layout::HWDC || tensor_desc.layout == Layout::BHWDC;
+  if (has_depth) {
+    return absl::InvalidArgumentError(
+        "Currently no support of Depth dimension in predefined/external "
+        "tensors.");
+  }
+  const bool has_batch =
+      tensor_desc.layout == Layout::BHWC || tensor_desc.layout == Layout::BHWDC;
+  if (has_batch && shape.b == 1) {
+    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
+  }
+  if (!has_batch && shape.b != 1) {
+    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
+  }
+  if (!CanCreateTensorWithShape(gpu_info, shape, tensor_desc).ok()) {
+    return absl::UnavailableError(
+        "Current device can not allocate tensor with this shape for "
+        "predefined/external descriptor.");
+  }
+  return absl::OkStatus();
+}
 
 absl::Status MergeNodes(GpuModel* gpu_model) {
   absl::flat_hash_set<ValueId> ready_tensors;

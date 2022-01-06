@@ -103,6 +103,15 @@ struct GpuModel {
   absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
 };
 
+bool IsAssociativeLinkableOp(const Node& node,
+                             const std::vector<Value*>& inputs,
+                             const std::vector<Value*>& outputs);
+
+absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
+                                            const TensorDescriptor& tensor_desc,
+                                            const BHWC& shape,
+                                            DataType data_type);
+
 absl::Status MergeNodes(GpuModel* gpu_model);
 
 }  // namespace gpu

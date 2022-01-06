@@ -53,8 +53,10 @@ cc_library(
     deps = [
         ":model",
         ":model_hints",
+        ":operations",
         ":status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
