@@ -166,7 +166,6 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:script_ops",
-        "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:test_base",
