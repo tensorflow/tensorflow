@@ -63,6 +63,16 @@ void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
                                        bool enable_ftz, bool index_64bit,
                                        bool cpu_codegen);
 
+/// Populate patterns to rewrite TF operations with 64bit indexing on large tensors.
+void Populate64BitIndexerPatterns(MLIRContext *ctx,
+                                       RewritePatternSet *patterns,
+                                       llvm::ArrayRef<StringRef> architectures,
+                                       llvm::ArrayRef<int64_t> tile_sizes,
+                                       llvm::ArrayRef<int64_t> unroll_factors,
+                                       int64_t max_supported_rank,
+                                       bool enable_ftz, bool index_64bit,
+                                       bool cpu_codegen);
+
 }  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir
