@@ -291,9 +291,11 @@ T GetUpdatedWhileOp(T while_op,
   }
   auto new_while_op = builder.create<T>(while_op->getLoc(), new_operand_types,
                                         new_operands, while_op->getAttrs());
+  int new_index = 0;
   for (int i = 0; i < num_operands; ++i) {
     if (!skip_indices.test(i)) {
-      while_op->getResult(i).replaceAllUsesWith(new_while_op->getResult(i));
+      while_op->getResult(i).replaceAllUsesWith(
+          new_while_op->getResult(new_index++));
     }
   }
   return new_while_op;
