@@ -6400,6 +6400,25 @@ func @xlasort_const() -> (tensor<2x3xi64>) {
 }
 
 //===----------------------------------------------------------------------===//
+// tf.XlaRngBitGenerator legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @xla_rng_bit_generator
+// CHECK-SAME: %[[STATE:.*]]: tensor<2xui64>
+func @xla_rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2", outputs = "_retval0,_retval1"}} {
+  // CHECK-NEXT: %0 = mhlo.constant dense<[10, 12]> : tensor<2xi32>
+  %cst = "tf.Const"() {value = dense<[10, 12]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-NEXT: %1 = mhlo.constant dense<3> : tensor<i32>
+  %cst_0 = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: %2 = "mhlo.rng_bit_generator"(%[[STATE]]) {rng_algorithm = 0 : i32} : (tensor<2xui64>) -> tuple<tensor<2xui64>, tensor<10x12xui32>>
+  // CHECK-NEXT: %3 = "mhlo.get_tuple_element"(%2) {index = 0 : i32} : (tuple<tensor<2xui64>, tensor<10x12xui32>>) -> tensor<2xui64>
+  // CHECK-NEXT: %4 = "mhlo.get_tuple_element"(%2) {index = 1 : i32} : (tuple<tensor<2xui64>, tensor<10x12xui32>>) -> tensor<10x12xui32>
+  // CHECK-NEXT: return %3, %4 : tensor<2xui64>, tensor<10x12xui32>
+  %output_key, %output = "tf.XlaRngBitGenerator"(%cst_0, %arg0, %cst) : (tensor<i32>, tensor<2xui64>, tensor<2xi32>) -> (tensor<2xui64>, tensor<10x12xui32>)
+  return %output_key, %output : tensor<2xui64>, tensor<10x12xui32>
+}
+
+//===----------------------------------------------------------------------===//
 // tf.XlaVariadicV2 legalization
 //===----------------------------------------------------------------------===//
 

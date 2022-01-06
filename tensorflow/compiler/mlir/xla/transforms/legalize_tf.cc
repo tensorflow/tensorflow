@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/util/padding.h"
@@ -7079,6 +7080,57 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
   }
 };
 
+inline llvm::Optional<xla::RandomAlgorithm> TensorFlowRngAlgToXla(
+    tensorflow::Algorithm alg) {
+  if (alg == tensorflow::RNG_ALG_PHILOX) {
+    return xla::RandomAlgorithm::RNG_PHILOX;
+  } else if (alg == tensorflow::RNG_ALG_THREEFRY) {
+    return xla::RandomAlgorithm::RNG_THREE_FRY;
+  } else if (alg == tensorflow::RNG_ALG_AUTO_SELECT) {
+    return xla::RandomAlgorithm::RNG_DEFAULT;
+  }
+  return llvm::None;
+}
+
+// Converts tf.XlaRngBitGenerator op to mhlo.RngBitGenerator op.
+class ConvertXlaRngBitGeneratorOp
+    : public OpRewritePattern<TF::XlaRngBitGeneratorOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaRngBitGeneratorOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    DenseElementsAttr algorithm;
+    if (!(matchPattern(op.algorithm(), m_Constant(&algorithm))) ||
+        algorithm.getType().getRank()) {
+      return op.emitOpError() << "algorithm must be a constant scalar";
+    }
+    auto alg = static_cast<tensorflow::Algorithm>(
+        algorithm.getValues<IntegerAttr>()[0].getInt());
+    auto xla_alg = TensorFlowRngAlgToXla(alg);
+    if (!xla_alg) {
+      return op.emitOpError() << "unknown algorithm";
+    }
+
+    auto rng_bit_generator_op = rewriter.create<mhlo::RngBitGeneratorOp>(
+        loc,
+        mlir::TupleType::get(
+            rewriter.getContext(),
+            {op.getResult(0).getType(), op.getResult(1).getType()}),
+        rewriter.getI32IntegerAttr(xla_alg.getValue()), op.initial_state());
+
+    SmallVector<Value, 2> new_results = {
+        rewriter.create<mhlo::GetTupleElementOp>(
+            loc, rng_bit_generator_op.getResult(), 0),
+        rewriter.create<mhlo::GetTupleElementOp>(
+            loc, rng_bit_generator_op.getResult(), 1)};
+    rewriter.replaceOp(op, new_results);
+
+    return success();
+  }
+};
+
 // Converts tf.XlaVariadicReduceV2 to mhlo.Reduce
 class ConvertXlaVariadicReduceV2Op
     : public OpRewritePattern<TF::XlaVariadicReduceV2Op> {
@@ -7217,6 +7269,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaReduceScatterOp,
+    ConvertXlaRngBitGeneratorOp,
     ConvertXlaSortOp,
     ConvertXlaVariadicReduceV2Op,
     ConvertXlaVariadicSortOp,
