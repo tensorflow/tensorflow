@@ -27,8 +27,11 @@
     to the new optimizers, and the previous generation of optimizers will
     be moved to `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
   * Added L2 unit normalization layer `tf.keras.layers.UnitNormalization`.
+* `tf.lite`:
 
-  
+  * Added TFLite builtin op support for the following TF ops:
+    * `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on CPU.
+
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
