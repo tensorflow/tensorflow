@@ -121,7 +121,6 @@ third_party/cub.BUILD
 third_party/curl.BUILD
 third_party/cython.BUILD
 third_party/dill.BUILD
-third_party/double_conversion.BUILD
 third_party/eigen3/BUILD
 third_party/eigen3/Eigen/Cholesky
 third_party/eigen3/Eigen/Core
