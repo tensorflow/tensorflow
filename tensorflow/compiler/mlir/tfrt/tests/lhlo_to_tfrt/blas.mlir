@@ -23,7 +23,7 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>
   // CHECK-DAG: [[LDC:%[0-9]+]] = tfrt.constant.i32 5
   // CHECK: [[ALGO:%[0-9]+]] = tfrt_gpu.blas.gemm.algo CUBLAS_GEMM_DEFAULT
   // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.blas.create [[CONTEXT]]
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.blas.create{{.*}}([[CONTEXT]])
 
   // CHECK: [[CHAIN:%[0-9]+]] = tfrt_gpu.blas.gemm [[HANDLE]], %arg1
   // CHECK-SAME: CUBLAS_OP_N, CUBLAS_OP_N, [[M]], [[N]], [[K]], [[ALPHA]],
@@ -72,7 +72,7 @@ func @gemm_batch(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x
   // CHECK-DAG: [[LDC:%[0-9]+]] = tfrt.constant.i32 5
   // CHECK: [[ALGO:%[0-9]+]] = tfrt_gpu.blas.gemm.algo CUBLAS_GEMM_DEFAULT
   // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.blas.create [[CONTEXT]]
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.blas.create{{.*}}([[CONTEXT]])
   // CHECK-DAG: [[STRIDEA:%[0-9]+]] = tfrt.constant.i64 20
   // CHECK-DAG: [[STRIDEB:%[0-9]+]] = tfrt.constant.i64 20
   // CHECK-DAG: [[STRIDEC:%[0-9]+]] = tfrt.constant.i64 25
@@ -130,7 +130,7 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
   // CHECK-DAG: [[LDC:%[0-9]+]] = tfrt.constant.i32 5
   // CHECK: [[ALGO:%[0-9]+]] = tfrt_gpu.blas.gemm.algo CUBLAS_GEMM_DEFAULT
   // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.blas.create [[CONTEXT]]
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.blas.create{{.*}}([[CONTEXT]])
 
   // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.blas.gemm [[HANDLE]], %arg1
   // CHECK-SAME: CUBLAS_OP_N, CUBLAS_OP_N, [[M]], [[N]], [[K]], [[ALPHA]],
@@ -173,7 +173,7 @@ func @triangular_solve(%a: memref<2x2xf32>, %b: memref<2x2xf32>, %output: memref
   // CHECK: [[CHAIN0:%[0-9]+]] = tfrt_gpu.mem.copy %arg4, %arg3, %arg1, %arg0
   // CHECK-SAME: : !tfrt_gpu.buffer, !tfrt_gpu.buffer
   // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.blas.create [[CONTEXT]]
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.blas.create{{.*}}([[CONTEXT]])
   // CHECK-DAG: [[M:%[0-9]+]] = tfrt.constant.i32 2
   // CHECK-DAG: [[N:%[0-9]+]] = tfrt.constant.i32 2
   // CHECK-DAG: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 1.000000e+00

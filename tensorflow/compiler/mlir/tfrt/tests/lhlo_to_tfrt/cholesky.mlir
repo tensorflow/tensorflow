@@ -17,7 +17,7 @@ func @cholesky(%input: memref<2x2xf32>, %output: memref<2x2xf32>, %scratch: memr
   // CHECK: [[CHAIN0:%[0-9]+]] = tfrt_gpu.mem.copy %arg3, %arg2, %arg1, %arg0
   // CHECK-SAME: : !tfrt_gpu.buffer, !tfrt_gpu.buffer
   // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.solver.create [[CONTEXT]]
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.solver.create{{.*}}([[CONTEXT]])
   // CHECK-DAG: [[N:%[0-9]+]] = tfrt.constant.i32 2
   // CHECK-DAG: [[BATCH_SIZE:%[0-9]+]] = tfrt.constant.i32 1
   // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.solver.potrf.batch [[HANDLE]], %arg1,
