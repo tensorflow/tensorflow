@@ -66,15 +66,6 @@ bool HasIntersection(const std::vector<ValueId>& vec_ids,
   return false;
 }
 
-bool IsReady(const std::set<ValueId>& ready_tensors, const GpuNode& node) {
-  for (const ValueId in_id : node.inputs) {
-    if (ready_tensors.find(in_id) == ready_tensors.end()) {
-      return false;
-    }
-  }
-  return true;
-}
-
 void AddUsage(ValueId id, int task_index,
               std::map<ValueId, int2>* usage_records) {
   auto it = usage_records->find(id);
@@ -118,15 +109,6 @@ bool IsAssociativeLinkableOp(const tflite::gpu::Node& node,
     }
   }
   return true;
-}
-
-absl::Status MergeGpuNodes(GpuNode* src, GpuNode* dst) {
-  for (int j = 1; j < src->inputs.size(); ++j) {
-    dst->inputs.push_back(src->inputs[j]);
-  }
-  dst->outputs[0] = src->outputs[0];
-  dst->name += " linked : " + src->name;
-  return dst->gpu_operation->AddOperation(src->gpu_operation.get());
 }
 
 // Helper class for creating descriptors for appropriate tensors from
@@ -359,53 +341,6 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
   return absl::OkStatus();
 }
 
-absl::Status Merge(GpuModel* gpu_model) {
-  std::set<ValueId> ready_tensors;
-  for (const auto& input : gpu_model->input_ids_and_refs) {
-    ready_tensors.insert(input.first);
-  }
-  auto& nodes = gpu_model->nodes;
-  for (int i = 0; i < nodes.size(); ++i) {
-    auto& node = nodes[i];
-    for (const auto& out_id : node.outputs) {
-      ready_tensors.insert(out_id);
-    }
-    if (node.outputs.size() != 1) {
-      continue;
-    }
-    std::vector<int> next_nodes;
-    int link_index = 0;
-    for (int j = i + 1; j < nodes.size(); ++j) {
-      for (int k = 0; k < nodes[j].inputs.size(); ++k) {
-        if (nodes[j].inputs[k] == node.outputs[0]) {
-          next_nodes.push_back(j);
-          link_index = k;
-        }
-      }
-    }
-    if (next_nodes.size() != 1 || link_index != 0) {
-      continue;
-    }
-    auto& linkable_node = nodes[next_nodes[0]];
-    if (!linkable_node.gpu_operation->IsLinkable() ||
-        linkable_node.outputs.size() != 1 ||
-        !IsReady(ready_tensors, linkable_node)) {
-      continue;
-    }
-    const auto& original_dst_def =
-        node.gpu_operation->GetDefinition().dst_tensors[0];
-    const auto& link_dst_def =
-        linkable_node.gpu_operation->GetDefinition().dst_tensors[0];
-    if (original_dst_def != link_dst_def) {
-      continue;
-    }
-    RETURN_IF_ERROR(MergeGpuNodes(&linkable_node, &node));
-    nodes.erase(nodes.begin() + next_nodes[0]);
-    i -= 1;
-  }
-  return absl::OkStatus();
-}
-
 void CopyExternals(const GraphFloat32& graph, GpuModel* gpu_model) {
   const auto inputs = graph.inputs();
   for (const auto& value : inputs) {
@@ -432,7 +367,7 @@ absl::Status GraphToGpuModel(const CreateGpuModelInfo& create_info,
   CopyExternals(graph, gpu_model);
   RETURN_IF_ERROR(ConvertOperations(gpu_info, graph, create_info,
                                     &tensor_reserver, gpu_model));
-  RETURN_IF_ERROR(Merge(gpu_model));
+  RETURN_IF_ERROR(MergeNodes(gpu_model));
   gpu_model->tensors = std::move(tensor_reserver.reservations_);
 
   for (auto& node : gpu_model->nodes) {
