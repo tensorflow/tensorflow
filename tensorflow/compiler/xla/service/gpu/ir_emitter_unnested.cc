@@ -4076,7 +4076,7 @@ llvm::Value* IrEmitterUnnested::GetOutputAddressForReduction(
                                               "output_element_address");
 }
 
-llvm::Value* IrEmitterUnnested::EmitBlockId(int64_t num_blocks,
+llvm::Value* IrEmitterUnnested::EmitBlockId(int32_t num_blocks,
                                             llvm::Type* index_ty) {
   llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kBlockIdx, {}, {}, &b_);
@@ -4312,15 +4312,21 @@ llvm::Value* IrEmitterUnnested::EmitThreadId(int64_t threads_per_block,
                           /*isSigned=*/true, "thread.id.x");
 }
 
-IrEmitterUnnested::ThreadIdInfo IrEmitterUnnested::EmitThreadIdInfo(
+StatusOr<IrEmitterUnnested::ThreadIdInfo> IrEmitterUnnested::EmitThreadIdInfo(
     const TilingScheme& tiling_scheme, llvm::Type* index_ty) {
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
   llvm::Value* thread_id_physical =
       EmitThreadId(tiling_scheme.GetNumThreadsPerBlockPhysical(), index_ty);
-  llvm::Value* block_id_physical =
-      EmitBlockId(tiling_scheme.GetNumberOfBlocksPhysical(), index_ty);
+  int64_t num_blocks = tiling_scheme.GetNumberOfBlocksPhysical();
+  if (num_blocks > (int64_t)std::numeric_limits<uint32_t>::max()) {
+    return FailedPrecondition(
+        "Number of physical blocks (%d) does not fit in an i32 in tiling "
+        "scheme: %s",
+        num_blocks, tiling_scheme.ToString());
+  }
+  llvm::Value* block_id_physical = EmitBlockId(num_blocks, index_ty);
 
   // Wait this will break coalescing.
   llvm::Value* thread_id_logical = b_.CreateURem(
@@ -4338,18 +4344,19 @@ IrEmitterUnnested::ThreadIdInfo IrEmitterUnnested::EmitThreadIdInfo(
   llvm::Value* block_exists = b_.CreateICmpULT(
       block_id_logical, constant(tiling_scheme.GetNumberOfBlocks()));
   llvm_ir::EmitEarlyReturn(block_exists, &b_);
-  return {thread_id_logical,
-          /*thread_id_x=*/
-          b_.CreateURem(thread_id_logical, num_threads_x_v, "thread_id.x"),
-          /*thread_id_y=*/
-          b_.CreateUDiv(thread_id_logical, num_threads_x_v, "thread_id.y"),
-          /*lane_id=*/
-          b_.CreateURem(thread_id_logical, constant(WarpSize()), "lane_id"),
-          /*block_id=*/block_id_logical,
-          /*scaling=*/scaling};
+  return {{thread_id_logical,
+           /*thread_id_x=*/
+           b_.CreateURem(thread_id_logical, num_threads_x_v, "thread_id.x"),
+           /*thread_id_y=*/
+           b_.CreateUDiv(thread_id_logical, num_threads_x_v, "thread_id.y"),
+           /*lane_id=*/
+           b_.CreateURem(thread_id_logical, constant(WarpSize()), "lane_id"),
+           /*block_id=*/block_id_logical,
+           /*scaling=*/scaling}};
 }
 
-IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
+StatusOr<IrEmitterUnnested::TilingKernelInfo>
+IrEmitterUnnested::EmitTilingKernel(
     const TilingScheme& tiling_scheme, llvm::Type* index_ty,
     const TileElementGenerator& tile_element_generator) {
   absl::Span<const int64_t> dims_in_elems = tiling_scheme.GetDimsInElems();
@@ -4358,7 +4365,8 @@ IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
     return llvm::ConstantInt::get(index_ty, c);
   };
 
-  ThreadIdInfo thread_id_info = EmitThreadIdInfo(tiling_scheme, index_ty);
+  TF_ASSIGN_OR_RETURN(ThreadIdInfo thread_id_info,
+                      EmitThreadIdInfo(tiling_scheme, index_ty));
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
@@ -4432,7 +4440,7 @@ IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
             });
   }
 
-  return {tile_dimensions, tile_origin, thread_id_info};
+  return {{tile_dimensions, tile_origin, thread_id_info}};
 }
 
 llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
@@ -4587,7 +4595,8 @@ void IrEmitterUnnested::EmitHlo021Tile(
         }
       };
 
-  EmitTilingKernel(tiling_scheme, index_type, tile_generator);
+  TF_CHECK_OK(
+      EmitTilingKernel(tiling_scheme, index_type, tile_generator).status());
 }
 
 namespace {
@@ -5142,7 +5151,7 @@ void IrEmitterUnnested::GenerateElementForReducer(
   }
 }
 
-void IrEmitterUnnested::EmitIRForReduction(
+Status IrEmitterUnnested::EmitIRForReduction(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<HloInstruction* const> instr_index_group,
     HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
@@ -5201,13 +5210,15 @@ void IrEmitterUnnested::EmitIRForReduction(
             result_ir_arrays, input_index, reduction_info, extra_output_gens));
       };
 
-  TilingKernelInfo tiling_kernel_info = EmitTilingKernel(
-      tiling_scheme, index_ty,
-      [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
-          std::array<llvm::Value*, 3> tile_dimensions) {
-        EmitTile(codegen_state.GetTilingScheme(), index, thread_id_info,
-                 tile_dimensions, emit_reduction_element);
-      });
+  TF_ASSIGN_OR_RETURN(
+      TilingKernelInfo tiling_kernel_info,
+      EmitTilingKernel(
+          tiling_scheme, index_ty,
+          [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
+              std::array<llvm::Value*, 3> tile_dimensions) {
+            EmitTile(codegen_state.GetTilingScheme(), index, thread_id_info,
+                     tile_dimensions, emit_reduction_element);
+          }));
 
   KernelSupportLibrary ksl(&b_);
   for (const HloReduceInstruction* reduce : reductions) {
@@ -5225,6 +5236,8 @@ void IrEmitterUnnested::EmitIRForReduction(
       }
     }
   }
+
+  return Status::OK();
 }
 
 namespace {
@@ -5447,13 +5460,13 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
     llvm_ir::AddRangeMetadata(0, instr_index_groups.size(),
                               llvm::cast<llvm::Instruction>(raw_block_id_y));
 
-    ksl.If(StrCat("reduce-group-", i),
-           b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i)), [&] {
-             EmitIRForReduction(fusion, instr_index_groups[i],
-                                fused_computation, &fused_emitter,
-                                result_ir_arrays, reduction_codegen_info,
-                                input_shape);
-           });
+    TF_RETURN_IF_ERROR(ksl.IfWithStatus(
+        StrCat("reduce-group-", i),
+        b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i)), [&] {
+          return EmitIRForReduction(
+              fusion, instr_index_groups[i], fused_computation, &fused_emitter,
+              result_ir_arrays, reduction_codegen_info, input_shape);
+        }));
   }
 
   ThunkSequence thunks;
