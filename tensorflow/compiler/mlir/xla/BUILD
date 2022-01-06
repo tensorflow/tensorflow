@@ -4,30 +4,8 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//babelfish/device/...",
-        "//learning/brain/experimental/dtensor/...",
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/kernels/...",
-        "//learning/brain/google/xla/mlir/...",
-        "//learning/deepmind/jax/ocean/...",
-        "//learning/deepmind/partir/...",
-        "//learning/pathways/data_parallel/tf2xla/...",
-        "//platforms/darwinn/contrib/waymo/...",
-        "//platforms/xla/...",
-        "//tensorflow/compiler/mlir/...",
-        "//tensorflow/compiler/tf2xla/...",
-        "//tensorflow/compiler/xla/...",
-        "//third_party/auroraml/...",
-        "//third_party/iree/...",
-        "//third_party/mlir_edge/...",
-    ],
 )
 
 gentbl_cc_library(
