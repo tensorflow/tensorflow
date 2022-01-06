@@ -16,6 +16,7 @@ package_group(
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/google/xla/mlir/...",
+        "//learning/deepmind/jax/ocean/...",
         "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/darwinn/contrib/waymo/...",
