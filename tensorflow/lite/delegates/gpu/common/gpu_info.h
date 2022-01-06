@@ -105,6 +105,11 @@ struct AMDInfo {
 };
 
 struct AdrenoInfo {
+  struct OpenClCompilerVersion {
+    int major = 0;
+    int minor = 0;
+    int patch = 0;
+  };
   AdrenoInfo() = default;
   explicit AdrenoInfo(const std::string& device_version);
 
@@ -139,6 +144,8 @@ struct AdrenoInfo {
   bool support_one_layer_texture_array = true;
 
   bool compiler_bugs_in_a6xx = false;
+
+  OpenClCompilerVersion cl_compiler_version;
 };
 
 enum class AppleGpu {

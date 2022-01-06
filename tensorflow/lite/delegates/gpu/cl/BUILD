@@ -184,6 +184,15 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "cl_device_test",
+    srcs = ["cl_device_test.cc"],
+    deps = [
+        ":cl_device",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "cl_errors",
     hdrs = ["cl_errors.h"],
