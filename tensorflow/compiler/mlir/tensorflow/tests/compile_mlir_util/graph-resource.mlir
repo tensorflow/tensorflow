@@ -13,7 +13,7 @@ module attributes {tf.versions = {producer = 511 : i32}} {
 // Tests a conversion from Graph (tf_executor dialect MLIR) to MLIR with
 // resource arguments.
 
-// CHECK-LABEL: HloModule main.{{[0-9]+}}, input_output_alias={ {0}: (1, {}, may-alias) }
+// CHECK-LABEL: HloModule main, input_output_alias={ {0}: (1, {}, may-alias) }
 // CHECK:       ENTRY %main.{{[0-9]+}} ([[ARG0:.*]]: f32[2], [[ARG1:.*]]: f32[2]) -> (f32[2]) {
 // CHECK-NEXT:    %[[ARG1]] = f32[2]{0} parameter(1)
 // CHECK-NEXT:    %[[ARG0]] = f32[2]{0} parameter(0)

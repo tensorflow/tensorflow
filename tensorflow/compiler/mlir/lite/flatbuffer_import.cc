@@ -775,7 +775,7 @@ Status AddOpIntermediatesForLstm(
           mlir::TypeAttr::get(std::get<0>(type_and_name));
       auto named_attr =
           builder.getNamedAttr(std::get<1>(type_and_name), type_attr);
-      op_state.addAttribute(named_attr.first, named_attr.second);
+      op_state.addAttribute(named_attr.getName(), named_attr.getValue());
     }
   }
   return Status::OK();

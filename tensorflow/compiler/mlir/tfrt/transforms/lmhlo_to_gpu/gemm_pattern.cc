@@ -24,7 +24,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
@@ -66,6 +66,18 @@ Value GetBias(lmhlo_gpu::GEMMOpAdaptor op) { return nullptr; }
 FloatAttr GetBeta(lmhlo_gpu::GEMM_BiasOp op) { return op.betaAttr(); }
 Value GetBias(lmhlo_gpu::GEMM_BiasOpAdaptor op) { return op.bias(); }
 
+// Match GEMM auto-tuning, see ComputationTypeFromPrimitive()
+Type MlirComputationType(Type element_type,
+                         ConversionPatternRewriter& rewriter) {
+  if (element_type.isF16()) {
+    return rewriter.getF32Type();
+  } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+    return complex_type.getElementType();
+  } else {
+    return element_type;
+  }
+}
+
 // Create all the Ops necessary for the GEMM operation, including the GEMM
 // operation itself.
 template <class GemmOp>
@@ -84,10 +96,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
 
   auto k_val = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
-  // Use mixed precision for fp16 to match GEMM auto-tuning, see
-  // ComputationTypeFromPrimitive().
-  Type mlir_compute_type =
-      element_type.isF16() ? rewriter.getF32Type() : element_type;
+  const Type mlir_compute_type = MlirComputationType(element_type, rewriter);
 
   auto m = rewriter.create<tfrt::compiler::ConstantI32Op>(
       loc, output_matrix.num_rows);
@@ -95,7 +104,12 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
       loc, output_matrix.num_cols);
   auto k = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, k_val);
 
-  auto const_alpha = MakeScalingFactorConstant(rewriter, loc, mlir_compute_type,
+  // Scale type must match compute type, except for complex types, where
+  // it must match the element type
+  const Type mlir_scale_type =
+      element_type.isa<mlir::ComplexType>() ? element_type : mlir_compute_type;
+
+  auto const_alpha = MakeScalingFactorConstant(rewriter, loc, mlir_scale_type,
                                                alpha_real, alpha_imaginary);
 
   auto lda =
@@ -104,7 +118,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
       rewriter.create<tfrt::compiler::ConstantI32Op>(loc, rhs_matrix.num_rows);
 
   llvm::APFloat fp_zero = APFloat::getZero(alpha_imaginary.getSemantics());
-  auto const_beta = MakeScalingFactorConstant(rewriter, loc, mlir_compute_type,
+  auto const_beta = MakeScalingFactorConstant(rewriter, loc, mlir_scale_type,
                                               beta_real, fp_zero);
 
   auto ldc = rewriter.create<tfrt::compiler::ConstantI32Op>(
@@ -112,7 +126,8 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
 
   auto algo = rewriter.create<tfrt::gpu::BlasGemmAlgoOp>(loc, algorithm);
 
-  auto blas_handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, stream);
+  Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
+  auto handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, context);
 
   auto lhs_op = lhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
   auto rhs_op = rhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
@@ -131,7 +146,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
         rewriter.create<tfrt::compiler::ConstantI32Op>(loc, batch_size);
     return rewriter
         .create<tfrt::gpu::BlasGemmBatchExOp>(
-            loc, chain.getType(), blas_handle, lhs_op, rhs_op, m, n, k,
+            loc, chain.getType(), handle, stream, lhs_op, rhs_op, m, n, k,
             const_alpha, lhs_matrix.data, data_type, lda, lhs_stride,
             rhs_matrix.data, data_type, ldb, rhs_stride, const_beta,
             output_matrix.data, data_type, ldc, output_stride, batch,
@@ -141,7 +156,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
 
   return rewriter
       .create<tfrt::gpu::BlasGemmOp>(
-          loc, chain.getType(), blas_handle, lhs_op, rhs_op, m, n, k,
+          loc, chain.getType(), handle, stream, lhs_op, rhs_op, m, n, k,
           const_alpha, lhs_matrix.data, data_type, lda, rhs_matrix.data,
           data_type, ldb, const_beta, output_matrix.data, data_type, ldc,
           compute_type, algo, chain)
@@ -168,10 +183,10 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
   const mlir::mhlo::DotDimensionNumbersAttr dim_nums =
       op.dot_dimension_numbers();
   absl::Span<const int64_t> output_batch_dims =
-      xla::AsInt64Slice((dim_nums.getLhsBatchingDimensions().size() >
-                         dim_nums.getRhsBatchingDimensions().size())
-                            ? dim_nums.getLhsBatchingDimensions()
-                            : dim_nums.getRhsBatchingDimensions());
+      (dim_nums.getLhsBatchingDimensions().size() >
+       dim_nums.getRhsBatchingDimensions().size())
+          ? dim_nums.getLhsBatchingDimensions()
+          : dim_nums.getRhsBatchingDimensions();
 
   int64_t batch_size = op.batch_size();
   int64_t output_row_dim = output_batch_dims.size();

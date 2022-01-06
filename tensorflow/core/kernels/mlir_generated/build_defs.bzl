@@ -210,7 +210,6 @@ _gen_kernel_bin_rule = rule(
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
     },
     fragments = ["cpp"],
-    incompatible_use_toolchain_transition = True,
     outputs = {"kernel": "%{name}_kernel.o"},
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
     implementation = _gen_kernel_bin_impl,

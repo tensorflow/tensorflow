@@ -34,20 +34,20 @@ namespace gpu {
 //
 // Integer convolution requires additional patterns to match CuDNN semantics:
 //   #1 from
-//   cast<int8>(clamp<-128, 127>(conv(int8_x, int8_w)))
+//   cast<int8_t>(clamp<-128, 127>(conv(int8_x, int8_w)))
 //   to
-//   cudnnConvolutionForward<int8>(int8_x, int8_w)
+//   cudnnConvolutionForward<int8_t>(int8_x, int8_w)
 // or #2 from
 //   cast<float>(conv(int8_x, int8_w))
 //   to
 //   cudnnConvolutionForward<float>(int8_x, int8_w)
 // or #3 from
-//   cast<int8>(clamp<-128, 127>(max(0, alpha1 *
+//   cast<int8_t>(clamp<-128, 127>(max(0, alpha1 *
 //                           cast<float>(conv(int8_x, int8_w)) +
 //                           alpha2 * cast<float>(int8_side) +
 //                           broadcast(bias)))
 //   to
-//   cudnnConvolutionBiasActivationForward<int8>(int8_x, int8_w, bias, alpha1,
+//   cudnnConvolutionBiasActivationForward<int8_t>(int8_x, int8_w, bias, alpha1,
 //   alpha2, int8_side)
 // or #4 from
 //   max(0, alpha1 * cast<float>(conv(int8_x, int8_w)) +

@@ -705,8 +705,8 @@ func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi32>, 
 // CHECK: %[[VIEW0:.*]] = memref.view %[[ARG0]]{{.*}} : memref<4xi8> to memref<f32>
 // CHECK: %[[VIEW1:.*]] = memref.view %[[ARG1]]{{.*}} : memref<4xi8> to memref<f32>
 // CHECK: "lmhlo.fusion"() ( {
-// CHECK:   %[[VAR0:.*]] = memref.tensor_load %[[VIEW0]] : memref<f32>
-// CHECK:   %[[VAR1:.*]] = memref.tensor_load %[[VIEW1]] : memref<f32>
+// CHECK:   %[[VAR0:.*]] = bufferization.to_tensor %[[VIEW0]] : memref<f32>
+// CHECK:   %[[VAR1:.*]] = bufferization.to_tensor %[[VIEW1]] : memref<f32>
 // CHECK:   %[[VAR2:.*]] = mhlo.add %[[VAR0]], %[[VAR1]] : tensor<f32>
 // CHECK:   tensor_store %[[VAR2]], %[[MEMREF:.*]] : memref<f32>
 // CHECK:   "lmhlo.terminator"() : () -> ()
@@ -725,9 +725,9 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
 // CHECK-LABEL: func @main
 // CHECK: "lmhlo.fusion"() ( {
-// CHECK:   %[[VAL0:.*]] = memref.tensor_load %{{.*}} : memref<f32>
-// CHECK:   %[[VAL1:.*]] = memref.tensor_load %{{.*}} : memref<f32>
-// CHECK:   %[[VAL2:.*]] = memref.tensor_load %{{.*}} : memref<f32>
+// CHECK:   %[[VAL0:.*]] = bufferization.to_tensor %{{.*}} : memref<f32>
+// CHECK:   %[[VAL1:.*]] = bufferization.to_tensor %{{.*}} : memref<f32>
+// CHECK:   %[[VAL2:.*]] = bufferization.to_tensor %{{.*}} : memref<f32>
 // CHECK:   tensor_store %[[VAL0]], %{{.*}} : memref<f32>
 // CHECK:   tensor_store %[[VAL1]], %{{.*}} : memref<f32>
 // CHECK:   tensor_store %[[VAL2]], %{{.*}} : memref<f32>
@@ -750,8 +750,9 @@ func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f3
 // -----
 
 // CHECK-LABEL: func @main
-// CHECK:   "mhlo.reduce"({{.*}}) ( {
-// CHECK:   ^bb0(%[[VAL1:.*]]: tensor<f32>, %[[VAL2:.*]]: tensor<i32>, %[[VAL3:.*]]: tensor<f32>, %[[VAL4:.*]]: tensor<i32>):  // no predecessors
+// CHECK:   mhlo.reduce
+// CHECK:   (%[[VAL1:.*]]: tensor<f32>, %[[VAL3:.*]]: tensor<f32>)
+// CHECK-SAME: (%[[VAL2:.*]]: tensor<i32>, %[[VAL4:.*]]: tensor<i32>)
 // CHECK:     %[[VAL5:.*]] = mhlo.maximum %[[VAL1]], %[[VAL3]] : tensor<f32>
 // CHECK:     %[[VAL6:.*]] = mhlo.maximum %[[VAL2]], %[[VAL4:.*]] : tensor<i32>
 // CHECK:     %[[VAL7:.*]] = "mhlo.tuple"(%[[VAL5]], %[[VAL6:.*]]) {xla_shape = {{.*}}} : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>

@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
+#include "tensorflow/core/kernels/resource_variable_util.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -234,12 +235,13 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
 
   is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
 
+  // Use const_tensor_ if the variable is non-anonymous.
   if (!is_anonymous_) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
     OP_REQUIRES_OK(context, context->allocate_temp(DT_RESOURCE, TensorShape({}),
-                                                   &resource_, attr));
-    resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
+                                                   &const_tensor_, attr));
+    const_tensor_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         context, container_, name_,
         std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
   }
@@ -247,18 +249,27 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
 
 void VarHandleOp::Compute(OpKernelContext* ctx) {
   if (is_anonymous_) {
+    Var* resource = new Var(dtype_and_shape_.dtype);
+    ResourceMgr* mgr = ctx->resource_manager();
+    ResourceHandle handle = ResourceHandle::MakeRefCountingHandle<Var>(
+        resource, ctx->device()->name(),
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+    // TODO(b/203901837): See if we can abolish all code paths that lookup
+    // anonymous variables and then stop publishing them to the manager.
+    OP_REQUIRES_OK(ctx, mgr->CreateUnowned<Var>(handle.container(),
+                                                handle.name(), resource));
+
     AllocatorAttributes attr;
     attr.set_on_host(true);
-    Tensor handle;
+    Tensor tensor;
     OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
-    handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
-        ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
-        ctx->stack_trace());
-    ctx->set_output(0, handle);
+        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &tensor, attr));
+
+    tensor.scalar<ResourceHandle>()() = std::move(handle);
+
+    ctx->set_output(0, tensor);
   } else {
-    ctx->set_output(0, resource_);
+    ctx->set_output(0, const_tensor_);
   }
 }
 
@@ -550,12 +561,8 @@ class AssignUpdateVariableOp : public OpKernel {
     // ADD if value's refcount was 1.
     mutex_lock ml(*variable->mu());
     Tensor* var_tensor = variable->tensor();
-    OP_REQUIRES(context, var_tensor->shape().IsSameSize(value.shape()),
-                errors::InvalidArgument("Cannot update variable with shape ",
-                                        var_tensor->shape().DebugString(),
-                                        " using a Tensor with shape ",
-                                        value.shape().DebugString(),
-                                        ", shapes must be equal."));
+    OP_REQUIRES_OK(context, ValidateAssignUpdateVariableOpShapes(
+                                var_tensor->shape(), value.shape()));
     OP_REQUIRES_OK(
         context, PrepareToUpdateVariable<Device, T>(
                      context, var_tensor, variable->copy_on_read_mode.load()));
@@ -625,7 +632,7 @@ REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("is_initialized"),
-                        IsResourceInitialized<Var>);
+                        VarIsInitializedOp);
 
 template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {

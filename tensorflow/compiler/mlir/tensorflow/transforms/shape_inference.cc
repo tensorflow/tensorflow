@@ -755,11 +755,26 @@ class ShapeInference {
   // Returns whether either op or function type was changed.
   bool InferShapeForReduceDataset(ReduceDatasetOp op, int64_t max_iterations);
 
+  // Infers the shape for TakeWhileDatasetOp and its associated predicate
+  // function. Returns whether either op or function type was changed.
+  bool InferShapeForTakeWhileDataset(TakeWhileDatasetOp op,
+                                     int64_t max_iterations);
+
+  // Infers shape for dataset ops that have `M` input elements and `N`
+  // arguments, and also propagates the shape to the specified function (called
+  // only when function exists and has single use).
+  bool InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
+                                    int64_t max_iterations);
+
   // Infers the shape of ops that create TensorList. Specifically,
   // TensorListReserveOp, EmptyTensorListOp and TensorListFromTensor ops. It
   // refines the element shape if all tensors written to the list across all
   // mutations have identical static shape.
   bool InferShapeForTensorListInitOps(Operation* op);
+
+  // Infers the shape of VarHandleOp based on the uses of the VarHandleOp to
+  // update the subtypes of the resource type.
+  bool InferShapeForVarHandleOp(VarHandleOp op);
 
   bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti);
 
@@ -898,8 +913,10 @@ bool ShapeInference::InferShapeForCast(Operation* op) {
 bool ShapeInference::InferShapeForIf(IfOp op) {
   DCOMMENT_OP(op.getOperation(), "Infer shape for if ");
   bool changed = false;
-  auto then_results = op.then_function().getType().getResults();
-  auto else_results = op.else_function().getType().getResults();
+  auto then_results =
+      op.ResolveThenFunction(&symbol_table_).getType().getResults();
+  auto else_results =
+      op.ResolveElseFunction(&symbol_table_).getType().getResults();
   for (auto it : llvm::zip(op.getResults(), then_results, else_results)) {
     // If then and else types do not match, skip refinement for that result.
     if (std::get<1>(it) != std::get<2>(it)) continue;
@@ -1011,19 +1028,9 @@ DatasetInput GetDatasetInput(Operation* op) {
                       op->getAttrOfType<ArrayAttr>("output_types")};
 }
 
-bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
-                                             int64_t max_iterations) {
-  // MapDatasetOp's relationship with its associated function is as
-  // follows: first M function params are dictated by the set
-  // output shapes and types, the next N are the last Ninputs from MapDataset
-  // op. The MapDataset op always has N+1 inputs.
-  // TODO(jpienaar): Avoid this lookup.
-  auto module = op->getParentOfType<ModuleOp>();
-  auto f = module.lookupSymbol<FuncOp>(op.f());
-  // Skip if function is not found or more than one caller.
-  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
-
-  int N = op.getNumOperands() - 1;
+bool ShapeInference::InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
+                                                  int64_t max_iterations) {
+  int N = op->getNumOperands() - 1;
   int M = f.getNumArguments() - N;
   DCOMMENT_OP(op, "Inferring shape for with N = " << N << " and M = " << M);
 
@@ -1031,9 +1038,9 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
   SmallVector<Type> input_types(f.getArgumentTypes());
 
   DatasetInput input_elements =
-      GetDatasetInput(op.input_dataset().getDefiningOp());
+      GetDatasetInput(op->getOperand(0).getDefiningOp());
   if (!input_elements) {
-    op.emitWarning("unexpected dataset input; skipping function refinement");
+    op->emitWarning("unexpected dataset input; skipping function refinement");
     return false;
   }
 
@@ -1048,20 +1055,48 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
     *it++ = t;
   }
   // Now the remaining N from operand types.
-  for (auto t : llvm::drop_begin(op.getOperandTypes())) {
+  for (auto t : llvm::drop_begin(op->getOperandTypes())) {
     auto meet = TypeMeet(*it, t);
     changed = changed || (meet != *it);
     *it++ = meet;
   }
   if (!changed) return false;
 
-  FailureOr<bool> res =
-      PropagateShapeToFunctions(module, input_types, {f}, max_iterations);
+  FailureOr<bool> res = PropagateShapeToFunctions(
+      op->getParentOfType<ModuleOp>(), input_types, {f}, max_iterations);
   if (failed(res)) {
-    op.emitOpError("propagating shapes for MapDataset failed");
+    op->emitOpError("propagating shapes failed");
     return false;
   }
   return *res;
+}
+
+bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
+                                             int64_t max_iterations) {
+  // MapDatasetOp's relationship with its associated function is as
+  // follows: first M function params are dictated by the set
+  // output shapes and types, the next N are the last Ninputs from MapDataset
+  // op. The MapDataset op always has N+1 inputs.
+  // TODO(jpienaar): Avoid this lookup.
+  auto module = op->getParentOfType<ModuleOp>();
+  auto f = module.lookupSymbol<FuncOp>(op.f());
+  // Skip if function is not found or more than one caller.
+  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
+  return InferShapeForDatasetOpCommon(op, f, max_iterations);
+}
+
+bool ShapeInference::InferShapeForTakeWhileDataset(TakeWhileDatasetOp op,
+                                                   int64_t max_iterations) {
+  // TakeWhileDatasetOp's relationship with its associated function is as
+  // follows: first M function params are dictated by the set
+  // output shapes and types, the next N are the last Ninputs from
+  // TakeWhileDataset op. The TakeWhileDataset op always has N+1 inputs.
+  // TODO(jpienaar): Avoid this lookup.
+  auto module = op->getParentOfType<ModuleOp>();
+  auto f = module.lookupSymbol<FuncOp>(op.predicate());
+  // Skip if function is not found or more than one caller.
+  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
+  return InferShapeForDatasetOpCommon(op, f, max_iterations);
 }
 
 bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
@@ -1168,6 +1203,51 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
   auto tensor_type = RankedTensorType::get({}, variant_type);
   bool changed = RefineResultType(op, handle, tensor_type);
   if (changed) DCOMMENT_OP(op, "Modified after shape inference:");
+  return changed;
+}
+
+bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
+  DCOMMENT_OP(op, "Inferring shape for VarHandleOp");
+
+  Value resource = op.resource();
+  if (!CanBeRefined(resource.getType())) return false;
+
+  // Make sure there are only use cases from the `AssignVariableOp` and
+  // `ReadVariableOp`. For other cases, we can skip to be conservative.
+  for (auto& use : make_early_inc_range(resource.getUses())) {
+    Operation* def = use.getOwner();
+    if (!llvm::isa<AssignVariableOp>(def) && !llvm::isa<ReadVariableOp>(def)) {
+      return false;
+    }
+  }
+
+  bool changed = false;
+
+  // Look for any `AssignVariableOp` and `ReadVariableOp` that uses the value of
+  // this op.
+  for (auto& use : make_early_inc_range(resource.getUses())) {
+    Operation* def = use.getOwner();
+    Value value;
+    if (AssignVariableOp assign_op = dyn_cast<AssignVariableOp>(def)) {
+      value = assign_op.value();
+    } else if (ReadVariableOp read_op = dyn_cast<ReadVariableOp>(def)) {
+      value = read_op.value();
+    } else {
+      llvm_unreachable("unexpected operator type");
+    }
+
+    TensorType resource_subtype = value.getType().cast<TensorType>();
+    ResourceType resource_type =
+        ResourceType::get({resource_subtype}, op.getContext());
+    UnrankedTensorType new_resource_type =
+        UnrankedTensorType::get(resource_type);
+
+    Type refined_type = TypeMeet(resource.getType(), new_resource_type);
+    if (refined_type == resource.getType()) continue;
+    resource.setType(refined_type);
+    changed = true;
+  }
+
   return changed;
 }
 
@@ -1456,6 +1536,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   }
 
   // TODO(jpienaar): Extract function input arg constraint interface.
+  // TODO(jpienaar): Unify the shape propagation to functions using interface.
   if (auto map_dataset_op = dyn_cast<MapDatasetOp>(op)) {
     // TODO(jpienaar): The output type of these ops need to be refined.
     return InferShapeForMapDataset(map_dataset_op, max_iterations);
@@ -1466,10 +1547,19 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
   }
 
+  if (auto takewhile_dataset_op = dyn_cast<TakeWhileDatasetOp>(op)) {
+    // TODO(jpienaar): The output type of these ops need to be refined.
+    return InferShapeForTakeWhileDataset(takewhile_dataset_op, max_iterations);
+  }
+
   // Handle TensorList init operations by inferring shape from TensorList write
   // operations. If we are unable to refine element shape here, proceed to use
   // the InferenceContext below to get more precise shapes.
   if (IsTensorListInitOp(op) && InferShapeForTensorListInitOps(op)) return true;
+
+  if (auto var_handle_op = dyn_cast<VarHandleOp>(op)) {
+    return InferShapeForVarHandleOp(var_handle_op);
+  }
 
   // Return operand as a constant attribute.
   auto operand_as_constant_fn = [&](Value operand) {
@@ -1722,7 +1812,9 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
     DCOMMENT("Propagating shapes into If");
     return PropagateShapeToFunctions(
         module, if_op.input().getTypes(),
-        {if_op.then_function(), if_op.else_function()}, max_iterations);
+        {if_op.ResolveThenFunction(&symbol_table_),
+         if_op.ResolveElseFunction(&symbol_table_)},
+        max_iterations);
   } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
     SmallVector<FuncOp, 4> branches;
     case_op.get_branch_functions(branches);
@@ -1736,14 +1828,18 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
     if (while_op.shape_invariant()) {
       auto compatible_types = GetWhileCompatibleTypes(
           while_op.input().getTypes(), while_op.output().getTypes(),
-          while_op.body_function().getType().getInputs());
+          while_op.ResolveBodyFunction(&symbol_table_).getType().getInputs());
       return PropagateShapeToFunctions(
           module, compatible_types,
-          {while_op.cond_function(), while_op.body_function()}, max_iterations);
+          {while_op.ResolveCondFunction(&symbol_table_),
+           while_op.ResolveBodyFunction(&symbol_table_)},
+          max_iterations);
     }
     return PropagateShapeToFunctions(
         module, while_op.input().getTypes(),
-        {while_op.cond_function(), while_op.body_function()}, max_iterations);
+        {while_op.ResolveCondFunction(&symbol_table_),
+         while_op.ResolveBodyFunction(&symbol_table_)},
+        max_iterations);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
     if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable(&symbol_table_))) {
       PropagateConstantToCallee(call_op, func, module);
@@ -1753,6 +1849,23 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
       PropagateConstantFromCallee(call_op, func, module);
       return failure_or_converged;
     }
+  } else if (isa<TF::XlaVariadicReduceV2Op>(op) ||
+             isa<TF::XlaVariadicSortOp>(op)) {
+    SymbolRefAttr func_sym;
+    if (auto xla_variadic_reduce_v2_op =
+            dyn_cast<TF::XlaVariadicReduceV2Op>(op)) {
+      func_sym = xla_variadic_reduce_v2_op.reducer();
+    } else if (auto xla_variadic_sort_op =
+                   dyn_cast<TF::XlaVariadicSortOp>(op)) {
+      func_sym = xla_variadic_sort_op.comparator();
+    }
+    auto func = llvm::cast<mlir::FuncOp>(
+        mlir::SymbolTable::lookupSymbolIn(module, func_sym));
+    mlir::SmallVector<mlir::Type, 2> types;
+    for (auto type : func.getType().getInputs()) {
+      types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
+    }
+    return PropagateShapeToFunctions(module, types, {func}, max_iterations);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.
@@ -1802,7 +1915,7 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
   }
 
   // Attempt to constant fold the operation.
-  auto* abstract_op = op->getAbstractOperation();
+  auto abstract_op = op->getRegisteredInfo();
   LogicalResult folded = failure();
   if (abstract_op) {
     folded = abstract_op->foldHook(op, constant_operands, fold_results);

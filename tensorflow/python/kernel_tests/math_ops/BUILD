@@ -220,6 +220,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["cwise_ops_unary_test.py"],
     shard_count = 50,
+    tags = [
+        "no_windows",  # TODO(b/207048097): re-enable
+    ],
     # b/140155706: nans in result
     xla_enable_strict_auto_jit = False,
     deps = [

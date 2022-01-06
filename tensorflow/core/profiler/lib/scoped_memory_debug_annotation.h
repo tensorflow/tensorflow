@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 
 namespace tensorflow {
 namespace profiler {
@@ -64,7 +65,7 @@ class ScopedMemoryDebugAnnotation {
   // (if any).  Otherwise it overwrites with op_name.
   explicit ScopedMemoryDebugAnnotation(
       const char* op_name, const char* region_type, int32_t data_type,
-      const std::function<std::string()>& pending_shape_func) {
+      std::function<std::string()>&& pending_shape_func) {
     MemoryDebugAnnotation* thread_local_annotation =
         ThreadMemoryDebugAnnotation();
     last_annotation_ = *thread_local_annotation;
@@ -73,13 +74,12 @@ class ScopedMemoryDebugAnnotation {
     }
     thread_local_annotation->pending_region_type = region_type;
     thread_local_annotation->pending_data_type = data_type;
-    thread_local_annotation->pending_shape_func = pending_shape_func;
+    thread_local_annotation->pending_shape_func = std::move(pending_shape_func);
   }
 
   explicit ScopedMemoryDebugAnnotation(
       const char* op_name, int64_t step_id, const char* region_type,
-      int32_t data_type,
-      const std::function<std::string()>& pending_shape_func) {
+      int32_t data_type, std::function<std::string()>&& pending_shape_func) {
     MemoryDebugAnnotation* thread_local_annotation =
         ThreadMemoryDebugAnnotation();
     last_annotation_ = *thread_local_annotation;
@@ -87,7 +87,7 @@ class ScopedMemoryDebugAnnotation {
     thread_local_annotation->pending_step_id = step_id;
     thread_local_annotation->pending_region_type = region_type;
     thread_local_annotation->pending_data_type = data_type;
-    thread_local_annotation->pending_shape_func = pending_shape_func;
+    thread_local_annotation->pending_shape_func = std::move(pending_shape_func);
   }
 
   ~ScopedMemoryDebugAnnotation() {

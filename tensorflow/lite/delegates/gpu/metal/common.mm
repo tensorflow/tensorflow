@@ -37,6 +37,22 @@ id<MTLDevice> GetBestSupportedMetalDevice() { return MTLCreateSystemDefaultDevic
 absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
                                   NSDictionary<NSString*, NSString*>* macros,
                                   id<MTLComputePipelineState>* program) {
+  id<MTLFunction> function;
+  RETURN_IF_ERROR(CreateFunction(device, code, functionName, macros, &function));
+
+  NSError* error = nil;
+  *program = [device newComputePipelineStateWithFunction:function error:&error];
+  if (!*program) {
+    NSString* errorString =
+        [NSString stringWithFormat:@"newComputePipelineStateWithFunction error: %@",
+                                   [error localizedDescription]];
+    return absl::InternalError([errorString UTF8String]);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CreateFunction(id<MTLDevice> device, NSString* code, NSString* functionName,
+                            NSDictionary<NSString*, NSString*>* macros, id<MTLFunction>* function) {
   MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
 
   // Runtime checks for the iOS version independently of minimum target iOS.
@@ -73,18 +89,10 @@ absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString
     return absl::InternalError([errorString UTF8String]);
   }
 
-  id<MTLFunction> function = [library newFunctionWithName:functionName];
-  if (!function) {
+  *function = [library newFunctionWithName:functionName];
+  if (!*function) {
     NSString* errorString =
         [NSString stringWithFormat:@"newFunctionWithName: %@", [error localizedDescription]];
-    return absl::InternalError([errorString UTF8String]);
-  }
-
-  *program = [device newComputePipelineStateWithFunction:function error:&error];
-  if (!program) {
-    NSString* errorString =
-        [NSString stringWithFormat:@"newComputePipelineStateWithFunction error: %@",
-                                   [error localizedDescription]];
     return absl::InternalError([errorString UTF8String]);
   }
   return absl::OkStatus();

@@ -55,12 +55,13 @@ std::vector<HloPosition> HloBuffer::ComputePositions() const {
   return positions;
 }
 
-string HloBuffer::ToString() const {
+std::string HloBuffer::ToString() const {
   return absl::StrCat(
       "HloBuffer ", id_, ", values: ",
-      absl::StrJoin(values_, ", ", [](string* result, const HloValue* value) {
-        result->append(value->ToShortString());
-      }));
+      absl::StrJoin(values_, ", ",
+                    [](std::string* result, const HloValue* value) {
+                      result->append(value->ToShortString());
+                    }));
 }
 
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer) {

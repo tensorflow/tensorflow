@@ -113,7 +113,7 @@ class HloBuffer {
 
   std::vector<HloPosition> ComputePositions() const;
 
-  string ToString() const;
+  std::string ToString() const;
 
   bool operator==(const HloBuffer& other) const;
   bool operator!=(const HloBuffer& other) const { return !(*this == other); }

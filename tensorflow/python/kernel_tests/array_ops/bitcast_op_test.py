@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class BitcastTest(test.TestCase):
 
   def _testBitcast(self, x, datatype, shape):
@@ -61,8 +62,11 @@ class BitcastTest(test.TestCase):
   def testErrors(self):
     x = np.zeros([1, 1], np.int8)
     datatype = dtypes.int32
-    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                "Cannot bitcast from 6 to 3"):
+    # When eager_op_as_function is enabled shape inference will raise
+    # a different more informative error message.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Cannot bitcast from 6 to 3|convert from s8.* to S32"):
       array_ops.bitcast(x, datatype, None)
 
   def testEmpty(self):

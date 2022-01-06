@@ -16,7 +16,6 @@
 
 import contextlib
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.jit.ops import xla_ops
 from tensorflow.compiler.jit.ops import xla_ops_grad  # pylint: disable=unused-import
@@ -233,7 +232,7 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
         op._add_control_input(self._pivot)
         # pylint: enable=protected-access
     else:
-      for index in xrange(len(op.inputs)):
+      for index in range(len(op.inputs)):
         x = op.inputs[index]
         real_x = self.AddValue(x)
         if real_x is not x:

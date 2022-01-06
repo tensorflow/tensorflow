@@ -146,6 +146,11 @@ struct MlirCommonFlags {
   bool tf_mlir_enable_convert_control_to_data_outputs_pass;
 };
 
+// Flags for the CpuRt pipeline -- see tf_cpurt_pipeline.h for details.
+struct CpuRtFlags {
+  bool vectorize;
+};
+
 // Return a pointer to the DumpGraphFlags struct;
 // repeated calls return the same pointer.
 // This should be called only after Flags::Parse() has returned.
@@ -162,7 +167,10 @@ const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
-void ResetMlirCommonFlags();
+
+void ResetJitCompilerFlags();
+
+const CpuRtFlags& GetCpuRtFlags();
 
 // Returns the effective MLIR bridge rollout state based on the flags and the
 // optional configuration.

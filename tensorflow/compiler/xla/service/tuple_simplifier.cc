@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -37,6 +36,10 @@ StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   bool changed = false;
   HloInstruction* top_tuple = nullptr;
   bool can_simplify = true;
+  if (tuple->parent()->root_instruction() == tuple &&
+      tuple->parent()->HasSideEffect()) {
+    return changed;
+  }
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
     HloInstruction* operand = tuple->mutable_operand(operand_number);

@@ -15,7 +15,6 @@
 """Functional tests for depthwise convolutional operations."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
@@ -35,7 +34,7 @@ def ReferenceDepthwiseConv2D(input_tensor, filter_tensor, strides, padding,
   convs = []
   in_channels = filter_tensor.shape[2]
   # Use a custom implementation of depthwise conv2d using slicing.
-  for channel in xrange(in_channels):
+  for channel in range(in_channels):
     # Slice the input along channel
     if data_format == "NCHW":
       input_slice = input_tensor[:, channel:channel+1, :, :]

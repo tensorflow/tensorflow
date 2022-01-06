@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -50,7 +49,7 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
             platform, PlatformUtil::GetStreamExecutors(platform).ValueOrDie()) {
   }
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
                                             bool retry_on_failure,
                                             int64_t memory_space) override;
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
@@ -126,7 +125,7 @@ class LocalClientTestBase : public ManifestCheckingTest {
   // as the allocator.
   ExecutableRunOptions DefaultExecutableRunOptions() const;
 
-  string TestName() const {
+  std::string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 

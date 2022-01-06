@@ -771,6 +771,20 @@ func @matrix_diag_v2(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 // CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
 }
 
+func @matrix_diag_v2_f32_padding(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  %0 = arith.constant dense<[0]> : tensor<1xi32>
+  %1 = arith.constant dense<[-1]> : tensor<1xi32>
+  %2 = arith.constant dense<[-1]> : tensor<1xi32>
+  %3 = arith.constant dense<[0.0, 0.0]> : tensor<2xf32>
+  %4 = "tf.MatrixDiagV2"(%arg0, %0, %1, %2, %3) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xf32>) -> tensor<8x16x16xf32>
+  return %4 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:   func @matrix_diag_v2_f32_padding(
+// CHECK-SAME:                         [[VAL_5:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+// CHECK:           [[VAL_6:%.*]] = "tfl.matrix_diag"([[VAL_5]]) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+// CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
+}
+
 func @matrix_diag_v3_no_match(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
   // this should have been 0.
   %0 = arith.constant dense<[1]> : tensor<1xi32>
@@ -1627,41 +1641,6 @@ func @reciprocal_i32(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 // CHECK:  return
 }
 
-func @random_uniform() -> tensor<2x5xf32> {
-  %0 = "tf.Const"() { value = dense<[2, 5]> : tensor<2xi32> } : () -> tensor<2xi32>
-  %1 = "tf.RandomUniform"(%0) { seed = 1, seed2 = 0} : (tensor<2xi32>) -> tensor<2x5xf32>
-  return %1 : tensor<2x5xf32>
-
-  // CHECK-LABEL: random_uniform
-  // CHECK: %[[CST:.*]] = arith.constant dense
-  // CHECK: return %[[CST:.*]] : tensor<2x5xf32>
-}
-
-func @random_uniform_no_fold(%arg0: tensor<2xi32>) -> tensor<2x5xf32> {
-  %1 = "tf.RandomUniform"(%arg0) { seed = 0, seed2 = 0} : (tensor<2xi32>) -> tensor<2x5xf32>
-  return %1 : tensor<2x5xf32>
-
-  // CHECK-LABEL: random_uniform_no_fold
-  // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
-}
-
-func @random_uniform_no_fold2(%arg0: tensor<2xi32>) -> tensor<*xf32> {
-  %1 = "tf.RandomUniform"(%arg0) { seed = 1, seed2 = 2} : (tensor<2xi32>) -> tensor<*xf32>
-  return %1 : tensor<*xf32>
-
-  // CHECK-LABEL: random_uniform_no_fold2
-  // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
-}
-
-func @random_uniform_no_fold3() -> tensor<2x5xf64> {
-  %0 = "tf.Const"() { value = dense<[2, 5]> : tensor<2xi32> } : () -> tensor<2xi32>
-  %1 = "tf.RandomUniform"(%0) { seed = 1, seed2 = 0} : (tensor<2xi32>) -> tensor<2x5xf64>
-  return %1 : tensor<2x5xf64>
-
-  // CHECK-LABEL: random_uniform_no_fold3
-  // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
-}
-
 func @LstmWithoutProjection(%arg: tensor<28x1x28xf32>) -> (tensor<28x1x16xf32>) {
   %1 = "tf.Const"() {device = "", dtype = f32, value = dense<0.000000e+00>: tensor<16x28xf32>} : () -> tensor<16x28xf32>
   %2 = "tf.Const"() {device = "", dtype = f32, value = dense<0.000000e+00>: tensor<16x16xf32>} : () -> tensor<16x16xf32>
@@ -2257,4 +2236,36 @@ func @Bucketize(%arg0: tensor<3x2xf32>) -> tensor<3x2xi32> {
 
 // CHECK-LABEL: Bucketize
 // CHECK:  "tfl.bucketize"(%arg0) {boundaries = [1.000000e+00 : f32, 1.000000e+01 : f32, 1.000000e+02 : f32]} : (tensor<3x2xf32>) -> tensor<3x2xi32>
+}
+
+func @random_uniform_f32(%arg0: tensor<3xi32>) -> tensor<?x?x?xf32> {
+  %0 = "tf.RandomUniform"(%arg0) {seed = 0 : i64, seed2 = 0: i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+
+// CHECK-LABEL:random_uniform_f32
+// CHECK:  "tfl.random_uniform"(%arg0) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
+}
+
+func @random_standard_normal_f32(%arg0: tensor<3xi32>) -> tensor<?x?x?xf32> {
+  %0 = "tf.RandomStandardNormal"(%arg0) {seed = 0 : i64, seed2 = 0: i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+
+// CHECK-LABEL:random_standard_normal_f32
+// CHECK:  "tfl.random_standard_normal"(%arg0) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
+}
+
+func @multinomial_i64(%arg0: tensor<2xf32>, %arg1: tensor<1xi32>) -> tensor<10xi64> {
+  %0 = "tf.Multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0: i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi64>
+  return %0 : tensor<10xi64>
+
+// CHECK-LABEL:multinomial_i64
+// CHECK: "tfl.multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi64>
+}
+
+func @multinomial_i32(%arg0: tensor<2xf32>, %arg1: tensor<1xi32>) -> tensor<10xi32> {
+  %0 = "tf.Multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0: i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
+
+// CHECK-LABEL:multinomial_i32
+// CHECK: "tfl.multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi32>
 }

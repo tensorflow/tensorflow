@@ -85,7 +85,7 @@ void RaiseCustomOpsPass::runOnFunction() {
     // - the op is targeted explicitly, or
     // - the op isn't registered when there are no target list.
     if (target_op_names.contains(op_name) ||
-        (target_op_names.empty() && !op->getAbstractOperation())) {
+        (target_op_names.empty() && !op->isRegistered())) {
       custom_ops.push_back(op);
     }
   });

@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for numerical correctness of tf.math operations."""
 
+import enum
 import numpy as np
 
 from absl import flags
@@ -27,6 +28,16 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('iters', '1000', 'Number of test iterations')
+flags.DEFINE_integer('vector_size', '128', 'Iteration vector size')
+
+
+# We cannot read flags from the parameterized test, so we cannot pass a value
+# for rtol to the test function (rtol does depend on the 'vector_size' flag).
+# Pass this enum instead so that we read the flags only in the test function.
+class Rtol(enum.Enum):
+  ZERO = 0
+  BASE = 1
+  AVX2 = 2
 
 
 def mlir_func_1d(op_name):
@@ -37,34 +48,52 @@ def mlir_func_1d(op_name):
   }}"""
 
 
-def test_1d(op_name, fn, vectorize=False, lb=-1.0, ub=1.0, rtol=0.0):
+def test_1d(op_name, fn, vectorize=False, lb=-1.0, ub=1.0, rtol_enum=Rtol.BASE):
   compiled = cpurt.compile(mlir_func_1d(op_name), 'test', vectorize=vectorize)
+  rtols = {}
+  rtols[Rtol.ZERO] = 0.0
+  # Not all approximations are identical to TF's.
+  rtols[Rtol.BASE] = 1e-6
+  # For some ops we can match TF with the right build flags.
+  # Note that vector size also matters: for vectors whose size is not a multiple
+  # of the machine's vector length, Eigen (and therefore TF) computes some
+  # elements differently (e.g. via libc).
+  rtols[Rtol.AVX2] = rtols[Rtol.BASE]
+  # Use 16 as the machine vector's length to be both simple and future-proof.
+  if cpurt.built_with('AVX2') and FLAGS.vector_size % 16 == 0:
+    rtols[Rtol.AVX2] = 0.0
+
+  rtol = rtols[rtol_enum]
 
   for _ in range(FLAGS.iters):
-    arg = np.random.uniform(lb, ub, size=(100)).astype(np.float32)
+    arg = np.random.uniform(lb, ub, size=(FLAGS.vector_size)).astype(np.float32)
 
     [res] = cpurt.execute(compiled, [arg])
-    np.testing.assert_allclose(res, fn(arg), rtol=rtol)
+    np.testing.assert_allclose(res, fn(arg), rtol=rtol, atol=1e-7)
 
 
 class TfMathOpsTest(parameterized.TestCase):
-  # Not all approximations are identical to TF's.
-  base_rtol = 1e-6
-  # For some ops we can match TF with the right build flags.
-  avx2_rtol = 0.0 if cpurt.built_with('AVX2') else base_rtol
-
   @parameterized.named_parameters(
-      ('reciprocal_scalar', 'Reciprocal', math.reciprocal, False, 0.0),
-      ('reciprocal_vector', 'Reciprocal', math.reciprocal, True, 0.0),
+      # Note: for now we are testing for identical results to TF (and therefore
+      # Eigen). In the short term, this will work because Eigen's approximations
+      # don't change too often. However, in the long term could become a
+      # maintenance burden.
+      # TODO(ecg): relax tolerances to accommodate for changes in Eigen, and add
+      # a flag to control the minimum tolerance, so that we can manually check
+      # for identical results to Eigen.
+      ('exp_scalar', 'Exp', math.exp, False, Rtol.AVX2),
+      ('exp_vector', 'Exp', math.exp, True, Rtol.AVX2),
+      ('reciprocal_scalar', 'Reciprocal', math.reciprocal, False, Rtol.ZERO),
+      ('reciprocal_vector', 'Reciprocal', math.reciprocal, True, Rtol.ZERO),
       # Rsqrt: The AVX2 intrinsic is only emitted with vectorization.
-      ('rsqrt_scalar', 'Rsqrt', math.rsqrt, False, base_rtol),
-      ('rsqrt_vector', 'Rsqrt', math.rsqrt, True, avx2_rtol),
-      ('tanh_scalar', 'Tanh', math.tanh, False, avx2_rtol),
-      ('tanh_vector', 'Tanh', math.tanh, True, avx2_rtol),
+      ('rsqrt_scalar', 'Rsqrt', math.rsqrt, False, Rtol.BASE),
+      ('rsqrt_vector', 'Rsqrt', math.rsqrt, True, Rtol.AVX2),
+      ('tanh_scalar', 'Tanh', math.tanh, False, Rtol.AVX2),
+      ('tanh_vector', 'Tanh', math.tanh, True, Rtol.AVX2),
   )
 
-  def test_op(self, op_name, fn, vectorize, rtol):
-    test_1d(op_name, fn, vectorize=vectorize, rtol=rtol)
+  def test_op(self, op_name, fn, vectorize, rtol_enum):
+    test_1d(op_name, fn, vectorize=vectorize, rtol_enum=rtol_enum)
 
 if __name__ == '__main__':
   np.random.seed(0)

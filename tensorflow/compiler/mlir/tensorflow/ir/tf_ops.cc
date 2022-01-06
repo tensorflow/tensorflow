@@ -47,7 +47,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -265,7 +264,7 @@ void *TensorFlowDialect::getRegisteredInterfaceForOp(
     mlir::TypeID interface, mlir::OperationName opName) {
   if (interface == TypeID::get<mlir::MemoryEffectOpInterface>()) {
     // Don't use fallback for modelled ops.
-    if (opName.getAbstractOperation()) return nullptr;
+    if (opName.isRegistered()) return nullptr;
 
     // Only use fallback interface for known not-stateful ops.
     const tensorflow::OpRegistrationData *op_reg_data = nullptr;

@@ -113,7 +113,7 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
           if slot_variable is None:
             continue
           slot_variable._maybe_initialize_trackable()  # pylint: disable=protected-access
-          if slot_variable._checkpoint_dependencies:  # pylint: disable=protected-access
+          if slot_variable._trackable_children():  # pylint: disable=protected-access
             # TODO(allenl): Gather dependencies of slot variables.
             raise NotImplementedError(
                 "Currently only variables with no dependencies can be saved as "
@@ -239,16 +239,28 @@ class ObjectGraphView(object):
       setattr(copied, key, copy.deepcopy(value, memo))
     return copied
 
-  def list_children(self, obj):
+  def list_children(self, obj, save_type=base.SaveType.CHECKPOINT, **kwargs):
+    """Returns all child trackables attached to obj.
+
+    Args:
+      obj: A `Trackable` object.
+      save_type: A string, can be 'savedmodel' or 'checkpoint'.
+      **kwargs: kwargs to use when retrieving the object's children.
+
+    Returns:
+      List of all children attached to the object.
+    """
     # pylint: disable=protected-access
     obj._maybe_initialize_trackable()
-    dependencies = obj._checkpoint_dependencies
+    children = [base.TrackableReference(name, ref) for name, ref
+                in obj._trackable_children(save_type, **kwargs).items()]
     # pylint: enable=protected-access
 
+    # GraphView objects may define children of the root object that are not
+    # actually attached, e.g. a Checkpoint object's save_counter.
     if obj is self.root and self._attached_dependencies:
-      dependencies = dependencies.copy()
-      dependencies.extend(self._attached_dependencies)
-    return dependencies
+      children.extend(self._attached_dependencies)
+    return children
 
   @property
   def saveables_cache(self):
@@ -310,8 +322,12 @@ class ObjectGraphView(object):
     for checkpoint_id, (trackable, unused_object_proto) in enumerate(
         zip(trackable_objects, object_graph_proto.nodes)):
       assert node_ids[trackable] == checkpoint_id
+
     checkpoint_factory_map, registered_savers = (
         get_checkpoint_factories_and_keys(object_names, object_map))
+
+    # Add attributes, which describe what values are saved in checkpoint for
+    # this trackable.
     _add_attributes_to_object_graph_for_registered_savers(
         registered_savers, object_graph_proto, node_ids)
     named_saveable_objects, feed_additions = (
@@ -420,6 +436,51 @@ class ObjectGraphView(object):
 
     return named_saveable_objects, feed_additions
 
+  def _add_checkpoint_values_check(self, trackable_objects, object_graph_proto):
+    """Determines which objects have checkpoint values and saves to the proto.
+
+    Args:
+      trackable_objects: A list of all trackable objects.
+      object_graph_proto: A `TrackableObjectGraph` proto.
+    """
+    # Trackable -> set of all trackables that depend on it (the "parents").
+    # If a trackable has checkpoint values, then all of the parents can be
+    # marked as having checkpoint values.
+    parents = object_identity.ObjectIdentityDictionary()
+    checkpointed_trackables = object_identity.ObjectIdentitySet()
+
+    # First pass: build dictionary of parent objects and initial set of
+    # checkpointed trackables.
+    for trackable, object_proto in zip(trackable_objects,
+                                       object_graph_proto.nodes):
+      if (object_proto.attributes or object_proto.slot_variables or
+          object_proto.HasField("registered_saver")):
+        checkpointed_trackables.add(trackable)
+      for child_proto in object_proto.children:
+        child = trackable_objects[child_proto.node_id]
+        if child not in parents:
+          parents[child] = object_identity.ObjectIdentitySet()
+        parents[child].add(trackable)
+
+    # Second pass: add all connected parents to set of checkpointed trackables.
+    to_visit = object_identity.ObjectIdentitySet()
+    to_visit.update(checkpointed_trackables)
+
+    while to_visit:
+      trackable = to_visit.pop()
+      if trackable not in parents:
+        # Some trackables may not have parents (e.g. slot variables).
+        continue
+      current_parents = parents.pop(trackable)
+      checkpointed_trackables.update(current_parents)
+      for parent in current_parents:
+        if parent in parents:
+          to_visit.add(parent)
+
+    for node_id, trackable in enumerate(trackable_objects):
+      object_graph_proto.nodes[node_id].has_checkpoint_values.value = bool(
+          trackable in checkpointed_trackables)
+
   def _fill_object_graph_proto(self, trackable_objects,
                                node_ids,
                                slot_variables,
@@ -464,6 +525,9 @@ class ObjectGraphView(object):
             object_names=object_names,
             object_map=object_map,
             call_with_mapped_captures=call_with_mapped_captures))
+    # Gather all trackables that have checkpoint values or descendants with
+    # checkpoint values, and add that info to the proto.
+    self._add_checkpoint_values_check(trackable_objects, object_graph_proto)
     return (named_saveable_objects, object_graph_proto, feed_additions,
             registered_savers)
 

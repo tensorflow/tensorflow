@@ -59,8 +59,8 @@ struct MarkOpsForOutsideCompilation
 // remove this.
 void AddCanonicalizationPatterns(MLIRContext* context,
                                  OwningRewritePatternList* patterns) {
-  for (auto* op : context->getRegisteredOperations())
-    op->getCanonicalizationPatterns(*patterns, context);
+  for (auto op : context->getRegisteredOperations())
+    op.getCanonicalizationPatterns(*patterns, context);
 }
 
 // Adds the list of ops that are supported on TPU through constant folding which

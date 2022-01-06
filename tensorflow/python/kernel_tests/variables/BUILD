@@ -77,6 +77,7 @@ cuda_py_test(
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python:memory_checker",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
         "@absl_py//absl/testing:parameterized",
     ],

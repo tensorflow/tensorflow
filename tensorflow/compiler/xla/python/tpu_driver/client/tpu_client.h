@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -38,7 +39,10 @@ limitations under the License.
 
 namespace xla {
 
-constexpr char kTpuPlatform[] = "tpu";
+inline const char* TpuPlatform() {
+  static constexpr char kTpuPlatform[] = "tpu";
+  return kTpuPlatform;
+}
 
 class PyTpuClient;
 

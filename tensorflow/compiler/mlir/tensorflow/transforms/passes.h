@@ -200,6 +200,9 @@ CreateTensorArrayOpsDecompositionPass();
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 
+// Create a pass that legalize TFG to TF dialect.
+std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
+
 // Addds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
                                      MLIRContext* context);
@@ -434,7 +437,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps();
 
 // Creates a pass that adds ops which perform formatting on variables at
 // run-time according to compilation result.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUVariableRuntimeReformattingPass();
 
 // Creates a pass that wraps ops with the same `_xla_outside_compilation`
 // attribute value in a tf_device.launch op with host device assignment.

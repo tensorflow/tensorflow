@@ -1,5 +1,5 @@
 // RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text-via-builder %s | FileCheck %s
+// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text --via-builder=true %s | FileCheck %s
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<2xi1>) -> tensor<2xi1> {
@@ -1233,6 +1233,26 @@ func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
 // CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] custom-call(f32[16,16] %[[ARG0]])
 // CHECK-SAME: custom_call_target="Sharding"
 // CHECK-SAME: sharding={devices=[1,2]0,1}
+
+// -----
+
+// CHECK:  HloModule
+// CHECK: %[[FOO:.*]] ([[ARG0:.*]]: f32[2,3], [[ARG1:.*]]: f32[5,5]) -> f32[2,3]
+func @foo (%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<2x3xf32> {
+  return %arg0 : tensor<2x3xf32>
+}
+
+// CHECK: ENTRY
+func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<2x3xf32> {
+  // CHECK:  ROOT
+  // CHECK-SAME:  f32[2,3] custom-call
+  // CHECK-SAME:  called_computations={%[[FOO]]}
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {
+    call_target_name = "foo",
+    called_computations = [@foo]
+  } : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<2x3xf32>
+  return %0 : tensor<2x3xf32>
+}
 
 // -----
 

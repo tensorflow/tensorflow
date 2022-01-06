@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
+#include "tensorflow/compiler/xla/python/mlir.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 #include "tensorflow/compiler/xla/python/pmap_lib.h"
@@ -158,8 +159,9 @@ PYBIND11_MODULE(xla_extension, m) {
         return device.client->LiveBuffersOnDevice(device.get());
       });
 
-  py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
-      .def("__repr__", [](const CpuDevice& device) {
+  py::class_<TfrtCpuDevice, PjRtDevice, ClientAndPtr<TfrtCpuDevice>>(
+      m, "CpuDevice")
+      .def("__repr__", [](const TfrtCpuDevice& device) {
         return absl::StrFormat("CpuDevice(id=%i)", device.id());
       });
 
@@ -236,6 +238,8 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("host_buffer_semantics") =
                PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("compile", &PyClient::Compile, py::arg("computation"),
+           py::arg("compile_options") = CompileOptions())
+      .def("compile", &PyClient::CompileMlir, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("serialize_executable", &PyClient::SerializeExecutable)
       .def("deserialize_executable",
@@ -350,6 +354,7 @@ PYBIND11_MODULE(xla_extension, m) {
   jax::BuildJaxjitSubmodule(m);
   jax::BuildPmapSubmodule(m);
   BuildTracebackSubmodule(m);
+  BuildMlirSubmodule(m);
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>

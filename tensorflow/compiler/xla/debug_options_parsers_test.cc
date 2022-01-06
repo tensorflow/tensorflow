@@ -17,16 +17,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/debug_options_parsers.h"
 
-#include <unordered_map>
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
 
 // Test that the xla_backend_extra_options flag is parsed correctly.
 TEST(DebugOptionsFlags, ParseXlaBackendExtraOptions) {
-  std::unordered_map<std::string, std::string> test_map;
+  absl::flat_hash_map<std::string, std::string> test_map;
   std::string test_string = "aa=bb,cc,dd=,ee=ff=gg";
   parse_xla_backend_extra_options(&test_map, test_string);
   EXPECT_EQ(test_map.size(), 4);

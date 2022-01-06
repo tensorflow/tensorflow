@@ -19,6 +19,7 @@ import numpy
 
 from . import xla_extension as _xla
 from .xla_extension import Shape as Shape
+from .xla_extension import Layout as Layout
 from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
@@ -56,6 +57,7 @@ def execute_with_python_values_replicated(
     executable: Executable, arguments: Sequence[Sequence[Any]],
     backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
 
+def shape_from_pyval(pyval: Any) -> Any: ...
 
 def heap_profile(client: Client) -> bytes:
   ...
@@ -109,6 +111,10 @@ def make_padding_config(
 ) -> PaddingConfig:
   ...
 
+class PaddingType(enum.Enum):
+  VALID = 1
+  SAME = 2
+
 
 class DotDimensionNumbers:
   lhs_contracting_dimensions: List[int]
@@ -145,6 +151,7 @@ def make_convolution_dimension_numbers(
 
 
 class PrecisionConfig:
+  Precision = _xla.PrecisionConfig_Precision
   operand_precision: List[_xla.PrecisionConfig_Precision]
 
 

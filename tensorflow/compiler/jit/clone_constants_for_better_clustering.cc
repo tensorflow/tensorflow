@@ -38,9 +38,7 @@ StatusOr<Node*> CloneConstantsForBetterClusteringPass::CloneNode(
   NodeDef new_in_def = n->def();
   new_in_def.clear_input();
   new_in_def.set_name(GenerateUniqueName(name_set, new_in_def.name()));
-  Status s;
-  Node* new_in = g->AddNode(new_in_def, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * new_in, g->AddNode(new_in_def));
 
   for (const Edge* e : n->in_edges()) {
     if (e->IsControlEdge()) {

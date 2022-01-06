@@ -292,7 +292,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
     Shape header_shape = ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords});
     std::unique_ptr<Literal> header =
         ReceiveRawFromOutfeed(device, header_shape).ValueOrDie();
-    absl::Span<uint32_t> header_data = header->data<uint32>();
+    absl::Span<uint32_t> header_data = header->data<uint32_t>();
     CHECK_EQ(header_data.size(), kOutfeedHeaderWords);
     CHECK_EQ(header_data[0], kOutfeedHeaderStart);
     uint32_t consumer_id = header_data[1];

@@ -55,7 +55,7 @@ class DynamicDimensionInference {
       CustomCallInferenceHandler custom_call_handler = nullptr,
       ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // If the dimension `dim` of instruction `inst` at `index` has a dynamic size,
   // returns a scalar HloInstruction that represents the runtime size of that

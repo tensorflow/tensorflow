@@ -157,6 +157,8 @@ class DataServiceDispatcherImpl {
                               GetOrRegisterDatasetResponse* response);
   Status GetElementSpec(const GetElementSpecRequest* request,
                         GetElementSpecResponse* response);
+  Status GetDataServiceMetadata(const GetDataServiceMetadataRequest* request,
+                                GetDataServiceMetadataResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
   Status ReleaseJobClient(const ReleaseJobClientRequest* request,
@@ -184,6 +186,7 @@ class DataServiceDispatcherImpl {
   // Registers a dataset with the given fingerprint, storing the new dataset's
   // id in `dataset_id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
+                         const DataServiceMetadata& metadata,
                          int64_t& dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Sets the element spec of the dataset for the specified `dataset_id`.
   Status SetElementSpec(int64_t dataset_id, const std::string& element_spec)

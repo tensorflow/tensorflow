@@ -63,7 +63,7 @@ TEST_F(DfsHloVisitorWithDefaultTest, DefaultElementwiseTest) {
 
   // HLO module contains are arbitrary mix of elementwise and non-elementwise
   // operations.
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 ENTRY TestComputation {

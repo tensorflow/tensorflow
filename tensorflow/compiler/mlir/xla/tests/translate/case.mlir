@@ -39,10 +39,10 @@ func @main() -> tensor<f32> {
 // CHECK-LABEL: ENTRY
 // CHECK-SAME:  () -> f32[]
 
-// CHECK: %[[INDEX:.*]] = s32[] constant(1)
-// CHECK: %[[OPERAND_1:.*]] = f32[] constant(56)
-// CHECK: %[[OPERAND_2:.*]] = f32[] constant(12)
-// CHECK: %[[OPERAND_3:.*]] = f32[] constant(13)
+// CHECK-DAG: %[[INDEX:.*]] = s32[] constant(1)
+// CHECK-DAG: %[[OPERAND_1:.*]] = f32[] constant(56)
+// CHECK-DAG: %[[OPERAND_2:.*]] = f32[] constant(12)
+// CHECK-DAG: %[[OPERAND_3:.*]] = f32[] constant(13)
 // CHECK: ROOT %[[RESULT:.*]] = f32[] conditional(s32[] %[[INDEX]], f32[] %[[OPERAND_1]], f32[] %[[OPERAND_2]], f32[] %[[OPERAND_3]]), branch_computations={%[[NEGATE_BRANCH]], %[[COPY_BRANCH]], %[[FLOOR_BRANCH]]}
 
 // -----
@@ -89,10 +89,10 @@ func @main() -> (tensor<f32>, tensor<f32>) {
 // CHECK-LABEL: ENTRY
 // CHECK-SAME:  () -> (f32[], f32[])
 
-// CHECK: %[[INDEX:.*]] = s32[] constant(1)
-// CHECK: %[[OPERAND_1:.*]] = f32[] constant(56)
-// CHECK: %[[OPERAND_2:.*]] = f32[] constant(12)
-// CHECK: %[[OPERAND_3:.*]] = f32[] constant(13)
+// CHECK-DAG: %[[INDEX:.*]] = s32[] constant(1)
+// CHECK-DAG: %[[OPERAND_1:.*]] = f32[] constant(56)
+// CHECK-DAG: %[[OPERAND_2:.*]] = f32[] constant(12)
+// CHECK-DAG: %[[OPERAND_3:.*]] = f32[] constant(13)
 // CHECK: %[[TUPLE:.*]] = (f32[], f32[]) conditional(s32[] %[[INDEX]], f32[] %[[OPERAND_1]], f32[] %[[OPERAND_2]], f32[] %[[OPERAND_3]]), branch_computations={%[[NEGATE_BRANCH]], %[[COPY_BRANCH]], %[[FLOOR_BRANCH]]}
 // CHECK: %[[RES_1:.*]] = f32[] get-tuple-element((f32[], f32[]) %[[TUPLE]]), index=0
 // CHECK: %[[RES_2:.*]] = f32[] get-tuple-element((f32[], f32[]) %[[TUPLE]]), index=1

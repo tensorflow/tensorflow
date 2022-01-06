@@ -185,7 +185,7 @@ class _CheckpointRestoreCoordinatorDeleter(object):
       log_fn("Detecting that an object or model or tf.train.Checkpoint is being"
              " deleted with unrestored values. See the following logs for the "
              "specific values in question. To silence these warnings, use "
-             "`status.expect_partial()` or `status.assert_consumed()`. See "
+             "`status.expect_partial()`. See "
              "https://www.tensorflow.org/api_docs/python/tf/train/Checkpoint#restore"
              "for details about the status object returned by the restore "
              "function.")
@@ -830,7 +830,7 @@ class CheckpointLoadStatus(_LoadStatus):
       # restoration checks.
       if (isinstance(trackable_object,
                      data_structures.TrackableDataStructure) and
-          not trackable_object._checkpoint_dependencies):
+          not trackable_object._trackable_children()):  # pylint: disable=protected-access
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
@@ -840,10 +840,15 @@ class CheckpointLoadStatus(_LoadStatus):
         object_identity.ObjectIdentitySet(
             self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
+      num_unused_python_objects = len(list(unused_python_objects))
+      # Display max number of 10 variables in error message.
+      num_variables_to_show = min(10, num_unused_python_objects)
       raise AssertionError(
-          "Some Python objects were not bound to checkpointed values, likely "
-          f"due to changes in the Python program: "
-          f"{list(unused_python_objects)}")
+          f"Found {num_unused_python_objects} Python objects that were "
+          "not bound to checkpointed values, likely due to changes in the "
+          f"Python program. Showing {num_variables_to_show} of "
+          f"{num_unused_python_objects} unmatched objects: "
+          f"{list(unused_python_objects)[:num_variables_to_show]}")
     return self
 
   def assert_nontrivial_match(self):
@@ -1247,11 +1252,13 @@ class TrackableSaver(object):
       feed_dict[file_prefix_tensor] = file_prefix
     else:
       with ops.device("/cpu:0"):
-        file_prefix_tensor = constant_op.constant(
+        file_prefix_tensor = ops.convert_to_tensor(
             file_prefix, dtype=dtypes.string)
       object_graph_tensor = None
 
-    file_io.recursive_create_dir(os.path.dirname(file_prefix))
+    if not tensor_util.is_tensor(file_prefix):
+      file_io.recursive_create_dir(os.path.dirname(file_prefix))
+
     save_path, new_feed_additions = self._save_cached_when_graph_building(
         file_prefix_tensor, object_graph_tensor, options)
     if new_feed_additions:
@@ -1283,9 +1290,9 @@ class TrackableSaver(object):
     saver.restore(path)
     ```
 
-    To ensure that loading is complete and no more assignments will take place
-    you can use the `assert_consumed()` method of the status object returned
-    by the `restore` call.
+    To ensure that loading is complete and no more deferred restorations will
+    take place, you can use the `assert_consumed()` method of the status object
+    returned by the `restore` call.
 
     The assert will raise an exception unless every object was matched and all
     checkpointed values have a matching variable object.
@@ -1752,9 +1759,9 @@ class CheckpointV1(tracking.AutoTrackable):
     checkpoint.restore(path)
     ```
 
-    To ensure that loading is complete and no more assignments will take place,
-    you can use the `assert_consumed()` method of the status object returned by
-    `restore`.
+    To ensure that loading is complete and no more deferred restorations will
+    take place, you can use the `assert_consumed()` method of the status object
+    returned by `restore`.
     The assert will raise an exception if any Python objects in the dependency
     graph were not found in the checkpoint, or if any checkpointed values do not
     have a matching Python object:
@@ -2074,7 +2081,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.write("/tmp/ckpt")
 
     # Later, read the checkpoint with read()
-    checkpoint.read("/tmp/ckpt").assert_consumed()
+    checkpoint.read("/tmp/ckpt")
 
     # You can also pass options to write() and read(). For example this
     # runs the IO ops on the localhost:
@@ -2082,7 +2089,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.write("/tmp/ckpt", options=options)
 
     # Later, read the checkpoint with read()
-    checkpoint.read("/tmp/ckpt", options=options).assert_consumed()
+    checkpoint.read("/tmp/ckpt", options=options)
     ```
 
     Args:
@@ -2152,7 +2159,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.save("/tmp/ckpt")
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt").assert_consumed()
+    checkpoint.restore("/tmp/ckpt")
 
     # You can also pass options to save() and restore(). For example this
     # runs the IO ops on the localhost:
@@ -2160,7 +2167,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.save("/tmp/ckpt", options=options)
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt", options=options).assert_consumed()
+    checkpoint.restore("/tmp/ckpt", options=options)
     ```
 
     Args:
@@ -2280,16 +2287,11 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.restore(path, options=options)
     ```
 
-    To ensure that loading is complete and no more assignments will take place,
-    use the `assert_consumed()` method of the status object returned by
-    `restore()`:
+    To ensure that loading is complete and no more deferred restorations will
+    take place, use the `assert_consumed()` method of the status object returned
+    by `restore()`:
 
     ```python
-    checkpoint = tf.train.Checkpoint( ... )
-    checkpoint.restore(path).assert_consumed()
-
-    # You can additionally pass options to restore():
-    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
     checkpoint.restore(path, options=options).assert_consumed()
     ```
 

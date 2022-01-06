@@ -1,4 +1,4 @@
-// RUN: xla-opt -split-input-file "-xla-hlo-to-lhlo-with-xla=platform=CUDA" %s | FileCheck %s
+// RUN: xla-opt-gpu -split-input-file "-xla-hlo-to-lhlo-with-xla=platform=CUDA" %s | FileCheck %s
 
 // CHECK-LABEL: func @main
 // CHECK-SAME: %[[ARG0:.*]]: memref<36xi8> {lmhlo.params = 0

@@ -73,6 +73,7 @@ def _SolveWithNumpy(matrix, rhs, l2_regularizer=0):
       return np.dot(np.conj(matrix.T), z)
 
 
+@test_util.with_eager_op_as_function
 class MatrixSolveLsOpTest(test_lib.TestCase):
 
   def _verifySolve(self,

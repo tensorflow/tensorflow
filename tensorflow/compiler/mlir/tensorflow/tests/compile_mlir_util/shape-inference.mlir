@@ -12,5 +12,5 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 // CHECK-LABEL: HloModule main
 // CHECK:       (arg_tuple.{{[0-9]+}}: (f32[10,17], f32[17,19])) -> (f32[10,19])
 
-// NO_TUPLES-LABEL: HloModule main{{.[0-9]*}}
+// NO_TUPLES-LABEL: HloModule main
 // NO_TUPLES:       ({{.+}}: f32[10,17], {{.+}}: f32[17,19]) -> f32[10,19]

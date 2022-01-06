@@ -671,7 +671,8 @@ def rot90(image, k=1, name=None):
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    k: A scalar integer tensor. The number of times the image(s) are
+      rotated by 90 degrees.
     name: A name for this operation (optional).
 
   Returns:
@@ -3751,12 +3752,12 @@ def non_max_suppression_with_scores(boxes,
   Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
   of other overlapping boxes instead of directly causing them to be pruned.
   Consequently, in contrast to `tf.image.non_max_suppression`,
-  `tf.image.non_max_suppression_padded` returns the new scores of each input box
+  `tf.image.non_max_suppression_with_scores` returns the new scores of each input box
   in the second output, `selected_scores`.
 
   To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
   larger than 0.  When `soft_nms_sigma` equals 0, the behavior of
-  `tf.image.non_max_suppression_padded` is identical to that of
+  `tf.image.non_max_suppression_with_scores` is identical to that of
   `tf.image.non_max_suppression` (except for the extra output) both in function
   and in running time.
 

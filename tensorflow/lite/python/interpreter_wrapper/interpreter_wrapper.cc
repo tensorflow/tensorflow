@@ -256,10 +256,17 @@ InterpreterWrapper::InterpreterWrapper(
 
 InterpreterWrapper::~InterpreterWrapper() {}
 
+// LINT.IfChange
+static constexpr int kUndeterminedSubgraphIndex = -1;
+// LINT.ThenChange(//tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper_pybind11.cc)
 PyObject* InterpreterWrapper::AllocateTensors(int subgraph_index) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
-  TFLITE_PY_CHECK(interpreter_->subgraph(subgraph_index)->AllocateTensors());
+  if (subgraph_index == kUndeterminedSubgraphIndex) {
+    TFLITE_PY_CHECK(interpreter_->AllocateTensors());
+  } else {
+    TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
+    TFLITE_PY_CHECK(interpreter_->subgraph(subgraph_index)->AllocateTensors());
+  }
   Py_RETURN_NONE;
 }
 

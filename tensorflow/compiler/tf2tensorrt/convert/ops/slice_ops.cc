@@ -97,13 +97,14 @@ Status ConvertStridedSliceHelper(
       params->converter->network(), params->weight_store);
   TRT_ENSURE_OK(builder);
 
-  VLOG(2) << "strided slice helper:"
-          << " begin:" << DebugString(begin_dims)
-          << "\n stride: " << DebugString(stride_dims)
-          << "\n end: " << DebugString(end_dims)
-          << "\n size: " << DebugString(size_dims)
-          << "\n Dynamic indices: " << DebugString(dynamic_input_size_indices)
-          << "\n Static indices: " << DebugString(static_input_size_indices);
+  // VLOG(2) << "strided slice helper:"
+  //         << " begin:" << DebugString(begin_dims)
+  //         << "\n stride: " << DebugString(stride_dims)
+  //         << "\n end: " << DebugString(end_dims)
+  //         << "\n size: " << DebugString(size_dims)
+  //         << "\n Dynamic indices: " <<
+  //         DebugString(dynamic_input_size_indices)
+  //         << "\n Static indices: " << DebugString(static_input_size_indices);
   // Create the slice operation. For dynamic dims, the inputs of the operations
   // may be reassigned later.
   StatusOr<nvinfer1::ISliceLayer*> slice = builder->Slice(
@@ -177,8 +178,8 @@ Status HandleDynamicStridedSliceInput(
     }
   }
 
-  VLOG(2) << " Dynamic begin indices: " << DebugString(dynamic_begin_indices)
-          << " Dynamic end indices: " << DebugString(dynamic_end_indices);
+  // VLOG(2) << " Dynamic begin indices: " << DebugString(dynamic_begin_indices)
+  //         << " Dynamic end indices: " << DebugString(dynamic_end_indices);
 
   // Create ITensors for each of the begin/stride/end constants.
   StatusOr<nvinfer1::IConstantLayer*> begin_const = builder->Constant(

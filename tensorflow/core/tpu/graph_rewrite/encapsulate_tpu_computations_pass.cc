@@ -467,9 +467,7 @@ Status MoveHeadOutsideCompilationToHost(
       copy_def.set_name(absl::StrCat(n->name(), "_head_oc/R", replica_id));
       copy_def.clear_device();
 
-      Status s;
-      Node* copy_node = g->AddNode(copy_def, &s);
-      TF_RETURN_IF_ERROR(s);
+      TF_ASSIGN_OR_RETURN(Node * copy_node, g->AddNode(copy_def));
 
       copy_node->AddAttr(kXlaReplicaIdAttrName, replica_id);
       copy_node->AddAttr(kTPUReplicateAttr, cluster_name);
@@ -667,9 +665,7 @@ Status MoveHeadOutsideCompilationToHost(
     arg_builder.Attr("index", i);
     NodeDef arg_def;
     TF_RETURN_IF_ERROR(arg_builder.Finalize(&arg_def));
-    Status s;
-    Node* arg_node = xla_graph->AddNode(arg_def, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * arg_node, xla_graph->AddNode(arg_def));
     const Edge* original_edge = oc_output_edges[i - old_num_per_replica_inputs];
     Node* dst = original_edge->dst();
     int dst_input = original_edge->dst_input();
@@ -733,8 +729,7 @@ Status MoveHeadOutsideCompilationToHost(
     id_builder.Input(inputs);
     NodeDef id_def;
     TF_RETURN_IF_ERROR(id_builder.Finalize(&id_def));
-    Node* id_node = g->AddNode(id_def, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * id_node, g->AddNode(id_def));
     for (int i = 0; i < num_replicas; i++) {
       g->AddEdge(input_edge->src(), input_edge->src_output(), id_node, i);
     }
@@ -1118,9 +1113,7 @@ Status MoveTailOutsideCompilationToHost(
       copy_def.set_name(absl::StrCat(n->name(), "_tail_oc/R", replica_id));
       copy_def.clear_device();
 
-      Status s;
-      Node* copy_node = g->AddNode(copy_def, &s);
-      TF_RETURN_IF_ERROR(s);
+      TF_ASSIGN_OR_RETURN(Node * copy_node, g->AddNode(copy_def));
 
       copy_node->AddAttr(kXlaReplicaIdAttrName, replica_id);
       copy_node->AddAttr(kTPUReplicateAttr, cluster_name);
@@ -1192,9 +1185,7 @@ Status MoveTailOutsideCompilationToHost(
     ret_builder.Input(src->name(), src_output, src->output_type(src_output));
     NodeDef ret_def;
     TF_RETURN_IF_ERROR(ret_builder.Finalize(&ret_def));
-    Status s;
-    Node* ret_node = xla_graph->AddNode(ret_def, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * ret_node, xla_graph->AddNode(ret_def));
     xla_graph->RemoveEdge(original_edge);
     xla_graph->AddEdge(src, src_output, ret_node, 0);
   }
@@ -1221,9 +1212,7 @@ Status MoveTailOutsideCompilationToHost(
     builder.Attr(kXlaIsPlaceholderForTailOcAttrName, true);
     NodeDef def;
     TF_RETURN_IF_ERROR(builder.Finalize(&def));
-    Status s;
-    Node* placeholder = xla_graph->AddNode(def, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * placeholder, xla_graph->AddNode(def));
     xla_graph->AddEdge(placeholder, 0, n, 0);
   }
 
@@ -1312,9 +1301,7 @@ Status ReplaceArgUsedByOutsideCompilationWithPlaceholder(
     id_builder.Input(inputs);
     NodeDef id_def;
     TF_RETURN_IF_ERROR(id_builder.Finalize(&id_def));
-    Status s;
-    Node* id_node = g->AddNode(id_def, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * id_node, g->AddNode(id_def));
     if (index >= num_per_replica_inputs) {
       const Edge* e = input_edges.at(num_replicas * num_per_replica_inputs +
                                      (index - num_per_replica_inputs));
@@ -1342,9 +1329,7 @@ Status ReplaceArgUsedByOutsideCompilationWithPlaceholder(
       ph_builder.Attr(kXlaIsPlaceholderForArg, true);
       NodeDef ph_def;
       TF_RETURN_IF_ERROR(ph_builder.Finalize(&ph_def));
-      Status s;
-      Node* ph_node = xla_graph->AddNode(ph_def, &s);
-      TF_RETURN_IF_ERROR(s);
+      TF_ASSIGN_OR_RETURN(Node * ph_node, xla_graph->AddNode(ph_def));
       Node* dst = e->dst();
       int dst_input = e->dst_input();
       xla_graph->RemoveEdge(e);
@@ -1552,9 +1537,8 @@ Status RemoveEdgesBetweenArgAndRetval(const string& xla_func_name, Graph* g,
     placeholder_builder.Attr(kXlaIsPlaceholderForTailOcAttrName, true);
     NodeDef placeholder_def;
     TF_RETURN_IF_ERROR(placeholder_builder.Finalize(&placeholder_def));
-    Status s;
-    Node* placeholder_node = xla_graph->AddNode(placeholder_def, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * placeholder_node,
+                        xla_graph->AddNode(placeholder_def));
 
     Node* dst = e->dst();
     int dst_input = e->dst_input();
@@ -1926,9 +1910,7 @@ Status MakeIdentityNodesForArgsToLift(
                      n->input_type(input_edge_index));
     NodeDef id_def;
     TF_RETURN_IF_ERROR(id_builder.Finalize(&id_def));
-    Status s;
-    Node* id_node = g->AddNode(id_def, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * id_node, g->AddNode(id_def));
     g->AddEdge(arg_edge->src(), arg_edge->src_output(), id_node, 0);
     g->AddControlEdge(id_node, n);
   }
@@ -1978,9 +1960,7 @@ Status RemoveArgsToLiftFromFunctionBody(
       NodeDef ph_def;
       TF_RETURN_IF_ERROR(ph_builder.Finalize(&ph_def));
 
-      Status s;
-      Node* ph_node = fbody->graph->AddNode(ph_def, &s);
-      TF_RETURN_IF_ERROR(s);
+      TF_ASSIGN_OR_RETURN(Node * ph_node, fbody->graph->AddNode(ph_def));
 
       Node* dst = e->dst();
       int dst_input = e->dst_input();
@@ -2575,9 +2555,7 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
     AddNodeAttr("T", n->output_type(0), &ndef);
 
     graph->RemoveNode(n);
-    Status s;
-    Node* id_node = graph->AddNode(ndef, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * id_node, graph->AddNode(ndef));
 
     for (const auto& pred : predecessors) {
       if (pred.second < 0) {
@@ -2837,11 +2815,7 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
       graph->RemoveNode(node);
     }
 
-    Status status;
-    Node* tpu_replicate = graph->AddNode(def, &status);
-    if (!status.ok()) {
-      return status;
-    }
+    TF_ASSIGN_OR_RETURN(Node * tpu_replicate, graph->AddNode(def));
     for (int i = 0; i < data_inputs.size(); ++i) {
       graph->AddEdge(data_inputs[i].first, data_inputs[i].second, tpu_replicate,
                      i);

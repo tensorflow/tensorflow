@@ -1032,7 +1032,7 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
 }
 
 Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
-  // HLO broadcast has no exact analog at the proto level so there is no
+  // HLO broadcast has no exact analog at the client level so there is no
   // ShapeInference method. Check the output shape explicitly.
   const Shape& operand_shape = broadcast->operand(0)->shape();
   // Check for mixed precision.
@@ -1653,9 +1653,10 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   return Status::OK();
 }
 
-string ComputationsToString(absl::Span<HloComputation* const> computations) {
+std::string ComputationsToString(
+    absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
-                       [](string* s, const HloComputation* computation) {
+                       [](std::string* s, const HloComputation* computation) {
                          s->append(computation->name());
                        });
 }
@@ -2275,7 +2276,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
  private:
-  absl::flat_hash_map<string, const HloInstruction*> instructions_by_name_;
+  absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   // Determines whether an instruction can change layouts.
   std::function<bool(const HloInstruction*)>
       instruction_can_change_layout_func_;

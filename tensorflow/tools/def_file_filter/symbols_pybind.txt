@@ -14,7 +14,7 @@ tensorflow::swig::IsVariable
 tensorflow::swig::SameNamedtuples
 tensorflow::swig::AssertSameStructure
 tensorflow::swig::Flatten
-tensorflow::swig::IsSequenceForData
+tensorflow::swig::IsNestedForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
 tensorflow::swig::RegisterPyObject
@@ -90,6 +90,7 @@ tensorflow::SessionState::kTensorHandleResourceTypeName
 
 [//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
 tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
+tensorflow::data::DataServiceDispatcherClient::GetDataServiceMetadata
 tensorflow::data::DataServiceDispatcherClient::GetElementSpec
 
 [//tensorflow/core/data/service:grpc_util] # grpc_util
@@ -198,7 +199,6 @@ TFE_Py_ForwardAccumulatorPopState
 TFE_Py_PackJVPs
 TFE_Py_TensorShapeSlice
 TFE_Py_TensorShapeOnDevice
-TFE_Py_EncodeArg
 TFE_Py_EnableInteractivePythonLogging
 TFE_Py_SetEagerContext
 tensorflow::MakeEagerContextThreadLocalData
@@ -413,7 +413,7 @@ tensorflow::metrics::TrainingTimeSaved
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
-tensorflow::ResetMlirCommonFlags
+tensorflow::ResetJitCompilerFlags
 
 [//tensorflow/core/platform:tensor_float_32_utils] # tensor_float_32
 tensorflow::enable_tensor_float_32_execution

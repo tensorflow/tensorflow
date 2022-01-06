@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -93,9 +92,10 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
   // F32 and BF16 types are allowed.
   if (elemType.isBF16() || elemType.isF32()) return true;
 
-  // I1, I16, I32, I64 types are allowed.
-  if (elemType.isInteger(1) || elemType.isInteger(16) ||
-      elemType.isInteger(32) || elemType.isInteger(64))
+  // I1, I8 I16, I32, I64 types are allowed.
+  if (elemType.isInteger(1) || elemType.isInteger(8) ||
+      elemType.isInteger(16) || elemType.isInteger(32) ||
+      elemType.isInteger(64))
     return true;
 
   // Complex<F<32>> is allowed.

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -617,10 +617,10 @@ TEST_F(GpuConvRewriterTest,
 TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
   Array4D<float> constant_arr(4, 4, 2, 2);
   constant_arr.FillIota(0);
-  string constant_str =
+  std::string constant_str =
       LiteralUtil::CreateR4FromArray4D(constant_arr).ToStringWithoutShape();
 
-  const string module_str = absl::StrFormat(R"(
+  const std::string module_str = absl::StrFormat(R"(
     HloModule test
 
     ENTRY entry_computation {
@@ -630,7 +630,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
           window={size=4x4 pad=2_2x2_2 lhs_dilate=2x2},
           dim_labels=bf01_01oi->bf01, feature_group_count=1
     })",
-                                            constant_str);
+                                                 constant_str);
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
@@ -641,9 +641,10 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
                           0));
 }
 
-// Check that a forward convolution instruction with int8 inputs is not allowed
+// Check that a forward convolution instruction with int8_t inputs is not
+// allowed
 TEST_F(GpuConvRewriterTest, TestForwardInt8Convolution) {
-  const string module_str = absl::StrFormat(R"(
+  const std::string module_str = absl::StrFormat(R"(
     HloModule Test
 
     ENTRY Test {
@@ -658,7 +659,7 @@ TEST_F(GpuConvRewriterTest, TestForwardInt8Convolution) {
 }
 
 TEST_F(GpuConvRewriterTest, TestBackwardFilterPattern) {
-  const string module_str = absl::StrFormat(R"(
+  const std::string module_str = absl::StrFormat(R"(
     HloModule Test
 
     ENTRY Test {

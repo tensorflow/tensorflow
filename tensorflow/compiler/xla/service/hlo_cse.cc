@@ -51,12 +51,10 @@ namespace {
 StatusOr<bool> CombineConstants(HloComputation* computation,
                                 bool is_layout_sensitive) {
   TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
-  // Map from ShortDebugString of the layoutless shape of the constant/iota to
-  // the set of constant instructions with that shape. Layoutless shape is used
-  // to bin possible common constants together to reduce number of constant
-  // comparisons. If we end up having too many constant comparisons, a more
-  // precise binning might have to be used.
-  std::multimap<string, HloInstruction*> instrs;
+  // Map from the literal hash of a constant or the shape hash of an iota all
+  // equivalent instructions. This avoids extreme quadratic behavior with many
+  // scalar constants.
+  std::unordered_multimap<int64_t, HloInstruction*> instrs;
   int64_t combined = 0;
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
@@ -72,14 +70,24 @@ StatusOr<bool> CombineConstants(HloComputation* computation,
       if (!is_layout_sensitive) {
         LayoutUtil::ClearLayout(&shape);
       }
-      string shape_string = shape.ShortDebugString();
+      // Only the first element of a constant is comparable for layout sensitive
+      // constants
+      int64_t key =
+          instruction->IsConstant()
+              ? instruction->literal().Hash(
+                    /*byte_limit=*/64)
+              : (ShapeUtil::Hash(shape) *
+                 (1 + Cast<HloIotaInstruction>(instruction)->iota_dimension()));
 
       // Compare against all iotas/constants with the same shape.
       HloInstruction* match = nullptr;
-      auto range = instrs.equal_range(shape_string);
+      auto range = instrs.equal_range(key);
       for (auto it = range.first; it != range.second; ++it) {
         if (instruction->opcode() == it->second->opcode() &&
             domain_map->InSameDomain(it->second, instruction) &&
+            (is_layout_sensitive ? Shape::Equal()
+                                 : Shape::Equal().IgnoreLayout())(
+                instruction->shape(), it->second->shape()) &&
             ((instruction->opcode() == HloOpcode::kConstant &&
               instruction->literal() == it->second->literal()) ||
              (instruction->opcode() == HloOpcode::kIota &&
@@ -90,7 +98,7 @@ StatusOr<bool> CombineConstants(HloComputation* computation,
         }
       }
       if (match == nullptr) {
-        instrs.emplace(shape_string, instruction);
+        instrs.emplace(key, instruction);
       } else {
         // Match found, replace this instruction with the one in the multimap.
         TF_CHECK_OK(instruction->ReplaceAllUsesWith(match));

@@ -80,12 +80,12 @@ class HloTestBase : public ManifestCheckingTest {
   // destruction.
   ABSL_DEPRECATED("Use CreateNewVerifiedModule instead.")
   std::unique_ptr<HloModule> CreateNewUnverifiedModule(
-      const string& name = TestName());
+      const std::string& name = TestName());
 
   // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
   // HLO verifier on destruction.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
-      const string& name = TestName(), int64_t replica_count = 1);
+      const std::string& name = TestName(), int64_t replica_count = 1);
 
   // Parses the given string and returns module as a VerifiedHloModule.
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
@@ -232,24 +232,43 @@ class HloTestBase : public ManifestCheckingTest {
       const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
-  ::testing::AssertionResult Run(const absl::string_view hlo_string,
-                                 bool run_hlo_passes = true,
-                                 ExecutionProfile* profile = nullptr,
-                                 string backend_config = "") TF_MUST_USE_RESULT;
+  ::testing::AssertionResult Run(
+      const absl::string_view hlo_string, bool run_hlo_passes = true,
+      ExecutionProfile* profile = nullptr,
+      std::string backend_config = "") TF_MUST_USE_RESULT;
+
+  // Same as below, except requires passing fake arguments.
+  ::testing::AssertionResult RunAndCompareTwoModules(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      const absl::Span<Literal* const> arguments,
+      const absl::optional<ErrorSpec>& error);
+
+  // Same as below, except requires passing the modules.
+  ::testing::AssertionResult RunAndCompareTwoModules(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      const absl::optional<ErrorSpec>& error);
+
+  // Convenient wrapper for executing and comparing results of two unoptimized
+  // hlo modules with fake input.
+  ::testing::AssertionResult RunAndCompareTwoModules(
+      absl::string_view hlo_string_module_0,
+      absl::string_view hlo_string_module_1,
+      const absl::optional<ErrorSpec>& error);
 
   // Executes an hlo module with fake inputs on multiple replicas.
   ::testing::AssertionResult RunReplicated(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
-      int64_t num_replicas = 1, string backend_config = "") TF_MUST_USE_RESULT;
+      int64_t num_replicas = 1,
+      std::string backend_config = "") TF_MUST_USE_RESULT;
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(
       const absl::string_view hlo_string, bool run_hlo_passes,
-      std::vector<ExecutionProfile>* profiles, string backend_config = "",
+      std::vector<ExecutionProfile>* profiles, std::string backend_config = "",
       bool assert_determinism = false) TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
-      const string& filename, const absl::optional<ErrorSpec>& error,
+      const std::string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareNoHloPasses(
@@ -258,7 +277,7 @@ class HloTestBase : public ManifestCheckingTest {
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareNoHloPassesFromFile(
-      const string& filename, const absl::optional<ErrorSpec>& error,
+      const std::string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
@@ -309,7 +328,7 @@ class HloTestBase : public ManifestCheckingTest {
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }
 
-  static string TestName();
+  static std::string TestName();
 
   // Returns the backend owned by the test runner.
   Backend& backend();
@@ -344,6 +363,14 @@ class HloTestBase : public ManifestCheckingTest {
       const absl::Span<Literal* const> arguments,
       const absl::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor);
+
+  // Runs the two module on with or without running hlo passes and
+  // compares the results. Returns whether the results are near or equal. If any
+  // error happens before the results are computed, returns the error status.
+  StatusOr<::testing::AssertionResult> RunAndCompareTwoModulesInternal(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      const absl::Span<Literal* const> arguments,
+      const absl::optional<ErrorSpec>& error, bool run_hlo_passes);
 };
 
 }  // namespace xla

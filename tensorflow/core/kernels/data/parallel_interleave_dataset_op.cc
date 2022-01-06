@@ -991,8 +991,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                {"element_id", result->id}});
         });
         bool end_of_input = false;
-        result->status = iterator->GetNext(ctx_.get(), &result->return_values,
-                                           &end_of_input);
+        result->status =
+            iterator->GetNext(MakeNestedIteratorContext(ctx_.get()),
+                              &result->return_values, &end_of_input);
         if (end_of_input) {
           mutex_lock l(*mu_);
           element->iterator.reset();

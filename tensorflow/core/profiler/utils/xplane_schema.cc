@@ -220,6 +220,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"model_name", kModelName},
       {"model_version", kModelVersion},
       {"bytes_transferred", kBytesTransferred},
+      {"queue", kDmaQueue},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},

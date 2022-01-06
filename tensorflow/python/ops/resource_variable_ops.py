@@ -488,19 +488,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
 
-  def __tf_function_cache_spec__(self):
-    res = f"d{self.dtype.as_datatype_enum}s"
-    for dim_size in self.shape:
-      res += f"{dim_size}-"
-
-    return res
-
-  def __tf_resource_id__(self):
-    return self._handle._id  # pylint:disable=protected-access
-
   def __tf_tracing_type__(self, tracing_context):
     return VariableType(self.dtype, self.shape,
-                        tracing_context.get_local_id(self.__tf_resource_id__()))
+                        tracing_context.get_local_id(self._handle._id))  # pylint:disable=protected-access
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -942,7 +932,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
              f"The variable shape {self._shape}, and the "
              f"assigned value shape {value_tensor.shape} are incompatible."))
       kwargs = {}
-      if forward_compat.forward_compatible(2021, 11, 15):
+      if forward_compat.forward_compatible(2022, 1, 15):
         # If the shape is fully defined, we do a runtime check with the shape of
         # value.
         validate_shape = self._shape.is_fully_defined()

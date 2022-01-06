@@ -778,8 +778,8 @@ def HasTwoUse : Constraint<CPred<
   "std::distance($0.use_begin(), $0.use_end()) == 2">>;
 def AxesIsLastDimension : Constraint<CPred<
   "$0.cast<DenseIntElementsAttr>().getNumElements() == 1 && "
-  "($0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
-  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<DenseIntElementsAttr>().getValue<int32_t>({0}) == -1)">>;
+  "($0.cast<DenseIntElementsAttr>().getValues<APInt>()[0] == "
+  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<DenseIntElementsAttr>().getValues<int32_t>()[0] == -1)">>;
 
 // Convert exp(x)/sum(exp(x)) into softmax.
 def OptimizeToSoftmax : Pat<
@@ -998,7 +998,8 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
     $bias,
     TFL_AF_None,
     TFL_FCWO_Default,
-    ConstBoolAttrFalse),
+    ConstBoolAttrFalse,
+    $asymmetric_quantize_inputs),
   (TFL_EmbeddingLookupOp
     $indices,
     (TFL_TransposeOp

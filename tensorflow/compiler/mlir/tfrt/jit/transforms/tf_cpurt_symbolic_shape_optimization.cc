@@ -36,7 +36,6 @@ limitations under the License.
 #include "llvm/Support/ErrorOr.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
 namespace tensorflow {
@@ -94,10 +93,10 @@ CstrBroadcastableOpLowering::CstrBroadcastableOpLowering(MLIRContext* ctx)
 // Returns true if all of bcasted_shapes can be broadcasted with output_shape.
 bool isKnownBroadcastable(ShapeComponentAnalysis& analysis,
                           ValueRange bcasted_shapes, Value output_shape) {
-  auto output_shape_dims = analysis.dimensionsForShapeTensor(output_shape);
+  auto output_shape_dims = analysis.GetValueInfo(output_shape);
   if (!output_shape_dims) return false;
   for (Value shape : bcasted_shapes) {
-    auto shape_dims = analysis.dimensionsForShapeTensor(shape);
+    auto shape_dims = analysis.GetValueInfo(shape);
     if (!shape_dims) return false;
     // Iterate backwards over the smallest input shape.
     for (auto zip : llvm::zip(llvm::reverse(*output_shape_dims),
@@ -124,8 +123,8 @@ bool isKnownBroadcastable(ShapeComponentAnalysis& analysis,
 LogicalResult CstrBroadcastableOpLowering::matchAndRewrite(
     shape::CstrBroadcastableOp op, mlir::PatternRewriter& rewriter) const {
   ShapeComponentAnalysis shape_component_analysis;
-  if (!isKnownBroadcastable(shape_component_analysis, op.shapes(),
-                            op.shapes().front()))
+  if (!isKnownBroadcastable(shape_component_analysis, op.getShapes(),
+                            op.getShapes().front()))
     return failure();
 
   // Replace constraint with a true witness.
@@ -150,20 +149,24 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
                                         ValueRange shapes, Location loc,
                                         OpBuilder* builder) {
   // First find the input shape with the largest rank.
-  SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicDimension>> shapes_found;
+  SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapes_found;
   size_t maxRank = 0;
-  for (auto shape : llvm::enumerate(shapes)) {
-    auto found_shape = analysis.dimensionsForShapeTensor(shape.value());
+  for (const auto &shape : llvm::enumerate(shapes)) {
+    auto found_shape = analysis.GetValueInfo(shape.value());
     if (!found_shape) return {};
     shapes_found.push_back(*found_shape);
     maxRank = std::max(maxRank, found_shape->size());
   }
+  if (maxRank == 0) {
+    return Value(builder->create<tensor::FromElementsOp>(
+        loc, shapes[0].getType(), SmallVector<Value>()));
+  }
 
-  SmallVector<const ShapeComponentAnalysis::SymbolicDimension*>
-      joined_dimensions(maxRank);
+  SmallVector<const ShapeComponentAnalysis::SymbolicExpr*> joined_dimensions(
+      maxRank);
   SmallVector<std::pair<Value, int64_t>> shape_and_rank_for_dim(maxRank);
-  for (auto shape : llvm::enumerate(shapes_found)) {
-    for (auto dim : llvm::enumerate(llvm::reverse(shape.value()))) {
+  for (const auto &shape : llvm::enumerate(shapes_found)) {
+    for (const auto &dim : llvm::enumerate(llvm::reverse(shape.value()))) {
       // 1 dimensions don't contribute to the final result.
       if (dim.value().isConstant(1)) continue;
       // If it's not a 1 dimension it will be present in the result. Remember
@@ -207,8 +210,8 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
 LogicalResult BroadcastOpLowering::matchAndRewrite(
     shape::BroadcastOp op, mlir::PatternRewriter& rewriter) const {
   ShapeComponentAnalysis shape_component_analysis;
-  auto new_broadcast = simplifyBroadcast(shape_component_analysis, op.shapes(),
-                                         op.getLoc(), &rewriter);
+  auto new_broadcast = simplifyBroadcast(
+      shape_component_analysis, op.getShapes(), op.getLoc(), &rewriter);
   if (!new_broadcast) return failure();
   rewriter.replaceOp(op, {*new_broadcast});
   return success();
@@ -237,8 +240,8 @@ DynamicBroadcastInDimOpLowering::DynamicBroadcastInDimOpLowering(
 // dimensions that never expand or always expand.
 llvm::Optional<AffineMap> isNonExpandingBroadcast(
     ShapeComponentAnalysis& analysis, Value from, Value to_shape) {
-  auto in_shape = analysis.dimensionsForShape(from);
-  auto out_shape = analysis.dimensionsForShapeTensor(to_shape);
+  auto in_shape = analysis.GetShapeInfo(from);
+  auto out_shape = analysis.GetValueInfo(to_shape);
   if (!in_shape || !out_shape) return {};
 
   SmallVector<AffineExpr> input_map_exprs;
@@ -355,22 +358,15 @@ struct SymbolicShapeOptimizationPass
     // Rewrite shape.broadcast based on the symbolic shapes.
     patterns.insert<BroadcastOpLowering>(ctx);
 
-    // Move broadcasts up across mhlo operations to enable more opportunities
-    // for constraints and broadcasts optimizations. These patterns are only
-    // applicable if we do not lower mhlo broadcasts to linalg.generic.
-    if (optimize_only_constraints)
-      mlir::mhlo::PopulateBroadcastsPropagationPatterns(ctx, &patterns);
-
     // Rewrite broadcasts based on the symbolic shapes if enabled.
     if (!optimize_only_constraints)
       patterns.insert<DynamicBroadcastInDimOpLowering>(ctx);
 
     // Add shape dialect canonicalization patterns to fold shape operations
     // after constraints are replaced with constant witness.
-    mlir::Dialect* shape_dialect = ctx->getLoadedDialect<shape::ShapeDialect>();
-    for (auto* op : ctx->getRegisteredOperations()) {
-      if (op->dialect.getTypeID() == shape_dialect->getTypeID())
-        op->getCanonicalizationPatterns(patterns, ctx);
+    for (auto op : ctx->getRegisteredOperations()) {
+      if (llvm::isa<shape::ShapeDialect>(op.getDialect()))
+        op.getCanonicalizationPatterns(patterns, ctx);
     }
 
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));

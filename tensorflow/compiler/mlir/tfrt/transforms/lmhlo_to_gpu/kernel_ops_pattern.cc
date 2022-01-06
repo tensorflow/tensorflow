@@ -37,7 +37,7 @@
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -291,12 +291,16 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
                       rewriter.getStringAttr(gpu_module_data));
 
   // Annotate memref.global ops with the gpu.module symbol, and annotate the
-  // gpu.module op with memref.global symbols which requiring initialization.
+  // gpu.module op with memref.global symbols which require initialization.
   SmallVector<mlir::Attribute, 4> const_attrs;
   for (const auto& constant : constants) {
     auto global_op = mlir::SymbolTable::lookupNearestSymbolFrom(
         op, rewriter.getStringAttr(constant.symbol_name));
-    assert(global_op);
+    if (!global_op) {
+      LOG(WARNING) << "memref.global op not found for constant. Possibly "
+                   << "unused (spurious) constant.";
+      continue;
+    }
     global_op->setAttr(tfrt::gpu::getGpuModuleAttrName(),
                        mlir::SymbolRefAttr::get(gpu_module));
     if (!constant.content.empty())

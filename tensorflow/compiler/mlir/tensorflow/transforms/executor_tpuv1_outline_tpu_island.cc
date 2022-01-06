@@ -154,11 +154,11 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   for (FuncOp func : outlined_module.getOps<FuncOp>()) {
     func.walk([&](Operation *op) {
       for (NamedAttribute attr : op->getAttrs()) {
-        if (auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>()) {
+        if (auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>()) {
           MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
           continue;
         }
-        if (auto array_attr = attr.second.dyn_cast<ArrayAttr>()) {
+        if (auto array_attr = attr.getValue().dyn_cast<ArrayAttr>()) {
           for (const Attribute &attribute : array_attr) {
             auto symbol_ref = attribute.dyn_cast<FlatSymbolRefAttr>();
             if (!symbol_ref) continue;

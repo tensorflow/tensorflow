@@ -46,11 +46,6 @@ def LegalizeControlFlowPass : FunctionPass<"mhlo-legalize-control-flow"> {
   let constructor = "createLegalizeControlFlowPass()";
 }
 
-def LegalizeControlFlowToScfPass : FunctionPass<"mhlo-control-flow-to-scf"> {
-  let summary = "Legalize from MHLO control flow to SCF control flow.";
-  let constructor = "createControlFlowToScfPass()";
-}
-
 def LegalizeEinsumToDotGeneralPass : FunctionPass<"mhlo-legalize-einsum-to-dot-general"> {
   let summary = "Legalizes einsum ops to dot_general ops.";
   let constructor = "createLegalizeEinsumToDotGeneralPass()";
@@ -65,6 +60,11 @@ def LegalizeGatherToTorchIndexSelectPass : FunctionPass<"mhlo-legalize-gather-to
 def LegalizeTanhToApproximationPass : FunctionPass<"mhlo-legalize-trigonometric-to-approximation"> {
   let summary = "Legalize trigonometric operations from standard dialect to an approximation.";
   let constructor = "createLegalizeTrigonometricToApproximationPass()";
+}
+
+def HloLegalizeShapeOpsToStandardPass : FunctionPass<"hlo-legalize-shapeops-to-standard"> {
+  let summary = "Legalize shape operations from HLO dialect to standard dialect.";
+  let constructor = "createLegalizeHloShapeOpsToStandardPass()";
 }
 
 def HloLegalizeToLinalgPass : FunctionPass<"hlo-legalize-to-linalg"> {
@@ -116,6 +116,45 @@ def SinkConstantsToControlFlowPass : FunctionPass<"mhlo-sink-constants-to-contro
   let summary = "Sink constants implicitly captured in control flow regions. This "
     "is necessary to export to XLA.";
   let constructor = "createSinkConstantsToControlFlowPass()";
+  let description = [{
+    A pass that sinks constants implicitly captured in control flow regions. This
+    is necessary to export to XLA, because XLA's representation of control flow
+    doesn't have the notion of implicit capture.
+
+    For example given this function:
+
+    ```mlir
+      func @sink_const_to_sort(%arg0: tensor<16xf32>) {
+        %c0 = arith.constant dense<1.0> : tensor<f32>
+        %0 = "mhlo.sort"(%arg0) ( {
+        ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+          %1 = "mhlo.divide"(%arg1, %c0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          %2 = "mhlo.divide"(%arg2, %c0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          %3 = "mhlo.compare"(%1, %2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+          "mhlo.return"(%3) : (tensor<i1>) -> ()
+        }) {is_stable = true} : (tensor<16xf32>) -> tensor<16xi32>
+        return
+      }
+    ```
+
+    Observe how the arith.constant is moved into the region it's used in:
+
+    ```mlir
+      module  {
+        func @sink_const_to_sort(%arg0: tensor<16xf32>) {
+          %0 = "mhlo.sort"(%arg0) ( {
+          ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):  // no predecessors
+            %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+            %1 = mhlo.divide %arg1, %cst : tensor<f32>
+            %2 = mhlo.divide %arg2, %cst : tensor<f32>
+            %3 = "mhlo.compare"(%1, %2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+            "mhlo.return"(%3) : (tensor<i1>) -> ()
+          }) {is_stable = true} : (tensor<16xf32>) -> tensor<16xi32>
+          return
+        }
+      }
+    ```
+  }];
 }
 
 
@@ -129,6 +168,15 @@ def BroadcastPropagationPass : FunctionPass<"mhlo-broadcast-propagation"> {
     "broadcast the operands rather than the result. This will eventually allow "
     "for larger fusions.";
   let constructor = "createBroadcastPropagationPass()";
+}
+
+// TODO(frgossen): Limit this pass to merging of assuming regions and factor out
+// broadcast propagation into its own pass.
+def MergeAssumingOpsPass : FunctionPass<"mhlo-merge-assuming-ops"> {
+  let summary = "Move dynamic broadcasts up over element-wise operations and "
+    "broadcast the operands rather than the result. This will eventually allow "
+    "for larger fusions.";
+  let constructor = "createMergeAssumingOpsPass()";
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {

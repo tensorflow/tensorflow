@@ -98,7 +98,7 @@ class BufferSequencingEvent {
 
  private:
   bool EventHasBeenRecorded() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  uint64 sequence_number() const;
+  uint64_t sequence_number() const;
 
   // An event that is triggered when the content of one or more buffers has been
   // read or written. If this event is used as a definition event and is

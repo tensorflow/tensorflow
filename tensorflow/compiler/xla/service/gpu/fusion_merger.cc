@@ -154,7 +154,8 @@ class FusionInstructionMerger {
   int num_fail_inefficient_fusion_emitter_ = 0;
   int num_fail_fusion_too_large_ = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FusionInstructionMerger);
+  FusionInstructionMerger(const FusionInstructionMerger&) = delete;
+  FusionInstructionMerger& operator=(const FusionInstructionMerger&) = delete;
 };
 
 Status FusionInstructionMerger::Run() {
@@ -309,7 +310,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
           << " merged_to_current_bytes_ratio: " << merged_to_current_bytes_ratio
           << " into users { "
           << absl::StrJoin(users, ", ",
-                           [](string* out, HloInstruction* user) {
+                           [](std::string* out, HloInstruction* user) {
                              absl::StrAppend(out, user->name());
                            })
           << " }";

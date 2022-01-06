@@ -41,7 +41,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -588,6 +587,7 @@ Status GraphImporter::ConvertNode(const Node& node) {
                       StringAttr::get(context_, node.name()));
   for (const auto& namedAttr : node.attrs()) {
     const std::string& name = namedAttr.first;
+    if (name.empty()) return InvalidArgument("empty attr name");
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
@@ -729,6 +729,8 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                         ConvertAttributeValue(tf_attr, builder, tfgDialect));
     attrs.append(name, attr);
   }
+  if (signature.name().empty())
+    return InvalidArgument("function without a name");
   attrs.append("sym_name", builder.getStringAttr(name));
 
   if (!signature.description().empty())
@@ -918,6 +920,32 @@ bool IsGenericFunction(FunctionDef fdef) {
   return false;
 }
 
+}  // namespace
+
+// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
+// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
+// and a ShapeAttr
+tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
+    Builder builder,
+    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
+  // Two entries: a type and a shape.
+  SmallVector<Attribute> dtype_and_shape;
+  for (const auto& handle : handle_data) {
+    if (handle.dtype() == tensorflow::DT_INVALID)
+      return InvalidArgument("Invalid dtype for handle_data");
+    Type dtype;
+    TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
+    TF_ASSIGN_OR_RETURN(
+        Attribute shape,
+        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
+
+    dtype_and_shape.push_back(
+        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
+  }
+  return builder.getArrayAttr(dtype_and_shape);
+}
+// Convert a Graph and function libs to a MLIR module containing the graph and
+// expressed in TFG dialect.
 tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
     MLIRContext* context, const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
@@ -951,30 +979,8 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
   return module;
 }
 
-}  // namespace
-
-// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
-// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
-// and a ShapeAttr
-tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
-    Builder builder,
-    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
-  // Two entries: a type and a shape.
-  SmallVector<Attribute> dtype_and_shape;
-  for (const auto& handle : handle_data) {
-    Type dtype;
-    if (handle.dtype() != tensorflow::DT_INVALID)
-      TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
-    TF_ASSIGN_OR_RETURN(
-        Attribute shape,
-        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
-
-    dtype_and_shape.push_back(
-        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
-  }
-  return builder.getArrayAttr(dtype_and_shape);
-}
-
+// Convert a GraphDef to a MLIR module containing the graph and expressed in TFG
+// dialect.
 tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
     MLIRContext* context, const GraphDebugInfo& debug_info,
     const GraphDef& graphdef) {

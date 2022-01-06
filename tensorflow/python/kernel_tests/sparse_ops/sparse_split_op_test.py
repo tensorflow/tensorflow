@@ -72,6 +72,12 @@ class SparseSplitOpTest(test.TestCase):
     return sparse_tensor.SparseTensor.from_value(self._SparseTensorValue_3x4x2(
     ))
 
+  def _SparseTensor_4x6_empty(self, val_dtype=np.int64):
+    ind = np.empty(shape=(0, 2), dtype=np.int64)
+    val = np.array([]).astype(val_dtype)
+    shape = np.array([4, 6]).astype(np.int64)
+    return sparse_tensor.SparseTensor(ind, val, shape)
+
   def testSplitMatrixRows(self):
     for axis in (0, -2):
       sp_tensors = self.evaluate(
@@ -252,6 +258,26 @@ class SparseSplitOpTest(test.TestCase):
       sparse_ops.sparse_split(sp_input=1)
     with self.assertRaisesRegex(ValueError, 'axis is required'):
       sparse_ops.sparse_split(num_split=2, sp_input=1)
+
+  def testSplitEmpty(self):
+    sp_empty = self._SparseTensor_4x6_empty()
+    sparse_splits0 = sparse_ops.sparse_split(
+        sp_input=sp_empty, num_split=2, axis=0)
+    sparse_splits1 = sparse_ops.sparse_split(
+        sp_input=sp_empty, num_split=2, axis=1)
+    empty_inds = np.empty(shape=(0, 2), dtype=np.int64)
+    self.assertAllEqual(sparse_splits0[0].indices, empty_inds)
+    self.assertAllEqual(sparse_splits0[0].values, [])
+    self.assertAllEqual(sparse_splits0[0].dense_shape, [2, 6])
+    self.assertAllEqual(sparse_splits0[1].indices, empty_inds)
+    self.assertAllEqual(sparse_splits0[1].values, [])
+    self.assertAllEqual(sparse_splits0[1].dense_shape, [2, 6])
+    self.assertAllEqual(sparse_splits1[0].indices, empty_inds)
+    self.assertAllEqual(sparse_splits1[0].values, [])
+    self.assertAllEqual(sparse_splits1[0].dense_shape, [4, 3])
+    self.assertAllEqual(sparse_splits1[1].indices, empty_inds)
+    self.assertAllEqual(sparse_splits1[1].values, [])
+    self.assertAllEqual(sparse_splits1[1].dense_shape, [4, 3])
 
 
 if __name__ == '__main__':

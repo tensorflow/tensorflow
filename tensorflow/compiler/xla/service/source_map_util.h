@@ -29,7 +29,7 @@ template <typename... Args>
 Status InvalidParameterArgument(const OpMetadata& op_metadata,
                                 const absl::FormatSpec<Args...>& format,
                                 const Args&... args) {
-  string message = absl::StrFormat(format, args...);
+  std::string message = absl::StrFormat(format, args...);
   if (!op_metadata.source_file().empty()) {
     absl::StrAppendFormat(&message, " (%s:%d)", op_metadata.source_file(),
                           op_metadata.source_line());

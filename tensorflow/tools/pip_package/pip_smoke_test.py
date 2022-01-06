@@ -116,7 +116,7 @@ def main():
 
   # pip_package_dependencies_list is the list of included files in pip packages
   pip_package_dependencies = subprocess.check_output(
-      ["bazel", "cquery", PIP_PACKAGE_QUERY_EXPRESSION])
+      ["bazel", "cquery", "--experimental_cc_shared_library", PIP_PACKAGE_QUERY_EXPRESSION])
   if isinstance(pip_package_dependencies, bytes):
     pip_package_dependencies = pip_package_dependencies.decode("utf-8")
   pip_package_dependencies_list = pip_package_dependencies.strip().split("\n")
@@ -128,7 +128,7 @@ def main():
   # tf_py_test_dependencies is the list of dependencies for all python
   # tests in tensorflow
   tf_py_test_dependencies = subprocess.check_output(
-      ["bazel", "cquery", PY_TEST_QUERY_EXPRESSION])
+      ["bazel", "cquery", "--experimental_cc_shared_library", PY_TEST_QUERY_EXPRESSION])
   if isinstance(tf_py_test_dependencies, bytes):
     tf_py_test_dependencies = tf_py_test_dependencies.decode("utf-8")
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
@@ -169,7 +169,7 @@ def main():
       print("Affected Tests:")
       rdep_query = ("rdeps(kind(py_test, %s), %s)" %
                     (" + ".join(PYTHON_TARGETS), missing_dependency))
-      affected_tests = subprocess.check_output(["bazel", "cquery", rdep_query])
+      affected_tests = subprocess.check_output(["bazel", "cquery", "--experimental_cc_shared_library", rdep_query])
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))
 

@@ -167,7 +167,7 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
 
     // Skip the Op that is already marked shape Op
     auto attr = op->getAttrOfType<BoolAttr>(kDiscShapeCalcAttr);
-    if ((attr != nullptr) && (attr.getValue() == true)) return;
+    if ((attr != nullptr) && (attr.getValue())) return;
 
     if (isa<mhlo::GetDimensionSizeOp, mhlo::PrintOp>(op)) {
       op->setAttr(kDiscShapeCalcAttr, true_attr_);
@@ -186,7 +186,7 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
       return;
     }
 
-    auto op_type_id = op->getAbstractOperation()->typeID;
+    auto op_type_id = op->getRegisteredInfo()->getTypeID();
     bool is_shape_calc_op = false;
     // Follow the rule of kPlaceRuleMap exist, or else follow
     // kShapeCalcOperandMap
@@ -231,13 +231,13 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
 void MarkShapeCalc::markI64ReturnedCpuScalarOps(
     FuncOp func, llvm::DenseSet<Operation*>& shape_calc_ops) {
   assert(func.getName() == "main");
-  auto return_op = func.front().getTerminator();
+  auto* return_op = func.front().getTerminator();
   if (!isa<mlir::ReturnOp>(return_op)) return;
   auto result_attrs = func.getAllResultAttrs();
   if (!result_attrs) return;
   auto returned_ops = return_op->getOperands();
   assert(returned_ops.size() == result_attrs.size());
-  for (auto output : llvm::enumerate(returned_ops)) {
+  for (const auto& output : llvm::enumerate(returned_ops)) {
     Operation* op = output.value().getDefiningOp();
     if (!op || !isMhloDialect(op)) continue;
     int idx = output.index();
@@ -266,11 +266,11 @@ void MarkShapeCalc::markShapeCalculationOps(
       }
     } else {
       // Mark operands into shape calculation set according to the lookup table.
-      auto op_type_id = op.getAbstractOperation()->typeID;
+      auto op_type_id = op.getRegisteredInfo()->getTypeID();
       auto iter = kShapeCalcOperandMap.find(op_type_id);
       if (iter != kShapeCalcOperandMap.end()) {
         for (auto operand_idx : iter->second) {
-          auto operand = op.getOperand(operand_idx).getDefiningOp();
+          auto* operand = op.getOperand(operand_idx).getDefiningOp();
           if (operand == nullptr || !isMhloDialect(operand)) continue;
           shape_calc_ops.insert(operand);
         }

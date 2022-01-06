@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
@@ -268,6 +269,7 @@ class CwiseBinaryOpClusteringPolicy : public DefaultClusteringPolicy {
         "tf.RealDiv",
         "tf.SquaredDifference",
         "tf.Sub",
+        "tf.TruncateDiv",
         "tf.Xdivy",
         "tf.Xlogy",
     };
@@ -612,6 +614,9 @@ class ShapeOpClusteringPolicy : public TensorflowOpClusteringPolicy<ShapeOp> {
   LogicalResult MatchAndUpdateConstraints(
       ShapeOp op, const ValuesConstraintSet& results,
       ValuesConstraintSet& operands) const final {
+    // Unranked inputs aren't supported by CPURT.
+    operands.Insert(op.input(), ValueConstraint::kRank);
+
     // Check constraint on the result value.
     auto result_constraint = results.GetConstraint(op.getResult());
     if (!result_constraint.hasValue()) return success();
@@ -749,34 +754,44 @@ void populateTfCpurtClusteringPolicies(ClusteringPolicySet& policies,
                                        CpurtClusteringTier tier) {
   // Returns true if the given cpurt compilation tier is enabled.
   auto is_enabled = [&](CpurtClusteringTier requested) -> bool {
-    return static_cast<uint8_t>(requested) <= static_cast<uint8_t>(tier);
+    return (static_cast<uint8_t>(tier) & static_cast<uint8_t>(requested)) ==
+           static_cast<uint8_t>(requested);
   };
 
-  if (is_enabled(CpurtClusteringTier::kTier1)) {
+  if (is_enabled(CpurtClusteringTier::kCwise)) {
     policies.Add<CwiseBinaryOpClusteringPolicy,   //
                  CwiseUnaryOpClusteringPolicy,    //
                  CwiseTernaryOpClusteringPolicy,  //
-                 StopGradientOpClusteringPolicy,  //
-                 TransposeOpClusteringPolicy>();
+                 StopGradientOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kTranspose)) {
+    policies.Add<TransposeOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kReductions)) {
+    policies.Add<ReductionOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kMetadata)) {
+    policies.Add<ExpandDimsOpClusteringPolicy,  //
+                 ReshapeOpClusteringPolicy,     //
+                 ShapeOpClusteringPolicy,       //
+                 SqueezeOpClusteringPolicy>();
   }
 
   if (is_enabled(CpurtClusteringTier::kAll)) {
     policies.Add<BatchMatMulV2OpClusteringPolicy,  //
                  BroadcastToOpClusteringPolicy,    //
                  ConcatV2OpClusteringPolicy,       //
-                 ExpandDimsOpClusteringPolicy,     //
                  FillOpClusteringPolicy,           //
                  FusedMatMulOpClusteringPolicy,    //
                  MatMulOpClusteringPolicy,         //
                  OneHotOpClusteringPolicy,         //
                  PackOpClusteringPolicy,           //
                  RangeOpClusteringPolicy,          //
-                 ReductionOpClusteringPolicy,      //
-                 ReshapeOpClusteringPolicy,        //
-                 ShapeOpClusteringPolicy,          //
                  SliceOpClusteringPolicy,          //
                  SoftmaxOpClusteringPolicy,        //
-                 SqueezeOpClusteringPolicy,        //
                  StridedSliceOpClusteringPolicy>();
   }
 }
@@ -796,6 +811,14 @@ mlir::LogicalResult IsCompilableConstant(mlir::ElementsAttr value) {
                  value.getType().getElementType().isIntOrIndexOrFloat());
 }
 
+static bool IsI1Integer(Type type) {
+  return mlir::getElementTypeOrSelf(type).isInteger(1);
+}
+
+static bool IsUnsignedInteger(Type type) {
+  return mlir::getElementTypeOrSelf(type).isUnsignedInteger();
+}
+
 mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
   llvm::SmallDenseSet<Operation*> ops;
   for (Operation* op : cluster.operations) {
@@ -804,24 +827,22 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
     (void)inserted;
   }
 
-  // TODO(b/196192286): This is a temporary workaround to disable excessive
-  // recompilation for dynamic shapes in one particular model. Remove this once
-  // specialization will be done based on shape constraints.
+  // TODO(ezhulenev): This is a temporary workaround to disable forming clusters
+  // with known compilation problems.
   for (Operation* op : ops) {
-    for (Value value : op->getOperands()) {
-      Operation* defining_op = value.getDefiningOp();
-      if (!defining_op) continue;
+    // TODO(b/205714705): Memory layout of `i1` data type is not defined, and
+    // when vectorization is enabled it can lead to crashes.
+    bool has_i1_integers = llvm::any_of(op->getOperandTypes(), IsI1Integer) ||
+                           llvm::any_of(op->getResultTypes(), IsI1Integer);
+    if (has_i1_integers && tensorflow::GetCpuRtFlags().vectorize)
+      return failure();
 
-      // Check if value will be sunk into the cluster body.
-      auto const_op = mlir::dyn_cast<mlir::TF::ConstOp>(defining_op);
-      if (const_op && succeeded(IsCompilableConstant(const_op.value())))
-        continue;
-
-      // Skip clusters with non-f32 inputs.
-      if (!ops.contains(defining_op) &&
-          !mlir::getElementTypeOrSelf(value.getType()).isF32())
-        return failure();
-    }
+    // TODO(b/205905286): Unsigned integers support has a lot of gaps, and
+    // similar to handling `i1` we need a type conversion to signless integers.
+    bool has_unsigned_integers =
+        llvm::any_of(op->getOperandTypes(), IsUnsignedInteger) ||
+        llvm::any_of(op->getResultTypes(), IsUnsignedInteger);
+    if (has_unsigned_integers) return failure();
   }
 
   for (auto& pair : cluster.constraints) {

@@ -25,6 +25,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class SparseToDenseTest(test.TestCase):
 
   def testInt(self):

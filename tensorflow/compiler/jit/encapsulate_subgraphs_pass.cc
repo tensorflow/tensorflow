@@ -483,9 +483,7 @@ Status Encapsulator::Subgraph::RecordArg(
     Status s = builder.Finalize(&arg_def);
     if (!s.ok()) return s;
 
-    Node* arg = graph_->AddNode(arg_def, &s);
-    if (!s.ok()) return s;
-
+    TF_ASSIGN_OR_RETURN(Node * arg, graph_->AddNode(arg_def));
     src_arg_pairs->push_back({src_node, arg});
     args_.push_back(arg);
   }
@@ -528,9 +526,7 @@ Status Encapsulator::Subgraph::RecordResult(
     builder.Input(src_image->name(), src_slot, dtype);
     Status s = builder.Finalize(&ret_def);
     if (!s.ok()) return s;
-    Node* ret = graph_->AddNode(ret_def, &s);
-    if (!s.ok()) return s;
-
+    TF_ASSIGN_OR_RETURN(Node * ret, graph_->AddNode(ret_def));
     graph_->AddEdge(src_image, src_slot, ret, 0);
   }
   return Status::OK();
@@ -547,8 +543,7 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
     Status s = builder.Finalize(&seq_def);
     if (!s.ok()) return s;
 
-    sequencer_ = graph_out->AddNode(seq_def, &s);
-    if (!s.ok()) return s;
+    TF_ASSIGN_OR_RETURN(sequencer_, graph_out->AddNode(seq_def));
   }
   return Status::OK();
 }
@@ -660,9 +655,7 @@ Status Encapsulator::Subgraph::ReplaceFunctionDef(
 Status Encapsulator::Subgraph::AddFunctionCallNode(
     const std::unordered_map<const Node*, Node*>& node_images,
     Graph* graph_out) {
-  Status s;
-  call_node_ = graph_out->AddNode(call_node_def_, &s);
-  if (!s.ok()) return s;
+  TF_ASSIGN_OR_RETURN(call_node_, graph_out->AddNode(call_node_def_));
 
   // Copy the assigned device and the key_annotation over.
   call_node_->set_assigned_device_name(device_);
@@ -1328,7 +1321,7 @@ Status EncapsulateSubgraphsPass::Run(
     bool has_ref_vars = ref_related_nodes.contains(node);
     node->AddAttr(kXlaHasReferenceVarsAttr, has_ref_vars);
     VLOG(3) << "Has ref vars = " << has_ref_vars
-            << ", node: " << node->def().SerializeAsString();
+            << ", node: " << node->def().DebugString();
   }
   return Status::OK();
 }

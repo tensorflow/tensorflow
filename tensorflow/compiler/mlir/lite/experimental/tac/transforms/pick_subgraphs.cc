@@ -422,7 +422,7 @@ void PickSubgraphsPass::RewireSubgraphs(
           GetInferenceDeviceTypeForOp(impl);
       if (impl_inference_device_type.getValue() ==
           preferred_inference_device_type) {
-        if (call.callee() != impl.getName()) {
+        if (call.getCallee() != impl.getName()) {
           // We need to rebuild the call op. :(
           builder->setInsertionPoint(call);
           auto new_call =

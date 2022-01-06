@@ -48,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -62,8 +61,13 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_arith_ops_folder.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_canonicalization_helper.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_device_helper.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_layout_helper.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_tensor_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -78,7 +82,6 @@ namespace mlir {
 namespace TF {
 
 namespace {
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
 
@@ -125,9 +128,11 @@ OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
   auto result_ty = getType().dyn_cast<ShapedType>();
   if (!result_ty || !result_ty.hasStaticShape()) return {};
 
-  if (non_zero_index == -1)
+  if (non_zero_index == -1) {
     return SplatElementsAttr::get(
-        result_ty, operands.begin()->cast<DenseElementsAttr>().getSplatValue());
+        result_ty,
+        operands.begin()->cast<DenseElementsAttr>().getSplatValue<Attribute>());
+  }
 
   // Check the non-zero operand's shape matches the result shape.
   if (result_ty == inputs()[non_zero_index].getType())
@@ -180,7 +185,7 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
                                 PatternRewriter &rewriter) const override {
     ElementsAttr cst;
     if (matchPattern(op.condition(), m_Constant(&cst))) {
-      if (cst.getValue<BoolAttr>({}).getValue()) {
+      if (cst.getValues<bool>()[0]) {
         rewriter.eraseOp(op);
         return success();
       }
@@ -611,7 +616,7 @@ OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
   if (!matchPattern(input, m_Constant(&cst_attr))) return {};
   if (!cst_attr.isSplat()) return {};
 
-  return DenseElementsAttr::get(result_ty, cst_attr.getSplatValue());
+  return DenseElementsAttr::get(result_ty, cst_attr.getSplatValue<Attribute>());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1471,7 +1476,7 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
       RankedTensorType::get({num_dims}, IntegerType::get(getContext(), 32));
   for (DenseIntElementsAttr shape : shapes) {
     results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
-    cumulative_sum[concat_dim] += shape.getValue<int32_t>(concat_dim);
+    cumulative_sum[concat_dim] += shape.getValues<int32_t>()[concat_dim];
   }
 
   return success();
@@ -1638,10 +1643,10 @@ static LogicalResult inferConvReturnTypes(
   const Value filter = op.filter();
   const TensorType input_ty = input.getType().template cast<TensorType>();
   const TensorType filter_ty = filter.getType().template cast<TensorType>();
-  const StringRef paddings = op.padding().getValue();
+  const StringRef paddings = op.padding();
 
   ArrayRef<Attribute> strides = op.strides().getValue();
-  StringRef data_format = op.data_format().getValue();
+  StringRef data_format = op.data_format();
   ArrayRef<Attribute> dilations = op.dilations().getValue();
 
   tensorflow::TensorFormat format;
@@ -2294,6 +2299,37 @@ static LogicalResult Verify(EmptyTensorListOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// EnqueueTPUEmbedding ops
+//===----------------------------------------------------------------------===//
+
+// For EnqueueTPUEmbedding ops the device ordinal corresponds to the resource
+// instance.
+
+int64_t EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+int64_t EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceId() {
+  return device_ordinal();
+}
+
+//===----------------------------------------------------------------------===//
 // EnsureShapeOp
 //===----------------------------------------------------------------------===//
 
@@ -2301,7 +2337,21 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
   ShapedType type = input().getType().dyn_cast<ShapedType>();
   if (!type || !type.hasRank()) return {};
   // If shape attribute equals input operand's type's shape, fold it to input.
-  if (type.getShape() == shape()) return input();
+  llvm::Optional<llvm::ArrayRef<int64_t>> shape_constraint = shape();
+  if (type.getShape() == shape_constraint) return input();
+
+  // If input operand's type's shape always satisfies the shape attribute, fold
+  // it to input.
+  if (shape_constraint.hasValue() &&
+      shape_constraint->size() == type.getShape().size()) {
+    for (int i = 0; i < shape_constraint->size(); ++i) {
+      if (!ShapedType::isDynamic(shape_constraint.getValue()[i]) &&
+          type.getDimSize(i) != shape_constraint.getValue()[i]) {
+        return {};
+      }
+    }
+    return input();
+  }
   // Else retain to enable failing dynamically.
   return {};
 }
@@ -2556,7 +2606,7 @@ OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
   if (!value) return {};
 
   if (type.hasStaticShape())
-    return DenseElementsAttr::get(type, value.getValue({}));
+    return DenseElementsAttr::get(type, value.getValues<Attribute>()[0]);
 
   auto dims = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
   if (!dims) return {};
@@ -2568,7 +2618,7 @@ OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
   }
   type = RankedTensorType::get(shape, type.getElementType());
 
-  return DenseElementsAttr::get(type, value.getValue({}));
+  return DenseElementsAttr::get(type, value.getValues<Attribute>()[0]);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2909,7 +2959,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
   if (auto arg = operands[0].dyn_cast_or_null<FloatAttr>()) {
     return calculate(arg);
   } else if (auto arg = operands[0].dyn_cast_or_null<SplatElementsAttr>()) {
-    if (auto elementAttr = arg.getSplatValue().dyn_cast<FloatAttr>())
+    if (auto elementAttr = arg.getSplatValue<Attribute>().dyn_cast<FloatAttr>())
       return DenseElementsAttr::get(arg.getType(), calculate(elementAttr));
   }
   return {};
@@ -2991,8 +3041,7 @@ void MatrixSetDiagV2Op::getCanonicalizationPatterns(
 
 void MaxOp::build(OpBuilder &builder, OperationState &result, Value input,
                   Value reduction_indices, BoolAttr keep_dims) {
-  Type out_ty =
-      InferReductionOpType(input, reduction_indices, keep_dims, &builder);
+  Type out_ty = InferReductionOpType(input, reduction_indices, keep_dims);
   build(builder, result, out_ty, input, reduction_indices, keep_dims);
 }
 

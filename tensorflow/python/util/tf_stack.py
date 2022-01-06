@@ -18,8 +18,6 @@ import collections
 import inspect
 import threading
 
-import six
-
 # TODO(b/138203821): change to from ...util import ... once the bug is fixed.
 from tensorflow.python.util import _tf_stack
 
@@ -29,11 +27,7 @@ from tensorflow.python.util import _tf_stack
 # when a thread is joined, so reusing the key does not introduce a correctness
 # issue. Moreover, get_ident is faster than storing and retrieving a unique
 # key in a thread local store.
-if six.PY2:
-  import thread  # pylint: disable=g-import-not-at-top
-  _get_thread_key = thread.get_ident
-else:
-  _get_thread_key = threading.get_ident
+_get_thread_key = threading.get_ident
 
 
 # TODO(mdan): Move these to C++ as well.

@@ -59,7 +59,8 @@ struct ReplicateToIslandPass
 // Returns whether op requires `_xla_replica_id` attribute.
 bool RequiresReplicaIDAttribute(Operation* op) {
   return llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
-                   TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op);
+                   TF::EnqueueTPUEmbeddingRaggedTensorBatchOp,
+                   TF::EnqueueTPUEmbeddingArbitraryTensorBatchOp>(op);
 }
 
 // Collects TPU device ordinal for outside compilation communication ops. This

@@ -45,8 +45,8 @@ namespace {
 class GRPCClientTestBase : public ::testing::Test {
  protected:
   GRPCClientTestBase() {
-    string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
-    string service_main_path = tensorflow::io::JoinPath(
+    std::string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
+    std::string service_main_path = tensorflow::io::JoinPath(
         test_srcdir, "compiler/xla/rpc/grpc_service_main_cpu");
     int port = tensorflow::internal::PickUnusedPortOrDie();
     subprocess_.SetProgram(

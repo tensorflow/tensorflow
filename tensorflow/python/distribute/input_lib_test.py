@@ -45,6 +45,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -1511,6 +1512,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
         input_context=distribution.extended._make_input_context())
 
 
+@framework_test_util.with_eager_op_as_function
 class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
                                        parameterized.TestCase):
   """Tests for PER_WORKER and PER_REPLICA's InputOptions variants."""

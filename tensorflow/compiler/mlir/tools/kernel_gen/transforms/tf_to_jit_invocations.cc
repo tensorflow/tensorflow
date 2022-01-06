@@ -157,13 +157,11 @@ struct PackJITCompileOpPattern
   using OpRewritePattern<tf_framework::JITCompileOp>::OpRewritePattern;
 
   explicit PackJITCompileOpPattern(MLIRContext *ctx,
-                                   llvm::ArrayRef<StringRef> architectures,
                                    llvm::ArrayRef<int64_t> tile_sizes,
                                    llvm::ArrayRef<int64_t> unroll_factors,
                                    int64_t max_supported_rank, bool enable_ftz,
                                    bool index_64bit, bool cpu_codegen)
       : OpRewritePattern<tf_framework::JITCompileOp>(ctx),
-        architectures(architectures),
         tile_sizes(tile_sizes),
         unroll_factors(unroll_factors),
         max_supported_rank(max_supported_rank),
@@ -202,7 +200,6 @@ struct PackJITCompileOpPattern
     // Finally, create the new JIT compile op.
     rewriter.replaceOpWithNewOp<tf_framework::JITCompileFromStrOp>(
         op, op->getResultTypes(), op.ctx(), rewriter.getStringAttr(code),
-        rewriter.getStrArrayAttr(architectures),
         rewriter.getI64ArrayAttr(tile_sizes),
         rewriter.getI64ArrayAttr(unroll_factors),
         rewriter.getI64IntegerAttr(max_supported_rank),
@@ -214,7 +211,6 @@ struct PackJITCompileOpPattern
   }
 
  private:
-  llvm::ArrayRef<StringRef> architectures;
   llvm::ArrayRef<int64_t> tile_sizes;
   llvm::ArrayRef<int64_t> unroll_factors;
   int64_t max_supported_rank;
@@ -232,13 +228,11 @@ struct TFToJITInvocationPass
     registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect, 
     scf::SCFDialect, shape::ShapeDialect>();
   }
-  explicit TFToJITInvocationPass(llvm::ArrayRef<std::string> architectures,
-                                 llvm::ArrayRef<int64_t> tile_sizes,
+  explicit TFToJITInvocationPass(llvm::ArrayRef<int64_t> tile_sizes,
                                  llvm::ArrayRef<int64_t> unroll_factors,
                                  int64_t max_supported_rank, bool enable_ftz,
                                  bool index_64bit, bool cpu_codegen,
                                  bool jit_i64_indexed_for_large_tensors) {
-    architectures_ = architectures;
     tile_sizes_ = tile_sizes;
     unroll_factors_ = unroll_factors;
     max_supported_rank_ = max_supported_rank;
@@ -251,18 +245,16 @@ struct TFToJITInvocationPass
   void runOnFunction() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    auto architecture_refs = llvm::to_vector<16>(llvm::map_range(
-        architectures_, [](std::string &arch) { return StringRef(arch); }));
     if(jit_i64_indexed_for_large_tensors_)
     {
       Populate64BitIndexerPatterns(
-        ctx, &patterns, architecture_refs, tile_sizes_, unroll_factors_,
+        ctx, &patterns, tile_sizes_, unroll_factors_,
         max_supported_rank_, enable_ftz_, index_64bit_, cpu_codegen_);
     }
     else
     {
       PopulateTFToJITInvocationPatterns(
-        ctx, &patterns, architecture_refs, tile_sizes_, unroll_factors_,
+        ctx, &patterns, tile_sizes_, unroll_factors_,
         max_supported_rank_, enable_ftz_, index_64bit_, cpu_codegen_);
     }
     if (failed(
@@ -340,41 +332,37 @@ struct TFT64BitIndexerPattern : public RewritePattern {
 
 void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
                                        RewritePatternSet *patterns,
-                                       llvm::ArrayRef<StringRef> architectures,
                                        llvm::ArrayRef<int64_t> tile_sizes,
                                        llvm::ArrayRef<int64_t> unroll_factors,
                                        int64_t max_supported_rank,
                                        bool enable_ftz, bool index_64bit,
                                        bool cpu_codegen) {
   patterns->insert<TFToJITInvocationsPattern>(ctx);
-  patterns->insert<PackJITCompileOpPattern>(ctx, architectures, tile_sizes,
+  patterns->insert<PackJITCompileOpPattern>(ctx, tile_sizes,
                                             unroll_factors, max_supported_rank,
-                                            enable_ftz, index_64bit, 
+                                            enable_ftz, index_64bit,
                                             cpu_codegen);
 }
 
 std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
-    llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool enable_ftz, bool index_64bit, 
     bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {
   return std::make_unique<TFToJITInvocationPass>(
-      architectures, tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
+      tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
       index_64bit, cpu_codegen, jit_i64_indexed_for_large_tensors);
 }
 
 void Populate64BitIndexerPatterns(MLIRContext *ctx,
                                   RewritePatternSet *patterns,
-                                  llvm::ArrayRef<StringRef> architectures,
                                   llvm::ArrayRef<int64_t> tile_sizes,
                                   llvm::ArrayRef<int64_t> unroll_factors,
                                   int64_t max_supported_rank,
                                   bool enable_ftz, bool index_64bit,
                                   bool cpu_codegen) {
   patterns->insert<TFT64BitIndexerPattern>(ctx, index_64bit);
-  patterns->insert<PackJITCompileOpPattern>(ctx, architectures, tile_sizes,
-                                            unroll_factors, max_supported_rank,
-                                            enable_ftz, 
+  patterns->insert<PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors, 
+                                            max_supported_rank, enable_ftz, 
                                             index_64bit, cpu_codegen);
 }
 

@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_PJRT_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_CLIENT_H_
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
@@ -41,24 +44,41 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
 
 namespace xla {
 
-using PjRtPlatformId = uint64;
+using PjRtPlatformId = uint64_t;
 
-constexpr char kCpuName[] = "cpu";
-constexpr char kGpuName[] = "gpu";
-constexpr char kTpuName[] = "tpu";
-static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(kCpuName);
-static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(kGpuName);
-static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(kTpuName);
+inline const char* CpuName() {
+  static constexpr char kCpuName[] = "cpu";
+  return kCpuName;
+}
+inline const char* GpuName() {
+  static constexpr char kGpuName[] = "gpu";
+  return kGpuName;
+}
+inline const char* TpuName() {
+  static constexpr char kTpuName[] = "tpu";
+  return kTpuName;
+}
+inline PjRtPlatformId CpuId() {
+  static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(CpuName());
+  return kCpuId;
+}
+inline PjRtPlatformId GpuId() {
+  static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(GpuName());
+  return kGpuId;
+}
+inline PjRtPlatformId TpuId() {
+  static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(TpuName());
+  return kTpuId;
+}
 
 enum PjRtRuntimeType { kStreamExecutor, kTfrt };
-static constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
+inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
   switch (type) {
     case kStreamExecutor:
       return "stream_executor";
@@ -128,6 +148,11 @@ struct PjRtCrossHostRecvBuffer {
 using PjRtCrossHostRecvNotifier =
     std::function<void(StatusOr<std::vector<PjRtCrossHostRecvBuffer>>&&)>;
 
+struct MultiSliceOptions {
+  // Number of connected slices to compile for.
+  int32_t num_slices;
+};
+
 struct CompileOptions {
   // The layouts of the arguments that the computation should expect.
   absl::optional<std::vector<Shape>> argument_layouts;
@@ -144,6 +169,10 @@ struct CompileOptions {
   // single-device executables. Beware: on GPUs, sometimes an executable
   // compiled for one device doesn't run on another.
   bool compile_portable_executable = false;
+
+  // Set multi_slice_options to trigger compilation for DCN connected multi
+  // slice operation.
+  absl::optional<MultiSliceOptions> multi_slice_options = absl::nullopt;
 };
 
 class PjRtExecutable;
@@ -246,12 +275,23 @@ class PjRtClient {
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const = 0;
 
+  // Return a device-specific default device assignment for multi-slice system.
+  // TODO(zhangqiaorjc): Convert this to pure virtual and push down.
+  virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions, int num_slices) const {
+    return Unimplemented("Multi slice device assignment is not supported.");
+  }
+
   // Returns a backend-specific HLO cost analysis visitor.
   virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() = 0;
 
   // Compile `computation` with given `options`.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) = 0;
+
+  // Variant of `Compile` that accepts an MLIR module.
+  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp module, CompileOptions options) = 0;
 
   // Generates a unique fingerprint for `executable`, may be absl::nullopt.
   virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
@@ -675,7 +715,7 @@ struct ExecuteOptions {
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
   // the launch IDs may be used by the runtime to detect the mismatch.
-  int32 launch_id = 0;
+  int32_t launch_id = 0;
   // If non-null, an opaque context passed to an execution that may be used to
   // supply additional arguments to a derived class of PjRtExecutable.
   const ExecuteContext* context = nullptr;

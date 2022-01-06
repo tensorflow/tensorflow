@@ -136,8 +136,7 @@ class TfBinaryBcastTest(test.TestCase):
     arg1 = np.random.uniform(0, 10.0, size=(d0, d1, 12)).astype(np.float32)
 
     for specialize in specializations:
-      # TODO(b/204533918): Enable vectorization for this test.
-      for vectorize in [False]:
+      for vectorize in [True, False]:
         compiled = cpurt.compile(mlir_function, 'test', specialize, vectorize)
 
         [res] = cpurt.execute(compiled, [arg0, arg1])

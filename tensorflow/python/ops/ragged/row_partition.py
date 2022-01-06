@@ -794,8 +794,9 @@ class RowPartition(composite_tensor.CompositeTensor):
     Returns:
       scalar integer Tensor
     """
-    if self._nvals is not None:
-      return self._nvals
+    # TODO(martinz): Uncomment these lines.
+    # if self._nvals is not None:
+    #   return self._nvals
     return self._row_splits[-1]
 
   def nrows(self):

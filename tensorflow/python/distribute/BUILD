@@ -651,6 +651,7 @@ distribute_py_test(
     shard_count = 12,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # b/213388775
         "no_rocm",
     ],
     tpu_tags = [
@@ -1399,6 +1400,7 @@ distribute_py_test(
     name = "distributed_variable_test",
     size = "medium",
     srcs = ["distributed_variable_test.py"],
+    disable_v2 = True,  # TODO(b/209058825)
     main = "distributed_variable_test.py",
     shard_count = 3,
     tags = [
@@ -1620,6 +1622,7 @@ distribute_py_test(
     main = "moving_averages_test.py",
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
+        "notpu",  # TODO(b/210145904)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1842,11 +1845,13 @@ distribute_py_test(
     srcs = ["zero_batch_test.py"],
     disable_mlir_bridge = False,
     main = "zero_batch_test.py",
+    tags = [
+        "no_oss",  # Keras is not available in OSS test
+    ],
     deps = [
         ":combinations",
         ":multi_worker_test_base",
         ":strategy_combinations",
-        "//tensorflow/python:layers",
     ],
 )
 

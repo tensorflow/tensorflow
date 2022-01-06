@@ -693,7 +693,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_EnableXlaDevices", [] {
     tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
   });
-  m.def("TF_ResetMlirFlags", [] { tensorflow::ResetMlirCommonFlags(); });
+  m.def("TF_ResetJitCompilerFlags",
+        [] { tensorflow::ResetJitCompilerFlags(); });
 
   // TFE_Context Logic
   m.def(
@@ -1202,14 +1203,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });
-  m.def("TFE_Py_EncodeArg",
-        [](const py::handle& o, const py::handle& ctx,
-           bool include_tensor_ranks_only, bool encode_variables_by_resource_id,
-           bool use_full_trace_type) {
-          return tensorflow::PyoOrThrow(TFE_Py_EncodeArg(
-              o.ptr(), ctx.ptr(), include_tensor_ranks_only,
-              encode_variables_by_resource_id, use_full_trace_type));
-        });
   m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());

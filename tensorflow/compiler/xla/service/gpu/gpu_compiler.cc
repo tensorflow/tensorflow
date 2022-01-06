@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
@@ -84,6 +85,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
@@ -100,6 +102,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
@@ -238,8 +241,14 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
   }
   // Each dynamic dimension size is represented as a S32.
-  int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
+}
+
+bool ConvIsLowerable(HloInstruction* conv) {
+  return conv_matchers::CanImplementAsGpuForwardConv(conv) ||
+         std::get<0>(conv_matchers::MatchBackwardFilter(conv)) ||
+         std::get<0>(conv_matchers::MatchBackwardInput(conv));
 }
 
 }  // end anonymous namespace
@@ -265,6 +274,8 @@ Status GpuCompiler::OptimizeHloModule(
     *hlo_proto_->mutable_hlo_module() = hlo_module->ToProto();
   }
 
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+
   if (hlo_module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     const int64_t num_partitions = hlo_module->config().num_partitions();
@@ -284,6 +295,9 @@ Status GpuCompiler::OptimizeHloModule(
       AlgebraicSimplifierOptions options;
       options.set_replace_transpose_with_bitcast(false);
       options.set_enable_conv_operand_swap(false);
+      // "slow" minmax means we propagate nan.
+      options.set_minmax_propagate_nan(
+          !debug_options.xla_gpu_enable_fast_min_max());
       spmd_simplify.AddPass<AlgebraicSimplifier>(options);
 
       spmd_simplify.AddPass<SortSimplifier>();
@@ -310,8 +324,6 @@ Status GpuCompiler::OptimizeHloModule(
     }
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   }
-
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   {
     HloPassPipeline pipeline("optimization");
@@ -341,7 +353,13 @@ Status GpuCompiler::OptimizeHloModule(
     // handle it.
     pipeline.AddPass<ZeroSizedHloElimination>();
 
-    pipeline.AddPass<GpuScatterExpander>();
+    if (debug_options.xla_gpu_deterministic_ops()) {
+      // Scatter is nondeterministic, so eliminate all Scatters.
+      pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+    } else {
+      // Only Scatters unsupported on XLA:GPU are eliminated.
+      pipeline.AddPass<GpuScatterExpander>();
+    }
     // TODO(phawkins): replace QR and Eigh decompositions with calls to
     // cuSOLVER.
     pipeline.AddPass<QrExpander>();
@@ -391,8 +409,8 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Build simplification pipeline.  The passes in here are run to a fixed
     // point.
-    [&pipeline =
-         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
+    [&, &pipeline =
+            pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
       pipeline.AddInvariantCheckerDebug<HloVerifier>(
           /*layout_sensitive=*/false,
           /*allow_mixed_precision=*/false);
@@ -405,7 +423,11 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
 
-      AlgebraicSimplifierOptions options;
+      AlgebraicSimplifierOptions options({}, ConvIsLowerable);
+      // "slow" minmax means we propagate nan.
+      options.set_minmax_propagate_nan(
+          !debug_options.xla_gpu_enable_fast_min_max());
+
       // When transposes appear in a fusion node, we can easily adjust the
       // multi-dimensional index to create the one needed for the operand.
       // This is not as easy with bitcasts, because we don't have the
@@ -415,7 +437,6 @@ Status GpuCompiler::OptimizeHloModule(
       // bitcast(bitcast) with one bitcast. This leads to having to
       // linearize and then delinearize the index.
       options.set_replace_transpose_with_bitcast(false);
-      options.set_enable_conv_operand_swap(false);
       pipeline.AddPass<AlgebraicSimplifier>(options);
       pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
@@ -474,6 +495,10 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options;
     options.set_replace_transpose_with_bitcast(false);
     options.set_enable_conv_operand_swap(false);
+    // "slow" minmax means we propagate nan.
+    options.set_minmax_propagate_nan(
+        !debug_options.xla_gpu_enable_fast_min_max());
+
     collectives_pipeline.AddPass<AlgebraicSimplifier>(options);
 
     collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
@@ -575,6 +600,9 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
+    // "slow" minmax means we propagate nan.
+    options.set_minmax_propagate_nan(
+        !debug_options.xla_gpu_enable_fast_min_max());
     pipeline.AddPass<AlgebraicSimplifier>(options);
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -643,6 +671,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // index.
   options.set_replace_transpose_with_bitcast(false);
   options.set_enable_conv_operand_swap(false);
+  // "slow" minmax means we propagate nan.
+  options.set_minmax_propagate_nan(
+      !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   // GemmRewriter assumes that all transposes are folded into gemms, but,
@@ -708,6 +739,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     const CompileOptions& options) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
+  uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
   tensorflow::profiler::TraceMe activity(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -715,6 +747,12 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
       OptimizeHloModule(module.get(), stream_exec, options.device_allocator));
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+
+  uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+
+  // This won't record values for calls that error out (because if they error
+  // out we have no way of telling how far through the process we got).
+  RecordHloPassesDuration(end_usecs - start_usecs);
 
   return std::move(module);
 }
@@ -753,17 +791,15 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 }
 
 #if BEF_EXECUTABLE
-static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
-                                           std::string entry_function_name,
-                                           HloModule* hlo_module) {
+static StatusOr<OwnedBefBuffer> LowerToBef(
+    mlir::ModuleOp mlir_module, absl::string_view entry_function_name,
+    llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
   // LMHLO -> TFRT Dialect
-  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(mlir_module));
+  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(
+      mlir_module, entry_function_name, buffer_sizes));
 
   if (DumpingEnabledForHloModule(*hlo_module)) {
-    std::string tfrt_mlir;
-    llvm::raw_string_ostream tfrt_mlir_ostream(tfrt_mlir);
-    mlir_module.print(tfrt_mlir_ostream);
-    DumpToFileInDirOrStdout(*hlo_module, "", "tfrt_mlir", tfrt_mlir);
+    DumpToFileInDirOrStdout(*hlo_module, "tfrt_gpu", mlir_module);
   }
 
   // TFRT Dialect -> BEF
@@ -774,13 +810,13 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
   }
 
   if (DumpingEnabledForHloModule(*hlo_module)) {
-    DumpToFileInDirOrStdout(*hlo_module, "", "tfrt_bef", bef);
+    DumpToFileInDirOrStdout(*hlo_module, "", "bef", bef);
   }
 
   auto ptr = static_cast<uint8_t*>(
       tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
   std::copy(bef.begin(), bef.end(), ptr);
-  return OwnedBefBuffer(ptr, {entry_function_name, bef.size()});
+  return OwnedBefBuffer(ptr, {bef.size()});
 }
 #endif  // BEF_EXECUTABLE
 
@@ -789,13 +825,15 @@ using OutputInfoMap =
 static Status GetMlirAllocationInfo(mlir::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
-                                    Shape* output_shape);
+                                    Shape* output_shape,
+                                    EntryFunctionAttributes* entry_func_attrs);
 
 struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
   absl::variant<OwnedThunkSchedule, OwnedBefBuffer> thunks_or_bef;
+  EntryFunctionAttributes entry_func_attrs;
   std::vector<GpuExecutable::ConstantInfo> constants;
   OutputInfoMap output_info;
   Shape output_shape;
@@ -843,6 +881,7 @@ static Status CompileModuleToLlvmIrImpl(
                          absl::StrCat("sm_", cuda_compute_capability.ToString(),
                                       "_gpu_after_optimizations"));
 
+  uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
   mlir::MLIRContext mlir_context;
   mlir_context
       .loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
@@ -856,15 +895,16 @@ static Status CompileModuleToLlvmIrImpl(
 
   results->module_name = mlir::GetNameFromLoc(mlir_module->getLoc());
 
-  llvm_ir::DumpIrIfEnabled(mlir_module.get(), hlo_module->unique_id(),
-                           hlo_module->config().debug_options());
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    DumpToFileInDirOrStdout(*hlo_module, "lmhlo", mlir_module.get());
+  }
 
   auto entry_function = mlir::cast<mlir::FuncOp>(
       mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
 
-  TF_RETURN_IF_ERROR(
-      GetMlirAllocationInfo(entry_function, &results->allocations,
-                            &results->output_info, &results->output_shape));
+  TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
+      entry_function, &results->allocations, &results->output_info,
+      &results->output_shape, &results->entry_func_attrs));
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
@@ -883,12 +923,21 @@ static Status CompileModuleToLlvmIrImpl(
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
 
     results->constants = std::move(ir_emitter_context.constants());
+    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+
+    // This won't record values for calls that error out (because if they error
+    // out we have no way of telling how far through the process we got).
+    RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
 #if BEF_EXECUTABLE
-  TF_ASSIGN_OR_RETURN(
-      results->thunks_or_bef,
-      LowerToBef(*mlir_module, entry_function.getName().str(), hlo_module));
+  std::vector<int64_t> buffer_sizes;
+  llvm::transform(
+      results->allocations, std::back_inserter(buffer_sizes),
+      [](const BufferAllocation& allocation) { return allocation.size(); });
+  TF_ASSIGN_OR_RETURN(results->thunks_or_bef,
+                      LowerToBef(*mlir_module, entry_function.getName().str(),
+                                 buffer_sizes, hlo_module));
 #else   // BEF_EXECUTABLE
   results->thunks_or_bef =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
@@ -907,13 +956,13 @@ static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
   VLOG(5) << error_string;
 }
 
-StatusOr<std::pair<std::string, std::vector<uint8>>>
+StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    std::unique_ptr<llvm::Module> llvm_module,
                                    se::StreamExecutor* stream_exec,
                                    const CompileOptions& options,
                                    const HloModule* debug_module) {
-  using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
+  using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
 
   const auto compile_single_module =
       [this, stream_exec, &module_config, debug_module](
@@ -941,7 +990,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                   : ".");
     }
     GpuVersion gpu_version = GetGpuVersion(stream_exec);
-    StatusOr<std::pair<std::string, std::vector<uint8>>> result =
+    StatusOr<std::pair<std::string, std::vector<uint8_t>>> result =
         CompileTargetBinary(module_config, llvm_module, gpu_version,
                             stream_exec, relocatable, debug_module);
 
@@ -1083,7 +1132,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   counter.Wait();
 
   std::string ptx_snippets;
-  std::vector<std::vector<uint8>> submodule_compile_results;
+  std::vector<std::vector<uint8_t>> submodule_compile_results;
   for (auto& maybe_result : compile_results) {
     TF_ASSIGN_OR_RETURN(auto result, maybe_result);
     if (result.second.empty()) {
@@ -1148,7 +1197,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
   }
-  string ir_module_string_before_opt;
+  std::string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
   if (embed_ir_in_executable) {
@@ -1159,7 +1208,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   llvm_ir::DumpIrIfEnabled(*module, *compile_module_results.llvm_module,
                            /*optimized=*/false);
 
-  using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
+  using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
   TF_ASSIGN_OR_RETURN(
       BackendCompileResult backend_result,
       CompileToTargetBinary(module->config(),
@@ -1191,6 +1240,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   auto* gpu_executable = new GpuExecutable(
       {std::move(backend_result.first), std::move(backend_result.second),
        gpu_version, std::move(compile_module_results.thunks_or_bef),
+       compile_module_results.entry_func_attrs,
        std::move(compile_module_results.constants),
        std::move(compile_module_results.output_info),
        compile_module_results.module_name, compile_module_results.output_shape,
@@ -1275,10 +1325,12 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
 static Status GetMlirAllocationInfo(mlir::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
-                                    Shape* output_shape) {
+                                    Shape* output_shape,
+                                    EntryFunctionAttributes* entry_func_attrs) {
   CHECK(allocations->empty());
   allocations->reserve(func.getNumArguments());
 
+  std::vector<int64_t> buffer_sizes;
   for (int i = 0; i < func.getNumArguments(); i++) {
     mlir::BlockArgument arg = func.getArgument(i);
 
@@ -1287,85 +1339,55 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
     TF_ASSIGN_OR_RETURN(auto element_type_bytes,
                         GetElementTypeBytes(type.getElementType()));
     size_t size = type.getNumElements() * element_type_bytes;
-    allocations->emplace_back(i, size, 0);
+    buffer_sizes.push_back(size);
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {
     for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
-      TF_RET_CHECK(attr.first == "lmhlo.params" ||
-                   attr.first == "lmhlo.param_shape_index" ||
-                   attr.first == "lmhlo.constant_name" ||
-                   attr.first == "lmhlo.must_alias" ||
-                   attr.first == "lmhlo.output_index");
+      TF_RET_CHECK(attr.getName() == "lmhlo.params" ||
+                   attr.getName() == "lmhlo.param_shape_index" ||
+                   attr.getName() == "lmhlo.constant_name" ||
+                   attr.getName() == "lmhlo.must_alias" ||
+                   attr.getName() == "lmhlo.output_index");
     }
   }
 
-  std::vector<std::pair<ShapeIndex, Shape>> sub_shapes;
+  // Encode buffer parameter metadata in a proto for persisting, because BEF
+  // doesn't persist function attributes.
   for (int i = 0; i < func.getNumArguments(); i++) {
+    auto buffer = entry_func_attrs->add_buffers();
     if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
-      xla::ShapeIndex shape_index;
-      if (auto shape_index_attr =
-              func.getArgAttrOfType<mlir::DenseIntElementsAttr>(
-                  i, "lmhlo.param_shape_index")) {
-        for (const llvm::APInt& element : shape_index_attr) {
-          shape_index.push_back(element.getSExtValue());
-        }
-      }
-      allocations->at(i).set_entry_computation_parameter(
-          param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
-          static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
+      buffer->set_lmhlo_params(param_attr.cast<mlir::IntegerAttr>().getInt());
     }
-    // TODO(timshen): this information is redundant. This is here only for
-    // smooth migration to LMHLO. Remove it.
-    if (func.getArgAttr(i, "lmhlo.constant_name")) {
-      allocations->at(i).set_constant(true);
+    if (auto shape_index_attr = func.getArgAttr(i, "lmhlo.param_shape_index")) {
+      auto param_shape_index = buffer->mutable_lmhlo_param_shape_index();
+      for (const llvm::APInt& element :
+           shape_index_attr.cast<mlir::DenseIntElementsAttr>()) {
+        param_shape_index->add_indices(element.getSExtValue());
+      }
+    }
+    if (auto constant_name_attr = func.getArgAttr(i, "lmhlo.constant_name")) {
+      buffer->set_lmhlo_constant_name(
+          constant_name_attr.cast<mlir::StringAttr>().str());
+    }
+    if (func.getArgAttr(i, "lmhlo.must_alias")) {
+      buffer->set_lmhlo_must_alias(true);
     }
     if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
-      allocations->at(i).set_maybe_live_out(true);
-
-      // Reconstruct a shape index from output_index.
-      ShapeIndex shape_index;
+      auto output_index = buffer->mutable_lmhlo_output_index();
       for (const llvm::APInt& element :
            output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
-        shape_index.push_back(element.getSExtValue());
+        output_index->add_indices(element.getSExtValue());
       }
-      auto& o = (*output_info)[shape_index];
-      o.allocation_index = i;
-      if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
-        HloInputOutputAliasConfig::AliasKind kind =
-            HloInputOutputAliasConfig::kMayAlias;
-        if (func.getArgAttr(i, "lmhlo.must_alias")) {
-          kind = HloInputOutputAliasConfig::kMustAlias;
-        }
-        o.alias_config.emplace(param_attr.cast<mlir::IntegerAttr>().getInt(),
-                               ShapeIndex{}, kind);
-      }
-      if (func.getArgument(i).use_empty()) {
-        o.passthrough = true;
-      }
-
-      mlir::BlockArgument arg = func.getArgument(i);
-      sub_shapes.push_back(std::make_pair(shape_index, GetShape(arg)));
     }
   }
-  // Expects result_xla_shape as a XLA shape in string form.
-  //
-  // The attribute is necessary, because GpuExecutable/ExecutionOutput supports
-  // tuples / tree-like shapes, while the LMHLO argument list loses the tree
-  // form.
-  //
-  // The string format is necessary since MLIR doesn't support XLA shape with
-  // dynamic_dimension.
-  //
-  // TODO(timshen): now this field is mandatory. Make it optional for
-  // non-GpuExecutable outputs.
-  TF_ASSIGN_OR_RETURN(
-      *output_shape,
-      ParseShape(func->getAttrOfType<mlir::StringAttr>("result_xla_shape")
-                     .getValue()
-                     .str()));
+  entry_func_attrs->set_result_xla_shape(
+      func->getAttrOfType<mlir::StringAttr>("result_xla_shape")
+          .getValue()
+          .str());
 
-  return Status::OK();
+  return GpuExecutable::SetUpMlirAllocation(func, buffer_sizes, allocations,
+                                            output_info, output_shape);
 }
 
 StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
@@ -1381,8 +1403,10 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   std::vector<BufferAllocation> allocations;
   OutputInfoMap output_info;
   Shape output_shape;
+  EntryFunctionAttributes entry_func_attrs;
   TF_RETURN_IF_ERROR(GetMlirAllocationInfo(entry_function, &allocations,
-                                           &output_info, &output_shape));
+                                           &output_info, &output_shape,
+                                           &entry_func_attrs));
 
   TF_RET_CHECK(!allocations.empty());
 
@@ -1395,7 +1419,7 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   auto thunk_schedule =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
 
-  using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
+  using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
   TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
                       compiler->CompileToTargetBinary(
                           module_config, std::move(llvm_module), stream_exec,
@@ -1404,7 +1428,7 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   GpuVersion gpu_version = compiler->GetGpuVersion(stream_exec);
   auto* gpu_executable = new GpuExecutable(
       {std::move(backend_result.first), std::move(backend_result.second),
-       gpu_version, std::move(thunk_schedule),
+       gpu_version, std::move(thunk_schedule), entry_func_attrs,
        std::move(ir_emitter_context->constants()), std::move(output_info),
        module_name, output_shape, std::move(allocations)});
   return std::unique_ptr<Executable>(gpu_executable);

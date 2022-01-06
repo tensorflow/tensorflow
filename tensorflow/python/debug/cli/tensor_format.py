@@ -17,7 +17,6 @@ import copy
 import re
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.lib import debug_data
@@ -269,7 +268,7 @@ def _annotate_ndarray_lines(
       else:
         if curr_dim > 0:
           curr_indices[curr_dim - 1] += 1
-          for k in xrange(curr_dim, ndims):
+          for k in range(curr_dim, ndims):
             curr_indices[k] = 0
 
   return annotations
@@ -344,7 +343,7 @@ def locate_tensor_element(formatted, indices):
 
   batch_pos = 0  # Current position in the batch.
 
-  for r in xrange(len(lines)):
+  for r in range(len(lines)):
     if r not in annot:
       continue
 

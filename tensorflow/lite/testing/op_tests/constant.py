@@ -15,10 +15,11 @@
 """Test configs for constant ops."""
 import numpy as np
 import tensorflow.compat.v1 as tf
+
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
+from tensorflow.lite.testing.zip_test_utils import MAP_TF_TO_NUMPY_TYPE
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
-from tensorflow.lite.testing.zip_test_utils import TF_TYPE_INFO
 
 
 # This function tests various TensorFLow functions that generates Const op,
@@ -31,8 +32,7 @@ def make_constant_tests(options):
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[], [1], [2], [1, 1, 1, 1], [2, 2, 2, 2]],
       "constant_is_also_output": [True, False],
-      # This is a regression test for a bug where Toco rejects models with
-      # unread inputs.
+      # Models should not be rejected regardless whether it has unread inputs.
       "has_unread_input": [True, False],
   }]
 
@@ -59,7 +59,8 @@ def make_constant_tests(options):
 
   def build_inputs(parameters, sess, inputs, outputs):
     dummy_input = np.zeros(
-        parameters["input_shape"], dtype=TF_TYPE_INFO[parameters["dtype"]][0])
+        parameters["input_shape"],
+        dtype=MAP_TF_TO_NUMPY_TYPE[parameters["dtype"]])
     return [dummy_input], sess.run(outputs, feed_dict={inputs[0]: dummy_input})
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)

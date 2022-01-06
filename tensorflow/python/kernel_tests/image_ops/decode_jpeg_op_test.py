@@ -17,7 +17,6 @@
 import os
 import time
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -85,7 +84,7 @@ class DecodeJpegBenchmark(test.Benchmark):
     with session.Session() as sess:
       self.evaluate(variables.global_variables_initializer())
       images = []
-      for _ in xrange(parallelism):
+      for _ in range(parallelism):
         if crop_window is None:
           # No crop.
           image = image_ops.decode_jpeg(image_content, channels=3)
@@ -106,12 +105,12 @@ class DecodeJpegBenchmark(test.Benchmark):
         images.append(image)
       r = control_flow_ops.group(*images)
 
-      for _ in xrange(3):
+      for _ in range(3):
         # Skip warm up time.
         self.evaluate(r)
 
       start_time = time.time()
-      for _ in xrange(num_iters):
+      for _ in range(num_iters):
         self.evaluate(r)
       end_time = time.time()
     return end_time - start_time

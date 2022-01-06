@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 
 #include <memory>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -37,7 +36,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> HloDCE::RunOnComputation(
+/*static*/ StatusOr<bool> HloDCE::RunOnComputation(
     HloComputation* computation, bool remove_cross_partition_collective_ops) {
   bool changed = false;
   VLOG(3) << "Before dce:";

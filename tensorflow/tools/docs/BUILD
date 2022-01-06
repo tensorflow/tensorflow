@@ -155,6 +155,13 @@ py_test(
     name = "fenced_doctest_test",
     srcs = ["fenced_doctest_test.py"],
     data = glob(["**/create_model.md"]),
+    tags = [
+        "no_oss",
+        "no_pip",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":fenced_doctest_lib",
         "@absl_py//absl/testing:absltest",

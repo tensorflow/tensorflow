@@ -1,6 +1,15 @@
 # python/framework package
 
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "if_xla_available", "py_test", "tf_cc_shared_object", "tf_cc_test", "tf_gen_op_wrapper_py")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_not_windows",
+    "if_oss",
+    "if_xla_available",
+    "py_test",
+    "tf_cc_shared_object",
+    "tf_cc_test",
+    "tf_gen_op_wrapper_py",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
@@ -277,7 +286,7 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
@@ -646,11 +655,13 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:span",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -728,11 +739,13 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:span",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -850,11 +863,13 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:span",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -899,7 +914,7 @@ py_library(
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
         "//tensorflow/python/util",
         "@six_archive//:six",
     ],
@@ -1282,6 +1297,7 @@ py_library(
         "//tensorflow_estimator/python/estimator:__subpackages__",
     ],
     deps = [
+        ":_test_metrics_util",
         ":errors",
         ":for_generated_wrappers",
         ":gpu_util",
@@ -1400,7 +1416,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":_python_memory_checker_helper",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
@@ -1575,7 +1591,7 @@ filegroup(
     srcs = [
         "testdata/metrics_export_meta_graph.pb",
     ],
-    visibility = ["//visibility:public"],
+    visibility = if_oss(["//visibility:public"]),
 )
 
 tf_py_test(
@@ -1701,6 +1717,7 @@ tf_py_test(
         ":test_ops",
         ":test_ops_2",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:gradients",
@@ -1872,21 +1889,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tensor_shape_div_test",
-    size = "small",
-    srcs = ["tensor_shape_div_test.py"],
-    main = "tensor_shape_div_test.py",
-    python_version = "PY3",
-    deps = [
-        ":for_generated_wrappers",
-        ":test_lib",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
-        "@six_archive//:six",
-    ],
-)
-
-tf_py_test(
     name = "tensor_util_test",
     size = "small",
     srcs = ["tensor_util_test.py"],
@@ -1919,6 +1921,7 @@ tf_py_test(
         ":test_lib",
         ":test_ops",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform_test",
@@ -2123,6 +2126,17 @@ py_test(
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_test_metrics_util",
+    srcs = ["test_metrics_util.cc"],
+    module_name = "_test_metrics_util",
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

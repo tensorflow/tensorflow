@@ -16,6 +16,7 @@
 
 import io
 import sys
+import tempfile
 
 import tensorflow as tf
 
@@ -23,6 +24,7 @@ from tensorflow.lite.python import analyzer
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
+from tensorflow.python.training.tracking import tracking
 
 
 class AnalyzerTest(test_util.TensorFlowTestCase):
@@ -46,9 +48,11 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_path=model_path, experimental_use_mlir=True)
     mlir = mock_stdout.getvalue()
     self.assertIn(
-        'func @main(%arg0: tensor<1x8x8x3xf32>) -> '
-        'tensor<1x8x8x3xf32> attributes '
-        '{tf.entry_function = {inputs = "input", outputs = "output"}}', mlir)
+        'func @main(%arg0: tensor<1x8x8x3xf32> '
+        '{tf_saved_model.index_path = ["a"]}) -> '
+        '(tensor<1x8x8x3xf32> {tf_saved_model.index_path = ["x"]}) attributes '
+        '{tf.entry_function = {inputs = "input", outputs = "output"}, '
+        'tf_saved_model.exported_names = ["serving_default"]}', mlir)
     self.assertIn(
         '%0 = tfl.add %arg0, %arg0 {fused_activation_function = "NONE"} : '
         'tensor<1x8x8x3xf32>', mlir)
@@ -142,6 +146,64 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     self.assertIn(
         'Your model looks compatibile with GPU delegate with TFLite runtime',
         txt)
+
+  def testTxtSignatureDefs(self):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+
+      @tf.function(input_signature=[
+          tf.TensorSpec(shape=None, dtype=tf.float32),
+          tf.TensorSpec(shape=None, dtype=tf.float32)
+      ])
+      def add(a, b):
+        return {'add_result': tf.add(a, b)}
+
+      @tf.function(input_signature=[
+          tf.TensorSpec(shape=None, dtype=tf.float32),
+          tf.TensorSpec(shape=None, dtype=tf.float32)
+      ])
+      def sub(x, y):
+        return {'sub_result': tf.subtract(x, y)}
+
+      root = tracking.AutoTrackable()
+      root.f1 = add.get_concrete_function()
+      root.f2 = sub.get_concrete_function()
+
+      tf.saved_model.save(
+          root, tmp_dir, signatures={
+              'add': root.f1,
+              'sub': root.f2
+          })
+
+      converter = tf.lite.TFLiteConverter.from_saved_model(tmp_dir)
+      fb_model = converter.convert()
+      mock_stdout = io.StringIO()
+      with test.mock.patch.object(sys, 'stdout', mock_stdout):
+        analyzer.ModelAnalyzer.analyze(model_content=fb_model)
+      txt = mock_stdout.getvalue()
+      self.assertIn('Your TFLite model has ‘2’ signature_def(s).', txt)
+      self.assertIn("Signature#0 key: 'add'", txt)
+      self.assertIn("  'a' : T#1", txt)
+      self.assertIn("  'b' : T#0", txt)
+      self.assertIn("  'add_result' : T#2", txt)
+      self.assertIn("Signature#1 key: 'sub'", txt)
+      self.assertIn("  'x' : T#1_1", txt)
+      self.assertIn("  'y' : T#1_0", txt)
+      self.assertIn("  'sub_result' : T#1_2", txt)
+
+  def testTxtWithoutInput(self):
+
+    @tf.function()
+    def func():
+      return tf.cos(1.0)
+
+    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [func.get_concrete_function()], func)
+    fb_model = converter.convert()
+    mock_stdout = io.StringIO()
+    with test.mock.patch.object(sys, 'stdout', mock_stdout):
+      analyzer.ModelAnalyzer.analyze(model_content=fb_model)
+    txt = mock_stdout.getvalue()
+    self.assertIn('Subgraph#0 main() -> [T#0]', txt)
 
 
 if __name__ == '__main__':

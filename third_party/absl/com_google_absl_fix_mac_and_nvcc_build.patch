@@ -232,6 +232,30 @@ index 02bfd03..d25d96d 100644
    }
  };
  
+diff --git a/absl/strings/internal/string_constant.h b/absl/strings/internal/string_constant.h
+index a11336b..e1596b1 100644
+--- a/absl/strings/internal/string_constant.h
++++ b/absl/strings/internal/string_constant.h
+@@ -35,12 +35,18 @@ namespace strings_internal {
+ // below.
+ template <typename T>
+ struct StringConstant {
++ private:
++  static constexpr bool ValidateConstant(absl::string_view view) {
++    return view.empty() || 2 * view[0] != 1;
++  }
++
++public:
+   static constexpr absl::string_view value = T{}();
+   constexpr absl::string_view operator()() const { return value; }
+
+   // Check to be sure `view` points to constant data.
+   // Otherwise, it can't be constant evaluated.
+-  static_assert(value.empty() || 2 * value[0] != 1,
++  static_assert(ValidateConstant(value),
+                 "The input string_view must point to constant data.");
+ };
+
 diff --git a/absl/time/internal/cctz/BUILD.bazel b/absl/time/internal/cctz/BUILD.bazel
 index 45a9529..57c954e 100644
 --- a/absl/time/internal/cctz/BUILD.bazel

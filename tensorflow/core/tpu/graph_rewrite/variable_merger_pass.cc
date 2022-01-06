@@ -74,9 +74,7 @@ Status MergeVarHandleOps(const string& device, absl::Span<Node* const> nodes,
   builder.Device(device);
   NodeDef node_def;
   TF_RETURN_IF_ERROR(builder.Finalize(&node_def));
-  Status status;
-  Node* node = graph->AddNode(node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph->AddNode(node_def));
   node->set_assigned_device_name(device);
 
   graph->AddControlEdge(graph->source_node(), node);
@@ -109,9 +107,7 @@ Status MergeReadVariableOps(Node* handle_op, Node* control_node,
   AddNodeAttr("N", num_reads, &node_def);
   AddNodeAttr("dtypes", dtypes, &node_def);
   node_def.set_device(handle_op->requested_device());
-  Status status;
-  Node* node = graph->AddNode(node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph->AddNode(node_def));
   node->set_assigned_device_name(handle_op->assigned_device_name());
   if (control_node) graph->AddControlEdge(control_node, node);
   for (int i = 0; i < num_reads; ++i) {

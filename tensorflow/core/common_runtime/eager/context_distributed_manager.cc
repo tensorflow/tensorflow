@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 
+#include <algorithm>
+#include <numeric>
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -622,8 +627,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     LOG_AND_RETURN_IF_ERROR(server->Start());
   } else {
     sg.Update(server->worker_env()->session_mgr->UpdateSession(
-        session_name, server_def, base_request.cluster_device_attributes(),
-        /*isolate_session_state=*/true));
+        session_name, server_def, base_request.cluster_device_attributes()));
     sg.Update(context->UpdateRemoteMaster(context_id,
                                           std::move(remote_eager_workers),
                                           added_workers, removed_workers));
@@ -720,8 +724,8 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       LOG_AND_RETURN_IF_ERROR(
           worker_cache->GetCoordinationClientCache(&agent_cache));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
-          server->worker_env(), server_def, std::move(agent_cache),
-          [this](Status s) {
+          server->worker_env()->env, server->worker_env()->device_mgr,
+          server_def, std::move(agent_cache), [this](Status s) {
             context_->GetCollectiveExecutorHandle()->get()->StartAbort(s);
           }));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
@@ -766,7 +770,7 @@ Status EagerContextDistributedManager::EnableCoordinationService(
   TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
   coordination_service_ =
       CoordinationServiceInterface::EnableCoordinationService(
-          service_type, worker_env, server_def, std::move(client_cache));
+          service_type, worker_env->env, server_def, std::move(client_cache));
   return Status::OK();
 }
 

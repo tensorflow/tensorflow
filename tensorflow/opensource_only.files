@@ -21,6 +21,7 @@ tensorflow/lite/core/shims/c/c_api.h
 tensorflow/lite/core/shims/c/c_api_experimental.h
 tensorflow/lite/core/shims/c/common.h
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h
+tensorflow/lite/core/shims/c/experimental/acceleration/configuration/nnapi_plugin.h
 tensorflow/lite/core/shims/c/shims_test_util.cc
 tensorflow/lite/core/shims/c/shims_test_util.h
 tensorflow/lite/core/shims/cc/create_op_resolver.h
@@ -39,6 +40,7 @@ tensorflow/lite/core/shims/jni/jni_utils.h
 tensorflow/lite/delegates/coreml/builders/BUILD
 tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h
+tensorflow/lite/delegates/gpu/common/gpu_model_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h
@@ -78,7 +80,6 @@ tensorflow/tools/def_file_filter/BUILD
 tensorflow/tools/def_file_filter/BUILD.tpl
 tensorflow/tools/def_file_filter/def_file_filter.py.tpl
 tensorflow/tools/def_file_filter/def_file_filter_configure.bzl
-tensorflow/tools/git/BUILD
 tensorflow/tools/lib_package/BUILD
 tensorflow/tools/lib_package/LibTensorFlowTest.java
 tensorflow/tools/lib_package/README.md
@@ -115,13 +116,11 @@ third_party/clang_toolchain/download_clang.bzl
 third_party/codegen.BUILD
 third_party/common.bzl
 third_party/compute_library/BUILD
-third_party/compute_library/LICENSE
 third_party/coremltools.BUILD
 third_party/cub.BUILD
 third_party/curl.BUILD
 third_party/cython.BUILD
 third_party/dill.BUILD
-third_party/double_conversion.BUILD
 third_party/eigen3/BUILD
 third_party/eigen3/Eigen/Cholesky
 third_party/eigen3/Eigen/Core
@@ -149,7 +148,6 @@ third_party/eigen3/unsupported/Eigen/CXX11/src/FixedPoint/TypeCastingAVX2.h
 third_party/eigen3/unsupported/Eigen/CXX11/src/FixedPoint/TypeCastingAVX512.h
 third_party/eigen3/unsupported/Eigen/MatrixFunctions
 third_party/eigen3/unsupported/Eigen/SpecialFunctions
-third_party/enum34.BUILD
 third_party/fft2d/BUILD
 third_party/fft2d/LICENSE
 third_party/fft2d/fft.h
@@ -191,10 +189,8 @@ third_party/gpus/rocm/rocm_config.h.tpl
 third_party/gpus/rocm_configure.bzl
 third_party/grpc/BUILD
 third_party/icu/udata.patch
-third_party/jsoncpp.BUILD
 third_party/libxsmm.BUILD
 third_party/linenoise.BUILD
-third_party/llvm/BUILD
 third_party/llvm_openmp/BUILD
 third_party/llvm_openmp/cmake_vars.bzl
 third_party/llvm_openmp/expand_cmake_vars.py
@@ -273,9 +269,11 @@ third_party/tensorrt/BUILD
 third_party/tensorrt/BUILD.tpl
 third_party/tensorrt/LICENSE
 third_party/tensorrt/build_defs.bzl.tpl
+third_party/tensorrt/plugin/BUILD
 third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl
 third_party/tensorrt/tensorrt/tensorrt_config.py.tpl
 third_party/tensorrt/tensorrt_configure.bzl
+third_party/tensorrt/workspace.bzl
 third_party/termcolor.BUILD
 third_party/tf_toolchains.BUILD
 third_party/tflite_mobilenet.BUILD

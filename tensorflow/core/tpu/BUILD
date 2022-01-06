@@ -234,6 +234,7 @@ cc_library(
         ":tpu_defs",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -315,6 +316,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_id",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
@@ -338,7 +340,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "@com_google_absl//absl/types:optional",

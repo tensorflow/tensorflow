@@ -67,7 +67,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.
   Status RegisterDataset(const DatasetDef& dataset,
-                         const absl::optional<std::string>& element_spec,
+                         const DataServiceMetadata& metadata,
                          int64_t& dataset_id);
 
   // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
@@ -99,6 +99,10 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
 
   // Returns element spec for the registered dataset.
   Status GetElementSpec(int64_t dataset_id, std::string& element_spec);
+
+  // Returns data service metadata for the registered dataset.
+  Status GetDataServiceMetadata(int64_t dataset_id,
+                                DataServiceMetadata& metadata);
 
  protected:
   Status EnsureInitialized() override;

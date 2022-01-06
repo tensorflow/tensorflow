@@ -40,21 +40,19 @@ namespace tensorrt {
 
 static constexpr char kCastOutputTypeAttrName[] = "DstT";
 
+#if !IS_TRT_VERSION_GE(8, 2, 0, 0)
 template <typename T>
 struct TrtDestroyer {
   void operator()(T* t) {
     if (t) t->destroy();
   }
 };
-
 template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
-
-enum class TrtPrecisionMode { FP32, FP16, INT8 };
-
-Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name);
-
-Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode);
+#else
+template <typename T>
+using TrtUniquePtrType = std::unique_ptr<T>;
+#endif
 
 // Define a hash function for vector<TensorShape> because it is used as the key
 // for the engine cache.
@@ -90,7 +88,6 @@ string DebugString(const std::vector<CType>& vector) {
 }
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);
-string DebugString(const TrtPrecisionMode mode);
 string DebugString(const DataType tf_type);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const ITensorProxyPtr& tensor);
@@ -224,26 +221,6 @@ absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
 // by a string_view.
 absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b);
-
-// Optimization profile generation strategies.
-// - `kRange`: create one profile that works for inputs with dimension values
-//   in the range of [min_dims, max_dims] where min_dims and max_dims are
-//   derived from the provided inputs.
-// - `kOptimal`: create one profile for each input. The profile only works for
-//   inputs with the same dimensions as the input it is created for. The GPU
-//   engine will be run with optimal performance with such inputs.
-// - `kRangeOptimal`: create the profiles for both `Range` and `Optimal`.
-// - `kImplicitBatchModeCompatible`: create the profiles that will produce the
-//   same GPU engines as the implicit_batch_mode would produce.
-enum class ProfileStrategy {
-  kRange,
-  kOptimal,
-  kRangeOptimal,
-  kImplicitBatchModeCompatible,
-};
-
-string ProfileStrategyToName(const ProfileStrategy strategy);
-Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

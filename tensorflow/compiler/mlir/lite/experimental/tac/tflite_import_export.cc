@@ -42,7 +42,9 @@ void AttachCostPerDevice(mlir::ModuleOp module,
   processed_device_specs.insert("CPU");
 
   module.walk([&](mlir::Operation* op) {
-    if (!mlir::TFL::tac::IsTFLDialectNonConstOp(op)) return;
+    if (!mlir::TFL::tac::IsNonConstOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op))
+      return;
 
     // Attach cost per target.
     // Unsupported op will have negative values.
@@ -55,7 +57,7 @@ void AttachCostPerDevice(mlir::ModuleOp module,
       }
 
       mlir::Identifier device_identifier =
-          mlir::Identifier::get(device, module.getContext());
+          mlir::StringAttr::get(module.getContext(), device);
       auto float_type = mlir::FloatType::getF32(module.getContext());
       auto float_attr =
           mlir::FloatAttr::get(float_type, static_cast<float>(cost));

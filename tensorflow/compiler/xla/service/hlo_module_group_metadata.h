@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -31,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -93,7 +91,7 @@ class HloModuleGroupMetadata {
 
     HloInstruction* instruction() const { return instruction_; }
 
-    string ToString() const;
+    std::string ToString() const;
 
    private:
     HloInstruction* instruction_ = nullptr;

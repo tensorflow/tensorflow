@@ -1776,13 +1776,14 @@ func @testFoldStridedSliceShapeWithEmptySlice(%arg0: tensor<?x1x2x3xf32>) -> (te
 }
 
 // CHECK-LABEL: testFoldEnsureShapeOp
-func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>, tensor<20x10xf32>) {
+func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>, tensor<10x20xf32>, tensor<20x10xf32>) {
   %0 = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<10x20>} : (tensor<10x20xf32>) -> tensor<10x20xf32>
+  %1 = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<?x20>} : (tensor<10x20xf32>) -> tensor<10x20xf32>
   // Failing case which should not be folded.
   // CHECK: %[[NF:.*]] = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<20x10>}
-  %1 = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<20x10>} : (tensor<10x20xf32>) -> tensor<20x10xf32>
-  // CHECK: return %arg0, %[[NF]]
-  return %0, %1: tensor<10x20xf32>, tensor<20x10xf32>
+  %2 = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<20x10>} : (tensor<10x20xf32>) -> tensor<20x10xf32>
+  // CHECK: return %arg0, %arg0, %[[NF]]
+  return %0, %1, %2: tensor<10x20xf32>, tensor<10x20xf32>, tensor<20x10xf32>
 }
 
 // CHECK-LABEL: testConvertPackToReshapeAxis0
@@ -1977,4 +1978,27 @@ func @testComplexDivNoNanOpWithNonConstantY(%arg0: tensor<2xcomplex<f32>>, %arg1
   %res2 = "tf.DivNoNan"(%arg0, %noncon2) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   %res3 = "tf.MulNoNan"(%arg0, %noncon3) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   return %res1, %res2, %res3 : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
+}
+
+// CHECK-LABEL: testXlaReduceToXlaVariadicReduceToV2
+func @testXlaReduceToXlaVariadicReduceToV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
+  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+func private @sum1(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// CHECK-LABEL: testXlaVariadicReduceToV2
+func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
+  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+func private @sum2(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }

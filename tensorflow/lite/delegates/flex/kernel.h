@@ -17,13 +17,20 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
 namespace tflite {
 namespace flex {
 
+namespace testing {
+class KernelTest;  // friend class declaration.
+}  // namespace testing
+
 struct OpData;
+struct OpNode;
+
 class DelegateKernel : public SimpleDelegateKernelInterface {
  public:
   DelegateKernel();
@@ -35,10 +42,19 @@ class DelegateKernel : public SimpleDelegateKernelInterface {
   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override;
 
  private:
-  // Validate that the computed output tensor shape for the Flex node matches
+  friend class tflite::flex::testing::KernelTest;
+
+  // Validates that the computed output tensor shape for the Flex node matches
   // the existing output shape assigned to the output tensor.
   TfLiteStatus ValidateOutputTensorShapeConsistency(
       TfLiteContext* context) const;
+
+  // Executes the Tensorflow op based on the inputs/outputs/attributes
+  // information represented in the `node_data`.
+  tensorflow::Status ExecuteFlexOp(TfLiteContext* context, OpNode* node_data);
+
+  // Returns the tensor release map held in `op_data_`;
+  const std::map<int, int>& GetTensorReleaseMap() const;
 
   std::unique_ptr<OpData> op_data_;
 };

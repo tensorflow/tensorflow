@@ -23,7 +23,7 @@ import traceback
 
 import six
 from six import iteritems
-from six.moves import xrange, zip  # pylint: disable=redefined-builtin
+from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.client import session
@@ -162,7 +162,7 @@ class _PartitionInfo(object):
                                                        self.full_shape,
                                                        len(self.full_shape)))
 
-    for i in xrange(len(shape)):
+    for i in range(len(shape)):
       if self.var_offset[i] + shape[i] > self.full_shape[i]:
         raise ValueError(
             "With self.var_offset={}, a partition of shape={} would exceed "
@@ -170,7 +170,7 @@ class _PartitionInfo(object):
                 self.var_offset, shape, self.full_shape, i))
 
     slice_dim = None
-    for i in xrange(len(shape)):
+    for i in range(len(shape)):
       if shape[i] == self.full_shape[i]:
         continue
       if slice_dim is not None:
@@ -1656,7 +1656,7 @@ that when using `tf.Variable` you must make sure you track your variables
 (and regularizer arguments) either manually or via `tf.Module` or
 `tf.keras.layers.Layer` mechanisms.
 
-A section of the 
+A section of the
 [migration guide](https://www.tensorflow.org/guide/migrate/model_mapping#incremental_migration_to_native_tf2)
 provides more details on incrementally migrating these usages to `tf.Variable`
 as well.
@@ -2671,7 +2671,7 @@ def _iter_slices(full_shape, num_slices, slice_dim):
   num_slices_with_excess = full_shape[slice_dim] % num_slices
   offset = [0] * len(full_shape)
   min_slice_len = full_shape[slice_dim] // num_slices
-  for i in xrange(num_slices):
+  for i in range(num_slices):
     shape = full_shape[:]
     shape[slice_dim] = min_slice_len + bool(i < num_slices_with_excess)
     yield offset[:], shape

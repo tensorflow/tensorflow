@@ -42,7 +42,7 @@ def reset_eager(fn):
       return fn(*args, **kwargs)
     finally:
       # Reset the context.
-      context._reset_mlir_flags()
+      context._reset_jit_compiler_flags()
       context._reset_context()
       ops.enable_eager_execution_internal()
       assert context._context is not None

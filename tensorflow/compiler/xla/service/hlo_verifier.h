@@ -166,7 +166,7 @@ class ShapeVerifier : public DfsHloVisitor {
     return equal(a, b);
   }
 
-  string StringifyShape(const Shape& s) {
+  std::string StringifyShape(const Shape& s) {
     return layout_sensitive_ ? ShapeUtil::HumanStringWithLayout(s)
                              : ShapeUtil::HumanString(s);
   }

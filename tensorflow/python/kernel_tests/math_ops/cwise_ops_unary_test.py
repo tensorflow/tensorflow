@@ -450,6 +450,12 @@ class UnaryOpTest(test.TestCase):
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
+  def testUInt8Basic(self):
+    x = np.arange(6).reshape(1, 3, 2).astype(np.uint8)
+    self._compareBoth(x, np.square, math_ops.square)
+
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testInt16Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
     self._compareCpu(x, np.abs, math_ops.abs)
@@ -457,6 +463,12 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.sign, math_ops.sign)
+
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
+  def testUInt16Basic(self):
+    x = np.arange(6).reshape(1, 3, 2).astype(np.uint16)
+    self._compareBoth(x, np.square, math_ops.square)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
@@ -471,6 +483,12 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sign, math_ops.sign)
+
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
+  def testUInt32Basic(self):
+    x = np.arange(6).reshape(1, 3, 2).astype(np.uint32)
+    self._compareBoth(x, np.square, math_ops.square)
 
   def testInt64Basic(self):
     x = np.arange(-6 << 40, 6 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
@@ -488,6 +506,12 @@ class UnaryOpTest(test.TestCase):
     x = np.arange(-6 << 20, 6 << 20, 2 << 20).reshape(1, 3, 2).astype(np.int64)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.square, math_ops.square)
+
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
+  def testUInt64Basic(self):
+    x = np.arange(6).reshape(1, 3, 2).astype(np.uint64)
+    self._compareBoth(x, np.square, math_ops.square)
 
   @test_util.run_deprecated_v1
   def testComplex64Basic(self):

@@ -202,6 +202,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:resource_variable_util",
+        "//tensorflow/core/kernels:scatter_nd_util",
         "//tensorflow/core/kernels:stateful_random_ops_header",
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
         "//tensorflow/core/tpu:tpu_defs",

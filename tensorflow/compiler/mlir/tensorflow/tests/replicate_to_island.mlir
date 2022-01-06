@@ -198,6 +198,7 @@ func @replica_id_attr_added(%arg0: tensor<!tf_type.string>, %arg1: tensor<!tf_ty
       tf_device.replicate([%arg0, %arg1] as %arg2: tensor<!tf_type.string>) {n = 2 : i32} {
         "tf.EnqueueTPUEmbeddingSparseTensorBatch"(%arg2){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
         "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg2){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
+        "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"(%arg2){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
         "tf.A"(%arg2) : (tensor<!tf_type.string>) -> ()
         tf_device.return
       }
@@ -213,12 +214,16 @@ func @replica_id_attr_added(%arg0: tensor<!tf_type.string>, %arg1: tensor<!tf_ty
 // CHECK-SAME:   _xla_replica_id = 0
 // CHECK:      "tf.EnqueueTPUEmbeddingRaggedTensorBatch"
 // CHECK-SAME:   _xla_replica_id = 0
+// CHECK:      "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"
+// CHECK-SAME:   _xla_replica_id = 0
 // CHECK:      "tf.A"
 // CHECK-NOT:   _xla_replica_id
 // CHECK:      tf_executor.island
 // CHECK:      "tf.EnqueueTPUEmbeddingSparseTensorBatch"
 // CHECK-SAME:   _xla_replica_id = 1
 // CHECK:      "tf.EnqueueTPUEmbeddingRaggedTensorBatch"
+// CHECK-SAME:   _xla_replica_id = 1
+// CHECK:      "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"
 // CHECK-SAME:   _xla_replica_id = 1
 // CHECK:      "tf.A"
 // CHECK-NOT:   _xla_replica_id

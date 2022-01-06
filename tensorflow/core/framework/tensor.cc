@@ -537,6 +537,46 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
   return buf;
 }
 
+// Separate implementation for `ResourceHandle` to handle the case when the
+// proto for the resource is invalid. See `resource_handle.h` constructor and
+// static factory builder.
+template <>
+TensorBuffer* FromProtoField<ResourceHandle>(Allocator* a,
+                                             const TensorProto& in, int64_t n) {
+  CHECK_GT(n, 0);
+  Buffer<ResourceHandle>* buf = new Buffer<ResourceHandle>(a, n);
+  ResourceHandle* data = buf->template base<ResourceHandle>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+  const int64_t in_n = ProtoHelper<ResourceHandle>::NumElements(in);
+  if (in_n <= 0) {
+    std::fill_n(data, n, ResourceHandle());
+  } else {
+    // If tensor shape says we have n < in_n elements in the output tensor
+    // then make sure to only decode the first n out of the in_n elements in the
+    // in tensors. In all other cases, we decode all in_n elements of in and set
+    // the remaining elements up to n to be the default ResourceHandle() value.
+    const int64_t real_n = n < in_n ? n : in_n;
+    for (int64_t i = 0; i < real_n; ++i) {
+      Status s = ResourceHandle::BuildResourceHandle(in.resource_handle_val(i),
+                                                     &data[i]);
+      if (!s.ok()) {
+        LOG(ERROR) << "Could not decode resource handle from proto \""
+                   << in.resource_handle_val(i).ShortDebugString()
+                   << "\", returned status: " << s.ToString();
+        buf->Unref();
+        return nullptr;
+      }
+    }
+    for (int64_t i = in_n; i < n; ++i) {
+      data[i] = ResourceHandle();
+    }
+  }
+  return buf;
+}
+
 template <>
 TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
                                       int64_t n) {
@@ -943,6 +983,15 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
                          dtype_error = true, dtype_error = true);
     }
     if (dtype_error || p == nullptr) return false;
+  } else {
+    // Handle the case of empty tensors (N = 0) or tensors with incomplete shape
+    // (N = -1). All other values of `shape.num_elements()` should be invalid by
+    // construction.
+    // Here, we just need to validate that the `proto.dtype()` value is valid.
+    bool dtype_error = false;
+    CASES_WITH_DEFAULT(proto.dtype(), break, dtype_error = true,
+                       dtype_error = true);
+    if (dtype_error) return false;
   }
   shape_ = shape;
   set_dtype(proto.dtype());

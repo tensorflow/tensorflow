@@ -43,6 +43,7 @@ distribute_py_test(
     tags = [
         # Dependencies aren't otherwise included in the pip package yet.
         "no_pip",
+        "notpu",  # TODO(b/210159281)
     ],
     deps = [
         ":parallel_device",

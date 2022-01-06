@@ -31,8 +31,10 @@ from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
+from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metdata_fb
 from tensorflow.lite.python import lite_constants as constants
-from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
+from tensorflow.lite.python.convert import convert_graphdef as _convert_graphdef
+from tensorflow.lite.python.convert import convert_graphdef_with_arrays as _convert_graphdef_with_arrays
 from tensorflow.lite.python.convert import convert_jax_hlo as _convert_jax_hlo
 from tensorflow.lite.python.convert import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
@@ -41,9 +43,6 @@ from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
 from tensorflow.lite.python.convert import mlir_sparsify as _mlir_sparsify
 from tensorflow.lite.python.convert import OpsSet
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
-from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
-from tensorflow.lite.python.convert import toco_convert_impl as _toco_convert_impl
-from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import SubComponent
@@ -62,12 +61,14 @@ from tensorflow.lite.python.util import convert_debug_info_func as _convert_debu
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
 from tensorflow.lite.python.util import get_debug_info as _get_debug_info
 from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
+from tensorflow.lite.python.util import get_sparsity_modes as _get_sparsity_modes
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
 from tensorflow.lite.python.util import get_tf_type_name as _get_tf_type_name
 from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
 from tensorflow.lite.python.util import model_input_signature as _model_input_signature
 from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io_type
+from tensorflow.lite.python.util import populate_conversion_metadata as _populate_conversion_metadata
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.lite.python.util import trace_model_call as _trace_model_call
@@ -81,6 +82,7 @@ from tensorflow.python.eager import function as _function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.framework import versions
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.platform import gfile
@@ -230,8 +232,15 @@ class TargetSpec(object):
 class QuantizationMode(object):
   """QuantizationMode determines the quantization type from user options."""
 
-  def __init__(self, optimizations, target_spec, representative_dataset,
-               graph_def, disable_per_channel=False):
+  def __init__(self,
+               optimizations,
+               target_spec,
+               representative_dataset,
+               graph_def,
+               disable_per_channel=False,
+               experimental_new_dynamic_range_quantizer=False,
+               experimental_low_bit_qat=False,
+               full_integer_quantization_bias_type=None):
     self._optimizations = optimizations
     for deprecated_optimization in [
         Optimize.OPTIMIZE_FOR_SIZE, Optimize.OPTIMIZE_FOR_LATENCY
@@ -247,6 +256,15 @@ class QuantizationMode(object):
 
     self._validate_int8_required()
     self._disable_per_channel = disable_per_channel
+
+    self._enable_new_dynamic_range_quantizer = (
+        experimental_new_dynamic_range_quantizer)
+    # Allow training with lower than 8 bit weights to be converted
+    # to constants with trained scale.
+    self._experimental_low_bit_qat = experimental_low_bit_qat
+
+    self._full_integer_quantization_bias_type = full_integer_quantization_bias_type
+    self._validate_full_integer_quantization_bias_type()
 
   # TODO(b/162537905): Refactor the following quantization functions -
   # re-organize and refactor for better readability.
@@ -277,10 +295,12 @@ class QuantizationMode(object):
 
   def is_integer_quantize(self):
     return (self.is_post_training_integer_quantize() or
-            self.is_training_time_int8_allow_float())
+            self.is_training_time_int8_allow_float() or
+            self.is_training_time_low_bit_allow_float())
 
   def is_training_time_int8_allow_float(self):
-    return (self.any_optimization_enabled() and
+    return (not self.is_training_time_low_bit_allow_float() and
+            self.any_optimization_enabled() and
             self.contains_training_quant_op())
 
   def is_bfloat16_inference_allowed(self):
@@ -319,6 +339,11 @@ class QuantizationMode(object):
                 self.post_training_dynamic_range_int8() or
                 self.post_training_fp16())
 
+  def is_training_time_low_bit_allow_float(self):
+    return (self.any_optimization_enabled() and
+            self.contains_training_quant_op() and
+            self._experimental_low_bit_qat)
+
   def activations_type(self):
     if self.is_integer_quantize():
       if self._is_int16x8_target_required():
@@ -328,16 +353,30 @@ class QuantizationMode(object):
     else:
       return _dtypes.float32
 
+  def bias_type(self):
+    if self._full_integer_quantization_bias_type:
+      return self._full_integer_quantization_bias_type
+
+    if self.activations_type() == _dtypes.int16:
+      return _dtypes.int64
+    elif self.activations_type() == _dtypes.int8:
+      return _dtypes.int32
+    else:
+      return _dtypes.float32
+
   def converter_flags(self, inference_ty=None, inference_input_ty=None):
     """Flags to the converter."""
 
     if self.is_integer_quantize():
+      is_low_bit_qat = self.is_training_time_low_bit_allow_float()
       return {
-          "inference_type": (
-              inference_ty if inference_ty else self.activations_type()),
+          "inference_type": (inference_ty if inference_ty is not None else
+                             self.activations_type()),
           "inference_input_type": _dtypes.float32,
           "post_training_quantize": False,  # disable dynamic range quantization
-          "quantize_to_float16": False  # disable float16 quantization
+          "quantize_to_float16": False,  # disable float16 quantization
+          "disable_infer_tensor_range": is_low_bit_qat,
+          "use_fake_quant_num_bits": is_low_bit_qat,
       }
     elif self.post_training_dynamic_range_int8():
       return {
@@ -346,7 +385,10 @@ class QuantizationMode(object):
           "post_training_quantize": True,  # enable dynamic range quantization
           "quantize_to_float16": False,  # disable float16 quantization
           # experimental: disable per-channel (per-axis) quantization.
-          "disable_per_channel_quantization": self._disable_per_channel
+          "disable_per_channel_quantization":
+              self._disable_per_channel,
+          "enable_mlir_dynamic_range_quantizer":
+              self._enable_new_dynamic_range_quantizer
       }
     elif self.post_training_fp16():
       return {
@@ -361,9 +403,10 @@ class QuantizationMode(object):
       }
     else:
       # Note this might still trigger (uint8) quantization to be compatible with
-      # TOCO.
+      # the old converter.
       return {
-          "inference_type": inference_ty if inference_ty else _dtypes.float32,
+          "inference_type": (
+              inference_ty if inference_ty is not None else _dtypes.float32),
           "inference_input_type": inference_input_ty,
           "post_training_quantize": False,  # enable dynamic range quantization
           "quantize_to_float16": False,  # disable float16 quantization
@@ -393,6 +436,28 @@ class QuantizationMode(object):
       # TODO(b/162537905): Relax this check for QAT.
       raise ValueError("representative_dataset is required when specifying "
                        "TFLITE_BUILTINS_INT8 or INT8 supported types.")
+
+  def _validate_full_integer_quantization_bias_type(self):
+    """Validates bias type for full interger quantization."""
+    bias_type = self._full_integer_quantization_bias_type
+    if not bias_type:
+      return
+
+    if self.activations_type() == _dtypes.float32:
+      raise ValueError(
+          "`full_integer_quantization_bias_type` is only supported for full integer quantization."
+      )
+
+    if self.activations_type() == _dtypes.int8 and bias_type != _dtypes.int32:
+      raise ValueError(
+          f"Expected bias type to be `dtypes.int32` for Int8Quant. "
+          f"Current setting bias type: {bias_type}")
+
+    if self.activations_type(
+    ) == _dtypes.int16 and bias_type != _dtypes.int32 and bias_type != _dtypes.int64:
+      raise ValueError(
+          f"Expected bias type to be `dtypes.int32` or `dtypes.int64` for "
+          f"Int16Quant. Current setting bias type: {bias_type}")
 
   def _is_int8_target_required(self):
     return (OpsSet.TFLITE_BUILTINS_INT8 in set(
@@ -446,6 +511,10 @@ class QuantizationMode(object):
 class TFLiteConverterBase(object):
   """Converter subclass to share functionality between V1 and V2 converters."""
 
+  # Stores the original model type temporarily to transmit the information
+  # from the factory class methods to TFLiteConverterBase init function.
+  _original_model_type = conversion_metdata_fb.ModelType.NONE
+
   def __init__(self):
     self.optimizations = set()
     self.representative_dataset = None
@@ -454,7 +523,6 @@ class TFLiteConverterBase(object):
     self.experimental_new_converter = True
     self.experimental_new_quantizer = True
     self.experimental_enable_resource_variables = False
-    self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
     self._experimental_disable_per_channel = False
@@ -470,6 +538,27 @@ class TFLiteConverterBase(object):
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
+    self._experimental_tf_quantization_mode = None
+    # If unset, bias:int32 is by default except 16x8 quant.
+    # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
+    self._experimental_full_integer_quantization_bias_type = None
+    # Initializes conversion metadata.
+    self.exclude_conversion_metadata = False
+    self._metadata = conversion_metdata_fb.ConversionMetadataT()
+    self._metadata.environment = conversion_metdata_fb.EnvironmentT()
+    self._metadata.options = conversion_metdata_fb.ConversionOptionsT()
+    self._metadata.environment.tensorflowVersion = versions.__version__
+    self._metadata.environment.modelType = self._get_original_model_type()
+
+    # When the value is true, the MLIR quantantizer triggers dynamic range
+    # quantization in MLIR instead of the old quantizer. Used only if
+    # experimental_new_quantizer is on.
+    # TODO(b/204727097): Enable _experimental_new_dynamic_range_quantizer
+    # by default and remove the flag once feature parity with the old quantizer
+    # is verified.
+    self._experimental_new_dynamic_range_quantizer = False
+    # Experimental flag to enable low-bit QAT in 8 bit.
+    self._experimental_low_bit_qat = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -496,7 +585,7 @@ class TFLiteConverterBase(object):
     return _get_grappler_config(optimizers)
 
   def _quantize(self, result, input_type, output_type, activations_type,
-                allow_float):
+                bias_type, allow_float):
     """Quantize the model."""
     # pylint: disable=protected-access
     custom_op_registerers_by_name = [
@@ -534,8 +623,12 @@ class TFLiteConverterBase(object):
           output_data_type=output_type)
     else:
       return calibrate_quantize.calibrate_and_quantize(
-          self.representative_dataset.input_gen, input_type, output_type,
-          allow_float, activations_type,
+          self.representative_dataset.input_gen,
+          input_type,
+          output_type,
+          allow_float,
+          activations_type,
+          bias_type,
           disable_per_channel=self._experimental_disable_per_channel)
 
   def _is_unknown_shapes_allowed(self):
@@ -571,6 +664,8 @@ class TFLiteConverterBase(object):
             self._experimental_unfold_large_splat_constant,
         "default_to_single_batch_in_tensor_list_ops":
             self._experimental_default_to_single_batch_in_tensor_list_ops,
+        "tf_quantization_mode":
+            self._experimental_tf_quantization_mode,
     }
 
     if self.saved_model_dir:
@@ -629,15 +724,24 @@ class TFLiteConverterBase(object):
   def _sparsify_model(self):
     return Optimize.EXPERIMENTAL_SPARSITY in self.optimizations
 
-  def _validate_experimental_new_quantizer_flag(self):
-    if self._experimental_new_quantizer is not None:
-      raise ValueError("Please use 'experimental_new_quantizer' instead.")
-
   def _increase_conversion_attempt_metric(self):
     self._tflite_metrics.increase_counter_converter_attempt()
 
   def _increase_conversion_success_metric(self):
     self._tflite_metrics.increase_counter_converter_success()
+
+  @classmethod
+  def _set_original_model_type(cls, model_type):
+    """Stores the original model type."""
+    if model_type == conversion_metdata_fb.ModelType.NONE:
+      raise ValueError("The original model type should be specified.")
+    cls._original_model_type = model_type
+
+  def _get_original_model_type(self):
+    """One-time getter to return original model type and set it to NONE."""
+    model_type = TFLiteConverterBase._original_model_type
+    TFLiteConverterBase._original_model_type = conversion_metdata_fb.ModelType.NONE
+    return model_type
 
   def _save_conversion_params_metric(self,
                                      graph_def=None,
@@ -648,10 +752,19 @@ class TFLiteConverterBase(object):
     converter_kwargs.update(self._get_base_converter_args())
 
     # Optimization parameters.
-    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def,
-                                  self._experimental_disable_per_channel)
+    quant_mode = QuantizationMode(
+        self.optimizations, self.target_spec, self.representative_dataset,
+        graph_def, self._experimental_disable_per_channel,
+        self._experimental_new_dynamic_range_quantizer,
+        self._experimental_low_bit_qat,
+        self._experimental_full_integer_quantization_bias_type)
     converter_kwargs.update({
+        "tf_version":
+            self._metadata.environment.tensorflowVersion,
+        "api_version":
+            self._metadata.environment.apiVersion,
+        "original_model_format":
+            self._metadata.environment.modelType,
         "optimization_default":
             quant_mode.any_optimization_enabled(),
         "optimization_post_training_dynamic_range":
@@ -662,6 +775,8 @@ class TFLiteConverterBase(object):
             quant_mode.is_post_training_integer_quantize(),
         "optimization_qat":
             quant_mode.is_training_time_int8_allow_float(),
+        "optimization_low_bit_qat":
+            quant_mode.is_training_time_low_bit_allow_float(),
         "optimization_sparsify":
             self._sparsify_model(),
         "activations_type":
@@ -695,6 +810,35 @@ class TFLiteConverterBase(object):
       self._tflite_metrics.set_converter_param(key, format_param(value))
     self._tflite_metrics.set_export_required()
 
+    # Set conversion option metadata.
+    self._metadata.options.allowCustomOps = self.allow_custom_ops
+    self._metadata.options.enableSelectTfOps = (
+        OpsSet.SELECT_TF_OPS in self.target_spec.supported_ops)
+    self._metadata.options.forceSelectTfOps = (
+        set([OpsSet.SELECT_TF_OPS]) == set(self.target_spec.supported_ops))
+    self._metadata.options.modelOptimizationModes = []
+
+    if quant_mode.post_training_fp16():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode.PTQ_FLOAT16)
+
+    if quant_mode.post_training_dynamic_range_int8():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode.PTQ_DYNAMIC_RANGE)
+
+    if quant_mode.is_post_training_integer_quantize_8():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER)
+
+    if quant_mode.is_post_training_integer_quantize_16x8():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode.PTQ_INT16)
+
+    if quant_mode.is_training_time_int8_allow_float():
+      self._metadata.options.modelOptimizationModes.append(
+          conversion_metdata_fb.ModelOptimizationMode
+          .QUANTIZATION_AWARE_TRAINING)
+
   def _set_conversion_latency_metric(self, value):
     self._tflite_metrics.set_converter_latency(value)
 
@@ -709,9 +853,10 @@ class TFLiteConverterBase(object):
         q_in_type = in_type if in_type and quant_io else _dtypes.float32
         q_out_type = out_type if out_type and quant_io else _dtypes.float32
         q_activations_type = quant_mode.activations_type()
+        q_bias_type = quant_mode.bias_type()
         q_allow_float = quant_mode.is_allow_float()
-        model = self._quantize(
-            model, q_in_type, q_out_type, q_activations_type, q_allow_float)
+        model = self._quantize(model, q_in_type, q_out_type, q_activations_type,
+                               q_bias_type, q_allow_float)
 
       m_in_type = in_type if in_type else _dtypes.float32
       m_out_type = out_type if out_type else _dtypes.float32
@@ -756,6 +901,12 @@ class TFLiteConverterBase(object):
       self._increase_conversion_success_metric()
     self._set_conversion_latency_metric(round(elapsed_time_ms))
     self._tflite_metrics.export_metrics()
+    # Populates the conversion metadata.
+    # TODO(b/202090541): Collects sparsity block size information.
+    sparsity_modes = _get_sparsity_modes(result)
+    self._metadata.options.modelOptimizationModes.extend(sparsity_modes)
+    if not self.exclude_conversion_metadata:
+      result = _populate_conversion_metadata(result, self._metadata)
     return result
 
 
@@ -778,7 +929,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     super(TFLiteConverterBaseV2, self).__init__()
     self.inference_input_type = _dtypes.float32
     self.inference_output_type = _dtypes.float32
-    self._collected_converter_params.update({"api_version": 2})
+    self._metadata.environment.apiVersion = 2
 
   def _validate_inference_input_output_types(self, quant_mode):
     """Validate inference_input_type and inference_output_type flags."""
@@ -844,11 +995,13 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     """
     # Update conversion params with graph_def.
     self._save_conversion_params_metric(graph_def)
-    self._quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                        self.representative_dataset, graph_def,
-                                        self._experimental_disable_per_channel)
+    self._quant_mode = QuantizationMode(
+        self.optimizations, self.target_spec, self.representative_dataset,
+        graph_def, self._experimental_disable_per_channel,
+        self._experimental_new_dynamic_range_quantizer,
+        self._experimental_low_bit_qat,
+        self._experimental_full_integer_quantization_bias_type)
     self._validate_inference_input_output_types(self._quant_mode)
-    self._validate_experimental_new_quantizer_flag()
 
     if not self._is_unknown_shapes_allowed():
       # Checks dimensions in input tensor.
@@ -902,6 +1055,36 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
           graph=frozen_func.graph)
     return graph_def
 
+  def _convert_from_saved_model(self, graph_def):
+    """Helper method that converts saved model.
+
+    Args:
+      graph_def: GraphDef object for the model, used only for stats.
+
+    Returns:
+      The converted TFLite model.
+    """
+    # Update conversion params with graph_def.
+    self._save_conversion_params_metric(graph_def)
+    # Get quantization options and do some sanity checks.
+    quant_mode = QuantizationMode(
+        self.optimizations, self.target_spec, self.representative_dataset,
+        graph_def, self._experimental_disable_per_channel,
+        self._experimental_new_dynamic_range_quantizer,
+        self._experimental_low_bit_qat,
+        self._experimental_full_integer_quantization_bias_type)
+    self._validate_inference_input_output_types(quant_mode)
+    converter_kwargs = {
+        "enable_tflite_resource_variables":
+            self.experimental_enable_resource_variables
+    }
+    converter_kwargs.update(self._get_base_converter_args())
+    converter_kwargs.update(quant_mode.converter_flags())
+
+    result = _convert_saved_model(**converter_kwargs)
+    return self._optimize_tflite_model(
+        result, quant_mode, quant_io=self.experimental_new_quantizer)
+
   def convert(self, graph_def, input_tensors, output_tensors):
     """Converts a TensorFlow GraphDef based on instance variables.
 
@@ -927,14 +1110,14 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       logging.warning(
           "Please consider switching to the new converter by setting "
           "experimental_new_converter=True. "
-          "The old converter (TOCO) is deprecated.")
+          "The old converter is deprecated.")
     else:
       logging.info("Using new converter: If you encounter a problem "
                    "please file a bug. You can opt-out "
                    "by setting experimental_new_converter=False")
 
     # Converts model.
-    result = _toco_convert_impl(
+    result = _convert_graphdef(
         input_data=graph_def,
         input_tensors=input_tensors,
         output_tensors=output_tensors,
@@ -1015,25 +1198,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
           _convert_debug_info_func(self._trackable_obj.graph_debug_info),
           graph_def)
 
-    # Update conversion params with graph_def.
-    self._save_conversion_params_metric(graph_def)
-    # Get quantization options and do some sanity checks.
-    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def,
-                                  self._experimental_disable_per_channel)
-    self._validate_inference_input_output_types(quant_mode)
-
-    converter_kwargs = {
-        "enable_tflite_resource_variables":
-            self.experimental_enable_resource_variables
-    }
-    converter_kwargs.update(self._get_base_converter_args())
-    converter_kwargs.update(quant_mode.converter_flags())
-
-    result = _convert_saved_model(**converter_kwargs)
-
-    return self._optimize_tflite_model(
-        result, quant_mode, quant_io=self.experimental_new_quantizer)
+    return self._convert_from_saved_model(graph_def)
 
 
 class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
@@ -1248,8 +1413,11 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
       return None, None, None
 
     # Without the provided trackable obj, it is not able to serialize the given
-    # concrete functions as a saved model format.
-    if not self._trackable_obj:
+    # concrete functions as a saved model format. Also when trackable obj is
+    # a function, use the original concrete function conversion pipline.
+    if (not self._trackable_obj or
+        isinstance(self._trackable_obj, (_function.ConcreteFunction,
+                                         _def_function.Function))):
       return None, None, None
 
     signatures = {}
@@ -1295,11 +1463,11 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     """
     temp_dir = tempfile.mkdtemp()
     try:
-      graph_def, input_tensors, output_tensors = (
+      graph_def, input_tensors, _ = (
           self._convert_concrete_functions_to_saved_model(temp_dir))
       if self.saved_model_dir:
-        return super(TFLiteFrozenGraphConverterV2,
-                     self).convert(graph_def, input_tensors, output_tensors)
+        self._validate_inputs(graph_def, input_tensors)
+        return self._convert_from_saved_model(graph_def)
     finally:
       shutil.rmtree(temp_dir, True)
     return None
@@ -1474,8 +1642,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       When False, any unknown operation is an error. When True, custom ops are
       created for any op that is unknown. The developer needs to provide these
       to the TensorFlow Lite runtime with a custom resolver. (default False)
+    exclude_conversion_metadata: Whether not to embed the conversion metadata
+      into the converted model. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion. (default True)
+      MLIR-based conversion. (default True)
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
       (default True)
@@ -1539,6 +1709,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Raises:
       Invalid input type.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_CONCRETE_FUNCTIONS)
+    # pylint: enable=protected-access
     if trackable_obj is None:
       logging.warning(
           "Please consider providing the trackable_obj argument in the "
@@ -1574,6 +1748,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Raises:
       Invalid signature keys.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_SAVED_MODEL)
+    # pylint: enable=protected-access
     # When run without eager enabled, this will return the legacy
     # TFLiteConverter.
     if not context.executing_eagerly():
@@ -1626,6 +1804,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Returns:
       TFLiteConverter object.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.KERAS_MODEL)
+    # pylint: enable=protected-access
     return TFLiteKerasModelConverterV2(model)
 
   @classmethod
@@ -1644,6 +1826,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Returns:
       TFLiteConverter object.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.JAX)
+    # pylint: enable=protected-access
     return TFLiteJaxConverterV2(serving_funcs, inputs)
 
   # pylint: disable=useless-super-delegation
@@ -1688,6 +1874,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
     self._experimental_allow_all_select_tf_ops = False
+    self._metadata.environment.apiVersion = 1
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
@@ -1836,9 +2023,12 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     """
     self._validate_inputs(self._input_tensors, self.quantized_input_stats)
 
-    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, self._graph_def,
-                                  self._experimental_disable_per_channel)
+    quant_mode = QuantizationMode(
+        self.optimizations, self.target_spec, self.representative_dataset,
+        self._graph_def, self._experimental_disable_per_channel,
+        self._experimental_new_dynamic_range_quantizer,
+        self._experimental_low_bit_qat,
+        self._experimental_full_integer_quantization_bias_type)
 
     optimized_graph = self._optimize_tf_model(self._graph_def,
                                               self._input_tensors,
@@ -1867,23 +2057,22 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       logging.warning(
           "Please consider switching to the new converter by setting "
           "experimental_new_converter=True. "
-          "The old converter (TOCO) is deprecated.")
+          "The old converter is deprecated.")
     else:
       logging.info("Using experimental converter: If you encountered a problem "
                    "please file a bug. You can opt-out "
                    "by setting experimental_new_converter=False")
 
     self._validate_quantized_input_stats(converter_kwargs, quant_mode)
-    self._validate_experimental_new_quantizer_flag()
     # Converts model.
     if self._has_valid_tensors():
-      result = _toco_convert_impl(
+      result = _convert_graphdef(
           input_data=optimized_graph,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
           **converter_kwargs)
     else:
-      result = _toco_convert_graph_def(
+      result = _convert_graphdef_with_arrays(
           input_data=optimized_graph,
           input_arrays_with_shape=self._input_arrays_with_shape,
           output_arrays=self._output_arrays,
@@ -1940,8 +2129,8 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     if not super(TFLiteConverterBaseV1, self)._is_unknown_shapes_allowed():
       return False
 
-    # `conversion_summary_dir` calls TOCO. Unknown shapes are only supported by
-    # the MLIR converter.
+    # `conversion_summary_dir` calls the old converter. Unknown shapes are only
+    # supported by the MLIR converter.
     if self.conversion_summary_dir:
       logging.warning(
           "`conversion_summary_dir` does not work with unknown shapes. "
@@ -1960,7 +2149,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
         "conversion_summary_dir": self.conversion_summary_dir,
-        "api_version": 1,
     })
     super(TFLiteConverterBaseV1,
           self)._save_conversion_params_metric(self._graph_def,
@@ -2312,11 +2500,13 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
       flag to be specified. (default False)
     conversion_summary_dir: Full path of the directory to store conversion logs.
       (default None)
+    exclude_conversion_metadata: Whether not to embed the conversion metadata
+      into the converted model. (default False)
     target_ops: Deprecated. Please use `target_spec.supported_ops` instead.
     post_training_quantize: Deprecated. Please use `optimizations` instead and
       set it to `{tf.lite.Optimize.DEFAULT}`. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion. (default True)
+      MLIR-based conversion. (default True)
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
       (default True)
@@ -2397,6 +2587,10 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     Returns:
       TFLiteConverter class.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_SESSION)
+    # pylint: enable=protected-access
     graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(
         graph_def,
@@ -2433,6 +2627,10 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
         input_arrays or output_arrays contains an invalid tensor name.
         input_shapes is not correctly defined when required
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_GRAPH_DEF)
+    # pylint: enable=protected-access
     with _ops.Graph().as_default():
       with _session.Session() as sess:
         # Read GraphDef from file.
@@ -2526,6 +2724,10 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     Returns:
       TFLiteConverter class.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.TF_SAVED_MODEL)
+    # pylint: enable=protected-access
     if tag_set is None:
       tag_set = set([_tag_constants.SERVING])
     if signature_key is None:
@@ -2570,6 +2772,10 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     Returns:
       TFLiteConverter class.
     """
+    # pylint: disable=protected-access
+    TFLiteConverterBase._set_original_model_type(
+        conversion_metdata_fb.ModelType.KERAS_MODEL)
+    # pylint: enable=protected-access
     return TFLiteKerasModelConverter(model_file, input_arrays, input_shapes,
                                      output_arrays, custom_objects)
 
@@ -2591,7 +2797,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
 
 @_tf_export(v1=["lite.TocoConverter"])
 class TocoConverter(object):
-  """Convert a TensorFlow model into `output_format` using TOCO.
+  """Convert a TensorFlow model into `output_format`.
 
   This class has been deprecated. Please use `lite.TFLiteConverter` instead.
   """

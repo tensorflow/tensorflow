@@ -17,7 +17,7 @@
 import collections
 import contextlib
 
-from six.moves import xrange, zip  # pylint: disable=redefined-builtin
+from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python import pywrap_tfe
@@ -781,7 +781,7 @@ def _SetGrad(grads, t, grad):
   op = t.op
   op_grads = grads.get(op)
   if not op_grads:
-    op_grads = [[] for _ in xrange(len(op.outputs))]
+    op_grads = [[] for _ in range(len(op.outputs))]
     grads[op] = op_grads
   t_grads = op_grads[t.value_index]
   if isinstance(t_grads, list):
@@ -828,7 +828,7 @@ def _GetGrads(grads, op):
   if op in grads:
     return grads[op]
   else:
-    return [[] for _ in xrange(len(op.outputs))]
+    return [[] for _ in range(len(op.outputs))]
 
 
 def _AccumulatorShape(inputs):

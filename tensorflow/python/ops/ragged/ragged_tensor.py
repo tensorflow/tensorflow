@@ -2043,7 +2043,18 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   #=============================================================================
   def __repr__(self):
     if self._is_eager():
-      return "<tf.RaggedTensor %s>" % self.to_list()
+      # The np.array2string in _formatter provides a separator argument, but
+      # doesn't handle recursive calls correctly. The np.printoptions handles
+      # recursive calls correctly, but doesn't provide a separator argument.
+      # Combines them together to print elements separated by comma, while
+      # avoiding the redundant array prefixes and dtypes. For example,
+      # the value of tf.ragged.constant([[1, 2], [3, 4]]) will look like
+      #
+      # [[1, 2],
+      #  [3, 4]]
+      with np.printoptions(formatter={"all": _formatter}):
+        value_text = _formatter(self.numpy())
+      return f"<tf.RaggedTensor {value_text}>"
     else:
       return "tf.RaggedTensor(values=%s, row_splits=%s)" % (self.values,
                                                             self.row_splits)
@@ -3047,6 +3058,13 @@ def _assert_is_supported_ragged_values_type(value):
     ok_types = ", ".join(cls.__name__ for cls in _SUPPORTED_RAGGED_VALUE_TYPES)
     raise TypeError(f"type(values) must be one of: {ok_types}, got {value}.")
 
+
+def _formatter(x):
+  """Separate Numpy array elements with comma."""
+  if isinstance(x, np.ndarray):
+    return np.array2string(x, separator=", ")
+  else:
+    return str(x)
 
 # Type annotation indicating that a value is ragged.  Includes RaggedTensor
 # as well as the (deprecated) RaggedTensorValue class from TF 1.x.

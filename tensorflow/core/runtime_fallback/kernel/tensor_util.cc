@@ -63,7 +63,7 @@ tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
   }
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
-    return tfrt::MakeAvailableAsyncValueRef<KernelFallbackTensor>(*src);
+    return tfrt::MakeAvailableAsyncValueRef<KernelFallbackTensor>(dst);
   }
 
   auto result = tfrt::MakeUnconstructedAsyncValueRef<KernelFallbackTensor>();

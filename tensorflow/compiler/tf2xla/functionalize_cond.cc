@@ -975,9 +975,7 @@ Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
 StatusOr<Node*> FunctionalizeCond::AddIfNode(const NodeDef& def,
                                              const Node* replacee,
                                              const OutputTensor& predicate) {
-  Status status;
-  Node* ret = graph_->AddNode(def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * ret, graph_->AddNode(def));
   VLOG(1) << "Adding If for " << replacee->name();
   StateMap::CondId id = state_map_.LookupCondId(replacee);
   if (id) {

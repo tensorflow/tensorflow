@@ -185,3 +185,22 @@ func @main() attributes {tf.entry_function = {control_outputs = "", inputs = "",
   }
   return
 }
+
+// -----
+
+// Check that an op with must-execute effect is not pruned, even if it is
+// unreachable.
+func @must_execute_op() -> () {
+// CHECK: tf_executor.graph
+// CHECK: tf_executor.island
+// CHECK: tf._InternalTestMustExecuteTrait_
+  tf_executor.graph {
+    %1 = tf_executor.island {
+      "tf._InternalTestMustExecuteTrait_"() : () -> ()
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+

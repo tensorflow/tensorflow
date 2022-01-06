@@ -433,7 +433,7 @@ size_t ShardingMetadata::Hash() const {
   return static_cast<size_t>(0x297814aaad196e6dULL);
 }
 
-string ShardingMetadata::ToString() const {
+std::string ShardingMetadata::ToString() const {
   return sharding_ != nullptr ? sharding_->ToString() : "{}";
 }
 

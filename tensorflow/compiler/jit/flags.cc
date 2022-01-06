@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -34,6 +35,8 @@ XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
 IntroduceFloatingPointJitterPassFlags* jitter_flags;
 MlirCommonFlags* mlir_flags;
+CpuRtFlags* cpurt_flags;
+std::vector<Flag>* cpurt_flag_list;
 
 std::vector<Flag>* flag_list;
 absl::once_flag flags_init;
@@ -133,6 +136,15 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
+void AllocateAndParseCpurtFlags() {
+  cpurt_flags = new CpuRtFlags;
+  cpurt_flags->vectorize = false;
+  cpurt_flag_list = new std::vector<Flag>({
+      Flag("vectorize", &cpurt_flags->vectorize, ""),
+  });
+  xla::ParseFlagsFromEnvAndDieIfUnknown("TF_CPURT_FLAGS", *cpurt_flag_list);
+}
+
 void AllocateAndParseFlags() {
   build_ops_flags = new BuildXlaOpsPassFlags;
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
@@ -185,6 +197,8 @@ void AllocateAndParseFlags() {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
     return true;
   };
+  // Dump graphs in TFG dialect.
+  bool use_tfg_graph_dumper = false;
 
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_enable_lazy_compilation",
@@ -248,7 +262,10 @@ void AllocateAndParseFlags() {
            "When tf_mlir_enable_mlir_bridge is true, this field can enable "
            "the MLIR bridge's safe mode. When the MLIR bridge is in safe mode, "
            "it only runs for graphs that use features MLIR bridge currently "
-           "supports.")});
+           "supports."),
+       Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
+            "When tf_dump_graphs_in_tfg is true, graphs after transformations "
+            "are dumped in MLIR TFG dialect and not in GraphDef")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -273,6 +290,26 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
+
+  if (use_tfg_graph_dumper) {
+    UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(
+        MlirDumpConfig::Dialect::kTFG));
+  }
+
+  AllocateAndParseCpurtFlags();
+}
+
+void ResetFlags() {
+  delete build_ops_flags;
+  delete mark_for_compilation_flags;
+  delete device_flags;
+  delete ops_flags;
+  delete jitter_flags;
+  delete mlir_flags;
+  delete flag_list;
+  delete cpurt_flags;
+  delete cpurt_flag_list;
+  AllocateAndParseFlags();
 }
 
 }  // namespace
@@ -313,15 +350,11 @@ MlirCommonFlags* GetMlirCommonFlags() {
   return mlir_flags;
 }
 
-void ResetMlirCommonFlags() {
-  delete build_ops_flags;
-  delete mark_for_compilation_flags;
-  delete device_flags;
-  delete ops_flags;
-  delete jitter_flags;
-  delete mlir_flags;
-  delete flag_list;
-  AllocateAndParseFlags();
+void ResetJitCompilerFlags() { ResetFlags(); }
+
+const CpuRtFlags& GetCpuRtFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return *cpurt_flags;
 }
 
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(

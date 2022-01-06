@@ -61,13 +61,13 @@ py_library(
 
 distribute_py_test(
     name = "cluster_coordinator_test",
-    size = "small",
     srcs = ["cluster_coordinator_test.py"],
     python_version = "PY3",
     shard_count = 50,
     tags = [
         "multi_gpu",
         "no_pip",
+        "noasan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
         "notpu",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
     ],

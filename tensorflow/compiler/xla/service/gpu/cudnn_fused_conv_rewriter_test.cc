@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -28,12 +29,14 @@ namespace xla {
 namespace gpu {
 namespace {
 
+// TODO(b/210165681): The tests in this file are fragile to HLO op names.
+
 using ::testing::HasSubstr;
 using ::testing::Not;
 
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {
  protected:
-  string GetOptimizedHlo(absl::string_view hlo_string) {
+  std::string GetOptimizedHlo(absl::string_view hlo_string) {
     // cudnn_vectorize_convolutions transforms convolutions, making it hard to
     // match them here in this test.  What's worse, the transforms it does
     // depends on the GPU that's available!  So just disable them for this
@@ -58,9 +61,9 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
 
   void TestMatchWithAllTypes(absl::string_view hlo_string) {
     for (absl::string_view type : {"f16", "f32", "f64"}) {
-      const string hlo_with_new_type =
+      const std::string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
-      string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
+      std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
       EXPECT_THAT(optimized_hlo_string,
                   Not(HasSubstr(kCudnnConvForwardCallTarget)));
       EXPECT_THAT(optimized_hlo_string,
@@ -72,10 +75,10 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
 
   void TestClamp(absl::string_view pre_hlo_string,
                  absl::string_view post_hlo_string) {
-    string alpha_conv_scalar, alpha_side_input_scalar;
-    string elementwise_type;
+    std::string alpha_conv_scalar, alpha_side_input_scalar;
+    std::string elementwise_type;
 
-    string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
+    std::string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
     EXPECT_THAT(optimized_hlo_string, Not(HasSubstr("Convert")));
     EXPECT_THAT(optimized_hlo_string, HasSubstr("__cudnn$conv"));
     EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.01}))
@@ -89,9 +92,9 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
 
   void TestNotMatchWithAllTypes(absl::string_view hlo_string) {
     for (absl::string_view type : {"f16", "f32", "f64"}) {
-      const string hlo_with_new_type =
+      const std::string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
-      string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
+      std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
       EXPECT_THAT(optimized_hlo_string, HasSubstr(kCudnnConvForwardCallTarget));
       EXPECT_THAT(optimized_hlo_string,
                   Not(HasSubstr(kCudnnConvBiasActivationForwardCallTarget)));
@@ -345,7 +348,7 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
       ROOT relu = f32[1,32,9,9] maximum(zeros, conv)
     })";
 
-  const string optimized_hlo_string =
+  const std::string optimized_hlo_string =
       backend()
           .compiler()
           ->RunHloPasses(
@@ -384,7 +387,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8) {
-  // max(0, clamp(conv(x, w)))); for int8
+  // max(0, clamp(conv(x, w)))); for int8_t
   TestClamp(
       // pre_hlo
       R"(
@@ -415,13 +418,13 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8) {
       // post_hlo
       R"(
       ; CHECK-LABEL: ENTRY %Test (input: s8[1,17,9,9], filter: s8[3,3,17,32]) -> s8[1,32,9,9] {
-      ; CHECK:  %custom-call{{(\.[0-9])?}} = (s8[1,32,9,9]{1,3,2,0}, u8[{{[0-9]*}}]{0}) custom-call(%fusion{{(\.[0-9])?}}, %fusion{{(\.[0-9])?}}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convForward", backend_config=
+      ; CHECK:  %cudnn-conv{{(\.[0-9])?}} = (s8[1,32,9,9]{1,3,2,0}, u8[{{[0-9]*}}]{0}) custom-call(%fusion{{(\.[0-9])?}}, %fusion{{(\.[0-9])?}}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convForward", backend_config=
       )");
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToFloat) {
-  // convert<float>(conv<int32>(convert<int32>(int8_x),
-  // convert<int32>(int8_w)));
+  // convert<float>(conv<int32_t>(convert<int32_t>(int8_x),
+  // convert<int32_t>(int8_w)));
   TestClamp(
       // pre_hlo
       R"(
@@ -441,12 +444,12 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToFloat) {
       // post_hlo
       R"(
       ; CHECK-LABEL: ENTRY %Test (input: s8[1,17,9,9], filter: s8[3,3,17,32]) -> f32[1,32,9,9] {
-      ; CHECK:  %custom-call{{(\.[0-9])?}} = (f32[1,32,9,9]{1,3,2,0}, u8[{{[0-9]+}}]{0}) custom-call(%fusion{{(\.[0-9])?}}, %fusion{{(\.[0-9])?}}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convForward", backend_config=
+      ; CHECK:  %cudnn-conv{{(\.[0-9])?}} = (f32[1,32,9,9]{1,3,2,0}, u8[{{[0-9]+}}]{0}) custom-call(%fusion{{(\.[0-9])?}}, %fusion{{(\.[0-9])?}}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convForward", backend_config=
       )");
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
-  // clamp(max(0, conv(x, w)+bias)); for int8
+  // clamp(max(0, conv(x, w)+bias)); for int8_t
   TestClamp(
       // pre_hlo
       R"(
@@ -482,15 +485,15 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
       // post_hlo
       R"(
       ; CHECK-LABEL: ENTRY %Test (input: s8[1,3,3,64], filter: s8[3,3,64,64], bias: f32[64]) -> s8[1,3,3,64]
-      ; CHECK:  %custom-call{{(\.[0-9])?}} = (s8[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call(%input, %copy{{(\.[0-9])?}}, %bias), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config=
-      ; CHECK-NEXT:  ROOT %get-tuple-element{{(\.[0-9])?}} = s8[1,3,3,64]{3,2,1,0} get-tuple-element(%custom-call{{(\.[0-9])?}}), index=0
+      ; CHECK:  %cudnn-conv-bias-activation{{(\.[0-9])?}} = (s8[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call(%input, %copy{{(\.[0-9])?}}, %bias), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config=
+      ; CHECK-NEXT:  ROOT %get-tuple-element{{(\.[0-9])?}} = s8[1,3,3,64]{3,2,1,0} get-tuple-element(%cudnn-conv-bias-activation{{(\.[0-9])?}}), index=0
       )");
 }
 
 // Disabled per b/190854862 or nvbugs/3326122.
 TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestFusedConvInt8ToFloat) {
-  // max(0, convert<float>(conv<int32>(int8_x),
-  // conv<int32>(int8_w))+float_bias)); int8 to float via bias.
+  // max(0, convert<float>(conv<int32_t>(int8_x),
+  // conv<int32_t>(int8_w))+float_bias)); int8_t to float via bias.
   TestClamp(
       // pre_hlo
       R"(
@@ -525,7 +528,7 @@ TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestFusedConvInt8ToFloat) {
 TEST_F(CudnnFusedConvRewriterTest,
        TestFusedConvWithScaledInt8SideInputBiasInt8ToInt8) {
   // clamp(max(0, alpha_conv * conv(x, w) + alpha_side *
-  // convert<int32>(int8_side_input) + bias)); for int8
+  // convert<int32_t>(int8_side_input) + bias)); for int8_t
   TestClamp(
       // pre_hlo
       R"(
@@ -570,16 +573,16 @@ TEST_F(CudnnFusedConvRewriterTest,
       // post_hlo
       R"(
       ; CHECK-LABEL: ENTRY %Test (input: s8[1,3,3,64], filter: s8[3,3,64,64], side_input: s8[1,3,3,64], bias: f32[64]) -> s8[1,3,3,64] {
-      ; CHECK:  %custom-call{{(\.[0-9])?}} = (s8[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call(%input, %copy{{(\.[0-9])?}}, %bias, %side_input), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config=
-      ; CHECK-NEXT:  ROOT %get-tuple-element{{(\.[0-9])?}} = s8[1,3,3,64]{3,2,1,0} get-tuple-element(%custom-call{{(\.[0-9])?}}), index=0
+      ; CHECK:  %cudnn-conv-bias-activation{{(\.[0-9])?}} = (s8[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call(%input, %copy{{(\.[0-9])?}}, %bias, %side_input), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config=
+      ; CHECK-NEXT:  ROOT %get-tuple-element{{(\.[0-9])?}} = s8[1,3,3,64]{3,2,1,0} get-tuple-element(%cudnn-conv-bias-activation{{(\.[0-9])?}}), index=0
       )");
 }
 
 TEST_F(CudnnFusedConvRewriterTest,
        TestFusedConvWithScaledFloatSideInputBiasInt8ToInt8) {
   // From:
-  // convert<int8>(clamp(max(0, alpha_conv * conv(x, w) + alpha_side *
-  // float_side_input + bias))); To: convert<int8>(clamp(conv(int8_x, int8_w,
+  // convert<int8_t>(clamp(max(0, alpha_conv * conv(x, w) + alpha_side *
+  // float_side_input + bias))); To: convert<int8_t>(clamp(conv(int8_x, int8_w,
   // float_alpha_side, float_side_input, float_bias)));
   TestClamp(
       // pre_hlo
@@ -624,7 +627,7 @@ TEST_F(CudnnFusedConvRewriterTest,
       //  post_hlo
       R"(
       ; CHECK-LABEL: ENTRY %Test (input: s8[1,3,3,64], filter: s8[3,3,64,64], side_input: f32[1,3,3,64], bias: f32[64]) -> s8[1,3,3,64] {
-      ; CHECK:  %custom-call{{(\.[0-9])?}} = (f32[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call(%input, %copy{{(\.[0-9])?}}, %bias, %side_input), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config=
+      ; CHECK:  %cudnn-conv-bias-activation{{(\.[0-9])?}} = (f32[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call(%input, %copy{{(\.[0-9])?}}, %bias, %side_input), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config=
       ; CHECK:  ROOT %fusion = s8[1,3,3,64]{3,2,1,0} fusion(%get-tuple-element{{(\.[0-9])?}}), kind=kLoop, calls=%fused_computation
       )");
 }
@@ -678,16 +681,16 @@ TEST_F(CudnnFusedConvRewriterTest,
       R"(
       ; CHECK-LABEL: ENTRY %Test (input: s8[1,3,3,64], filter: s8[3,3,64,64], side_input: s8[1,3,3,64], bias: f32[64]) -> f32[1,3,3,64] {
       ; CHECK:  %side_input_f32 = f32[1,3,3,64]{3,2,1,0} convert(%side_input)
-      ; CHECK:  %custom-call{{(\.[0-9])?}} = (f32[1,3,3,64]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call(%input, %copy{{(\.[0-9])?}}, %bias, %side_input_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config=
+      ; CHECK:  %cudnn-conv-bias-activation{{(\.[0-9])?}} = (f32[1,3,3,64]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call(%input, %copy{{(\.[0-9])?}}, %bias, %side_input_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config=
       ; CHECK:  ROOT %fusion = f32[1,3,3,64]{3,2,1,0} fusion(%get-tuple-element{{(\.[0-9])?}}), kind=kLoop, calls=%fused_computation
       )");
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8NoClamp) {
-  // Check that integer convolution without clamp to int8 is not allowed.
-  // convert<int8>(custom_call<int32>(int32_x, int32_w,
+  // Check that integer convolution without clamp to int8_t is not allowed.
+  // convert<int8_t>(custom_call<int32_t>(int32_x, int32_w,
   // cudnnConvolutionForward))
-  const string module_str = absl::StrFormat(R"(
+  const std::string module_str = absl::StrFormat(R"(
     HloModule Test
 
     ENTRY Test (input: s8[1,17,9,9], filter: s8[3,3,17,32]) -> s8[1,32,9,9] {
@@ -707,10 +710,11 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8NoClamp) {
 
 TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8NoClamp) {
   // Although bias and so on are fused with forward convolution,
-  // it is still not allowed if the output is not clampped/converted to int8
-  // max(0, alpha_conv * conv(x, w) + alpha_side * side_input + bias); for int8
+  // it is still not allowed if the output is not clampped/converted to int8_t
+  // max(0, alpha_conv * conv(x, w) + alpha_side * side_input + bias); for
+  // int8_t
 
-  const string module_str = absl::StrFormat(R"(
+  const std::string module_str = absl::StrFormat(R"(
     HloModule Test
 
     ENTRY Test (input: s8[1,17,9,9], filter: s8[3,3,17,32]) -> s8[1,32,9,9] {

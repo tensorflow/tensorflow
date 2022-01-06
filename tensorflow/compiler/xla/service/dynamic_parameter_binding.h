@@ -103,7 +103,7 @@ class DynamicParameterBinding {
   static StatusOr<DynamicParameterBinding> CreateFromProto(
       const DynamicParameterBindingProto& proto);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Verifies that the given binding is valid for the given module.
   // Specifically, the binding's parameter and parameter size should be valid.

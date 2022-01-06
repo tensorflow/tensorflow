@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #include <set>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -1634,7 +1633,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kLoop);
 
-  const string expected_fusion =
+  const std::string expected_fusion =
       R"(f32[5,20]{1,0} fusion(f32[5,10]{1,0}, f32[20,10]{1,0}), kind=kLoop, calls=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)
@@ -1674,7 +1673,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationWhile) {
       HloInstruction::CreateWhile(sout, computation, computation, x));
 
   auto options = HloPrintOptions().Canonical();
-  const string expected_loop =
+  const std::string expected_loop =
       R"(f32[5,20]{1,0} while(f32[5,10]{1,0}), condition=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)
@@ -1735,7 +1734,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationConditional) {
       builder.AddInstruction(HloInstruction::CreateConditional(
           sout, pred, x, computation, x, computation));
   auto options = HloPrintOptions().Canonical();
-  const string expected_conditional =
+  const std::string expected_conditional =
       R"(f32[5,20]{1,0} conditional(pred[], f32[5,10]{1,0}, f32[5,10]{1,0}), true_computation=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)

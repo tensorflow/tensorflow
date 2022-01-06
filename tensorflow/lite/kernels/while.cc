@@ -102,7 +102,7 @@ TfLiteStatus CopyTensorsData(TfLiteContext* context, Subgraph* src_subgraph,
       TfLiteTensorRealloc(src_tensor->bytes, dst_tensor);
     }
     TF_LITE_ENSURE_EQ(context, src_tensor->bytes, dst_tensor->bytes);
-    memcpy(dst_tensor->data.raw, src_tensor->data.raw, src_tensor->bytes);
+    TfLiteTensorCopy(src_tensor, dst_tensor);
   }
   return kTfLiteOk;
 }

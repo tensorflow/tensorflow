@@ -94,14 +94,14 @@ upper_tabs:
           path: /lite/convert/metadata_writer_tutorial
       - title: "Sample models"
         path: /lite/guide/hosted_models
-      - title: "API updates"
-        path: /lite/convert/api_updates
       - title: "Model Analyzer"
         path: /lite/guide/model_analyzer
-        status: nightly
+        status: experimental
       - title: "Authoring tool"
         path: /lite/guide/authoring
-        status: nightly
+        status: experimental
+      - title: "Release notes"
+        path: /lite/convert/api_updates
 
       - heading: "Create a model"
       - title: "TensorFlow Lite Model Maker"
@@ -113,7 +113,7 @@ upper_tabs:
         path: /lite/guide/inference
       - title: "Signatures"
         path: /lite/guide/signatures
-        status: nightly
+        status: experimental
       - title: "Operator compatibility"
         path: /lite/guide/ops_compatibility
       - title: "Select operators"
@@ -127,6 +127,9 @@ upper_tabs:
         status: experimental
       - title: "Select operators Allowlist"
         path: /lite/guide/op_select_allowlist
+      - title: "TensorFlow Text ops"
+        path: /text/guide/text_tf_lite
+        status: external
 
       - heading: "Run Inference with metadata"
       - title: "Overview"
@@ -259,7 +262,6 @@ upper_tabs:
         status: nightly
       - title: "On-device training"
         path: /lite/examples/on_device_training/overview
-        status: nightly
       - title: "Recommendation"
         path: /lite/examples/recommendation/overview
       - title: "Reinforcement learning"

@@ -73,6 +73,7 @@ cc_library(
     deps = [
         ":quantization_info_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
+        "//tensorflow/compiler/mlir/tensorflow:location_utils",
         "//tensorflow/core:lib_proto_parsing",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

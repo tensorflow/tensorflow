@@ -66,10 +66,10 @@ SmallVector<TF::WhileOp> GetWhileCallers(FuncOp func,
   return while_callers;
 }
 
-// Populates the map from a resource to set of operations that read/write to
-// that resource.
-void PopulateResourceToOpsMap(
-    FuncOp func, ResourceToOpsMapTy& resource_to_ops_map,
+// Populates the map from all resources that need to be chained to the set of
+// operations that access the resource.
+void PopulateChainResourceToOpsMap(
+    FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   auto graph_op = cast<GraphOp>(func.front().front());
 
@@ -84,7 +84,13 @@ void PopulateResourceToOpsMap(
     for (auto resource_id_read_only_pair :
          side_effect_analysis.GetResourceIds(&op)) {
       TF::ResourceId resource_id = resource_id_read_only_pair.first;
-      resource_to_ops_map[resource_id].insert(&op);
+      // If the resource was allocated by an op with `UniqueResourceAllocation`
+      // trait, then we don't need to chain resource ops accessing this resource
+      // between iterations: Every iteration will create a new independent
+      // resource. This enables more parallelism across iterations.
+      if (!side_effect_analysis.IsUniqueResourceAllocationId(resource_id)) {
+        chain_resource_to_ops_map[resource_id].insert(&op);
+      }
     }
   });
 }
@@ -232,9 +238,10 @@ IslandOp CreateIsland(Operation* sub_op, ValueRange control_inputs,
 // from chain_src to all the operations that read/write to that resource, and
 // (2) a control dependency from all the operations that read/write to the
 // resource to the chain_sink operation.
-void ChainResourceOps(FuncOp func, ResourceToOpsMapTy& resource_to_ops_map,
+void ChainResourceOps(FuncOp func,
+                      ResourceToOpsMapTy& chain_resource_to_ops_map,
                       int num_old_outputs) {
-  assert(num_old_outputs + resource_to_ops_map.size() ==
+  assert(num_old_outputs + chain_resource_to_ops_map.size() ==
          func.getNumArguments());
   auto graph_op = cast<GraphOp>(func.front().front());
 
@@ -246,7 +253,7 @@ void ChainResourceOps(FuncOp func, ResourceToOpsMapTy& resource_to_ops_map,
   OpBuilder builder_chain_sink(fetch);
   int chain_index = num_old_outputs;
 
-  for (auto entry : resource_to_ops_map) {
+  for (auto entry : chain_resource_to_ops_map) {
     OperationSetTy& resource_ops = entry.getSecond();
 
     // Create chain source and sink identity islands.
@@ -326,19 +333,20 @@ void ConvertControlToDataOutputs(
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   if (while_callers.empty()) return;
 
-  // Collect access information for each resource in the while body.
-  ResourceToOpsMapTy resource_to_ops_map;
-  PopulateResourceToOpsMap(while_body, resource_to_ops_map,
-                           side_effect_analysis);
+  // Collect access information for each resource in the while body that needs
+  // to be chained.
+  ResourceToOpsMapTy chain_resource_to_ops_map;
+  PopulateChainResourceToOpsMap(while_body, chain_resource_to_ops_map,
+                                side_effect_analysis);
 
   // Check for presence of unknown side-effecting ops within the while loop
   // body. These ops act as barriers and the optimization would not yield much
   // inter iteration parallelism for this while loop body. So return with
   // warning.
-  if (resource_to_ops_map.count(
+  if (chain_resource_to_ops_map.count(
           TF::detail::ResourceAliasAnalysisInfo::kUnknownResourceId) > 0) {
     std::set<std::string> blocking_ops;
-    for (Operation* op : resource_to_ops_map
+    for (Operation* op : chain_resource_to_ops_map
              [TF::detail::ResourceAliasAnalysisInfo::kUnknownResourceId]) {
       std::string op_name = op->getName().getStringRef().str();
       if (blocking_ops.insert(op_name).second) {
@@ -359,16 +367,16 @@ void ConvertControlToDataOutputs(
   // If there was no control output to be removed, return early.
   if (!changed) return;
 
-  int num_resources = resource_to_ops_map.size();
+  int num_chain_resources = chain_resource_to_ops_map.size();
   RankedTensorType chaining_data_type =
       RankedTensorType::get({}, OpBuilder(while_body).getI32Type());
   // Create new while body
   int num_old_outputs = while_body.getNumResults();
-  AppendFunctionArguments(while_body, num_resources, chaining_data_type);
-  AppendFunctionResults(while_body, num_resources, chaining_data_type);
+  AppendFunctionArguments(while_body, num_chain_resources, chaining_data_type);
+  AppendFunctionResults(while_body, num_chain_resources, chaining_data_type);
 
   // Insert identity ops with control dep
-  ChainResourceOps(while_body, resource_to_ops_map, num_old_outputs);
+  ChainResourceOps(while_body, chain_resource_to_ops_map, num_old_outputs);
   // Modify all the while ops referencing the body function and the
   // corresponding while condition functions. Note that each while condition
   // needs to be modified only once.
@@ -380,11 +388,13 @@ void ConvertControlToDataOutputs(
     recompute_analysis_for_funcs.insert(while_op->getParentOfType<FuncOp>());
     FuncOp while_cond = while_op.cond_function();
     // Rewrite while op with extra chaining arguments and results.
-    while_op = RewriteWhileOp(while_op, num_resources, chaining_data_type);
+    while_op =
+        RewriteWhileOp(while_op, num_chain_resources, chaining_data_type);
     bool first_visit = visited.insert(while_cond).second;
     if (!first_visit) continue;
     // Modify while condition function with extra chaining arguments.
-    AppendFunctionArguments(while_cond, num_resources, chaining_data_type);
+    AppendFunctionArguments(while_cond, num_chain_resources,
+                            chaining_data_type);
   }
 }
 

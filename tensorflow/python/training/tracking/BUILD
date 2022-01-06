@@ -89,6 +89,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
+        "//tensorflow/python:lib",
+        "//tensorflow/python/eager:context",
     ],
 )
 

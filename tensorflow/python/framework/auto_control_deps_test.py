@@ -29,6 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_sendrecv_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
@@ -83,6 +84,44 @@ class AutomaticControlDependenciesTest(test.TestCase):
     self.evaluate(f())
 
     self.assertSetEqual(set(side_effects), set((1, 2)))
+
+  def testIndependentOpsRunInParallel(self):
+    v = resource_variable_ops.ResourceVariable(1)
+    self.evaluate(variables.global_variables_initializer())
+
+    @def_function.function
+    def f():
+      gen_resource_variable_ops.assign_variable_op(v.handle, 1)
+      ops.get_default_graph().experimental_acd_manager.run_independently(
+          gen_resource_variable_ops.assign_variable_op(v.handle, 2))
+
+    # A function with two identical ops, should cause a data race in most
+    # conditions.
+    var_values = set()
+    for _ in range(1000):
+      self.evaluate(f())
+      var_values.add(
+          self.evaluate(
+              resource_variable_ops.read_variable_op(v.handle, dtypes.int32)))
+    # With regular control dependencies, the function should always run the
+    # first assign first, and the value 1 should never be seen.
+    self.assertSetEqual(var_values, set((1, 2)))
+
+  def testIndependentOpsInLoop(self):
+    v = resource_variable_ops.ResourceVariable(0)
+    self.evaluate(variables.global_variables_initializer())
+
+    @def_function.function
+    def f():
+      for i in math_ops.range(3):
+        ops.get_default_graph().experimental_acd_manager.run_independently(
+            gen_resource_variable_ops.assign_variable_op(v.handle, i))
+
+    self.evaluate(f())
+    # TODO(mdan): Find a more robust way to test in loops.
+    self.assertEqual(
+        self.evaluate(
+            resource_variable_ops.read_variable_op(v.handle, dtypes.int32)), 2)
 
   def testNoControlDepsBetweenVariableReads(self):
     with context.graph_mode(), self.cached_session():

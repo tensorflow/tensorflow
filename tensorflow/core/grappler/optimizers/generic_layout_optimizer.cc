@@ -424,7 +424,7 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
                                        src_dst_formats.second);
   } else {
     TF_RETURN_IF_ERROR(TransposeContext::InitializeTransposeContext(
-        is_aggressive, item, cluster, &context));
+        /*assume_valid_feeds=*/is_aggressive, item, cluster, &context));
     switch (cpu_layout_conversion_) {
       case RewriterConfig::NCHW_TO_NHWC:
         context.AssignDeviceAndDataFormats(kCPU, kNCHW, kNHWC);

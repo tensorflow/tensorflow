@@ -103,10 +103,8 @@ class AnonymousResourceOp : public OpKernel {
       attr.set_on_host(true);
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t, attr));
-      if (ref_counting_) {
-        // A dummy output that does nothing when destroyed.
-        deleter_t->scalar<int>()() = 0;
-      } else {
+      // TODO(feyu): Consider returning an OptionalVariant.
+      if (!ref_counting_) {
         // A deleter output that deletes the resource when destroyed.
         deleter_t->scalar<Variant>()() =
             ResourceDeleter(handle, ctx->resource_manager());

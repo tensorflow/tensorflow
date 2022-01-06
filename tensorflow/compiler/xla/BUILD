@@ -154,8 +154,6 @@ cc_library(
     hdrs = ["types.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core/framework:numeric_types",
-        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -352,6 +350,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -565,6 +564,7 @@ cc_library(
     deps = [
         ":util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -911,6 +911,7 @@ cc_library(
             ":types",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
+            "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
             "@com_google_absl//absl/types:span",
@@ -978,6 +979,7 @@ tf_cc_test(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:test",
+            "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
         ],

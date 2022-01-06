@@ -1032,7 +1032,7 @@ def convolution(
      num_input_channels,
      num_output_channels],
 
-  an optional `dilation_rate` tensor of shape [N] (defaulting to [1]*N)
+  an optional `dilation_rate` tensor of shape N (defaulting to [1]*N)
   specifying the filter upsampling/input downsampling rate, and an optional list
   of N `strides` (defaulting [1]*N), this computes for each N-D spatial output
   position (x[0], ..., x[N-1]):
@@ -3831,9 +3831,10 @@ def softmax_v2(logits, axis=None, name=None):
   is 1.
 
   This function performs the equivalent of
-
-      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
-
+  
+  ```
+  softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis, keepdims=True)
+  ```
   Example usage:
 
   >>> softmax = tf.nn.softmax([-1, 0., 1.])
@@ -4635,8 +4636,8 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
   window in `value`.
 
   Args:
-    input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]` and type
-      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+    input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]`
+      and type `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
     ksize: An int or list of `ints` that has length `1`, `3` or `5`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The

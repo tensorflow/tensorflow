@@ -188,7 +188,7 @@ func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
   // CHECK-NOT: shape.
   // CHECK: %[[LHS:.*]] = memref.reinterpret_cast
   // CHECK: %[[RHS:.*]] = memref.reinterpret_cast
-  // CHECK: linalg.generic {{.*}} ins(%[[LHS]], %[[RHS]] :
+  // CHECK: linalg.generic {{.*}} ins(%[[RHS]], %[[LHS]] :
   // CHECK:   mulf
   %0 = "tf.Mul"(%arg0, %arg1)
        : (tensor<?x1xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
@@ -247,27 +247,6 @@ func @tf_binary_with_bcast_symbolic_shapes(
   %3 = "tf.AddV2"(%2, %arg3)
        : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   return %3 : tensor<?x?xf32>
-}
-
-// -----
-
-// CHECK-LABEL: @tf_lower_matmul
-// CHECK-SAME: %[[ARG0:.*]]: memref<?x?xf32>,
-// CHECK-SAME: %[[ARG1:.*]]: memref<?x?xf32>
-func @tf_lower_matmul(%arg0: tensor<?x?xf32>,
-                      %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  // CHECK-NOT: linalg.copy
-  // CHECK: %[[DIM_M:.*]] = memref.dim %[[ARG0]], %c0 : memref<?x?xf32>
-  // CHECK: %[[DIM_N:.*]] = memref.dim %[[ARG1]], %c1 : memref<?x?xf32>
-  // CHECK-NOT: linalg.copy
-  // Tiling for register reuse.
-  // CHECK: scf.for %[[M:.*]] = %c0 to %[[DIM_M]] step %c[[MR:[0-9]+]]
-  // CHECK: scf.for %[[N:.*]] = %c0 to %[[DIM_N]] step %c[[NR:[0-9]+]]
-  // Unrolled tile matmul in vector dialect goes here. It is too large to match.
-  // CHECK: scf.yield %[[TILE:.*]] : vector<[[MR]]x[[NR]]xf32>
-  %0 = "tf.MatMul"(%arg0, %arg1) { transpose_a = false, transpose_b = false}
-       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %0 : tensor<?x?xf32>
 }
 
 // -----

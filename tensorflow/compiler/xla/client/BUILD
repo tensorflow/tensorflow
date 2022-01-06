@@ -177,6 +177,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
     ],
@@ -278,6 +279,7 @@ tf_cc_test(
     name = "xla_builder_test",
     srcs = ["xla_builder_test.cc"],
     deps = [
+        ":value_inference",
         ":xla_builder",
         ":xla_computation",
         "//tensorflow/compiler/xla:debug_options_flags",

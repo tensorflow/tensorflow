@@ -448,6 +448,57 @@ Note: This also works for quantized models, but you still need to a **float32
 sized buffer with float32 data**, because the buffer will be bound to the
 internal dequantized buffer.
 
+### GPU Delegate Serialization
+
+Using serialization of GPU kernel code and model data from previous
+initializations can reduce latency of GPU delegate's initialization up to 90%.
+ThThis improvement is is achieved by exchanging disk space for time savings. You
+can enable this feature with a few configurations options, as shown in the
+following code examples:
+
+<div>
+  <devsite-selector>
+    <section>
+      <h3>C++</h3>
+      <p><pre class="prettyprint lang-cpp">
+    TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+    options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION;
+    options.serialization_dir = kTmpDir;
+    options.model_token = kModelToken;
+
+    auto* delegate = TfLiteGpuDelegateV2Create(options);
+    if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
+      </pre></p>
+    </section>
+    <section>
+      <h3>Java</h3>
+      <p><pre class="prettyprint lang-java">
+    GpuDelegate delegate = new GpuDelegate(
+      new GpuDelegate.Options().setSerializationParams(
+        /* serializationDir= */ serializationDir,
+        /* modelToken= */ modelToken));
+
+    Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
+
+When using the serialization feature, make sure your code complies with these
+implementation rules:
+
+*   Store the serialization data in a directory that is not accessible to other
+    apps. On Android devices, use
+    [`getCodeCacheDir()`](https://developer.android.com/reference/android/content/Context#getCacheDir\(\))
+    which points to a location that is private to the current application.
+*   The model token must be unique to the device for the specific model. You can
+    compute a model token by generating a fingerprint from the model data (e.g.
+    using [`farmhash::Fingerprint64`](https://github.com/google/farmhash)).
+
+Note: This feature requires the
+[OpenCL SDK](https://github.com/KhronosGroup/OpenCL-SDK) for serialization
+support.
+
 ## Tips and Tricks
 
 *   Some operations that are trivial on the CPU may be high cost on a GPU. One

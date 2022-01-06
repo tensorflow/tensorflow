@@ -13,18 +13,19 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
-  // CHECK: [[M:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK: [[N:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK: [[K:%[0-9]+]] = tfrt.constant.i32 4
-  // CHECK: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 5.000000e-01
-  // CHECK: [[LDA:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK: [[LDB:%[0-9]+]] = tfrt.constant.i32 4
-  // CHECK: [[BETA:%[0-9]+]] = tfrt.constant.f32 0.000000e+00
-  // CHECK: [[LDC:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[M:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[N:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[K:%[0-9]+]] = tfrt.constant.i32 4
+  // CHECK-DAG: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 5.000000e-01
+  // CHECK-DAG: [[LDA:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[LDB:%[0-9]+]] = tfrt.constant.i32 4
+  // CHECK-DAG: [[BETA:%[0-9]+]] = tfrt.constant.f32 0.000000e+00
+  // CHECK-DAG: [[LDC:%[0-9]+]] = tfrt.constant.i32 5
   // CHECK: [[ALGO:%[0-9]+]] = tfrt_gpu.blas.gemm.algo CUBLAS_GEMM_DEFAULT
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.blas.create %arg1
+  // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.blas.create{{.*}}([[CONTEXT]])
 
-  // CHECK: [[CHAIN:%[0-9]+]] = tfrt_gpu.blas.gemm [[HANDLE]],
+  // CHECK: [[CHAIN:%[0-9]+]] = tfrt_gpu.blas.gemm [[HANDLE]], %arg1
   // CHECK-SAME: CUBLAS_OP_N, CUBLAS_OP_N, [[M]], [[N]], [[K]], [[ALPHA]],
   // CHECK-SAME: %arg3, CUDA_R_32F, [[LDA]],
   // CHECK-SAME: %arg2, CUDA_R_32F, [[LDB]], [[BETA]],
@@ -61,22 +62,23 @@ func @gemm_batch(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
-  // CHECK: [[M:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK: [[N:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK: [[K:%[0-9]+]] = tfrt.constant.i32 4
-  // CHECK: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 5.000000e-01
-  // CHECK: [[LDA:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK: [[LDB:%[0-9]+]] = tfrt.constant.i32 4
-  // CHECK: [[BETA:%[0-9]+]] = tfrt.constant.f32 0.000000e+00
-  // CHECK: [[LDC:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[M:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[N:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[K:%[0-9]+]] = tfrt.constant.i32 4
+  // CHECK-DAG: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 5.000000e-01
+  // CHECK-DAG: [[LDA:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[LDB:%[0-9]+]] = tfrt.constant.i32 4
+  // CHECK-DAG: [[BETA:%[0-9]+]] = tfrt.constant.f32 0.000000e+00
+  // CHECK-DAG: [[LDC:%[0-9]+]] = tfrt.constant.i32 5
   // CHECK: [[ALGO:%[0-9]+]] = tfrt_gpu.blas.gemm.algo CUBLAS_GEMM_DEFAULT
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.blas.create %arg1
-  // CHECK: [[STRIDEA:%[0-9]+]] = tfrt.constant.i64 20
-  // CHECK: [[STRIDEB:%[0-9]+]] = tfrt.constant.i64 20
-  // CHECK: [[STRIDEC:%[0-9]+]] = tfrt.constant.i64 25
-  // CHECK: [[BATCH:%[0-9]+]] = tfrt.constant.i32 42
+  // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.blas.create{{.*}}([[CONTEXT]])
+  // CHECK-DAG: [[STRIDEA:%[0-9]+]] = tfrt.constant.i64 20
+  // CHECK-DAG: [[STRIDEB:%[0-9]+]] = tfrt.constant.i64 20
+  // CHECK-DAG: [[STRIDEC:%[0-9]+]] = tfrt.constant.i64 25
+  // CHECK-DAG: [[BATCH:%[0-9]+]] = tfrt.constant.i32 42
 
-  // CHECK: [[CHAIN:%[0-9]+]] = tfrt_gpu.blas.gemm.batch [[HANDLE]],
+  // CHECK: [[CHAIN:%[0-9]+]] = tfrt_gpu.blas.gemm.batch [[HANDLE]], %arg1,
   // CHECK-SAME: CUBLAS_OP_N, CUBLAS_OP_N, [[M]], [[N]], [[K]], [[ALPHA]],
   // CHECK-SAME: %arg3, CUDA_R_32F, [[LDA]], [[STRIDEA]],
   // CHECK-SAME: %arg2, CUDA_R_32F, [[LDB]], [[STRIDEB]], [[BETA]],
@@ -118,18 +120,19 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
   // CHECK: [[CHAIN0:%[0-9]+]] = tfrt_gpu.mem.copy %arg5, %arg4, %arg1, %arg0
   // CHECK-SAME: : !tfrt_gpu.buffer, !tfrt_gpu.buffer
 
-  // CHECK: [[M:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK: [[N:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK: [[K:%[0-9]+]] = tfrt.constant.i32 4
-  // CHECK: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 5.000000e-01
-  // CHECK: [[LDA:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK: [[LDB:%[0-9]+]] = tfrt.constant.i32 4
-  // CHECK: [[BETA:%[0-9]+]] = tfrt.constant.f32 1.000000e+00
-  // CHECK: [[LDC:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[M:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[N:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[K:%[0-9]+]] = tfrt.constant.i32 4
+  // CHECK-DAG: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 5.000000e-01
+  // CHECK-DAG: [[LDA:%[0-9]+]] = tfrt.constant.i32 5
+  // CHECK-DAG: [[LDB:%[0-9]+]] = tfrt.constant.i32 4
+  // CHECK-DAG: [[BETA:%[0-9]+]] = tfrt.constant.f32 1.000000e+00
+  // CHECK-DAG: [[LDC:%[0-9]+]] = tfrt.constant.i32 5
   // CHECK: [[ALGO:%[0-9]+]] = tfrt_gpu.blas.gemm.algo CUBLAS_GEMM_DEFAULT
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.blas.create %arg1
+  // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.blas.create{{.*}}([[CONTEXT]])
 
-  // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.blas.gemm [[HANDLE]],
+  // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.blas.gemm [[HANDLE]], %arg1
   // CHECK-SAME: CUBLAS_OP_N, CUBLAS_OP_N, [[M]], [[N]], [[K]], [[ALPHA]],
   // CHECK-SAME: %arg3, CUDA_R_32F, [[LDA]],
   // CHECK-SAME: %arg2, CUDA_R_32F, [[LDB]], [[BETA]],
@@ -169,14 +172,15 @@ func @triangular_solve(%a: memref<2x2xf32>, %b: memref<2x2xf32>, %output: memref
 
   // CHECK: [[CHAIN0:%[0-9]+]] = tfrt_gpu.mem.copy %arg4, %arg3, %arg1, %arg0
   // CHECK-SAME: : !tfrt_gpu.buffer, !tfrt_gpu.buffer
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.blas.create %arg1
-  // CHECK: [[M:%[0-9]+]] = tfrt.constant.i32 2
-  // CHECK: [[N:%[0-9]+]] = tfrt.constant.i32 2
-  // CHECK: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 1.000000e+00
-  // CHECK: [[HEIGHT_A:%[0-9]+]] = tfrt.constant.i32 2
-  // CHECK: [[HEIGHT_B:%[0-9]+]] = tfrt.constant.i32 2
-  // CHECK: [[BATCH_COUNT:%[0-9]+]] = tfrt.constant.i32 1
-  // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.blas.trsm.batch [[HANDLE]],
+  // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.blas.create{{.*}}([[CONTEXT]])
+  // CHECK-DAG: [[M:%[0-9]+]] = tfrt.constant.i32 2
+  // CHECK-DAG: [[N:%[0-9]+]] = tfrt.constant.i32 2
+  // CHECK-DAG: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 1.000000e+00
+  // CHECK-DAG: [[HEIGHT_A:%[0-9]+]] = tfrt.constant.i32 2
+  // CHECK-DAG: [[HEIGHT_B:%[0-9]+]] = tfrt.constant.i32 2
+  // CHECK-DAG: [[BATCH_COUNT:%[0-9]+]] = tfrt.constant.i32 1
+  // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.blas.trsm.batch [[HANDLE]], %arg1,
   // CHECK-SAME: CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N,
   // CHECK-SAME: CUBLAS_DIAG_UNIT, [[M]], [[N]], CUDA_R_32F, [[ALPHA]],
   // CHECK-SAME: %arg2, [[HEIGHT_A]], %arg4, [[HEIGHT_B]], [[BATCH_COUNT]],

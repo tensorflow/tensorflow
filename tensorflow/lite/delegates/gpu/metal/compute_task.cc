@@ -62,12 +62,53 @@ int3 GetWorkGroupsCount(int grid_dimension, const int3& grid_size,
 }
 }  // namespace
 
+ComputeTask::ComputeTask(ComputeTask&& task)
+    : operation_(std::move(task.operation_)),
+      program_(task.program_),
+      metal_args_(std::move(task.metal_args_)),
+      use_arguments_buffer_(task.use_arguments_buffer_),
+      need_icb_support_(task.need_icb_support_),
+      arguments_encoder_(task.arguments_encoder_),
+      arg_buffer_(task.arg_buffer_) {
+  task.program_ = nullptr;
+  task.arguments_encoder_ = nullptr;
+  task.arg_buffer_ = nullptr;
+}
+
+ComputeTask& ComputeTask::operator=(ComputeTask&& task) {
+  if (this != &task) {
+    Release();
+    operation_ = std::move(task.operation_);
+    std::swap(program_, task.program_);
+    metal_args_ = std::move(task.metal_args_);
+    std::swap(use_arguments_buffer_, task.use_arguments_buffer_);
+    std::swap(need_icb_support_, task.need_icb_support_);
+    std::swap(arguments_encoder_, task.arguments_encoder_);
+    std::swap(arg_buffer_, task.arg_buffer_);
+  }
+  return *this;
+}
+
+ComputeTask::~ComputeTask() { Release(); }
+
+void ComputeTask::Release() {
+  if (program_) {
+    program_ = nullptr;
+  }
+  if (arguments_encoder_) {
+    arguments_encoder_ = nullptr;
+  }
+  if (arg_buffer_) {
+    arg_buffer_ = nullptr;
+  }
+}
+
 void ComputeTask::Init(std::unique_ptr<GPUOperation>&& operation) {
   operation_ = std::move(operation);
 }
 
 const OperationDef& ComputeTask::GetDefinition() const {
-  return operation_->definition_;
+  return operation_->GetDefinition();
 }
 
 bool ComputeTask::IsLinkable() const { return operation_->IsLinkable(); }
@@ -77,15 +118,12 @@ absl::Status ComputeTask::AddTask(ComputeTask* task) {
 }
 
 absl::Status ComputeTask::Compile(MetalDevice* device) {
-  operation_->AssembleCode(device->GetInfo());
-  const std::map<std::string, std::string> linkables = {
-      {operation_->dst_tensors_names_[0], operation_->elementwise_code_}};
-  RETURN_IF_ERROR(metal_args_.Init(linkables, device, &operation_->args_,
-                                   &operation_->code_));
+  RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
+                                   &operation_->args_, &operation_->code_));
 
   operation_->args_.ReleaseCPURepresentation();
 
-  return CompileProgram(device, operation_->definition_.precision,
+  return CompileProgram(device, operation_->GetDefinition().precision,
                         operation_->code_);
 }
 
@@ -183,50 +221,131 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
   NSString* code =
       [NSString stringWithCString:kernel_code.c_str()
                          encoding:[NSString defaultCStringEncoding]];
-  id<MTLComputePipelineState> program;
-  RETURN_IF_ERROR(CreateComputeProgram(device->device(), code,
-                                       @"ComputeFunction", macros, &program));
-  if (!program) {
-    return absl::InternalError("Unknown shader compilation error");
+  if (use_arguments_buffer_) {
+    if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
+      id<MTLFunction> function;
+      RETURN_IF_ERROR(CreateFunction(device->device(), code, @"ComputeFunction",
+                                     macros, &function));
+      arguments_encoder_ = [function newArgumentEncoderWithBufferIndex:0];
+      if (!arguments_encoder_) {
+        return absl::InternalError("Failed to get MTLArgumentEncoder.");
+      }
+      arg_buffer_ =
+          [device->device() newBufferWithLength:arguments_encoder_.encodedLength
+                                        options:0];
+      if (!arg_buffer_) {
+        return absl::InternalError("Failed to create MTLBuffer.");
+      }
+      MTLComputePipelineDescriptor* pipeline_desc =
+          [[MTLComputePipelineDescriptor alloc] init];
+      pipeline_desc.computeFunction = function;
+      if (need_icb_support_) {
+        if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
+          pipeline_desc.supportIndirectCommandBuffers = TRUE;
+        } else {
+          return absl::InternalError(
+              "Indirect compute command buffer available since ios 13");
+        }
+      }
+      NSError* error = nil;
+      program_ = [device->device()
+          newComputePipelineStateWithDescriptor:pipeline_desc
+                                        options:MTLPipelineOptionNone
+                                     reflection:nullptr
+                                          error:&error];
+      if (!program_) {
+        NSString* error_string = [NSString
+            stringWithFormat:@"newComputePipelineStateWithDescriptor: %@",
+                             [error localizedDescription]];
+        return absl::InternalError([error_string UTF8String]);
+      }
+    } else {
+      return absl::InternalError(
+          "Metal argument buffers available since ios 11.");
+    }
+  } else {
+    id<MTLComputePipelineState> program;
+    RETURN_IF_ERROR(CreateComputeProgram(device->device(), code,
+                                         @"ComputeFunction", macros, &program));
+    if (!program) {
+      return absl::InternalError("Unknown shader compilation error");
+    }
+    program_ = program;
   }
-  program_ = program;
   return absl::OkStatus();
 }
 
 absl::Status ComputeTask::UpdateParams() {
-  for (int i = 0; i < operation_->src_tensors_names_.size(); ++i) {
+  for (int i = 0; i < operation_->GetSrcTensorsNames().size(); ++i) {
     const auto* metal_spatial_tensor =
-        dynamic_cast<const MetalSpatialTensor*>(operation_->src_[i]);
+        dynamic_cast<const MetalSpatialTensor*>(operation_->GetSrcTensors()[i]);
     if (!metal_spatial_tensor) {
       return absl::InvalidArgumentError("Expected MetalSpatialTensor.");
     }
-    RETURN_IF_ERROR(metal_args_.SetObjectRef(operation_->src_tensors_names_[i],
-                                             *metal_spatial_tensor));
+    RETURN_IF_ERROR(metal_args_.SetObjectRef(
+        operation_->GetSrcTensorsNames()[i], *metal_spatial_tensor));
   }
-  for (int i = 0; i < operation_->dst_tensors_names_.size(); ++i) {
+  for (int i = 0; i < operation_->GetDstTensorsNames().size(); ++i) {
     const auto* metal_spatial_tensor =
-        dynamic_cast<const MetalSpatialTensor*>(operation_->dst_[i]);
+        dynamic_cast<const MetalSpatialTensor*>(operation_->GetDstTensors()[i]);
     if (!metal_spatial_tensor) {
       return absl::InvalidArgumentError("Expected MetalSpatialTensor.");
     }
-    RETURN_IF_ERROR(metal_args_.SetObjectRef(operation_->dst_tensors_names_[i],
-                                             *metal_spatial_tensor));
+    RETURN_IF_ERROR(metal_args_.SetObjectRef(
+        operation_->GetDstTensorsNames()[i], *metal_spatial_tensor));
   }
   RETURN_IF_ERROR(operation_->BindArguments(&metal_args_));
-  operation_->grid_size_ = operation_->GetGridSize();
-  operation_->work_groups_count_ = GetWorkGroupsCount(
-      operation_->grid_dimension_, operation_->grid_size_,
-      operation_->work_group_size_, operation_->work_group_launch_order_);
+  operation_->RecalculateGridSize();
+  operation_->RecalculateWorkGroupsCount();
+  Update();
   return absl::OkStatus();
+}
+
+API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+void ComputeTask::EncodeToICB(id<MTLIndirectComputeCommand> icb_command) {
+  MTLSize groupsCount, groupsSize;
+  groupsCount.width = operation_->GetWorkGroupsCount().x;
+  groupsCount.height = operation_->GetWorkGroupsCount().y;
+  groupsCount.depth = operation_->GetWorkGroupsCount().z;
+  groupsSize.width = operation_->work_group_size_.x;
+  groupsSize.height = operation_->work_group_size_.y;
+  groupsSize.depth = operation_->work_group_size_.z;
+  [icb_command setComputePipelineState:program_];
+  [icb_command setKernelBuffer:arg_buffer_ offset:0 atIndex:0];
+  [icb_command concurrentDispatchThreadgroups:groupsCount
+                        threadsPerThreadgroup:groupsSize];
+  [icb_command setBarrier];
+}
+
+API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+void ComputeTask::AddResourcesToEncoder(
+    id<MTLComputeCommandEncoder> encoder) const {
+  metal_args_.AddResourcesToEncoder(encoder);
+}
+
+void ComputeTask::Update() {
+  if (use_arguments_buffer_) {
+    if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
+      [arguments_encoder_ setArgumentBuffer:arg_buffer_ offset:0];
+      metal_args_.EncodeArguments(arguments_encoder_);
+    }
+  }
 }
 
 void ComputeTask::Encode(id<MTLComputeCommandEncoder> encoder) {
   [encoder setComputePipelineState:program_];
-  metal_args_.Encode(encoder, 0);
+  if (use_arguments_buffer_) {
+    if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
+      metal_args_.AddResourcesToEncoder(encoder);
+      [encoder setBuffer:arg_buffer_ offset:0 atIndex:0];
+    }
+  } else {
+    metal_args_.Encode(encoder, 0);
+  }
   MTLSize groupsCount, groupsSize;
-  groupsCount.width = operation_->work_groups_count_.x;
-  groupsCount.height = operation_->work_groups_count_.y;
-  groupsCount.depth = operation_->work_groups_count_.z;
+  groupsCount.width = operation_->GetWorkGroupsCount().x;
+  groupsCount.height = operation_->GetWorkGroupsCount().y;
+  groupsCount.depth = operation_->GetWorkGroupsCount().z;
   groupsSize.width = operation_->work_group_size_.x;
   groupsSize.height = operation_->work_group_size_.y;
   groupsSize.depth = operation_->work_group_size_.z;
@@ -235,31 +354,28 @@ void ComputeTask::Encode(id<MTLComputeCommandEncoder> encoder) {
 
 void ComputeTask::SetSrcTensor(MetalSpatialTensor* tensor, int index) {
   operation_->SetSrc(tensor, index);
-  auto status =
-      metal_args_.SetObjectRef(operation_->src_tensors_names_[index], *tensor);
+  auto status = metal_args_.SetObjectRef(
+      operation_->GetSrcTensorsNames()[index], *tensor);
 }
 
 void ComputeTask::SetDstTensor(MetalSpatialTensor* tensor, int index) {
   operation_->SetDst(tensor, index);
-  auto status =
-      metal_args_.SetObjectRef(operation_->dst_tensors_names_[index], *tensor);
+  auto status = metal_args_.SetObjectRef(
+      operation_->GetDstTensorsNames()[index], *tensor);
 }
 
 absl::Status ComputeTask::Tune(TuningType tuning_type, MetalDevice* device) {
-  std::vector<int3> possible_work_groups;
   KernelInfo kernel_info;
   kernel_info.max_work_group_size = [program_ maxTotalThreadsPerThreadgroup];
   kernel_info.private_memory_size = 0;
-  operation_->GetPossibleKernelWorkGroups(tuning_type, device->GetInfo(),
-                                          kernel_info, &possible_work_groups);
-  if (possible_work_groups.empty()) {
-    return absl::NotFoundError(
-        "Can not found work_group size to launch kernel");
+  std::vector<GPUOperation::DispatchInfo> possible_dispatches;
+  operation_->GetPossibleDispatches(tuning_type, device->GetInfo(), kernel_info,
+                                    &possible_dispatches);
+  if (possible_dispatches.empty()) {
+    return absl::NotFoundError("No dispatch parameters to launch kernel");
   }
-  operation_->work_group_size_ = possible_work_groups[0];
-  operation_->work_groups_count_ = GetWorkGroupsCount(
-      operation_->grid_dimension_, operation_->grid_size_,
-      operation_->work_group_size_, operation_->work_group_launch_order_);
+  operation_->work_group_size_ = possible_dispatches[0].work_group_size;
+  operation_->RecalculateWorkGroupsCount();
   return absl::OkStatus();
 }
 

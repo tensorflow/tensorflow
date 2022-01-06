@@ -534,7 +534,7 @@ func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
     %12 = math.abs %arg1 : f32
     linalg.yield %12 : f32
   }
-  %10 = memref.buffer_cast %0 : memref<?xindex>
+  %10 = bufferization.to_memref %0 : memref<?xindex>
   %11 = memref.reshape %9(%10)
       : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
   return %11 : memref<*xf32>

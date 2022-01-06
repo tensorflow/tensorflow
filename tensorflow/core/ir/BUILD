@@ -3,7 +3,11 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_compatible_with = get_compatible_with_cloud(),
-    default_visibility = ["//tensorflow/core:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
