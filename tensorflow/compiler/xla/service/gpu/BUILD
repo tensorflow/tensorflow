@@ -1642,6 +1642,7 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":launch_dimensions",
+        ":metrics",
         ":multi_output_fusion",
         ":nccl_collective_thunks",
         ":reduction_degenerate_dim_remover",
@@ -1836,7 +1837,10 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor:stream_executor_headers",
-    ]) + ["//tensorflow/stream_executor/gpu:gpu_driver_header"],
+    ]) + [
+        ":metrics",
+        "//tensorflow/stream_executor/gpu:gpu_driver_header",
+    ],
 )
 
 tf_cc_test(
@@ -2634,5 +2638,14 @@ test_suite(
         "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
         "//tensorflow/compiler/xla/tests:scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
+    ],
+)
+
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core/lib/monitoring:sampler",
     ],
 )

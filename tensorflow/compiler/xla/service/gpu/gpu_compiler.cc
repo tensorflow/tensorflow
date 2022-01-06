@@ -102,6 +102,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
@@ -738,6 +739,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     const CompileOptions& options) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
+  uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
   tensorflow::profiler::TraceMe activity(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -745,6 +747,12 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
       OptimizeHloModule(module.get(), stream_exec, options.device_allocator));
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+
+  uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+
+  // This won't record values for calls that error out (because if they error
+  // out we have no way of telling how far through the process we got).
+  RecordHloPassesDuration(end_usecs - start_usecs);
 
   return std::move(module);
 }
@@ -873,6 +881,7 @@ static Status CompileModuleToLlvmIrImpl(
                          absl::StrCat("sm_", cuda_compute_capability.ToString(),
                                       "_gpu_after_optimizations"));
 
+  uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
   mlir::MLIRContext mlir_context;
   mlir_context
       .loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
@@ -914,6 +923,11 @@ static Status CompileModuleToLlvmIrImpl(
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
 
     results->constants = std::move(ir_emitter_context.constants());
+    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+
+    // This won't record values for calls that error out (because if they error
+    // out we have no way of telling how far through the process we got).
+    RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
 #if BEF_EXECUTABLE
