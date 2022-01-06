@@ -129,8 +129,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
-  if (!compile_status.ok() &&
-      !compile_status
+  if (!compile_status
            .GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
            .has_value()) {
     tpu::CompilationResultProto proto;
