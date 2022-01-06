@@ -265,8 +265,8 @@ struct TFToJITInvocationPass
 };
 
 struct TFT64BitIndexerPattern : public RewritePattern {
-  explicit TFT64BitIndexerPattern(MLIRContext *ctx, bool index_64bit)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {index_64bit_ = index_64bit;}
+  explicit TFT64BitIndexerPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -325,8 +325,6 @@ struct TFT64BitIndexerPattern : public RewritePattern {
   rewriter.replaceOp(op, conditional_path);
   return success();
   }
-  private:
-  bool index_64bit_;
 };
 }  // namespace
 
@@ -360,7 +358,7 @@ void Populate64BitIndexerPatterns(MLIRContext *ctx,
                                   int64_t max_supported_rank,
                                   bool enable_ftz, bool index_64bit,
                                   bool cpu_codegen) {
-  patterns->insert<TFT64BitIndexerPattern>(ctx, index_64bit);
+  patterns->insert<TFT64BitIndexerPattern>(ctx);
   patterns->insert<PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors, 
                                             max_supported_rank, enable_ftz, 
                                             index_64bit, cpu_codegen);

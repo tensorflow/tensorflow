@@ -205,13 +205,8 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
 
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
-<<<<<<< HEAD
-          architectures, tile_sizes, unroll_factors, max_supported_rank,
+          tile_sizes, unroll_factors, max_supported_rank,
           enable_ftz, cpu_codegen, jit_i64_indexed_for_large_tensors));
-=======
-          tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
-          cpu_codegen));
->>>>>>> 282175e576f1832e4493cb1b7d74d9877f439fcf
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
@@ -514,16 +509,10 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
                       SetupContextAndParseModule(context, tf_code));
 
   if (jit_compile) {
-<<<<<<< HEAD
     TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
-        module.get(), architectures, tile_sizes, unroll_factors,
+        module.get(), tile_sizes, unroll_factors,
         max_supported_rank, enable_ftz, index_64bit, cpu_codegen
         ,jit_i64_indexed_for_large_tensors));
-=======
-    TF_RETURN_IF_ERROR(
-        LowerTFToJITInvocation(module.get(), tile_sizes, unroll_factors,
-                               max_supported_rank, enable_ftz, cpu_codegen));
->>>>>>> 282175e576f1832e4493cb1b7d74d9877f439fcf
   } else {
     TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
                                       max_supported_rank, cpu_codegen,
