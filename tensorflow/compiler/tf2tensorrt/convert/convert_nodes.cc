@@ -561,10 +561,11 @@ Status CreateScalarConstant(
     OpConverterParams* params, T value, ITensorProxyPtr* tensor,
     nvinfer1::DataType trt_type = nvinfer1::DataType::kINT32,
     const nvinfer1::Dims& dims = {1, {1}}) {
-  TRT_ShapedWeights weights =
+  StatusOr<TRT_ShapedWeights> weights =
       params->weight_store->GetTempWeights(trt_type, dims);
-  TF_RETURN_IF_ERROR(weights.SetValues(value));
-  *tensor = params->converter->CreateConstantLayer(weights, dims);
+  TRT_ENSURE_OK(weights);
+  TF_RETURN_IF_ERROR(weights->SetValues(value));
+  *tensor = params->converter->CreateConstantLayer(*weights, dims);
   TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
   return Status::OK();
 }
@@ -820,10 +821,10 @@ void Reorder2(const nvinfer1::DimsHW& shape, const T* idata,
 // TODO(jie): fallback to tensorflow!!
 void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
                    TRT_ShapedWeights* oweights) {
-  const int c = iweights.shape_.d[0];
-  const int k = iweights.shape_.d[1];
-  oweights->shape_.d[0] = k;
-  oweights->shape_.d[1] = c;
+  const int c = iweights.Shape().d[0];
+  const int k = iweights.Shape().d[1];
+  oweights->Shape().d[0] = k;
+  oweights->Shape().d[1] = c;
   const nvinfer1::DimsHW istrides = {1, k};
   const nvinfer1::DimsHW ostrides = {c, 1};
   switch (iweights.TrtDType()) {
@@ -849,19 +850,19 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   CHECK_EQ(iweights.size_bytes(), oweights->size_bytes());
   // K indexes over output channels, C over input channels, and R and S over the
   // height and width of the convolution
-  const int r = iweights.shape_.d[0];
-  const int s = iweights.shape_.d[1];
+  const int r = iweights.Shape().d[0];
+  const int s = iweights.Shape().d[1];
   // TRT requires GKcRS, while TF depthwise has RSCK where c=1, C=G
-  const int c = iweights.shape_.d[2] / num_groups;
-  const int k = iweights.shape_.d[3] * num_groups;
-  VLOG(2) << "num_groups: " << num_groups << "c" << iweights.shape_.d[2]
-          << " then " << c << "k" << iweights.shape_.d[3] << " then " << k
-          << "r" << iweights.shape_.d[0] << " then " << r << "s"
-          << iweights.shape_.d[1] << " then " << s;
-  oweights->shape_.d[0] = k / num_groups;
-  oweights->shape_.d[1] = c * num_groups;
-  oweights->shape_.d[2] = r;
-  oweights->shape_.d[3] = s;
+  const int c = iweights.Shape().d[2] / num_groups;
+  const int k = iweights.Shape().d[3] * num_groups;
+  VLOG(2) << "num_groups: " << num_groups << "c" << iweights.Shape().d[2]
+          << " then " << c << "k" << iweights.Shape().d[3] << " then " << k
+          << "r" << iweights.Shape().d[0] << " then " << r << "s"
+          << iweights.Shape().d[1] << " then " << s;
+  oweights->Shape().d[0] = k / num_groups;
+  oweights->Shape().d[1] = c * num_groups;
+  oweights->Shape().d[2] = r;
+  oweights->Shape().d[3] = s;
   const nvinfer1::Dims4 istrides = {1, k, s * k * c, c * k};
   const nvinfer1::Dims4 ostrides = {c * r * s, r * s, s, 1};
   switch (iweights.TrtDType()) {
@@ -897,22 +898,22 @@ void ReorderDRSCKToKCDRS(const TRT_ShapedWeights& iweights,
   CHECK_EQ(iweights.size_bytes(), oweights->size_bytes());
   // K indexes over output channels, C over input channels, and R, S, D over the
   // height, width, depth
-  const int d = iweights.shape_.d[0];
-  const int r = iweights.shape_.d[1];
-  const int s = iweights.shape_.d[2];
+  const int d = iweights.Shape().d[0];
+  const int r = iweights.Shape().d[1];
+  const int s = iweights.Shape().d[2];
   // TRT requires GKcRS, while TF depthwise has RSCK where c=1, C=G
-  const int c = iweights.shape_.d[3] / num_groups;
-  const int k = iweights.shape_.d[4] * num_groups;
+  const int c = iweights.Shape().d[3] / num_groups;
+  const int k = iweights.Shape().d[4] * num_groups;
 
-  VLOG(2) << "num_groups: " << num_groups << ", c: " << iweights.shape_.d[3]
-          << " becomes " << c << ", k: " << iweights.shape_.d[4] << " becomes "
+  VLOG(2) << "num_groups: " << num_groups << ", c: " << iweights.Shape().d[3]
+          << " becomes " << c << ", k: " << iweights.Shape().d[4] << " becomes "
           << k << ", d: " << d << ", r: " << r << ", s: " << s;
 
-  oweights->shape_.d[0] = iweights.shape_.d[4];  // k / num_groups;
-  oweights->shape_.d[1] = iweights.shape_.d[3];  // c * num_groups;
-  oweights->shape_.d[2] = d;
-  oweights->shape_.d[3] = r;
-  oweights->shape_.d[4] = s;
+  oweights->Shape().d[0] = iweights.Shape().d[4];  // k / num_groups;
+  oweights->Shape().d[1] = iweights.Shape().d[3];  // c * num_groups;
+  oweights->Shape().d[2] = d;
+  oweights->Shape().d[3] = r;
+  oweights->Shape().d[4] = s;
 
   nvinfer1::Dims shape =
       InitDimsN({k, c, d, r, s});  // KCDRS shape (same as output)
@@ -2205,8 +2206,9 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   TRT_ShapedWeights weights_rsck =
       inputs.at(1).is_weights()
           ? inputs.at(1).weights()
-          : params->weight_store->GetTempWeights(nvinfer1::DataType::kFLOAT,
-                                                 weights_shape);
+          : params->weight_store
+                ->GetTempWeights(nvinfer1::DataType::kFLOAT, weights_shape)
+                .ValueOrDie();
 
   // In explcit precision mode, trace the input back to the constant while also
   // verifying that QDQ scale layers are present.
@@ -2246,12 +2248,14 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
                 weights_rsck.GetPointer<float>());
   }
 
-  TRT_ShapedWeights weights =
+  StatusOr<TRT_ShapedWeights> weights =
       params->weight_store->GetTempWeights(weights_rsck);
-  TRT_ShapedWeights biases = params->weight_store->GetTempWeights(
+  TRT_ENSURE_OK(weights);
+  StatusOr<TRT_ShapedWeights> biases = params->weight_store->GetTempWeights(
       nvinfer1::DataType::kFLOAT, nvinfer1::Dims{1, {noutput}});
-  std::fill_n(biases.GetPointer<float>(), noutput, 0.0f);
-  ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
+  TRT_ENSURE_OK(biases);
+  std::fill_n(biases->GetPointer<float>(), noutput, 0.0f);
+  ReorderRSCKToKCRS(weights_rsck, &*weights, num_groups);
 
   // Add convolution.
   nvinfer1::ILayer* conv_layer = nullptr;
@@ -2259,7 +2263,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     nvinfer1::IDeconvolutionLayer* layer =
         params->converter->network()->addDeconvolution(
             *tensor->trt_tensor(), noutput, kernel_size,
-            weights.GetTrtWeights(), biases.GetTrtWeights());
+            weights->GetTrtWeights(), biases->GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
     // VALID padding is the default TRT behavior.
@@ -2276,7 +2280,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         params->converter->network()->addConvolution(
             *tensor->trt_tensor(), noutput, kernel_size,
             params->use_explicit_precision ? empty_weights
-                                           : weights.GetTrtWeights(),
+                                           : weights->GetTrtWeights(),
             empty_weights);
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
@@ -2416,11 +2420,12 @@ Status ConvertShape(OpConverterParams* params) {
     nvinfer1::Dims input_dims = inputs.at(0).GetTrtDims();
     nvinfer1::Dims output_dims{1, {input_dims.nbDims}};
     // Create a const node with the values of output_dims
-    TRT_ShapedWeights weight = params->weight_store->GetTempWeights(
+    StatusOr<TRT_ShapedWeights> weight = params->weight_store->GetTempWeights(
         nvinfer1::DataType::kINT32, output_dims);
-    int32* values_ptr = weight.GetPointer<int32>();
+    TRT_ENSURE_OK(weight);
+    int32* values_ptr = weight->GetPointer<int32>();
     std::copy(input_dims.d, input_dims.d + input_dims.nbDims, values_ptr);
-    auto output = params->converter->CreateConstantLayer(weight, output_dims);
+    auto output = params->converter->CreateConstantLayer(*weight, output_dims);
     params->outputs->push_back(TRT_TensorOrWeights(output));
     return Status::OK();
   }
@@ -3005,7 +3010,7 @@ Status ConvertStridedSlice(OpConverterParams* params) {
   // modified.
   if (params->use_implicit_batch &&
       !((ellipsis_mask & 1) &&
-        begin_weights.shape_.nbDims < input_shape.dims())) {
+        begin_weights.Shape().nbDims < input_shape.dims())) {
     // Check that batch dimension is unmodified. We need to use the expanded
     // begin/end/strides array since the original array may be incorrect when
     // (ellipsis_mask&1)==1.
@@ -3073,7 +3078,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   const TRT_ShapedWeights weights_drsck = inputs.at(1).weights();
-  if (weights_drsck.shape_.nbDims != kNumDims) {
+  if (weights_drsck.Shape().nbDims != kNumDims) {
     return errors::InvalidArgument("Conv3D expects kernel of dimension 5");
   }
   TFAttrs attrs(node_def);
@@ -3119,16 +3124,17 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
 
   // Asymmetric padding on Deconv not supported for now
   if (is_conv3d_backprop_input && attrs.get<string>("padding") == "SAME") {
-    TRT_ShapedWeights weights =
+    StatusOr<TRT_ShapedWeights> weights =
         params->weight_store->GetTempWeights(weights_drsck);
+    TRT_ENSURE_OK(weights);
 
     nvinfer1::Dims3 effective_kernel_size(
-        weights.shape_.d[0] +
-            (weights.shape_.d[0] - 1) * (dilation_dhw.d[0] - 1),  // D
-        weights.shape_.d[1] +
-            (weights.shape_.d[1] - 1) * (dilation_dhw.d[1] - 1),  // R
-        weights.shape_.d[2] +
-            (weights.shape_.d[2] - 1) * (dilation_dhw.d[2] - 1)  // S
+        weights->Shape().d[0] +
+            (weights->Shape().d[0] - 1) * (dilation_dhw.d[0] - 1),  // D
+        weights->Shape().d[1] +
+            (weights->Shape().d[1] - 1) * (dilation_dhw.d[1] - 1),  // R
+        weights->Shape().d[2] +
+            (weights->Shape().d[2] - 1) * (dilation_dhw.d[2] - 1)  // S
     );
 
     const auto output_size_weights =
@@ -3175,15 +3181,16 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   // For conv, TF weights are DRSCK, and TRT expects KCDRS.
   // For backprop, TF weights are DRSKC, and TRT expects KCDRS.
   // Therefore, this reorder will work for both cases.
-  TRT_ShapedWeights weights =
+  StatusOr<TRT_ShapedWeights> weights =
       params->weight_store->GetTempWeights(weights_drsck);
-  ReorderDRSCKToKCDRS(weights_drsck, &weights, num_groups);
-  TRT_ShapedWeights biases(weights.TrtDType());
+  TRT_ENSURE_OK(weights);
+  ReorderDRSCKToKCDRS(weights_drsck, &*weights, num_groups);
+  TRT_ShapedWeights biases(weights->TrtDType());
   const int output_axis = is_conv3d_backprop_input ? 1 : 0;
-  const int noutput = weights.shape_.d[output_axis] * num_groups;
-  nvinfer1::Dims3 kernel_size_drs(weights.shape_.d[2],  // D
-                                  weights.shape_.d[3],  // R
-                                  weights.shape_.d[4]   // S
+  const int noutput = weights->Shape().d[output_axis] * num_groups;
+  nvinfer1::Dims3 kernel_size_drs(weights->Shape().d[2],  // D
+                                  weights->Shape().d[3],  // R
+                                  weights->Shape().d[4]   // S
   );
 
   // Add convolution.
@@ -3192,7 +3199,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     nvinfer1::IDeconvolutionLayer* layer =
         params->converter->network()->addDeconvolutionNd(
             *tensor->trt_tensor(), noutput, kernel_size_drs,
-            weights.GetTrtWeights(), biases.GetTrtWeights());
+            weights->GetTrtWeights(), biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStrideNd(stride_dhw);  // change to nd set stride
 
@@ -3208,7 +3215,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     nvinfer1::IConvolutionLayer* layer =
         params->converter->network()->addConvolutionNd(
             *tensor->trt_tensor(), noutput, kernel_size_drs,
-            weights.GetTrtWeights(), biases.GetTrtWeights());
+            weights->GetTrtWeights(), biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStrideNd(stride_dhw);
 
@@ -3336,7 +3343,7 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (weights.shape_.nbDims != 4) {
+  if (weights.Shape().nbDims != 4) {
     return errors::InvalidArgument(
         "FusedConv2DBiasActivation expects kernel of dimension 4");
   }
@@ -3405,13 +3412,13 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
 
   nvinfer1::DimsHW kernel_size;
   if (filter_format == "OIHW") {
-    kernel_size.h() = weights.shape_.d[2];
-    kernel_size.w() = weights.shape_.d[3];
+    kernel_size.h() = weights.Shape().d[2];
+    kernel_size.w() = weights.Shape().d[3];
   } else {
     // HWIO.
     DCHECK_EQ(filter_format, "HWIO");
-    kernel_size.h() = weights.shape_.d[0];
-    kernel_size.w() = weights.shape_.d[1];
+    kernel_size.h() = weights.Shape().d[0];
+    kernel_size.w() = weights.Shape().d[1];
   }
 
   // Add convolution.
@@ -3420,17 +3427,18 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   if (filter_format == "OIHW") {
     // Weights are already in the right order.
     conv_layer = params->converter->network()->addConvolution(
-        *tensor->trt_tensor(), weights.shape_.d[0], kernel_size,
+        *tensor->trt_tensor(), weights.Shape().d[0], kernel_size,
         weights.GetTrtWeights(), biases.GetTrtWeights());
   } else {
     // For conv, TF weights are RSCK, and TRT expects KCRS.
     DCHECK_EQ(filter_format, "HWIO");
-    TRT_ShapedWeights weights_kcrs =
+    StatusOr<TRT_ShapedWeights> weights_kcrs =
         params->weight_store->GetTempWeights(weights);
-    ReorderRSCKToKCRS(weights, &weights_kcrs, 1);
+    TRT_ENSURE_OK(weights_kcrs);
+    ReorderRSCKToKCRS(weights, &*weights_kcrs, 1);
     conv_layer = params->converter->network()->addConvolution(
-        *tensor->trt_tensor(), weights.shape_.d[3], kernel_size,
-        weights_kcrs.GetTrtWeights(), biases.GetTrtWeights());
+        *tensor->trt_tensor(), weights.Shape().d[3], kernel_size,
+        weights_kcrs->GetTrtWeights(), biases.GetTrtWeights());
   }
   TFTRT_RETURN_ERROR_IF_NULLPTR(conv_layer, node_def.name());
   conv_layer->setStride(stride);
@@ -3803,7 +3811,10 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
 
   nvinfer1::Dims weight_dims;
   GetTensorDimsWithProtoShape(tensor, &weight_dims);
-  *weights = weight_store->GetTempWeights(trt_dtype, weight_dims);
+  StatusOr<TRT_ShapedWeights> tmp_weights =
+      weight_store->GetTempWeights(trt_dtype, weight_dims);
+  TRT_ENSURE_OK(tmp_weights);
+  *weights = tmp_weights.ConsumeValueOrDie();
 
   // Copy the tensor directly if the tensor does not require cast to the
   // supported type.
@@ -4252,7 +4263,7 @@ Status ConvertPad(OpConverterParams* params) {
   auto padding_type = attrs.get<DataType>("Tpaddings");
   // TODO(jie): handle data type conversion for TRT?
 
-  if (pads.shape_.d[0] != nb_dims || pads.shape_.d[1] != 2) {
+  if (pads.Shape().d[0] != nb_dims || pads.Shape().d[1] != 2) {
     return errors::InvalidArgument("Paddings must be a weight with shape ",
                                    "[n, 2], where n is the rank of input ",
                                    "tensor");
@@ -4688,10 +4699,12 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
 
   //  We could technically have two weights with different shape.
   //  that requires two addScale op, arguably less performant
-  TRT_ShapedWeights combined_scale_weights =
+  StatusOr<TRT_ShapedWeights> combined_scale_weights =
       params->weight_store->GetTempWeights(*ptr_shape_weights);
-  TRT_ShapedWeights combined_offset_weights =
+  TRT_ENSURE_OK(combined_scale_weights);
+  StatusOr<TRT_ShapedWeights> combined_offset_weights =
       params->weight_store->GetTempWeights(*ptr_shape_weights);
+  TRT_ENSURE_OK(combined_offset_weights);
 
   const Eigen::half* cast_vals_array[4];
   const float* vals_array[4];
@@ -4700,11 +4713,11 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     vals_array[j] = inputs.at(j + 1).weights().GetPointer<float>();
   }
   Eigen::half* cast_combined_scale_vals =
-      combined_scale_weights.GetPointer<Eigen::half>();
+      combined_scale_weights->GetPointer<Eigen::half>();
   Eigen::half* cast_combined_offset_vals =
-      combined_offset_weights.GetPointer<Eigen::half>();
-  float* combined_scale_vals = combined_scale_weights.GetPointer<float>();
-  float* combined_offset_vals = combined_offset_weights.GetPointer<float>();
+      combined_offset_weights->GetPointer<Eigen::half>();
+  float* combined_scale_vals = combined_scale_weights->GetPointer<float>();
+  float* combined_offset_vals = combined_offset_weights->GetPointer<float>();
 
   for (size_t i = 0; i < nweight; ++i) {
     float batchnorm_data[4];
@@ -4740,8 +4753,8 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
 
   nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
   nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
-      *tensor->trt_tensor(), mode, combined_offset_weights.GetTrtWeights(),
-      combined_scale_weights.GetTrtWeights(),
+      *tensor->trt_tensor(), mode, combined_offset_weights->GetTrtWeights(),
+      combined_scale_weights->GetTrtWeights(),
       nvinfer1::Weights{nvinfer1::DataType::kFLOAT, nullptr, 0});
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
@@ -4951,17 +4964,17 @@ StatusOr<ITensorProxyPtr> ConvertFullyConnectedImpl(OpConverterParams* params,
 
   TRT_ShapedWeights weights_b = input_b.weights();
   TRT_ShapedWeights weights_2D(weights_b);
-  if (weights_b.shape_.nbDims > 2) {
+  if (weights_b.Shape().nbDims > 2) {
     // Combine first nbDims-1 dims into a single dim, e.g. for a 4D tensor we
     // transform [N, H, W, C] -> [N*H*W, C]. This is only valid if all batch
     // dimensions are 1.
-    if (std::any_of(weights_b.shape_.d,
-                    weights_b.shape_.d + weights_b.shape_.nbDims - 2,
+    if (std::any_of(weights_b.Shape().d,
+                    weights_b.Shape().d + weights_b.Shape().nbDims - 2,
                     [](int d) { return d != 1; })) {
       VLOG(2) << "Not FC compatible, B has a batch dim larger than 1";
       return ITensorProxyPtr(nullptr);
     }
-    int k = weights_b.shape_.d[weights_b.shape_.nbDims - 1];
+    int k = weights_b.Shape().d[weights_b.Shape().nbDims - 1];
     nvinfer1::Dims dims{2, {static_cast<int>(weights_b.count() / k), k}};
     TF_RETURN_IF_ERROR(weights_2D.SetShape(dims));
   }
@@ -4969,18 +4982,19 @@ StatusOr<ITensorProxyPtr> ConvertFullyConnectedImpl(OpConverterParams* params,
   // FC layer will transpose weights, so we need to pre-transpose.
   TRT_ShapedWeights weights(weights_2D.TrtDType());
   if (!transpose_b) {
-    weights = params->weight_store->GetTempWeights(weights_2D);
+    weights =
+        params->weight_store->GetTempWeights(weights_2D).ConsumeValueOrDie();
     ReorderCKtoKC(weights_2D, &weights);
   } else {
     weights = weights_2D;
   }
   TRT_ShapedWeights biases(weights.TrtDType());
-  int k = weights.shape_.d[weights.shape_.nbDims - 1];
+  int k = weights.Shape().d[weights.Shape().nbDims - 1];
   const int noutput = weights.count() / k;
   VLOG(2) << "Using fully connected layer with k=" << k
           << ", n_output=" << noutput
-          << " weights shape: " << DebugString(weights.shape_) << " to convert "
-          << node_def.op();
+          << " weights shape: " << DebugString(weights.Shape())
+          << " to convert " << node_def.op();
   nvinfer1::IFullyConnectedLayer* layer =
       params->converter->network()->addFullyConnected(
           *tensor_a->trt_tensor(), noutput, weights.GetTrtWeights(),
@@ -6707,7 +6721,7 @@ Status ConvertAddN(OpConverterParams* params) {
                                    " inputs but expected ", num_inputs);
   }
   for (const auto& input : inputs) {
-    if (!input.is_tensor() && input.weights().shape_.d[0] != 1) {
+    if (!input.is_tensor() && input.weights().Shape().d[0] != 1) {
       return errors::InvalidArgument(
           "Weights input to AddN is required to have batch dimension 1.");
     }
@@ -6721,7 +6735,7 @@ Status ConvertAddN(OpConverterParams* params) {
     if (input.is_tensor()) {
       tensor_inputs.push_back(input.tensor());
     } else {
-      auto dims = input.weights().shape_;
+      auto dims = input.weights().Shape();
       TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
       tensor_inputs.push_back(
           params->converter->CreateConstantLayer(input.weights(), dims));

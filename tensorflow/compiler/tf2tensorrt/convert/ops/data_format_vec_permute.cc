@@ -145,18 +145,19 @@ class ConvertDataFormatVecPermute
       }
     }
     nvinfer1::Dims indices_dims = {1, {attrs_.x_dim_count}};
-    auto indices_weights = params_->weight_store->GetTempWeights(
-        nvinfer1::DataType::kINT32, indices_dims);
-    int32* indices_ptr = indices_weights.GetPointer<int32>();
+    StatusOr<TRT_ShapedWeights> indices_weights =
+        params_->weight_store->GetTempWeights(nvinfer1::DataType::kINT32,
+                                              indices_dims);
+    TRT_ENSURE_OK(indices_weights);
+    int32* indices_ptr = indices_weights->GetPointer<int32>();
     std::copy(dst_indices.data(), dst_indices.data() + attrs_.x_dim_count,
               indices_ptr);
-
     ITensorProxyPtr x_tensor =
         x_input_.is_weights() ? params_->converter->CreateConstantLayer(
                                     x_input_.weights(), x_input_.GetTrtDims())
                               : x_input_.tensor();
     ITensorProxyPtr indices_tensor =
-        params_->converter->CreateConstantLayer(indices_weights, indices_dims);
+        params_->converter->CreateConstantLayer(*indices_weights, indices_dims);
 
     // Gather layer with 1D indices on axis 0, conserves shape.
     nvinfer1::IGatherLayer* layer = params_->converter->network()->addGather(

@@ -142,9 +142,8 @@ ITensorProxyPtr TRT_TensorOrWeights::tensor() const {
 nvinfer1::Dims TRT_TensorOrWeights::GetTrtDims() const {
   if (is_tensor()) {
     return tensor()->getDimensions();
-  } else {
-    return weights().shape_;
   }
+  return weights().Shape();
 }
 
 Status TRT_TensorOrWeights::GetTfType(DataType* tf_type) const {
@@ -172,13 +171,12 @@ string TRT_TensorOrWeights::DebugString() const {
   return output;
 }
 
-TRT_ShapedWeights TrtWeightStore::GetTempWeights(nvinfer1::DataType trt_dtype,
-                                                 const nvinfer1::Dims& dims) {
+StatusOr<TRT_ShapedWeights> TrtWeightStore::GetTempWeights(
+    nvinfer1::DataType trt_dtype, const nvinfer1::Dims& dims) {
   TensorShape shape;
   DataType tf_dtype;
-  // TODO(laigd): make it return a status.
-  TF_CHECK_OK(TensorShapeUtils::MakeShape(dims.d, dims.nbDims, &shape));
-  TF_CHECK_OK(TrtTypeToTfType(trt_dtype, &tf_dtype));
+  TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(dims.d, dims.nbDims, &shape));
+  TF_RETURN_IF_ERROR(TrtTypeToTfType(trt_dtype, &tf_dtype));
   // TODO(jie): check weights size_bytes. 0 means type error
   Tensor tensor(tf_dtype, shape);
   TRT_ShapedWeights weights(trt_dtype, dims, tensor);

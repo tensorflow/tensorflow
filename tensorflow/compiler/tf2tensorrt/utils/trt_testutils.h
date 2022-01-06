@@ -133,7 +133,7 @@ MATCHER_P2(ShapedWeightsHasDimsAndValuesHelper, dims_vec, expected_values, "") {
   dims.nbDims =
       std::min(static_cast<int>(dims_vec.size()), nvinfer1::Dims::MAX_DIMS);
   std::copy_n(dims_vec.begin(), dims.nbDims, dims.d);
-  if (arg.shape_ != dims) {
+  if (arg.Shape() != dims) {
     return false;
   }
   if (arg.count() != expected_values.size()) {
