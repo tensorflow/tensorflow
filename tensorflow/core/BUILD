@@ -1571,6 +1571,7 @@ filegroup(
         "//tensorflow/core/framework:framework_internal_private_hdrs",
         "//tensorflow/core/graph:framework_internal_private_headers",
         "//tensorflow/core/public:session_options.h",
+        "//tensorflow/core/public:version.h",
         "//tensorflow/core/util:framework_internal_private_hdrs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
@@ -1628,7 +1629,6 @@ cc_header_only_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":version_lib",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ],
@@ -1666,7 +1666,6 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        ":version_lib",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

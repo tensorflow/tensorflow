@@ -124,16 +124,4 @@ limitations under the License.
 #define TF_CHECKPOINT_VERSION_MIN_CONSUMER 0
 #define TF_CHECKPOINT_VERSION 1
 
-/// Version query functions (defined in generated version_info.cc)
-
-// Host compiler version (declared elsewhere to be __VERSION__)
-extern const char* tf_compiler_version();
-// The git commit designator when tensorflow was built
-// If no git repository, this will be "internal".
-extern const char* tf_git_version();
-// Value of the _GLIBCXX_USE_CXX11_ABI flag, or 0 if it's not set.
-extern int tf_cxx11_abi_flag();
-// Returns 1 if build is monolithic, or 0 otherwise.
-extern int tf_monolithic_build();
-
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_
