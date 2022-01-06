@@ -74,7 +74,7 @@ def standard_or_nightly(standard, nightly):
 # different versioning scheme (e.g., PVP), we use different bound specifier and
 # comment the versioning scheme.
 REQUIRED_PACKAGES = [
-    'absl-py >= 0.4.0',
+    'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
     'flatbuffers >= 1.12',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
