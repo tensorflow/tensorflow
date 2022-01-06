@@ -148,7 +148,6 @@ third_party/eigen3/unsupported/Eigen/CXX11/src/FixedPoint/TypeCastingAVX2.h
 third_party/eigen3/unsupported/Eigen/CXX11/src/FixedPoint/TypeCastingAVX512.h
 third_party/eigen3/unsupported/Eigen/MatrixFunctions
 third_party/eigen3/unsupported/Eigen/SpecialFunctions
-third_party/enum34.BUILD
 third_party/fft2d/BUILD
 third_party/fft2d/LICENSE
 third_party/fft2d/fft.h
