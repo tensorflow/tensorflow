@@ -187,6 +187,7 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_LESS_EQUAL:
       property.inputs = {{0, {}}, {1, {}}};
       // Comparisons have no quantizable outputs.
+      property.quantize_input_as_activations = true;
       property.version = 2;
       break;
     case BuiltinOperator_EXPAND_DIMS:
