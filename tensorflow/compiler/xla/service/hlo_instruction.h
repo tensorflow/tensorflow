@@ -133,8 +133,7 @@ class HloPrintOptions {
   // Options to produce a fingerprint of an HLO.
   static HloPrintOptions Fingerprint() {
     return HloPrintOptions()
-        .set_print_subcomputation_mode(
-            PrintSubcomputationMode::kNonSequentialBodies)
+        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_print_infeed_outfeed_config(false)

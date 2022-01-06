@@ -705,8 +705,31 @@ bool CompareComputationsByContent(const HloComputation* a,
          b->ToString(HloPrintOptions::Fingerprint());
 }
 
+uint64_t GetFingerprint(
+    absl::flat_hash_map<const HloComputation*, uint64_t>& fingerprint_map,
+    const HloComputation* computation) {
+  auto it = fingerprint_map.find(computation);
+  if (it != fingerprint_map.end()) {
+    return it->second;
+  } else {
+    const uint64_t fingerprint = tensorflow::Fingerprint64(
+        computation->ToString(HloPrintOptions::Fingerprint()));
+    fingerprint_map[computation] = fingerprint;
+    return fingerprint;
+  }
+}
+
 void SortComputationsByContent(std::vector<HloComputation*>* computations) {
-  absl::c_sort(*computations, CompareComputationsByContent);
+  absl::flat_hash_map<const HloComputation*, uint64_t> fingerprint_map;
+  auto cmp = [&fingerprint_map](const HloComputation* a,
+                                const HloComputation* b) {
+    if (a->instruction_count() != b->instruction_count()) {
+      return a->instruction_count() < b->instruction_count();
+    }
+    return GetFingerprint(fingerprint_map, a) <
+           GetFingerprint(fingerprint_map, b);
+  };
+  absl::c_sort(*computations, cmp);
 }
 
 }  // anonymous namespace
