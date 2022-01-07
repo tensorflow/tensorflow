@@ -1308,7 +1308,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 // Run a Pack op to pack the tensors pointed by a packed input TensorHandle if
 // the op is a primitive op.
 Status MaybePackInputTensor(EagerOperation* op) {
-  if (op->is_function()) {
+  if (op->is_function() || op->EagerContext().RunEagerOpAsFunction()) {
     // Functions could take packed TensorHandles as inputs.
     return Status::OK();
   }
