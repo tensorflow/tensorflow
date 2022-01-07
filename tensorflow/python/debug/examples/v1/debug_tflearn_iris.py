@@ -58,9 +58,11 @@ def main(_):
         "exclusive.")
   hooks = []
   if FLAGS.debug:
-    config_file_path = (
-        tempfile.mktemp(".tfdbg_config")
-        if FLAGS.use_random_config_path else None)
+    if FLAGS.use_random_config_path:
+      # TODO(mihaimaruseac): Safe to ignore fd here?
+      _, config_file_path = tempfile.mkstemp(".tfdbg_config")
+    else:
+      config_file_path = None
     hooks.append(
         tf_debug.LocalCLIDebugHook(
             ui_type=FLAGS.ui_type,
