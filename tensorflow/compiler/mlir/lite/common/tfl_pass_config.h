@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_COMMON_TFL_PASS_CONFIG_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_join.h"
@@ -98,6 +99,7 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nform_clusters: " << pass_config.form_clusters
             << "\nunfold_batch_matmul: " << pass_config.unfold_batch_matmul
             << "\nlegalize_tf_while: " << pass_config.legalize_tf_while
+            << "\noutline_tf_while: " << pass_config.outline_tf_while
             << "\nshape_inference: " << pass_config.shape_inference
             << "\nruntime_verification: " << pass_config.runtime_verification
             << "\nenable_tflite_variables: "
