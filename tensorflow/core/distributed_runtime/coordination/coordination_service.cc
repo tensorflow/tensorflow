@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
@@ -84,7 +83,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void RegisterWorker(const std::string& job_name, int task_id,
                       uint64 incarnation, StatusCallback done) override;
   void WaitForAllTasks(const std::string& job_name, int task_id,
-                       std::vector<DeviceAttributes> devices,
+                       const CoordinationServiceDeviceInfo& devices,
                        StatusCallback done) override;
   Status RecordHeartbeat(const std::string& job_name, int task_id,
                          uint64 incarnation) override;
@@ -98,7 +97,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   Status DeleteKeyValue(const std::string& key) override;
 
  private:
-  const std::vector<DeviceAttributes>& ListClusterDevices() override
+  const CoordinationServiceDeviceInfo& ListClusterDevices() override
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void StartCheckStaleness();
   void Stop();
@@ -157,7 +156,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   condition_variable cluster_registered_cv_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
       TF_GUARDED_BY(state_mu_);
-  std::vector<DeviceAttributes> cluster_devices_ TF_GUARDED_BY(state_mu_);
+  CoordinationServiceDeviceInfo cluster_devices_ TF_GUARDED_BY(state_mu_);
   int cluster_pending_workers_ TF_GUARDED_BY(state_mu_);
 
   mutex kv_mu_;
@@ -354,7 +353,7 @@ void CoordinationServiceStandaloneImpl::RegisterWorker(
 
 void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     const std::string& job_name, int task_id,
-    std::vector<DeviceAttributes> devices, StatusCallback done) {
+    const CoordinationServiceDeviceInfo& devices, StatusCallback done) {
   const std::string& task_name = GetTaskName(job_name, task_id);
   mutex_lock l(state_mu_);
   if (!cluster_state_.contains(task_name)) {
@@ -364,16 +363,14 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
   }
   DCHECK_GT(cluster_pending_workers_, 0);
   cluster_state_[task_name]->SetRegisteredCallback(std::move(done));
-  cluster_devices_.insert(cluster_devices_.end(),
-                          std::make_move_iterator(devices.begin()),
-                          std::make_move_iterator(devices.end()));
+  cluster_devices_.MergeFrom(devices);
   cluster_pending_workers_--;
   if (cluster_pending_workers_ == 0) {
     DoneClusterRegistration(Status::OK());
   }
 }
 
-const std::vector<DeviceAttributes>&
+const CoordinationServiceDeviceInfo&
 CoordinationServiceStandaloneImpl::ListClusterDevices() {
   return cluster_devices_;
 }

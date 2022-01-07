@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -33,9 +34,13 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/core/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
+using ::testing::EqualsProto;
+using ::testing::proto::IgnoringRepeatedFieldOrdering;
+
 constexpr int kHeartbeatTimeoutMs = 5 * 1000;  // 5 seconds
 constexpr char kCoordinationServiceType[] = "standalone";
 
@@ -108,10 +113,18 @@ class TestCoordinationClientCache : public CoordinationClientCache {
 };
 
 // Construct fake device protos.
-DeviceAttributes CreateTestDevice(absl::string_view name) {
+DeviceAttributes CreateTestTfDevice(absl::string_view name) {
   DeviceAttributes device;
   device.set_name(name);
   device.set_device_type("CPU");
+  return device;
+}
+
+xla::DeviceProto CreateTestXlaDevice(absl::string_view name,
+                                     const int local_id) {
+  xla::DeviceProto device;
+  device.set_name(name);
+  device.set_local_device_ordinal(local_id);
   return device;
 }
 
@@ -384,7 +397,7 @@ TEST(CoordinationServiceTest, TestSetGetValues) {
 
 // Verify that coordination service can gather each worker's device info and
 // propagate the aggregated cluster device info correctly.
-TEST(CoordinationServiceTest, ListClusterDevices) {
+TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 3);
   Status status = Status::OK();
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
@@ -393,17 +406,21 @@ TEST(CoordinationServiceTest, ListClusterDevices) {
           kCoordinationServiceType, Env::Default(), server_def,
           std::move(client_cache));
   absl::Notification n;
-  std::vector<DeviceAttributes> expected_cluster_devices = {
-      CreateTestDevice("worker0_device0"), CreateTestDevice("worker0_device1"),
-      CreateTestDevice("worker1_device0"), CreateTestDevice("worker2_device0")};
   // Map fake devices to each worker.
-  std::vector<DeviceAttributes> local_devices_0 = {expected_cluster_devices[0],
-                                                   expected_cluster_devices[1]};
-  std::vector<DeviceAttributes> local_devices_1 = {expected_cluster_devices[2]};
-  std::vector<DeviceAttributes> local_devices_2 = {expected_cluster_devices[3]};
+  CoordinationServiceDeviceInfo local_devices_0;
+  CoordinationServiceDeviceInfo local_devices_1;
+  CoordinationServiceDeviceInfo local_devices_2;
+  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
+      CreateTestTfDevice("worker0_device0");
+  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
+      CreateTestTfDevice("worker0_device1");
+  *local_devices_1.mutable_tf()->mutable_devices()->Add() =
+      CreateTestTfDevice("worker1_device0");
+  *local_devices_2.mutable_tf()->mutable_devices()->Add() =
+      CreateTestTfDevice("worker2_device0");
 
-  std::vector<DeviceAttributes> cluster_devices;
   // Each worker sends its device info.
+  CoordinationServiceDeviceInfo cluster_devices;
   coord_service->WaitForAllTasks("worker", 0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
   coord_service->WaitForAllTasks("worker", 1, local_devices_1,
@@ -416,8 +433,68 @@ TEST(CoordinationServiceTest, ListClusterDevices) {
   });
   n.WaitForNotification();
 
-  EXPECT_THAT(cluster_devices,
-              ::testing::UnorderedPointwise(::testing::EqualsProto(),
-                                            expected_cluster_devices));
+  CoordinationServiceDeviceInfo expected_cluster_devices;
+  auto expected_devices =
+      expected_cluster_devices.mutable_tf()->mutable_devices();
+  expected_devices->Add(local_devices_0.mutable_tf()->devices().begin(),
+                        local_devices_0.mutable_tf()->devices().end());
+  expected_devices->Add(local_devices_1.mutable_tf()->devices().begin(),
+                        local_devices_1.mutable_tf()->devices().end());
+  expected_devices->Add(local_devices_2.mutable_tf()->devices().begin(),
+                        local_devices_2.mutable_tf()->devices().end());
+  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
+                                   EqualsProto(expected_cluster_devices)));
+}
+
+TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
+  const ServerDef& server_def = GetMultiClientServerDef("worker", 3);
+  Status status = Status::OK();
+  auto client_cache = std::make_unique<TestCoordinationClientCache>();
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          std::move(client_cache));
+  absl::Notification n;
+  // Map fake devices to each worker.
+  CoordinationServiceDeviceInfo local_devices_0;
+  CoordinationServiceDeviceInfo local_devices_1;
+  CoordinationServiceDeviceInfo local_devices_2;
+  xla::LocalTopologyProto local_0;
+  xla::LocalTopologyProto local_1;
+  xla::LocalTopologyProto local_2;
+  local_0.set_node_id(0);
+  local_1.set_node_id(1);
+  local_2.set_node_id(2);
+  *local_0.add_devices() = CreateTestXlaDevice("worker0_device0", 0);
+  *local_0.add_devices() = CreateTestXlaDevice("worker0_device1", 1);
+  *local_1.add_devices() = CreateTestXlaDevice("worker1_device0", 0);
+  *local_2.add_devices() = CreateTestXlaDevice("worker2_device0", 0);
+  *local_devices_0.mutable_xla()->mutable_devices()->add_nodes() = local_0;
+  *local_devices_1.mutable_xla()->mutable_devices()->add_nodes() = local_1;
+  *local_devices_2.mutable_xla()->mutable_devices()->add_nodes() = local_2;
+
+  // Each worker sends its device info.
+  CoordinationServiceDeviceInfo cluster_devices;
+  coord_service->WaitForAllTasks("worker", 0, local_devices_0,
+                                 [&](Status s) { TF_ASSERT_OK(s); });
+  coord_service->WaitForAllTasks("worker", 1, local_devices_1,
+                                 [&](Status s) { TF_ASSERT_OK(s); });
+  coord_service->WaitForAllTasks("worker", 2, local_devices_2, [&](Status s) {
+    TF_ASSERT_OK(s);
+    // Gather the cluster device info.
+    cluster_devices = coord_service->ListClusterDevices();
+    n.Notify();
+  });
+  n.WaitForNotification();
+
+  CoordinationServiceDeviceInfo expected_cluster_devices;
+  *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
+      local_0;
+  *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
+      local_1;
+  *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
+      local_2;
+  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
+                                   EqualsProto(expected_cluster_devices)));
 }
 }  // namespace tensorflow
