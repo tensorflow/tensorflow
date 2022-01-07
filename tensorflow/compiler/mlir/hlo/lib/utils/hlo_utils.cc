@@ -70,7 +70,8 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
     if (complex_element_ty.isF32()) {
       return DenseElementsAttr::get(
           scalar_ty, static_cast<std::complex<float>>(raw_value));
-    } else if (complex_element_ty.isF64()) {
+    }
+    if (complex_element_ty.isF64()) {
       return DenseElementsAttr::get(
           scalar_ty, static_cast<std::complex<double>>(raw_value));
     }
