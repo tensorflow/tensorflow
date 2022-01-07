@@ -1151,7 +1151,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("TF_GetCode", TF_GetCode);
 
   m.def("TF_SetXlaAutoJitMode", TF_SetXlaAutoJitMode);
-  m.def("TF_SetXlaAutoJitMode", TF_SetXlaAutoJitMode);
+  m.def("TF_GetXlaAutoJitEnabled", TF_GetXlaAutoJitEnabled);
   m.def("TF_SetXlaEnableLazyCompilation", TF_SetXlaEnableLazyCompilation);
   m.def("TF_SetTfXlaCpuGlobalJit", TF_SetTfXlaCpuGlobalJit);
   m.def("TF_SetXlaMinClusterSize", TF_SetXlaMinClusterSize);
