@@ -340,7 +340,7 @@ struct HloLegalizeToMemrefPass
 void populateHLOToMemrefConversionPattern(
     bufferization::BufferizeTypeConverter* converter,
     RemoveSignTypeConverter* sign_converter, OwningRewritePatternList* patterns,
-    std::function<bool(Operation*)> enforce_identity_maps) {
+    const std::function<bool(Operation*)>& enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
   patterns->insert<HloToMemrefDynamicBroadcastInDimOpConverter>(
       *converter, sign_converter, context, std::move(enforce_identity_maps));

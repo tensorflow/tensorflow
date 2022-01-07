@@ -73,9 +73,8 @@ void populateHLOToLHLOConversionPattern(
 void populateHLOToMemrefConversionPattern(
     bufferization::BufferizeTypeConverter *converter,
     RemoveSignTypeConverter *sign_converter, OwningRewritePatternList *patterns,
-    std::function<bool(Operation *)> enforce_identity_map = [](Operation *) {
-      return true;
-    });
+    const std::function<bool(Operation *)> &enforce_identity_map =
+        [](Operation *) { return true; });
 
 // Collection of rewrite patterns for lowering of shape operations from the HLO
 // dialect to the standard dialect.
