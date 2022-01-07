@@ -76,18 +76,32 @@ limitations under the License.
 // would work!
 #define TFTRT_CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 
-#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
-  do {                                                               \
-    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
-                            " failed to add TRT layer, at: ", node); \
-  } while (0)
+#define TFTRT_ERROR(func, ...)                   \
+    do {                                         \
+      return func("TFTRT::", __FUNCTION__, ":",  \
+                    __LINE__, ": ", __VA_ARGS__);\
+    } while (0)
+
+#define TFTRT_INTERNAL_ERROR_AT_NODE(node)       \
+        TFTRT_ERROR(errors::Internal, " failed to add TRT layer, at: ", node);
 
 #define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
-  do {                                           \
     if (ptr == nullptr) {                        \
       TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
     }                                            \
-  } while (0)
+
+#define CHECK_INPUT_SIZE(size, exp_size, node_def)                       \
+  if ((size) != (exp_size)) {                                            \
+    TFTRT_ERROR(errors::InvalidArgument, node_def.op(),                  \
+                " got ", (size), " inputs but expected ", (exp_size));   \
+  }
+
+#define CHECK_SHAPE_TENSOR(tensor)                                        \
+   if (!IsTrtShapeTensorCompatible(tensor)) {                             \
+     TFTRT_ERROR(errors::InvalidArgument, "Tensor of type ",              \
+                 DebugString(tensor.dtype()), " having shape ",           \
+                 tensor.shape().DebugString(), " is not TRT compatible"); \
+   }
 
 namespace tensorflow {
 namespace tensorrt {
@@ -1869,11 +1883,8 @@ Status CheckInputsWeights(
     const std::vector<std::pair<string, TrtInputArg>>& expected_inputs) {
   const auto& inputs = params.inputs;
   const auto& node_def = params.node_def;
-  if (inputs.size() != expected_inputs.size()) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected ",
-                                   expected_inputs.size());
-  }
+  CHECK_INPUT_SIZE(inputs.size(), expected_inputs.size(), node_def);
+
   for (int i = 0; i < inputs.size(); i++) {
     if (expected_inputs[i].second == TrtInputArg::kWeight &&
         inputs.at(i).is_tensor()) {
@@ -3657,11 +3668,7 @@ Status ConvertRelu6(OpConverterParams* params) {
 Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(
-        "BiasAdd expects exactly 2 inputs, but received ", inputs.size());
-  }
+  CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
 
   if (inputs[0].is_weights() && inputs[1].is_weights()) {
     return errors::InvalidArgument(
@@ -3898,10 +3905,8 @@ Status ConvertIdentity(OpConverterParams* params) {
 Status ConvertBinary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected 2");
-  }
+  CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
+
   std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
                                    DataType::DT_INT32};
   TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
@@ -4057,6 +4062,145 @@ Status ConvertSquare(OpConverterParams* params) {
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
+
+class ConvertTile : public OpConverterBase<ConvertTile> {
+ public:
+  explicit ConvertTile(OpConverterParams* params)
+      : OpConverterBase<ConvertTile>(params) {}
+
+  static constexpr std::array<DataType, 3> AllowedDataTypes() {
+    return {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32};
+  }
+
+  static constexpr std::array<InputArgSpec, 2> InputSpec() {
+    return std::array<InputArgSpec, 2>{
+        InputArgSpec::Create("input_tensor", TrtInputArg::kBoth),
+        InputArgSpec::Create("weight", TrtInputArg::kBoth)};
+  }
+
+  Status Validate() {
+    const auto &params = *this->params_;
+    const auto& inputs = params.inputs;
+    CHECK_INPUT_SIZE(inputs.size(), 2, params.node_def);
+
+    const auto &repl = inputs.at(1);
+    if (params.use_implicit_batch && repl.is_tensor()) {
+      return errors::InvalidArgument("Conversion for Tile is not implementd for multipliers passed as a tensor");
+    }
+
+    nvinfer1::DataType dtype;
+    const int *multiplies;
+    if (repl.is_weights()) {
+      CHECK_SHAPE_TENSOR(repl.weights().GetTensor());
+      dtype = repl.weights().TrtDType();
+      multiplies = repl.weights().GetPointer<int>();
+    } else {
+      dtype = repl.tensor()->getType();
+      multiplies = nullptr;
+    }
+
+    if (dtype != nvinfer1::DataType::kINT32) {
+      return errors::InvalidArgument("The replication parameter of the ", params.node_def.op(), " operation in ",
+                                     params.node_def.name(), " is expected to be of ",
+                                     DebugString(nvinfer1::DataType::kINT32),
+                                     " type, got ", DebugString(dtype));
+    }
+
+    const auto dims = inputs.at(0).GetTrtDims();
+    const auto nb_dims = dims.nbDims + (params.use_implicit_batch && inputs.at(0).is_tensor()? 1 : 0);
+    if (multiplies) {
+      const int mult_numb = repl.weights().count();
+      if (mult_numb != nb_dims) {
+        return errors::InvalidArgument("The lenght of the replication vector (", mult_numb,
+                                       ") of the Tile operation in '", params.node_def.name(),
+                                       "' is expected to be equal to the number of dimentions of the input vector (",
+                                       nb_dims, ")");
+      }
+
+      bool positiveReplic = true;
+      for (int i = 0; i < nb_dims; i++)
+        positiveReplic &= multiplies[i] > 0;
+
+      if (!positiveReplic) {
+        char buffer[256], *pBuff = buffer;
+        for (int i = 0; i < nb_dims; i++)
+          pBuff += sprintf(pBuff, (i? ", %d" : "%d"), multiplies[i]);
+
+         return errors::InvalidArgument("All replications of the Tile operation in ", params.node_def.name(),
+                                     " should be positive, got (", buffer, ").");
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Convert() {
+    const auto &params = *this->params_;
+    const auto& inputs = params.inputs;
+    auto *converter = params.converter;
+    auto *network = converter->network();
+    const auto &tensor = inputs.at(0);
+    const auto &replics = inputs.at(1);
+    const auto dims = tensor.GetTrtDims();
+    const auto nb_dims = dims.nbDims;
+    const auto dim_adj = params.use_implicit_batch && tensor.is_tensor()? 1 : 0;
+
+    bool dynamic_flag = false;
+    const int *pMultiplies = nullptr;
+    if (replics.is_tensor()) {
+      dynamic_flag = true;
+    } else {
+      pMultiplies = replics.weights().GetPointer<int>();
+    }
+
+    nvinfer1::Dims size{nb_dims, {1}};
+    nvinfer1::Dims stride{nb_dims, {1}};
+    const auto *pSize = dims.d;
+    for (int i = 1 - dim_adj; i < nb_dims; i++) {
+      stride.d[i] = 1;
+      if (pMultiplies)
+        dynamic_flag |= (size.d[i] = pMultiplies[dim_adj+i] * *(pSize+i)) < 0;
+    }
+
+    auto input_tensor = tensor.is_tensor()?
+                        tensor.tensor() :
+                        converter->CreateConstantLayer(tensor.weights(), dims);
+
+    auto &input_trt_tensor = *input_tensor->trt_tensor();
+    nvinfer1::ITensor* target_shape = nullptr;
+    if (dynamic_flag) {
+      nvinfer1::ITensor *shape = network->addShape(input_trt_tensor)->getOutput(0);
+      const ITensorProxyPtr multiplies = replics.is_tensor()?
+                                         replics.tensor()->trt_tensor() :
+                                         converter->CreateConstantLayer(replics.weights(), replics.GetTrtDims());
+      target_shape = network->addElementWise(*shape, *multiplies->trt_tensor(), nvinfer1::ElementWiseOperation::kPROD)
+                            ->getOutput(0);
+    }
+
+    const auto start = nvinfer1::Dims{nb_dims, {}};
+    auto layer = network->addSlice(input_trt_tensor, start, size, stride);
+    layer->setMode(nvinfer1::SliceMode::kWRAP);
+    if (target_shape)
+      layer->setInput(2, *target_shape);
+
+    converter->SetLayerName(layer, params.node_def.name(), "to_tile");
+    ITensorProxyPtr output_tensor = layer->getOutput(0);
+    if (tensor.is_weights() && params.use_implicit_batch) {
+      // Reshape output tensor by removing first dimension
+      const auto out_dims = output_tensor->getDimensions();
+      nvinfer1::Dims dims_out{nb_dims-1, {}};
+      for (int i = 1; i < nb_dims; i++)
+        dims_out.d[i-1] = out_dims.d[i];
+
+      TF_RETURN_IF_ERROR(PrepareTensorForShape(
+        params.converter, TRT_TensorOrWeights(output_tensor),
+        dims_out, false, &output_tensor, params.node_def));
+    }
+
+    AddOutput(TRT_TensorOrWeights(output_tensor));
+    return Status::OK();
+  }
+};
 
 Status ConvertReduce(OpConverterParams* params) {
   const auto& inputs = params->inputs;
@@ -5096,10 +5240,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
 Status ConvertMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected 2");
-  }
+  CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
+
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
@@ -5114,10 +5256,8 @@ Status ConvertMatMul(OpConverterParams* params) {
 Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected 2");
-  }
+  CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
+
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params, {{"x", TrtInputArg::kBoth}, {"y", TrtInputArg::kBoth}}));
   // TODO(tfeher): Consider adding INT8 type because FC layer can support it.
@@ -6702,10 +6842,9 @@ Status ConvertAddN(OpConverterParams* params) {
   if (num_inputs < 2) {
     return errors::InvalidArgument("AddN requires at least two inputs");
   }
-  if (inputs.size() != num_inputs) {
-    return errors::InvalidArgument("Got ", inputs.size(),
-                                   " inputs but expected ", num_inputs);
-  }
+
+  CHECK_INPUT_SIZE(inputs.size(), num_inputs, node_def);
+
   for (const auto& input : inputs) {
     if (!input.is_tensor() && input.weights().shape_.d[0] != 1) {
       return errors::InvalidArgument(
@@ -6784,6 +6923,8 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSoftmax, "Softmax");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertDepthSpaceShuffle, "SpaceToDepth");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSplit, "Split");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSquare, "Square");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertTile>(), "Tile");
+
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSquaredDifference,
                                   "SquaredDifference");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSqueeze, "Squeeze");

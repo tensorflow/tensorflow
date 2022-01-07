@@ -1541,6 +1541,31 @@ std::ostream& operator<<(std::ostream& os, const TestParamBase& p) {
   return os;
 }
 
+template<typename T>const char *format();
+
+template<> const char *format<int>()      { return "%d"; }
+template<> const char *format<float>()    { return "%.1f"; }
+
+template<typename T>
+void out_vector(const std::vector<T> &vector, const char *pComment, const string &name, const string &type="") {
+
+  char buffer[256], *pBuff = buffer;
+  const auto len_buffer = sizeof(buffer);
+  pBuff += snprintf(pBuff, len_buffer, "%d, d=", vector.size());
+  for (int i = 0; i < vector.size(); i++) {
+    if (i)
+      pBuff += snprintf(pBuff, len_buffer-(pBuff-buffer), ",");
+    pBuff += snprintf(pBuff, len_buffer-(pBuff-buffer), format<T>(), vector[i]);
+  }
+
+  if (type != "") {
+    VLOG(2) << pComment << name << " Dims(nbDims=" << buffer << ") of type " << type;
+  } else {
+    VLOG(2) << pComment << name << " Dims(nbDims=" << buffer << ")";
+  }
+}
+
+
 // Parameterized version of OpConverterTest. We have the following parameters:
 // 1. TrtTestMode: implicit batch, explicit batch, dynamic shape modes
 // 2. DataType of the input TF tensors: DT_FLOAT, DT_HALF, DT_INT32
@@ -1603,17 +1628,24 @@ class ParameterizedOpConverterTestBase
   //
   template <typename T = int>
   void AddTestTensor(const string& name, const std::vector<int32>& dims,
-                     DataType tf_type, const std::vector<T>& values,
+                     DataType tf_type, const std::vector<T>& values_inp,
                      const std::vector<int32>& partial_input_shape_dims = {},
-                     Status add_input_status = Status::OK()) {
+                     Status add_input_status = Status::OK(), bool fix_values = true) {
+    std::vector<T>values(values_inp);
+    VLOG(2) << "**** AddTestTensor for "<< name << " ***** dims empty() = " << dims.empty()
+            << "  tf_type = " << DebugString(tf_type);
     if (!dims.empty()) {
       const auto num_elements = std::accumulate(
           std::begin(dims), std::end(dims), 1, std::multiplies<double>());
       if (!values.empty() && num_elements != values.size()) {
-        // Note: for conversion only tests, it is valid to have empty values,
-        // otherwise the number of elements should match.
-        LOG(WARNING) << "Expected Test Tensor Shape: " << DebugString(dims)
-                     << ", Received Input Tensor: " << DebugString(values);
+        if (fix_values) {
+          AdjustVectorByDims(values, num_elements, name, "AddTestTensor");
+        } else {
+          // Note: for conversion only tests, it is valid to have empty values,
+          // otherwise the number of elements should match.
+          LOG(WARNING) << "Expected Test Tensor Shape: " << DebugString(dims)
+                       << ", Received Input Tensor: " << DebugString(values);
+        }
       }
     }
 
@@ -1628,13 +1660,17 @@ class ParameterizedOpConverterTestBase
         // Use static (known) input shapes.
         partial_shape = dims;
       }
+      if (VLOG_IS_ON(2)) {
+        out_vector(partial_shape, "Using partial_shape: for ", name);
+      }
     }
     nvinfer1::DataType trt_type;
     TF_ASSERT_OK(TfTypeToTrtType(tf_type, &trt_type));
     AddTestTensorWithTFDims(name, partial_shape, trt_type, add_input_status);
     if (!values.empty()) {
-      VLOG(2) << "Adding test tensor: " << name << " "
-              << DataTypeString(tf_type);
+      if (VLOG_IS_ON(2)) {
+        out_vector<T>(values, "Adding test tensor: for ", name, DataTypeString(tf_type));
+      }
       InputOutputData data{name, AsTensor(values, dims, tf_type)};
       VLOG(2) << "Added tensor: " << data.name << " with dtype "
               << DataTypeString(data.tensor.dtype());
@@ -2118,6 +2154,120 @@ TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
     }
     TestOpConverter("my_transpose", node_def, p.expected_output_dims, p.status,
                     p.runtime_status, ElementsAreArray(expected_values));
+  }
+}
+
+TEST_P(OpConverter_FP32_Test, ConvertTile) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
+  auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
+  auto tile = ops::Tile(s.WithOpName("my_tile"), input, weights);
+  const NodeDef& node_def = tile.operation.node()->def();
+
+  struct TileParam {
+    std::vector<int> input_dims;
+    std::vector<int> multiplier;
+    std::vector<float> tensor;
+    // Concrete (static) output dimensions, including batch size as first dim
+    std::vector<int> expected_output_dims;
+    std::vector<int> expected_results;
+    // Expected status of conversion (with concrete error message)
+    Status status;
+    // Expected status of BuildAndRun
+    Status runtime_status;
+  };
+
+  std::vector<TileParam> test_params = {
+      TileParam{{1, 2, 3},  // input dims
+                {1, -2, 1}, // multiplier
+                {},
+                {},         // output dims
+                {},
+                 Status(error::INVALID_ARGUMENT,
+                        "All replications of the Tile operation in "
+                        "my_tile should be positive, got (1, -2, 1)")},
+      TileParam{{1, 2, 3},     // input dims
+                {1, 2, 1, 3},  // multiplier
+                {0, 1, 2, 3, 4, 5},
+                {},            // output dims
+                {},
+                 Status(error::INVALID_ARGUMENT,
+                        "The lenght of the replication vector (4) of the Tile operation in 'my_tile' "
+                        "is expected to be equal to the number of dimentions of the input vector (3)")},
+      TileParam{{1, 2},     // input dims
+                {1, 3},     // multiplier
+                {2, 3},     // input values
+                {1, 6},     // output dims
+                {2, 3, 2, 3, 2, 3}},  // out values
+      TileParam{{1, 2, 3},  // input dims
+                {1, 2, 1},  // multiplier
+                {0, 1, 2, 3, 4, 5},
+                {1, 4, 3},  // output dims
+                {0, 1, 2, 3, 4, 5,
+                 0, 1, 2, 3, 4, 5}},
+      TileParam{{1, 2, 3},  // input dims
+                {1, 1, 2},  // multiplier
+                {0, 1, 2, 3, 4, 5},
+                {1, 2, 6},  // output dims
+                {0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5}},
+      TileParam{{1, 2, 3},  // input dims
+                {1, 2, 2},  // multiplier
+                {0, 1, 2, 3, 4, 5},
+                {1, 4, 6},  // output dims
+                {0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5,
+                 0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5}}
+  };
+
+  for (bool multiplier_is_tensor : {true, false}) {
+    for (bool input_is_tensor : {true, false}) {
+      int k = 0;
+      for (auto p : test_params) {
+        ++k;
+        std::vector<int>num_mults = {p.multiplier.size()};
+        std::vector<std::vector<int>>partial_input_dims_options = {{}};
+        if (multiplier_is_tensor) {
+          if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+             p.status = Status(error::INVALID_ARGUMENT,
+                             "Conversion for Tile is not implementd for multipliers passed as a tensor");
+             num_mults = {1, p.multiplier.size()};
+          } else {
+            if (k <= 2) {
+              // Replacing statuses, because in this situation we cannot
+              // define these statuses in ConvertTile:Validate()
+              p.status = Status::OK();
+              p.runtime_status = Status(error::INTERNAL, "Incorrect number of profile config parameters");
+            }
+            if (trt_mode_ == TrtTestMode::kDynamicShape) {
+              partial_input_dims_options = {{}, num_mults};
+            }
+          }
+        }
+
+        for (auto partial_input_dims : partial_input_dims_options) {
+          if (k > 2 && multiplier_is_tensor && (trt_mode_ == TrtTestMode::kDynamicShape)) {
+              p.runtime_status = partial_input_dims.empty()
+                               ? Status(error::INTERNAL, "Failed to build TensorRT engine")
+                               : Status::OK();
+          }
+
+          Reset();
+          if (input_is_tensor) {
+            AddTestTensor("input", p.input_dims, p.tensor);
+          } else {
+            AddTestWeights("input", p.input_dims, p.tensor, tf_type_);
+          }
+
+          if (multiplier_is_tensor) {
+            AddTestTensor<int>("weights", num_mults, DT_INT32, p.multiplier, partial_input_dims);
+          } else {
+            AddTestWeights<int32>("weights", num_mults, p.multiplier);
+          }
+
+          TestOpConverter("my_tile", node_def, p.expected_output_dims, p.status,
+                  p.runtime_status, ElementsAreArray(p.expected_results));
+        }
+      }
+    }
   }
 }
 
