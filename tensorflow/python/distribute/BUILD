@@ -1128,6 +1128,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_gpu",  # TODO(b/213596871): times out
         "notsan",  # b/177098062
     ],
     deps = [
