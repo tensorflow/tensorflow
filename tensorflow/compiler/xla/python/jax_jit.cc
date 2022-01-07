@@ -185,6 +185,7 @@ H AbslHashValue(H h, const CallSignature& s) {
     try {
       hash = py::hash(static_arg);
     } catch (const py::error_already_set& e) {
+      if (!e.matches(PyExc_TypeError)) throw;
       throw std::invalid_argument(absl::StrCat(
           "Non-hashable static arguments are not supported. An error occured "
           "during a call to '",
