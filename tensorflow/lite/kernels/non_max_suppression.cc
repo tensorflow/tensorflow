@@ -368,7 +368,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(
       context, GetInputSafe(context, node, kInputTensorBoxes, &input_boxes));
   const int num_boxes = SizeOfDimension(input_boxes, 0);
-  nms_params.boxes_zero_point = input_boxes->params.zero_point;
 
   const TfLiteTensor* input_scores;
   TF_LITE_ENSURE_OK(

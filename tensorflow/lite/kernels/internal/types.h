@@ -856,8 +856,6 @@ struct MeanParams {
 };
 
 struct NonMaxSuppressionParams {
-  int32_t boxes_zero_point;
-
   int32_t iou_zero_point;
   int32_t iou_inverse_scale;
 
