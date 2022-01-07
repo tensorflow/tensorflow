@@ -1376,9 +1376,8 @@ OpFoldResult BroadcastOp::fold(ArrayRef<Attribute> attrs) {
     if (complex.getElementType().isa<IntegerType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
-    } else {
-      return {};
     }
+    return {};
   }
 
   return SplatElementsAttr::get(
@@ -1515,9 +1514,8 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
     if (complex.getElementType().isa<IntegerType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
-    } else {
-      return {};
     }
+    return {};
   }
 
   return SplatElementsAttr::get(
