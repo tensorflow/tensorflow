@@ -225,12 +225,11 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
                       bool jit_i64_indexed_for_large_tensors) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
-  if(jit_i64_indexed_for_large_tensors)
-  {
+  if (jit_i64_indexed_for_large_tensors) {
     pm.addNestedPass<mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
-          architectures, tile_sizes, unroll_factors, max_supported_rank,
-          cpu_codegen, true));
+        mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
+            tile_sizes, unroll_factors, max_supported_rank, cpu_codegen,
+            /*jit_i64_indexed_for_large_tensors=*/true));
   }
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
       /*allow_partial_conversion=*/false));
@@ -510,9 +509,9 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
 
   if (jit_compile) {
     TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
-        module.get(), tile_sizes, unroll_factors,
-        max_supported_rank, enable_ftz, index_64bit, cpu_codegen
-        ,jit_i64_indexed_for_large_tensors));
+        module.get(), tile_sizes, unroll_factors, max_supported_rank,
+        enable_ftz, index_64bit, cpu_codegen,
+        /*jit_i64_indexed_for_large_tensors=*/false));
   } else {
     TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
                                       max_supported_rank, cpu_codegen,

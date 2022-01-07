@@ -114,7 +114,7 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   // 64 bit indexing is not incorporated yet
   if (index_64bit) {
     return tensorflow::errors::Unimplemented(
-        "64 Bit indexing for JIT compiled kernels is not supported yet.");
+        "64 bit indexing is not supported yet");
   }
   // Read TF code.
   std::string tf_code;
