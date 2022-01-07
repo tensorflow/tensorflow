@@ -270,7 +270,8 @@ class PrintV2Test(test.TestCase):
     self.assertIn((expected + "\n"), printed.contents())
 
   def testPrintTensorsToFile(self):
-    tmpfile_name = tempfile.mktemp(".printv2_test")
+    _, tmpfile_name = tempfile.mkstemp(
+        ".printv2_test")  # safe to ignore fd here
     tensor_0 = math_ops.range(0, 10)
     print_op_0 = logging_ops.print_v2(tensor_0,
                                       output_stream="file://"+tmpfile_name)
