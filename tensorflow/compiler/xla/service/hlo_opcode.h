@@ -105,6 +105,7 @@ namespace xla {
   V(kLogistic, "logistic", 1)                                                  \
   V(kAnd, "and", 2)                                                            \
   V(kNot, "not", 1)                                                            \
+  V(kOptimizationBarrier, "opt-barrier", 1)                                    \
   V(kOr, "or", 2)                                                              \
   V(kXor, "xor", 2)                                                            \
   V(kMap, "map", kHloOpcodeIsVariadic)                                         \

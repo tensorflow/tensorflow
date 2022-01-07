@@ -1986,6 +1986,15 @@ cc_library(
 )
 
 cc_library(
+    name = "optimization_barrier_expander",
+    srcs = ["optimization_barrier_expander.cc"],
+    hdrs = ["optimization_barrier_expander.h"],
+    deps = [
+        ":op_expander_pass",
+    ],
+)
+
+cc_library(
     name = "comparison_expander",
     srcs = ["comparison_expander.cc"],
     hdrs = ["comparison_expander.h"],

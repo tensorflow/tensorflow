@@ -1020,6 +1020,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kCopy:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kClz:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -1946,6 +1947,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kClz:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
@@ -2466,6 +2468,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kPad:
@@ -3555,6 +3558,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleTriangularSolve(this);
     case HloOpcode::kCholesky:
       return visitor->HandleCholesky(this);
+    case HloOpcode::kOptimizationBarrier:
+      return visitor->HandleOptimizationBarrier(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:

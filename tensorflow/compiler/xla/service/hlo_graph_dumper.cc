@@ -1028,6 +1028,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kAfterAll:
     case HloOpcode::kAddDependency:
     case HloOpcode::kTuple:
+    case HloOpcode::kOptimizationBarrier:
       return kWhite;
     case HloOpcode::kConstant:
       // Constants aren't usually shown as their own nodes, but they'll be

@@ -105,6 +105,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kConvolution:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
     case HloOpcode::kDomain:
     case HloOpcode::kDot:
@@ -1160,6 +1161,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kCopy:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kImag:

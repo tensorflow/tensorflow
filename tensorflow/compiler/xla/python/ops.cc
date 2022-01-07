@@ -467,6 +467,7 @@ void BuildOpsSubmodule(py::module* m) {
   UNARY_OP(Real);
   UNARY_OP(Imag);
   UNARY_OP(Conj);
+  UNARY_OP(OptimizationBarrier);
 #undef UNARY_OP
 }
 

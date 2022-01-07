@@ -3040,6 +3040,10 @@ Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
   return Status::OK();
 }
 
+Status SpmdPartitioningVisitor::HandleOptimizationBarrier(HloInstruction* hlo) {
+  return HandleElementwise(hlo);
+}
+
 Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
