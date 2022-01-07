@@ -698,7 +698,7 @@ class IteratorType(trace.TraceType):
 
 
 def use_anonymous_iterator_v3():
-  return (forward_compat.forward_compatible(2022, 1, 6) or
+  return (forward_compat.forward_compatible(2022, 1, 13) or
           context.run_eager_op_as_function_enabled())
 
 
