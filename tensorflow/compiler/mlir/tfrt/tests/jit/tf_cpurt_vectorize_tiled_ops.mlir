@@ -163,4 +163,4 @@ func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
 // CHECK: %[[VECTOR:.*]] = vector.transfer_read %[[SLICE]]
 // CHECK: vector.shape_cast %[[VECTOR]] : vector<8xf32> to vector<1x8xf32>
 // CHECK-NOT: tensor.expand_shape
-// CHECK: vector.multi_reduction
+// CHECK: linalg.generic

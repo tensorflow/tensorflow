@@ -59,4 +59,4 @@ func @reduce_1d_dynamic(%input: tensor<?xf32>) -> tensor<f32> {
 }
 // CHECK: scf.for
 // CHECK:   vector.multi_reduction
-// CHECK:   vector.multi_reduction
+// CHECK:   linalg.generic
