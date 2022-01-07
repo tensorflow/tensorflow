@@ -816,6 +816,26 @@ func AnonymousMultiDeviceIterator(scope *Scope, devices []string, output_types [
 	return op.Output(0), op.Output(1)
 }
 
+// A container for a multi device iterator resource.
+//
+// Returns A handle to a multi device iterator that can be passed to a
+// "MultiDeviceIteratorGetNextFromShard" op. In contrast to MultiDeviceIterator,
+// AnonymousIterator prevents resource sharing by name, and does not keep a
+// reference to the resource container.
+func AnonymousMultiDeviceIteratorV3(scope *Scope, devices []string, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"devices": devices, "output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AnonymousMultiDeviceIteratorV3",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // AnonymousMutableDenseHashTableAttr is an optional argument to AnonymousMutableDenseHashTable.
 type AnonymousMutableDenseHashTableAttr func(optionalAttr)
 
