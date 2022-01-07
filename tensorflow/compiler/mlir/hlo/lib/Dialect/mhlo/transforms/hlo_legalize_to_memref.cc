@@ -343,7 +343,7 @@ void populateHLOToMemrefConversionPattern(
     const std::function<bool(Operation*)>& enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
   patterns->insert<HloToMemrefDynamicBroadcastInDimOpConverter>(
-      *converter, sign_converter, context, std::move(enforce_identity_maps));
+      *converter, sign_converter, context, enforce_identity_maps);
   patterns->insert<HloToMemrefDynamicReshapeConverter,
                    HloToMemrefReshapeUnrankedConverter>(
       *converter, sign_converter, context);
