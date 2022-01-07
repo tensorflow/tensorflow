@@ -98,7 +98,7 @@ void GpuExecutable::BefBufferDeleter::operator()(uint8_t* ptr) const {
 #if BEF_EXECUTABLE
   tfrt::AlignedFree(ptr);
 #else
-  assert(false && "OwnedBefBuffer only supported with BEF_EXECUTABLE");
+  LOG(FATAL) << "OwnedBefBuffer only supported with BEF_EXECUTABLE";
 #endif
 }
 
@@ -107,7 +107,7 @@ void GpuExecutable::GpuContextCacheDeleter::operator()(
 #if BEF_EXECUTABLE
   delete factory;
 #else
-  assert(false && "GpuContextCache only supported with BEF_EXECUTABLE");
+  LOG(FATAL) << "GpuContextCache only supported with BEF_EXECUTABLE";
 #endif
 }
 
