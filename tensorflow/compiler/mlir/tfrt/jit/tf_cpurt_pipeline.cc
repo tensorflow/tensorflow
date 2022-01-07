@@ -76,14 +76,13 @@ void AddLinalgTransformations(OpPassManager& pm,
     reduction_2d_tile_sizes.assign(options.reduction_2d_tile_sizes.begin(),
                                    options.reduction_2d_tile_sizes.end());
   }
-  pm.addNestedPass<FuncOp>(CreateCodegenStrategyForReductionPass(
+  pm.addNestedPass<FuncOp>(CreateTileReductionPass(
       options.reduction_1d_tile_size, reduction_2d_tile_sizes));
 
   if (options.fuse_fill) {
     pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
   }
-  pm.addNestedPass<FuncOp>(
-      CreateCodegenStrategyForCWisePass(options.cwise_tile_size));
+  pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.cwise_tile_size));
   if (options.peel) {
     pm.addNestedPass<FuncOp>(CreatePeelTiledLoopsPass());
   }

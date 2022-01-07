@@ -52,12 +52,12 @@ def LinalgTrivialCopyRemoval
   }];
 }
 
-def CodegenCWise : FunctionPass<"tf-cpurt-codegen-cwise"> {
+def TileCWise : FunctionPass<"tf-cpurt-tile-cwise"> {
   let summary = "Tile elementwise ops on tensors";
-  let constructor = "tensorflow::CreateCodegenStrategyForCWisePass()";
-  let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
-  ];
+  let constructor = "tensorflow::CreateTileCWisePass()";
+
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+
   let options = [
     Option<"cwise_tile_size", "cwise-tile-size",
            "int64_t", /*default=*/"8",
@@ -73,9 +73,9 @@ def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
   ];
 }
 
-def CodegenReduction : FunctionPass<"tf-cpurt-codegen-reduction"> {
+def TileReduction : FunctionPass<"tf-cpurt-tile-reduction"> {
   let summary = "Tile and fuse linalg.generic reduction on tensors.";
-  let constructor = "tensorflow::CreateCodegenStrategyForReductionPass()";
+  let constructor = "tensorflow::CreateTileReductionPass()";
   let dependentDialects = [
     "mlir::linalg::LinalgDialect",
     "mlir::memref::MemRefDialect",

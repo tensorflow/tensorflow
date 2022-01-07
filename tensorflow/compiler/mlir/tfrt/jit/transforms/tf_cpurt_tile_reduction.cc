@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -299,11 +300,10 @@ bool isCanonicalizedReduction(Operation *op) {
   return reduction.getNumReductionLoops() == 1;
 }
 
-struct CodegenReductionPass
-    : public CodegenReductionBase<CodegenReductionPass> {
-  CodegenReductionPass() = default;
-  CodegenReductionPass(int64_t reduction_1d_tile,
-                       llvm::ArrayRef<int64_t> reduction_2d_tiles) {
+struct TileReductionPass : public TileReductionBase<TileReductionPass> {
+  TileReductionPass() = default;
+  TileReductionPass(int64_t reduction_1d_tile,
+                    llvm::ArrayRef<int64_t> reduction_2d_tiles) {
     reduction_1d_tile_size = reduction_1d_tile;
     reduction_2d_tile_sizes = reduction_2d_tiles;
   }
@@ -339,15 +339,15 @@ struct CodegenReductionPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass() {
-  return std::make_unique<CodegenReductionPass>();
+std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass() {
+  return std::make_unique<TileReductionPass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass(
+std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass(
     int64_t reduction_1d_tile_size,
     llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
-  return std::make_unique<CodegenReductionPass>(reduction_1d_tile_size,
-                                                reduction_2d_tile_sizes);
+  return std::make_unique<TileReductionPass>(reduction_1d_tile_size,
+                                             reduction_2d_tile_sizes);
 }
 
 }  // namespace tensorflow
