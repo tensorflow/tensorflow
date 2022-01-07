@@ -596,6 +596,9 @@ class ResamplerOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("Resampler"), ResamplerOp);
+REGISTER_XLA_OP(Name("Addons>Resampler")
+                    .TypeConstraint("T", {DT_HALF, DT_FLOAT, DT_DOUBLE}),
+                ResamplerOp);
 
 class ResamplerGradOp : public XlaOpKernel {
  public:
@@ -678,6 +681,9 @@ class ResamplerGradOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("ResamplerGrad"), ResamplerGradOp);
+REGISTER_XLA_OP(Name("Addons>ResamplerGrad")
+                    .TypeConstraint("T", {DT_HALF, DT_FLOAT, DT_DOUBLE}),
+                ResamplerGradOp);
 
 }  // namespace
 }  // namespace tensorflow
