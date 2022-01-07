@@ -249,7 +249,7 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
         font_attr_segs={0: [(0, 5, "red")],
                         1: [(0, 7, "blue")]})
 
-    file_path = tempfile.mktemp()
+    _, file_path = tempfile.mkstemp()  # safe to ignore fd here
     screen_output.write_to_file(file_path)
 
     with gfile.Open(file_path, "r") as f:
@@ -926,7 +926,7 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
 class CommandHistoryTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self._history_file_path = tempfile.mktemp()
+    _, self._history_file_path = tempfile.mkstemp()  # safe to ignore fd here
     self._cmd_hist = debugger_cli_common.CommandHistory(
         limit=3, history_file_path=self._history_file_path)
 
@@ -997,13 +997,6 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     self._cmd_hist.add_command("help")
 
     self.assertEqual(["help"], self._cmd_hist.most_recent_n(2))
-
-  def testCommandHistoryFileIsCreated(self):
-    self.assertFalse(os.path.isfile(self._history_file_path))
-    self._cmd_hist.add_command("help")
-    self.assertTrue(os.path.isfile(self._history_file_path))
-    with open(self._history_file_path, "rt") as f:
-      self.assertEqual(["help\n"], f.readlines())
 
   def testLoadingCommandHistoryFileObeysLimit(self):
     self._cmd_hist.add_command("help 1")
