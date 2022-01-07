@@ -74,7 +74,13 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
     done = [] {};
   }
 
-  const int64_t axis_input = context->input(0).scalar<int64_t>()();
+  const Tensor& input_axis = context->input(0);
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsScalar(input_axis.shape()),
+                    errors::InvalidArgument(
+                        "Input axis should be a scalar but received shape ",
+                        input_axis.shape().DebugString()),
+                    done);
+  const int64_t axis_input = input_axis.scalar<int64_t>()();
   const Tensor& input_indices = context->input(1);
   const Tensor& input_values = context->input(2);
   const Tensor& input_shape = context->input(3);
