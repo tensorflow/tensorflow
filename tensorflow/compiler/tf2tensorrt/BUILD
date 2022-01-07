@@ -40,6 +40,19 @@ package(
     licenses = ["notice"],
 )
 
+# Whether or not to use the EfficientNMSPlugin from NVIDIA OSS archive.
+config_setting(
+    name = "use_efficient_nms_plugin",
+    define_values = {"use_efficient_nms_plugin": "1"},
+)
+
+cc_library(
+    name = "efficient_nms_plugin",
+    deps = if_tensorrt([
+        "@tensorrt_oss_archive//:nvinfer_plugin_nms",
+    ]),
+)
+
 cc_library(
     name = "tensorrt_stub",
     srcs = if_tensorrt([
@@ -69,6 +82,10 @@ tf_cuda_cc_test(
     srcs = [
         "tensorrt_test.cc",
     ],
+    extra_copts = select({
+        ":use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
+        "//conditions:default": [],
+    }),
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
@@ -84,8 +101,10 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
         ":tensorrt_lib",
-        "//third_party/tensorrt/plugin:nvinfer_plugin_nms",
-    ]),
+    ]) + select({
+        ":use_efficient_nms_plugin": [":efficient_nms_plugin"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -593,7 +612,7 @@ tf_cuda_library(
         "convert/trt_optimization_pass.h",
     ],
     copts = tf_copts() + select({
-        "@local_config_tensorrt//:use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
+        ":use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
         "//conditions:default": [],
     }),
     deps = [
@@ -636,7 +655,7 @@ tf_cuda_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps() + select({
-        "@local_config_tensorrt//:use_efficient_nms_plugin": ["//third_party/tensorrt/plugin:nvinfer_plugin_nms"],
+        ":use_efficient_nms_plugin": [":efficient_nms_plugin"],
         "//conditions:default": [],
     }),
     alwayslink = 1,
