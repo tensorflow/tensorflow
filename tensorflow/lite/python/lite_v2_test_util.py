@@ -19,7 +19,6 @@ import os
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import zip
 import tensorflow as tf
 
 from tensorflow.lite.python.interpreter import Interpreter

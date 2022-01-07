@@ -36,7 +36,7 @@ def add_intermediate_tensors(model_content):
   return _calibration_wrapper.AddIntermediateTensors(model_content)
 
 
-class Calibrator(object):
+class Calibrator:
   """Calibrates a floating point model and then quantizes it.
 
   This is an internal class, not a public interface.

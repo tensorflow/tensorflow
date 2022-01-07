@@ -20,8 +20,6 @@ import sys
 from unittest import mock
 
 import numpy as np
-import six
-import tensorflow as tf
 
 # Force loaded shared object symbols to be globally visible. This is needed so
 # that the interpreter_wrapper, in one .so file, can see the test_registerer,
@@ -313,7 +311,7 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
   def testInvalidModelContent(self):
     with self.assertRaisesRegex(ValueError,
                                 'Model provided has model identifier \''):
-      interpreter_wrapper.Interpreter(model_content=six.b('garbage'))
+      interpreter_wrapper.Interpreter(model_content=b'garbage')
 
   def testInvalidModelFile(self):
     with self.assertRaisesRegex(ValueError,
@@ -496,8 +494,7 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     destructions = []
 
     def register_destruction(x):
-      destructions.append(
-          x if isinstance(x, str) else six.ensure_text(x, 'utf-8'))
+      destructions.append(x if isinstance(x, str) else x.decode('utf-8'))
       return 0
 
     # Make a wrapper for the callback so we can send this to ctypes
@@ -508,7 +505,7 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
             'testdata/permute_float.tflite'),
         experimental_delegates=[delegate])
 
-    class InterpreterDestroyCallback(object):
+    class InterpreterDestroyCallback:
 
       def __del__(self):
         register_destruction('interpreter')

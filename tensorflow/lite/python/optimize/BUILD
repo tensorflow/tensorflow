@@ -80,6 +80,5 @@ py_test(
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )

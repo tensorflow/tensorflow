@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,8 +23,6 @@ import time
 import warnings
 
 from absl import logging
-import six
-from six import PY2
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
@@ -158,7 +155,7 @@ class Optimize(enum.Enum):
 
 # TODO(b/198099651): move converter implementation out of lite.py
 @_tf_export("lite.RepresentativeDataset")
-class RepresentativeDataset(object):
+class RepresentativeDataset:
   """Representative dataset used to optimize the model.
 
   This is a generator function that provides a small dataset to calibrate or
@@ -182,7 +179,7 @@ class RepresentativeDataset(object):
 
 
 @_tf_export("lite.TargetSpec")
-class TargetSpec(object):
+class TargetSpec:
   """Specification of target device used to optimize the model.
 
   Attributes:
@@ -229,7 +226,7 @@ class TargetSpec(object):
     self._experimental_supported_accumulation_type = None
 
 
-class QuantizationMode(object):
+class QuantizationMode:
   """QuantizationMode determines the quantization type from user options."""
 
   def __init__(self,
@@ -510,7 +507,7 @@ class QuantizationMode(object):
     return False
 
 
-class TFLiteConverterBase(object):
+class TFLiteConverterBase:
   """Converter subclass to share functionality between V1 and V2 converters."""
 
   # Stores the original model type temporarily to transmit the information
@@ -2650,10 +2647,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
             print("Ignore 'tcmalloc: large alloc' warnings.")
 
             if not isinstance(file_content, str):
-              if PY2:
-                file_content = six.ensure_binary(file_content, "utf-8")
-              else:
-                file_content = six.ensure_text(file_content, "utf-8")
+              file_content = file_content.decode("utf-8")
             graph_def = _graph_pb2.GraphDef()
             _text_format.Merge(file_content, graph_def)
           except (_text_format.ParseError, DecodeError):
@@ -2799,7 +2793,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
 
 
 @_tf_export(v1=["lite.TocoConverter"])
-class TocoConverter(object):
+class TocoConverter:
   """Convert a TensorFlow model into `output_format`.
 
   This class has been deprecated. Please use `lite.TFLiteConverter` instead.

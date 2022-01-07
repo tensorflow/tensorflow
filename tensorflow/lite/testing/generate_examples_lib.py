@@ -194,7 +194,7 @@ from tensorflow.lite.testing.op_tests.zeros_like import make_zeros_like_tests
 from tensorflow.lite.testing.zip_test_utils import get_test_function
 
 
-class MultiGenState(object):
+class MultiGenState:
   """State of multiple set generation process.
 
   This state class stores the information needed when generating the examples
@@ -221,7 +221,7 @@ class MultiGenState(object):
     self.parameter_count = 0
 
 
-class Options(object):
+class Options:
   """All options for example generation."""
 
   def __init__(self):

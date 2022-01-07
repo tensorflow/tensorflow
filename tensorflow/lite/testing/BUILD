@@ -132,7 +132,6 @@ py_library(
         "//tensorflow/lite/python:test_util",
         "//tensorflow/python:graph_util",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -185,7 +184,6 @@ py_binary(
         ":zip_test_utils",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

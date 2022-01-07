@@ -22,8 +22,6 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
-import six
-from six.moves import range
 from tensorflow import keras
 
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as metadata_fb
@@ -1592,7 +1590,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     # Check the add node in the inlined function is included.
     func = sess.graph.as_graph_def().library.function[0].signature.name
-    self.assertIn(('add@' + six.ensure_str(func)), converter._debug_info.traces)
+    self.assertIn(('add@' + func), converter._debug_info.traces)
 
   def testOutputOnlyModel(self):
     with ops.Graph().as_default():
@@ -2070,6 +2068,36 @@ class FromSavedModelTest(TestModels):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertAllEqual([1, 16, 16, 3], output_details[0]['shape'])
     self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testOldConverterWarning(self):
+    """Test if the warning message when using TOCO is logged."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+    log = io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    warning_message = 'Please consider switching to the new converter'
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.experimental_new_converter = False
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+    self.assertIn(warning_message, log.getvalue())
+    logging.root.removeHandler(handler)
+
+  def testNewConverterOptOut(self):
+    """Test if the opt out message when using New converter is logged."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+    log = io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    optout_message = ('Using experimental converter: '
+                      'If you encountered a problem')
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+    self.assertIn(optout_message, log.getvalue())
+    logging.root.removeHandler(handler)
 
   def testNoneBatchSize(self):
     """Test a SavedModel, with None in input tensor's shape."""
