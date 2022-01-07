@@ -587,13 +587,29 @@ class CpuAllReduceRendezvous
     }
   }
 
+  template <typename T, bool kIsSignedIntegralType>
+  struct SumProductTypeForReductionStep {
+    using type = T;
+  };
+
+  template <typename T>
+  struct SumProductTypeForReductionStep<T, /*kIsSignedIntegralType=*/true> {
+    using type = typename std::make_unsigned_t<T>;
+  };
+
   template <typename T>
   T PerformReductionStep(xla::ReductionKind reduction_kind, T a, T b) {
+    using SumProductType = typename SumProductTypeForReductionStep<
+        T, std::is_integral<T>::value && std::is_signed<T>::value>::type;
     switch (reduction_kind) {
       case xla::ReductionKind::SUM:
-        return a + b;
+        return absl::bit_cast<T>(
+            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) +
+                                        absl::bit_cast<SumProductType>(b)));
       case xla::ReductionKind::PRODUCT:
-        return a * b;
+        return absl::bit_cast<T>(
+            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) *
+                                        absl::bit_cast<SumProductType>(b)));
       case xla::ReductionKind::MIN:
         return std::min(a, b);
       case xla::ReductionKind::MAX:
