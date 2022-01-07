@@ -39,6 +39,7 @@ namespace data {
 namespace {
 
 const char kAnonymousMultiDeviceIterator[] = "AnonymousMultiDeviceIterator";
+const char kAnonymousMultiDeviceIteratorV3[] = "AnonymousMultiDeviceIteratorV3";
 const char kDevices[] = "devices";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
@@ -575,9 +576,12 @@ class AnonymousMultiDeviceIteratorOp
     : public AnonymousResourceOp<MultiDeviceIterator> {
  public:
   explicit AnonymousMultiDeviceIteratorOp(OpKernelConstruction* ctx)
-      : AnonymousResourceOp<MultiDeviceIterator>(ctx,
-                                                 /* ref_counting */ true,
-                                                 /* return_deleter */ true) {
+      : AnonymousResourceOp<MultiDeviceIterator>(
+            ctx,
+            /* ref_counting */ true,
+            /* Only V1 returns a deleter */
+            /* return_deleter */
+            ctx->def().op() == kAnonymousMultiDeviceIterator) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
@@ -606,6 +610,9 @@ class AnonymousMultiDeviceIteratorOp
 
 REGISTER_KERNEL_BUILDER(Name(kAnonymousMultiDeviceIterator).Device(DEVICE_CPU),
                         AnonymousMultiDeviceIteratorOp);
+REGISTER_KERNEL_BUILDER(
+    Name(kAnonymousMultiDeviceIteratorV3).Device(DEVICE_CPU),
+    AnonymousMultiDeviceIteratorOp);
 
 // Calls init on the MultiDeviceIterator.
 class MultiDeviceIteratorInitOp : public OpKernel {
