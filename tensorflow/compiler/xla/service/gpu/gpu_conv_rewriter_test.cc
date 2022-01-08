@@ -641,23 +641,6 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
                           0));
 }
 
-// Check that a forward convolution instruction with int8_t inputs is not
-// allowed
-TEST_F(GpuConvRewriterTest, TestForwardInt8Convolution) {
-  const std::string module_str = absl::StrFormat(R"(
-    HloModule Test
-
-    ENTRY Test {
-      input = s8[1,2,3,3] parameter(0)
-      filter = s8[3,3,2,5] parameter(1)
-
-      ROOT conv = s8[1,5,3,3] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
-    })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-
-  ASSERT_FALSE(GpuConvRewriter().Run(m.get()).ok());
-}
-
 TEST_F(GpuConvRewriterTest, TestBackwardFilterPattern) {
   const std::string module_str = absl::StrFormat(R"(
     HloModule Test
