@@ -22,6 +22,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <numeric>
 #include <set>
@@ -4948,9 +4949,37 @@ static LogicalResult EliminateRedundantTranspse(TransposeOp op,
   return success();
 }
 
+// transpose(broadcast_in_dim(X)) => broadcast_in_dim(X)
+static LogicalResult EliminateBroadcastInDimTranspose(
+    TransposeOp op, PatternRewriter& rewriter) {
+  auto broadcast_in_dim_op = op.operand().getDefiningOp<BroadcastInDimOp>();
+  if (!broadcast_in_dim_op) {
+    return failure();
+  }
+  DenseIntElementsAttr broadcast_dimensions =
+      broadcast_in_dim_op.broadcast_dimensions();
+  DenseIntElementsAttr permutation = op.permutation();
+  SmallVector<int64_t> new_broadcast_dimensions;
+  for (auto dimension : broadcast_dimensions.getValues<int64_t>()) {
+    int64_t index = 0;
+    for (auto p : permutation.getValues<int64_t>()) {
+      if (p == dimension) {
+        new_broadcast_dimensions.push_back(index);
+        break;
+      }
+      index++;
+    }
+  }
+  rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+      op, op->getResultTypes(), broadcast_in_dim_op.operand(),
+      rewriter.getI64TensorAttr(new_broadcast_dimensions));
+  return success();
+}
+
 void TransposeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                               MLIRContext* /*context*/) {
   results.insert(EliminateRedundantTranspse);
+  results.insert(EliminateBroadcastInDimTranspose);
 }
 
 LogicalResult TransposeOp::reifyReturnTypeShapes(
