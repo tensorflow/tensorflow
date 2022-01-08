@@ -16,7 +16,6 @@
 import abc
 import collections
 import functools
-import glob
 import os
 import threading
 import time
@@ -98,17 +97,6 @@ def get_session():
     if _SESSION_PROVIDER is not None:
       session = _SESSION_PROVIDER()  # pylint: disable=not-callable
   return session
-
-
-def _get_checkpoint_size(prefix):
-  """Calculates filesize of checkpoint based on prefix."""
-  size = 0
-  # Gather all files beginning with prefix (.index plus sharded data files).
-  files = glob.glob("{}*".format(prefix))
-  for file in files:
-    # Use TensorFlow's C++ FileSystem API.
-    size += metrics.CalculateFileSize(file)
-  return size
 
 
 class ObjectGraphProtoPrettyPrinter(object):
@@ -1671,16 +1659,14 @@ class CheckpointV1(tracking.AutoTrackable):
       _END_TIME_OF_LAST_WRITE = end_time
 
     if tensor_util.is_tf_type(output):
-      # Convert to numpy if not `tf.function` building.
       if context.executing_eagerly():
-        output = compat.as_str(output.numpy())
+        return compat.as_str(output.numpy())
+      else:
+        # Function building
+        return output
     else:
       # Graph + Session, so we already session.ran it.
-      output = compat.as_str(output)
-
-    metrics.RecordCheckpointSize(
-        api_label=_CHECKPOINT_V1, filesize=_get_checkpoint_size(output))
-    return output
+      return compat.as_str(output)
 
   @property
   def save_counter(self):
@@ -2132,16 +2118,14 @@ class Checkpoint(tracking.AutoTrackable):
       _END_TIME_OF_LAST_WRITE = end_time
 
     if tensor_util.is_tf_type(output):
-      # Convert to numpy if not `tf.function` building.
       if context.executing_eagerly():
-        output = compat.as_str(output.numpy())
+        return compat.as_str(output.numpy())
+      else:
+        # Function building
+        return output
     else:
       # Graph + Session, so we already session.ran it.
-      output = compat.as_str(output)
-
-    metrics.RecordCheckpointSize(
-        api_label=_CHECKPOINT_V2, filesize=_get_checkpoint_size(output))
-    return output
+      return compat.as_str(output)
 
   @property
   def save_counter(self):

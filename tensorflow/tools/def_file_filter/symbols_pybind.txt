@@ -407,7 +407,6 @@ tensorflow::metrics::SavedModelReadApi
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::TrainingTimeSaved
-tensorflow::metrics::CheckpointSize
 
 
 [//tensorflow/compiler/jit:flags] # tfe

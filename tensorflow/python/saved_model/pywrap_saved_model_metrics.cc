@@ -158,35 +158,6 @@ void DefineMetricsModule(py::module main_module) {
       py::kw_only(), py::arg("api_label"),
       py::doc("Get cell `api_label` for "
               "'/tensorflow/core/checkpoint/write/training_time_saved'."));
-
-  m.def(
-      "CalculateFileSize",
-      [](const char* filename) {
-        Env* env = Env::Default();
-        uint64 filesize;
-        env->GetFileSize(filename, &filesize);
-        return filesize;
-      },
-      py::doc("Calculate filesize for `filename`."));
-
-  m.def(
-      "RecordCheckpointSize",
-      [](const char* api_label, uint64 filesize) {
-        metrics::CheckpointSize(api_label, filesize).IncrementBy(1);
-      },
-      py::kw_only(), py::arg("api_label"), py::arg("filesize"),
-      py::doc("Increment the "
-              "'/tensorflow/core/checkpoint/write/checkpoint_size' counter for "
-              "cell (api_label, filesize) after writing a checkpoint."));
-
-  m.def(
-      "GetCheckpointSize",
-      [](const char* api_label, uint64 filesize) {
-        return metrics::CheckpointSize(api_label, filesize).value();
-      },
-      py::kw_only(), py::arg("api_label"), py::arg("filesize"),
-      py::doc("Get cell (api_label, filesize) for "
-              "'/tensorflow/core/checkpoint/write/checkpoint_size'."));
 }
 
 }  // namespace python
