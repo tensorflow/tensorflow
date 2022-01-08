@@ -1768,38 +1768,6 @@ void Converter::ProvideQuantizationRange(ITensorProxyPtr* tensor,
   }
 }
 
-namespace {
-
-bool IsConvolution(const nvinfer1::ILayer* layer) {
-  return layer->getType() == nvinfer1::LayerType::kCONVOLUTION;
-}
-
-bool IsScale(const nvinfer1::ILayer* layer) {
-  return layer->getType() == nvinfer1::LayerType::kSCALE;
-}
-
-bool IsClipOrRelu(const nvinfer1::ILayer* layer) {
-  if (layer->getType() != nvinfer1::LayerType::kACTIVATION) {
-    return false;
-  }
-  auto activation_type = static_cast<const nvinfer1::IActivationLayer*>(layer)
-                             ->getActivationType();
-
-  return activation_type == nvinfer1::ActivationType::kRELU ||
-         activation_type == nvinfer1::ActivationType::kCLIP;
-}
-
-bool IsAdd(const nvinfer1::ILayer* layer) {
-  if (layer->getType() != nvinfer1::LayerType::kELEMENTWISE) {
-    return false;
-  }
-  auto operation =
-      static_cast<const nvinfer1::IElementWiseLayer*>(layer)->getOperation();
-  return operation == nvinfer1::ElementWiseOperation::kSUM;
-}
-
-}  // namespace
-
 void Converter::MaybeApplyQuantizationRanges() {
   if (precision_mode() != TrtPrecisionMode::INT8) return;
 
