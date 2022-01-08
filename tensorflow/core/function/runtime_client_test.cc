@@ -18,9 +18,11 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "mlir/Parser.h"  // from @llvm-project
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -37,6 +39,24 @@ namespace tensorflow {
 namespace core {
 namespace function {
 namespace {
+
+EagerContextPtr TestingEagerCtx() {
+  SessionOptions opts;
+  std::vector<std::unique_ptr<Device>> devices;
+  Status&& device_init_status = DeviceFactory::AddDevices(
+      opts, "/job:localhost/replica:0/task:0", &devices);
+  CHECK(device_init_status.ok());  // Crash OK
+
+  return EagerContextPtr(new EagerContext(
+      opts, ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /*async=*/false,
+      /*device_mgr=*/new DynamicDeviceMgr(std::move(devices)),
+      /*device_mgr_owned=*/true,
+      /*rendezvous=*/nullptr,
+      /*cluster_flr=*/nullptr,
+      /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/false));
+}
 
 int IntValue(ImmediateExecutionTensorHandle& h) {
   Status status;
@@ -147,9 +167,21 @@ FunctionDef MakeBinaryFunction() {
   return fd;
 }
 
-TEST(CreateTest, Call) {
+TEST(GlobalContext, Basic) {
   Runtime rt(GlobalEagerContext());
-  TF_ASSERT_OK(rt.CreateFunctionProto(MakeNullaryFunction()));
+  TF_ASSERT_OK(rt.CreateFunction(MakeNullaryFunction()));
+
+  StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
+  TF_ASSERT_OK(rets.status());
+  ASSERT_EQ(rets->size(), 1);
+  ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
+  EXPECT_EQ(IntValue(*(rets->at(0))), 1);
+}
+
+TEST(CreateTest, Call) {
+  EagerContextPtr ctx = TestingEagerCtx();
+  Runtime rt(*ctx);
+  TF_ASSERT_OK(rt.CreateFunction(MakeNullaryFunction()));
 
   StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
   TF_ASSERT_OK(rets.status());
@@ -159,8 +191,9 @@ TEST(CreateTest, Call) {
 }
 
 TEST(CreateTest, GetRoundtrip) {
-  Runtime rt(GlobalEagerContext());
-  TF_ASSERT_OK(rt.CreateFunctionProto(MakeNullaryFunction()));
+  EagerContextPtr ctx = TestingEagerCtx();
+  Runtime rt(*ctx);
+  TF_ASSERT_OK(rt.CreateFunction(MakeNullaryFunction()));
 
   StatusOr<FunctionDef> fdef_ret = rt.GetFunctionProto("NullaryFunction");
   TF_ASSERT_OK(fdef_ret.status());
@@ -168,7 +201,7 @@ TEST(CreateTest, GetRoundtrip) {
   FunctionDef fdef = *fdef_ret;
   fdef.mutable_signature()->set_name("SecondFunction");
 
-  TF_ASSERT_OK(rt.CreateFunctionProto(fdef));
+  TF_ASSERT_OK(rt.CreateFunction(fdef));
 
   StatusOr<ReturnValues> rets = rt.CallFunction("SecondFunction", {});
   TF_ASSERT_OK(rets.status());
@@ -177,9 +210,39 @@ TEST(CreateTest, GetRoundtrip) {
   EXPECT_EQ(IntValue(*(rets->at(0))), 1);
 }
 
+TEST(CreateTest, MlirFromGraphDef) {
+  mlir::MLIRContext mctx;
+  mctx.getOrLoadDialect<mlir::tfg::TFGraphDialect>();
+  auto m = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+        module  {
+          tfg.func @NullaryFunction()
+               -> (tensor<i32> {tfg.dtype = i32, tfg.name = "o"})
+           {
+            %Const, %ctl = Const name("retval") {dtype = i32, value = dense<1> : tensor<i32>} : () -> (tensor<i32>)
+            return(%Const) : tensor<i32>
+          }
+        }
+      )mlir",
+      &mctx);
+
+  mlir::tfg::GraphFuncOp fop = *m->body().op_begin<mlir::tfg::GraphFuncOp>();
+
+  EagerContextPtr ectx = TestingEagerCtx();
+  Runtime rt(*ectx);
+  TF_ASSERT_OK(rt.CreateFunction(fop));
+
+  StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
+  TF_ASSERT_OK(rets.status());
+  ASSERT_EQ(rets->size(), 1);
+  ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
+  EXPECT_EQ(IntValue(*(rets->at(0))), 1);
+}
+
 TEST(CallTest, Nullary) {
-  Runtime rt(GlobalEagerContext());
-  TF_ASSERT_OK(rt.CreateFunctionProto(MakeNullaryFunction()));
+  EagerContextPtr ctx = TestingEagerCtx();
+  Runtime rt(*ctx);
+  TF_ASSERT_OK(rt.CreateFunction(MakeNullaryFunction()));
 
   StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
   TF_ASSERT_OK(rets.status());
@@ -189,11 +252,11 @@ TEST(CallTest, Nullary) {
 }
 
 TEST(CallTest, Unary) {
-  EagerContext& ctx = GlobalEagerContext();
-  Runtime rt(ctx);
-  TF_ASSERT_OK(rt.CreateFunctionProto(MakeUnaryFunction()));
+  EagerContextPtr ctx = TestingEagerCtx();
+  Runtime rt(*ctx);
+  TF_ASSERT_OK(rt.CreateFunction(MakeUnaryFunction()));
 
-  auto x = IntScalarTensor(ctx, 1);
+  auto x = IntScalarTensor(*ctx, 1);
   StatusOr<ReturnValues> rets = rt.CallFunction("UnaryFunction", {x.get()});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
@@ -202,12 +265,12 @@ TEST(CallTest, Unary) {
 }
 
 TEST(CallTest, Binary) {
-  EagerContext& ctx = GlobalEagerContext();
-  Runtime rt(ctx);
-  TF_ASSERT_OK(rt.CreateFunctionProto(MakeBinaryFunction()));
+  EagerContextPtr ctx = TestingEagerCtx();
+  Runtime rt(*ctx);
+  TF_ASSERT_OK(rt.CreateFunction(MakeBinaryFunction()));
 
-  auto x = IntScalarTensor(ctx, 1);
-  auto y = IntScalarTensor(ctx, 1);
+  auto x = IntScalarTensor(*ctx, 1);
+  auto y = IntScalarTensor(*ctx, 1);
   StatusOr<ReturnValues> rets =
       rt.CallFunction("BinaryFunction", {x.get(), y.get()});
   TF_ASSERT_OK(rets.status());

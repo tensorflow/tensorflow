@@ -22,12 +22,22 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+namespace mlir {
+namespace tfg {
+// Exports a GraphFunc operation as a new entry in the function library,
+// overwriting any existing functions.
+tensorflow::Status ExportFunction(mlir::tfg::GraphFuncOp func_op,
+                                  tensorflow::FunctionLibraryDefinition &flib);
+}  // namespace tfg
+}  // namespace mlir
 namespace tensorflow {
 
 // Given an MLIR module, returns a newly allocated GraphDef. The module must

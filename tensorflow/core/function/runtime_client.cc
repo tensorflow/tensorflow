@@ -32,6 +32,8 @@ limitations under the License.
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/ir/importexport/export.h"
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -77,10 +79,12 @@ StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
   return *f;
 }
 
-Status Runtime::CreateFunctionProto(FunctionDef fdef) {
-  EagerContext& ctx = this->eager_ctx_;
+Status Runtime::CreateFunction(const FunctionDef& fdef) {
+  return this->eager_ctx_.FuncLibDef()->AddFunctionDef(fdef);
+}
 
-  return ctx.AddFunctionDef(fdef);
+Status Runtime::CreateFunction(mlir::tfg::GraphFuncOp fop) {
+  return mlir::tfg::ExportFunction(fop, *this->eager_ctx_.FuncLibDef());
 }
 
 StatusOr<ReturnValues> Runtime::CallFunction(
