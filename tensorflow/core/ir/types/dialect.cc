@@ -293,6 +293,34 @@ Attribute FuncAttr::parse(AsmParser &parser, Type type) {
                        dict.cast<DictionaryAttr>());
 }
 
+void FuncAttr::walkImmediateSubElements(
+    function_ref<void(Attribute)> walkAttrsFn,
+    function_ref<void(Type)> walkTypesFn) const {
+  // Walk the dictionary attribute first, so that its index is always 0.
+  walkAttrsFn(getAttrs());
+  // Walk the symbol ref attribute if it isn't empty.
+  if (!getName().getRootReference().getValue().empty()) walkAttrsFn(getName());
+}
+
+SubElementAttrInterface FuncAttr::replaceImmediateSubAttribute(
+    ArrayRef<std::pair<size_t, Attribute>> replacements) const {
+  DictionaryAttr attrs = getAttrs();
+  SymbolRefAttr name = getName();
+  for (auto &replacement : replacements) {
+    switch (replacement.first) {
+      case 0:
+        attrs = replacement.second.cast<DictionaryAttr>();
+        break;
+      case 1:
+        name = replacement.second.cast<SymbolRefAttr>();
+        break;
+      default:
+        llvm_unreachable("invalid replacement attribute index");
+    }
+  }
+  return FuncAttr::get(getContext(), name, attrs);
+}
+
 void PlaceholderAttr::print(AsmPrinter &os) const {
   os << "<" << StringAttr::get(getContext(), getValue()) << ">";
 }
