@@ -249,7 +249,9 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
         font_attr_segs={0: [(0, 5, "red")],
                         1: [(0, 7, "blue")]})
 
-    _, file_path = tempfile.mkstemp()  # safe to ignore fd here
+    fd, file_path = tempfile.mkstemp()
+    os.close(fd)  # file opened exclusively, so we need to close this
+    # a better fix would be to make the API take a fd
     screen_output.write_to_file(file_path)
 
     with gfile.Open(file_path, "r") as f:
@@ -926,12 +928,13 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
 class CommandHistoryTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    _, self._history_file_path = tempfile.mkstemp()  # safe to ignore fd here
+    self._fd, self._history_file_path = tempfile.mkstemp()
     self._cmd_hist = debugger_cli_common.CommandHistory(
         limit=3, history_file_path=self._history_file_path)
 
   def tearDown(self):
     if os.path.isfile(self._history_file_path):
+      os.close(self._fd)
       os.remove(self._history_file_path)
 
   def _restoreFileReadWritePermissions(self, file_path):
