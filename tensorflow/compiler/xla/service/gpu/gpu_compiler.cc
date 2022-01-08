@@ -162,6 +162,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -1237,18 +1238,21 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       std::move(compile_module_results.buffer_assignment));
 
   GpuVersion gpu_version = GetGpuVersion(stream_exec);
-  auto* gpu_executable = new GpuExecutable(
-      {std::move(backend_result.first), std::move(backend_result.second),
-       gpu_version, std::move(compile_module_results.thunks_or_bef),
-       compile_module_results.entry_func_attrs,
-       std::move(compile_module_results.constants),
-       std::move(compile_module_results.output_info),
-       compile_module_results.module_name, compile_module_results.output_shape,
-       std::move(compile_module_results.allocations),
-       std::move(buffer_assignment_proto),
-       [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
-       std::move(module), profile_index, std::move(profile_printer),
-       std::move(profile_index_map)});
+  TF_ASSIGN_OR_RETURN(
+      auto gpu_executable,
+      GpuExecutable::Create(
+          {std::move(backend_result.first), std::move(backend_result.second),
+           gpu_version, std::move(compile_module_results.thunks_or_bef),
+           compile_module_results.entry_func_attrs,
+           std::move(compile_module_results.constants),
+           std::move(compile_module_results.output_info),
+           compile_module_results.module_name,
+           compile_module_results.output_shape,
+           std::move(compile_module_results.allocations),
+           std::move(buffer_assignment_proto),
+           [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
+           std::move(module), profile_index, std::move(profile_printer),
+           std::move(profile_index_map)}));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -1268,7 +1272,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
   }
   gpu_executable->set_debug_info(buffer_assignment->GetStats().ToString());
-  return std::unique_ptr<Executable>(gpu_executable);
+  return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
 }
 
 GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
@@ -1426,12 +1430,11 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
                           options, /*debug_module=*/nullptr));
 
   GpuVersion gpu_version = compiler->GetGpuVersion(stream_exec);
-  auto* gpu_executable = new GpuExecutable(
+  return GpuExecutable::Create(
       {std::move(backend_result.first), std::move(backend_result.second),
        gpu_version, std::move(thunk_schedule), entry_func_attrs,
        std::move(ir_emitter_context->constants()), std::move(output_info),
        module_name, output_shape, std::move(allocations)});
-  return std::unique_ptr<Executable>(gpu_executable);
 }
 
 }  // namespace gpu
