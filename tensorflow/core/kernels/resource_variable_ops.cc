@@ -540,10 +540,15 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
-TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Variant>("dtype")
+                            .HostMemory("resource"),
+                        AssignVariableOp<CPUDevice, Variant>);
 
 template <typename Device, typename T, DenseUpdateType Op>
 class AssignUpdateVariableOp : public OpKernel {
