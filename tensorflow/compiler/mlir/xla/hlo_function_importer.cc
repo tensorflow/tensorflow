@@ -132,6 +132,39 @@ void CleanUpTupleOps(mlir::Block* block, mlir::OpBuilder* builder) {
 
 }  // namespace
 
+void HloFunctionImporter::ReplaceBlockArgumentsWithImplicitOperands(
+    mlir::Operation* op, llvm::ArrayRef<mlir::Value> implicit_operands) {
+  assert((mlir::dyn_cast<mlir::mhlo::IfOp>(*op) ||
+          mlir::dyn_cast<mlir::mhlo::CaseOp>(*op)) &&
+         "Unexpected mlir op in "
+         "HloFunctionImporter::ReplaceBlockArgumentsWithImplicitOperands!");
+
+  int implicit_operand_index = 0;
+  for (auto& region : op->getRegions()) {
+    for (auto arg : region.getArguments()) {
+      assert(implicit_operand_index < implicit_operands.size());
+      arg.replaceAllUsesWith(implicit_operands[implicit_operand_index++]);
+    }
+    region.front().eraseArguments(
+        llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
+  }
+}
+
+mlir::Operation* HloFunctionImporter::CreateTupleFromOpResults(
+    mlir::OpBuilder* func_builder, mlir::Location loc, mlir::Operation* op,
+    mlir::Type type) {
+  if (!type.isa<mlir::TupleType>()) return op;
+
+  llvm::SmallVector<Value> flattened_results = op->getResults();
+  llvm::MutableArrayRef<mlir::Value> flattened_results_ref(flattened_results);
+  auto result =
+      CreateTupleValue(func_builder, loc, flattened_results_ref, type);
+  auto defining_tuple_op = result.getDefiningOp<mlir::mhlo::TupleOp>();
+  assert(defining_tuple_op && "builder didn't return the right type");
+  auto tupleOp = defining_tuple_op.getOperation();
+  return tupleOp;
+}
+
 void HloFunctionImporter::FlattenTupleType(
     Type type, llvm::SmallVectorImpl<Type>& flattened_types) {
   auto tuple_type = type.dyn_cast<mlir::TupleType>();
@@ -291,10 +324,6 @@ Status HloFunctionImporter::ImportInstructions(
 
   Value result;
   if (!llvm::isa<FuncOp>(block->getParentOp()) && flatten_region_arg_tuple) {
-    // TODO(sdasgup): The check is relevant only for importing WhileOp. Should
-    // be removed to support the import of others like If/Case.
-    assert(computation.num_parameters() == 1);
-
     // 'effective_arguments' stores the mhlo value corresponding to each
     // computation parameter. The value could be a BlockArgument, if the
     // corresponding computation parameter is non-tuple typed, or a TupleOp,
@@ -304,29 +333,36 @@ Status HloFunctionImporter::ImportInstructions(
     llvm::SmallVector<Type> computation_arg_types;
     TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(),
                                     &computation_arg_types));
+    int flatten_idx = 0;
+    for (Type computation_arg_type : computation_arg_types) {
+      auto orig_tuple_arg_type =
+          computation_arg_type.dyn_cast<mlir::TupleType>();
 
-    auto orig_tuple_arg_type =
-        computation_arg_types[0].dyn_cast<mlir::TupleType>();
+      // If the computation-parameter type is non-tuple, no action is needed.
+      if (!orig_tuple_arg_type) {
+        effective_arguments.push_back(arguments[flatten_idx]);
+        flatten_idx++;
+        continue;
+      }
 
-    // If the computation-parameter type is non-tuple, no action is needed.
-    // For each tuple-typed computation parameter, create a mhlo::TupleOp
-    // value in the region body, using the already flattened values in
-    // 'arguments'. For example: With computation parameters: [tuple<T1>,
-    // tuple<T2, T4>] We have, 'arguments' = [T1 arg1, T2 arg2, T3 arg3] and
-    // we need to create two tuples tuples, one using arg1, and the other
-    // using arg2 and arg3.
-    if (!orig_tuple_arg_type) {
-      effective_arguments.push_back(arguments[0]);
-    } else {
+      // For each tuple-typed computation parameter, create a mhlo::TupleOp
+      // value in the region body, using the already flattened values in
+      // 'arguments'. For example: With computation parameters: [tuple<T1>,
+      // tuple<T2, T4>] We have, 'arguments' = [T1 arg1, T2 arg2, T3 arg3] and
+      // we need to create two tuples tuples, one using arg1, and the other
+      // using arg2 and arg3.
       llvm::SmallVector<Type> flattened_arg_type;
       FlattenTupleType(orig_tuple_arg_type, flattened_arg_type);
 
       llvm::MutableArrayRef<Value> sub_args(
-          arguments.begin(), arguments.begin() + flattened_arg_type.size());
+          arguments.begin() + flatten_idx,
+          arguments.begin() + flatten_idx + flattened_arg_type.size());
 
       auto tupleVal =
           CreateTupleValue(&builder, loc, sub_args, orig_tuple_arg_type);
       effective_arguments.push_back(tupleVal);
+
+      flatten_idx += flattened_arg_type.size();
     }
 
     TF_ASSIGN_OR_RETURN(
@@ -744,6 +780,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kConditional: {
       llvm::SmallVector<Type, 4> rets;
+
+      // Flatten the tuple-typed operands.
+      llvm::SmallVector<Value> flattened_operands;
+      for (auto& operand : operands)
+        FlattenTupleValue(func_builder, loc, operand, flattened_operands);
+
+      // If/Case Op has a single operand; we collect the other operands to
+      // replace the corresponding block arguments.
+      llvm::ArrayRef<Value> implicit_operands(flattened_operands.begin() + 1,
+                                              flattened_operands.end());
+
       mlir::Type pred_or_index_type =
           operands[0].getType().cast<mlir::TensorType>().getElementType();
       // It is a predicated conditional if first argument is a boolean and
@@ -752,13 +799,27 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         TF_RETURN_IF_ERROR(GetMlirTypes(
             {instruction->true_computation()->root_instruction()}, &rets));
 
-        auto op = func_builder->create<mlir::mhlo::IfOp>(loc, rets, operands,
-                                                         attributes);
+        // Flatten the return-type.
+        llvm::SmallVector<Type> flattened_ret_types;
+        assert(rets.size() == 1);
+        FlattenTupleType(rets[0], flattened_ret_types);
+
+        auto op = func_builder->create<mlir::mhlo::IfOp>(
+            loc, flattened_ret_types, flattened_operands[0], attributes);
         TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->true_computation(),
-                                          &op.true_branch()));
+                                          &op.true_branch(),
+                                          /*flatten_region_arg_tuple=*/true));
         TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->false_computation(),
-                                          &op.false_branch()));
-        return op.getOperation();
+                                          &op.false_branch(),
+                                          /*flatten_region_arg_tuple=*/true));
+
+        // Replace the uses of block-arguments of the IfOp with the
+        // implicit_operands.
+        ReplaceBlockArgumentsWithImplicitOperands(op.getOperation(),
+                                                  implicit_operands);
+
+        return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                        rets[0]);
       }
 
       // Otherwise, it is a indexed conditional and should be mapped to Case
@@ -766,16 +827,30 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       TF_RETURN_IF_ERROR(GetMlirTypes(
           {instruction->branch_computation(0)->root_instruction()}, &rets));
 
+      // Flatten the return-type.
+      llvm::SmallVector<Type> flattened_ret_types;
+      assert(rets.size() == 1);
+      FlattenTupleType(rets[0], flattened_ret_types);
+
       int num_branches = instruction->branch_count();
       auto op = func_builder->create<mlir::mhlo::CaseOp>(
-          loc, rets, operands, attributes, num_branches);
+          loc, flattened_ret_types, flattened_operands[0], attributes,
+          num_branches);
       for (const auto& index_and_computation :
            llvm::enumerate(instruction->branch_computations())) {
         auto index = index_and_computation.index();
         HloComputation* computation = index_and_computation.value();
-        TF_RETURN_IF_ERROR(ImportAsRegion(*computation, &op.branches()[index]));
+        TF_RETURN_IF_ERROR(ImportAsRegion(*computation, &op.branches()[index],
+                                          /*flatten_region_arg_tuple=*/true));
       }
-      return op.getOperation();
+
+      // Replace the uses of block-arguments of the CaseOp with the
+      // implicit_operands.
+      ReplaceBlockArgumentsWithImplicitOperands(op.getOperation(),
+                                                implicit_operands);
+
+      return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                      rets[0]);
     }
     case HloOpcode::kConcatenate: {
       // TODO(b/132057942): Support taking an uint64_t instead of an
@@ -923,21 +998,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                         /*flatten_region_arg_tuple=*/true));
       TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->while_body(), &op.body(),
                                         /*flatten_region_arg_tuple=*/true));
-      auto* operation = op.getOperation();
-
-      if (operands[0].getType().isa<mlir::TupleType>()) {
-        llvm::SmallVector<Value> flattened_results = operation->getResults();
-        llvm::MutableArrayRef<mlir::Value> flattened_results_ref(
-            flattened_results);
-        auto result = CreateTupleValue(func_builder, loc, flattened_results_ref,
-                                       operands[0].getType());
-        auto defining_tuple_op = result.getDefiningOp<mlir::mhlo::TupleOp>();
-        assert(defining_tuple_op && "builder didn't return the right type");
-        auto tupleOp = defining_tuple_op.getOperation();
-        return tupleOp;
-      }
-
-      return operation;
+      return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                      operands[0].getType());
     }
     case HloOpcode::kGetTupleElement: {
       attributes.push_back(builder_->getNamedAttr(

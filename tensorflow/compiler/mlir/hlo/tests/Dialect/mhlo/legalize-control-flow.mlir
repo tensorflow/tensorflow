@@ -71,24 +71,20 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
   // CHECK:   [[VAL1:%.+]] = tensor.extract [[VAL0]][] : tensor<i1>
-  // CHECK:   cond_br [[VAL1]], ^bb1(%arg0 : tensor<f32>), ^bb2(%arg0 : tensor<f32>)
-  %1 = "mhlo.if"(%0, %arg0, %arg0) ( {
+  // CHECK:   cond_br [[VAL1]], ^bb1, ^bb2
+  %1 = "mhlo.if"(%0) ( {
 
-  ^bb0(%arg1: tensor<f32>):
-    // CHECK: ^bb1([[VAL2:%.+]]: tensor<f32>):
-    // CHECK:   [[VAL3:%.+]] = "mhlo.log"([[VAL2]]) : (tensor<f32>) -> tensor<f32>
+    // CHECK:   [[VAL3:%.+]] = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
     // CHECK:   br ^bb3([[VAL3]] : tensor<f32>)
-    %2 = "mhlo.log"(%arg1) : (tensor<f32>) -> tensor<f32>
+    %2 = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   },  {
 
-  ^bb0(%arg1: tensor<f32>):
-    // CHECK: ^bb2([[VAL4:%.+]]: tensor<f32>):
-    // CHECK:   [[VAL5:%.+]] = "mhlo.exponential"([[VAL4]]) : (tensor<f32>) -> tensor<f32>
+    // CHECK:   [[VAL5:%.+]] = "mhlo.exponential"(%arg0) : (tensor<f32>) -> tensor<f32>
     // CHECK:   br ^bb3([[VAL5]] : tensor<f32>)
-    %2 = "mhlo.exponential"(%arg1) : (tensor<f32>) -> tensor<f32>
+    %2 = "mhlo.exponential"(%arg0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
-  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  }) : (tensor<i1>) -> tensor<f32>
 
   // CHECK: ^bb3([[VAL6:%.+]]: tensor<f32>):
   // CHECK:   return [[VAL6]] : tensor<f32>
@@ -112,15 +108,13 @@ func @case2(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>) -
   // CHECK: ^bb3(%[[RESULT:.*]]: tensor<4xf32>):
   // CHECK-NOT: mhlo.case
   // CHECK:   return %[[RESULT]]
-  %1 = "mhlo.case"(%arg0, %arg1, %arg2) ( {
-    ^bb0(%phi0 : tensor<4xf32>):
-      %2 = "mhlo.log"(%phi0) : (tensor<4xf32>) -> tensor<4xf32>
+  %1 = "mhlo.case"(%arg0) ( {
+      %2 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%2) : (tensor<4xf32>) -> ()
   }, {
-    ^bb0(%phi1 : tensor<4xf32>):
-      %3 = "mhlo.exponential"(%phi1) : (tensor<4xf32>) -> tensor<4xf32>
+      %3 = "mhlo.exponential"(%arg2) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%3) : (tensor<4xf32>) -> ()
-  }) : (tensor<i32>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  }) : (tensor<i32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
 }
 
@@ -139,19 +133,16 @@ func @case3(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>, %
   // CHECK:   %[[C1:.*]] = arith.constant 1 : i32
   // CHECK:   %[[PRED1:.*]] = arith.cmpi eq, %{{.*}}, %c1_i32 : i32
   // CHECK:   cond_br %[[PRED1]], ^bb3, ^bb4
-  %1 = "mhlo.case"(%arg0, %arg1, %arg2, %arg3) ( {
-    ^bb0(%phi0 : tensor<4xf32>):
-      %2 = "mhlo.log"(%phi0) : (tensor<4xf32>) -> tensor<4xf32>
+  %1 = "mhlo.case"(%arg0) ( {
+      %2 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%2) : (tensor<4xf32>) -> ()
   }, {
-    ^bb0(%phi1 : tensor<4xf32>):
-      %3 = "mhlo.exponential"(%phi1) : (tensor<4xf32>) -> tensor<4xf32>
+      %3 = "mhlo.exponential"(%arg2) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%3) : (tensor<4xf32>) -> ()
   }, {
-    ^bb0(%phi2 : tensor<4xf32>):
-      %3 = "mhlo.floor"(%phi2) : (tensor<4xf32>) -> tensor<4xf32>
+      %3 = "mhlo.floor"(%arg3) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%3) : (tensor<4xf32>) -> ()
-  }) : (tensor<i32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  }) : (tensor<i32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
 }
 
@@ -163,10 +154,9 @@ func @case0(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> {
   // CHECK:   br ^bb2(%[[BR0_RESULT]] : tensor<4xf32>)
   // CHECK: ^bb2(%[[RESULT:.*]]: tensor<4xf32>):
   // CHECK:   return %[[RESULT]]
-  %1 = "mhlo.case"(%arg0, %arg1) ( {
-    ^bb0(%phi0 : tensor<4xf32>):
-      %2 = "mhlo.log"(%phi0) : (tensor<4xf32>) -> tensor<4xf32>
+  %1 = "mhlo.case"(%arg0) ( {
+      %2 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%2) : (tensor<4xf32>) -> ()
-  }) : (tensor<i32>, tensor<4xf32>) -> tensor<4xf32>
+  }) : (tensor<i32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
 }

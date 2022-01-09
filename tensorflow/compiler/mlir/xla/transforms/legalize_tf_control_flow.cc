@@ -67,6 +67,27 @@ void Detuple(Value tuple, ValueRange replace, OpBuilder* builder) {
   }
 }
 
+// For mlir::IfOp or mlir::CaseOp, replace the uses of their region's block
+// arguments with 'implicit_operands'. Here | 'implicit_operands' | == Number of
+// arguments in any of the regions in IfOp or CaseOp.
+void ReplaceBlockArgumentsWithImplicitOperands(
+    mlir::Operation* op, llvm::ArrayRef<mlir::Value> implicit_operands) {
+  assert((mlir::dyn_cast<mlir::mhlo::IfOp>(*op) ||
+          mlir::dyn_cast<mlir::mhlo::CaseOp>(*op)) &&
+         "Unexpected mlir op in ReplaceBlockArgumentsWithImplicitOperands!");
+
+  for (auto& region : op->getRegions()) {
+    int implicit_operand_index = 0;
+    for (auto arg : region.getArguments()) {
+      assert(implicit_operand_index < implicit_operands.size());
+      arg.replaceAllUsesWith(implicit_operands[implicit_operand_index++]);
+    }
+
+    region.front().eraseArguments(
+        llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
+  }
+}
+
 // Imports the source region into the destination region. MHLO supports
 // multiple arguments per branch and multiple returns which are individually
 // tupled together during export to XLA. This tupling is needed as XLA if/while
@@ -110,24 +131,24 @@ void LowerIf(TF::IfOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  // XLA prefers tuple arguments for control flow due to XLA not supporting
-  // multiple return values.
   SmallVector<Value, 3> inputs(op.input());
-  auto tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
 
-  // Create the new `mhlo.if` op with tuple inputs.
-  auto result_type = builder.getTupleType(op.getResultTypes());
-  auto if_op = builder.create<mhlo::IfOp>(loc, result_type, op.cond(),
-                                          tuple_input, tuple_input);
+  // Create the new `mhlo.if` op.
+  auto if_op = builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.cond());
 
   // Import the regions for both the true and false cases. These regions
   // must be updated to tuple the return results together and use the xla hlo
   // return op.
-  ImportXlaRegion(op.then_function(), &if_op.true_branch(), loc);
-  ImportXlaRegion(op.else_function(), &if_op.false_branch(), loc);
+  ImportXlaRegion(op.then_function(), &if_op.true_branch(), loc,
+                  /*tuple_return=*/false, /*tuple_arg=*/false);
+  ImportXlaRegion(op.else_function(), &if_op.false_branch(), loc,
+                  /*tuple_return=*/false, /*tuple_arg=*/false);
 
-  // De-tuple the results of the `mhlo.if`.
-  Detuple(if_op.getResult(), op.getResults(), &builder);
+  // Replace the uses of block-arguments of the IfOp with the
+  // implicit_operands.
+  ReplaceBlockArgumentsWithImplicitOperands(if_op.getOperation(), inputs);
+
+  op->replaceAllUsesWith(if_op);
   op.erase();
 }
 
@@ -135,27 +156,24 @@ void LowerCase(TF::CaseOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  // XLA requires one argument per branch so we create a tuple of inputs to pass
-  // to each branch.
   SmallVector<Value, 4> inputs(op.input());
-  auto tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
 
-  // Create replica of input tuple for each branch
-  SmallVector<Value, 4> n_tuple_inputs(op.num_branches(), tuple_input);
-
-  // Create the new `mhlo.case` op with tuple inputs.
-  auto case_op =
-      builder.create<mhlo::CaseOp>(loc, op.getResultTypes(), op.branch_index(),
-                                   n_tuple_inputs, op.branches().size());
+  // Create the new `mhlo.case` op.
+  auto case_op = builder.create<mhlo::CaseOp>(
+      loc, op.getResultTypes(), op.branch_index(), op.branches().size());
 
   // Import the regions for all branches.
   for (unsigned i = 0; i < op.num_branches(); ++i) {
     mlir::FuncOp branch_func = op.branch_function(i);
     ImportXlaRegion(branch_func, &case_op.branches()[i], loc,
-                    /*tuple_return=*/false);
+                    /*tuple_return=*/false, /*tuple_arg=*/false);
   }
 
-  op.replaceAllUsesWith(case_op.getResults());
+  // Replace the uses of block-arguments of the IfOp with the
+  // implicit_operands.
+  ReplaceBlockArgumentsWithImplicitOperands(case_op.getOperation(), inputs);
+
+  op.replaceAllUsesWith(case_op);
   op.erase();
 }
 
@@ -289,26 +307,24 @@ void LowerIfRegion(TF::IfRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  // Tuple implicit inputs per region and update terminators to return tuples.
   builder.setInsertionPoint(op);
-  Value then_input = TupleImplicitInputs(op.then_branch(), loc, &builder);
-  ReplaceTerminator(&op.then_branch().front(), /*extra_results=*/{}, &builder);
+  ReplaceTerminator(&op.then_branch().front(), /*extra_results=*/{}, &builder,
+                    /*tuple_return=*/false);
 
   builder.setInsertionPoint(op);
-  Value else_input = TupleImplicitInputs(op.else_branch(), loc, &builder);
-  ReplaceTerminator(&op.else_branch().front(), /*extra_results=*/{}, &builder);
+  ReplaceTerminator(&op.else_branch().front(), /*extra_results=*/{}, &builder,
+                    /*tuple_return=*/false);
 
-  // Create the new `mhlo.if` op with tuple inputs and take ownership of regions
-  // from `tf.IfRegion` op.
+  // Create the new `mhlo.if` op and take ownership of regions from
+  // `tf.IfRegion` op.
   builder.setInsertionPoint(op);
-  auto result_type = builder.getTupleType(op.getResultTypes());
-  auto if_op = builder.create<mhlo::IfOp>(loc, result_type, op.cond(),
-                                          then_input, else_input);
+  auto if_op = builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.cond());
   if_op.true_branch().takeBody(op.then_branch());
   if_op.false_branch().takeBody(op.else_branch());
 
-  // De-tuple the results of the `mhlo.if`.
-  Detuple(if_op.getResult(), op.getResults(), &builder);
+  // Replace all uses of `op` results with that of `mhlo.IfOp`.
+  op->replaceAllUsesWith(if_op);
+
   op.erase();
 }
 
@@ -316,27 +332,22 @@ void LowerCaseRegion(TF::CaseRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  llvm::SmallVector<Value, 4> branch_inputs;
-  branch_inputs.reserve(op.branches().size());
-  // Tuple implicit inputs per region and update terminators.
   for (Region& region : op.branches()) {
     builder.setInsertionPoint(op);
-    Value branch_input = TupleImplicitInputs(region, loc, &builder);
-    branch_inputs.emplace_back(branch_input);
     ReplaceTerminator(&region.front(), /*extra_results=*/{}, &builder,
                       /*tuple_return=*/false);
   }
 
-  // Create the new `mhlo.case` op with tuple inputs and take ownership of
-  // regions from `tf.CaseRegion` op.
+  // Create the new `mhlo.case` op and take ownership of regions from
+  // `tf.CaseRegion` op.
   builder.setInsertionPoint(op);
-  auto case_op =
-      builder.create<mhlo::CaseOp>(loc, op.getResultTypes(), op.branch_index(),
-                                   branch_inputs, branch_inputs.size());
+  auto case_op = builder.create<mhlo::CaseOp>(
+      loc, op.getResultTypes(), op.branch_index(), op.branches().size());
   for (auto region : llvm::zip(case_op.branches(), op.branches()))
     std::get<0>(region).takeBody(std::get<1>(region));
 
-  op.replaceAllUsesWith(case_op.getResults());
+  // Replace all uses of `op` results with that of `mhlo.CaseOp`.
+  op.replaceAllUsesWith(case_op);
   op.erase();
 }
 
@@ -344,8 +355,6 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  // XLA prefers tuple arguments for control flow due to XLA not supporting
-  // multiple return values.
   SmallVector<Value, 3> inputs(op.input());
   const int inputs_size = inputs.size();
   llvm::SetVector<Value> implicit_inputs;

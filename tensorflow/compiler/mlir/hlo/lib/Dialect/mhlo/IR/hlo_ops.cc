@@ -4115,22 +4115,14 @@ LogicalResult ReplicaIdOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult VerifyConditionalBranch(Operation* op, Region& region,
-                                             Value operand,
-                                             llvm::Twine branchName,
-                                             llvm::Twine operandName) {
-  mlir::Block& entryBlock = region.front();
-  if (entryBlock.getNumArguments() != 1)
+                                             llvm::Twine branchName) {
+  if (region.getNumArguments() != 0)
     return op->emitOpError()
-           << branchName << " block should have single argument, but found "
-           << entryBlock.getNumArguments();
+           << branchName << " must have 0 arguments, but found "
+           << region.getNumArguments();
 
-  Type operandType = operand.getType();
-  Type branchArgType = entryBlock.getArgument(0).getType();
-  if (branchArgType != operandType)
-    return op->emitOpError()
-           << operandName << " type (" << operandType << ") does not match "
-           << branchName << " block arg type (" << branchArgType << ")";
-  TypeRange branchReturnTypes = entryBlock.getTerminator()->getOperandTypes();
+  TypeRange branchReturnTypes =
+      region.front().getTerminator()->getOperandTypes();
   if (branchReturnTypes != op->getResultTypes())
     return op->emitOpError()
            << branchName << " returned types (" << branchReturnTypes
@@ -4140,15 +4132,13 @@ static LogicalResult VerifyConditionalBranch(Operation* op, Region& region,
 }
 
 static LogicalResult Verify(IfOp op) {
-  if (failed(VerifyConditionalBranch(op, op.true_branch(), op.true_arg(),
-                                     /*branchName=*/"true_branch",
-                                     /*operandName=*/"true_arg"))) {
+  if (failed(VerifyConditionalBranch(op, op.true_branch(),
+                                     /*branchName=*/"true_branch"))) {
     return failure();
   }
 
-  if (failed(VerifyConditionalBranch(op, op.false_branch(), op.false_arg(),
-                                     /*branchName=*/"false_branch",
-                                     /*operandName=*/"false_arg"))) {
+  if (failed(VerifyConditionalBranch(op, op.false_branch(),
+                                     /*branchName=*/"false_branch"))) {
     return failure();
   }
   return success();
@@ -4160,9 +4150,9 @@ static LogicalResult InlineIfConstantCondition(IfOp ifOp,
   if (!matchPattern(ifOp.pred(), m_Constant(&pred_attr))) return failure();
 
   if (pred_attr.getSplatValue<BoolAttr>().getValue()) {
-    ReplaceOpWithRegion(rewriter, ifOp, ifOp.true_branch(), ifOp.true_arg());
+    ReplaceOpWithRegion(rewriter, ifOp, ifOp.true_branch());
   } else {
-    ReplaceOpWithRegion(rewriter, ifOp, ifOp.false_branch(), ifOp.false_arg());
+    ReplaceOpWithRegion(rewriter, ifOp, ifOp.false_branch());
   }
   return success();
 }
@@ -4178,16 +4168,10 @@ void IfOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 
 static LogicalResult Verify(CaseOp op) {
   auto num_branches = op.branches().size();
-  if (op.branch_operands().size() != num_branches)
-    return op.emitOpError() << " number of branches (" << num_branches
-                            << ") does not match number of branch operands ("
-                            << op.branch_operands().size() << ")";
 
   for (unsigned i = 0; i < num_branches; ++i)
-    if (failed(VerifyConditionalBranch(
-            op, op.branches()[i], op.branch_operands()[i],
-            /*branchName=*/"branch " + Twine(i),
-            /*operandName=*/"branch_operand " + Twine(i))))
+    if (failed(VerifyConditionalBranch(op, op.branches()[i],
+                                       /*branchName=*/"branch " + Twine(i))))
       return failure();
 
   return success();
@@ -4208,8 +4192,7 @@ static LogicalResult InlineCaseConstantCondition(CaseOp caseOp,
 
   Region& region = caseOp.getRegion(index);
   if (!llvm::hasSingleElement(region)) return failure();
-  ReplaceOpWithRegion(rewriter, caseOp, region,
-                      caseOp.branch_operands()[index]);
+  ReplaceOpWithRegion(rewriter, caseOp, region);
   return success();
 }
 

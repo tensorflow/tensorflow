@@ -35,27 +35,19 @@ func @sink_const_to_conditional(%arg0: tensor<i64>) -> tensor<i64> {
   %c0 = mhlo.constant dense<1> : tensor<i64>
   %c1 = mhlo.constant dense<2> : tensor<i64>
   %0 = "mhlo.compare"(%arg0, %c0) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
-  %1 = "mhlo.tuple"(%arg0) : (tensor<i64>) -> tuple<tensor<i64>>
   // CHECK: mhlo.if
-  %2 = "mhlo.if"(%0, %1, %1) ( {
-  ^bb0(%arg1: tuple<tensor<i64>>):
+  %2 = "mhlo.if"(%0) ( {
     // CHECK: %[[C0:.+]] = mhlo.constant dense<1> : tensor<i64>
-    %3 = "mhlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<i64>>) -> tensor<i64>
     // CHECK: %[[ADD0:.+]] = mhlo.add %[[C0]],
-    %4 = mhlo.add %c0, %3 : tensor<i64>
-    %5 = "mhlo.tuple"(%4) : (tensor<i64>) -> tuple<tensor<i64>>
-    "mhlo.return"(%5) : (tuple<tensor<i64>>) -> ()
+    %3 = mhlo.add %c0, %arg0 : tensor<i64>
+    "mhlo.return"(%3) : (tensor<i64>) -> ()
   },  {
-  ^bb0(%arg1: tuple<tensor<i64>>):
     // CHECK: %[[C1:.+]] = mhlo.constant dense<2> : tensor<i64>
-    %6 = "mhlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<i64>>) -> tensor<i64>
     // CHECK: %[[ADD1:.+]] = mhlo.add %[[C1]],
-    %7 = mhlo.add %c1, %6 : tensor<i64>
-    %8 = "mhlo.tuple"(%7) : (tensor<i64>) -> tuple<tensor<i64>>
-    "mhlo.return"(%8) : (tuple<tensor<i64>>) -> ()
-  }) : (tensor<i1>, tuple<tensor<i64>>, tuple<tensor<i64>>) -> tuple<tensor<i64>>
-  %9 = "mhlo.get_tuple_element"(%2) {index = 0 : i32} : (tuple<tensor<i64>>) -> tensor<i64>
-  return %9 : tensor<i64>
+    %4 = mhlo.add %c1, %arg0 : tensor<i64>
+    "mhlo.return"(%4) : (tensor<i64>) -> ()
+  }) : (tensor<i1>) -> tensor<i64>
+  return %2 : tensor<i64>
 }
 
 func @sink_const_to_sort(%arg0: tensor<16xf32>) {

@@ -84,17 +84,17 @@ void LowerIfOp(mlir::mhlo::IfOp if_op) {
   // Extract the predicate for checking branching, then branch to the true and
   // false regions appropriately.
   auto cond_value = builder.create<mlir::tensor::ExtractOp>(loc, if_op.pred());
-  builder.create<mlir::CondBranchOp>(loc, cond_value, true_block,
-                                     if_op.true_arg(), false_block,
-                                     if_op.false_arg());
+  builder.create<mlir::CondBranchOp>(loc, cond_value, true_block, ValueRange{},
+                                     false_block, ValueRange{});
 
   // Replace the true case's return operations with a branch to the tail of
   // the condition.
   ReplaceTerminators(&if_op.true_branch(), tail_block, loc, mapper, &builder);
   ReplaceTerminators(&if_op.false_branch(), tail_block, loc, mapper, &builder);
 
-  tail_block->addArguments(if_op.getResult().getType());
-  if_op.getResult().replaceAllUsesWith(tail_block->getArgument(0));
+  tail_block->addArguments(if_op.getResultTypes());
+  for (auto it : llvm::zip(if_op.getResults(), tail_block->getArguments()))
+    std::get<0>(it).replaceAllUsesWith(std::get<1>(it));
 
   op_inst->erase();
 }
@@ -260,16 +260,12 @@ void LowerCaseOp(mlir::mhlo::CaseOp case_op) {
   // go.
   SmallVector<Block*> branch_blocks;
   branch_blocks.reserve(branch_count);
-  for (auto it : llvm::zip(case_op.branches(), case_op.branch_operands())) {
-    Region& branch_region = std::get<0>(it);
-    Value incoming_branch_operand = std::get<1>(it);
+  for (Region& branch_region : case_op.branches()) {
     Block* branch_block = &branch_region.front();
 
     // Move the existing branch block in and replace its argument with the
     // incoming (outer) value.
     branch_block->moveBefore(tail_block);
-    branch_block->getArgument(0).replaceAllUsesWith(incoming_branch_operand);
-    branch_block->eraseArgument(0);
 
     // Replace return terminator with a branch to the tail block.
     auto return_op = dyn_cast<mhlo::ReturnOp>(branch_block->getTerminator());
