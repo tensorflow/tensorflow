@@ -813,6 +813,36 @@ TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
   EXPECT_THAT(false_result->opcode(), HloOpcode::kCopy);
 }
 
+TEST_F(LayoutAssignmentTest, LayoutAssignmentToTupleSiblingOperand) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  true_branch {
+    tparam = (f64[2,3], f64[2,3]) parameter(0)
+    ROOT tgte = f64[2,3] get-tuple-element(tparam), index=1
+  }
+
+  false_branch {
+    ROOT Arg = f64[2,3] parameter(0)
+  }
+
+  ENTRY entry {
+    p0 = (f64[2,3], f64[2,3])  parameter(0)
+    p1 = f64[2,3] parameter(1)
+    constant = pred[] constant(true)
+    ROOT conditional = f64[2,3] conditional(constant, p0, p1),
+      true_computation=true_branch, false_computation=false_branch
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  LayoutAssignment layout_assignment(&computation_layout);
+  Status error_status = layout_assignment.Run(m.get()).status();
+  EXPECT_TRUE(error_status.ok());
+}
+
 TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   auto builder = HloComputation::Builder(TestName());
   auto constant0 = builder.AddInstruction(

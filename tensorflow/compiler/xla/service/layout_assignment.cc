@@ -2409,7 +2409,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
-    case HloOpcode::kConditional:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kAllGather:
@@ -2482,6 +2481,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCall:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kConditional:
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
     case HloOpcode::kCopy:
