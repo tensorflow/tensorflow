@@ -1900,13 +1900,23 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kBroadcast: {
-      optional<std::vector<int64_t>> broadcast_dimensions;
-      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
-                             &broadcast_dimensions};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
-          !ParseAttributes(attrs, allow_attributes)) {
+      if (!ParseOperands(&operands, builder, /*expected_size=*/1)) {
         return false;
       }
+
+      // The `dimensions` attr is optional if the broadcasted operand is a
+      // scalar; in that case we can infer it to be {}.
+      bool operand_is_scalar = ShapeUtil::IsScalar(operands[0]->shape());
+      optional<std::vector<int64_t>> broadcast_dimensions;
+      attrs["dimensions"] = {/*required=*/!operand_is_scalar,
+                             AttrTy::kBracedInt64List, &broadcast_dimensions};
+      if (!ParseAttributes(attrs, allow_attributes)) {
+        return false;
+      }
+      if (operand_is_scalar && !broadcast_dimensions.has_value()) {
+        broadcast_dimensions.emplace();
+      }
+
       if (!maybe_infer_shape(
               [&] {
                 return ShapeInference::InferBroadcastShape(

@@ -2144,6 +2144,22 @@ ENTRY test {
   ROOT root = (f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(add, add.anon, add)
 })"
 },
+
+{
+"BroadcastOfScalarDoesntNeedDimensionsAttr",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = sqrt(f32[10,10] broadcast(f32[] parameter(0)))
+})",
+R"(HloModule test
+
+ENTRY test {
+  parameter.anon = f32[] parameter(0)
+  broadcast.anon = f32[10,10]{1,0} broadcast(parameter.anon), dimensions={}
+  ROOT root = f32[10,10]{1,0} sqrt(broadcast.anon)
+})"
+},
 });
   // clang-format on
 }
