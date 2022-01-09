@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 40500
 
 #include <numeric>
 #include <type_traits>
@@ -120,6 +120,16 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
       conj(device, const_cast<Tensor*>(&input)->flat<Scalar>() /*out*/,
            input.flat<Scalar>() /*in*/);
     }
+
+#if GOOGLE_CUDA
+    cublasFillMode_t fill = CUBLAS_FILL_MODE_UPPER;
+    cusolverEigMode_t jobz =
+        compute_v_ ? CUSOLVER_EIG_MODE_VECTOR : CUSOLVER_EIG_MODE_NOVECTOR;
+#elif TENSORFLOW_USE_ROCM
+    hipsolverFillMode_t fill = HIPSOLVER_FILL_MODE_UPPER;
+    hipsolverEigMode_t jobz =
+        compute_v_ ? HIPSOLVER_EIG_MODE_VECTOR : HIPSOLVER_EIG_MODE_NOVECTOR;
+#endif
 
     // Compute eigen decomposition in-place in input_copy.
     std::vector<DeviceLapackInfo> dev_info;
