@@ -103,9 +103,6 @@ class GpuExecutable : public Executable {
     };
 
     std::unique_ptr<HloModule> debug_module = nullptr;
-    size_t entry_computation_profile_index = 0;
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map = nullptr;
   };
 
   // TODO(hanbinyoon): Once BEF replaces Thunks, hide this method as an
@@ -240,8 +237,6 @@ class GpuExecutable : public Executable {
 
   std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
   std::function<std::string()> verbose_buffer_assignment_string_dumper_;
-
-  size_t entry_computation_profile_index_ = -1;
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.

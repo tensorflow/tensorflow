@@ -848,8 +848,7 @@ static Status CompileModuleToLlvmIrImpl(
     const std::string& platform_name, GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
-    int pointer_size, const HloProfileIndexMap* profile_index_map,
-    CompileModuleResults* results) {
+    int pointer_size, CompileModuleResults* results) {
   results->llvm_module = absl::make_unique<llvm::Module>("", *llvm_context);
   results->llvm_module->setTargetTriple(target_triple);
   results->llvm_module->setDataLayout(data_layout);
@@ -909,8 +908,8 @@ static Status CompileModuleToLlvmIrImpl(
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, profile_index_map,
-      &mlir_context, results->llvm_module.get());
+      gpu_device_info, cuda_compute_capability, &mlir_context,
+      results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
 
@@ -1171,9 +1170,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
-  std::unique_ptr<HloProfileIndexMap> profile_index_map;
-  std::unique_ptr<HloProfilePrinterData> profile_printer;
-
   if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
     cost_analysis.set_bytes_per_second(
@@ -1192,8 +1188,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       module.get(), &llvm_context, target_triple_, data_layout_,
       stream_exec->platform()->Name(), gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
-      GetCanShareBuffer(), pointer_size_, profile_index_map.get(),
-      &compile_module_results));
+      GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -1227,12 +1222,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   auto buffer_assignment_proto = std::make_unique<BufferAssignmentProto>(
       compile_module_results.buffer_assignment->ToProto());
 
-  size_t profile_index = 0;
-  if (profile_index_map) {
-    profile_index =
-        profile_index_map->GetProfileIndexFor(*module->entry_computation());
-  }
-
   // Make it shared to be captured in the following lambda.
   std::shared_ptr<const BufferAssignment> buffer_assignment(
       std::move(compile_module_results.buffer_assignment));
@@ -1251,8 +1240,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
            std::move(compile_module_results.allocations),
            std::move(buffer_assignment_proto),
            [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
-           std::move(module), profile_index, std::move(profile_printer),
-           std::move(profile_index_map)}));
+           std::move(module)}));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -1317,7 +1305,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
       gpu_device_info, cuda_compute_capability, DummyCanShareBufferFunction,
-      pointer_size, /*profile_index_map=*/nullptr, &results));
+      pointer_size, &results));
   return std::move(results.llvm_module);
 }
 

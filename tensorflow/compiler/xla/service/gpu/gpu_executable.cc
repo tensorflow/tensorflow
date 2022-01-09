@@ -184,9 +184,7 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(GpuExecutable::Params params)
-    : Executable(std::move(params.debug_module),
-                 std::move(params.hlo_profile_printer_data),
-                 std::move(params.hlo_profile_index_map)),
+    : Executable(std::move(params.debug_module)),
       text_(std::move(params.asm_text)),
       binary_(std::move(params.binary)),
       gpu_version_(params.gpu_version),
@@ -197,7 +195,6 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
       verbose_buffer_assignment_string_dumper_(
           params.verbose_buffer_assignment_string_dumper),
-      entry_computation_profile_index_(params.entry_computation_profile_index),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
   XlaDebugInfoManager::Get()->RegisterModule(
