@@ -178,13 +178,13 @@ REGISTER_KERNEL_BUILDER(Name("ExperimentalSleepDataset").Device(DEVICE_CPU),
                         SleepDatasetOp);
 
 REGISTER_KERNEL_BUILDER(Name("SleepDataset")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("sleep_microseconds")
                             .HostMemory("input_dataset")
                             .HostMemory("handle"),
                         SleepDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalSleepDataset")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("sleep_microseconds")
                             .HostMemory("input_dataset")
                             .HostMemory("handle"),
