@@ -1251,6 +1251,7 @@ cc_library(
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
         ":tfe_legalize_tfg",
+        ":tpu_cluster_util",
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",
@@ -1572,6 +1573,18 @@ cc_library(
     hdrs = ["utils/location_utils.h"],
     deps = [
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tpu_cluster_util",
+    srcs = ["utils/tpu_cluster_util.cc"],
+    hdrs = ["utils/tpu_cluster_util.h"],
+    deps = [
+        ":device_util",
+        ":tpu_rewrite_device_util",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:Support",
     ],
 )
 
