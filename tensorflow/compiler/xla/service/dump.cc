@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -495,10 +498,17 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
       GetDumpFilePath(FilenameFor(module, file_prefix, "mlir"), opts);
   if (!file_path) return;
 
-  // TODO(csigg): Change tag to file_prefix once BEF handles fused locs.
-  llvm::StringRef tag = "";
-  if (failed(mlir::generateLocationsFromIR(*file_path, tag, op, llvm::None)))
-    LOG(ERROR) << "Failed to dump op to " << *file_path;
+  std::string error;
+  std::unique_ptr<llvm::ToolOutputFile> outputFile =
+      mlir::openOutputFile(llvm::SmallString<32>(*file_path), &error);
+  if (!outputFile) {
+    LOG(ERROR) << "Error: " << error << std::endl
+               << "Failed to open file: " << *file_path;
+    return;
+  }
+
+  op->print(outputFile->os(), mlir::OpPrintingFlags().useLocalScope());
+  outputFile->keep();
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,

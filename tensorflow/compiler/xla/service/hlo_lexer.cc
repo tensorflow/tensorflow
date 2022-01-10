@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <limits>
 #include <string>
-#include <unordered_map>
 
 #include "absl/base/casts.h"
 #include "absl/strings/ascii.h"

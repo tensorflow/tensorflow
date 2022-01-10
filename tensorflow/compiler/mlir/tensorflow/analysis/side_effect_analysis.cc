@@ -156,7 +156,12 @@ SideEffects GetSideEffectsFromEffectInstance(
     const MemoryEffects::EffectInstance& effect_instance, Operation* op) {
   mlir::SideEffects::Effect* effect = effect_instance.getEffect();
   SideEffects side_effects;
-  if (isa<MemoryEffects::Allocate>(effect)) {
+  if (llvm::isa<ResourceEffects::MustExecute>(effect_instance.getResource())) {
+    // Treat this as a read effect so that different ops with this effect don't
+    // have dependencies. It is only modeled as a write effect to avoid pruning,
+    // see comment in tf_op_base.td.
+    side_effects.SetRead();
+  } else if (isa<MemoryEffects::Allocate>(effect)) {
     side_effects.SetAlloc();
   } else if (isa<MemoryEffects::Free>(effect)) {
     side_effects.SetFree();
@@ -353,10 +358,6 @@ class OpSideEffectCollector {
         // We handle value-based side effects for which we can use resource
         // alias analysis at a different place, skip here.
         if (ShouldUseResourceAliasAnalysis(effect)) continue;
-        if (llvm::isa<ResourceEffects::MustExecute>(effect.getResource()))
-          // We have this fake resource to avoid that certain ops are considered
-          // dead or get pruned, ignore it for side effect analysis.
-          continue;
 
         // Add side effects for op resource ID.
         int64_t instance_id = -1;

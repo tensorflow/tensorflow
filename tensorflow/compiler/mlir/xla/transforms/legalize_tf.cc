@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/util/padding.h"
@@ -4246,16 +4247,13 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       }
       // HLO ops are only defined on tensors, so we cast the divisor from
       // index -> i64 -> tensor<1xi64> -> tensor<i64> -> tensor<reduction type>
-      auto divisor_casted = rewriter.create<arith::IndexCastOp>(
+      Value divisor_casted = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.getI64Type(), divisor_count);
-      auto divisor_tensor = rewriter.create<tensor::FromElementsOp>(
-          loc, ValueRange{divisor_casted});
-      auto divisor_reshaped = rewriter.create<mhlo::ReshapeOp>(
+      Value divisor_tensor = rewriter.create<tensor::FromElementsOp>(
           loc, RankedTensorType::get({}, rewriter.getI64Type()),
-          divisor_tensor);
-      auto divisor = rewriter.create<ConvertOp>(
-          loc, RankedTensorType::get({}, reduce_element_type),
-          divisor_reshaped);
+          divisor_casted);
+      Value divisor = rewriter.create<ConvertOp>(
+          loc, RankedTensorType::get({}, reduce_element_type), divisor_tensor);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
       result = rewriter.create<chlo::BroadcastDivOp>(loc, result, divisor,
                                                      broadcast_dims);
@@ -4270,7 +4268,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // that this is a restricted form of shape manipulation that is just adding
     // unit dims.
     if (op.keep_dims()) {
-      for (auto dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
+      for (auto &dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
         if (dim_is_reduced.value()) {
           auto index_attr = GetI32ElementsAttr(
               {static_cast<int>(dim_is_reduced.index())}, &rewriter);
@@ -7082,6 +7080,57 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
   }
 };
 
+inline llvm::Optional<xla::RandomAlgorithm> TensorFlowRngAlgToXla(
+    tensorflow::Algorithm alg) {
+  if (alg == tensorflow::RNG_ALG_PHILOX) {
+    return xla::RandomAlgorithm::RNG_PHILOX;
+  } else if (alg == tensorflow::RNG_ALG_THREEFRY) {
+    return xla::RandomAlgorithm::RNG_THREE_FRY;
+  } else if (alg == tensorflow::RNG_ALG_AUTO_SELECT) {
+    return xla::RandomAlgorithm::RNG_DEFAULT;
+  }
+  return llvm::None;
+}
+
+// Converts tf.XlaRngBitGenerator op to mhlo.RngBitGenerator op.
+class ConvertXlaRngBitGeneratorOp
+    : public OpRewritePattern<TF::XlaRngBitGeneratorOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaRngBitGeneratorOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    DenseElementsAttr algorithm;
+    if (!(matchPattern(op.algorithm(), m_Constant(&algorithm))) ||
+        algorithm.getType().getRank()) {
+      return op.emitOpError() << "algorithm must be a constant scalar";
+    }
+    auto alg = static_cast<tensorflow::Algorithm>(
+        algorithm.getValues<IntegerAttr>()[0].getInt());
+    auto xla_alg = TensorFlowRngAlgToXla(alg);
+    if (!xla_alg) {
+      return op.emitOpError() << "unknown algorithm";
+    }
+
+    auto rng_bit_generator_op = rewriter.create<mhlo::RngBitGeneratorOp>(
+        loc,
+        mlir::TupleType::get(
+            rewriter.getContext(),
+            {op.getResult(0).getType(), op.getResult(1).getType()}),
+        rewriter.getI32IntegerAttr(xla_alg.getValue()), op.initial_state());
+
+    SmallVector<Value, 2> new_results = {
+        rewriter.create<mhlo::GetTupleElementOp>(
+            loc, rng_bit_generator_op.getResult(), 0),
+        rewriter.create<mhlo::GetTupleElementOp>(
+            loc, rng_bit_generator_op.getResult(), 1)};
+    rewriter.replaceOp(op, new_results);
+
+    return success();
+  }
+};
+
 // Converts tf.XlaVariadicReduceV2 to mhlo.Reduce
 class ConvertXlaVariadicReduceV2Op
     : public OpRewritePattern<TF::XlaVariadicReduceV2Op> {
@@ -7220,6 +7269,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaReduceScatterOp,
+    ConvertXlaRngBitGeneratorOp,
     ConvertXlaSortOp,
     ConvertXlaVariadicReduceV2Op,
     ConvertXlaVariadicSortOp,

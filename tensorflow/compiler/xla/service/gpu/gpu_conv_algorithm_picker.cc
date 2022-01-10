@@ -537,6 +537,9 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
       absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
   if (!ShouldCheckConv(instr)) {
+    if (!reference_result->has_value()) {
+      (*reference_result) = {alg, DeviceMemoryBase()};
+    }
     return result;
   }
 

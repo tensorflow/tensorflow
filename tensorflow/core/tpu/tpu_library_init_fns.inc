@@ -101,6 +101,8 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ConfigureCommunication);
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_FinalizeConfiguration);
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_IsInitialized);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_WriteParameters);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ReadParameters);
 
   return tensorflow::Status::OK();
 }

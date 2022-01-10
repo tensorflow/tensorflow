@@ -187,7 +187,8 @@ def _override_helper(clazz_object, operator, func):
     ValueError: If operator is not allowed to be overwritten.
   """
   if operator not in Tensor.OVERLOADABLE_OPERATORS:
-    raise ValueError("Overriding %s is disallowed" % operator)
+    raise ValueError(f"Overriding {operator} is disallowed. "
+                     f"Allowed operators are {Tensor.OVERLOADABLE_OPERATORS}.")
   setattr(clazz_object, operator, func)
 
 
@@ -487,7 +488,9 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       TypeError: If the op is not an `Operation`.
     """
     if not isinstance(op, Operation):
-      raise TypeError("op needs to be an Operation: %s" % (op,))
+      raise TypeError(f"op needs to be an Operation. "
+                      f"An instance of type {type(op).__name__} is provided.")
+
     self._op = op
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
@@ -505,11 +508,12 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     if name in {"T", "astype", "ravel", "transpose", "reshape", "clip", "size",
                 "tolist", "data"}:
       # TODO(wangpeng): Export the enable_numpy_behavior knob
-      raise AttributeError("""
-        '{}' object has no attribute '{}'.
+      raise AttributeError(
+          f"{type(self).__name__} object has no attribute '{name}'. " + """
         If you are looking for numpy-related methods, please run the following:
         from tensorflow.python.ops.numpy_ops import np_config
-        np_config.enable_numpy_behavior()""".format(type(self).__name__, name))
+        np_config.enable_numpy_behavior()
+      """)
     self.__getattribute__(name)
 
   @staticmethod
@@ -537,8 +541,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
   def name(self):
     """The string name of this tensor."""
     if self._name is None:
-      if not self._op.name:
-        raise ValueError("Operation was not named: %s" % self._op)
+      assert self._op.name
       self._name = "%s:%d" % (self._op.name, self._value_index)
     return self._name
 
@@ -616,27 +619,31 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
   def _disallow_bool_casting(self):
     if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
       self._disallow_when_autograph_unavailable(
-          "using a `tf.Tensor` as a Python `bool`")
+          "Using a symbolic `tf.Tensor` as a Python `bool`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
       self._disallow_when_autograph_disabled(
-          "using a `tf.Tensor` as a Python `bool`")
+          "Using a symbolic `tf.Tensor` as a Python `bool`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
       self._disallow_when_autograph_enabled(
-          "using a `tf.Tensor` as a Python `bool`")
+          "Using a symbolic `tf.Tensor` as a Python `bool`")
     else:
       # Default: V1-style Graph execution.
-      self._disallow_in_graph_mode("using a `tf.Tensor` as a Python `bool`")
+      self._disallow_in_graph_mode(
+          "Using a symbolic `tf.Tensor` as a Python `bool`")
 
   def _disallow_iteration(self):
     if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
-      self._disallow_when_autograph_unavailable("iterating over `tf.Tensor`")
+      self._disallow_when_autograph_unavailable(
+          "Iterating over a symbolic `tf.Tensor`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_disabled("iterating over `tf.Tensor`")
+      self._disallow_when_autograph_disabled(
+          "Iterating over a symbolic `tf.Tensor`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")
+      self._disallow_when_autograph_enabled(
+          "Iterating over a symbolic `tf.Tensor`")
     else:
       # Default: V1-style Graph execution.
-      self._disallow_in_graph_mode("iterating over `tf.Tensor`")
+      self._disallow_in_graph_mode("Iterating over a symbolic `tf.Tensor`")
 
   def __iter__(self):
     if not context.executing_eagerly():
@@ -931,8 +938,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     Returns:
       a string.
     """
-    if not self._op.name:
-      raise ValueError("Operation was not named: %s" % self._op)
+    assert self._op.name
     if self._value_index == 0:
       return self._op.name
     else:
@@ -989,14 +995,14 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
   def __array__(self, dtype=None):
     del dtype
     raise NotImplementedError(
-        "Cannot convert a symbolic Tensor ({}) to a numpy array."
-        " This error may indicate that you're trying to pass a Tensor to"
-        " a NumPy call, which is not supported".format(self.name))
+        f"Cannot convert a symbolic tf.Tensor ({self.name}) to a numpy array."
+        f" This error may indicate that you're trying to pass a Tensor to"
+        f" a NumPy call, which is not supported.")
 
   def __len__(self):
-    raise TypeError("len is not well defined for symbolic Tensors. ({}) "
-                    "Please call `x.shape` rather than `len(x)` for "
-                    "shape information.".format(self.name))
+    raise TypeError(f"len is not well defined for a symbolic Tensor "
+                    f"({self.name}). Please call `x.shape` rather than "
+                    f"`len(x)` for shape information.")
 
   # TODO(mdan): This convoluted machinery is hard to maintain. Clean up.
   @staticmethod
@@ -1364,34 +1370,33 @@ class _EagerTensorBase(Tensor):
 
   def set_shape(self, shape):
     if not self.shape.is_compatible_with(shape):
-      raise ValueError(
-          "Tensor's shape %s is not compatible with supplied shape %s" %
-          (self.shape, shape))
+      raise ValueError(f"Tensor's shape {self.shape} is not compatible "
+                       f"with supplied shape {shape}.")
 
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
     raise AttributeError(
-        "Tensor.op is meaningless when eager execution is enabled.")
+        "Tensor.op is undefined when eager execution is enabled.")
 
   @property
   def graph(self):
     raise AttributeError(
-        "Tensor.graph is meaningless when eager execution is enabled.")
+        "Tensor.graph is undefined when eager execution is enabled.")
 
   @property
   def name(self):
     raise AttributeError(
-        "Tensor.name is meaningless when eager execution is enabled.")
+        "Tensor.name is undefined when eager execution is enabled.")
 
   @property
   def value_index(self):
     raise AttributeError(
-        "Tensor.value_index is meaningless when eager execution is enabled.")
+        "Tensor.value_index is undefined when eager execution is enabled.")
 
   def consumers(self):
     raise NotImplementedError(
-        "Tensor.consumers is meaningless when eager execution is enabled.")
+        "Tensor.consumers is undefined when eager execution is enabled.")
 
   def _add_consumer(self, consumer):
     raise NotImplementedError(
@@ -1570,8 +1575,8 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
       as_ref=False)
 
 
-def _error_prefix(name):
-  return "" if name is None else "%s: " % name
+def _add_error_prefix(msg, *, name=None):
+  return msg if name is None else f"{name}: {msg}"
 
 
 def pack_eager_tensors(tensors, ctx=None):
@@ -1585,10 +1590,10 @@ def pack_eager_tensors(tensors, ctx=None):
     A packed EagerTensor.
   """
   if not isinstance(tensors, list):
-    raise TypeError("tensors must be a list or a tuple: %s" % tensors)
+    raise TypeError(f"tensors must be a list, but got a {type(tensors)}")
 
   if not tensors:
-    raise ValueError("Empty tensors is unexpected for packing.")
+    raise ValueError("Cannot pack an empty list of tensors.")
 
   dtype = tensors[0].dtype
   shape = tensors[0].shape
@@ -1597,22 +1602,23 @@ def pack_eager_tensors(tensors, ctx=None):
   for i in range(len(tensors)):
     t = tensors[i]
     if not isinstance(t, EagerTensor):
-      raise TypeError("tensors must be a list of EagerTensors: %s" % t)
+      raise TypeError(f"All tensors being packed must be EagerTensor. "
+                      f"Found an item of type {type(t)}.")
 
     if t.dtype != dtype:
       raise ValueError(
-          "All tensors being packed should have the same dtype %s, "
-          "but the %d-th tensor is of dtype %s" % (dtype, i, t.dtype))
+          f"All tensors being packed should have the same dtype {dtype}, "
+          f"but the {i}-th tensor is of dtype {t.dtype}")
     if t.shape != shape:
       raise ValueError(
-          "All tensors being packed should have the same shape %s, "
-          "but the %d-th tensor is of shape %s" % (shape, i, t.shape))
+          f"All tensors being packed should have the same shape {shape}, "
+          f"but the {i}-th tensor is of shape {t.shape}")
     # pylint: disable=protected-access
     if is_resource and t._handle_data != handle_data:
       raise ValueError(
-          "All tensors being packed should have the same handle data %s, "
-          "but the %d-th tensor is of handle data %s" %
-          (handle_data, i, t._handle_data))
+          f"All tensors being packed should have the same handle data "
+          f"{handle_data}, "
+          f"but the {i}-th tensor is of handle data {t._handle_data}")
     # pylint: enable=protected-access
 
   if ctx is None:
@@ -1625,7 +1631,7 @@ def pack_eager_tensors(tensors, ctx=None):
 
   def grad_fun(_):
     raise ValueError(
-        "Gradients through pack_eager_tensors are not supported yet.")
+        "Computing gradients through pack_eager_tensors is not supported.")
 
   tape.record_operation("pack_eager_tensors", [packed_tensor], tensors,
                         grad_fun)
@@ -1651,8 +1657,11 @@ def convert_to_tensor(value,
     if not ctx.executing_eagerly():
       graph = get_default_graph()
       if not graph.building_function:
-        raise RuntimeError("Attempting to capture an EagerTensor without "
-                           "building a function.")
+        raise RuntimeError(
+            _add_error_prefix(
+                "Attempting to capture an EagerTensor without "
+                "building a function.",
+                name=name))
       return graph.capture(value, name=name)
 
   if dtype is not None:
@@ -1660,8 +1669,10 @@ def convert_to_tensor(value,
   if isinstance(value, Tensor):
     if dtype is not None and not dtype.is_compatible_with(value.dtype):
       raise ValueError(
-          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
-          (dtype.name, value.dtype.name, value))
+          _add_error_prefix(
+              f"Tensor conversion requested dtype {dtype.name} "
+              f"for Tensor with dtype {value.dtype.name}: {value!r}",
+              name=name))
     return value
 
   if preferred_dtype is not None:
@@ -1687,9 +1698,13 @@ def convert_to_tensor(value,
       else:
         if (ret is not NotImplemented and
             ret.dtype.base_dtype != preferred_dtype.base_dtype):
-          raise TypeError("convert_to_tensor did not convert to "
-                          "the preferred dtype: %s vs %s " %
-                          (ret.dtype.base_dtype, preferred_dtype.base_dtype))
+          raise RuntimeError(
+              _add_error_prefix(
+                  f"Conversion function {conversion_func!r} for type "
+                  f"{base_type} returned incompatible dtype: requested = "
+                  f"{preferred_dtype.base_dtype.name}, "
+                  f"actual = {ret.dtype.base_dtype.name}",
+                  name=name))
 
     if ret is None:
       ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
@@ -1699,18 +1714,23 @@ def convert_to_tensor(value,
 
     if not isinstance(ret, accepted_result_types):
       raise RuntimeError(
-          "%sConversion function %r for type %s returned non-Tensor: %r" %
-          (_error_prefix(name), conversion_func, base_type, ret))
+          _add_error_prefix(
+              f"Conversion function {conversion_func!r} for type "
+              f"{base_type} returned non-Tensor: {ret!r}",
+              name=name))
     if dtype and not dtype.is_compatible_with(ret.dtype):
       raise RuntimeError(
-          "%sConversion function %r for type %s returned incompatible "
-          "dtype: requested = %s, actual = %s" %
-          (_error_prefix(name), conversion_func, base_type, dtype.name,
-           ret.dtype.name))
+          _add_error_prefix(
+              f"Conversion function {conversion_func} for type {base_type} "
+              f"returned incompatible dtype: requested = {dtype.name}, "
+              f"actual = {ret.dtype.name}",
+              name=name))
     return ret
-  raise TypeError("%sCannot convert %r with type %s to Tensor: "
-                  "no conversion function registered." %
-                  (_error_prefix(name), value, type(value)))
+  raise TypeError(
+      _add_error_prefix(
+          f"Cannot convert {value!r} with type {type(value)} to Tensor: "
+          f"no conversion function registered.",
+          name=name))
 
 
 internal_convert_to_tensor = convert_to_tensor
@@ -1844,9 +1864,9 @@ def internal_convert_to_tensor_or_composite(value,
   if isinstance(value, composite_tensor.CompositeTensor):
     value_dtype = getattr(value, "dtype", None)
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value_dtype):
-      raise ValueError(
-          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
-          (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
+      raise ValueError(f"Tensor conversion dtype mismatch. "
+                       f"Requested dtype is {dtypes.as_dtype(dtype).name}, "
+                       f"Tensor has dtype {value.dtype.name}: {value!r}")
     return value
   else:
     return convert_to_tensor(
@@ -2090,9 +2110,12 @@ class Operation(object):
     if isinstance(node_def, node_def_pb2.NodeDef):
       if node_def.ByteSize() >= (1 << 31) or node_def.ByteSize() < 0:
         raise ValueError(
-            "Cannot create a tensor proto whose content is larger than 2GB.")
+            f"Cannot create a tensor proto whose content is larger than 2GB. "
+            f"Size of tensor is {node_def.ByteSize()} bytes.")
       if not _VALID_OP_NAME_REGEX.match(node_def.name):
-        raise ValueError("'%s' is not a valid node name" % node_def.name)
+        raise ValueError(
+            f"`{node_def.name}` is not a valid node name. "
+            f"Accepted names conform to Regex /{_VALID_OP_NAME_REGEX}/")
       c_op = None
     elif type(node_def).__name__ == "TF_Operation":
       assert inputs is None
@@ -2103,19 +2126,23 @@ class Operation(object):
       assert op_def is None
       c_op = node_def
     else:
-      raise TypeError("node_def needs to be a NodeDef: %s" % (node_def,))
+      raise TypeError(f"Argument node_def must be a NodeDef. "
+                      f"Received an instance of type: {type(node_def)}.")
 
     if not isinstance(g, Graph):
-      raise TypeError("g needs to be a Graph: %s" % (g,))
+      raise TypeError(f"Argument g must be a Graph. "
+                      f"Received an instance of type {type(g)}")
     self._graph = g
 
     if inputs is None:
       inputs = []
     elif not isinstance(inputs, list):
-      raise TypeError("inputs needs to be a list of Tensors: %s" % (inputs,))
+      raise TypeError(f"Argument inputs shall be a list of Tensors. "
+                      f"Received an instance of type {type(inputs)}")
     for a in inputs:
       if not isinstance(a, Tensor):
-        raise TypeError("input needs to be a Tensor: %s" % (a,))
+        raise TypeError(f"Items of argument inputs shall be Tensor. "
+                        f"Received an instance of type {type(a)}.")
     if input_types is None:
       input_types = [i.dtype.base_dtype for i in inputs]
     else:
@@ -2135,8 +2162,9 @@ class Operation(object):
         elif isinstance(c, (Tensor, IndexedSlices)):
           control_op = c.op
         else:
-          raise TypeError("Control input must be an Operation, "
-                          "a Tensor, or IndexedSlices: %s" % c)
+          raise TypeError(f"Control input must be an Operation, "
+                          f"a Tensor, or IndexedSlices. "
+                          f"Received an instance of type {type(c)}.")
         control_input_ops.append(control_op)
 
     # This will be set by self.inputs.

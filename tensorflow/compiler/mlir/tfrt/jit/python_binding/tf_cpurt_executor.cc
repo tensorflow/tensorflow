@@ -45,7 +45,6 @@ using ::tfrt::CreateMallocAllocator;
 using ::tfrt::CreateMultiThreadedWorkQueue;
 using ::tfrt::DecodedDiagnostic;
 using ::tfrt::DType;
-using ::tfrt::ExecutionContext;
 using ::tfrt::GetDType;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
@@ -75,6 +74,7 @@ TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
                                                  bool vectorize,
                                                  bool legalize_i1_tensors) {
   CompilationOptions opts;
+  opts.alignment = EIGEN_MAX_ALIGN_BYTES;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
   opts.register_dialects = [](mlir::DialectRegistry& registry) {

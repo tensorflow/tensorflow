@@ -186,15 +186,14 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
   gpu_device_info.block_dim_limit_x = 2147483647;
   gpu_device_info.block_dim_limit_y = 65535;
   gpu_device_info.block_dim_limit_z = 65535;
-  const xla::HloProfileIndexMap* profile_index_map = nullptr;
 
   llvm_module->setTargetTriple(target_triple);
   llvm_module->setDataLayout(data_layout);
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, profile_index_map,
-      func_op->getContext(), llvm_module);
+      gpu_device_info, cuda_compute_capability, func_op->getContext(),
+      llvm_module);
 
   ir_emitter_context.set_allocations(allocations);
 

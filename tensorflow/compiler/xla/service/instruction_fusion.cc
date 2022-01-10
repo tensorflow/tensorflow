@@ -94,6 +94,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
     case HloOpcode::kOutfeed:

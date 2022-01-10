@@ -399,7 +399,9 @@ class QuantizationMode(object):
           "accumulation_type":
               self._target_spec._experimental_supported_accumulation_type,  # pylint: disable=protected-access
           "allow_bfloat16":
-              self.is_bfloat16_inference_allowed()
+              self.is_bfloat16_inference_allowed(),
+          "enable_mlir_dynamic_range_quantizer":
+              self._enable_new_dynamic_range_quantizer
       }
     else:
       # Note this might still trigger (uint8) quantization to be compatible with

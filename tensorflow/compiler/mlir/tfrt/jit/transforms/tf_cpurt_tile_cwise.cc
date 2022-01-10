@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -87,11 +88,10 @@ bool isNonTiledCwise(Operation *op) {
                       [](auto type) { return mlir::isParallelIterator(type); });
 }
 
-struct CodegenForCWisePass : public CodegenCWiseBase<CodegenForCWisePass> {
-  CodegenForCWisePass() = default;
-  explicit CodegenForCWisePass(int64_t tile_size) {
-    cwise_tile_size = tile_size;
-  }
+struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
+  TileCWisePass() = default;
+  explicit TileCWisePass(int64_t tile_size) { cwise_tile_size = tile_size; }
+
   void runOnFunction() override {
     constexpr llvm::StringRef kTiledId = "tiled";
     auto func = getFunction();
@@ -131,13 +131,13 @@ struct CodegenForCWisePass : public CodegenCWiseBase<CodegenForCWisePass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForCWisePass() {
-  return std::make_unique<CodegenForCWisePass>();
+std::unique_ptr<mlir::FunctionPass> CreateTileCWisePass() {
+  return std::make_unique<TileCWisePass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForCWisePass(
+std::unique_ptr<mlir::FunctionPass> CreateTileCWisePass(
     int64_t cwise_tile_size) {
-  return std::make_unique<CodegenForCWisePass>(cwise_tile_size);
+  return std::make_unique<TileCWisePass>(cwise_tile_size);
 }
 
 }  // namespace tensorflow

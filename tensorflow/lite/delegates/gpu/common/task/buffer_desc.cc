@@ -70,6 +70,17 @@ absl::Status BufferDescriptor::PerformReadSelector(
     if (element_type == DataType::FLOAT16 &&
         !gpu_info.IsGlslSupportsExplicitFp16()) {
       if (memory_type == MemoryType::CONSTANT) {
+        bool is_kernel_global_space = false;
+        for (const auto& attribute : attributes) {
+          if (attribute == "kernel_global_space") {
+            is_kernel_global_space = true;
+            break;
+          }
+        }
+        if (is_kernel_global_space) {
+          *result = absl::StrCat("buffer[", args[0], "]");
+          return absl::OkStatus();
+        }
         const std::string arg0 = "(" + args[0] + ")";
         *result =
             absl::StrCat("vec4(unpackHalf2x16(buffer[", arg0, " / 2][", arg0,

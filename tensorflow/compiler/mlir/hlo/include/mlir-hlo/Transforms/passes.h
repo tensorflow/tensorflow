@@ -32,6 +32,10 @@ std::unique_ptr<FunctionPass> createBufferReusePass();
 /// Creates a pass that tries to simplify dynamic reshapes.
 std::unique_ptr<FunctionPass> createReshapeSimplifierPass();
 
+/// Creates a pass that merges smaller buffer into bigger buffer to optimize
+/// memory consumption.
+std::unique_ptr<FunctionPass> createBufferPackingPass(unsigned window_size = 5);
+
 /// Creates a pass that tests the useranges of the UserangeAnalysis.
 std::unique_ptr<FunctionPass> createTestUserangePass();
 
@@ -41,6 +45,9 @@ std::unique_ptr<FunctionPass> createTestShapeComponentAnalysisPass();
 /// Creates a pass that removes redundant operations that implement a
 /// CopyOpInterface.
 std::unique_ptr<FunctionPass> createCopyRemovalPass();
+
+/// Creates a pass that computes the allocated memory.
+std::unique_ptr<FunctionPass> createMemoryCountPass();
 
 }  // namespace mlir
 

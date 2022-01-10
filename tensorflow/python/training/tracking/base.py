@@ -47,7 +47,7 @@ OBJECT_CONFIG_JSON_KEY = "OBJECT_CONFIG_JSON"
 
 
 @enum.unique
-class SaveType(enum.Enum):
+class SaveType(str, enum.Enum):
   SAVEDMODEL = "savedmodel"
   CHECKPOINT = "checkpoint"
 

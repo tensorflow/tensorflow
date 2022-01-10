@@ -115,6 +115,7 @@ class DfsHloVisitorBase {
   virtual Status HandleFft(HloInstructionPtr fft) = 0;
   virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
   virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
+  virtual Status HandleOptimizationBarrier(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllGather(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllGatherStart(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllGatherDone(HloInstructionPtr hlo) = 0;

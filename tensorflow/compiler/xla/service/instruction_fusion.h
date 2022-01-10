@@ -162,7 +162,7 @@ class InstructionFusion : public HloModulePass {
                              int64_t operand_index);
 
   // The set of producers whose consumers we cannot fuse into.
-  using HloInstructionSet = std::unordered_set<HloInstruction*>;
+  using HloInstructionSet = absl::flat_hash_set<HloInstruction*>;
 
   // Computes the set of nodes that we do not want to fuse into any of their
   // consumers based on a global analysis of the HLO graph.

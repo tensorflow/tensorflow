@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 

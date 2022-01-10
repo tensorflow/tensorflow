@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -210,6 +211,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   mlir::PassManager pass_manager(module.getContext());
+  mlir::registerPassManagerCLOptions();
   mlir::applyPassManagerCLOptions(pass_manager);
   pass_manager.addInstrumentation(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(

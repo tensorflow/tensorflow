@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 
 #include <memory>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 

@@ -15,21 +15,21 @@ func @test_recv_input(%arg0: !disc_ral.context) {
   // CHECK: %[[T2:.*]] = llvm.alloca %[[T1]] x !llvm.ptr<i8> : (i32) -> !llvm.ptr<ptr<i8>>
 
   // CHECK: %[[T3:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK: %[[T4:.*]] = llvm.getelementptr %[[T0]][%[[i32_0]], %[[T3]]]
+  // CHECK: %[[T4:.*]] = llvm.getelementptr %[[T0]][%[[i32_0]], 0]
   // CHECK: llvm.store %[[CTX]], %[[T4]] : !llvm.ptr<ptr<i8>>
   // CHECK: %[[T5:.*]] = llvm.getelementptr %[[T2]][%[[T3]]] : (!llvm.ptr<ptr<i8>>, i32) -> !llvm.ptr<ptr<i8>>
   // CHECK: %[[T6:.*]] = llvm.bitcast %[[T4]] : !llvm.ptr<ptr<i8>> to !llvm.ptr<i8>
   // CHECK: llvm.store %[[T6]], %[[T5]] : !llvm.ptr<ptr<i8>>
 
   // CHECK: %[[T7:.*]] = llvm.mlir.constant(1 : i32) : i32
-  // CHECK: %[[T8:.*]] = llvm.getelementptr %[[T0]][%[[i32_0]], %[[T7]]]
+  // CHECK: %[[T8:.*]] = llvm.getelementptr %[[T0]][%[[i32_0]], 1]
   // CHECK: llvm.store %[[i64_0]], %[[T8]] : !llvm.ptr<i64>
   // CHECK: %[[T9:.*]] = llvm.getelementptr %[[T2]][%[[T7]]] : (!llvm.ptr<ptr<i8>>, i32) -> !llvm.ptr<ptr<i8>>
   // CHECK: %[[T10:.*]] = llvm.bitcast %[[T8]] : !llvm.ptr<i64> to !llvm.ptr<i8>
   // CHECK: llvm.store %[[T10]], %[[T9]] : !llvm.ptr<ptr<i8>>
 
   // CHECK: %[[T11:.*]] = llvm.mlir.constant(2 : i32) : i32
-  // CHECK: %[[T12:.*]] = llvm.getelementptr %[[T0]][%[[i32_0]], %[[T11]]]
+  // CHECK: %[[T12:.*]] = llvm.getelementptr %[[T0]][%[[i32_0]], 2]
   // CHECK: %[[T13:.*]] = llvm.getelementptr %[[T2]][%[[T11]]] : (!llvm.ptr<ptr<i8>>, i32) -> !llvm.ptr<ptr<i8>>
   // CHECK: %[[T14:.*]] = llvm.bitcast %[[T12]] : !llvm.ptr<struct<(ptr<f32>, ptr<f32>, i64, array<2 x i64>, array<2 x i64>)>> to !llvm.ptr<i8>
   // CHECK: llvm.store %[[T14]], %[[T13]] : !llvm.ptr<ptr<i8>>

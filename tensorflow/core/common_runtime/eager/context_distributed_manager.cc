@@ -720,21 +720,28 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       context_->SetWorkerEnv(server->worker_env(), worker_session);
 
       // Coordination agent: initialize, connect, wait for all tasks
+      std::vector<DeviceAttributes> local_devices;
+      server->worker_env()->device_mgr->ListDeviceAttributes(&local_devices);
+      CoordinationServiceDeviceInfo devices;
+      *devices.mutable_tf()->mutable_devices() = {
+          std::make_move_iterator(local_devices.begin()),
+          std::make_move_iterator(local_devices.end())};
       std::unique_ptr<CoordinationClientCache> agent_cache;
       LOG_AND_RETURN_IF_ERROR(
           worker_cache->GetCoordinationClientCache(&agent_cache));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
-          server->worker_env()->env, server->worker_env()->device_mgr,
-          server_def, std::move(agent_cache), [this](Status s) {
+          server->worker_env()->env, server_def, std::move(agent_cache),
+          [this](Status s) {
             context_->GetCollectiveExecutorHandle()->get()->StartAbort(s);
           }));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
-      LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->WaitForAllTasks());
+      LOG_AND_RETURN_IF_ERROR(
+          coordination_service_agent_->WaitForAllTasks(devices));
 
       // Add remote devices to eager context.
       std::vector<std::unique_ptr<Device>> remote_devices;
       for (const auto& d :
-           coordination_service_agent_->GetClusterDeviceAttributes()) {
+           coordination_service_agent_->GetClusterDeviceInfo().tf().devices()) {
         // Treat all devices as remote so that EagerContext::remote_device_mgr
         // maintains all the devices, including both local and remote.
         remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));

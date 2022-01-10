@@ -330,8 +330,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         ])
     return asset_tracker
 
-  def _list_extra_dependencies_for_serialization(self, serialization_cache):
-    del serialization_cache  # Unused.
+  def _trackable_children(self,
+                          save_type=tracking_base.SaveType.CHECKPOINT,
+                          **kwargs):
+    if save_type != tracking_base.SaveType.SAVEDMODEL:
+      return {}
+
     # _trace_variant_creation only works when executing eagerly, so we don't
     # want to run it in the object initialization.
     @def_function.function(input_signature=[], autograph=False)
@@ -340,7 +344,10 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       return resource
     _creator.get_concrete_function()  # Trigger asset tracking
 
-    return {"_variant_tracker": _VariantTracker(self._variant_tensor, _creator)}
+    children = super(DatasetV2, self)._trackable_children(save_type, **kwargs)
+    children["_variant_tracker"] = _VariantTracker(self._variant_tensor,
+                                                   _creator)
+    return children
 
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
@@ -4438,13 +4445,18 @@ class _VariantTracker(tracking.CapturableResource):
       raise TypeError("Resource creator should already be a tf.function.")
     self._create_resource = resource_creator
 
-  def _list_functions_for_serialization(self, unused_cache):
-    functions = (super(_VariantTracker, self)
-                 ._list_functions_for_serialization(unused_cache))
+  def _trackable_children(self,
+                          save_type=tracking_base.SaveType.CHECKPOINT,
+                          **kwargs):
+    if save_type != tracking_base.SaveType.SAVEDMODEL:
+      return {}
+
+    children = super(_VariantTracker,
+                     self)._trackable_children(save_type, **kwargs)
     # Overwrite the _create_resource function, since `self._create_resource`
     # is already a tf.function.
-    functions["_create_resource"] = self._create_resource
-    return functions
+    children["_create_resource"] = self._create_resource
+    return children
 
 
 class TensorDataset(DatasetSource):

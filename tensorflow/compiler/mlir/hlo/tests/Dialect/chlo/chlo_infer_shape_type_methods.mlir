@@ -46,9 +46,7 @@ func @broadcast_add_ranked_components_r1(%arg0: tensor<?xf32>, %arg1: tensor<?xf
 // CHECK-LABEL: @broadcast_add_ranked_components_r1x2
 func @broadcast_add_ranked_components_r1x2(%arg0: tensor<?xf32>, %arg1: tensor<?x3xf32>) -> tensor<?x3xf32> {
   %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
-  // TODO: Overly broad shapes are being returned. Tighten the calculation
-  // and update/extend these tests.
-  // CHECK: "mhlo_test.return_type_components"(%0) {dims0 = [-1, -1], element_type0 = f32}
+  // CHECK: "mhlo_test.return_type_components"(%0) {dims0 = [-1, 3], element_type0 = f32}
   %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<?x3xf32>) -> tensor<?x3xf32>
   return %1 : tensor<?x3xf32>
 }

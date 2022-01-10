@@ -110,6 +110,9 @@ bool IsSequenceStartingWith0(Attribute attr);
 // Returns the argument index for the giving FuncOp and its operand value.
 int64_t getArgumentIndex(mlir::FuncOp op, Value value);
 
+/// Computes the memory usage of the given allocations.
+std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs);
+
 }  // namespace hlo
 }  // namespace mlir
 

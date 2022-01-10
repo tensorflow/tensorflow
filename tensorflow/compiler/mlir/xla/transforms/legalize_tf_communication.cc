@@ -548,9 +548,7 @@ void ReplaceWithTupleResult(OpBuilder& builder, ArrayRef<Value> values,
 // of types `types`. The last element of the new block argument (token) is
 // returned.
 Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
-                                         ArrayRef<Type> types,
-                                         bool flatten_tuple) {
-  assert(flatten_tuple || block.getNumArguments() == 1);
+                                         ArrayRef<Type> types) {
   builder.setInsertionPointToStart(&block);
 
   auto old_args_size = block.getNumArguments();
@@ -563,18 +561,13 @@ Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
                                   block.getArguments().end());
   assert(!new_args.empty());
 
-  ReplaceWithTupleResult(builder, old_args, new_args, flatten_tuple);
+  ReplaceWithTupleResult(builder, old_args, new_args, /*flatten_tuple=*/true);
   auto new_arg = new_args[new_args.size() - 1];
 
   block.eraseArguments(
       llvm::to_vector(llvm::seq((unsigned)0, (unsigned)old_args_size)));
 
-  if (flatten_tuple) return new_arg;
-
-  return builder
-      .create<GetTupleElementOp>(new_arg.getLoc(), new_arg,
-                                 types[0].cast<TupleType>().size() - 1)
-      .getResult();
+  return new_arg;
 }
 
 // Updates control flow op terminator with an extra element `token`.
@@ -595,52 +588,41 @@ void RewriteControlFlowTerminator(OpBuilder& builder, Operation* terminator,
   terminator->setOperands(new_results);
 }
 
-// Rewrites a `mhlo.if` op to receive and forward a `mhlo.token`. Operands to
-// the op for all of its regions are extended to have an extra operand `token`.
+// Rewrites a `mhlo.if` op to receive and forward a `mhlo.token`. As If op does
+// not have any operands other than the predicate, hence we implicitly capture
+// the parent token. Also we use the same implicit token for use in the If op's
+// regions.
 void RewriteRegionIfOp(OpBuilder& builder, IfOp region_if,
                        SmallVectorImpl<OpVisitorState>& ops_to_visit,
                        Value token) {
   llvm::SmallDenseMap<Value, Value> rewritten_operands;
 
-  // Rewrite all region operands to have an extra operand `token`.
-  Value new_true_operand =
-      GetValueWithToken(builder, {region_if.true_arg()}, token,
-                        rewritten_operands, /*flatten_tuple=*/false)[0];
-  Value new_false_operand =
-      GetValueWithToken(builder, {region_if.false_arg()}, token,
-                        rewritten_operands, /*flatten_tuple=*/false)[0];
-
-  auto new_result_type =
-      GetTypeWithToken(builder, {region_if.getType()}, /*flatten_tuple=*/false);
+  auto new_result_types =
+      GetTypeWithToken(builder, llvm::to_vector(region_if.getResultTypes()),
+                       /*flatten_tuple=*/true);
 
   // Create new `mhlo.if` op with extra token operands and result.
-  auto new_if = builder.create<IfOp>(region_if.getLoc(), new_result_type,
-                                     region_if.pred(), new_true_operand,
-                                     new_false_operand);
+  auto new_if = builder.create<IfOp>(region_if.getLoc(), new_result_types,
+                                     region_if.pred());
 
   // Move all regions from the old `mhlo.if` op to its replacement.
   new_if.true_branch().takeBody(region_if.true_branch());
   new_if.false_branch().takeBody(region_if.false_branch());
 
-  // Forward result from old `mhlo.if` with replacement, and unpack result when
-  // necessary.
-  ReplaceWithTupleResult(builder, {region_if.getResult()}, {new_if.getResult()},
-                         /*flatten_tuple=*/false);
+  // Forward result from old `mhlo.if` with replacement.
+  SmallVector<Value> old_if_results = region_if.getResults();
+  SmallVector<Value> new_if_results = new_if.getResults();
 
-  auto new_token = builder.create<GetTupleElementOp>(
-      new_if.getLoc(), new_if.getResult(),
-      new_if.getResult().getType().cast<TupleType>().size() - 1);
+  ReplaceWithTupleResult(builder, old_if_results, new_if_results,
+                         /*flatten_tuple=*/true);
+
+  // auto new_token = new_if_results[new_if_results.size() - 1];
 
   region_if.erase();
 
-  // Remove leftover operands to old `mhlo.if` if they have no uses.
-  for (auto& rewritten_operand : rewritten_operands)
-    if (auto tuple_op = rewritten_operand.getFirst().getDefiningOp<TupleOp>())
-      if (tuple_op.use_empty()) tuple_op.erase();
-
-  // Next op to visit. The replacement is visited but at its first region. The
-  // token result of the new region if is propagated.
-  ops_to_visit.push_back({/*region_idx=*/0, new_token, new_if});
+  // Next op to visit. The replacement is visited but at its first region.
+  // The new region use the same implicit token used by the If op.
+  ops_to_visit.push_back({/*region_idx=*/0, token, new_if});
 }
 
 // Rewrites a `mhlo.if`/`mhlo.while` region to receive and forward a
@@ -652,28 +634,39 @@ void RewriteControlFlowOpRegion(
     OpBuilder& builder, Operation* region_op, unsigned region_idx,
     ArrayRef<Type> block_arg_types,
     SmallVectorImpl<OpVisitorState>& ops_to_visit,
-    const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks, Value token,
-    bool flatten_tuple) {
+    const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks, Value token) {
   ops_to_visit.push_back({region_idx + 1, token, region_op});
 
   Region& region = region_op->getRegion(region_idx);
   assert(llvm::hasSingleElement(region));
 
-  auto block_token = UpdateControlFlowBlockArgWithToken(
-      builder, region.front(), block_arg_types, flatten_tuple);
+  auto block_token = UpdateControlFlowBlockArgWithToken(builder, region.front(),
+                                                        block_arg_types);
 
   if (control_flow_blocks.contains(&region.front())) {
-    if (flatten_tuple)
       ops_to_visit.push_back(
           {/*region_idx=*/llvm::None, block_token, &region.front().front()});
-    else
-      ops_to_visit.push_back({/*region_idx=*/llvm::None, block_token,
-                              block_token.getDefiningOp()->getNextNode()});
     return;
   }
 
   RewriteControlFlowTerminator(builder, region.front().getTerminator(),
-                               block_token, flatten_tuple);
+                               block_token, /*flatten_tuple=*/true);
+}
+
+// For mlir::IfOp or mlir::CaseOp, replace the use of their region's block
+// argument (of type token) with 'implicit_operand'.
+void ReplaceBlockArgumentsWithImplicitOperands(mlir::Operation* op,
+                                               unsigned region_idx,
+                                               Value implicit_operand) {
+  assert((mlir::dyn_cast<mlir::mhlo::IfOp>(*op) ||
+          mlir::dyn_cast<mlir::mhlo::CaseOp>(*op)) &&
+         "Unexpected mlir op in "
+         "HloFunctionImporter::ReplaceBlockArgumentsWithImplicitOperands!");
+
+  auto& region = op->getRegion(region_idx);
+  region.getArgument(0).replaceAllUsesWith(implicit_operand);
+  region.front().eraseArguments(
+      llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
 }
 
 // Rewrites an `mhlo.if` op or its region. If `region_idx` is not set, the op
@@ -693,10 +686,24 @@ bool ProcessRegionIfOp(OpBuilder& builder, IfOp region_if,
   }
 
   if (*region_idx < region_if.getNumRegions()) {
-    RewriteControlFlowOpRegion(
-        builder, region_if, *region_idx,
-        {region_if.getOperand(*region_idx + 1).getType()}, ops_to_visit,
-        control_flow_blocks, token, /*flatten_tuple=*/false);
+    // For the region-blocks of If op, we create a dummy token argument. Later
+    // we replace that block-argument's uses with the same (implicitly captured)
+    // token 'token', used for If op, and erase the argument.
+    // Note that 'RewriteControlFlowOpRegion' sets the token, used for the first
+    // operation of region_idx'th region, to the dummy block-argument. As we
+    // erase that argument, we also need to make sure that the token used for
+    // the next operation is set to 'token'.
+    RewriteControlFlowOpRegion(builder, region_if, *region_idx,
+                               {token.getType()}, ops_to_visit,
+                               control_flow_blocks, token);
+
+    ReplaceBlockArgumentsWithImplicitOperands(region_if.getOperation(),
+                                              *region_idx, token);
+
+    auto next_visitor_state = ops_to_visit.back();
+    next_visitor_state.token = token;
+    ops_to_visit.pop_back();
+    ops_to_visit.push_back(next_visitor_state);
     return true;
   }
 
@@ -763,7 +770,7 @@ bool ProcessRegionWhileOp(
     SmallVector<Type> arg_types;
     for (auto arg : region_while.arg()) arg_types.push_back(arg.getType());
     RewriteControlFlowOpRegion(builder, region_while, *region_idx, arg_types,
-                               ops_to_visit, control_flow_blocks, token, true);
+                               ops_to_visit, control_flow_blocks, token);
     return true;
   }
 
@@ -851,29 +858,39 @@ LogicalResult RewriteFunction(
         token = RewriteCallOp(builder, call, symbol_name, token);
       }
     } else if (auto region_if = dyn_cast<IfOp>(curr_op)) {
-      if (op_to_visit.region_idx || control_flow_ops.contains(region_if))
-        if (ProcessRegionIfOp(builder, region_if, op_to_visit.region_idx,
-                              ops_to_visit, control_flow_blocks, token))
+      if (op_to_visit.region_idx || control_flow_ops.contains(region_if)) {
+        auto exist_unprocessed_region =
+            ProcessRegionIfOp(builder, region_if, op_to_visit.region_idx,
+                              ops_to_visit, control_flow_blocks, token);
+
+        // Once all the IfOp regions are processed (i.e.
+        // 'exist_unprocessed_region' == false), select returned token-value
+        // from IfOp as the token to be used for the following op.
+        if (!exist_unprocessed_region) {
+          token = curr_op->getResult(curr_op->getNumResults() - 1);
+        } else {
           continue;
+        }
+      }
     } else if (auto region_while = dyn_cast<WhileOp>(curr_op)) {
       if (op_to_visit.region_idx || control_flow_ops.contains(region_while))
         if (ProcessRegionWhileOp(builder, region_while, op_to_visit.region_idx,
                                  ops_to_visit, control_flow_blocks, token))
           continue;
     } else if (auto region_terminator = dyn_cast<mhlo::ReturnOp>(curr_op)) {
-      bool flatten_tuple = dyn_cast_or_null<WhileOp>(
-                               region_terminator->getParentOp()) != nullptr;
+      bool flatten_tuple = isa<mhlo::WhileOp, mhlo::IfOp, mhlo::CaseOp>(
+          region_terminator->getParentOp());
       RewriteControlFlowTerminator(builder, region_terminator, token,
                                    flatten_tuple);
-      // There is no next op afer the control flow op terminator, simply let
+      // There is no next op after the control flow op terminator, simply let
       // stack have one less element.
       continue;
     } else if (auto func_terminator = dyn_cast<mlir::ReturnOp>(curr_op)) {
       if (rewrite_block)
         RewriteFunctionTerminator(builder, func_terminator, token);
 
-      // There is no next op afer the function terminator, simply let stack have
-      // one less element/be empty.
+      // There is no next op after the function terminator, simply let stack
+      // have one less element/be empty.
       continue;
     }
 

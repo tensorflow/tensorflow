@@ -2069,6 +2069,17 @@ XlaOp XlaBuilder::CustomCall(
   });
 }
 
+XlaOp XlaBuilder::OptimizationBarrier(XlaOp operand) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    Shape shape = *operand_shape;
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kOptimizationBarrier,
+                          {operand});
+  });
+}
+
 XlaOp XlaBuilder::Transpose(XlaOp operand,
                             absl::Span<const int64_t> permutation) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -4363,6 +4374,10 @@ XlaOp CustomCallWithConvDnums(
                              maybe_operand_shapes, has_side_effect,
                              output_operand_aliasing, literal, window, dnums,
                              schedule, api_version);
+}
+
+XlaOp OptimizationBarrier(XlaOp operand) {
+  return operand.builder()->OptimizationBarrier(operand);
 }
 
 XlaOp Complex(const XlaOp lhs, const XlaOp rhs,

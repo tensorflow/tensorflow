@@ -934,6 +934,13 @@ then b == f32[3]{0.0, 1.0, 2.0}
 
 Performs `AllReduce` with a summation computation.
 
+## OptimizationBarrier
+
+Blocks any optimization pass from moving computations across the barrier.
+
+Ensures that all inputs are evaluated before any operators that depend on the
+barrier's outputs.
+
 ## CustomCall
 
 See also

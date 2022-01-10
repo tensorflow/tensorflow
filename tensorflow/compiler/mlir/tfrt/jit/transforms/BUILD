@@ -12,6 +12,7 @@ tfrt_cc_library(
     srcs = ["tf_cpurt_clustering.cc"],
     hdrs = ["tf_cpurt_clustering.h"],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "@llvm-project//llvm:Support",
@@ -42,8 +43,6 @@ cc_library(
     srcs = [
         "tf_cpurt_buffer_forwarding.cc",
         "tf_cpurt_clustering_pass.cc",
-        "tf_cpurt_codegen_cwise.cc",
-        "tf_cpurt_codegen_reduction.cc",
         "tf_cpurt_copy_removal.cc",
         "tf_cpurt_detensorize_linalg.cc",
         "tf_cpurt_fission.cc",
@@ -53,8 +52,9 @@ cc_library(
         "tf_cpurt_math_approximation.cc",
         "tf_cpurt_passes.cc",
         "tf_cpurt_peel_tiled_loops.cc",
-        "tf_cpurt_sink_unused_outputs.cc",
         "tf_cpurt_symbolic_shape_optimization.cc",
+        "tf_cpurt_tile_cwise.cc",
+        "tf_cpurt_tile_reduction.cc",
         "tf_cpurt_vectorize_tiled_ops.cc",
     ],
     hdrs = ["tf_cpurt_passes.h"],

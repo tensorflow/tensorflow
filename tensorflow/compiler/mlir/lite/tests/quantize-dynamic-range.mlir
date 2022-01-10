@@ -180,8 +180,8 @@ func @NotQuantizeConv3D(%arg0: tensor<1x32x32x32x8xf32>) -> tensor<1x32x32x32x16
   %conv_3d = "tfl.conv_3d"(%arg0, %w, %b) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x32x32x32x8xf32>, tensor<1x1x1x8x16xf32>, tensor<16xf32>) -> tensor<1x32x32x32x16xf32>
   return %conv_3d : tensor<1x32x32x32x16xf32>
 
-// CHECK: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<1x1x1x8x16xf32>
-// CHECK: %[[b:.*]] = arith.constant dense<0.000000e+00> : tensor<16xf32>
+// CHECK-DAG: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<1x1x1x8x16xf32>
+// CHECK-DAG: %[[b:.*]] = arith.constant dense<0.000000e+00> : tensor<16xf32>
 // CHECK: %[[conv_3d:.*]] = "tfl.conv_3d"(%arg0, %[[w]], %[[b]]) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32}
 // CHECK: return %[[conv_3d:.*]]
 

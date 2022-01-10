@@ -12,6 +12,7 @@ package(
         "//tensorflow/core/platform:__subpackages__",
         # tensorflow/compiler/xla/pjrt:metrics depends on this package
         "//tensorflow/compiler/xla/pjrt:__subpackages__",
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
     ],
     licenses = ["notice"],
 )

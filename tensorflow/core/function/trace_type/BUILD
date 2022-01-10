@@ -23,6 +23,8 @@ py_strict_test(
     name = "trace_type_test",
     srcs = ["trace_type_test.py"],
     python_version = "PY3",
+    # TODO(b/213375459): For continous benchmark monitoring
+    visibility = ["//learning/brain/contrib/eager/python/examples:__pkg__"],
     deps = [
         ":default_types",
         ":trace_type",

@@ -115,12 +115,14 @@ class TRT_ShapedWeights {
 
   nvinfer1::DataType TrtDType() const { return type_; }
 
-  // TODO(aaroey): make these private.
+  const nvinfer1::Dims& Shape() const { return shape_; }
+  nvinfer1::Dims& Shape() { return shape_; }
+
+ private:
   // Scalar weights are supported, a scalar constant tensor is represented via
   // TRT_ShapedWeights::shape_ = {0, {1}}.
   nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
 
- private:
   // This constructor is only used by TrtWeightStore, which creates the
   // underlying buffer.
   TRT_ShapedWeights(nvinfer1::DataType type, nvinfer1::Dims dims,
@@ -147,13 +149,13 @@ class TRT_ShapedWeights {
 class TrtWeightStore {
  public:
   // Gets a TRT_ShapedWeights with 'type' and 'dims'.
-  TRT_ShapedWeights GetTempWeights(nvinfer1::DataType trt_type,
-                                   const nvinfer1::Dims& dims);
+  StatusOr<TRT_ShapedWeights> GetTempWeights(nvinfer1::DataType trt_type,
+                                             const nvinfer1::Dims& dims);
 
   // Gets a TRT_ShapedWeights with the same data type and dimensions as
   // 'weights'.
-  TRT_ShapedWeights GetTempWeights(const TRT_ShapedWeights& weights) {
-    return GetTempWeights(weights.TrtDType(), weights.shape_);
+  StatusOr<TRT_ShapedWeights> GetTempWeights(const TRT_ShapedWeights& weights) {
+    return GetTempWeights(weights.TrtDType(), weights.Shape());
   }
 
  private:

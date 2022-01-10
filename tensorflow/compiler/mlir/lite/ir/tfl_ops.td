@@ -751,7 +751,7 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I8, UI8, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[I1, F32, I32, I8, UI8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 
@@ -783,7 +783,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I8, UI8, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[I1, F32, I32, I8, UI8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 

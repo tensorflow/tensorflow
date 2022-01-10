@@ -553,8 +553,7 @@ class ListWrapper(
       return
     self._last_wrapped_list_snapshot = list(self._storage)
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
     self._check_external_modification()
     if self._non_append_mutation:
       raise ValueError(
@@ -575,7 +574,7 @@ class ListWrapper(
           "restoration on object creation.\n\nIf you don't need this list "
           "checkpointed, wrap it in a NoDependency object; it will be "
           "subsequently ignored.")
-    return super(ListWrapper, self)._checkpoint_dependencies
+    return super(ListWrapper, self)._trackable_children(save_type, **kwargs)
 
   def _has_mutation_or_trackable(self):
     """Short-circuits a check for trackables if there's already a mutation."""
@@ -848,8 +847,7 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
       return ordered[1]
     return []
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
     """Check that the object is saveable before listing its dependencies."""
     self._check_self_external_modification()
     if self._self_non_string_key:
@@ -871,7 +869,7 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
           "dictionary checkpointed, wrap it in a "
           "non-trackable object; it will be subsequently ignored.")
     assert not self._dirty  # Any reason for dirtiness should have an exception.
-    return super(_DictWrapper, self)._checkpoint_dependencies
+    return super(_DictWrapper, self)._trackable_children(save_type, **kwargs)
 
   @property
   def _dirty(self):
@@ -1065,8 +1063,7 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     """Avoid running self.__wrapped__ += y, which mutates `self`."""
     return self.__wrapped__ + y
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
     if not self._self_tuple_is_constructable:
       raise ValueError(
           f"Unable to save because the namedtuple {self.__wrapped__} is not "
@@ -1074,7 +1071,7 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
           f"Expected keyword arguments {self.__wrapped__._fields}. If you do "
           "not need to save this object, consider wrapping it in a custom "
           "object that does not inherit from tuple.")
-    return super(_TupleWrapper, self)._checkpoint_dependencies
+    return super(_TupleWrapper, self)._trackable_children(save_type, **kwargs)
 
   def __getattribute__(self, name):
     if name != "__wrapped__" and hasattr(self.__wrapped__, name):

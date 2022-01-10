@@ -228,14 +228,15 @@ class TRTNetworkBuilder {
     nvinfer1::Dims shape_dims;
     shape_dims.nbDims = 1;
     shape_dims.d[0] = shape_data.nbDims;
-    TRT_ShapedWeights const_weights =
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(nvinfer1::DataType::kINT32, shape_dims);
-    int32* values = const_weights.GetPointer<int32>();
+    TRT_ENSURE_OK(const_weights);
+    int32* values = const_weights->GetPointer<int32>();
     for (int i = 0; i < shape_data.nbDims; i++) {
       values[i] = static_cast<int32>(shape_data.d[i]);
     }
     nvinfer1::IConstantLayer* const_layer = network_->addConstant(
-        const_weights.shape_, const_weights.GetTrtWeights());
+        const_weights->Shape(), const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     nvinfer1::ITensor* output = const_layer->getOutput(0);
     TRT_ENSURE(output);
@@ -251,14 +252,15 @@ class TRTNetworkBuilder {
     nvinfer1::Dims shape_dims;
     shape_dims.nbDims = 1;
     shape_dims.d[0] = data.size();
-    TRT_ShapedWeights const_weights =
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(nvinfer1::DataType::kINT32, shape_dims);
-    int32* values = const_weights.GetPointer<int32>();
+    TRT_ENSURE_OK(const_weights);
+    int32* values = const_weights->GetPointer<int32>();
     for (int i = 0; i < data.size(); i++) {
       values[i] = static_cast<int32>(data[i]);
     }
     nvinfer1::IConstantLayer* const_layer = network_->addConstant(
-        const_weights.shape_, const_weights.GetTrtWeights());
+        const_weights->Shape(), const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     nvinfer1::ITensor* output = const_layer->getOutput(0);
     TRT_ENSURE(output);
@@ -283,11 +285,12 @@ class TRTNetworkBuilder {
     nvinfer1::Dims zero_shape;
     zero_shape.nbDims = nb_dims;
     std::fill_n(zero_shape.d, nb_dims, 1);
-    TRT_ShapedWeights const_weights =
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(data_type, zero_shape);
-    const_weights.GetPointer<T>()[0] = scalar;
+    TRT_ENSURE_OK(const_weights);
+    const_weights->GetPointer<T>()[0] = scalar;
     nvinfer1::IConstantLayer* const_layer =
-        network_->addConstant(zero_shape, const_weights.GetTrtWeights());
+        network_->addConstant(zero_shape, const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     return const_layer;
   };
@@ -317,10 +320,11 @@ class TRTNetworkBuilder {
     nvinfer1::Dims weights_shape;
     weights_shape.nbDims = nb_dims;
     std::fill_n(weights_shape.d, nb_dims, 1);
-    TRT_ShapedWeights const_weights =
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(data_type, weights_shape);
-    const_weights.GetPointer<T>()[0] = scalar;
-    return const_weights.GetTrtWeights();
+    TRT_ENSURE_OK(const_weights);
+    const_weights->GetPointer<T>()[0] = scalar;
+    return const_weights->GetTrtWeights();
   };
 
   // Adds a TensorRT Slice operation to the network.

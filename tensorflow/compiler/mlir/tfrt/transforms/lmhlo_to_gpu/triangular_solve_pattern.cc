@@ -62,10 +62,12 @@ struct TriangularSolveRewritePattern
       }
     }();
 
-    chain = rewriter.create<tfrt::gpu::MemCopyOp>(op.getLoc(), adaptor.output(),
+    Location loc = op->getLoc();
+    chain = rewriter.create<tfrt::gpu::MemCopyOp>(loc, adaptor.output(),
                                                   adaptor.b(), stream, chain);
 
-    auto handle = rewriter.create<tfrt::gpu::BlasCreateOp>(op.getLoc(), stream);
+    Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
+    auto handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, context);
 
     cublasSideMode_t side_mode =
         op.left_side() ? CUBLAS_SIDE_LEFT : CUBLAS_SIDE_RIGHT;
@@ -77,36 +79,33 @@ struct TriangularSolveRewritePattern
     const xla::Shape b_shape = xla::gpu::GetShape(op.b());
     int64_t m_value = b_shape.dimensions(b_shape.rank() - 2);
     int64_t n_value = b_shape.dimensions(b_shape.rank() - 1);
-    auto m =
-        rewriter.create<tfrt::compiler::ConstantI32Op>(op.getLoc(), m_value);
-    auto n =
-        rewriter.create<tfrt::compiler::ConstantI32Op>(op.getLoc(), n_value);
+    auto m = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, m_value);
+    auto n = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, n_value);
 
     mlir::Type element_type =
         op.output().getType().cast<mlir::MemRefType>().getElementType();
     auto data_type = MlirTypeToCudaDataType(element_type);
 
-    auto alpha =
-        MakeScalingFactorConstant(rewriter, op.getLoc(), element_type,
-                                  llvm::APFloat(1.0), llvm::APFloat(0.0));
+    auto alpha = MakeScalingFactorConstant(
+        rewriter, loc, element_type, llvm::APFloat(1.0), llvm::APFloat(0.0));
 
     // If side_mode == LEFT, the triangular linear system to be solved is
     // op(A).X = alpha*B. Since X is an m-by-n matrix, the minimum height of A
     // is m (it is m here). OTOH, if side_mode == RIGHT, we're solving
     // X.op(A) = alpha*B, and the minimum height of A is n (it is n here).
     auto height_a = rewriter.create<tfrt::compiler::ConstantI32Op>(
-        op.getLoc(), side_mode == CUBLAS_SIDE_LEFT ? m_value : n_value);
+        loc, side_mode == CUBLAS_SIDE_LEFT ? m_value : n_value);
     auto height_b =
-        rewriter.create<tfrt::compiler::ConstantI32Op>(op.getLoc(), m_value);
+        rewriter.create<tfrt::compiler::ConstantI32Op>(loc, m_value);
 
     int64_t batch_count = std::accumulate(
         b_shape.dimensions().begin(), b_shape.dimensions().end() - 2,
         int64_t{1}, std::multiplies<int64_t>());
-    auto batch = rewriter.create<tfrt::compiler::ConstantI32Op>(op.getLoc(),
-                                                                batch_count);
+    auto batch =
+        rewriter.create<tfrt::compiler::ConstantI32Op>(loc, batch_count);
 
     chain = rewriter.create<tfrt::gpu::BlasTrsmBatchOp>(
-        op.getLoc(), handle, side_mode, fill_mode, trans, diag_type, m, n,
+        loc, handle, stream, side_mode, fill_mode, trans, diag_type, m, n,
         data_type, alpha, adaptor.a(), height_a, adaptor.output(), height_b,
         batch, chain);
     rewriter.eraseOp(op);

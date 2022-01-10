@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 
 #include <algorithm>
-#include <unordered_set>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"

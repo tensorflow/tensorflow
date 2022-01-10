@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -232,6 +233,7 @@ REGISTER_KERNEL_BUILDER(Name("GeneratorDataset")
                             .HostMemory("handle")
                             .Priority(1),
                         GeneratorDatasetOp);
+REGISTER_INPUT_COLOCATION_EXEMPTION("GeneratorDataset");
 }  // namespace
 
 }  // namespace data

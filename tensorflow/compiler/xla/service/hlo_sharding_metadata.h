@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_METADATA_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_METADATA_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -81,7 +82,7 @@ class ShardingDomainCreator {
   struct DomainCseMapHasher {
     size_t operator()(const DomainCseMapKey& key) const;
   };
-  std::unordered_map<DomainCseMapKey, HloInstruction*, DomainCseMapHasher>
+  absl::flat_hash_map<DomainCseMapKey, HloInstruction*, DomainCseMapHasher>
       domain_cse_map_;
 };
 

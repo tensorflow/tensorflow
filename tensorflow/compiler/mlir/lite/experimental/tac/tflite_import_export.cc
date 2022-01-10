@@ -57,7 +57,7 @@ void AttachCostPerDevice(mlir::ModuleOp module,
       }
 
       mlir::Identifier device_identifier =
-          mlir::Identifier::get(device, module.getContext());
+          mlir::StringAttr::get(module.getContext(), device);
       auto float_type = mlir::FloatType::getF32(module.getContext());
       auto float_attr =
           mlir::FloatAttr::get(float_type, static_cast<float>(cost));

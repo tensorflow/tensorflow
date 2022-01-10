@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -23,20 +24,19 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
 namespace tensorflow {
 namespace {
 
 #define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
 using llvm::makeArrayRef;
 using mlir::BlockAndValueMapping;
 using mlir::dyn_cast;
 using mlir::failure;
 using mlir::FailureOr;
-using mlir::Identifier;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -63,8 +63,6 @@ using mlir::linalg::PadTensorOp;
 using mlir::linalg::TiledLoopOp;
 using mlir::linalg::YieldOp;
 using mlir::tensor::ExpandShapeOp;
-using mlir::tensor::ExtractSliceOp;
-using mlir::tensor::InsertSliceOp;
 
 // Tiles a GenericOp that models a 2D row or column reduction.
 struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
@@ -302,11 +300,10 @@ bool isCanonicalizedReduction(Operation *op) {
   return reduction.getNumReductionLoops() == 1;
 }
 
-struct CodegenReductionPass
-    : public CodegenReductionBase<CodegenReductionPass> {
-  CodegenReductionPass() = default;
-  CodegenReductionPass(int64_t reduction_1d_tile,
-                       llvm::ArrayRef<int64_t> reduction_2d_tiles) {
+struct TileReductionPass : public TileReductionBase<TileReductionPass> {
+  TileReductionPass() = default;
+  TileReductionPass(int64_t reduction_1d_tile,
+                    llvm::ArrayRef<int64_t> reduction_2d_tiles) {
     reduction_1d_tile_size = reduction_1d_tile;
     reduction_2d_tile_sizes = reduction_2d_tiles;
   }
@@ -315,7 +312,7 @@ struct CodegenReductionPass
     auto context = func.getContext();
 
     auto filter = LinalgTransformationFilter(
-                      llvm::None, {Identifier::get("tiled", context)})
+                      llvm::None, {mlir::StringAttr::get(context, "tiled")})
                       .addFilter([](Operation *op) {
                         return success(isCanonicalizedReduction(op));
                       });
@@ -342,15 +339,15 @@ struct CodegenReductionPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass() {
-  return std::make_unique<CodegenReductionPass>();
+std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass() {
+  return std::make_unique<TileReductionPass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass(
+std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass(
     int64_t reduction_1d_tile_size,
     llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
-  return std::make_unique<CodegenReductionPass>(reduction_1d_tile_size,
-                                                reduction_2d_tile_sizes);
+  return std::make_unique<TileReductionPass>(reduction_1d_tile_size,
+                                             reduction_2d_tile_sizes);
 }
 
 }  // namespace tensorflow

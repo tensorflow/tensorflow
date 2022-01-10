@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
-class DeviceAttributes;
+class CoordinationServiceDeviceInfo;
 class ServerDef;
 class Env;
 
@@ -107,10 +107,11 @@ class CoordinationServiceInterface {
   virtual void RegisterWorker(const std::string& job_name, int task_id,
                               uint64 incarnation, StatusCallback done) = 0;
 
-  // Wait for all tasks to be up and running. The callback is invoked when all
-  // tasks are up and registered, or some error occurs.
+  // Wait for all tasks to be up and running, and register local device
+  // info. The callback is invoked when all tasks are up and registered, or some
+  // error occurs.
   virtual void WaitForAllTasks(const std::string& job_name, int task_id,
-                               std::vector<DeviceAttributes> devices,
+                               const CoordinationServiceDeviceInfo& devices,
                                StatusCallback done) = 0;
 
   // Update the heartbeat timestamp of a task. This should only be invoked on
@@ -142,7 +143,10 @@ class CoordinationServiceInterface {
 
  private:
   friend class CoordinationServiceRpcHandler;
-  virtual const std::vector<DeviceAttributes>& ListClusterDevices() = 0;
+  friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
+  friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
+
+  virtual const CoordinationServiceDeviceInfo& ListClusterDevices() = 0;
 
   static std::unordered_map<std::string, CoordinationServiceFactory>*
   GetCoordinationServiceFactories() {

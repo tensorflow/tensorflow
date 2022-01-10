@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/single_threaded_executor.h"
 
+#include <utility>
+
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
@@ -454,13 +456,21 @@ class SingleThreadedExecutorImpl : public Executor {
             // ensure that the necessary validation has already happened.
             Entry& input = inputs[kernel_state.output_locations[j][k]];
             input.state = Entry::State::HAS_VALUE;
-            input.val.Init(*val.tensor);
+            if (val.tensor != nullptr) {
+              input.val.Init(*val.tensor);
+            } else {
+              input.val.Init(Tensor(kernel_state.kernel->output_type(j)));
+            }
           }
           // Move `arg` to the last consumer to avoid the cost of copying it.
           Entry& input =
               inputs[kernel_state.output_locations[j][num_destinations - 1]];
           input.state = Entry::State::HAS_VALUE;
-          input.val.Init(std::move(*val.tensor));
+          if (val.tensor != nullptr) {
+            input.val.Init(std::move(*val.tensor));
+          } else {
+            input.val.Init(Tensor(kernel_state.kernel->output_type(j)));
+          }
         }
         delete val.tensor;
       }

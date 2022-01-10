@@ -135,6 +135,7 @@ class ResourceAliasAnalysisInfo {
   // `auto_control_deps.py` where it is assumed that allocated resource values
   // NEVER alias. We should align our assumptions in the future.
   static constexpr int64_t kUnknownResourceId = -1;
+  static constexpr int64_t kInvalidResourceId = -2;
   static constexpr int64_t kMaxResourceTypeId = 9999;
 };
 

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <set>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 

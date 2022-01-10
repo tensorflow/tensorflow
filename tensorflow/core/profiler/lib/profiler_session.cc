@@ -25,15 +25,13 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_lock.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #endif
@@ -73,11 +71,8 @@ Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
     profiler->CollectData(space).IgnoreError();
   }
 
-  if (active_) {
-    // Allow another session to start.
-    profiler::ReleaseProfilerLock();
-    active_ = false;
-  }
+  // Allow another session to start.
+  profiler_lock_.ReleaseIfActive();
 #endif
   return Status::OK();
 }
@@ -92,20 +87,16 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
 
 ProfilerSession::ProfilerSession(const ProfileOptions& options)
 #if defined(IS_MOBILE_PLATFORM)
-    : active_(false),
-      status_(tensorflow::Status(
-          error::UNIMPLEMENTED,
-          "Profiler is unimplemented for mobile platforms.")),
+    : status_(errors::Unimplemented(
+          "Profiler is unimplemented for mobile platforms.")) {
 #else
-    : active_(profiler::AcquireProfilerLock()),
-#endif
-      options_(GetOptions(options)) {
-#if !defined(IS_MOBILE_PLATFORM)
-  if (!active_) {
-    status_ = tensorflow::Status(error::ALREADY_EXISTS,
-                                 "Another profiler session is active.");
+    : options_(GetOptions(options)) {
+  auto profiler_lock = profiler::ProfilerLock::Acquire();
+  if (!profiler_lock.ok()) {
+    status_ = profiler_lock.status();
     return;
   }
+  profiler_lock_ = *std::move(profiler_lock);
 
   LOG(INFO) << "Profiler session initializing.";
   // Sleep until it is time to start profiling.
@@ -124,8 +115,9 @@ ProfilerSession::ProfilerSession(const ProfileOptions& options)
 
   LOG(INFO) << "Profiler session started.";
   start_time_ns_ = profiler::GetCurrentTimeNanos();
+
+  DCHECK(profiler_lock_.Active());
   CreateProfilers(options_, &profilers_);
-  status_ = Status::OK();
 
   for (auto& profiler : profilers_) {
     DCHECK(profiler != nullptr);
@@ -145,10 +137,8 @@ ProfilerSession::~ProfilerSession() {
     profiler->Stop().IgnoreError();
   }
 
-  if (active_) {
-    // Allow another session to start.
-    profiler::ReleaseProfilerLock();
-  }
+  // Allow another session to start.
+  profiler_lock_.ReleaseIfActive();
 #endif
 }
 

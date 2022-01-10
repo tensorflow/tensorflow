@@ -253,9 +253,16 @@ absl::Status RunModelSample(const std::string& model_name) {
   ProfilingInfo profiling_info;
   RETURN_IF_ERROR(context.Profile(queue, &profiling_info));
   std::cout << profiling_info.GetDetailedReport() << std::endl;
-  uint64_t mem_bytes = context.GetSizeOfMemoryAllocatedForIntermediateTensors();
+  const uint64_t runtime_mem_bytes =
+      context.GetSizeOfMemoryAllocatedForIntermediateTensors();
   std::cout << "Memory for intermediate tensors - "
-            << mem_bytes / 1024.0 / 1024.0 << " MB" << std::endl;
+            << runtime_mem_bytes / 1024.0 / 1024.0 << " MB" << std::endl;
+  const uint64_t const_mem_bytes = context.GetConstantTensorsSize();
+  std::cout << "Memory for constant tensors - "
+            << const_mem_bytes / 1024.0 / 1024.0 << " MB" << std::endl;
+  std::cout << "Total tensors memory(const + intermediate) - "
+            << (const_mem_bytes + runtime_mem_bytes) / 1024.0 / 1024.0 << " MB"
+            << std::endl;
 
   const int num_runs_per_sec = std::max(
       1, static_cast<int>(1000.0f / absl::ToDoubleMilliseconds(

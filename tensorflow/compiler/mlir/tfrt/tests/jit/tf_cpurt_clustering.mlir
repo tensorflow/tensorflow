@@ -146,24 +146,34 @@ func @transpose_in_two_clusters(%arg0 : tensor<?x?xf32>,
   return %2, %5 : tensor<?x?xf32>, tensor<?x?xf32>
 }
 
-// CHECK-LABEL: func @do_not_cluster_i1_arguments
-func @do_not_cluster_i1_arguments(%arg0 : tensor<?xi1>, %arg1 : tensor<?xi1>,
+// CHECK-LABEL: func @cluster_i1_arguments
+func @cluster_i1_arguments(%arg0 : tensor<?xi1>, %arg1 : tensor<?xi1>,
                                   %arg2 : tensor<?xf32>, %arg3 : tensor<?xf32>)
     -> tensor<?xf32> {
+  // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
   // CHECK-NOT: tf_device.cluster
+  // CHECK:                 "tf.LogicalOr"
+  // CHECK:   %[[RET:.*]] = "tf.Select"
+  // CHECK:   tf_device.return %[[RET]]
   %0 = "tf.LogicalOr"(%arg0, %arg1)
         : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
   %1 = "tf.Select"(%0, %arg2, %arg3)
         : (tensor<?xi1>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  // CHECK: })
+  // CHECK: return %[[CLUSTER]]
   return %1 : tensor<?xf32>
 }
 
-// CHECK-LABEL: func @do_not_cluster_i1_in_the_body
-func @do_not_cluster_i1_in_the_body(%arg0 : tensor<?xf32>,
+// CHECK-LABEL: func @cluster_i1_in_the_body
+func @cluster_i1_in_the_body(%arg0 : tensor<?xf32>,
                                     %arg1 : tensor<?xf32>)
     -> tensor<?xi1> {
-  // CHECK-NOT: tf_device.cluster
+  // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
+  // CHECK:     %[[RET:.*]] = "tf.Less"
+  // CHECK:     tf_device.return %[[RET]]
   %0 = "tf.Less"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xi1>
+  // CHECK: })
+  // CHECK: return %[[CLUSTER]]
   return %0 : tensor<?xi1>
 }
 
