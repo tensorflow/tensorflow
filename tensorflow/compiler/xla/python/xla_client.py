@@ -46,6 +46,9 @@ profiler = _xla.profiler
 # changes.
 _version = 51
 
+# Version number for MLIR:Python components.
+mlir_api_version = 1
+
 xla_platform_names = {
     'cpu': 'Host',
     'gpu': 'CUDA',

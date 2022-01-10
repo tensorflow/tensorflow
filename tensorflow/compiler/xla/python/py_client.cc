@@ -258,7 +258,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
 }
 
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
-    absl::string_view mlir_module, CompileOptions options) {
+    std::string mlir_module, CompileOptions options) {
   std::unique_ptr<PjRtExecutable> executable;
   absl::optional<std::string> fingerprint;
   {
