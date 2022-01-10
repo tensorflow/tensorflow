@@ -45,7 +45,7 @@ tf_cc_binary(
         # copybara:uncomment "@tf_runtime//backends/cpu:image_alwayslink",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:test_ops_alwayslink",
-        "@tf_runtime//backends/cpu:cpurt_corert_kernels_alwayslink",
+        "@tf_runtime//backends/jitrt:cpurt_corert_kernels_alwayslink",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs

@@ -44,7 +44,7 @@ td_library(
         "@llvm-project//mlir:SideEffectTdFiles",
         "@tf_runtime//:OpBaseTdFiles",
         "@tf_runtime//:compiler_td_files",
-        "@tf_runtime//backends/cpu:cpurt_ops_td_files",
+        "@tf_runtime//backends/jitrt:cpurt_ops_td_files",
     ],
 )
 
@@ -80,7 +80,7 @@ tfrt_cc_library(
         "@tf_runtime//:compiler_tfrt_op_interfaces",
         "@tf_runtime//:compiler_tfrt_traits",
         "@tf_runtime//:tensor_opdefs",
-        "@tf_runtime//backends/cpu:cpurt_opdefs",
+        "@tf_runtime//backends/jitrt:cpurt_opdefs",
     ],
 )
 
@@ -139,7 +139,7 @@ tfrt_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
-        "@tf_runtime//backends/cpu:cpurt",
+        "@tf_runtime//backends/jitrt:cpurt",
     ],
 )
 
@@ -170,9 +170,9 @@ tfrt_cc_library(
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
         "@tf_runtime//:tracing",
-        "@tf_runtime//backends/cpu:async_runtime",
-        "@tf_runtime//backends/cpu:async_runtime_api",
-        "@tf_runtime//backends/cpu:cpurt",
+        "@tf_runtime//backends/jitrt:async_runtime",
+        "@tf_runtime//backends/jitrt:async_runtime_api",
+        "@tf_runtime//backends/jitrt:cpurt",
     ],
 )
 
@@ -184,7 +184,7 @@ tfrt_cc_library(
     deps = [
         "//tensorflow/core/platform:status",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//backends/cpu:cpurt",
+        "@tf_runtime//backends/jitrt:cpurt",
     ],
 )
 
@@ -331,7 +331,7 @@ cc_library(
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:distributed_kernels_opdefs",
-        "@tf_runtime//backends/cpu:cpurt_opdefs",
+        "@tf_runtime//backends/jitrt:cpurt_opdefs",
         "@tf_runtime//:stream_analysis",
         "@tf_runtime//:test_kernels_opdefs",
     ] + if_google([

@@ -18,7 +18,7 @@ tfrt_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@tf_runtime//backends/cpu:cpurt_support",
+        "@tf_runtime//backends/jitrt:cpurt_support",
     ],
 )
 

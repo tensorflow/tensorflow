@@ -30,7 +30,7 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
-        "@tf_runtime//backends/cpu:cpurt",
+        "@tf_runtime//backends/jitrt:cpurt",
     ],
 )
 
@@ -63,7 +63,7 @@ cc_library(
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
-        "@tf_runtime//backends/cpu:cpurt",
+        "@tf_runtime//backends/jitrt:cpurt",
     ],
 )
 

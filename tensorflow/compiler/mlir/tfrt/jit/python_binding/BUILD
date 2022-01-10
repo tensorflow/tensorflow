@@ -49,6 +49,6 @@ pybind_extension(
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
-        "@tf_runtime//backends/cpu:cpurt",
+        "@tf_runtime//backends/jitrt:cpurt",
     ],
 )
