@@ -115,6 +115,10 @@ absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
 
 absl::Status MergeNodes(GpuModel* gpu_model);
 
+absl::Status GraphToGpuModel(const GraphFloat32& graph,
+                             const CreateGpuModelInfo& create_info,
+                             const GpuInfo& gpu_info, GpuModel* gpu_model);
+
 flatbuffers::Offset<data::GpuModel> Encode(
     const GpuModel& gpu_model, flatbuffers::FlatBufferBuilder* builder);
 
