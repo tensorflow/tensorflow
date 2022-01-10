@@ -52,9 +52,16 @@ struct TransferReadOfOneDimExpandShape
     if (expand_src_type.getRank() != 1 || expand_dst_type.getRank() != 2)
       return failure();
 
+    auto result_type = vector_read.getType().dyn_cast<mlir::ShapedType>();
+    if (!result_type || result_type.getShape() != expand_dst_type.getShape())
+      return failure();
+
     auto zero = rewriter.create<ConstantIndexOp>(vector_read.getLoc(), 0);
     auto map = mlir::AffineMap::get(1, 0, {rewriter.getAffineDimExpr(0)},
                                     vector_read.getContext());
+    // TODO(pifon): Also support canonicalization in case the map is not an
+    // identity.
+    if (!map.isIdentity()) return failure();
 
     auto new_read = rewriter.create<TransferReadOp>(
         vector_read.getLoc(),
