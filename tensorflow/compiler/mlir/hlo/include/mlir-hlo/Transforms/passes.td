@@ -44,6 +44,33 @@ def CopyRemoval : FunctionPass<"copy-removal"> {
   let constructor = "createCopyRemovalPass()";
 }
 
+def BufferPacking : FunctionPass<"buffer-packing"> {
+  let summary = "Pass to pack allocated buffer to reduce memory consumption.";
+  let description = [{The pass tries to pack smaller buffers into larger buffers.
+  To do this, it sorts all allocated buffers by multiple criteria depends on the
+  selected window-size.
+  After this sorting, the buffers are checked whether subsequent buffers can be
+  packed into them.}];
+  let dependentDialects = ["StandardOpsDialect","memref::MemRefDialect",
+    "arith::ArithmeticDialect"];
+  let constructor = "createBufferPackingPass()";
+  let options = [
+   Option<"window_size_", "window-size", "unsigned",
+           /*default=*/"5", "The window size blurs the start position of an"
+           "allocated buffer. Buffers allocated in the same sliding window area"
+           "are treated equally in terms of starting position, withing the"
+           "sliding window area they are sorted by memory size."
+           "A window size of zero sorts the buffers only by memory size.">,
+  ];
+}
+
+def MemoryCount : FunctionPass<"memory-count"> {
+  let summary = "Test pass to count the allocated memory of a module.";
+  let description = [{A test pass that prints the size of allocated memory of a
+  module.}];
+  let constructor = "createMemoryCountPass()";
+}
+
 def TestUserange : FunctionPass<"test-print-userange"> {
   let summary = "Test pass for checking userange intervals.";
   let constructor = "createTestUserangePass()";

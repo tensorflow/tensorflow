@@ -20,6 +20,12 @@ limitations under the License.
 
 namespace mlir {
 
+class StandardOpsDialect;
+
+namespace arith {
+class ArithmeticDialect;
+}  // end namespace arith
+
 namespace memref {
 class MemRefDialect;
 }  // end namespace memref
