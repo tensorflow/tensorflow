@@ -74,11 +74,16 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
     done = [] {};
   }
 
-  const int64_t axis_input = context->input(0).scalar<int64_t>()();
+  const Tensor& input_axis = context->input(0);
   const Tensor& input_indices = context->input(1);
   const Tensor& input_values = context->input(2);
   const Tensor& input_shape = context->input(3);
 
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsScalar(input_axis.shape()),
+                    errors::InvalidArgument(
+                        "Input axis should be a scalar but received shape ",
+                        input_axis.shape().DebugString()),
+                    done);
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsMatrix(input_indices.shape()),
                     errors::InvalidArgument(
                         "Input indices should be a matrix but received shape ",
@@ -95,6 +100,7 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
                         input_shape.shape().DebugString()),
                     done);
 
+  const int64_t axis_input = input_axis.scalar<int64_t>()();
   const int64_t input_rank = input_shape.vec<int64_t>().size();
   const int64_t axis = (axis_input < 0) ? input_rank + axis_input : axis_input;
 
