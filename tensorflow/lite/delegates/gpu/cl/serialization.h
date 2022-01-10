@@ -26,12 +26,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-
-flatbuffers::Offset<data::GpuModel> Encode(
-    const GpuModel& gpu_model, flatbuffers::FlatBufferBuilder* builder);
-
-absl::Status Decode(const data::GpuModel* fb_gpu_model, GpuModel* gpu_model);
-
 namespace cl {
 
 class InferenceContext;
