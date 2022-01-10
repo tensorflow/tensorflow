@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/pytree.h"
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -111,7 +112,11 @@ bool PyTreeDef::operator==(const PyTreeDef& other) const {
   const PyTreeTypeRegistry::Registration* registration =
       PyTreeTypeRegistry::Lookup(obj.get_type());
   if (registration) {
-    *custom = registration;
+    if (registration->kind == PyTreeKind::kCustom) {
+      *custom = registration;
+    } else {
+      *custom = nullptr;
+    }
     return registration->kind;
   } else if (py::isinstance<py::tuple>(obj) && py::hasattr(obj, "_fields")) {
     // We can only identify namedtuples heuristically, here by the presence of
@@ -696,6 +701,7 @@ std::string PyTreeDef::ToString() const {
 
 void BuildPytreeSubmodule(py::module& m) {
   py::module pytree = m.def_submodule("pytree", "Python tree library");
+  pytree.attr("version") = py::int_(1);
   pytree.def("flatten", &PyTreeDef::Flatten, py::arg("tree"),
              py::arg("leaf_predicate") = absl::nullopt);
   pytree.def("tuple", &PyTreeDef::Tuple);
