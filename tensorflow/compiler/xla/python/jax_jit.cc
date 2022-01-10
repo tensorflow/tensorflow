@@ -94,6 +94,12 @@ bool GetEnableX64() {
   return thread_local_state.enable_x64.value_or(*global_state.enable_x64);
 }
 
+absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> GetDefaultDevice() {
+  return thread_local_state.default_device.has_value()
+             ? thread_local_state.default_device
+             : global_state.default_device;
+}
+
 absl::optional<pybind11::function> GetPostHook() {
   return thread_local_state.post_hook.has_value() ? thread_local_state.post_hook
                                                   : global_state.post_hook;
@@ -123,7 +129,7 @@ std::string CallSignature::DebugString() const {
       "static args (positional + keyword): %s\nstatic arg keyword names: %s\n"
       "dynamic arg signatures (positional + keyword): %s\n"
       "dynamic arg keyword names: %s\ndynamic arg treedefs: %s\n"
-      "device: %p\n"
+      "device: %s\n"
       "jax_enable_x64: %d\n"
       "global_extra_jit_context: %s\n"
       "thread_local_extra_jit_context: %s\n",
@@ -132,7 +138,8 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
-      device, jax_enable_x64, OptionalDebugString(global_extra_jit_context),
+      device != nullptr ? device->DebugString() : "nullptr", jax_enable_x64,
+      OptionalDebugString(global_extra_jit_context),
       OptionalDebugString(thread_local_extra_jit_context));
 }
 
@@ -429,7 +436,9 @@ CompiledFunctionCache::Cache* CompiledFunctionCache::Lookup(
 class CompiledFunction {
  public:
   CompiledFunction(py::function fun, py::function cache_miss,
-                   py::function get_device, std::vector<int> static_argnums,
+                   py::function get_device,
+                   absl::optional<xla::PjRtDevice*> jit_device,
+                   std::vector<int> static_argnums,
                    std::vector<py::str> static_argnames,
                    std::vector<int> donate_argnums,
                    std::shared_ptr<CompiledFunctionCache> cache);
@@ -475,6 +484,9 @@ class CompiledFunction {
   const py::function& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
   const py::function& get_device() const { return get_device_; }
+  const absl::optional<xla::PjRtDevice*>& jit_device() const {
+    return jit_device_;
+  }
   const std::vector<int>& static_argnums() const { return static_argnums_; }
   const std::vector<py::str>& static_argnames() const {
     return static_argnames_;
@@ -517,6 +529,10 @@ class CompiledFunction {
   std::vector<py::str> static_argnames_;
   std::vector<int> donate_argnums_;
 
+  // The explicit device set by either the `device` or `backend` argument to
+  // jit.
+  absl::optional<xla::PjRtDevice*> jit_device_;
+
   // A function taking no arguments and returning the default device and whether
   // jax.jit has been committed to it.
   py::function get_device_;
@@ -541,6 +557,7 @@ class CompiledFunction {
 
 CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
                                    py::function get_device,
+                                   absl::optional<xla::PjRtDevice*> jit_device,
                                    std::vector<int> static_argnums,
                                    std::vector<py::str> static_argnames,
                                    std::vector<int> donate_argnums,
@@ -550,6 +567,7 @@ CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
       static_argnums_(std::move(static_argnums)),
       static_argnames_(std::move(static_argnames)),
       donate_argnums_(donate_argnums),
+      jit_device_(std::move(jit_device)),
       get_device_(std::move(get_device)),
       cache_(std::move(cache)) {
   std::sort(static_argnums_.begin(), static_argnums_.end());
@@ -794,6 +812,8 @@ void CompiledFunction::TryToPopulateDefaultDevice() {
 
 xla::StatusOr<py::object> CompiledFunction::Call(
     py::handle args, absl::optional<py::kwargs> kwargs) {
+  VLOG(3) << "Calling CompiledFunction " << function_name_;
+
   // Make sure we trigger a garbage collection on JIT function calls. Otherwise
   // code like
   // f = jit(...)
@@ -813,17 +833,46 @@ xla::StatusOr<py::object> CompiledFunction::Call(
                                         **kwargs.value_or(py::kwargs())))[0]);
   }
 
-  // On the first call to `Call`, compute a default device. We need to wait
-  // until after platform initialization is complete before doing so, but @jit
-  // may be used as a decorator.
-  if (!default_device_) {
-    TryToPopulateDefaultDevice();
+  xla::PjRtDevice* device;
+  // Whether `device` should override an input with a sticky device.
+  bool is_committed;
+  if (jit_device_.has_value()) {
+    device = *jit_device_;
+    is_committed = true;
+    VLOG(3) << "Using jit_device_: " << device->DebugString();
+  } else if (GetDefaultDevice().has_value()) {
+    device = GetDefaultDevice()->get();
+    is_committed = false;
+    VLOG(3) << "Using config.default_device (uncommitted): "
+            << device->DebugString();
+  } else {
+    // Call back into Python to find system default device, which will be stored
+    // in default_device_.
+    //
+    // TODO(skyewm): this logic is overly convoluted, since its the original
+    // logic we had before adding jit_device_ and GetDefaultDevice() (i.e. it
+    // handles finding the device passed to jit, which is now jit_device_). We
+    // can simplify once jax always passes default_device_, or even better, pass
+    // in the system default device once from Python once we can guarantee users
+    // are using the default device context manager instead of deprecated APIs
+    // for changing the system default.
     if (!default_device_) {
-      return py::object(py::cast<py::tuple>(
-          cache_miss_(*py::reinterpret_borrow<py::args>(args),
-                      **kwargs.value_or(py::kwargs())))[0]);
+      // On the first call to `Call`, compute a default device. We need to wait
+      // until after platform initialization is complete before doing so, but
+      // @jit may be used as a decorator.
+      TryToPopulateDefaultDevice();
+      if (!default_device_) {
+        return py::object(py::cast<py::tuple>(
+            cache_miss_(*py::reinterpret_borrow<py::args>(args),
+                        **kwargs.value_or(py::kwargs())))[0]);
+      }
     }
+    device = default_device_;
+    is_committed = is_committed_;
+    VLOG(3) << "Using system default device (uncommitted): "
+            << device->DebugString();
   }
+  CHECK(device != nullptr);
 
   ParsedArgumentsAsBuffers arguments;
   arguments.signature.function_name = function_name_;
@@ -840,8 +889,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   arguments.signature.jax_enable_x64 = jax_enable_x64;
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
-  status = ComputeSignature(jax_enable_x64, default_device_, is_committed_,
-                            arguments);
+  status = ComputeSignature(jax_enable_x64, device, is_committed, arguments);
   if (!status.ok()) {
     VLOG(2) << "ComputeSignature failed: " << status;
     return py::object(
@@ -851,6 +899,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
+  VLOG(3) << "CallSignature:\n" << arguments.signature.DebugString();
   bool inserted = false;
   std::shared_ptr<CacheEntry> cache_entry = executables_->GetOrCreateIfAbsent(
       arguments.signature, [&inserted](const CallSignature& key) {
@@ -864,7 +913,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
     if (inserted) {
       py::object out_and_fastpath_data;
       py::tuple out_tuple;
-      VLOG(2) << "Cache miss for " << arguments.signature.DebugString();
+      VLOG(2) << "Cache miss for\n" << arguments.signature.DebugString();
       try {
         // Calls Python and may release the GIL. May also throw if
         // compilation/tracing fails.
@@ -1126,20 +1175,22 @@ PyObject* JaxCompiledFunction_tp_repr(PyObject* self) {
 void InitializeCompiledFunction(JaxCompiledFunctionObject* cfun,
                                 py::function fun, py::function cache_miss,
                                 py::function get_device,
+                                absl::optional<xla::PjRtDevice*> jit_device,
                                 std::vector<int> static_argnums,
                                 std::vector<py::str> static_argnames,
                                 std::vector<int> donate_argnums,
                                 std::shared_ptr<CompiledFunctionCache> cache) {
   new (&cfun->fun) CompiledFunction(
       std::move(fun), std::move(cache_miss), std::move(get_device),
-      std::move(static_argnums), std::move(static_argnames),
-      std::move(donate_argnums), std::move(cache));
+      std::move(jit_device), std::move(static_argnums),
+      std::move(static_argnames), std::move(donate_argnums), std::move(cache));
 }
 
 }  // extern "C"
 
 py::object MakeCompiledFunction(py::function fun, py::function cache_miss,
                                 py::function get_device,
+                                absl::optional<xla::PjRtDevice*> jit_device,
                                 std::vector<int> static_argnums,
                                 std::vector<py::str> static_argnames,
                                 std::vector<int> donate_argnums,
@@ -1153,10 +1204,10 @@ py::object MakeCompiledFunction(py::function fun, py::function cache_miss,
     cache = std::make_shared<CompiledFunctionCache>(
         CompiledFunctionCache::kDefaultCapacity);
   }
-  InitializeCompiledFunction(buf, std::move(fun), std::move(cache_miss),
-                             std::move(get_device), std::move(static_argnums),
-                             std::move(static_argnames),
-                             std::move(donate_argnums), std::move(cache));
+  InitializeCompiledFunction(
+      buf, std::move(fun), std::move(cache_miss), std::move(get_device),
+      std::move(jit_device), std::move(static_argnums),
+      std::move(static_argnames), std::move(donate_argnums), std::move(cache));
   return obj;
 }
 
@@ -1265,6 +1316,7 @@ void BuildJaxjitSubmodule(py::module& m) {
         pickle["fun"] = fn->fun();
         pickle["cache_miss"] = fn->cache_miss();
         pickle["get_device"] = fn->get_device();
+        pickle["jit_device"] = fn->jit_device();
         pickle["static_argnums"] = fn->static_argnums();
         pickle["static_argnames"] = fn->static_argnames();
         pickle["donate_argnums"] = fn->donate_argnums();
@@ -1285,6 +1337,8 @@ void BuildJaxjitSubmodule(py::module& m) {
         py::function fun = py::cast<py::function>(pickle["fun"]);
         py::function cache_miss = py::cast<py::function>(pickle["cache_miss"]);
         py::function get_device = py::cast<py::function>(pickle["get_device"]);
+        absl::optional<xla::PjRtDevice*> jit_device =
+            py::cast<absl::optional<xla::PjRtDevice*>>(pickle["jit_device"]);
         std::vector<int> static_argnums =
             py::cast<std::vector<int>>(pickle["static_argnums"]);
         std::vector<py::str> static_argnames =
@@ -1296,14 +1350,16 @@ void BuildJaxjitSubmodule(py::module& m) {
         InitializeCompiledFunction(
             reinterpret_cast<JaxCompiledFunctionObject*>(self.ptr()),
             std::move(fun), std::move(cache_miss), std::move(get_device),
-            std::move(static_argnums), std::move(static_argnames),
-            std::move(donate_argnums), std::move(cache));
+            std::move(jit_device), std::move(static_argnums),
+            std::move(static_argnames), std::move(donate_argnums),
+            std::move(cache));
       },
       py::is_method(cfun_type));
 
   py::class_<JitState> jit_state_(jitlib, "JitState");
   jit_state_.def_readwrite("disable_jit", &JitState::disable_jit);
   jit_state_.def_readwrite("enable_x64", &JitState::enable_x64);
+  jit_state_.def_readwrite("default_device", &JitState::default_device);
   jit_state_.def_readwrite("extra_jit_context", &JitState::extra_jit_context);
   jit_state_.def_readwrite("post_hook", &JitState::post_hook);
 
@@ -1354,16 +1410,21 @@ void BuildJaxjitSubmodule(py::module& m) {
       [](py::function fun, py::function cache_miss, py::function get_device,
          std::vector<int> static_argnums, std::vector<py::str> static_argnames,
          std::vector<int> donate_argnums,
+         absl::optional<xla::PjRtDevice*> jit_device,
          std::shared_ptr<CompiledFunctionCache> cache) -> py::object {
         return MakeCompiledFunction(
             std::move(fun), std::move(cache_miss), std::move(get_device),
-            std::move(static_argnums), std::move(static_argnames),
-            std::move(donate_argnums), std::move(cache));
+            std::move(jit_device), std::move(static_argnums),
+            std::move(static_argnames), std::move(donate_argnums),
+            std::move(cache));
       },
       py::arg("fun"), py::arg("cache_miss"), py::arg("get_device"),
       py::arg("static_argnums"),
       py::arg("static_argnames") = std::vector<py::str>(),
       py::arg("donate_argnums") = std::vector<int>(),
+      // TODO(skyewm): remove default jit_device argument once jax always passes
+      // it and minimum jaxlib version is bumped
+      py::arg("jit_device") = absl::nullopt,  //
       py::arg("cache") = nullptr);
 
   // This function is not yet a full replacement for the Python one, because:
