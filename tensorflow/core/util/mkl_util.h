@@ -1109,6 +1109,10 @@ template <>
 memory::data_type MklDnnType<bfloat16>() {
   return memory::data_type::bf16;
 }
+template <>
+memory::data_type MklDnnType<Eigen::half>() {
+  return memory::data_type::f16;
+}
 
 // Map MklTensorFormat to oneDNN format tag
 //

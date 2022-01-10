@@ -221,6 +221,10 @@ REGISTER_KERNEL_BUILDER(
     Name("_MklLayerNorm").Device(DEVICE_CPU).TypeConstraint<bfloat16>("T"),
     MklLayerNormOp<CPUDevice, bfloat16>);
 
+REGISTER_KERNEL_BUILDER(
+    Name("_MklLayerNorm").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    MklLayerNormOp<CPUDevice, Eigen::half>);
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

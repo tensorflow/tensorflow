@@ -91,6 +91,7 @@ tf_python_pybind_extension(
         "_pywrap_utils.pyi",
     ],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
