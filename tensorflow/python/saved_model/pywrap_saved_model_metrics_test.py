@@ -95,7 +95,7 @@ class MetricsTest(test.TestCase):
     filename = os.path.join(self.get_temp_dir(), "test.txt")
     with open(filename, "w") as file:
       file.write("Hello! \n")
-    self.assertGreater(metrics.CalculateFileSize(filename), 0)
+    self.assertEqual(metrics.CalculateFileSize(filename), 0)
 
 
 if __name__ == "__main__":

@@ -165,9 +165,18 @@ void DefineMetricsModule(py::module main_module) {
         Env* env = Env::Default();
         uint64 filesize;
         env->GetFileSize(filename, &filesize);
-        return filesize;
+        // Convert to MB.
+        int filesize_mb = filesize / 1000;
+        // Round to the nearest 100 MB.
+        // Smaller multiple.
+        int a = (filesize_mb / 100) * 100;
+        // Larger multiple.
+        int b = a + 100;
+        // Return closest of two.
+        return (filesize_mb - a > b - filesize_mb) ? b : a;
       },
-      py::doc("Calculate filesize for `filename`."));
+      py::doc("Calculate filesize (MB) for `filename`, rounding to the nearest "
+              "100MB."));
 
   m.def(
       "RecordCheckpointSize",
