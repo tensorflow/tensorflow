@@ -545,7 +545,7 @@ TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<Variant>("dtype")
                             .HostMemory("resource"),
                         AssignVariableOp<CPUDevice, Variant>);
