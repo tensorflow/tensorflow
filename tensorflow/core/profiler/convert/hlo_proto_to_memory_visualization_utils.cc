@@ -215,7 +215,7 @@ void NoteSpecialAllocations(
 
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     const HloProto& hlo_proto, int64_t small_buffer_size,
-    int64_t heap_simulator_trace_id) {
+    int64_t heap_simulator_trace_id, int64_t memory_color) {
   // Construct a mapping from name to HLO proto.
   absl::node_hash_map<std::string, const HloInstructionProto*> name_to_hlo;
   for (const auto& computation : hlo_proto.hlo_module().computations()) {
@@ -398,6 +398,9 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     if (buffer_allocation->is_thread_local()) {
       continue;
     }
+    if (logical_buffer->color() != memory_color) {
+      continue;
+    }
     // Clear out the assigned logical buffers when stringifying the buffer
     // allocation, as it can be a long list.
     auto to_string = [](const BufferAllocationProto* p) {
@@ -507,11 +510,12 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
 }
 
 // From a list of heap simulator traces, identify the one that has the largest
-// number of HBM (color = 0) memory events.
+// number of memory events with color <memory_color>.
 // If unable to find the heap simulator trace, return -1, and
 // ConvertHloProtoToPreprocessResult will not consider heap_simulator_traces
 // during preprocess.
-int64_t GetHeapSimulatorTraceIdFromEvents(const HloProto& proto) {
+int64_t GetHeapSimulatorTraceIdFromEvents(const HloProto& proto,
+                                          int64_t memory_color) {
   absl::flat_hash_map<int64_t, const xla::LogicalBufferProto*>
       id_to_logical_buffer;
   for (const auto& logical_buffer :
@@ -530,8 +534,7 @@ int64_t GetHeapSimulatorTraceIdFromEvents(const HloProto& proto) {
       if (iter == id_to_logical_buffer.end()) {
         continue;
       }
-      // TODO(tianrun): Add a "memory space color" query parameter.
-      if (iter->second->color() == 0) {
+      if (iter->second->color() == memory_color) {
         event_count++;
       }
     }
@@ -546,8 +549,8 @@ int64_t GetHeapSimulatorTraceIdFromEvents(const HloProto& proto) {
 
 // Tries to get the correct heap simulator trace based on
 // buffer_allocation_index.
-int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(
-    const HloProto& proto) {
+int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(const HloProto& proto,
+                                                         int64_t memory_color) {
   absl::flat_hash_map<int64_t, const xla::BufferAllocationProto*>
       id_to_buffer_allocation;
   for (const auto& buffer_allocation :
@@ -561,13 +564,12 @@ int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(
                                           .buffer_allocation_index();
     const auto iter = id_to_buffer_allocation.find(buffer_allocation_index);
     if (buffer_allocation_index && iter != id_to_buffer_allocation.end()) {
-      // TODO(tianrun): Add a "memory space color" query parameter.
       // Find the heap simulator trace that corresponds to the HLO temporaries
       // buffer allocation, where is_thread_local,
       // is_entry_computation_parameter, is_constant, and maybe_live_out will
       // all be false.
       const auto* buffer_allocation = iter->second;
-      if (buffer_allocation->color() == 0 &&
+      if (buffer_allocation->color() == memory_color &&
           !buffer_allocation->is_thread_local() &&
           !buffer_allocation->is_entry_computation_parameter() &&
           !buffer_allocation->is_constant() &&
@@ -579,12 +581,13 @@ int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(
   return -1;
 }
 
-int64_t GetHeapSimulatorTraceId(const HloProto& proto) {
-  int64_t id = GetHeapSimulatorTraceIdFromBufferAllocationIndex(proto);
+int64_t GetHeapSimulatorTraceId(const HloProto& proto, int64_t memory_color) {
+  int64_t id =
+      GetHeapSimulatorTraceIdFromBufferAllocationIndex(proto, memory_color);
   if (id != -1) {
     return id;
   }
-  return GetHeapSimulatorTraceIdFromEvents(proto);
+  return GetHeapSimulatorTraceIdFromEvents(proto, memory_color);
 }
 
 }  // namespace profiler

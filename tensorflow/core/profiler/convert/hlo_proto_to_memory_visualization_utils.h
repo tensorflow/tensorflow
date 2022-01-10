@@ -31,11 +31,15 @@ namespace profiler {
 // heap_simulator_trace_id sets the index of heap simulator trace to be
 // displayed. If it is set to -1, then HLOProto.heap_simulator_traces will not
 // be considered during the preprocess.
+// By default the memory color is 0, which is HBM.
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     const xla::HloProto& hlo_proto, int64_t small_buffer_size,
-    int64_t heap_simulator_trace_id);
+    int64_t heap_simulator_trace_id, int64_t memory_color = 0);
 
-int64_t GetHeapSimulatorTraceId(const xla::HloProto& proto);
+// Get the heap simulator trace ID from HLO proto.
+// By default the memory color is 0, which is HBM.
+int64_t GetHeapSimulatorTraceId(const xla::HloProto& proto,
+                                int64_t memory_color = 0);
 
 }  // namespace profiler
 }  // namespace tensorflow
