@@ -96,7 +96,7 @@ extern "C" {
 
 // --------------------------------------------------------------------------
 // TF_Version returns a string describing version information of the
-// TensorFlow library. TensorFlow using semantic versioning.
+// TensorFlow library. TensorFlow uses semantic versioning.
 TF_CAPI_EXPORT extern const char* TF_Version(void);
 
 // --------------------------------------------------------------------------
