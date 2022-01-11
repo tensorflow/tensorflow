@@ -193,6 +193,12 @@ This release contains contributions from many people at Google, as well as:
         the model's training step with [XLA](https://www.tensorflow.org/xla).
         Note that `jit_compile=True` may not necessarily work for all models.
 
+*   TF Core:
+
+    *   Adding a flag `stateful` to `numpy_function`, allowing to give the
+        guarantee to the runtime that the function call is stateless, which
+        allows for more optimizations in the graph.
+
 *   Deterministic Op Functionality
 
     *   Add determinsitic GPU implementations of:
@@ -253,8 +259,7 @@ This release contains contributions from many people at Google, as well as:
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
-
+jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.7.0
 
