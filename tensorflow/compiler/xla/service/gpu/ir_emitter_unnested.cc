@@ -3030,8 +3030,14 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
   auto casted = mlir::cast<OpT>(op);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                       GetAllocationSlice(casted.getOperand()));
-  AddThunkToThunkSequence(
-      absl::make_unique<ThunkType>(GetThunkInfo(op), result_slice));
+  std::unique_ptr<Thunk> thunk;
+  if (IsBefThunkEnabled()) {
+    TF_ASSIGN_OR_RETURN(thunk,
+                        CreateBefThunk(GetThunkInfo(op), op, {result_slice}));
+  } else {
+    thunk = absl::make_unique<ThunkType>(GetThunkInfo(op), result_slice);
+  }
+  AddThunkToThunkSequence(std::move(thunk));
   return Status::OK();
 }
 
