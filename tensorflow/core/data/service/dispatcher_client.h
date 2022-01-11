@@ -97,9 +97,6 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // stored in `workers`.
   Status GetWorkers(std::vector<WorkerInfo>& workers);
 
-  // Returns element spec for the registered dataset.
-  Status GetElementSpec(int64_t dataset_id, std::string& element_spec);
-
   // Returns data service metadata for the registered dataset.
   Status GetDataServiceMetadata(int64_t dataset_id,
                                 DataServiceMetadata& metadata);

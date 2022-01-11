@@ -222,22 +222,6 @@ Status DataServiceDispatcherClient::GetWorkers(
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetElementSpec(int64_t dataset_id,
-                                                   std::string& element_spec) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
-
-  GetElementSpecRequest req;
-  req.set_dataset_id(dataset_id);
-  GetElementSpecResponse resp;
-  grpc::ClientContext ctx;
-  grpc::Status s = stub_->GetElementSpec(&ctx, req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get element_spec", s);
-  }
-  element_spec = resp.element_spec();
-  return Status::OK();
-}
-
 Status DataServiceDispatcherClient::GetDataServiceMetadata(
     int64_t dataset_id, DataServiceMetadata& metadata) {
   TF_RETURN_IF_ERROR(EnsureInitialized());

@@ -62,19 +62,6 @@ class DispatcherClientTest : public ::testing::Test {
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_client_;
 };
 
-// These tests verify that both GetElementSpec and GetDataServiceMetadata RPCs
-// are able to retrieve the metadata registered with a DataServiceMetadata.
-TEST_F(DispatcherClientTest, GetElementSpec) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
-
-  std::string element_spec;
-  TF_ASSERT_OK(dispatcher_client_->GetElementSpec(dataset_id, element_spec));
-  EXPECT_EQ(element_spec, "encoded_element_spec");
-}
-
 TEST_F(DispatcherClientTest, GetDataServiceMetadata) {
   DataServiceMetadata metadata;
   metadata.set_element_spec("encoded_element_spec");
