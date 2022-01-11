@@ -38,7 +38,8 @@
     logging is enabled.
   * Changed default value for the `verbose` argument of `Model.evaluate()` and
     `Model.predict()` to `"auto"`, which defaults to `verbose=1` for most cases
-    and defaults to `verbose=2` when used with `ParameterServerStrategy`.
+    and defaults to `verbose=2` when used with `ParameterServerStrategy` or with
+    interactive logging disabled.
 
 * `tf.lite`:
 
