@@ -179,80 +179,6 @@ bool IsEngineOutput(absl::string_view name) {
   return absl::StartsWith(name, IONamePrefixes::kOutputPHName);
 }
 
-class TFAttrs {
- public:
-  explicit TFAttrs(const NodeDef& tf_node) {
-    for (const auto& attr : tf_node.attr()) {
-      attrs_.insert({attr.first, &attr.second});
-    }
-  }
-
-  bool count(const string& key) const { return attrs_.count(key); }
-
-  AttrValue const* at(const string& key) const {
-    if (!attrs_.count(key)) {
-      LOG(FATAL) << "Attribute not found: " << key;
-    }
-    return attrs_.at(key);
-  }
-
-  template <typename T>
-  T get(const string& key) const;
-
-  template <typename T>
-  T get(const string& key, const T& default_value) const {
-    return attrs_.count(key) ? this->get<T>(key) : default_value;
-  }
-
- private:
-  std::map<string, AttrValue const*> attrs_;
-};
-
-template <>
-string TFAttrs::get<string>(const string& key) const {
-  return this->at(key)->s();
-}
-
-template <>
-std::vector<int64_t> TFAttrs::get<std::vector<int64_t>>(
-    const string& key) const {
-  auto attr = this->at(key)->list().i();
-  return std::vector<int64_t>(attr.begin(), attr.end());
-}
-
-template <>
-std::vector<float> TFAttrs::get<std::vector<float>>(const string& key) const {
-  auto attr = this->at(key)->list().f();
-  return std::vector<float>(attr.begin(), attr.end());
-}
-
-template <>
-nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(const string& key) const {
-  nvinfer1::DataType trt_dtype(nvinfer1::DataType::kFLOAT);
-  TF_CHECK_OK(TfTypeToTrtType(this->at(key)->type(), &trt_dtype));
-  return trt_dtype;
-}
-
-template <>
-DataType TFAttrs::get<DataType>(const string& key) const {
-  return this->at(key)->type();
-}
-
-template <>
-float TFAttrs::get<float>(const string& key) const {
-  return this->at(key)->f();
-}
-
-template <>
-bool TFAttrs::get<bool>(const string& key) const {
-  return this->at(key)->b();
-}
-
-template <>
-int64 TFAttrs::get<int64_t>(const string& key) const {
-  return this->at(key)->i();
-}
-
 // TODO(laigd): use this utility function in more places.
 Status RemoveBatchDimension(nvinfer1::Dims* dims) {
   if (dims->nbDims < 2) {
@@ -577,9 +503,10 @@ Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
                                          ITensorProxyPtr* tensor,
                                          const char* dtype_attr_name = "T") {
   nvinfer1::DataType trt_type = nvinfer1::DataType::kFLOAT;  // Default to FP32.
-  TFAttrs attrs(params->node_def);
-  if (attrs.count(dtype_attr_name)) {
-    DataType dtype = attrs.get<DataType>(dtype_attr_name);
+  AttrSlice attrs(params->node_def);
+  if (attrs.FindByString(dtype_attr_name) != nullptr) {
+    DataType dtype;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, dtype_attr_name, &dtype));
     TF_RETURN_IF_ERROR(TfTypeToTrtType(dtype, &trt_type));
   }
 
@@ -1883,12 +1810,12 @@ Status CheckInputsWeights(
 
 Status GetNodeDefTfType(const NodeDef& node_def, DataType* tf_type,
                         const char* type_attr_name) {
-  TFAttrs attrs(node_def);
-  if (!attrs.count(type_attr_name)) {
+  AttrSlice attrs(node_def);
+  if (attrs.FindByString(type_attr_name) == nullptr) {
     return errors::InvalidArgument("Attribute with name ", type_attr_name,
                                    " not found.");
   }
-  *tf_type = attrs.get<DataType>(type_attr_name);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, type_attr_name, tf_type));
   return Status::OK();
 }
 
@@ -2000,12 +1927,19 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   if (inputs.at(1).GetTrtDims().nbDims != 4) {
     return errors::InvalidArgument("Conv2D expects kernel of dimension 4");
   }
-  TFAttrs attrs(node_def);
-  auto data_format = attrs.get<string>("data_format");
+
+  string data_format, padding_type;
+  std::vector<int64_t> tf_dilations, tf_stride;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding_type));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "dilations", &tf_dilations));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &tf_stride));
+
   int c_index = (data_format == "NHWC") ? 3 : 1;
   int h_index = (data_format == "NHWC") ? 1 : 2;
   int w_index = (data_format == "NHWC") ? 2 : 3;
-  auto tf_dilations = attrs.get<std::vector<int64_t>>("dilations");
+
   if (tf_dilations.size() != 4) {
     return errors::InvalidArgument(
         "Convolution dilations field must specify 4 dimensions");
@@ -2021,7 +1955,6 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         " supported");
   }
 
-  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
   if (tf_stride.size() != 4) {
     return errors::InvalidArgument(
         "Convolution strides field must specify 4 dimensions");
@@ -2035,9 +1968,9 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   if (!params->use_implicit_batch && tensor->getDimensions().d[c_index] == -1) {
     return errors::InvalidArgument("Channel dimension must be static");
   }
-  string padding = attrs.get<string>("padding");
-  if (padding != "SAME" && padding != "VALID") {
-    return errors::Unimplemented(padding +
+
+  if (padding_type != "SAME" && padding_type != "VALID") {
+    return errors::Unimplemented(padding_type +
                                  " padding type not implemented, "
                                  "only VALID and SAME are supported");
   }
@@ -2132,7 +2065,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
     // VALID padding is the default TRT behavior.
-    if (attrs.get<string>("padding") == "SAME") {
+    if (padding_type == "SAME") {
       // SAME_UPPER means that post padding is preferred.
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
@@ -2149,7 +2082,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
             empty_weights);
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
-    if (attrs.get<string>("padding") == "SAME") {
+    if (padding_type == "SAME") {
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
     layer->setNbGroups(num_groups);
@@ -2604,8 +2537,9 @@ Status ConvertSqueeze(OpConverterParams* params) {
   const TRT_TensorOrWeights& input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  TFAttrs attrs(node_def);
-  auto squeeze_dims = attrs.get<std::vector<int64_t>>("squeeze_dims");
+  std::vector<int64_t> squeeze_dims;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(AttrSlice(node_def), "squeeze_dims", &squeeze_dims));
   if (squeeze_dims.empty()) {
     if (params->use_implicit_batch || !HasStaticShape(dims)) {
       return errors::Unimplemented(
@@ -2793,14 +2727,15 @@ Status ConvertStridedSlice(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(AllowDataTypes(
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
 
-  TFAttrs attrs(node_def);
-  const int32 begin_mask = attrs.get<int64_t>("begin_mask");
-  const int32 end_mask = attrs.get<int64_t>("end_mask");
-  const int32 ellipsis_mask = attrs.get<int64_t>("ellipsis_mask");
-  const int32 shrink_axis_mask = attrs.get<int64_t>("shrink_axis_mask");
+  int32 begin_mask, end_mask, ellipsis_mask, shrink_axis_mask, new_axis_mask;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "begin_mask", &begin_mask));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "end_mask", &end_mask));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ellipsis_mask", &ellipsis_mask));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "shrink_axis_mask", &shrink_axis_mask));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "new_axis_mask", &new_axis_mask));
 
   // New_axis_mask is not supported. TODO(tfeher): Support this by expanddims.
-  const int32 new_axis_mask = attrs.get<int64_t>("new_axis_mask");
   if (new_axis_mask != 0) {
     return errors::Unimplemented(
         "new_axis_mask is not supported for StridedSlice");
@@ -2946,14 +2881,20 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   if (weights_drsck.Shape().nbDims != kNumDims) {
     return errors::InvalidArgument("Conv3D expects kernel of dimension 5");
   }
-  TFAttrs attrs(node_def);
-  auto data_format = attrs.get<string>("data_format");
+
+  string data_format, padding_type;
+  std::vector<int64_t> tf_dilations, tf_stride;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding_type));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "dilations", &tf_dilations));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &tf_stride));
+
   const bool is_ndhwc = (data_format == "NDHWC");  // Or NCDHW 01234 - > 02341
   const int d_index = is_ndhwc ? 1 : 2;
   const int h_index = is_ndhwc ? 2 : 3;
   const int w_index = is_ndhwc ? 3 : 4;
   const int c_index = is_ndhwc ? 4 : 1;
-  auto tf_dilations = attrs.get<std::vector<int64_t>>("dilations");
   if (tf_dilations.size() != kNumDims) {
     return errors::InvalidArgument(
         "Convolution dilations field must specify 5 dimensions");
@@ -2973,7 +2914,6 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
         "supported");
   }
 
-  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
   if (tf_stride.size() != kNumDims) {
     return errors::InvalidArgument(
         "Convolution strides field must specify 5 dimensions");
@@ -2988,7 +2928,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   const auto tensor_dim = tensor->getDimensions();
 
   // Asymmetric padding on Deconv not supported for now
-  if (is_conv3d_backprop_input && attrs.get<string>("padding") == "SAME") {
+  if (is_conv3d_backprop_input && padding_type == "SAME") {
     StatusOr<TRT_ShapedWeights> weights =
         params->weight_store->GetTempWeights(weights_drsck);
     TRT_ENSURE_OK(weights);
@@ -3068,7 +3008,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStrideNd(stride_dhw);  // change to nd set stride
 
-    if (attrs.get<string>("padding") == "SAME") {
+    if (padding_type == "SAME") {
       VLOG(2) << "Using SAME padding";
       // SAME_UPPER means that post padding is preferred.
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
@@ -3084,7 +3024,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStrideNd(stride_dhw);
 
-    if (attrs.get<string>("padding") == "SAME") {
+    if (padding_type == "SAME") {
       VLOG(2) << "Using SAME padding";
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
@@ -3128,18 +3068,25 @@ Status ConvertPool3D(OpConverterParams* params) {
   } else {
     return errors::Unimplemented("Unsupported pooling type: ", node_def.op());
   }
-  TFAttrs attrs(node_def);
-  const string padding_type = attrs.get<string>("padding");
+
+  string data_format, padding_type;
+  std::vector<int64_t> tf_stride, tf_kernel;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding_type));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &tf_stride));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &tf_kernel));
+
   if ((padding_type != "SAME") && (padding_type != "VALID")) {
     return errors::Unimplemented("Unsupported padding type: ", padding_type);
   }
-  const auto data_format = attrs.get<string>("data_format");
+
   const bool is_ndhwc = (data_format == "NDHWC");
   const int c_index = is_ndhwc ? 4 : 1;
   const int d_index = is_ndhwc ? 1 : 2;
   const int h_index = is_ndhwc ? 2 : 3;
   const int w_index = is_ndhwc ? 3 : 4;
-  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
+
   if (tf_stride.size() != kNumDims) {
     return errors::InvalidArgument(
         "Pooling strides field must specify 5 dimensions");
@@ -3148,7 +3095,7 @@ Status ConvertPool3D(OpConverterParams* params) {
     return errors::Unimplemented(
         "stride must be 1 for batch and channel dimensions");
   }
-  const auto tf_kernel = attrs.get<std::vector<int64_t>>("ksize");
+
   if (tf_kernel.size() != kNumDims) {
     return errors::InvalidArgument(
         "Pooling ksize field must specify 5 dimensions");
@@ -3212,16 +3159,24 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
     return errors::InvalidArgument(
         "FusedConv2DBiasActivation expects kernel of dimension 4");
   }
-  TFAttrs attrs(node_def);
-  auto data_format = attrs.get<string>("data_format");
+
+  string data_format, filter_format, activation_mode, padding_type;
+  std::vector<int64_t> tf_dilations, tf_stride;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "filter_format", &filter_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "activation_mode", &activation_mode));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding_type));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "dilations", &tf_dilations));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &tf_stride));
+
   if (data_format != "NHWC" && data_format != "NCHW") {
     return errors::InvalidArgument("Unsupported data_format:", data_format);
   }
-
   int c_index = (data_format == "NHWC") ? 3 : 1;
   int h_index = (data_format == "NHWC") ? 1 : 2;
   int w_index = (data_format == "NHWC") ? 2 : 3;
-  auto tf_dilations = attrs.get<std::vector<int64_t>>("dilations");
+
   if (tf_dilations.size() != 4) {
     return errors::InvalidArgument(
         "Convolution dilations field must specify 4 dimensions");
@@ -3232,7 +3187,6 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   }
   const nvinfer1::DimsHW dilation(tf_dilations[h_index], tf_dilations[w_index]);
 
-  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
   if (tf_stride.size() != 4) {
     return errors::InvalidArgument(
         "Convolution strides field must specify 4 dimensions");
@@ -3242,14 +3196,12 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
         "Stride must be 1 for batch and channel dimensions");
   }
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
-  const auto activation_mode = attrs.get<string>("activation_mode");
   auto op_pair = ActivationTypeMap()->find(activation_mode);
   if (op_pair == ActivationTypeMap()->end() && activation_mode != "None") {
     return errors::Unimplemented("Activation mode not supported: ",
                                  activation_mode);
   }
 
-  const auto filter_format = attrs.get<string>("filter_format");
   if (filter_format != "HWIO" && filter_format != "OIHW") {
     return errors::InvalidArgument("Unsupported filter_format:", filter_format);
   }
@@ -3307,7 +3259,7 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   }
   TFTRT_RETURN_ERROR_IF_NULLPTR(conv_layer, node_def.name());
   conv_layer->setStride(stride);
-  if (attrs.get<string>("padding") == "SAME") {
+  if (padding_type == "SAME") {
     conv_layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
   }
   params->converter->SetLayerName(conv_layer, node_def, "conv");
@@ -3348,8 +3300,15 @@ Status ConvertPool(OpConverterParams* params) {
   } else {
     return errors::Unimplemented("Unsupported pooling type: ", node_def.op());
   }
-  TFAttrs attrs(node_def);
-  const string padding_type = attrs.get<string>("padding");
+
+  string data_format, padding_type;
+  std::vector<int64_t> tf_stride, tf_kernel;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding_type));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &tf_stride));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &tf_kernel));
+
   if ((padding_type != "SAME") && (padding_type != "VALID")) {
     return errors::Unimplemented("Unsupported padding type: ", padding_type);
   }
@@ -3358,7 +3317,6 @@ Status ConvertPool(OpConverterParams* params) {
   ITensorProxyPtr tensor = inputs.at(0).tensor();
   int h_index = 2;
   int w_index = 3;
-  const auto data_format = attrs.get<string>("data_format");
   if (data_format == "NHWC") {
     h_index = 1;
     w_index = 2;
@@ -3366,10 +3324,7 @@ Status ConvertPool(OpConverterParams* params) {
         tensor, {0, 3, 1, 2}, &tensor, node_def, "to_NCHW"));
   }
 
-  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
-
-  const auto tf_kernel = attrs.get<std::vector<int64_t>>("ksize");
   const nvinfer1::DimsHW ksize(tf_kernel[h_index], tf_kernel[w_index]);
 
   nvinfer1::IPoolingLayer* layer = params->converter->network()->addPooling(
@@ -3378,7 +3333,7 @@ Status ConvertPool(OpConverterParams* params) {
 
   layer->setStride(stride);
   // VALID padding is the default TRT behavior.
-  if (attrs.get<string>("padding") == "SAME") {
+  if (padding_type == "SAME") {
     // SAME_UPPER means that post padding is preferred.
     layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
   }
@@ -3399,8 +3354,9 @@ Status ConvertLeakyRelu(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  TFAttrs attrs(node_def);
-  const float alpha = attrs.get<float>("alpha");
+
+  float alpha{0.f};
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "alpha", &alpha));
 
   // Use IActivationLayer when available.
   if (params->validation_only) return Status::OK();
@@ -3428,8 +3384,9 @@ Status ConvertClipByValue(OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (params->validation_only) return Status::OK();
 
-  TFAttrs attrs(node_def);
-  const DataType dtype = attrs.get<DataType>("T");
+  DataType dtype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "T", &dtype));
+
   float clip_value_min = 0.0f;
   float clip_value_max = 0.0f;
   // TODO(tmorris): Add a templated helper function to get scalar weights of
@@ -3544,8 +3501,9 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
-  TFAttrs attrs(node_def);
-  const string& data_format = attrs.get<string>("data_format");
+  string data_format;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(AttrSlice(node_def), "data_format", &data_format));
 
   nvinfer1::Dims input_shape = inputs.at(0).GetTrtDims();
   nvinfer1::Dims bias_shape = inputs.at(1).GetTrtDims();
@@ -3741,8 +3699,9 @@ Status ConvertConst(OpConverterParams* params) {
                             node_def.name());
   }
 
-  TFAttrs attrs(node_def);
-  const DataType dtype = attrs.get<DataType>("dtype");
+  DataType dtype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "dtype", &dtype));
+
   if (dtype != tensor.dtype()) {
     return errors::InvalidArgument("DataType mismatch between attr (",
                                    DataTypeString(dtype), ") and tensor (",
@@ -3945,9 +3904,14 @@ Status ConvertReduce(OpConverterParams* params) {
   ITensorProxyPtr tensor = inputs.at(0).tensor();
   auto tf_axes_list = inputs.at(1).weights().GetSpan<int>();
 
-  TFAttrs attrs(node_def);
+  DataType idx_dtype{DataType::DT_INT32};
+  bool keep_dims{false};
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &idx_dtype));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "keep_dims", &keep_dims));
+
   // Only expect to handle INT32 as attributes for now
-  if (attrs.get<DataType>("Tidx") != DataType::DT_INT32) {
+  if (idx_dtype != DataType::DT_INT32) {
     return errors::Unimplemented("Tidx supports only DT_INT32");
   }
 
@@ -3980,7 +3944,6 @@ Status ConvertReduce(OpConverterParams* params) {
   }
   if (params->validation_only) return Status::OK();
 
-  const auto keep_dims = attrs.get<bool>("keep_dims");
   nvinfer1::ILayer* layer = params->converter->network()->addReduce(
       *tensor->trt_tensor(), reduce_operation, axes, keep_dims);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
@@ -3998,8 +3961,12 @@ Status ConvertPack(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
 
-  TFAttrs attrs(node_def);
-  const int num_inputs = attrs.get<int64_t>("N");
+  int num_inputs{0};
+  int64_t tf_axis{0};
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &num_inputs));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "axis", &tf_axis));
+
   if (num_inputs != inputs.size()) {
     return errors::InvalidArgument(
         "Number of inputs for Pack is inconsistent with N attribute");
@@ -4044,8 +4011,7 @@ Status ConvertPack(OpConverterParams* params) {
   }
   const nvinfer1::Dims dims = inputs.at(idx).GetTrtDims();
   // Convert axis from the TensorFlow format to TensorRT format.
-  const int64 tf_axis = attrs.get<int64_t>("axis");
-  int trt_axis;
+  int trt_axis{0};
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims + 1, node_def.name(),
                                  params->use_implicit_batch, &trt_axis));
 
@@ -4122,11 +4088,10 @@ Status ConvertPad(OpConverterParams* params) {
   }
   TRT_ShapedWeights pads = inputs.at(1).weights();
 
-  TFAttrs attrs(node_def);
-  // Padding type here is done through TF type
-  //   so I can leverage their EnumToDataType for my cast
-  auto padding_type = attrs.get<DataType>("Tpaddings");
   // TODO(jie): handle data type conversion for TRT?
+  DataType padding_dtype{DataType::DT_INT32};
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(AttrSlice(node_def), "Tpaddings", &padding_dtype));
 
   if (pads.Shape().d[0] != nb_dims || pads.Shape().d[1] != 2) {
     return errors::InvalidArgument("Paddings must be a weight with shape ",
@@ -4135,7 +4100,7 @@ Status ConvertPad(OpConverterParams* params) {
   }
 
   // Only expect to handle INT32 as attributes for now
-  if (padding_type != DataType::DT_INT32) {
+  if (padding_dtype != DataType::DT_INT32) {
     return errors::Unimplemented("Tpaddings supports only DT_INT32");
   }
   auto pad_data = pads.GetPointer<int>();
@@ -4354,8 +4319,9 @@ Status ConvertSplit(OpConverterParams* params) {
                                                  DataType::DT_INT32,
                                              }));
   int tf_axis = inputs.at(0).weights().GetSpan<int>()[0];
-  TFAttrs attrs(node_def);
-  const int num_split = attrs.get<int64_t>("num_split");
+
+  int num_split;
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "num_split", &num_split));
 
   return ConvertSplitHelper(params, inputs.at(1), tf_axis, num_split, false);
 }
@@ -4374,9 +4340,11 @@ Status ConvertUnpack(OpConverterParams* params) {
     return errors::Unimplemented(
         "Input \"value\" for Unpack must be rank 2 or greater");
   }
-  TFAttrs attrs(node_def);
-  const int tf_axis = attrs.get<int64_t>("axis");
-  const int num = attrs.get<int64_t>("num");
+
+  int tf_axis = 0, num = 0;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "axis", &tf_axis));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "num", &num));
 
   return ConvertSplitHelper(params, inputs.at(0), tf_axis, num, true);
 }
@@ -4426,9 +4394,10 @@ Status ConvertCast(OpConverterParams* params) {
 Status ConvertConcat(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TFAttrs attrs(node_def);
-  // Get number of tensor inputs.
-  const int num_inputs = attrs.get<int64_t>("N");
+
+  int num_inputs{0};
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "N", &num_inputs));
+
   if (num_inputs != static_cast<int>(inputs.size()) - 1) {
     return errors::InvalidArgument(
         "Number of inputs for ConcatV2 is inconsistent with N attributes.");
@@ -4500,14 +4469,20 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
                                                   {"variance", true}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  TFAttrs attrs(node_def);
-  float epsilon = attrs.get<float>("epsilon");
-  auto data_format = attrs.get<string>("data_format");
+
+  float epsilon{0.1f};
+  string data_format;
+  bool is_training{false};
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "epsilon", &epsilon));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "is_training", &is_training));
+
   if (data_format != "NCHW") {
     return errors::Unimplemented(node_def.op(),
                                  " only supports data_format=NCHW");
   }
-  bool is_training = attrs.get<bool>("is_training");
+
   if (is_training) {
     // Trying to use batchnorm in training mode is a very common problem.
     // Because the error message will only be printed in VLOG(1) by the
@@ -4982,9 +4957,10 @@ Status ConvertMatMul(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
-  TFAttrs attrs(node_def);
-  bool transpose_a = attrs.get<bool>("transpose_a");
-  bool transpose_b = attrs.get<bool>("transpose_b");
+  bool transpose_a = false, transpose_b = false;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "transpose_a", &transpose_a));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "transpose_b", &transpose_b));
 
   return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1), transpose_a,
                              transpose_b);
@@ -5007,9 +4983,10 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
         "All inputs are weights, but Grappler is expected to fold them.");
   }
 
-  TFAttrs attrs(node_def);
-  const bool transpose_a = attrs.get<bool>("adj_x");
-  const bool transpose_b = attrs.get<bool>("adj_y");
+  bool transpose_a = false, transpose_b = false;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "adj_x", &transpose_a));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "adj_y", &transpose_b));
 
   // In case input_l is weight, check whether input_l has implicit batch mode
   // compatible batch dim.
@@ -5503,8 +5480,9 @@ Status ParseEquation(OpConverterParams* params,
                      EinsumDescriptor* descriptor_a,
                      EinsumDescriptor* descriptor_b,
                      std::vector<int>* final_transpose) {
-  TFAttrs attrs(params->node_def);
-  std::string equation = attrs.get<string>("equation");
+  string equation;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(AttrSlice(params->node_def), "equation", &equation));
   VLOG(2) << "Einsum equation " << equation;
 
   OperandLabels input_labels;
@@ -5659,9 +5637,11 @@ Status ConvertArgMinMax(OpConverterParams* params) {
       CheckInputsWeights(*params, {{"input", false}, {"dimension", true}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  // INT64 outputs are not supported by TRT.
-  TFAttrs attrs(node_def);
-  DataType output_dtype = attrs.get<DataType>("output_type");
+
+  DataType output_dtype{DataType::DT_INT32};
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(AttrSlice(node_def), "output_type", &output_dtype));
+
   if (output_dtype != DataType::DT_INT32) {
     return errors::Unimplemented("Output type ", DataTypeString(output_dtype),
                                  " is not supported");
@@ -5719,8 +5699,9 @@ Status ConvertTopK(OpConverterParams* params) {
       CheckInputsWeights(*params, {{"input", false}, {"k", true}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  TFAttrs attrs(node_def);
-  const bool sorted = attrs.get<bool>("sorted");
+  bool sorted{false};
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "sorted", &sorted));
+
   if (!sorted) {
     // TensorRT only supports sorted output. Although TensorFlow API
     // doesn't specify the order of output elements in case sorted=false,
@@ -5886,12 +5867,17 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
-  TFAttrs attrs(node_def);
-  const int block_size = attrs.get<int64_t>("block_size");
+
+  string data_format;
+  int block_size;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "block_size", &block_size));
+
   if (block_size < 2) {
     return errors::InvalidArgument("Block size must be 2 or greater");
   }
-  const string data_format = attrs.get<string>("data_format");
+
   if (data_format != "NCHW" && data_format != "NHWC") {
     return errors::Unimplemented("Data format ", data_format,
                                  " is not supported");
@@ -6107,9 +6093,10 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   const float iou_thresh = *(iou_threshold.GetPointer<float>());
   const float score_thresh = *(score_threshold.GetPointer<float>());
 
-  TFAttrs attrs(node_def);
-  const int clip_boxes = static_cast<int>(attrs.get<bool>("clip_boxes"));
-  const int pad_per_class = static_cast<int>(attrs.get<bool>("pad_per_class"));
+  AttrSlice attrs(node_def);
+  bool clip_boxes = false, pad_per_class = false;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "clip_boxes", &clip_boxes));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "pad_per_class", &pad_per_class));
 
   // Validate tensors and weights
   const auto boxes_dims = boxes_tensor->getDimensions();
@@ -6314,6 +6301,11 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         "TensorRT BatchedNMS Plugin score_threshold must be scalar");
   }
 
+  bool pad_per_class = false, clip_boxes = false;
+  AttrSlice attrs(node_def);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "pad_per_class", &pad_per_class));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "clip_boxes", &clip_boxes));
+
   // TRT op is_normalized=False treats input corrdinates as pixels and
   // calculates width/height as (max - min + 1).
   //
@@ -6323,10 +6315,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   // We set is_normalized = true to be consistent with TF IOU calculaton.
   const bool is_normalized = true;
 
-  TFAttrs attrs(node_def);
   bool share_location = (boxes_dims.d[class_idx] == 1);
-  const bool pad_per_class = attrs.get<bool>("pad_per_class");
-  const bool clip_boxes = attrs.get<bool>("clip_boxes");
   int keep_top_k = 0;
   if (pad_per_class) {
     keep_top_k = std::min(max_size_per_class * num_classes, max_total_size);
@@ -6454,8 +6443,9 @@ Status ConvertResize(OpConverterParams* params) {
   }
 
   // Verify and consume node attributes.
-  TFAttrs attrs(node_def);
-  bool align_corners = attrs.get<bool>("align_corners");
+  bool align_corners;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(AttrSlice(node_def), "align_corners", &align_corners));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
@@ -6576,8 +6566,10 @@ Status ConvertAddN(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  TFAttrs attrs(node_def);
-  const int num_inputs = attrs.get<int64_t>("N");
+
+  int num_inputs;
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "N", &num_inputs));
+
   if (num_inputs < 2) {
     return errors::InvalidArgument("AddN requires at least two inputs");
   }
@@ -6789,8 +6781,8 @@ Status ConvertGraphDefToEngine(
             node_def.op());
       }
       // Get output type that TensorFlow expects
-      TFAttrs attrs(node_def);
-      DataType tf_dtype = attrs.get<DataType>("T");
+      DataType tf_dtype;
+      TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "T", &tf_dtype));
       nvinfer1::DataType trt_dtype;
       TF_RETURN_IF_ERROR(TfTypeToTrtType(tf_dtype, &trt_dtype));
       if (output_tensors.size() <= slot_number) {
