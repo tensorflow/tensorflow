@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -41,12 +42,6 @@ from tensorflow.python.ops.ragged.ragged_shape import RaggedShape
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.platform import googletest
-
-
-def _reshape(x, shape: RaggedShape):
-  flat_values = array_ops.reshape(x, shape.inner_shape)
-  return RaggedTensor._from_nested_row_partitions(flat_values,
-                                                  shape.row_partitions)
 
 
 def _to_row_partitions_from_lengths(
@@ -122,7 +117,7 @@ def _to_prime_tensor_from_lengths(
   """Create a tensor of primes with the shape specified."""
   shape = RaggedShape.from_lengths(lengths)
   num_elements = _num_elements_of_lengths(lengths)
-  return _reshape(_lowest_primes(num_elements), shape)
+  return ragged_array_ops.ragged_reshape(_lowest_primes(num_elements), shape)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1020,6 +1015,33 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(static_valid_rowids0, [0, 2, 4])
     self.assertAllEqual(static_valid_rowids1, [0, 1, 2])
 
+  def testZeros(self):
+    shape_x = RaggedShape.from_lengths([3, (1, 3, 2), 4])
+    foo = ragged_array_ops.zeros(shape_x)
+    self.assertShapeEq(shape_x, RaggedShape.from_tensor(foo))
+    self.assertAllEqual(array_ops.zeros([6, 4]), foo.flat_values)
+
+  def testOnes(self):
+    shape_x = RaggedShape.from_lengths([3, (1, 3, 2), 4])
+    foo = ragged_array_ops.ones(shape_x)
+    self.assertShapeEq(shape_x, RaggedShape.from_tensor(foo))
+    self.assertAllEqual(array_ops.ones([6, 4]), foo.flat_values)
+
+  def testReshapeTensor(self):
+    foo = array_ops.zeros([3, 2, 4])
+    shape_b = RaggedShape.from_lengths([3, (3, 2, 1), 4])
+    result = ragged_array_ops.ragged_reshape(foo, shape_b)
+    self.assertShapeEq(shape_b, RaggedShape.from_tensor(result))
+    self.assertAllEqual(array_ops.zeros([6, 4]), result.flat_values)
+
+  def test_reshape_ragged_tensor(self):
+    shape_x = RaggedShape.from_lengths([3, (1, 3, 2), 4])
+    foo = ragged_array_ops.zeros(shape_x)
+    shape_b = RaggedShape.from_lengths([3, (3, 2, 1), 4])
+    result = ragged_array_ops.ragged_reshape(foo, shape_b)
+    self.assertShapeEq(shape_b, RaggedShape.from_tensor(result))
+    self.assertAllEqual(array_ops.zeros([6, 4]), result.flat_values)
+
   @parameterized.parameters([
       dict(
           lengths_a=[3, (1, 4, 2)],
@@ -1148,7 +1170,7 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertShapeEq(actual, shape_e)
     self.assertShapeEq(actual_rev, shape_e)
 
-    rt_a = _reshape(
+    rt_a = ragged_array_ops.ragged_reshape(
         _lowest_primes(_num_elements_of_lengths(lengths_a)), shape_a)
     bc_a_actual = bc_a.broadcast(rt_a)
     bc_a_actual_rev = bc_a_rev.broadcast(rt_a)
@@ -1156,7 +1178,7 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(bc_a_expected, bc_a_actual)
     self.assertAllEqual(bc_a_expected, bc_a_actual_rev)
 
-    rt_b = _reshape(
+    rt_b = ragged_array_ops.ragged_reshape(
         _lowest_primes(_num_elements_of_lengths(lengths_b)), shape_b)
     bc_b_expected = ragged_shape.broadcast_to(rt_b, shape_e)
     bc_b_actual = bc_b.broadcast(rt_b)
@@ -1445,6 +1467,10 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     result1 = ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
     self.assertShapeEq(shape_e, result1)
 
+    # Again, just a wrapper.
+    result2 = ragged_array_ops.broadcast_dynamic_shape(shape_a, shape_b)
+    self.assertShapeEq(shape_e, result2)
+
   def testBroadcastDynamicShapeFirstLayer(self):
     a_0 = constant_op.constant(1, dtypes.int64)
     b_0 = constant_op.constant(3, dtypes.int64)
@@ -1523,6 +1549,11 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         getattr(result, 'num_row_partitions', 0),
         getattr(expected, 'num_row_partitions', 0))
     self.assertAllEqual(result, expected)
+
+    # broadcast_to just calls ragged_shape.broadcast_to, so
+    # this should be sufficient.
+    result2 = ragged_array_ops.broadcast_to(x, shape)
+    self.assertAllEqual(result2, expected)
 
   @parameterized.parameters([
       dict(
