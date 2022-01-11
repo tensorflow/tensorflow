@@ -912,13 +912,8 @@ static Status CompileModuleToLlvmIrImpl(
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-<<<<<<< HEAD
-      gpu_device_info, cuda_compute_capability, amdgpu_arch, profile_index_map,
+      gpu_device_info, cuda_compute_capability, amdgpu_arch, 
       &mlir_context, results->llvm_module.get());
-=======
-      gpu_device_info, cuda_compute_capability, &mlir_context,
-      results->llvm_module.get());
->>>>>>> upstream/master
 
   ir_emitter_context.set_allocations(results->allocations);
 
@@ -1179,15 +1174,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
-<<<<<<< HEAD
   std::string amdgpu_arch =
       stream_exec->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
 
-  std::unique_ptr<HloProfileIndexMap> profile_index_map;
-  std::unique_ptr<HloProfilePrinterData> profile_printer;
-
-=======
->>>>>>> upstream/master
   if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
     cost_analysis.set_bytes_per_second(
@@ -1206,13 +1195,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       module.get(), &llvm_context, target_triple_, data_layout_,
       stream_exec->platform()->Name(), gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
-<<<<<<< HEAD
       amdgpu_arch,
-      GetCanShareBuffer(), pointer_size_, profile_index_map.get(),
+      GetCanShareBuffer(), pointer_size_, 
       &compile_module_results));
-=======
-      GetCanShareBuffer(), pointer_size_, &compile_module_results));
->>>>>>> upstream/master
 
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -1329,14 +1314,9 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
-<<<<<<< HEAD
       gpu_device_info, cuda_compute_capability, amdgpu_arch,
       DummyCanShareBufferFunction,
-      pointer_size, /*profile_index_map=*/nullptr, &results));
-=======
-      gpu_device_info, cuda_compute_capability, DummyCanShareBufferFunction,
       pointer_size, &results));
->>>>>>> upstream/master
   return std::move(results.llvm_module);
 }
 
