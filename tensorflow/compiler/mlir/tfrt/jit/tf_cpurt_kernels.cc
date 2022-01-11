@@ -510,9 +510,10 @@ static void ExecuteImpl(Executable& executable,
   });
 
   // Keep track of memory address to tensor mapping for result conversion.
-  auto ctx = std::make_unique<TensorflowConversionContext>(operands.size());
+  auto ctx = std::make_unique<TensorflowConversionContext>(operands.size(),
+                                                           results.size());
   for (auto& t : operands)
-    ctx->tensor_operands.insert({t.tensor().data(), &t.tensor()});
+    ctx->runtime_tensors.insert({t.tensor().data(), &t.tensor()});
 
   // Tensorflow -> CPURT only supports returning Memrefs as Tensors.
   TensorflowReturnValueConverter converter(results, std::move(ctx));

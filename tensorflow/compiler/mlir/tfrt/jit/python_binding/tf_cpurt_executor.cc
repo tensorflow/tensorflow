@@ -315,7 +315,7 @@ std::vector<py::array> TfCpurtExecutor::Execute(
 
   RemainingResults results(result_storage);
 
-  // Convert returned memrefs to Tensors.
+  // Convert returned memrefs to python arrays.
   PyBindingReturnValueConverter converter(results);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
   if (auto err = (*executable)->Execute(memrefs, converter, exec_ctx))

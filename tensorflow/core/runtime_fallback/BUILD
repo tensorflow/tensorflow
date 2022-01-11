@@ -139,6 +139,7 @@ tf_cc_binary(
         ":tfrt_fallback_sync_opdefs",
         "@llvm-project//mlir:Translation",
         "//tensorflow/compiler/mlir/tfrt:tf_cpurt_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:mlirtobef_translate",
     ] + if_google(

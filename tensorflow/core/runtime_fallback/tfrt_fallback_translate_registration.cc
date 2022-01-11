@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "mlir/Translation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_registration.h"
 #include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
 #include "tensorflow/core/runtime_fallback/tfrt_fallback_registration.h"
@@ -22,6 +24,7 @@ limitations under the License.
 static mlir::TranslateFromMLIRRegistration registration(
     "mlir-to-bef", tfrt::MLIRToBEFTranslate,
     [](mlir::DialectRegistry& registry) {
+      mlir::RegisterAllTensorFlowDialects(registry);
       tfrt::RegisterTFRTDialects(registry);
       tfrt::RegisterTFRTCompiledDialects(registry);
       tensorflow::tfd::RegisterTfrtFallbackDialect(registry);

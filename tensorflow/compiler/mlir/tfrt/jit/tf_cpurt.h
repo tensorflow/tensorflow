@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/PointerUnion.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
@@ -60,27 +61,36 @@ class MemrefTensorBuffer : public TensorBuffer {
   bool owner_;
 };
 
-// Keep track of compiled kernel operands to detect input to output forwarding.
-//
 // Reuse conversion context as a kernel context for convenience, can be a
 // separate allocation if needed.
 struct TensorflowConversionContext
     : public tfrt::cpu::jit::Executable::KernelContext {
-  explicit TensorflowConversionContext(size_t num_operands) {
-    tensor_operands.reserve(num_operands);
+  // Keep track of compiled kernel operands to detect input to output
+  // forwarding, and tensors returned multiple times.
+  using TensorOrBuffer = llvm::PointerUnion<const Tensor*, TensorBuffer*>;
+
+  TensorflowConversionContext(size_t num_operands, size_t num_results)
+      : num_pending_results(num_results) {
+    runtime_tensors.reserve(num_operands + num_results - 1);
   }
 
   // Ensure that the context is always moved around instead of copying.
   TensorflowConversionContext(const TensorflowConversionContext&) = delete;
   TensorflowConversionContext(TensorflowConversionContext&&) = default;
 
-  llvm::SmallDenseMap<const void*, const Tensor*> tensor_operands;
-
   void* forward(size_t size, size_t alignment,
                 llvm::ArrayRef<unsigned> candidates) override {
     // TODO(ecg): Do the real buffer forwarding here.
     return nullptr;
   }
+
+  // Memrefs that are already materialized as runtime tensors:
+  //   1. Tensor operands that we got from the caller.
+  //   2. Tensor buffers that we constructed for newly allocated memrefs.
+  llvm::SmallDenseMap<const void*, TensorOrBuffer> runtime_tensors;
+
+  // The number of results that are waiting for the conversion.
+  size_t num_pending_results;
 };
 
 namespace internal {
@@ -93,10 +103,10 @@ inline bool IsStaticStorageDuration(StridedMemRefType<T, rank>* memref) {
 }
 }  // namespace internal
 
-// Converts StridedMemrefType to the tensorflow::Tensor. This struct satisfies
+// Converts StridedMemrefType to the Tensor. This struct satisfies
 // ReturnStridedMemref's concept (see cpurt.h).
 struct ConvertTensor {
-  using ResultType = tensorflow::tfrt_stub::FallbackTensor;
+  using ResultType = tfrt_stub::FallbackTensor;
   using ConversionContext = TensorflowConversionContext;
 
   template <typename T, int rank>
@@ -110,27 +120,46 @@ struct ConvertTensor {
   }
 
   template <typename T, int rank>
-  static tensorflow::Tensor Convert(const ConversionContext& ctx,
-                                    void* memref_ptr) {
+  static Tensor Convert(ConversionContext& ctx, void* memref_ptr) {
     auto* memref = static_cast<StridedMemRefType<T, rank>*>(memref_ptr);
     auto memref_sizes = Sizes(memref);
 
-    // Maybe forward operand tensor to the result.
-    auto operand = ctx.tensor_operands.find(memref->data);
-    if (operand != ctx.tensor_operands.end()) return *operand->second;
+    // Convert TFRT data type into Tensorflow data type.
+    auto dtype = tfd::GetTfDataType(tfrt::GetDType<T>());
 
     // Build a Tensorflow TensorShape from memref sizes. It should never fail.
-    tensorflow::TensorShape shape;
-    auto st = tensorflow::TensorShapeUtils::MakeShape(memref_sizes, &shape);
+    TensorShape shape;
+    auto st = TensorShapeUtils::MakeShape(memref_sizes, &shape);
     assert(st.ok() && "failed to build a TensorShape from memref sizes");
     (void)st;
 
-    // Size of the memref in bytes.
+    // Check if returned memref already has corresponding runtime tensor.
+    auto it = ctx.runtime_tensors.find(memref->data);
+    ConversionContext::TensorOrBuffer runtime_tensor =
+        it != ctx.runtime_tensors.end() ? it->second : nullptr;
+
+    // Forward operand tensor to the result.
+    if (auto* operand = runtime_tensor.dyn_cast<const Tensor*>()) {
+      Tensor result;
+      auto st = result.BitcastFrom(*operand, dtype, shape);
+      assert(st.ok() && "failed to bitcast from forwarded tensor");
+      (void)st;
+      return result;
+    }
+
+    // The same memref returned multiple times.
+    if (auto* buffer = runtime_tensor.dyn_cast<TensorBuffer*>()) {
+      buffer->Ref();
+      auto ptr = core::RefCountPtr<TensorBuffer>(buffer);
+      return Tensor(dtype, std::move(shape), std::move(ptr));
+    }
+
+    // This is a newly allocated memref, and we need to wrap it into the runtime
+    // tensor buffer to pass it back to the caller as a Tensor.
     size_t size = sizeof(T);
     for (int i = 0; i < rank; ++i) size *= memref_sizes[i];
 
     // Create a TensorBuffer from the returned memref.
-    auto dtype = tfd::GetTfDataType(tfrt::GetDType<T>());
     TF_ANNOTATE_MEMORY_IS_INITIALIZED(memref->data, size);
     auto* buffer = new MemrefTensorBuffer(
         memref->basePtr, memref->data, size,
@@ -138,7 +167,11 @@ struct ConvertTensor {
 
     // Construct a tensor from the memory buffer.
     auto ptr = core::RefCountPtr<MemrefTensorBuffer>(buffer);
-    tensorflow::Tensor tensor(dtype, std::move(shape), std::move(ptr));
+    Tensor tensor(dtype, std::move(shape), std::move(ptr));
+
+    // Keep track of memrefs already used to construct runtime tensors.
+    if (--ctx.num_pending_results > 0)
+      ctx.runtime_tensors.insert({memref->data, buffer});
 
     // Incorrect alignment will lead to a segfault in the downstream Tensorflow
     // kernels, check it before returning to the runtime.

@@ -78,6 +78,26 @@ class MultipleResultsTest(test.TestCase):
       np.testing.assert_allclose(res1, arg0 + 2.0, atol=0.0)
       np.testing.assert_allclose(res2, arg0 + 3.0, atol=0.0)
 
+  def test_same_tensor_returned_twice(self):
+    for specialize in specializations:
+      mlir_function = """
+        func @test(%arg0: tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+          %0 = "tf.Const"() { value = dense<1.0> : tensor<f32> }
+               : () -> tensor<f32>
+          %1 = "tf.AddV2"(%arg0, %0)
+               : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
+          return %1, %1 : tensor<?xf32>, tensor<?xf32>
+        }"""
+
+      compiled = cpurt.compile(mlir_function, 'test', specialize)
+
+      d0 = np.random.randint(1, 10)
+      arg0 = np.zeros(d0, np.float32)
+
+      [res0, res1] = cpurt.execute(compiled, [arg0])
+      np.testing.assert_allclose(res0, arg0 + 1.0, atol=0.0)
+      np.testing.assert_allclose(res1, arg0 + 1.0, atol=0.0)
+
 
 if __name__ == '__main__':
   np.random.seed(0)
