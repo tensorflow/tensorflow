@@ -177,7 +177,7 @@ typedef struct TF_Graph TF_Graph;
 // Return a new graph object.
 TF_CAPI_EXPORT extern TF_Graph* TF_NewGraph(void);
 
-// Destroy an options object.  Graph will be deleted once no more
+// Destroy an options object. Graph will be deleted once no more
 // TFSession's are referencing it.
 TF_CAPI_EXPORT extern void TF_DeleteGraph(TF_Graph*);
 
