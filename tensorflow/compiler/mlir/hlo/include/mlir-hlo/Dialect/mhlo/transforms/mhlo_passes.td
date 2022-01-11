@@ -177,6 +177,11 @@ def MergeAssumingOpsPass : FunctionPass<"mhlo-merge-assuming-ops"> {
     "broadcast the operands rather than the result. This will eventually allow "
     "for larger fusions.";
   let constructor = "createMergeAssumingOpsPass()";
+  let options = [
+      Option<"propagate_broadcasts_", "propagate-broadcasts", "bool",
+             /*default=*/"true",
+             "Also propagate broadcasts with a pattern-based rewrite.">,
+  ];
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {

@@ -2,6 +2,11 @@
 // RUN:   --mhlo-merge-assuming-ops --canonicalize --cse %s | \
 // RUN: FileCheck %s
 
+// RUN: mlir-hlo-opt --split-input-file --allow-unregistered-dialect \
+// RUN:   --mhlo-merge-assuming-ops="propagate-broadcasts=false" \
+// RUN:   --canonicalize --cse %s | \
+// RUN: FileCheck --check-prefix=CHECK-NOPROP %s
+
 // Shape computations shall be reified.
 // CHECK-LABEL: @shape_of_unary
 // CHECK-SAME: (%[[ARG:.*]]: tensor<?x32xi16>)
@@ -45,6 +50,13 @@ func @bcast_unary(%arg : tensor<?x32xi16>, %out_dims : tensor<3xindex>)
       (tensor<?x32xf16>, tensor<3xindex>) -> tensor<?x?x32xf16>
   return %1 : tensor<?x?x32xf16>
 }
+
+// CHECK-NOPROP-LABEL: @bcast_unary
+// CHECK-NOPROP-SAME: (%[[ARG:.*]]: tensor<?x32xi16>, %[[OUT_DIMS:.*]]: tensor<3xindex>)
+
+// CHECK-NOPROP: %[[TMP:.*]] = "mhlo.convert"(%[[ARG]])
+// CHECK-NOPROP: %[[RES:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TMP]], %[[OUT_DIMS]])
+// return %[[RES]]
 
 // -----
 

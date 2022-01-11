@@ -443,6 +443,10 @@ struct EarlyBroadcastInDimOpPattern
 
 struct MergeAssumingOpsPass
     : public MergeAssumingOpsPassBase<MergeAssumingOpsPass> {
+  explicit MergeAssumingOpsPass(bool propagate_broadcasts) {
+    propagate_broadcasts_ = propagate_broadcasts;
+  }
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }
@@ -450,7 +454,8 @@ struct MergeAssumingOpsPass
   void runOnFunction() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns);
+    mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns,
+                                           propagate_broadcasts_);
     GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
     if (failed(applyPatternsAndFoldGreedily(getFunction(), std::move(patterns),
@@ -463,7 +468,8 @@ struct MergeAssumingOpsPass
 }  // namespace
 
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
-                                      OwningRewritePatternList *patterns) {
+                                      OwningRewritePatternList *patterns,
+                                      bool propagate_broadcasts) {
   // clang-format off
   patterns->insert<
       EliminateDuplicateCstrBroadcastableOps,
@@ -476,9 +482,10 @@ void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
       MoveOutOfAssumingOpPattern<shape::AssumingAllOp>,
       MoveOutOfAssumingOpPattern<shape::CstrBroadcastableOp>,
       MoveOutOfAssumingOpPattern<shape::ShapeOfOp>,
-      EarlyBroadcastInDimOpPattern,
       ShapeReificationPattern>(context);
   // clang-format on
+  if (propagate_broadcasts)
+    patterns->insert<EarlyBroadcastInDimOpPattern>(context);
   mhlo::DynamicBroadcastInDimOp::getCanonicalizationPatterns(*patterns,
                                                              context);
   mhlo::DynamicReshapeOp::getCanonicalizationPatterns(*patterns, context);
@@ -489,8 +496,9 @@ void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<FunctionPass> createMergeAssumingOpsPass() {
-  return std::make_unique<MergeAssumingOpsPass>();
+std::unique_ptr<FunctionPass> createMergeAssumingOpsPass(
+    bool propagate_broadcasts) {
+  return std::make_unique<MergeAssumingOpsPass>(propagate_broadcasts);
 }
 
 }  // namespace mhlo
