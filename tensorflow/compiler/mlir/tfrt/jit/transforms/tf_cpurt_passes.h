@@ -56,6 +56,9 @@ CreateCpuRtLegalizeI1TypesPass();
 // Pass to vectorize linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass();
 
+// Rewrite `vector.multi_reduction` into a sequence of `vector.reduction` ops.
+std::unique_ptr<mlir::FunctionPass> createRewriteVectorMultiReductionPass();
+
 // Pass to tile elementwise ops on tensors.
 std::unique_ptr<mlir::FunctionPass> CreateTileCWisePass();
 std::unique_ptr<mlir::FunctionPass> CreateTileCWisePass(

@@ -201,6 +201,7 @@ void CreateTfCpuRtPipeline(OpPassManager& pm,
   vec_to_scf_options.unroll = true;
   pm.addNestedPass<FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
+  pm.addNestedPass<FuncOp>(createRewriteVectorMultiReductionPass());
 
   pm.addNestedPass<FuncOp>(CreateMathApproximationPass({"all"}));
 }
