@@ -172,18 +172,19 @@ func @move_cstr_broadcastable_into_assuming(%arg0 : !shape.witness,
 // -----
 
 // CHECK-LABEL: @not_move_shape_of_into_assuming
+// CHECK-SAME: (%[[W:.*]]: !shape.witness, %[[ARG0:.*]]: tensor<?x32xf32>, %[[ARG1:.*]]: tensor<?x32xf32>)
 func @not_move_shape_of_into_assuming(%arg0 : !shape.witness,
     %arg1 : tensor<?x32xf32>, %arg2 : tensor<?x32xf32>) -> tensor<2xindex> {
-  // CHECK:      shape.assuming
-  // CHECK-SAME: {
-  // CHECK-NOT:    shape_of
-  // CHECK:      }
-  // CHECK:     "some.other.op"
-  // CHECK:     shape_of
+  // CHECK: %[[S:.*]] = shape.shape_of %[[ARG1]]
+  // CHECK: %[[ASS_RES:.*]] = shape.assuming %[[W]]
+  // CHECK:   shape.assuming_yield %[[ARG0]]
+  // CHECK: }
+  // CHECK: "some.other.op"(%[[ASS_RES]])
+  // CHECK: return %[[S]]
   %0:2 = shape.assuming %arg0 -> (tensor<?x32xf32>, tensor<?x32xf32>) {
     shape.assuming_yield %arg1, %arg2 : tensor<?x32xf32>, tensor<?x32xf32>
   }
-  "some.other.op"() : () -> ()
+  "some.other.op"(%0#0) : (tensor<?x32xf32>) -> ()
   %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<2xindex>
   return %2 : tensor<2xindex>
 }

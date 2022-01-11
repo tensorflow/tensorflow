@@ -19,15 +19,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -109,26 +105,29 @@ bool IsMovable(Operation *op) {
 
 LogicalResult MoveUpIntoAssumingOpMatchAndRewrite(Operation *op,
                                                   PatternRewriter &rewriter) {
-  // Find a preceding `assuming` op with nothing but side effect-free operations
-  // in between.
+  // Only implemented for single-result ops.
+  if (op->getNumResults() != 1) return failure();
+
+  // Find a preceding `assuming` op.
+  auto the_block = op->getBlock();
   Operation *prev = op->getPrevNode();
-  while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev) &&
-         IsMovable(prev)) {
+  while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev))
     prev = prev->getPrevNode();
-  }
   auto assuming_op = llvm::dyn_cast_or_null<shape::AssumingOp>(prev);
   if (!assuming_op) return failure();
+  assert(assuming_op->getBlock() == the_block && op->getBlock() == the_block &&
+         "expect assuming op and root op to be in the same block");
 
   // Make sure that all operands will be available after moving.
   auto is_available = [&](Value v) {
     Operation *def = v.getDefiningOp();
-    return def == nullptr || (def->getBlock() == op->getBlock() &&
-                              !assuming_op->isBeforeInBlock(def));
+    return def == nullptr || def->getBlock() != the_block ||
+           !assuming_op->isBeforeInBlock(def);
   };
   if (!llvm::all_of(op->getOperands(), is_available)) return failure();
 
   Block *body = assuming_op.getBody();
-  auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
+  auto yield_op = llvm::cast<shape::AssumingYieldOp>(body->getTerminator());
 
   // Find the operands to use if the op was within the assuming region. We
   // will later use their copies, as we copy the assuming op and its body.
@@ -170,7 +169,7 @@ LogicalResult MoveUpIntoAssumingOpMatchAndRewrite(Operation *op,
       });
 
   // Replace the assuming op and the root op with the corresponding result
-  // value.
+  // values.
   ValueRange new_assuming_op_results = new_assuming_op->getResults();
   rewriter.replaceOp(assuming_op, new_assuming_op_results.drop_back());
   rewriter.replaceOp(op, new_assuming_op_results.back());
