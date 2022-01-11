@@ -205,8 +205,8 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
 
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
-          tile_sizes, unroll_factors, max_supported_rank,
-          enable_ftz, cpu_codegen, jit_i64_indexed_for_large_tensors));
+          tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
+          index_64bit, cpu_codegen, jit_i64_indexed_for_large_tensors));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
@@ -221,14 +221,16 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
 
 Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
                       llvm::ArrayRef<int64_t> unroll_factors,
-                      int64_t max_supported_rank, bool cpu_codegen,
+                      int64_t max_supported_rank, bool enable_ftz,
+                      bool index_64bit, bool cpu_codegen,
                       bool jit_i64_indexed_for_large_tensors) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
   if (jit_i64_indexed_for_large_tensors) {
     pm.addNestedPass<mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
-            tile_sizes, unroll_factors, max_supported_rank, cpu_codegen,
+            tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
+            index_64bit, cpu_codegen,
             /*jit_i64_indexed_for_large_tensors=*/true));
   }
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
@@ -519,7 +521,8 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
         /*jit_i64_indexed_for_large_tensors=*/false));
   } else {
     TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
-                                      max_supported_rank, cpu_codegen,
+                                      max_supported_rank, enable_ftz,
+                                      index_64bit, cpu_codegen,
                                       jit_i64_indexed_for_large_tensors));
     TF_RETURN_IF_ERROR(
         LowerLoopsToGPUorCPU(module.get(), embed_memref_prints, cpu_codegen));

@@ -160,6 +160,7 @@ struct PackJITCompileOpPattern
                                    llvm::ArrayRef<int64_t> tile_sizes,
                                    llvm::ArrayRef<int64_t> unroll_factors,
                                    int64_t max_supported_rank, bool enable_ftz,
+                                   bool index_64bit_if_jit_compiling,
                                    bool cpu_codegen)
       : OpRewritePattern<tf_framework::JITCompileOp>(ctx),
         tile_sizes(tile_sizes),
@@ -244,7 +245,7 @@ struct TFToJITInvocationPass
     RewritePatternSet patterns(ctx);
     PopulateTFToJITInvocationPatterns(
         ctx, &patterns, tile_sizes_, unroll_factors_, max_supported_rank_,
-        enable_ftz_, cpu_codegen_, jit_i64_indexed_for_large_tensors_);
+        enable_ftz_, index_64bit_, cpu_codegen_, jit_i64_indexed_for_large_tensors_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
       return signalPassFailure();
@@ -313,21 +314,24 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
 };
 }  // namespace
 
-void PopulateTFToJITInvocationPatterns(MLIRContext* ctx,
-                                       RewritePatternSet* patterns,
-                                       llvm::ArrayRef<int64_t> tile_sizes,
-                                       llvm::ArrayRef<int64_t> unroll_factors,
-                                       int64_t max_supported_rank,
-                                       bool enable_ftz, bool cpu_codegen,
-                                       bool jit_i64_indexed_for_large_tensors) {
+void PopulateTFToJITInvocationPatterns(
+    MLIRContext* ctx, RewritePatternSet* patterns,
+    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
+    int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
+    bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {
   if (jit_i64_indexed_for_large_tensors) {
     patterns->insert<TFToI64JITInvocationForLargeTensorsPattern>(ctx);
   } else {
     patterns->insert<TFToJITInvocationsPattern>(ctx);
   }
-  patterns->insert<PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors,
-                                            max_supported_rank, enable_ftz,
-                                            cpu_codegen);
+
+  bool index_64bit_if_jit_compiling =
+      jit_i64_indexed_for_large_tensors
+          ? true
+          : index_64bit;
+      patterns->insert<PackJITCompileOpPattern>(
+                ctx, tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
+                index_64bit_if_jit_compiling, cpu_codegen);
 }
 
 std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(

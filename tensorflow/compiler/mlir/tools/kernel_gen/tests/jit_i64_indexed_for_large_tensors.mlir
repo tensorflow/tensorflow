@@ -8,10 +8,10 @@
 // CHECK-LABEL: @unary_tanh_rint
 // CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>)
 func @unary_tanh_rint(%arg : tensor<*xf32>) -> (tensor<*xf32>) {
-  // CHECK:      %c4294967296 = arith.constant 4294967296 : index
+  // CHECK:      %[[MAX_SIZE:.*]] = arith.constant 4294967296 : index
   // CHECK:      %[[SHAPE:.*]] = shape.shape_of %arg0
   // CHECK:      %[[ELEMENT_COUNT:.*]] = shape.num_elements %[[SHAPE:.*]] : tensor<?xindex> -> index
-  // CHECK:      %[[CONDITION:.*]] = arith.cmpi sgt, %[[ELEMENT_COUNT:.*]], %c4294967296 : index
+  // CHECK:      %[[CONDITION:.*]] = arith.cmpi sgt, %[[ELEMENT_COUNT:.*]], %[[MAX_SIZE:.*]] : index
   // CHECK:      %[[IF_RES:.*]] = scf.if %[[CONDITION:.*]] -> (tensor<*xf32>) {    
   // CHECK:        %[[CALLABLE:.*]] = tf_framework.jit_compile_from_str 
   // CHECK-SAME:   "

@@ -56,7 +56,7 @@ def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
       Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
              "CPU codegen (false implies GPU)">,
       Option<"jit_i64_indexed_for_large_tensors_", 
-             "jit_i64_indexed_for_large_tensors", "bool", /*default=*/"true", 
+             "jit_i64_indexed_for_large_tensors", "bool", /*default=*/"false", 
              "Enable JIT compilation of i64-indexed kernels for large input tensors.">,
   ];
 }

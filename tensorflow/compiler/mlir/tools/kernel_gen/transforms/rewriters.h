@@ -60,7 +60,9 @@ void PopulateTFToJITInvocationPatterns(MLIRContext* ctx,
                                        llvm::ArrayRef<int64_t> tile_sizes,
                                        llvm::ArrayRef<int64_t> unroll_factors,
                                        int64_t max_supported_rank,
-                                       bool enable_ftz, bool cpu_codegen,
+                                       bool enable_ftz, 
+                                       bool index_64bit,
+                                       bool cpu_codegen,
                                        bool jit_i64_indexed_for_large_tensors);
 
 }  // namespace transforms
