@@ -374,22 +374,32 @@ Status GetEinsumNewDynamicShape(TRTNetworkBuilder* builder,
 // and the contract dimensions are combined into another single dim.
 Status GetEinsumNewStaticShape(const EinsumDescriptor& desc,
                                nvinfer1::Dims* new_dims) {
-  new_dims->nbDims = desc.b + 2;
-  // Copy batch dims.
-  std::copy(desc.dims.d, desc.dims.d + desc.b, new_dims->d);
+  // Copy the batch dims and append two additional dimensions.
+  DimsAdapter adap(
+      absl::MakeSpan(static_cast<const int32_t*>(desc.dims.d), desc.b));
+  adap.Append(1).Append(1);
+
   // Combine free dims and contract dims.
   int idx_f = desc.layout == EinsumLayout::BFC ? desc.b : desc.b + 1;
   int idx_c = desc.layout == EinsumLayout::BFC ? desc.b + 1 : desc.b;
 
-  StatusOr<int32_t> vol = StaticDimsVolumeSafe<int32_t>(absl::MakeSpan(
-      desc.dims.d + desc.offset_f, desc.dims.d + desc.offset_f + desc.f));
-  TRT_ENSURE_OK(vol);
-  new_dims->d[idx_f] = *vol;
+  // Find the volume of the free dimensions.
+  int64_t vol_f =
+      DimsAdapter(
+          absl::MakeSpan(
+              static_cast<const int32_t*>(desc.dims.d) + desc.offset_f, desc.f))
+          .Volume();
 
-  vol = StaticDimsVolumeSafe<int32_t>(absl::MakeSpan(
-      desc.dims.d + desc.offset_c, desc.dims.d + desc.offset_c + desc.c));
-  TRT_ENSURE_OK(vol);
-  new_dims->d[idx_c] = *vol;
+  // Find the volume of the contracted dimensions.
+  int64_t vol_c =
+      DimsAdapter(
+          absl::MakeSpan(
+              static_cast<const int32_t*>(desc.dims.d) + desc.offset_c, desc.c))
+          .Volume();
+
+  adap.dim(idx_f) = vol_f;
+  adap.dim(idx_c) = vol_c;
+  *new_dims = adap.AsTrtDims();
   return Status::OK();
 }
 
